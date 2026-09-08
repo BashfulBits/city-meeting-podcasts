@@ -101,7 +101,10 @@ jobs:
             esac
           fi
           for issue in $issues; do
-            gh issue view "$issue" --json body,url > issue.json
+            if ! gh issue view "$issue" --json body,url > issue.json; then
+              echo "::warning::Failed to read review issue #$issue; skipping"
+              continue
+            fi
             body=$(jq -r .body issue.json)
             if ! grep -q '<!-- citypods-review:' <<<"$body"; then
               continue
@@ -116,11 +119,16 @@ jobs:
               actor="github-actions"
             fi
             rm -f result.log
-            python scripts/resolve_review_issue.py --issue-number "$issue" \
-              --issue-url "$(jq -r .url issue.json)" --actor "$actor" \
-              --body-file issue.md > result.log
+            if ! python scripts/resolve_review_issue.py --issue-number "$issue" \
+                --issue-url "$(jq -r .url issue.json)" --actor "$actor" \
+                --body-file issue.md > result.log; then
+              echo "::warning::Failed to evaluate review issue #$issue; skipping"
+              continue
+            fi
             if tail -1 result.log | jq -e '.stored == true' >/dev/null; then
-              gh issue close "$issue" --comment "Stored managed review decision."
+              if ! gh issue close "$issue" --comment "Stored managed review decision."; then
+                echo "::warning::Review issue #$issue was already closed or could not be closed"
+              fi
             fi
           done
       - name: Finalize cleared batches

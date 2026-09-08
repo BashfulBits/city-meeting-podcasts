@@ -539,20 +539,29 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
     }
     taxonomy_path = (site.get("tagging") or {}).get("taxonomy_path", "config/taxonomy.yml")
     taxonomy = load_taxonomy(taxonomy_path)
-    episodes: list[tuple[Any, dict[str, Any], dict[str, Any]]] = []
+    episode_records: list[tuple[Any, dict[str, Any]]] = []
     for city in load_city_configs(config_dir, site["defaults"]):
         for rec in load_records(state_dir, source_key(city)).values():
             ep = record_to_episode(rec)
             if not ep.uid:
                 continue
-            chapters = chapter_tag_inputs(ep, storage)
-            if not chapters:
-                print(f"llm-tournament: skipping {ep.uid!r} (no usable chapters)")
-                continue
-            for chapter in chapters:
-                if chapter.get("chapter_id") and (ep.uid, chapter["chapter_id"]) not in done:
-                    episodes.append((ep, rec, chapter))
-    episodes.sort(key=lambda item: (item[0].published, item[0].uid or ""), reverse=True)
+            episode_records.append((ep, rec))
+
+    # Sort before loading chapter artifacts. `chapter_tag_inputs()` can read transcript and agenda
+    # artifacts from object storage, so scanning every historical record before taking the newest
+    # bounded sample made the weekly job spend its entire timeout on discarded candidates.
+    episode_records.sort(key=lambda item: (item[0].published, item[0].uid or ""), reverse=True)
+    episodes: list[tuple[Any, dict[str, Any], dict[str, Any]]] = []
+    for ep, rec in episode_records:
+        chapters = chapter_tag_inputs(ep, storage)
+        if not chapters:
+            print(f"llm-tournament: skipping {ep.uid!r} (no usable chapters)")
+            continue
+        for chapter in chapters:
+            if chapter.get("chapter_id") and (ep.uid, chapter["chapter_id"]) not in done:
+                episodes.append((ep, rec, chapter))
+        if len(episodes) >= samples:
+            break
     deadline = datetime.now(UTC) + timedelta(minutes=20)
     completed = 0
     # Run-scoped, per-model backends. Every queue-only job this run creates -- candidate
@@ -625,7 +634,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
             outputs[model] = chapter_tags.get(chapter_id, [])
         if contest_failed or len(outputs) != len(MODELS):
             continue
-        # Pass 1: for each of the 6 comparisons (3 CONTESTS x 2 order-swapped pairs), reuse a
+        # Pass 1: for each of the 12 comparisons (6 CONTESTS x 2 order-swapped pairs), reuse a
         # prior resolved decision from state if there is one, otherwise build its job without
         # dispatching yet -- so the whole sample's still-outstanding comparisons can be submitted
         # in one batch call below instead of up to 6 separate ones (see review/44's 2026-08-18

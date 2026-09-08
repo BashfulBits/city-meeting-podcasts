@@ -449,7 +449,7 @@ def test_llm_tag_review_ingest_cli_skips_unreviewed_issue_cleanly(tmp_path, caps
     assert out["reason"] == "no_decision_checked"
 
 
-def test_llm_tag_review_ingest_cli_fails_on_multiple_checked_boxes(tmp_path):
+def test_llm_tag_review_ingest_cli_skips_multiple_checked_boxes(tmp_path, capsys):
     state_path = tmp_path / "llm_evaluation.json"
     state_path.write_text(json.dumps({"version": 1, "reviews": {}, "matrix": [], "trend": []}))
     item = candidate(0.8)
@@ -466,15 +466,16 @@ def test_llm_tag_review_ingest_cli_fails_on_multiple_checked_boxes(tmp_path):
         "tagging:\n  evaluation:\n    state_path: llm_evaluation.json\n"
     )
 
-    with pytest.raises(ValueError, match="choose exactly one"):
-        llm_tag_review.main(
-            [
-                "ingest",
-                "--site-config",
-                str(site_config),
-                "--issue-number",
-                "42",
-                "--issue-body-file",
-                str(body_file),
-            ]
-        )
+    rc = llm_tag_review.main(
+        [
+            "ingest",
+            "--site-config",
+            str(site_config),
+            "--issue-number",
+            "42",
+            "--issue-body-file",
+            str(body_file),
+        ]
+    )
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["reason"] == "invalid_decision_checked"

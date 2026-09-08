@@ -178,6 +178,13 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Bounded research/review workflows now survive oversized and stale work (`tournament.py`, shared
+  review resolver).** The tag tournament previously loaded chapter artifacts for the entire
+  append-only catalog before taking its newest bounded sample, so the 46-sample weekly run hit its
+  22-minute step timeout. It now sorts episode metadata first and materializes only enough newest
+  candidates. The shared weekly resolver isolates unreadable, stale, or already-closed children so
+  one H16 durable-state mismatch cannot abort the sweep or prevent batch finalization; ambiguous
+  LLM tag decisions are treated as non-storing outcomes as well.
 - **Diarize RSS memory model re-validated at 5min-8h (`citypods/diarize.py`, `tests/test_diarize.py`).**
   Run #59's `BrokenProcessPool` crash on a 15h outlier raised the question of whether the shipped
   350MB + 650MB/hr formula (only ever measured up to 60min) dangerously underestimates real usage
