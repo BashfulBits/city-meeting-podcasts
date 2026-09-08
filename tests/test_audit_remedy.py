@@ -7,7 +7,7 @@ matter most are the ones proving a hostile or confused proposal cannot reach the
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import yaml
@@ -25,6 +25,8 @@ from citypods.audit_remedy import (
     RemedyPlan,
     SourceContext,
     _compact_evidence,
+    _new_feed_lifecycle,
+    _resolve_decisions,
     apply_remedy_plan,
     classify_unexpected_bodies,
     ensure_remedy_contract,
@@ -120,9 +122,9 @@ def evidence(repo):
     council = make_city("test-city-council", "City Council", body_any=["Work Session"])
     library = make_city("test-city-library-board", "Library Board")
     episodes = [
-        make_episode("guid-101", "Special Meeting - Budget", "Special Meeting", 10),
-        make_episode("guid-102", "Special Meeting - Hearing", "Special Meeting", 15),
-        make_episode("guid-103", "TIRZ 4-1-26", "TIRZ", 20),
+        make_episode("guid-101", "Special Meeting - Budget", "Council Special Meeting", 10),
+        make_episode("guid-102", "Special Meeting - Hearing", "Council Special Meeting", 15),
+        make_episode("guid-103", "TIRZ 4-1-26", "Council TIRZ", 20),
     ]
     rows = collect_unexpected_bodies(episodes, {}, related_cities=[council, library])
     return gather_unexpected_body_evidence(
@@ -138,7 +140,7 @@ def evidence(repo):
 def proposal(**overrides):
     base = {
         "source_key": "test-source",
-        "unexpected_body": "Special Meeting",
+        "unexpected_body": "Council Special Meeting",
         "action": "union",
         "target_feeds": ["test-city-council"],
         "rationale": "Recurring council session",
@@ -157,11 +159,11 @@ def test_evidence_describes_the_audits_own_rows(evidence):
         "test-city-library-board",
     }
     labels = {f["unexpected_body"]: f for f in evidence["unexpected_findings"]}
-    assert set(labels) == {"Special Meeting", "TIRZ"}
-    assert labels["Special Meeting"]["count"] == 2
-    assert labels["Special Meeting"]["date_range"]["earliest"].startswith("2026-05-10")
-    assert labels["Special Meeting"]["date_range"]["latest"].startswith("2026-05-15")
-    assert {ep["provider_guid"] for ep in labels["Special Meeting"]["episodes"]} == {
+    assert set(labels) == {"Council Special Meeting", "Council TIRZ"}
+    assert labels["Council Special Meeting"]["count"] == 2
+    assert labels["Council Special Meeting"]["date_range"]["earliest"].startswith("2026-05-10")
+    assert labels["Council Special Meeting"]["date_range"]["latest"].startswith("2026-05-15")
+    assert {ep["provider_guid"] for ep in labels["Council Special Meeting"]["episodes"]} == {
         "guid-101",
         "guid-102",
     }
@@ -241,7 +243,7 @@ def test_well_formed_proposals_are_accepted(evidence, repo):
         proposals=[
             proposal(),
             proposal(
-                unexpected_body="TIRZ",
+                unexpected_body="Council TIRZ",
                 action="single_uid_inclusion",
                 provider_guids=["guid-103"],
             ),
@@ -259,6 +261,156 @@ def test_proposals_for_removed_feed_files_are_rejected(evidence, repo):
     plan = validate_proposals(RemedyOutput(proposals=[proposal()]), evidence, paths)
     assert plan.accepted == []
     assert "have no file under config/feeds" in plan.rejected[0].reason
+
+
+def test_new_feed_with_fewer_than_three_observed_meetings_is_deferred(evidence, repo):
+    plan = validate_proposals(
+        RemedyOutput(
+            proposals=[
+                proposal(
+                    unexpected_body="Council TIRZ",
+                    action="new_feed",
+                    target_feeds=[],
+                    new_feed_slug="test-city-tirz-board",
+                    new_feed_title="Test City: TIRZ Board",
+                    new_feed_description="TIRZ Board meetings.",
+                )
+            ]
+        ),
+        evidence,
+        feed_paths_by_slug(repo),
+    )
+    assert not plan.accepted
+    assert plan.rejected[0].reason.startswith("deferred:")
+    assert "at least 3" in plan.rejected[0].reason
+
+
+def test_recurring_family_cannot_be_pinned_as_single_uuid(evidence, repo):
+    finding = evidence["unexpected_findings"][0]
+    finding["count"] = 3
+    finding["episodes"].append(
+        {
+            "provider_guid": "guid-104",
+            "published": "2026-05-25T18:00:00+00:00",
+            "title": "Special Meeting - Follow-up",
+            "body": "Council Special Meeting",
+        }
+    )
+    plan = validate_proposals(
+        RemedyOutput(
+            proposals=[
+                proposal(
+                    action="single_uid_inclusion",
+                    provider_guids=["guid-101"],
+                )
+            ]
+        ),
+        evidence,
+        feed_paths_by_slug(repo),
+    )
+    assert not plan.accepted
+    assert "use a wildcard or new feed" in plan.rejected[0].reason
+
+
+def test_incompatible_target_feed_is_deferred(evidence, repo):
+    evidence["unexpected_findings"] = [
+        {
+            **evidence["unexpected_findings"][1],
+            "unexpected_body": "Sports Arena TIF District Board",
+        }
+    ]
+    plan = validate_proposals(
+        RemedyOutput(proposals=[proposal(unexpected_body="Sports Arena TIF District Board")]),
+        evidence,
+        feed_paths_by_slug(repo),
+    )
+    assert not plan.accepted
+    assert plan.rejected[0].reason.startswith("deferred:")
+    assert "taxonomy overlap" in plan.rejected[0].reason
+
+
+def test_unfiltered_target_feed_is_allowed_for_manual_taxonomy(evidence, repo):
+    path = repo / "config" / "feeds" / "test-city-all.yml"
+    path.write_text(
+        "slug: test-city-all\n"
+        "city: test-city-tx\n"
+        "provider: granicus\n"
+        "source:\n"
+        "  feed_url: https://test.example/feed\n"
+        'podcast_title: "Test City: All Meetings"\n'
+        'podcast_author: "City of Test, TX"\n'
+        'podcast_email: ""\n'
+        'podcast_description: "Meetings."\n',
+        encoding="utf-8",
+    )
+    evidence["existing_feeds"].append({"slug": "test-city-all"})
+    plan = validate_proposals(
+        RemedyOutput(proposals=[proposal(target_feeds=["test-city-all"])]),
+        evidence,
+        feed_paths_by_slug(repo),
+    )
+    assert len(plan.accepted) == 1
+
+
+def test_new_historical_feed_is_marked_retired(evidence, repo):
+    historical = {
+        **evidence,
+        "unexpected_findings": [
+            {
+                **evidence["unexpected_findings"][0],
+                "count": 3,
+                "episodes": [
+                    {
+                        "provider_guid": f"old-{index}",
+                        "published": f"2020-05-{10 + index:02d}T18:00:00+00:00",
+                        "title": "Historical meeting",
+                        "body": "Council Special Meeting",
+                    }
+                    for index in range(3)
+                ],
+            }
+        ],
+    }
+    decisions = BodyDecisions(
+        proposals=[
+            {
+                "finding_id": "f0",
+                "action": "new_feed",
+                "new_feed_slug": "test-city-special-meetings",
+                "new_feed_title": "Test City: Special Meetings",
+                "new_feed_description": "Special meetings.",
+                "rationale": "Three historical meetings.",
+            }
+        ]
+    )
+    resolved = _resolve_decisions(decisions, historical, _compact_evidence(historical))
+    assert resolved.proposals[0].lifecycle_status == "retired"
+    assert "latest observed meeting" in resolved.proposals[0].lifecycle_reason
+    apply_remedy_plan(
+        RemedyPlan(accepted=resolved.proposals),
+        feed_paths=feed_paths_by_slug(repo),
+        source_context=SourceContext.from_city(make_city("test-city-council", "City Council")),
+        repo_root=repo,
+    )
+    created = yaml.safe_load(
+        (repo / "config" / "feeds" / "test-city-special-meetings.yml").read_text(encoding="utf-8")
+    )
+    assert created["lifecycle"] == {
+        "status": "retired",
+        "reason": resolved.proposals[0].lifecycle_reason,
+    }
+
+
+def test_new_irregular_feed_is_marked_dormant():
+    today = datetime.now(UTC).date()
+    episodes = [
+        {"published": (today - timedelta(days=900)).isoformat()},
+        {"published": (today - timedelta(days=800)).isoformat()},
+        {"published": (today - timedelta(days=200)).isoformat()},
+    ]
+    status, reason = _new_feed_lifecycle({"episodes": episodes})
+    assert status == "dormant"
+    assert "600-day gap" in reason
 
 
 def test_model_cannot_supply_a_file_path():
@@ -289,7 +441,10 @@ def test_union_appends_to_the_resolved_feed_and_keeps_comments(evidence, repo):
     path = repo / "config" / "feeds" / "test-city-council.yml"
     assert modified == [path]
     text = path.read_text(encoding="utf-8")
-    assert yaml.safe_load(text)["source"]["body_any"] == ["Work Session", "Special Meeting"]
+    assert yaml.safe_load(text)["source"]["body_any"] == [
+        "Work Session",
+        "Council Special Meeting",
+    ]
     assert "# Council reads the main view." in text
 
 
@@ -297,7 +452,7 @@ def test_single_uid_inclusion_pins_only_the_observed_guids(evidence, repo):
     plan = RemedyPlan(
         accepted=[
             proposal(
-                unexpected_body="TIRZ",
+                unexpected_body="Council TIRZ",
                 action="single_uid_inclusion",
                 provider_guids=["guid-103"],
             )
@@ -312,7 +467,9 @@ def test_single_uid_inclusion_pins_only_the_observed_guids(evidence, repo):
     data = yaml.safe_load(
         (repo / "config" / "feeds" / "test-city-council.yml").read_text(encoding="utf-8")
     )
-    assert data["source"]["body_includes"] == [{"provider_guid": "guid-103", "body": "TIRZ"}]
+    assert data["source"]["body_includes"] == [
+        {"provider_guid": "guid-103", "body": "Council TIRZ"}
+    ]
 
 
 def test_apply_is_idempotent(evidence, repo):
@@ -325,14 +482,14 @@ def test_apply_is_idempotent(evidence, repo):
     data = yaml.safe_load(
         (repo / "config" / "feeds" / "test-city-council.yml").read_text(encoding="utf-8")
     )
-    assert data["source"]["body_any"].count("Special Meeting") == 1
+    assert data["source"]["body_any"].count("Council Special Meeting") == 1
 
 
 def test_new_feed_copies_the_sibling_transport_so_the_source_key_matches(evidence, repo):
     plan = RemedyPlan(
         accepted=[
             proposal(
-                unexpected_body="TIRZ",
+                unexpected_body="Council TIRZ",
                 action="new_feed",
                 target_feeds=[],
                 new_feed_slug="test-city-tirz-board",
@@ -353,7 +510,7 @@ def test_new_feed_copies_the_sibling_transport_so_the_source_key_matches(evidenc
     assert data["slug"] == "test-city-tirz-board"
     assert data["source"]["feed_url"] == "https://test.example/feed"
     # The sibling's selectors must not leak onto the new feed.
-    assert data["source"]["body"] == "TIRZ"
+    assert data["source"]["body"] == "Council TIRZ"
     assert "body_any" not in data["source"]
     assert "Rationale:" in created.read_text(encoding="utf-8")
 
@@ -446,7 +603,7 @@ def test_classify_rejects_invented_episode_ids_after_one_repair(evidence):
     payload["proposals"][0].update(action="single_uid_inclusion", episode_ids=["e99999"])
     backend = ReplyBackend([json.dumps(payload)] * 2)
     result = classify_unexpected_bodies(evidence, backend=backend)
-    assert "Special Meeting" in result.unresolved
+    assert "Council Special Meeting" in result.unresolved
     assert len(backend.jobs) == 1
 
 
@@ -515,7 +672,7 @@ def test_report_lists_accepted_and_rejected(evidence, repo):
     remedy = RemedyOutput(proposals=[proposal(), proposal(unexpected_body="Not Observed")])
     plan = validate_proposals(remedy, evidence, feed_paths_by_slug(repo))
     table = format_remedy_markdown(plan, evidence)
-    assert "Special Meeting" in table
+    assert "Council Special Meeting" in table
     assert "**union**" in table
     assert "Rejected proposals" in table
     assert "was not observed" in table

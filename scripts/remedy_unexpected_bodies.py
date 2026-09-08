@@ -144,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     reports: list[str] = []
     modified: list[Path] = []
-    accepted_total = rejected_total = 0
+    accepted_total = rejected_total = deferred_total = 0
 
     failed_total = unresolved_total = 0
     if args.max_batches < 1:
@@ -179,7 +179,9 @@ def main(argv: list[str] | None = None) -> int:
 
             plan = validate_proposals(remedy, bundle, feed_paths)
             accepted_total += len(plan.accepted)
-            rejected_total += len(plan.rejected)
+            deferred_count = sum(item.reason.startswith("deferred:") for item in plan.rejected)
+            deferred_total += deferred_count
+            rejected_total += len(plan.rejected) - deferred_count
             unresolved_total += len(remedy.unresolved)
             reports.append(
                 f"Direct model: `{remedy.model}`; response cache disabled.\n\n"
@@ -229,10 +231,13 @@ def main(argv: list[str] | None = None) -> int:
     print(report_md)
     if args.output:
         Path(args.output).write_text(report_md + "\n", encoding="utf-8")
-    _log(f"\n{accepted_total} proposal(s) accepted, {rejected_total} rejected.")
+    _log(
+        f"\n{accepted_total} proposal(s) accepted, {rejected_total} rejected, "
+        f"{deferred_total} deferred."
+    )
 
     report_md = (
-        f"{accepted_total} accepted; {rejected_total} rejected; "
+        f"{accepted_total} accepted; {rejected_total} rejected; {deferred_total} deferred; "
         f"{unresolved_total} need manual review; {failed_total} classification/apply failures.\n\n"
         + report_md
     )

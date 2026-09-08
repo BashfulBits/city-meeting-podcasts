@@ -55,8 +55,13 @@ Phase R (Research-Tool Surface)._
   large historical issue can be resumed after each accepted PR. The #1590 feed cleanup adds the
   validated recurring feeds, simplifies duplicated Fort Worth labels, and routes the confirmed
   Addison, Fort Worth, Pflugerville, and Waco historical exceptions without changing provider
-  transport or episode identities. New feed selectors are additive config only; no stored
-  artifacts are invalidated or backfilled automatically.
+  transport or episode identities. The local validation boundary now defers new feeds with fewer
+  than three observed meetings, recurring families proposed as individual UUIDs, generic aggregate
+  labels, and target feeds with no meaningful taxonomy overlap; unfiltered feeds remain a safe
+  explicit escape hatch. New feed selectors are additive config only; no stored artifacts are
+  invalidated or backfilled automatically. Remedy-created feeds with historical-only evidence are
+  marked `dormant` after one year, `retired` after two years, and `dormant` for an irregular series
+  with a long recent gap, so old one-off discoveries do not appear active by default.
 
 - **`NativeDiarizeStage` registers with `PROGRESS` and logs per-attempt start/done/error lines
   (`citypods/stages.py`).** Investigating a live run (denton-tx, 2026-09-05) that appeared to sit
