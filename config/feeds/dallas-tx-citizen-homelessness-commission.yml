@@ -6,6 +6,8 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: Citizen Homelessness Commission
+  body_any:
+    - "Citizen Homeless Commission"
 podcast_title: 'Dallas: Citizen Homelessness Commission'
 podcast_author: City of Dallas, TX
 podcast_email: ''

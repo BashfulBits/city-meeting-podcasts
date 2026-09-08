@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Community Development Commission"
+  body_includes:
+    - provider_guid: "204142"
+      body: "Neighborhood Public Meeting for FY 2022-23 HUD Grant Funds"
 podcast_title: "Dallas: Community Development Commission"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

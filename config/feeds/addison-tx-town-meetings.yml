@@ -39,6 +39,8 @@ source:
       body: "Former Sam's Club Applicant Presentation"
     - provider_guid: "56059"
       body: "Former Sam's Club Staff Presentation"
+    - provider_guid: "55864"
+      body: "Addison Economic Development Luncheon"
   body_any:
     - "Town Hall Meeting"
 lifecycle:

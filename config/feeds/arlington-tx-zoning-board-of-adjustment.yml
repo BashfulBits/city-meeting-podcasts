@@ -1,0 +1,13 @@
+# Added by automated unexpected-body remediation.
+# Rationale: ZBA represents the Zoning Board of Adjustment, which is a distinct, recurring statutory body separate from the Planning and Zoning Commission. A dedicated feed is established for its regular sessions.
+slug: arlington-tx-zoning-board-of-adjustment
+city: arlington-tx
+provider: granicus
+source:
+  feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+  body: ZBA Regular Session
+podcast_title: 'Arlington: Zoning Board of Adjustment'
+podcast_author: City of Arlington, TX
+podcast_email: ''
+podcast_description: Recordings of the Arlington Zoning Board of Adjustment (ZBA)
+  meetings.

@@ -1,0 +1,13 @@
+# Added by automated unexpected-body remediation.
+# Rationale: The Arlington Tomorrow Foundation Board of Directors is a distinct, recurring public body that manages municipal philanthropic trust funds. It meets regularly, as shown by multiple observed episodes across March and April 2020.
+slug: arlington-tx-tomorrow-foundation
+city: arlington-tx
+provider: granicus
+source:
+  feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+  body: Arlington Tomorrow Foundation - Board of Directors
+podcast_title: 'Arlington: Tomorrow Foundation Board of Directors'
+podcast_author: City of Arlington, TX
+podcast_email: ''
+podcast_description: Recordings of the Arlington Tomorrow Foundation Board of Directors
+  meetings.

@@ -1,0 +1,13 @@
+# Added by automated unexpected-body remediation.
+# Rationale: The Arlington Housing Finance Corporation is a distinct public entity that meets on a recurring basis to govern housing finance programs. It is independent of the main City Council, requiring its own dedicated feed.
+slug: arlington-tx-housing-finance-corporation
+city: arlington-tx
+provider: granicus
+source:
+  feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+  body: Arlington Housing Finance Corporation Board Meeting
+podcast_title: 'Arlington: Housing Finance Corporation'
+podcast_author: City of Arlington, TX
+podcast_email: ''
+podcast_description: Recordings of the Arlington Housing Finance Corporation Board
+  meetings.

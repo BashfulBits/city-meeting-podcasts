@@ -4,6 +4,20 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "*Skillman Corridor TIF District Board of Directors Meeting"
+  body_includes:
+    - provider_guid: "346867"
+      body: "Dallas Tax Increment Financing Reinvestment Zone Number Seven Board of Directors Meeting"
+    - provider_guid: "337677"
+      body: "Dallas Mall Area Redevelopment TIF District Board of Directors Special Called Meeting"
+    - provider_guid: "334183"
+      body: "Sports Arena TIF District Board Meeting"
+    - provider_guid: "204783"
+      body: "Reinvestment Zone 4 Cedars TIF District"
+  body_any:
+    - "Dallas Cedars TIF District Board of Directors Meeting"
+    - "Reinvestment Zone 14 Skillman Corridor"
+    - "Reinvestment Zone 14 Board Skillman Corridor"
+    - "Reinvestment Zone Number 14 Board Skillman Corridor"
 podcast_title: "Dallas: Skillman Corridor TIF District Board of Directors"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

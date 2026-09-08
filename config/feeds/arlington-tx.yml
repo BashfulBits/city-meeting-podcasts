@@ -3,6 +3,15 @@ city: arlington-tx
 provider: granicus
 source:
   feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+  body_includes:
+    - provider_guid: "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3541"
+      body: "Term Limits Advisory Committee"
+    - provider_guid: "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3537"
+      body: "Term Limits Advisory Committee"
+    - provider_guid: "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3534"
+      body: "Term Limits Advisory Committee"
+    - provider_guid: "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3524"
+      body: "Term Limits Advisory Committee"
 podcast_title: "Arlington — All Meetings"
 podcast_author: "City of Arlington, TX"
 podcast_email: ""
