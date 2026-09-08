@@ -34,6 +34,7 @@ from citypods.audit_remedy import (
     gather_unexpected_body_evidence,
     remedy_batches,
     safe_classification_error,
+    stable_body_selector,
     validate_proposals,
 )
 from citypods.compute.base import JobResult
@@ -602,6 +603,18 @@ def test_batches_preserve_all_full_evidence_and_bound_model_input():
         assert estimate_tokens([{"content": json.dumps(compact)}]) <= EVIDENCE_TOKEN_BUDGET
         assert all(len(f["episode_samples"]) <= 6 for f in compact["unexpected_findings"])
         assert all(len(f["episodes"]) == 5000 for f in batch["unexpected_findings"])
+
+
+def test_stable_body_selector_only_wildcards_recurring_dated_families():
+    labels = [
+        "Agenda Committee on 2018-10-24 2:30 PM",
+        "Agenda Committee on 2018-10-17 2:30 PM",
+    ]
+    assert stable_body_selector(labels[0], labels) == "Agenda Committee on *"
+    assert stable_body_selector(labels[0], labels[:1]) == labels[0]
+    assert stable_body_selector("One-off on 2018-10-24 2:30 PM", [labels[0]]) == (
+        "One-off on 2018-10-24 2:30 PM"
+    )
 
 
 def test_single_oversized_finding_is_reported_not_dropped(evidence):

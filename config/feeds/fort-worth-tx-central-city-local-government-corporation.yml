@@ -1,0 +1,17 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Central City Local Government Corporation is a distinct municipal body holding meetings (e.g., 2026-06-23) without an existing feed.
+slug: fort-worth-tx-central-city-local-government-corporation
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body: Central City Local Government Corporation
+podcast_title: 'Fort Worth: Central City Local Government Corporation'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: Recordings of the Central City Local Government Corporation meetings.

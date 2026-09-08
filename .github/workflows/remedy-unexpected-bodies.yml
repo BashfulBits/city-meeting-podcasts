@@ -29,6 +29,10 @@ on:
         description: "Apply accepted proposals, verify, and open a PR (otherwise report only)"
         type: boolean
         default: false
+      max_batches:
+        description: "Maximum number of bounded classification batches for this pass"
+        type: number
+        default: 12
 
 permissions:
   contents: read
@@ -170,8 +174,10 @@ jobs:
           # Free-form dispatch inputs: pass through env, never inline them into `run:` shell text.
           ISSUE_INPUT: ${{ inputs.issue }}
           APPLY_INPUT: ${{ inputs.apply }}
+          MAX_BATCHES_INPUT: ${{ inputs.max_batches }}
         run: |
           args=(--evidence-file unexpected-body-evidence.json --output remedy-report.md)
+          args+=(--max-batches "$MAX_BATCHES_INPUT")
           if [ -n "$ISSUE_INPUT" ]; then
             args+=(--issue "$ISSUE_INPUT")
           fi

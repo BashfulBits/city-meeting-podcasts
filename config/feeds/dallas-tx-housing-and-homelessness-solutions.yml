@@ -4,6 +4,25 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Housing and Homelessness Solutions"
+  body_includes:
+    - provider_guid: "306324"
+      body: "Citizen Homeless Commission Retreat"
+    - provider_guid: "204040"
+      body: "Citizen Homeless Commission Retreat"
+    - provider_guid: "203313"
+      body: "Racial Equity and Homelessness"
+    - provider_guid: "205581"
+      body: "Office of Homeless Solutions Budget Listening Session"
+    - provider_guid: "205538"
+      body: "Housing Public Meeting"
+    - provider_guid: "205534"
+      body: "Virtual Town Hall Meeting Citizen Homelessness Commission - Public Input"
+  body_any:
+    - "Housing"
+    - "Housing Policy Public Input Virtual Meeting Topic 4 of 4"
+    - "Housing Policy Public Input Virtual Meeting Topic 3 of 4"
+    - "Housing Policy Public Input Virtual Meeting Topic 2 of 4"
+    - "Housing Policy Public Input Virtual Meeting Topic 1 of 4"
 podcast_title: "Dallas: Housing and Homelessness Solutions"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

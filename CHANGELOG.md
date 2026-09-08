@@ -47,6 +47,17 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Unexpected-body remediation now handles historical selector families safely.**
+  Recurring Granicus/Swagit labels with the same dated body prefix are locally collapsed to a
+  wildcard such as `Agenda Committee on *`; the classifier cannot invent that selector, and
+  isolated dated labels remain exact UUID inclusions or manual review. `/remedy` also limits each
+  pass to a bounded number of classification batches and reports the deferred remainder so a
+  large historical issue can be resumed after each accepted PR. The #1590 feed cleanup adds the
+  validated recurring feeds, simplifies duplicated Fort Worth labels, and routes the confirmed
+  Addison, Fort Worth, Pflugerville, and Waco historical exceptions without changing provider
+  transport or episode identities. New feed selectors are additive config only; no stored
+  artifacts are invalidated or backfilled automatically.
+
 - **`NativeDiarizeStage` registers with `PROGRESS` and logs per-attempt start/done/error lines
   (`citypods/stages.py`).** Investigating a live run (denton-tx, 2026-09-05) that appeared to sit
   at `no tracked work active` for hours turned out to be a genuinely busy pyannote pipeline call

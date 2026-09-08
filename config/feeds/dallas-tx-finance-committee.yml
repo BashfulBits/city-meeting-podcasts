@@ -4,6 +4,18 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Finance Committee"
+  body_any:
+    - "Council Government Performance & Financial Management Committee"
+    - "Special Called Meeting of the Government Performance & Financial Management Committee"
+    - "Council Government Performance & Financial Management"
+    - "Budget, Finance & Audit"
+  body_includes:
+    - provider_guid: "319577"
+      body: "Joint Meeting of the Government Performance and Financial Management Committee and Ad Hoc Committee on Pensions"
+    - provider_guid: "205537"
+      body: "Budget Engagement Meeting"
+    - provider_guid: "205536"
+      body: "Budget Engagement Meeting"
 podcast_title: "Dallas: Finance Committee"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

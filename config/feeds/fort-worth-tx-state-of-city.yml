@@ -1,0 +1,17 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Recurring annual address series spanning 2013-03-05 to 2014-02-13 with distinct recurring episodes.
+slug: fort-worth-tx-state-of-city
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body: State of City
+podcast_title: 'Fort Worth: State of the City'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: State of the City addresses and speeches by municipal leadership.

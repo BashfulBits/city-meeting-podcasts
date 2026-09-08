@@ -4,6 +4,11 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Dallas Park and Recreation Board"
+  body_includes:
+    - provider_guid: "296250"
+      body: "Special Called Park Board Meeting"
+  body_any:
+    - "Special Park and Recreation Board"
 podcast_title: "Dallas: Dallas Park and Recreation Board"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""
