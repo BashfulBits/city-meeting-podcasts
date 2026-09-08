@@ -1,0 +1,17 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Dallas Fort Worth Avenue TIF District Board of Directors is a distinct recurring body with 7 observed meetings between 2021-12-07 and 2026-02-26.
+slug: dallas-tx-fort-worth-avenue-tif-district-board-of-directors
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Dallas Fort Worth Avenue TIF District Board of Directors Meeting
+lifecycle:
+  status: dormant
+  reason: irregular series has a 441-day gap and latest meeting was 2026-02-26 (194
+    days ago)
+podcast_title: 'Dallas: Fort Worth Avenue TIF District Board of Directors'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Fort Worth Avenue TIF District Board of Directors
+  in Dallas, TX.

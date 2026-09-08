@@ -17,6 +17,8 @@ source:
       body: "Housing Public Meeting"
     - provider_guid: "205534"
       body: "Virtual Town Hall Meeting Citizen Homelessness Commission - Public Input"
+    - provider_guid: "204783"
+      body: "Reinvestment Zone 4 Cedars TIF District"
   body_any:
     - "Housing"
     - "Housing Policy Public Input Virtual Meeting Topic 4 of 4"
