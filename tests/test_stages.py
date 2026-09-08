@@ -832,6 +832,54 @@ def test_diarize_candidates_do_not_retain_timed_words_for_the_whole_backlog(tmp_
     assert stages_mod._DiarizeCandidate.__doc__  # documents why, so it is not "simplified" back
 
 
+def test_diarize_collect_candidates_reclaims_a_stale_provider_sourced_episode(tmp_path):
+    """ProviderTranscriptDiarizeStage is retired (review/31 §A.5): a citywide survey found its
+    colon-prefix assumption never matched a single real caption provider, so every
+    `speakers_source == "provider"` artifact still on record is unvalidated guesswork, not a
+    real diarization. An episode carrying one must not be treated as permanently done -- it has
+    to fall through to genuine native diarization, the same as an episode never touched."""
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    ep = _diarize_episode(ctx, tmp_path, "stale-provider", seconds=60.0)
+    ep.speakers_key = "transcripts/src/stale-provider-diarize-abc123.speakers.json"
+    ep.speakers_url = "https://cdn/transcripts/src/stale-provider-diarize-abc123.speakers.json"
+    ep.speakers_spec_hash = "abc123"
+    ep.speakers_format = "json"
+    ep.speakers_synced = True
+    ep.speakers_confidence = 0.5
+    ep.speakers_pipeline_version = "1"
+    ep.speakers_source = "provider"
+
+    stage = NativeDiarizeStage()
+    stats = StageStats(stage.name)
+    candidates = stage._collect_candidates(
+        city,
+        [ep],
+        ctx,
+        stats,
+        config=ctx.speaker_config,
+        model="m",
+        embedding_model="e",
+        canonical_city_slug="denton-tx",
+    )
+
+    # Not silently counted as already-done ...
+    assert stats.reused == 0
+    # ... every stale provider field is cleared ...
+    assert ep.speakers_key is None
+    assert ep.speakers_url is None
+    assert ep.speakers_spec_hash is None
+    assert ep.speakers_format is None
+    assert ep.speakers_synced is False
+    assert ep.speakers_confidence is None
+    assert ep.speakers_pipeline_version is None
+    assert ep.speakers_source is None
+    # ... and it proceeds into the real native-diarize candidate pool.
+    assert len(candidates) == 1
+    assert candidates[0].uid == str(ep.uid or ep.guid)
+
+
 def test_diarize_backstop_defers_the_item_and_stops_admitting(tmp_path, monkeypatch):
     """An item still running at the backstop is abandoned and admission closes, so one estimate
     miss cannot hold the whole job past its runner timeout (review/31 §A.4)."""
@@ -1151,7 +1199,6 @@ def test_run_stages_returns_stats_per_stage(tmp_path):
         "links",
         "agenda_text",
         "minutes_text",
-        "diarize",
         "tags",
     ]
     assert [s.name for s in stats] == expected
@@ -1316,17 +1363,15 @@ def test_default_lane_none_runs_every_stage(tmp_path):
         "links",
         "agenda_text",
         "minutes_text",
-        "diarize",
         "tags",
     ]
 
 
-def test_production_stage_composition_extracts_minutes_before_diarization():
+def test_production_stage_composition_extracts_minutes_before_tags():
     assert [stage.name for stage in render_stages()] == ["links"]
     names = [stage.name for stage in enrich_stages()]
     assert names.index("links") < names.index("agenda_text") < names.index("minutes_text")
-    assert names.index("minutes_text") < names.index("diarize")
-    assert names.index("diarize") < names.index("tags")
+    assert names.index("minutes_text") < names.index("tags")
 
 
 def test_links_stage_defaults_canonical_video_and_is_idempotent(tmp_path):

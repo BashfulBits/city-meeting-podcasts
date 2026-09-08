@@ -733,6 +733,69 @@ the previous addendum's own 5GiB spike margin.**
 
 ---
 
+### A.5 ProviderTranscriptDiarizeStage retired, 2026-09-08 — its label format never once matched
+
+**What it was.** `ProviderTranscriptDiarizeStage` (stage name `"diarize"`, PT-PR6, predates R7)
+derived speaker turns for free from a provider-supplied caption that already carried inline
+`NAME: spoken text` labels — cheap text parsing, no audio, no model. It ran in every
+`default_stages()`/`enrich_stages()` pass alongside R7's `native_diarize`, under the shared
+`"diarize"` lane.
+
+**Investigated after a routine question about what `diarize: 0 ran, 2001 reused, 0 queued,
+0 errors (0s)` in a production log meant.** That line turns out to answer a different question
+than it first suggested: a citywide survey of every city/source group with a provider-aligned
+transcript on record — Addison, 18 separate Austin boards, Dallas, Denton, Travis County; every
+provider currently integrated — found **zero** episodes, anywhere, with `speakers.source ==
+"provider"`. The stage had only ever been evaluated on 13 episodes total (all in Denton), and
+every one came back `diarize_status: "no-speaker-labels"`.
+
+**Root cause, confirmed by reading the raw provider-aligned VTT text directly, not inferred.**
+`_SPEAKER_PREFIX_RE` required a colon-delimited prefix (`^([A-Z][A-Za-z0-9 .,'&/-]{1,80}?):\s+
+(.+)$`). No caption vendor in this project's provider mix ever emits that shape. What real
+captions contain instead, confirmed per-vendor:
+
+- **Plain undifferentiated text** (Austin, Dallas, Addison — the majority): raw ALL-CAPS
+  speech-to-text, zero speaker markers of any kind.
+- **A bare `>>` chevron** (Denton, and heavily — Travis County: 822 chevron lines in one sampled
+  episode alone): the standard CART/live-captioning speaker-*change* marker, carrying no identity
+  — a name appearing nearby is ordinary spoken prose ("MY NAME IS AMANDA WOZNIAK"), never
+  structured metadata.
+
+`no-speaker-labels` was the *correct* output every time — the regex never malfunctioned, its
+precondition just never held against any real data source this project ingests. A "filter valid
+vs. invalid labels" fix at the `reused` check (`citypods/stages.py`, previously line ~7034) was
+considered and rejected: there was never any successfully-extracted data flowing through that
+path to filter, on any city, ever.
+
+**Retired outright**, not patched — `ProviderTranscriptDiarizeStage`, `PROVIDER_DIARIZE_PIPELINE_
+VERSION`, `_provider_diarize_spec_hash`/`_provider_diarize_object_key`, `_SPEAKER_PREFIX_RE`, and
+`_speaker_turns_from_cues` are all removed from `citypods/stages.py`; the stage is dropped from
+`default_stages()`/`enrich_stages()`; `LANE_STAGES["diarize"]` and `records._LANE_OWNED_BLOCKS`/
+`_LANE_OWNED_STAGE_STATUS["diarize"]` now cover only `native_diarize`. `/admin/status`'s
+provider-transcript-rollout panel drops its diarize sub-section (align status, an unrelated
+sibling feature reusing the same `provider_transcript` record, is untouched). The
+`"provider-transcript-diarize"` work class stays recognized in `citypods/ops/workqueue.py`'s
+`WORK_CLASSES` (so any pre-retirement manifest entries keep reaping normally) but is no longer
+emitted for new episodes.
+
+**Migration for any stale `speakers_source == "provider"` episode** (none found live, but the
+code path must be correct regardless — this could reflect data this survey's snapshot didn't
+reach, or historical state). `NativeDiarizeStage._collect_candidates` used to permanently skip
+(`stats.reused += 1`) any episode whose `speakers_source == "provider"` — with the stage that set
+that field retired, that check now instead clears every stale field (`speakers_key`, `_url`,
+`_spec_hash`, `_format`, `_synced`, `_confidence`, `_pipeline_version`, `_source`) and falls
+through into the normal candidate-selection path below it, so the episode gets a real, native
+diarization pass exactly as if it had never been touched — not silently treated as done forever.
+
+**A genuinely different, and likely harder, upstream issue was found along the way and is not
+part of this retirement**: the underlying `nemo_en_titanet_small.onnx`/`_large.onnx` export has a
+hard 122.88s embedding-extraction ceiling (root-caused and truncation-fixed in PR #1593/#1594,
+above) that traces to NVIDIA NeMo's own export path, not sherpa-onnx's application code — reported
+upstream at k2-fsa/sherpa-onnx#2462 with the exact root cause added, comment drafted but not
+posted pending the user's go-ahead per this project's publish-to-external-repo convention.
+
+---
+
 ## Part B — Minimal attendee extraction (Phase F #14, pulled forward)
 
 ### B.1 Scope, restated precisely (unchanged from the L1 sketch, now grounded)

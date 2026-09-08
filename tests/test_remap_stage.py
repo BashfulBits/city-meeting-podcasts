@@ -366,7 +366,6 @@ class TestRemapOrdering:
             "links",
             "agenda_text",
             "minutes_text",
-            "diarize",
             "tags",
         ]
 
@@ -381,6 +380,5 @@ class TestRemapOrdering:
             "links",
             "agenda_text",
             "minutes_text",
-            "diarize",
             "tags",
         ]

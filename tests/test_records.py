@@ -1744,6 +1744,7 @@ def test_protected_blocks_for_lane():
         {
             "audio",
             "transcript",
+            "provider_transcript",
             "media_availability",
             "integrity",
             "agenda_text",

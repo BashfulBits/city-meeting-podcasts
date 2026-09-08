@@ -1701,7 +1701,7 @@ def _run_enrich_global_queue(
     ]
     # Diarization consumes the minutes-derived roster as candidate vocabulary and the active
     # transcript, so it must run after the document stages *and* TranscriptStage's second pass.
-    post_transcript = {"transcript", "diarize", "native_diarize", "speaker_identity", "tags"}
+    post_transcript = {"transcript", "native_diarize", "speaker_identity", "tags"}
     audio_stages = [
         s
         for s in pipeline.stages
@@ -1901,9 +1901,8 @@ def _run_enrich_global_queue(
                 if episode_needs_chapter_agenda(ep) or episode_needs_chapter_locator(ep)
             ]
     # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout
-    # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). Neither
-    # ProviderTranscriptDiarizeStage (works purely off an already-aligned transcript's text) nor
-    # TagsStage (works purely off agenda/transcript text) reads it. Gating this on
+    # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). TagsStage
+    # (works purely off agenda/transcript text) does not read it. Gating this on
     # `transcript_stages` rather than on membership of "transcript" specifically meant every
     # `tag`-lane run paid the full per-episode ffprobe/heal pass (a storage round trip via
     # probe_hosted_audio_duration_seconds) across the *entire* backlog before it could even build
@@ -2265,8 +2264,8 @@ def _run_enrich_global_queue(
 
             # Tagging has no audio dependency (it only reads agenda/transcript text), so an
             # episode that never gets hosted audio still needs its own, narrower pass — running
-            # the full transcript_stages list on it would wrongly let TranscriptStage/
-            # ProviderTranscriptDiarizeStage (which DO require hosted audio) execute too.
+            # the full transcript_stages list on it would wrongly let TranscriptStage (which DOES
+            # require hosted audio) execute too.
             tags_only_stages = [s for s in transcript_stages if s.name == "tags"]
             if tags_only_stages:
                 tx_tags_only = [

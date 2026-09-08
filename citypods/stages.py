@@ -174,8 +174,8 @@ def _materialize_set(
     whether this call is a transcript-producing stage (any value in
     ``workqueue.DURATION_AWARE_WORK_CLASSES``) so the ``long_first`` comparator can tell it apart
     from a non-transcript stage's call. Defaults to ``"audio"``: every caller except
-    ``TranscriptStage`` / ``ProviderTranscriptDiarizeStage`` processes audio-adjacent work that
-    duration-based external-GPU prioritization should never reorder."""
+    ``TranscriptStage`` processes audio-adjacent work that duration-based external-GPU
+    prioritization should never reorder."""
     out: list[Episode] = []
     ranked: list[tuple[Episode, str]] = []
     visible = max_per_body if feed_visible_per_body is None else feed_visible_per_body
@@ -804,12 +804,6 @@ def stage_input_fingerprint(
             "timeline": timeline_digest(ep.timeline, ep.sources) if ep.timeline else "",
             "recipe": TRANSCRIPT_PIPELINE_VERSION,
             "word_validation": TIMED_WORDS_VALIDATION_VERSION,
-        }
-    elif name == "diarize":
-        payload = {
-            **common,
-            "transcript": ep.transcript_key or ep.transcript_hosted_url,
-            "recipe": PROVIDER_DIARIZE_PIPELINE_VERSION,
         }
     elif name == "native_diarize":
         config = speaker_config or {}
@@ -4354,7 +4348,6 @@ MINUTES_ROSTER_PARSER_VERSION = "2"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
 KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
 PROVIDER_NATIVE_PIPELINE_VERSION = "1"
-PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
 # Bumped "1"->"2": citypods/diarize.py's DEFAULT_WINDOW_SHIFT_RATIO changed sherpa-onnx's
 # pyannote segmentation windowing (0.1 -> 0.3), which changes the actual computation, not just
 # bookkeeping -- artifacts diarized under the old default must be re-diarized, not reused.
@@ -4620,28 +4613,6 @@ def _parse_swagit_coarse_cues(ep: Episode, content: bytes) -> list[dict]:
     # A single usable block is no better than full alignment: it provides no meaningful search
     # partition, so deliberately use the existing safe fallback.
     return cues if len(cues) >= 2 else []
-
-
-def _provider_diarize_spec_hash(ep: Episode, artifact: dict) -> str:
-    spec = {
-        "v": PROVIDER_DIARIZE_PIPELINE_VERSION,
-        "transcript": ep.transcript_spec_hash,
-        "provider_align": artifact.get("align_spec_hash"),
-        "minutes_roster": sorted(
-            (
-                {"name": item.get("name"), "status": item.get("status")}
-                for item in ep.minutes_roster
-                if isinstance(item, dict) and item.get("name")
-            ),
-            key=lambda item: (str(item["name"]).casefold(), str(item.get("status") or "")),
-        ),
-    }
-    blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
-    return hashlib.sha1(blob.encode()).hexdigest()[:12]
-
-
-def _provider_diarize_object_key(src_key: str, uid: str, spec: str) -> str:
-    return f"transcripts/{src_key}/{uid}-provider-diarize-{spec}.speakers.json"
 
 
 def _provider_transcript_history(history: object, *, limit: int = 5) -> list[dict]:
@@ -5019,35 +4990,6 @@ def _provider_cues_to_vtt(cues: list[dict]) -> bytes:
         lines.extend(str(cue.get("text") or "").splitlines() or [""])
         lines.append("")
     return ("\n".join(lines)).encode("utf-8")
-
-
-_SPEAKER_PREFIX_RE = re.compile(r"^\s*([A-Z][A-Za-z0-9 .,'&/-]{1,80}?):\s+(.+)$")
-
-
-def _speaker_turns_from_cues(cues: list[dict]) -> tuple[list[dict], float | None]:
-    turns: list[dict] = []
-    for cue in cues:
-        text = str(cue.get("text") or "").strip()
-        if not text:
-            continue
-        match = _SPEAKER_PREFIX_RE.match(text.replace("\n", " "))
-        if not match:
-            continue
-        speaker = re.sub(r"\s+", " ", match.group(1)).strip()
-        spoken = match.group(2).strip()
-        if not speaker or not spoken:
-            continue
-        turns.append(
-            {
-                "speaker": speaker,
-                "start": round(float(cue["start"]), 3),
-                "end": round(float(cue["end"]), 3),
-                "text": spoken,
-            }
-        )
-    if not cues:
-        return [], None
-    return turns, max(0.0, min(1.0, len(turns) / len(cues)))
 
 
 def _confidence_rank(value: object) -> float:
@@ -7133,129 +7075,6 @@ class TranscriptStage:
         return stats
 
 
-class ProviderTranscriptDiarizeStage:
-    """Derive speaker turns from selected provider-aligned transcripts.
-
-    PT-PR6 keeps this deliberately conservative: provider transcripts that already encode
-    speaker labels (`SPEAKER: words`) produce a content-addressed `speakers.json`; transcripts
-    without usable speaker labels record a speakers error but keep serving the successful
-    transcript text.
-    """
-
-    name = "diarize"
-    version = PROVIDER_DIARIZE_PIPELINE_VERSION
-
-    def process(
-        self, provider, city: City, episodes: list[Episode], ctx: StageContext
-    ) -> StageStats:
-        from citypods.records import source_key as _src_key
-
-        stats = StageStats(self.name)
-        if ctx.dry_run or ctx.storage is None:
-            return stats
-
-        src_key = _src_key(city)
-        for ep in _materialize_set(
-            episodes,
-            city.full_artifact_episodes,
-            feed_visible_per_body=city.max_episodes,
-            policy=ctx.backlog_policy,
-            city_slug=city.city_entity or city.slug,
-            work_class="provider-transcript-diarize",
-        ):
-            label = ep.uid or ep.guid
-            registry = ep.provider_transcript or {}
-            known_good = registry.get("known_good") if isinstance(registry, dict) else None
-            if not (
-                isinstance(known_good, dict)
-                and ep.transcript_key
-                and ep.transcript_synced
-                and "-provider-align-" in ep.transcript_key
-            ):
-                continue
-            spec = _provider_diarize_spec_hash(ep, known_good)
-            key = _provider_diarize_object_key(src_key, label, spec)
-            if (
-                ep.speakers_key == key
-                and ep.speakers_synced
-                and ctx.storage.exists(ep.speakers_key)
-            ):
-                ep.speakers_url = ctx.storage.public_url(key)
-                stats.reused += 1
-                continue
-            if ctx.stop is not None and ctx.stop():
-                stats.defer("stop-signal")
-                continue
-
-            content = _read_storage_bytes(ctx.storage, ep.transcript_key)
-            if content is None:
-                ep.speakers_error = "missing-provider-aligned-transcript"
-                stats.errors.append(f"{label}: missing provider-aligned transcript")
-                continue
-            try:
-                cues = _parse_timed_transcript(content, ep.transcript_format or "vtt")
-                turns, confidence = _speaker_turns_from_cues(cues)
-            except Exception as exc:  # noqa: BLE001
-                ep.speakers_error = f"parse-error: {exc}"
-                stats.errors.append(f"{label}: speaker parse: {exc}")
-                continue
-            if not turns:
-                ep.speakers_key = None
-                ep.speakers_url = None
-                ep.speakers_spec_hash = spec
-                ep.speakers_format = "json"
-                ep.speakers_synced = False
-                ep.speakers_confidence = confidence
-                ep.speakers_pipeline_version = PROVIDER_DIARIZE_PIPELINE_VERSION
-                ep.speakers_error = "no-speaker-labels"
-                known_good = {**known_good, "diarize_status": "no-speaker-labels"}
-                registry = dict(ep.provider_transcript or {})
-                registry["known_good"] = known_good
-                ep.provider_transcript = registry
-                stats.defer("no-speaker-labels")
-                continue
-
-            payload = {
-                "schema": "1",
-                "basis": "served",
-                "source": "provider-transcript",
-                "confidence": confidence,
-                "turns": turns,
-                # Minutes rosters are candidate vocabulary for future diarization/identity
-                # assignment. They never rewrite provider speaker labels by themselves.
-                "candidate_members": [
-                    member.get("name")
-                    for member in ep.minutes_roster
-                    if isinstance(member, dict) and member.get("name")
-                ],
-            }
-            with tempfile.TemporaryDirectory() as t:
-                dest = Path(t) / "speakers.json"
-                dest.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True))
-                url = ctx.storage.put_file(key, dest, "application/json")
-
-            ep.speakers_key = key
-            ep.speakers_url = url
-            ep.speakers_spec_hash = spec
-            ep.speakers_format = "json"
-            ep.speakers_synced = True
-            ep.speakers_confidence = confidence
-            ep.speakers_pipeline_version = PROVIDER_DIARIZE_PIPELINE_VERSION
-            ep.speakers_error = None
-            ep.speakers_source = "provider"
-            known_good = {
-                **known_good,
-                "diarize_spec_hash": spec,
-                "diarize_confidence": confidence,
-                "diarize_status": "known_good",
-            }
-            registry = dict(ep.provider_transcript or {})
-            registry["known_good"] = known_good
-            ep.provider_transcript = registry
-            stats.ran += 1
-        return stats
-
-
 def _diarize_spec_hash(ep: Episode, model: str, embedding_model: str) -> str:
     spec = {
         "v": DIARIZE_PIPELINE_VERSION,
@@ -7370,9 +7189,25 @@ class NativeDiarizeStage:
                     ep.stage_completion.pop(self.name, None)
                 stats.quality("pilot-not-selected")
                 continue
-            if ep.speakers_source == "provider" and ep.speakers_synced:
-                stats.reused += 1
-                continue
+            if ep.speakers_source == "provider":
+                # ProviderTranscriptDiarizeStage (the "diarize" stage) is retired: a citywide
+                # survey (review/31 §A.5) found the caption-provider colon-prefix format it
+                # depended on (`NAME: text`) never once matched real data across every provider
+                # currently integrated -- captions come back either fully unmarked or with a bare
+                # `>>` speaker-change chevron, never a named label. Every one of its outputs is
+                # unvalidated guesswork by construction (any `Word:`-shaped line could match), so
+                # an episode still carrying its stale `speakers_source="provider"` artifact must
+                # not keep being treated as done -- clear it and fall through to real, natively
+                # diarized processing below, the same as an episode that was never touched.
+                ep.speakers_key = None
+                ep.speakers_url = None
+                ep.speakers_spec_hash = None
+                ep.speakers_format = None
+                ep.speakers_synced = False
+                ep.speakers_confidence = None
+                ep.speakers_pipeline_version = None
+                ep.speakers_error = None
+                ep.speakers_source = None
             if not (ep.hosted_audio_url and ep.transcript_synced and ep.transcript_words_key):
                 stats.defer("missing-timed-words", sample=uid)
                 continue
@@ -8999,7 +8834,6 @@ def default_stages() -> list[EnrichmentStage]:
         LinksStage(),
         AgendaTextStage(),
         MinutesTextStage(),
-        ProviderTranscriptDiarizeStage(),
         TagsStage(),
     ]
 
@@ -9032,7 +8866,6 @@ def enrich_stages() -> list[EnrichmentStage]:
         LinksStage(),
         AgendaTextStage(),
         MinutesTextStage(),
-        ProviderTranscriptDiarizeStage(),
         TagsStage(),
     ]
 
@@ -9070,7 +8903,7 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     ),
     "transcribe": frozenset({"transcript"}),
     "align": frozenset({"transcript"}),
-    "diarize": frozenset({"diarize", "native_diarize"}),
+    "diarize": frozenset({"native_diarize"}),
     "speaker-identity": frozenset({"speaker_identity"}),
     "tag": frozenset({"tags"}),
     "moments": frozenset({"moments", "moment-judge", "moment-admission", "video-clips"}),

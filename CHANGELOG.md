@@ -15,6 +15,29 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Removed
+
+- **`ProviderTranscriptDiarizeStage` retired (`citypods/stages.py`, `citypods/records.py`,
+  `citypods/report.py`, `citypods/assets/status.html`, `citypods/ops/workqueue.py`; review/31
+  §A.5).** A citywide survey — every city/source group with a provider-aligned transcript on
+  record: Addison, 18 separate Austin boards, Dallas, Denton, Travis County — found **zero**
+  episodes anywhere with `speakers.source == "provider"`. The stage's `_SPEAKER_PREFIX_RE`
+  required a `NAME: text` colon-delimited caption label; no caption vendor in this project's
+  provider mix ever emits that shape. Real captions are either fully unmarked (Austin, Dallas,
+  Addison) or use a bare `>>` speaker-change chevron carrying no identity (Denton, Travis
+  County) — confirmed by reading the raw provider-aligned VTT text directly. `no-speaker-labels`
+  (13-for-13 in Denton, the only city ever evaluated) was the correct output every time, not a
+  bug. The stage, its pipeline-version constant, and its spec-hash/object-key/regex/extraction
+  helpers are removed outright; `default_stages()`/`enrich_stages()` no longer run it; the
+  `"diarize"` lane's owned blocks/stage-status now cover only `native_diarize`; the
+  `/admin/status` provider-transcript panel drops its now-defunct diarize sub-section (align
+  status, an unrelated sibling feature, is unaffected); the `"provider-transcript-diarize"` work
+  class stays recognized for reaping pre-retirement manifest entries but is no longer emitted.
+  `NativeDiarizeStage._collect_candidates`'s permanent `speakers_source == "provider"` skip is
+  replaced with a migration: any episode still carrying that stale, unvalidated artifact has its
+  speaker fields cleared and falls through into a real native diarization pass, instead of being
+  treated as done forever.
+
 ### Added
 
 - **`NativeDiarizeStage` registers with `PROGRESS` and logs per-attempt start/done/error lines
