@@ -323,6 +323,7 @@ def test_push_records_merged_pushes_independent_sources_concurrently(tmp_path):
         def __init__(self, **kwargs):
             super().__init__(**kwargs)
             self._lock = threading.Lock()
+            self._upload_barrier = threading.Barrier(2)
             self._active = 0
             self.peak_uploads = 0
 
@@ -331,7 +332,7 @@ def test_push_records_merged_pushes_independent_sources_concurrently(tmp_path):
                 with self._lock:
                     self._active += 1
                     self.peak_uploads = max(self.peak_uploads, self._active)
-                threading.Event().wait(0.02)
+                self._upload_barrier.wait(timeout=2)
                 with self._lock:
                     self._active -= 1
             return super().put_file(key, local_path, content_type)
