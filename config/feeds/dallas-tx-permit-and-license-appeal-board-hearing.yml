@@ -7,11 +7,6 @@ source:
   body_any:
     - "Permit and License Appeal Board Special Called Meeting"
     - "Permit and License Appeal Board"
-  body_includes:
-    - provider_guid: "345207"
-      body: "Building Inspection Advisory, Examining and Appeals Board Special Called Meeting"
-    - provider_guid: "338548"
-      body: "Building Inspection Advisory, Examining and Appeals Board Special Called Meeting"
 podcast_title: "Dallas: Permit and License Appeal Board Hearing"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""
