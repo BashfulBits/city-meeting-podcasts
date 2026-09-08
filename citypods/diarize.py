@@ -116,31 +116,35 @@ DIARIZE_RSS_PER_HOUR_BYTES = 650 * 1024 * 1024
 
 # A single onnxruntime kernel failure can attempt a large, transient allocation before it fails
 # or logs an error -- on top of whatever steady-state RSS the job already holds at that moment,
-# which the linear model above has no way to see coming. Concrete evidence this isn't
-# hypothetical: R7 runs #59/#61/#62/#63 each logged the same "Where node" broadcast error with
-# dimensions large enough to imply a sizeable attempted allocation -- run #59's `12288 by 15974`
-# and runs #61-63's `12288 by 50599` would each need up to `12288 * 50599 * 4` bytes (float32)
-# =~ 2.49GiB for that one intermediate tensor, and run #63's own heartbeat showed only ~3.0GiB of
-# genuinely free memory at the moment its error fired -- close enough to that figure that a spike
-# of roughly this size landing right then plausibly would have been the tipping point.
+# which the linear model above has no way to see coming. First sized (3GiB) from run #63's own
+# "Where node" broadcast error dimensions, then re-sized to 5GiB (2026-09-07) against five more
+# real incidents whose directly-measured `peak_rss_mb` ran up to +45% hotter than the formula
+# predicts, scaling with recording length/turn count rather than looking like one fixed spike --
+# consistent with onnxruntime's memory arena growing (and never shrinking) further on each
+# degenerate kernel execution the "Where node" bug caused within one process.
 #
-# Re-sized 2026-09-07 against five more real incidents (production, `main`, same run, all in
-# `_attach_embeddings` this time -- see that function's own comment) with directly measured
-# `peak_rss_mb` right at the error: three of five ran meaningfully hotter than even this
-# conservative RSS_BASE/RSS_PER_HOUR formula predicts (+24%, +31%, and worst +45% on the
-# 15.09h outlier -- 14.7GiB observed vs. 10.2GiB predicted, a ~4.5GiB gap on its own, already
-# bigger than the previous 3GiB margin). The overshoot scales with recording length/turn count
-# rather than looking like one fixed-size spike, consistent with onnxruntime's memory arena
-# growing (and never shrinking) a little further on each degenerate kernel execution within one
-# process -- a long recording with more turns has more chances to ratchet it up. Chunking
-# (review/31 §A.4, separate PR) is the more durable fix for *that* mechanism specifically, since
-# a fresh chunk gets a fresh process and a fresh arena; this margin is the stopgap for whatever
-# runs before or without it. Rounded up past the worst *observed* real gap (~4.5GiB), not just
-# the worst *modeled* one, for headroom against a still-longer recording ratcheting further.
-# Subtracted once from the diarize memory ceiling (not once per worker -- the trigger is
-# data-dependent and rare, not a certainty every worker hits simultaneously) so admission always
-# keeps this much genuinely spare, regardless of how full the steady-state accounting already is.
-DIARIZE_RSS_SPIKE_MARGIN_BYTES = 5 * 1024 * 1024 * 1024
+# Cut back down, 2026-09-07 same day -- not because that evidence was wrong, but because what it
+# was defending against no longer happens the way it did: `_attach_embeddings` now truncates any
+# turn past `DIARIZE_MAX_EMBEDDING_TURN_SECONDS` *before* extraction (that constant's own
+# comment), which is exactly the input class root-caused as the trigger for every one of those
+# five incidents. With the degenerate-kernel-execution mechanism prevented at the source rather
+# than only detected, the RSS overshoot it drove should mostly not recur, and 5GiB turned out to
+# cost real concurrency for no matching benefit: observed directly in production the very next
+# run after the 5GiB bump -- a single ~15h candidate's own steady-state estimate (~9.9GiB)
+# already exceeded the resulting ~8.7GiB ceiling outright, `MemoryReservation`'s own clamp-to-
+# budget logic kicked in, and the other three admitted-but-waiting candidates (5.9-7.3GiB each)
+# sat blocked for the giant file's *entire* runtime -- an unintended, avoidable throughput cost,
+# not a new safety win (that same batch would have serialized to one-at-a-time under *any*
+# margin size, including zero, since the four candidates' combined needs already exceed the raw
+# budget). Left at a small, non-zero cushion rather than removed outright: the shipped RSS
+# formula is already independently proven conservative (overestimates real measured usage by up
+# to +40% past 5min, review/31 §A.4), so this margin's remaining job is covering ordinary
+# platform/model variance, not a fixed-size bug-driven spike -- which needs much less than 5GiB.
+# Subtracted once from the diarize memory ceiling (not once per worker -- data-dependent and
+# rare, not a certainty every worker hits simultaneously), so a single very large, otherwise-
+# legitimate candidate is far less likely to get needlessly clamped and strand the rest of the
+# pool the way the 5GiB version did.
+DIARIZE_RSS_SPIKE_MARGIN_BYTES = 1 * 1024 * 1024 * 1024
 
 # The recurring "Where node" broadcast error during embedding extraction (`_attach_embeddings`
 # below) is root-caused, not just detected: NeMo TitaNet-Small's exported ONNX graph has a fixed

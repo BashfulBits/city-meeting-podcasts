@@ -545,6 +545,13 @@ class MemoryReservation:
             return self._reserved
 
     @property
+    def budget_bytes(self) -> int:
+        """The fixed ceiling itself -- read-only, never changes after construction. A caller
+        deciding whether *one* candidate's own need dominates the whole pool (review/31 §A.4's
+        adaptive-threads addendum) needs this, not just how much is currently reserved."""
+        return self._budget
+
+    @property
     def total_wait_seconds(self) -> float:
         with self._wait_lock:
             return self._total_wait_seconds

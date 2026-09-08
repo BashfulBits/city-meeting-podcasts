@@ -325,6 +325,16 @@ def test_memory_reservation_admits_within_budget():
     assert r.reserved_bytes == 100
 
 
+def test_memory_reservation_exposes_its_fixed_budget():
+    """A caller deciding whether one candidate's own need *dominates* the whole pool (review/31
+    §A.4's adaptive-threads addendum) needs the fixed ceiling itself, not just how much is
+    currently reserved -- and it must never change after construction."""
+    r = MemoryReservation(budget_bytes=12345, poll_seconds=0.01)
+    assert r.budget_bytes == 12345
+    r.reserve(100, label="a")
+    assert r.budget_bytes == 12345
+
+
 def test_memory_reservation_blocks_until_release():
     """A second big encode waits until the first releases enough budget (leading-signal gate)."""
     logs: list[str] = []

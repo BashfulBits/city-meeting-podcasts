@@ -2703,6 +2703,11 @@ class _DiarizeCandidate:
     # hands out a candidate it could *not* currently reserve and `_run_one`'s blocking
     # `reserve()` call is still what makes the worker wait for it.
     memory_reserved: bool = False
+    # Set by `_DiarizeAdmission.claim()` -- the default (1 when several workers run at once) or
+    # `_DIARIZE_SOLO_THREADS` (2) when this one candidate's own memory need is large enough that
+    # it is effectively running with the pool's spare CPU otherwise sitting idle behind it (see
+    # `claim()`'s own comment). `_run_one` reads this instead of a pool-wide constant.
+    threads: int = 1
 
 
 class _DiarizeAdmission:
@@ -2734,6 +2739,25 @@ class _DiarizeAdmission:
 
     Estimates are re-read from the runtime log on every claim, so measured samples from items
     that already finished this run immediately sharpen later admission decisions.
+
+    **Adaptive threads for a memory-dominant candidate (2026-09-07).** Observed in production
+    (denton-tx): a candidate needing most of the memory budget by itself (the 15.09h outlier at
+    ~9.9GiB against an ~8.7-13.7GiB ceiling, depending on the configured spike margin) leaves the
+    *other* configured workers with nothing they can concurrently fit -- they sit blocked in
+    `reserve()`, their CPU capacity going entirely unused, while the one running candidate uses
+    only its single thread. `claim()` now gives such a candidate `_DIARIZE_SOLO_THREADS` (2)
+    instead of 1 -- the same single-job latency optimum §A.4 already measured -- since the CPU
+    those other workers would have used is otherwise wasted, not competed for. This is
+    deliberately NOT the per-worker adaptive scheme #1496 shipped and #1507 had to revert: that
+    design let *every* worker independently decide "am I running alone" and could race two
+    workers into both bumping at once, oversubscribing the runner's own agent past what it could
+    service (review/31 §A.4). This one is decided once, centrally, under `claim()`'s own lock,
+    as a pure function of one candidate's own memory need against the fixed budget -- no worker
+    ever reacts to another's live state -- and `_committed_threads` (tracked under the same lock,
+    released in lockstep with the memory reservation) is a hard, real-time ceiling: a bump is
+    granted only when it is *proven*, at the moment of granting, to keep the pool's total
+    committed thread count at or under the runner's real vCPU count, never assumed safe from a
+    static worst case.
     """
 
     def __init__(
@@ -2743,6 +2767,8 @@ class _DiarizeAdmission:
         ctx: StageContext,
         runtime_log: DiarizeRuntimeLog,
         recipe: str,
+        default_threads: int = 1,
+        max_total_threads: int | None = None,
     ):
         # Longest first: claim() can then take the first candidate that fits.
         self._pending = sorted(candidates, key=lambda item: item.recording_seconds, reverse=True)
@@ -2751,6 +2777,12 @@ class _DiarizeAdmission:
         self._recipe = recipe
         self._deferred: list[tuple[_DiarizeCandidate, str]] = []
         self._lock = threading.Lock()
+        self._default_threads = max(1, default_threads)
+        # The real vCPU count, not the configured `workers` (which may be set higher) -- CPU
+        # oversubscription is a hardware constraint, not a config one, and that mismatch is
+        # exactly what #1496/#1507 got wrong.
+        self._max_total_threads = max(1, max_total_threads or os.cpu_count() or 4)
+        self._committed_threads = 0
 
     @property
     def deferred(self) -> list[tuple[_DiarizeCandidate, str]]:
@@ -2778,8 +2810,11 @@ class _DiarizeAdmission:
                     continue
                 if reservation is None:
                     # No memory gate configured (`memory_budget_mb: 0`) -- time budget alone
-                    # decides, exactly as before this candidate ever considered memory.
-                    return self._pending.pop(index)
+                    # decides, exactly as before this candidate ever considered memory, and
+                    # there is no budget to measure "dominant" against.
+                    claimed = self._pending.pop(index)
+                    claimed.threads = self._default_threads
+                    return claimed
                 if fallback_index is None:
                     # Longest time-fitting candidate seen so far: the forward-progress fallback
                     # if nothing pending fits the memory that's free right now.
@@ -2788,13 +2823,17 @@ class _DiarizeAdmission:
                 if reservation.try_reserve(need, label=candidate.uid):
                     claimed = self._pending.pop(index)
                     claimed.memory_reserved = True
+                    claimed.threads = self._choose_threads_locked(reservation, need)
                     return claimed
             if fallback_index is not None:
                 # Every time-fitting candidate was too big for the memory free right now.
                 # Hand out the longest one anyway (unreserved) so its worker blocks in
                 # `reserve()` -- there is genuinely no smaller work available to run instead,
                 # and blocking is what lets it start the moment another job frees enough.
-                return self._pending.pop(fallback_index)
+                claimed = self._pending.pop(fallback_index)
+                need = estimate_diarize_rss_bytes(claimed.recording_seconds)
+                claimed.threads = self._choose_threads_locked(reservation, need)
+                return claimed
             # Nothing fits the *time* budget at all, and the remaining budget only shrinks from
             # here, so nothing ever will: defer the whole tail now rather than re-checking it
             # per freed worker.
@@ -2804,6 +2843,36 @@ class _DiarizeAdmission:
                 flush=True,
             )
             return self._drain_locked("runtime-budget")
+
+    def _choose_threads_locked(self, reservation: MemoryReservation, need: int) -> int:
+        """Called only from inside `claim()`'s own lock -- see that method and this class's
+        docstring for the full reasoning. `need > 65%` of the total budget is the signal that
+        this candidate is memory-dominant enough that little or no *other* concurrent work can
+        fit alongside it, so the CPU those other workers would have used is otherwise idle
+        behind it; `_committed_threads` is the hard, live check that granting the bump still
+        keeps the pool's total at or under the real vCPU count, checked at the moment of
+        granting, never assumed from a static worst case.
+
+        Every candidate that reaches this method -- bumped or not -- adds its own `.threads` to
+        `_committed_threads` before returning: the ceiling check below is only meaningful if the
+        running total it compares against already reflects *every* concurrently-claimed
+        candidate's contribution, not just previously-bumped ones. An unconditional increment
+        here (rather than only inside the "bumped" branch) is what makes that true.
+        """
+        budget = reservation.budget_bytes
+        threads = self._default_threads
+        if budget > 0 and need > 0.65 * budget:
+            bumped = _DIARIZE_SOLO_THREADS
+            if self._committed_threads + bumped <= self._max_total_threads:
+                threads = bumped
+        self._committed_threads += threads
+        return threads
+
+    def release_threads(self, n: int) -> None:
+        """Give back a candidate's thread commitment once it finishes or errors -- called from
+        `_run_one`'s `finally`, in lockstep with the memory reservation's own `release()`."""
+        with self._lock:
+            self._committed_threads = max(0, self._committed_threads - n)
 
     def close(self, reason: str) -> None:
         """Stop admitting new work (a backstop timeout); defer whatever is left."""
@@ -7359,9 +7428,6 @@ class NativeDiarizeStage:
         from citypods.diarize import prepare_models
 
         workers = _diarize_worker_count(ctx)
-        admission = _DiarizeAdmission(
-            candidates, ctx=ctx, runtime_log=runtime_log, recipe=runtime_recipe
-        )
         # One thread per worker slot, each claiming and then blocking on its own subprocess.
         # Threads (not a bare future-juggling loop) so every in-flight item gets its own
         # PROGRESS entry -- that registry is keyed by thread, and the heartbeat's "active work"
@@ -7369,10 +7435,20 @@ class NativeDiarizeStage:
         # Each worker is single-threaded when several run at once: measured across three GH
         # Actions CPUs, N single-threaded processes beat every other split on aggregate
         # throughput, including the same 2-thread single-job optimum run N-wide (review/31 §A.4).
-        threads_per_worker = 1 if workers > 1 else _DIARIZE_SOLO_THREADS
+        # This is the *default* -- `_DiarizeAdmission.claim()` can still grant an individual
+        # memory-dominant candidate `_DIARIZE_SOLO_THREADS` instead, bounded by that class's own
+        # real-time vCPU ceiling (its docstring has the full reasoning).
+        default_threads = 1 if workers > 1 else _DIARIZE_SOLO_THREADS
+        admission = _DiarizeAdmission(
+            candidates,
+            ctx=ctx,
+            runtime_log=runtime_log,
+            recipe=runtime_recipe,
+            default_threads=default_threads,
+        )
         print(
             f"[enrich] diarize pool: {len(candidates)} candidate(s), workers={workers} "
-            f"threads_per_worker={threads_per_worker} recipe={runtime_recipe}",
+            f"default_threads_per_worker={default_threads} recipe={runtime_recipe}",
             flush=True,
         )
         # Warm the model cache once in the parent; otherwise every spawned worker misses the
@@ -7403,7 +7479,6 @@ class NativeDiarizeStage:
                             "model": model,
                             "embedding_model": embedding_model,
                             "canonical_city_slug": canonical_city_slug,
-                            "threads_per_worker": threads_per_worker,
                         },
                         daemon=True,
                     )
@@ -7426,7 +7501,6 @@ class NativeDiarizeStage:
                     model=model,
                     embedding_model=embedding_model,
                     canonical_city_slug=canonical_city_slug,
-                    threads_per_worker=threads_per_worker,
                 )
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
@@ -7462,7 +7536,6 @@ class NativeDiarizeStage:
         model: str,
         embedding_model: str,
         canonical_city_slug: str,
-        threads_per_worker: int,
     ) -> None:
         from citypods import diarize as diarize_mod
 
@@ -7478,6 +7551,7 @@ class NativeDiarizeStage:
         # currently fit, because nothing pending did) still needs to block for it.
         if not candidate.memory_reserved and reservation is not None:
             if not reservation.reserve(reserved_bytes, label=uid, stop=ctx.stop):
+                admission.release_threads(candidate.threads)
                 with finalize_lock:
                     stats.defer("memory-reservation", sample=uid)
                 return
@@ -7492,6 +7566,7 @@ class NativeDiarizeStage:
         if not fits:
             if reservation is not None:
                 reservation.release(reserved_bytes)
+            admission.release_threads(candidate.threads)
             with finalize_lock:
                 stats.defer("runtime-budget", sample=uid)
             print(
@@ -7533,7 +7608,7 @@ class NativeDiarizeStage:
                     str(audio_path),
                     model=model,
                     embedding_model=embedding_model,
-                    num_threads=threads_per_worker,
+                    num_threads=candidate.threads,
                     log_label=uid,
                 )
                 # The audio temp file must outlive the call, so the wait stays inside the
@@ -7604,6 +7679,7 @@ class NativeDiarizeStage:
         finally:
             if reservation is not None:
                 reservation.release(reserved_bytes)
+            admission.release_threads(candidate.threads)
 
     def _finalize(
         self,
