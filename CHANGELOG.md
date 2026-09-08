@@ -36,6 +36,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Bounded research/review workflows now survive oversized and stale work (`tournament.py`, shared
+  review resolver).** The tag tournament previously loaded chapter artifacts for the entire
+  append-only catalog before taking its newest bounded sample, so the 46-sample weekly run hit its
+  22-minute step timeout. It now sorts episode metadata first and materializes only enough newest
+  candidates. The shared weekly resolver isolates unreadable, stale, or already-closed children so
+  one H16 durable-state mismatch cannot abort the sweep or prevent batch finalization; ambiguous
+  LLM tag decisions are treated as non-storing outcomes as well.
+
 - **A worker that claimed a too-big diarize candidate blocked instead of a smaller one that fit
   (`citypods/stages.py`, `citypods/resources.py`).** review/31 §A.4 always specified "skip to the
   next-largest candidate that clears both checks rather than blocking the slot" when a candidate's

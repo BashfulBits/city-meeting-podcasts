@@ -154,6 +154,20 @@ def test_issue_command_workflows_share_exact_repository_permission_gate():
         assert "--permission actor-permission.json" in run
 
 
+def test_shared_review_resolution_isolates_one_bad_child_and_still_finalizes():
+    _wf, job = _job("review-issue-resolve.yml", "resolve")
+    run = next(
+        step["run"] for step in job["steps"] if "resolve_review_issue.py" in step.get("run", "")
+    )
+    assert 'if ! gh issue view "$issue"' in run
+    assert "if ! python scripts/resolve_review_issue.py" in run
+    assert 'if ! gh issue close "$issue"' in run
+    assert "continue" in run
+    assert "finalize_review_batches.py" in next(
+        step["run"] for step in job["steps"] if "finalize_review_batches.py" in step.get("run", "")
+    )
+
+
 # H6b split the combined enrich into two sharded, lane-pinned workflows.
 # Third element is the job name within the workflow file (audio.yml has a wait-for-contracts
 # pre-job so the heavy job must be addressed by name, not by position).

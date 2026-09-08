@@ -206,6 +206,10 @@ def ingest(args: argparse.Namespace) -> int:
             _log("ingest: no decision checked; skipping")
             print(json.dumps({"stored": False, "reason": "no_decision_checked"}, indent=2))
             return 0
+        if "choose exactly one" in str(exc):
+            _log("ingest: multiple or invalid decisions checked; skipping")
+            print(json.dumps({"stored": False, "reason": "invalid_decision_checked"}, indent=2))
+            return 0
         raise
     _log(f"ingest: decision recorded — {review['decision']} for {review['candidate_id']}")
     save_state(state_path, state)
