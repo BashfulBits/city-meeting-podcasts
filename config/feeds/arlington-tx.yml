@@ -3,13 +3,6 @@ city: arlington-tx
 provider: granicus
 source:
   feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
-  body_includes:
-    - provider_guid: "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579"
-      body: "Arlington Housing Finance Corporation Board Meeting"
-    - provider_guid: "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1163"
-      body: "Empty"
-    - provider_guid: "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069"
-      body: "ZBA Regular Session"
 podcast_title: "Arlington — All Meetings"
 podcast_author: "City of Arlington, TX"
 podcast_email: ""
