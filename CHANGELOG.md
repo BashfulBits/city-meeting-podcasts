@@ -121,6 +121,31 @@ Phase R (Research-Tool Surface)._
   not-yet-characterized trigger of this error. See review/31 §A.4's 2026-09-07 addendum (the
   entry after the peak-RSS one) for the full corpus methodology and evidence.
 
+- **Memory margin cut back down, and a memory-dominant diarize candidate given adaptive threads
+  (`citypods/diarize.py`, `citypods/stages.py`, `citypods/resources.py`).** A live production
+  run surfaced a real, self-inflicted throughput cost from the previous entry's 5GiB spike
+  margin: a 15.09h candidate's own reservation got clamped to the whole (now-smaller) ceiling,
+  and three other candidates sat blocked for its entire runtime. Checked directly, not assumed:
+  the margin wasn't the primary cause — that exact batch (four very long recordings whose
+  combined needs exceed even the raw, margin-free budget) would have serialized to one
+  candidate at a time regardless of margin size, including zero. The margin only decided whether
+  the giant candidate's own reservation got needlessly clamped. `DIARIZE_RSS_SPIKE_MARGIN_BYTES`
+  cut 5GiB→1GiB: the mechanism it was sized against (RSS overshoot from the embedding-extraction
+  bug firing repeatedly within one process) is now mostly prevented at the source by the
+  truncation fix above, so the margin's remaining job is ordinary platform/model variance, which
+  the RSS formula's own proven conservatism already covers most of. Separately, asked directly
+  to add: `_DiarizeAdmission.claim()` now grants a candidate whose own need exceeds 65% of the
+  memory ceiling 2 threads instead of the pool's default 1 (the same single-job latency optimum
+  already measured), since a candidate that memory-dominant leaves the other configured
+  workers' CPU capacity otherwise sitting idle behind it. Deliberately not #1496's per-worker
+  adaptive scheme (reverted in #1507 after it raced two workers into both bumping at once and
+  oversubscribed the runner): this is decided once, centrally, under `claim()`'s own lock, and a
+  new `_committed_threads` counter enforces a hard, real-time ceiling checked at the moment of
+  granting — never assumed safe from a static worst case. `MemoryReservation.budget_bytes` is a
+  new read-only property the dominance check needed and nothing previously exposed. See
+  review/31 §A.4's 2026-09-07 addendum (the entry after the corpus one) for the full run-log
+  evidence and reasoning.
+
 ### Fixed
 
 - **Diarize RSS memory model re-validated at 5min-8h (`citypods/diarize.py`, `tests/test_diarize.py`).**

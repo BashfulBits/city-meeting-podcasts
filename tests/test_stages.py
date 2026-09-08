@@ -453,6 +453,165 @@ def test_diarize_admission_falls_back_to_longest_time_fit_when_nothing_fits_memo
     assert claimed.memory_reserved is False
 
 
+def test_diarize_admission_gives_a_memory_dominant_candidate_two_threads(tmp_path):
+    """A candidate needing most of the memory budget by itself leaves the *other* configured
+    workers with nothing they can concurrently fit -- their CPU capacity sits unused behind it.
+    review/31 §A.4's adaptive-threads addendum: give such a candidate 2 threads instead of the
+    pool's default 1, since that CPU would otherwise go to waste, not get competed for."""
+    from citypods.resources import MemoryReservation
+    from citypods.stages import _DiarizeAdmission
+
+    log = DiarizeRuntimeLog(None)
+    budget = 10 * 1024**3  # 10GiB
+    reservation = MemoryReservation(budget_bytes=budget, poll_seconds=0.01)
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        # Plenty of runway: an 82800s (23h) candidate's seeded time estimate alone would exceed
+        # a short deadline, and this test is purely about the memory-dominance decision, not
+        # the (already-covered-elsewhere) time-budget check.
+        diarize_start_deadline=time.monotonic() + 200_000,
+        diarize_start_reserve_seconds=0,
+        diarize_memory_reservation=reservation,
+    )
+    # A recording long enough that its own predicted peak (350MB + 650MB/hr) alone clears 65%
+    # of the 10GiB budget (6.5GiB) -- estimate_diarize_rss_bytes(82800s) ~= 15258MB ~= 14.9GiB
+    # is deliberately far past it, not right at the boundary, to keep this test robust to the
+    # formula's own exact constants changing later.
+    candidates = [_bare_candidate("dominant", 82800.0)]
+    admission = _DiarizeAdmission(
+        candidates, ctx=ctx, runtime_log=log, recipe="r", default_threads=1
+    )
+
+    claimed = admission.claim()
+
+    assert claimed.uid == "dominant"
+    assert claimed.threads == 2
+
+
+def test_diarize_admission_does_not_bump_a_modest_candidate(tmp_path):
+    """A candidate needing well under 65% of the budget is not memory-dominant -- nothing about
+    it implies the rest of the pool will sit idle, so it keeps the pool's ordinary default."""
+    from citypods.resources import MemoryReservation
+    from citypods.stages import _DiarizeAdmission
+
+    log = DiarizeRuntimeLog(None)
+    budget = 10 * 1024**3  # 10GiB
+    reservation = MemoryReservation(budget_bytes=budget, poll_seconds=0.01)
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        diarize_start_deadline=time.monotonic() + 3600,
+        diarize_start_reserve_seconds=0,
+        diarize_memory_reservation=reservation,
+    )
+    candidates = [_bare_candidate("modest", 300.0)]  # ~404MiB predicted peak -- nowhere near 65%
+    admission = _DiarizeAdmission(
+        candidates, ctx=ctx, runtime_log=log, recipe="r", default_threads=1
+    )
+
+    claimed = admission.claim()
+
+    assert claimed.uid == "modest"
+    assert claimed.threads == 1
+
+
+def test_diarize_admission_never_bumps_past_the_real_time_vcpu_ceiling(tmp_path):
+    """The bump is granted only when *proven*, against the pool's own live committed-thread
+    count, to keep the total at or under the real vCPU ceiling -- never assumed safe from a
+    static worst case. Two memory-dominant candidates (each individually well over 65%) claimed
+    back to back must not both be granted 2 threads if doing so would exceed a deliberately
+    tiny ceiling -- the second still gets the pool's ordinary default instead."""
+    from citypods.resources import MemoryReservation
+    from citypods.stages import _DiarizeAdmission
+
+    log = DiarizeRuntimeLog(None)
+    budget = 10 * 1024**3
+    reservation = MemoryReservation(budget_bytes=budget, poll_seconds=0.01)
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        diarize_start_deadline=time.monotonic() + 200_000,
+        diarize_start_reserve_seconds=0,
+        diarize_memory_reservation=reservation,
+    )
+    candidates = [_bare_candidate("first", 82800.0), _bare_candidate("second", 82800.0)]
+    # A ceiling of 2: the first dominant candidate already uses it up entirely.
+    admission = _DiarizeAdmission(
+        candidates,
+        ctx=ctx,
+        runtime_log=log,
+        recipe="r",
+        default_threads=1,
+        max_total_threads=2,
+    )
+
+    first = admission.claim()
+    assert first.threads == 2  # the ceiling (2) accommodates exactly one bump
+
+    # Second candidate can't fit memory-wise yet anyway (first hasn't released), so it takes the
+    # fallback (unreserved, blocking) path -- still must not be double-granted a bump that would
+    # push the live total to 4 against a ceiling of 2.
+    second = admission.claim()
+    assert second.threads == 1
+
+
+def test_diarize_admission_release_threads_frees_room_for_the_next_bump(tmp_path):
+    """`release_threads` (called from `_run_one`'s `finally`, mirroring the memory reservation's
+    own lifecycle) must actually free the committed-thread accounting, not just exist -- a
+    second memory-dominant candidate claimed after the first releases should get bumped too."""
+    from citypods.resources import MemoryReservation
+    from citypods.stages import _DiarizeAdmission
+
+    log = DiarizeRuntimeLog(None)
+    budget = 10 * 1024**3
+    reservation = MemoryReservation(budget_bytes=budget, poll_seconds=0.01)
+    ctx = StageContext(
+        storage=None,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        diarize_start_deadline=time.monotonic() + 200_000,
+        diarize_start_reserve_seconds=0,
+        diarize_memory_reservation=reservation,
+    )
+    admission = _DiarizeAdmission(
+        [_bare_candidate("first", 82800.0)],
+        ctx=ctx,
+        runtime_log=log,
+        recipe="r",
+        default_threads=1,
+        max_total_threads=2,
+    )
+    first = admission.claim()
+    assert first.threads == 2
+    reservation.release(_estimate_diarize_rss_bytes(first.recording_seconds))
+    admission.release_threads(first.threads)
+
+    admission2 = _DiarizeAdmission(
+        [_bare_candidate("second", 82800.0)],
+        ctx=ctx,
+        runtime_log=log,
+        recipe="r",
+        default_threads=1,
+        max_total_threads=2,
+    )
+    second = admission2.claim()
+    assert second.threads == 2  # room again now that the first candidate's slot was released
+
+
+def _estimate_diarize_rss_bytes(recording_seconds: float) -> int:
+    from citypods.diarize import estimate_diarize_rss_bytes
+
+    return estimate_diarize_rss_bytes(recording_seconds)
+
+
 def test_diarize_admission_defers_the_tail_when_nothing_fits(tmp_path):
     from citypods.stages import _DiarizeAdmission
 

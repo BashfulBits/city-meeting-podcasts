@@ -678,6 +678,59 @@ for the audio itself), located every individual turn in each that actually trigg
   filed) — the exact node name, the precise 122.88s/12288-frame threshold, and confirmation this
   reproduces on the pinned `sherpa-onnx==1.13.7` are all now in hand for that report.
 
+**Memory margin cut back down, and a memory-dominant candidate given adaptive threads,
+2026-09-07 — a live production run surfaced a real, self-inflicted throughput regression from
+the previous addendum's own 5GiB spike margin.**
+
+- **What the log showed.** With #1593 merged, a run admitted the 15.09h outlier
+  (`uid=1117de8e39612576`) and reserved `8.7GiB` against an `8.7GiB` ceiling — 100% of the
+  budget, from one candidate. Three other candidates (5.9-7.3GiB each) sat blocked in
+  `reserve()` for the giant file's *entire* runtime. `need=8.7GiB` was not this candidate's real
+  need: `MemoryReservation._clamp()` caps any single request at the whole budget ("a single huge
+  estimate must still run alone instead of deadlocking") — its actual steady-state estimate,
+  `350MB + 650MB/hr × 15.09h ≈ 9.92GiB`, already exceeded the `14000MB − 5120MB(margin) =
+  8.67GiB` ceiling on its own, so the clamp fired and the bookkeeping understated it.
+- **But the margin wasn't the primary cause — checked directly, not assumed.** Computed the
+  same admission math at margin=0GiB (raw 13.67GiB ceiling): the giant candidate's own 9.92GiB
+  estimate plus even the *smallest* waiting candidate (5.9GiB) already sums to 15.82GiB, over
+  the full raw budget with no margin subtracted at all. This exact batch — four very long
+  recordings whose combined needs can't fit two-at-a-time under any reasonable margin size —
+  was always going to serialize to one candidate at a time; the margin only changed whether the
+  giant candidate's own reservation got needlessly clamped, not whether concurrency was
+  possible. Confirmed the margin still cost something real, though: at the previous 3GiB margin
+  (10.67GiB ceiling) the giant candidate would have fit unclamped with ~0.75GiB genuinely spare;
+  at 5GiB, zero.
+- **Cut back to 1GiB** (`DIARIZE_RSS_SPIKE_MARGIN_BYTES`, `citypods/diarize.py`), not removed
+  outright. The 5GiB sizing defended against RSS overshoot correlated with the "Where node" bug
+  repeatedly firing within one process — a mechanism the truncation fix above now prevents at
+  the source for the exact input class that caused every one of those five incidents. With the
+  degenerate-kernel-execution driver of that overshoot mostly closed off, the margin's remaining
+  job is ordinary platform/model variance, which the RSS formula's own proven conservatism
+  (overestimates real measured usage by up to +40%, §A.4 above) already covers most of — 1GiB is
+  a modest cushion for the rest, not zero, but far less likely to needlessly clamp a single
+  large, otherwise-legitimate candidate the way 5GiB did.
+- **Adaptive threads for a memory-dominant candidate — deliberately not #1496's design.**
+  Asked directly to add this: when admitting a candidate whose own predicted need exceeds 65% of
+  the total memory ceiling, `_DiarizeAdmission.claim()` now grants it `_DIARIZE_SOLO_THREADS`
+  (2) instead of the pool's default 1 — the same single-job latency optimum already measured
+  (this addendum's own opening section) — because a candidate that dominant structurally leaves
+  little or no room for other work to run concurrently, so the CPU those other configured
+  workers would have used sits idle behind it rather than being competed for. This is
+  *deliberately* not the per-worker adaptive scheme #1496 shipped and #1507 had to revert: that
+  design let every worker independently decide "am I running alone" from its own local view and
+  raced two workers into both bumping at once, oversubscribing the runner's own agent past what
+  it could service. This one is decided once, centrally, inside `claim()`'s own lock, as a pure
+  function of one candidate's need against the fixed budget — no worker ever reacts to another's
+  live state — and a new `_committed_threads` counter (incremented/decremented under the same
+  lock, released in `_run_one`'s `finally` alongside the memory reservation) is a hard, real-time
+  ceiling checked *at the moment of granting*: a bump is only given when it is proven, right
+  then, to keep the pool's total committed thread count at or under the runner's real vCPU count
+  (`os.cpu_count()`, not the configured `workers`, which may be set higher) — never assumed safe
+  from a static worst-case argument the way the reverted design implicitly was.
+- **`MemoryReservation.budget_bytes`** (`citypods/resources.py`) is a new read-only property
+  exposing the fixed ceiling itself, needed by the dominance check above and not previously
+  exposed (only `reserved_bytes`, how much is currently committed, existed).
+
 ---
 
 ## Part B — Minimal attendee extraction (Phase F #14, pulled forward)

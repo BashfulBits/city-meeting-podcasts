@@ -608,17 +608,18 @@ def test_ffmpeg_error_detail_redacts_credentials_and_is_bounded():
 
 
 def test_diarize_rss_spike_margin_matches_the_documented_broadcast_evidence():
-    """Pins DIARIZE_RSS_SPIKE_MARGIN_BYTES so a change to it is deliberate. Sized from real,
-    directly measured `peak_rss_mb` on five production incidents (2026-09-07, review/31 §A.4
-    addendum): the worst (a 15.09h recording) ran ~4.5GiB hotter than even the conservative
-    350MB+650MB/hr formula predicts -- the margin must cover at least that gap, rounded up for
-    headroom against a still-longer recording ratcheting further (the overshoot scales with
-    recording length/turn count, not a fixed one-time spike)."""
+    """Pins DIARIZE_RSS_SPIKE_MARGIN_BYTES so a change to it is deliberate. Cut back down to a
+    small, non-zero cushion (2026-09-07, review/31 §A.4 addendum): the 5GiB version it replaced
+    was sized against real incidents whose root cause (`_attach_embeddings` feeding a turn past
+    122.88s whole to the extractor) is now prevented at the source by
+    `DIARIZE_MAX_EMBEDDING_TURN_SECONDS`'s truncation, not just detected -- and, observed
+    directly in production the very next run after the 5GiB bump, the larger margin cost real
+    concurrency (clamped a single legitimate ~9.9GiB candidate's reservation, stranding three
+    waiting candidates for its entire runtime) without buying a matching safety win, since that
+    same batch would have serialized to one-at-a-time under any margin size including zero."""
     from citypods.diarize import DIARIZE_RSS_SPIKE_MARGIN_BYTES
 
-    worst_observed_overshoot_bytes = int(4.5 * 1024 * 1024 * 1024)
-    assert DIARIZE_RSS_SPIKE_MARGIN_BYTES >= worst_observed_overshoot_bytes
-    assert DIARIZE_RSS_SPIKE_MARGIN_BYTES == 5 * 1024 * 1024 * 1024
+    assert DIARIZE_RSS_SPIKE_MARGIN_BYTES == 1 * 1024 * 1024 * 1024
 
 
 def test_diarize_memory_ceiling_subtracts_the_spike_margin_once():
