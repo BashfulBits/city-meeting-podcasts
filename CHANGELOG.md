@@ -99,6 +99,28 @@ Phase R (Research-Tool Surface)._
   the worst *observed* gap, not just the worst *modeled* one. See review/31 §A.4's 2026-09-07
   addendum (the entry after the OOM-proof one) for the full incident evidence and reasoning.
 
+- **Root-caused the recurring "Where node" embedding-extraction error and fixed it at the
+  source, not just detected it (`citypods/diarize.py`).** Built a real corpus — 13 individually
+  isolated failing turns from 5 real production recordings, saved durably outside `/tmp` — and
+  found the exact cause: every one of the 13 satisfies `broadcast_dimension = duration_seconds
+  × 100`, which pins the fixed side of the mismatch (`12288`) to exactly `122.88 seconds`.
+  NeMo TitaNet-Small's exported ONNX graph has a hard internal buffer sized for at most 12288
+  frames, never generalized to longer inputs — confirmed experimentally (not just by
+  regression): the real turn closest to the boundary succeeds truncated to 122.88s and fails at
+  123.00s, every time, a hard cliff. Checked whether truncating a long turn risks attaching the
+  wrong voice-print (a >120s turn could plausibly be a segmentation failure merging two
+  different speakers, not one continuous monologue): split all 13 into 15s sub-windows and
+  compared pairwise cosine similarity end to end — every window stayed consistently similar
+  (0.75-0.95, no case showing the sharp drop a real speaker change would produce) — genuine
+  monologues, safe to truncate. `_attach_embeddings` now truncates any turn past
+  `DIARIZE_MAX_EMBEDDING_TURN_SECONDS` (120s) *before* extraction rather than only detecting the
+  failure after the fact; re-ran the real corpus against the fix and all 13 previously-failing
+  turns now succeed. Turn boundaries and every other turn are untouched — only the audio window
+  sent for *that turn's own* embedding is capped; `embedding_truncated: true` records which
+  turns were affected. The detect-and-raise safety net (above) stays underneath for any other,
+  not-yet-characterized trigger of this error. See review/31 §A.4's 2026-09-07 addendum (the
+  entry after the peak-RSS one) for the full corpus methodology and evidence.
+
 ### Fixed
 
 - **Diarize RSS memory model re-validated at 5min-8h (`citypods/diarize.py`, `tests/test_diarize.py`).**

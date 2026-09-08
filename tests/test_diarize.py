@@ -413,6 +413,88 @@ def test_attach_embeddings_keeps_trying_other_turns_after_one_turn_fails(monkeyp
     assert turns[1]["embedding"] == [0.1, 0.2, 0.3]
 
 
+def test_attach_embeddings_truncates_a_turn_longer_than_the_max(monkeypatch, tmp_path):
+    """Root-caused, not just detected (review/31 §A.4 addendum, 2026-09-07): TitaNet-Small's
+    exported graph has a hard 122.88s (12288-frame) limit. A turn past
+    DIARIZE_MAX_EMBEDDING_TURN_SECONDS must be truncated to that length *before* extraction --
+    prevention, not just a clean failure after the fact -- and marked so the truncation is
+    visible in the stored artifact rather than silent."""
+    from citypods.diarize import DIARIZE_MAX_EMBEDDING_TURN_SECONDS, _attach_embeddings
+
+    sample_rate = 16000
+    seen_lengths: list[int] = []
+
+    class _RecordingStream:
+        def accept_waveform(self, sr, data):
+            seen_lengths.append(len(data))
+
+        def input_finished(self):
+            pass
+
+    class _RecordingExtractor:
+        def create_stream(self):
+            return _RecordingStream()
+
+        def is_ready(self, stream):
+            return True
+
+        def compute(self, stream):
+            return [0.1, 0.2, 0.3]
+
+    fake = _install_fake_sherpa_onnx(monkeypatch, [])
+    fake.SpeakerEmbeddingExtractor = MagicMock(return_value=_RecordingExtractor())
+
+    long_turn_seconds = DIARIZE_MAX_EMBEDDING_TURN_SECONDS + 30.0  # well past the max
+    turns = [{"start": 0.0, "end": long_turn_seconds, "cluster": "0"}]
+    samples = np.zeros(int(long_turn_seconds * sample_rate), dtype=np.float32)
+
+    _attach_embeddings(samples, sample_rate, turns, Path("/fake/emb.onnx"), num_threads=1)
+
+    assert seen_lengths == [int(DIARIZE_MAX_EMBEDDING_TURN_SECONDS * sample_rate)]
+    assert turns[0]["embedding_truncated"] is True
+    assert turns[0]["embedding"] == [0.1, 0.2, 0.3]
+    # Truncation only changes what audio is *sent for extraction* -- the turn's own recorded
+    # span is untouched.
+    assert turns[0]["start"] == 0.0
+    assert turns[0]["end"] == long_turn_seconds
+
+
+def test_attach_embeddings_does_not_truncate_a_turn_at_or_under_the_max(monkeypatch, tmp_path):
+    from citypods.diarize import DIARIZE_MAX_EMBEDDING_TURN_SECONDS, _attach_embeddings
+
+    sample_rate = 16000
+    seen_lengths: list[int] = []
+
+    class _RecordingStream:
+        def accept_waveform(self, sr, data):
+            seen_lengths.append(len(data))
+
+        def input_finished(self):
+            pass
+
+    class _RecordingExtractor:
+        def create_stream(self):
+            return _RecordingStream()
+
+        def is_ready(self, stream):
+            return True
+
+        def compute(self, stream):
+            return [0.1, 0.2, 0.3]
+
+    fake = _install_fake_sherpa_onnx(monkeypatch, [])
+    fake.SpeakerEmbeddingExtractor = MagicMock(return_value=_RecordingExtractor())
+
+    turns = [{"start": 0.0, "end": DIARIZE_MAX_EMBEDDING_TURN_SECONDS, "cluster": "0"}]
+    samples = np.zeros(int(DIARIZE_MAX_EMBEDDING_TURN_SECONDS * sample_rate), dtype=np.float32)
+
+    _attach_embeddings(samples, sample_rate, turns, Path("/fake/emb.onnx"), num_threads=1)
+
+    assert seen_lengths == [int(DIARIZE_MAX_EMBEDDING_TURN_SECONDS * sample_rate)]
+    assert "embedding_truncated" not in turns[0]
+    assert turns[0]["embedding"] == [0.1, 0.2, 0.3]
+
+
 def test_diarize_logs_but_does_not_raise_on_an_onnxruntime_warning(monkeypatch, tmp_path, capsys):
     """A warning-level onnxruntime line is surfaced (at minimum logged) but is not treated as a
     job failure -- only an error/fatal-level line is."""
