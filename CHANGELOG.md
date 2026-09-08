@@ -36,7 +36,14 @@ Phase R (Research-Tool Surface)._
   `NativeDiarizeStage._collect_candidates`'s permanent `speakers_source == "provider"` skip is
   replaced with a migration: any episode still carrying that stale, unvalidated artifact has its
   speaker fields cleared and falls through into a real native diarization pass, instead of being
-  treated as done forever.
+  treated as done forever. That clearing runs **before** the `pilot_selected` gate, not after —
+  as first written it sat after that gate and so never ran for any body outside the R7 pilot
+  (today, everything except Denton City Council: `1453` of `2164` Denton episodes), which would
+  have left a stale artifact exposed indefinitely for every one of them, since native diarization
+  never touches a non-pilot body either. How many live episodes actually need this migration is
+  unresolved, not zero: a direct census found none today, but two real production runs each
+  logged `~2000 reused` for the retired stage shortly before this shipped, a figure its own code
+  cannot produce against that same live data no matter how it is replayed — see review/31 §A.5.
 
 ### Added
 

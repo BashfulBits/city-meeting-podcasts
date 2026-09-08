@@ -778,14 +778,37 @@ sibling feature reusing the same `provider_transcript` record, is untouched). Th
 `WORK_CLASSES` (so any pre-retirement manifest entries keep reaping normally) but is no longer
 emitted for new episodes.
 
-**Migration for any stale `speakers_source == "provider"` episode** (none found live, but the
-code path must be correct regardless — this could reflect data this survey's snapshot didn't
-reach, or historical state). `NativeDiarizeStage._collect_candidates` used to permanently skip
-(`stats.reused += 1`) any episode whose `speakers_source == "provider"` — with the stage that set
-that field retired, that check now instead clears every stale field (`speakers_key`, `_url`,
-`_spec_hash`, `_format`, `_synced`, `_confidence`, `_pipeline_version`, `_source`) and falls
-through into the normal candidate-selection path below it, so the episode gets a real, native
+**Migration for any stale `speakers_source == "provider"` episode.** `NativeDiarizeStage.
+_collect_candidates` used to permanently skip (`stats.reused += 1`) any episode whose
+`speakers_source == "provider"` — with the stage that set that field retired, that check now
+instead clears every stale field (`speakers_key`, `_url`, `_spec_hash`, `_format`, `_synced`,
+`_confidence`, `_pipeline_version`, `_source`) so the episode falls through into a real native
 diarization pass exactly as if it had never been touched — not silently treated as done forever.
+
+**Ordering bug found and fixed before this shipped: the clearing must run before the
+`pilot_selected` gate, not after.** As first written, the clearing sat *after* the
+`pilot_selected(...)` check, which `continue`s past the rest of the loop body for any episode
+whose body isn't in the R7 pilot (today: only Denton City Council, `711` of `2164` episodes —
+everything else, `1453` episodes, never reaches the clearing at all). A non-pilot body's stale
+provider artifact would therefore never get cleared by anyone: native diarization is never going
+to touch a non-pilot body either, so nothing else in the pipeline resets the field. Moved the
+clearing above the `pilot_selected` check so it is unconditional — whether the now-clean episode
+goes on to become a real diarize candidate is still entirely up to `pilot_selected` afterward.
+
+**How many episodes actually need this migration is genuinely unresolved, not zero.** A direct
+census of live Denton state (2,164 records; cross-checked three ways — a raw field scan, the
+production `pull_state()` path, and a full replay of the retired stage's exact reused-check logic
+against that data) finds zero episodes with `speakers_source == "provider"` today, and only 13
+records ever had a `provider_transcript.known_good` entry at all (all `no-speaker-labels`). But
+two real production runs (#64 and #67) each logged `diarize: 0 ran, ~2000 reused` for this exact
+stage shortly before retirement — a figure the retired stage's own code cannot produce against
+that same live data no matter how it's replayed (the reused check requires `known_good` present,
+capping it at 13, not ~2000). That gap was investigated at length and not resolved. It doesn't
+change the retirement's actual evidentiary basis (reading raw provider-aligned caption text
+directly, across many cities, and finding no vendor ever emits a colon-prefixed label — untouched
+by this counter mystery), but it means "no live episode is affected" was never a safe claim to
+rely on, which is the whole reason the migration exists as a real code path rather than being
+dropped as unnecessary once the live census came back at zero.
 
 **A genuinely different, and likely harder, upstream issue was found along the way and is not
 part of this retirement**: the underlying `nemo_en_titanet_small.onnx`/`_large.onnx` export has a

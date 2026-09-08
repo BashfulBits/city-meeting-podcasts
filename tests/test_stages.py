@@ -880,6 +880,43 @@ def test_diarize_collect_candidates_reclaims_a_stale_provider_sourced_episode(tm
     assert candidates[0].uid == str(ep.uid or ep.guid)
 
 
+def test_diarize_collect_candidates_clears_stale_provider_fields_even_outside_the_pilot(tmp_path):
+    """The clearing above must not depend on `pilot_selected` passing. A non-pilot body's
+    episode hits that gate's own `continue` -- if clearing sat after the gate (as it originally
+    shipped), it would never run for any body outside the R7 pilot, leaving a retired,
+    unvalidated artifact exposed indefinitely for every one of them (native diarization is never
+    going to touch a non-pilot body either, so nothing else would ever clear it)."""
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    ep = _diarize_episode(ctx, tmp_path, "stale-provider-non-pilot", seconds=60.0)
+    ep.body = "Board of Ethics"  # not in _pilot_speaker_config's pilot_bodies
+    ep.speakers_key = "transcripts/src/stale-provider-non-pilot-diarize-abc123.speakers.json"
+    ep.speakers_synced = True
+    ep.speakers_source = "provider"
+
+    stage = NativeDiarizeStage()
+    stats = StageStats(stage.name)
+    candidates = stage._collect_candidates(
+        city,
+        [ep],
+        ctx,
+        stats,
+        config=ctx.speaker_config,
+        model="m",
+        embedding_model="e",
+        canonical_city_slug="denton-tx",
+    )
+
+    # Cleared regardless of pilot selection ...
+    assert ep.speakers_key is None
+    assert ep.speakers_synced is False
+    assert ep.speakers_source is None
+    # ... but a non-pilot body still correctly does not become a diarize candidate.
+    assert candidates == []
+    assert stats.quality_counts.get("pilot-not-selected") == 1
+
+
 def test_diarize_backstop_defers_the_item_and_stops_admitting(tmp_path, monkeypatch):
     """An item still running at the backstop is abandoned and admission closes, so one estimate
     miss cannot hold the whole job past its runner timeout (review/31 §A.4)."""

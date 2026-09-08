@@ -7181,14 +7181,6 @@ class NativeDiarizeStage:
             work_class="transcript-diarize",
         ):
             uid = ep.uid or ep.guid
-            if not pilot_selected(config, canonical_city_slug, ep.body):
-                # Clear stale no-output markers from the old exact-body matcher. A later pass will
-                # see newly selected bodies immediately, while valid selected artifacts reuse.
-                marker = ep.stage_completion.get(self.name)
-                if isinstance(marker, dict) and not marker.get("output"):
-                    ep.stage_completion.pop(self.name, None)
-                stats.quality("pilot-not-selected")
-                continue
             if ep.speakers_source == "provider":
                 # ProviderTranscriptDiarizeStage (the "diarize" stage) is retired: a citywide
                 # survey (review/31 §A.5) found the caption-provider colon-prefix format it
@@ -7197,8 +7189,13 @@ class NativeDiarizeStage:
                 # `>>` speaker-change chevron, never a named label. Every one of its outputs is
                 # unvalidated guesswork by construction (any `Word:`-shaped line could match), so
                 # an episode still carrying its stale `speakers_source="provider"` artifact must
-                # not keep being treated as done -- clear it and fall through to real, natively
-                # diarized processing below, the same as an episode that was never touched.
+                # not keep being treated as done -- clear it here, before the pilot_selected gate
+                # below, not after: a non-pilot body's episode hits that gate's own `continue` and
+                # would otherwise never reach this clearing at all, leaving a retired, unvalidated
+                # artifact exposed indefinitely for every body outside the R7 pilot (native
+                # diarization is never going to touch it either, so nothing else would ever clear
+                # it). Clearing here is unconditional; whether the episode goes on to become a
+                # real diarize candidate is still entirely up to the pilot_selected check below.
                 ep.speakers_key = None
                 ep.speakers_url = None
                 ep.speakers_spec_hash = None
@@ -7208,6 +7205,14 @@ class NativeDiarizeStage:
                 ep.speakers_pipeline_version = None
                 ep.speakers_error = None
                 ep.speakers_source = None
+            if not pilot_selected(config, canonical_city_slug, ep.body):
+                # Clear stale no-output markers from the old exact-body matcher. A later pass will
+                # see newly selected bodies immediately, while valid selected artifacts reuse.
+                marker = ep.stage_completion.get(self.name)
+                if isinstance(marker, dict) and not marker.get("output"):
+                    ep.stage_completion.pop(self.name, None)
+                stats.quality("pilot-not-selected")
+                continue
             if not (ep.hosted_audio_url and ep.transcript_synced and ep.transcript_words_key):
                 stats.defer("missing-timed-words", sample=uid)
                 continue
