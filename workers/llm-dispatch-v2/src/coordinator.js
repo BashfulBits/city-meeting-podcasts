@@ -2399,10 +2399,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const maxBufferSeconds = this._maxRouteBufferSeconds();
           const rawRetryAfterSeconds = Number(retryAfterSeconds);
           // A provider-supplied Retry-After is an authoritative floor, not a backoff suggestion.
-          const retryAfterSec =
+          let retryAfterSec =
             Number.isFinite(rawRetryAfterSeconds) && rawRetryAfterSeconds > 0
               ? rawRetryAfterSeconds
               : null;
+          if (route?.retry_after_trustworthy === false && route?.observed_recovery_seconds) {
+            const observedSec = Number(route.observed_recovery_seconds);
+            if (Number.isFinite(observedSec) && observedSec > 0) {
+              retryAfterSec =
+                retryAfterSec !== null ? Math.max(retryAfterSec, observedSec) : observedSec;
+            }
+          }
           const addedBufferSeconds = retryAfterSec !== null
             ? Math.min(maxBufferSeconds, retryAfterSec)
             : this._max429BackoffMs() / 1000;

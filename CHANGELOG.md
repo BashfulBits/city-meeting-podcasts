@@ -47,6 +47,24 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **LLM rate-limit characterization & config feedback (PR-5 / Initiative 20; review/45 §20.8).**
+  - Extended route schema in `config/provider_limits.yml` and `LLMRoute` dataclass
+    (`citypods/compute/llm_policy.py`) with empirical rate characterization fields: `observed_on`,
+    `observed_rpm`, `observed_burst`, `observed_input_ceiling`, `observed_recovery_seconds`,
+    `retry_after_trustworthy`, and `upstream_429_default`.
+  - Added compiler support in `scripts/compile_llm_limits.py` to validate and thread
+    characterization fields into all three compiled catalogs: `dispatch_limits.json` (v1 and v2)
+    and `citypods/compute/llm_routes.json`. If `hard_input_ceiling` is unset,
+    `observed_input_ceiling` automatically feeds `hard_input_ceiling`.
+  - In `workers/llm-dispatch-v2/src/coordinator.js` (`authorizeRetry`), when a route declares
+    `retry_after_trustworthy: false`, the Worker overrides the advertised retry delay with
+    `max(retryAfter, observed_recovery_seconds)`, preventing premature retry loops on providers
+    with inaccurate or missing `Retry-After` headers.
+  - In `workers/llm-dispatch-v2/src/pacing.js` and `citypods/compute/llm_scheduler.py`, route
+    context checking honors `observed_input_ceiling` alongside `hard_input_ceiling`.
+  - Recorded live probe measurements (`observed_on: 2026-09-09`) across Gemini, Groq, Mistral,
+    SambaNova, Airforce, and OpenCode routes.
+
 - **review/45 reconciled against `main` and extended with Initiative 20 — endpoint rate-limit
   characterization & failure-class-aware LLM backoff (planning only; no code changes).** 123
   commits landed between review/45's L3 detailing pass (`b91a3bc`, 2026-09-04) and this

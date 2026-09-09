@@ -1527,3 +1527,56 @@ test("stats exposes today's route_failures ordered by count DESC capped at limit
   assert.equal(s.route_failures[1].count, 10);
   assert.ok(!s.route_failures.some((r) => r.utc_day === yesterday), "must only include today");
 });
+
+test("authorizeRetry overrides untrustworthy Retry-After with observed_recovery_seconds", async () => {
+  const dispatchOverride = {
+    routes_by_id: {
+      "r-untrustworthy": {
+        route_id: "r-untrustworthy",
+        provider: "mock",
+        retry_after_trustworthy: false,
+        observed_recovery_seconds: 45,
+      },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    DISPATCH_LIMITS_OVERRIDE: dispatchOverride,
+  });
+  const now = Date.now();
+  sql.exec(
+    `INSERT INTO bundles (
+      bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at
+    ) VALUES ('b-untrust', 'tok', 'active', ?, ?, ?)`,
+    now + 60_000,
+    now + 60_000,
+    now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-untrust', 'idem-1', 'digest-1', '{}', 'leased', 'b-untrust', 'r-untrustworthy',
+      'ltok', 'tags', 100, 50, 'payloads/j-untrust/request.json', ?, ?
+    )`,
+    now,
+    now
+  );
+
+  // Provider claims Retry-After is 5s, but route is measured untrustworthy with 45s recovery.
+  const auth = await coordinator.authorizeRetry(
+    "j-untrust", "ltok", "att-1", now, 5, "unknown_429"
+  );
+  assert.equal(auth.authorized, true);
+  // Must back off by at least 45 seconds (not 5 seconds).
+  assert.ok(auth.retry_not_before >= now + 45_000);
+
+  const routeRow = [
+    ...sql.exec(
+      "SELECT buffer_seconds, blocked_until FROM routes WHERE route_id='r-untrustworthy'"
+    ),
+  ][0];
+  assert.ok(routeRow.blocked_until >= now + 45_000);
+});
+

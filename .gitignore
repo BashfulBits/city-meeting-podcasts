@@ -27,3 +27,5 @@ htmlcov/
 # Cross-run build state (audio manifest + change-detection cache). Restored by CI via
 # actions/cache, never committed.
 /.citypods-state/
+scratch/
+

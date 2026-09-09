@@ -288,6 +288,9 @@ routes:
     tpm: 250000
     hard_input_ceiling: 120000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 10
+    observed_input_ceiling: 133281
 
   - route_id: gemini_3_5_flash_lite_secondary
     model: gemini/gemini-3.5-flash-lite
@@ -341,6 +344,8 @@ routes:
     tpm: 16000
     hard_input_ceiling: 8000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 31
 
   - route_id: gemma_4_26b_secondary
     model: google/gemma-4-26b-a4b-it
@@ -488,6 +493,10 @@ routes:
     rpd: 20
     tpm: 100000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    observed_input_ceiling: 1000
+    upstream_429_default: upstream_capacity
 
   - route_id: openrouter_meta_llama_llama_3_3_70b_instruct
     model: meta-llama/llama-3.3-70b-instruct
@@ -516,6 +525,9 @@ routes:
     rpd: 1000
     tpm: 8000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 30
+    observed_input_ceiling: 1000
 
   - route_id: groq_qwen_3_6_27b_primary
     model: qwen/qwen3.6-27b
@@ -528,6 +540,9 @@ routes:
     rpd: 1000
     tpm: 8000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 30
+    observed_input_ceiling: 1000
 
   - route_id: groq_qwen_3_8_27b_primary
     model: qwen/qwen3.8-27b
@@ -540,6 +555,9 @@ routes:
     rpd: 1000
     tpm: 8000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 30
+    observed_input_ceiling: 1000
 
   # ==========================================
   # QWEN 2.5 72B MULTI-PROVIDER POOL (SambaNova + SiliconFlow)
@@ -557,6 +575,9 @@ routes:
     rpd: 20
     tpm: 100000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: siliconflow_qwen_2_5_72b_primary
     model: qwen/qwen-2.5-72b-instruct
@@ -719,6 +740,8 @@ routes:
     rpm: 124
     tpm: 625000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 40
 
   # Devstral 2512: 0.83 RPS (49 RPM), 1,000,000 TPM
   - route_id: mistral_devstral_2512_primary
@@ -777,6 +800,10 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    observed_recovery_seconds: 111
+    retry_after_trustworthy: true
+    upstream_429_default: upstream_capacity
 
   # Legacy Medium aliases mapping to mistral/mistral-medium-latest
   - route_id: mistral_medium_2508_alias_primary
@@ -1139,6 +1166,8 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    upstream_429_default: upstream_capacity
 
   - route_id: opencode_deepseek_v4_flash_0731_free
     model: opencode/deepseek-v4-flash-0731
@@ -1155,6 +1184,8 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    upstream_429_default: upstream_capacity
 
   - route_id: opencode_mimo_v2_5_free
     model: opencode/mimo-v2.5-free
@@ -1170,6 +1201,8 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    upstream_429_default: upstream_capacity
 
   - route_id: opencode_nemotron_3_ultra_free
     model: opencode/nemotron-3-ultra-free
@@ -1186,6 +1219,8 @@ routes:
     rpd: 200
     tpm: 100000
     free: true
+    observed_on: "2026-09-09"
+    upstream_429_default: upstream_capacity
     input_per_token: 0.0
     output_per_token: 0.0
 

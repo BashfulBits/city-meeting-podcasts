@@ -11,6 +11,7 @@ from citypods.compute.llm_policy import (
     PeakWindow,
     PricingPolicy,
     QuotaPolicy,
+    _load_generated_catalog,
     canonical_model,
     estimate_tokens,
 )
@@ -95,3 +96,21 @@ def test_deepseek_pricing_selects_the_effective_period_and_peak_windows():
         ("01:00:00", "04:00:00"),
         ("06:00:00", "10:00:00"),
     ]
+
+
+def test_generated_catalog_includes_observed_characterization_fields() -> None:
+    routes, _, _ = _load_generated_catalog()
+    groq = next((r for r in routes if r.route_id == "groq_gpt_oss_120b_primary"), None)
+    assert groq is not None
+    assert groq.observed_on == "2026-09-09"
+    assert groq.observed_burst == 30
+    assert groq.observed_input_ceiling == 1000
+    assert groq.hard_input_ceiling == 1000
+
+    airforce = next(
+        (r for r in routes if r.route_id == "airforce_mistral_medium_3_5_primary"), None
+    )
+    assert airforce is not None
+    assert airforce.observed_recovery_seconds == 111.0
+    assert airforce.retry_after_trustworthy is True
+    assert airforce.upstream_429_default == "upstream_capacity"

@@ -668,3 +668,82 @@ def test_rejects_non_positive_provider_tpm():
         )
         with pytest.raises(ValueError, match="invalid non-positive tpm"):
             compile_llm_limits.compile_limits()
+
+
+def test_observed_characterization_fields_validation_and_compilation():
+    raw = {
+        "providers": {
+            "test_prov": {
+                "api_base": "https://api.test.com",
+                "structured_output_profile": "standard_json_schema",
+                "accounts": [{"id": "primary", "api_key_env": "TEST_KEY"}],
+            }
+        },
+        "structured_output_profiles": {
+            "standard_json_schema": {
+                "response_format": "json_schema",
+                "direct_handler": "instructor",
+                "include_schema_in_prompt": False,
+                "strip_schema_keys": [],
+            }
+        },
+        "routes": [
+            {
+                "route_id": "test_route_1",
+                "model": "test/model",
+                "provider": "test_prov",
+                "input_context_limit": 100000,
+                "output_context_limit": 4096,
+                "observed_on": "2026-09-09",
+                "observed_burst": 15,
+                "observed_input_ceiling": 50000,
+                "observed_recovery_seconds": 30.5,
+                "retry_after_trustworthy": False,
+                "upstream_429_default": "upstream_capacity",
+            }
+        ],
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        compiled = compile_llm_limits.compile_limits()
+        r = compiled["routes_by_id"]["test_route_1"]
+        assert r["observed_on"] == "2026-09-09"
+        assert r["observed_burst"] == 15
+        assert r["observed_input_ceiling"] == 50000
+        # observed_input_ceiling feeds hard_input_ceiling
+        assert r["hard_input_ceiling"] == 50000
+        assert r["observed_recovery_seconds"] == 30.5
+        assert r["retry_after_trustworthy"] is False
+        assert r["upstream_429_default"] == "upstream_capacity"
+
+
+def test_observed_characterization_fields_invalid_rejects():
+    raw = {
+        "providers": {"test_prov": {"api_base": "https://api.test.com"}},
+        "structured_output_profiles": {
+            "standard_json_schema": {
+                "response_format": "json_schema",
+                "direct_handler": "instructor",
+                "include_schema_in_prompt": False,
+                "strip_schema_keys": [],
+            }
+        },
+        "routes": [
+            {
+                "route_id": "test_route_bad",
+                "model": "test/model",
+                "provider": "test_prov",
+                "input_context_limit": 100000,
+                "output_context_limit": 4096,
+                "observed_input_ceiling": 200000,  # exceeds input_context_limit
+            }
+        ],
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        with pytest.raises(ValueError, match="observed_input_ceiling"):
+            compile_llm_limits.compile_limits()
