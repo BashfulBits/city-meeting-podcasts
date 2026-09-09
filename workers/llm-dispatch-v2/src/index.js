@@ -14,6 +14,7 @@ import {
 } from "./protocol.js";
 import { B2Client } from "./b2.js";
 import { callAiGateway, observedTokens, upstreamCapacityFailure } from "./gateway.js";
+import { classifyProviderFailure } from "./classify.js";
 
 export { LLMSchedulerDO };
 
@@ -604,12 +605,20 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
   const actualEndAt = Date.now();
 
   if (response.status === 429) {
+    const cls = classifyProviderFailure({
+      status: 429,
+      body: response.body,
+      headers: response.headers,
+      route,
+    });
     return {
       retry429: true,
       actualStartAt,
       actualEndAt,
       correlationId: response.correlationId,
       retryAfterSeconds: response.retryAfterSeconds,
+      failureClass: cls.failure_class,
+      ruleId: cls.rule_id,
     };
   }
 
@@ -745,13 +754,22 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
       job.lease_token,
       attemptId,
       Date.now(),
-      outcome.retryAfterSeconds
+      outcome.retryAfterSeconds,
+      outcome.failureClass
     );
     if (!auth.authorized || auth.retry_not_before > bundleDeadline) {
       return {
-        ...baseAttemptResult(job, attemptId, outcome.actualStartAt, outcome.actualEndAt, "terminal_error"),
+        ...baseAttemptResult(
+          job,
+          attemptId,
+          outcome.actualStartAt,
+          outcome.actualEndAt,
+          "terminal_error"
+        ),
         provider_status_code: 429,
         gateway_correlation_id: outcome.correlationId,
+        failure_class: outcome.failureClass,
+        rule_id: outcome.ruleId,
       };
     }
     laneState.retryBarrier = auth.retry_not_before;

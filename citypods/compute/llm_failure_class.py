@@ -80,6 +80,24 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         ),
     },
     {
+        "rule_id": "openrouter-upstream",
+        "provider": "openrouter",
+        "failure_class": "upstream_capacity",
+        "match": lambda ctx: (
+            "provider returned error" in ctx["msg"]
+            or (
+                isinstance(ctx.get("body"), dict)
+                and isinstance(ctx["body"].get("error"), dict)
+                and (
+                    ctx["body"]["error"].get("metadata", {}).get("limit_source")
+                    == "upstream_provider_shared_pool"
+                    or "upstream"
+                    in str(ctx["body"]["error"].get("metadata", {}).get("raw", "")).lower()
+                )
+            )
+        ),
+    },
+    {
         "rule_id": "openai-shaped-rate-limit",
         "provider": None,
         "failure_class": "own_rpm",
@@ -95,7 +113,10 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         "rule_id": "remaining-zero-header",
         "provider": None,
         "failure_class": "own_rpm",
-        "match": lambda ctx: ctx.get("headers", {}).get("x-ratelimit-remaining-requests") == "0",
+        "match": lambda ctx: (
+            ctx.get("headers", {}).get("x-ratelimit-remaining-requests") == "0"
+            or ctx.get("headers", {}).get("x-ratelimit-remaining-req-minute") == "0"
+        ),
     },
     {
         "rule_id": "remaining-tokens-zero-header",

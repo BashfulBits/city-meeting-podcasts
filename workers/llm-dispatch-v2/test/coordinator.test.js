@@ -1150,3 +1150,187 @@ test("schemaRetry applies the lane route allowlist, not just the registration ga
   const sched = [...sql.exec("SELECT jobs_ingested_today FROM scheduler WHERE id = 1")][0];
   assert.equal(sched.jobs_ingested_today, 1);
 });
+
+// --- Initiative 20 PR-3 (Failure-class aware backoff & terminal 429 requeue) ---
+
+test("authorizeRetry with own_rpd refuses in-window retry and sets midnight blocked_until", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const bundleDeadline = now + 60_000;
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    bundleDeadline, bundleDeadline, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-rpd', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'gemini_3_5_flash_primary',
+      'ltok', 'tags', 100, 50, 'payloads/j-rpd/request.json', ?, ?
+    )`,
+    now, now
+  );
+
+  const auth = await coordinator.authorizeRetry("j-rpd", "ltok", "att-1", now, null, "own_rpd");
+  assert.equal(auth.authorized, false);
+  assert.equal(auth.retry_not_before, null);
+
+  const row = [...sql.exec("SELECT throttle_streak, buffer_seconds, rpd_count, blocked_until, last_failure_class FROM routes WHERE route_id = 'gemini_3_5_flash_primary'")][0];
+  assert.equal(row.throttle_streak, 0, "own_rpd must not increment throttle_streak");
+  assert.equal(row.buffer_seconds, 0, "own_rpd must not set buffer_seconds");
+  assert.ok(row.rpd_count > 0, "rpd_count must be set to route rpd limit");
+  assert.ok(row.blocked_until > now, "blocked_until must be set to next midnight");
+  assert.equal(row.last_failure_class, "own_rpd");
+});
+
+test("authorizeRetry with own_tpm zeroes token budget and refuses in-window retry", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const bundleDeadline = now + 60_000;
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    bundleDeadline, bundleDeadline, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-tpm', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'gemini_3_5_flash_primary',
+      'ltok', 'tags', 100, 50, 'payloads/j-tpm/request.json', ?, ?
+    )`,
+    now, now
+  );
+
+  const auth = await coordinator.authorizeRetry("j-tpm", "ltok", "att-1", now, null, "own_tpm");
+  assert.equal(auth.authorized, false);
+  assert.equal(auth.retry_not_before, null);
+
+  const row = [...sql.exec("SELECT throttle_streak, buffer_seconds, full_token_budget, last_failure_class FROM routes WHERE route_id = 'gemini_3_5_flash_primary'")][0];
+  assert.equal(row.throttle_streak, 0);
+  assert.equal(row.buffer_seconds, 0);
+  assert.equal(row.full_token_budget, 0);
+  assert.equal(row.last_failure_class, "own_tpm");
+});
+
+test("authorizeRetry with upstream_capacity sets cooldown and preserves healthy route stats", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const bundleDeadline = now + 60_000;
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    bundleDeadline, bundleDeadline, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-up', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
+      'ltok', 'tags', 100, 50, 'payloads/j-up/request.json', ?, ?
+    )`,
+    now, now
+  );
+
+  const auth = await coordinator.authorizeRetry("j-up", "ltok", "att-1", now, null, "upstream_capacity");
+  assert.equal(auth.authorized, false);
+  assert.equal(auth.retry_not_before, null);
+
+  const row = [...sql.exec("SELECT throttle_streak, buffer_seconds, upstream_capacity_streak, blocked_until, last_failure_class FROM routes WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")][0];
+  assert.equal(row.throttle_streak, 0, "upstream_capacity must not increase throttle_streak");
+  assert.equal(row.buffer_seconds, 0, "upstream_capacity must not add buffer_seconds");
+  assert.equal(row.upstream_capacity_streak, 1);
+  assert.ok(row.blocked_until >= now + 15_000, "cooldown must be at least 15s");
+  assert.equal(row.last_failure_class, "upstream_capacity");
+});
+
+test("completeBatch requeues terminal 429 under transient retry budget instead of failing", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_5XX_RETRIES: "2" });
+  const now = Date.now();
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, transient_retry_count
+    ) VALUES (
+      'j-429-requeue', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
+      'ltok', 'tags', 100, 50, 'payloads/j-429/request.json', ?, ?, 0
+    )`,
+    now, now
+  );
+
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-429-requeue",
+      lease_token: "ltok",
+      attempt_id: "att-term",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "terminal_error",
+      provider_status_code: 429,
+    },
+  ]);
+
+  const job = [...sql.exec("SELECT state, transient_retry_count, lease_token FROM jobs WHERE id = 'j-429-requeue'")][0];
+  assert.equal(job.state, "queued", "terminal 429 must be requeued");
+  assert.equal(job.transient_retry_count, 1, "transient_retry_count must be incremented");
+  assert.equal(job.lease_token, null, "lease_token must be cleared on requeue");
+
+  const models = [...sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id = 'j-429-requeue'")][0].n;
+  assert.ok(models > 0, "job must be re-indexed in job_models for future claims");
+});
+
+test("completeBatch success clears upstream_capacity_streak and last_failure_class", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-success', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'route-suc',
+      'ltok', 'tags', 100, 50, 'payloads/j-suc/request.json', ?, ?
+    )`,
+    now, now
+  );
+  sql.exec(
+    `INSERT INTO routes (
+      route_id, upstream_capacity_streak, last_failure_class, throttle_streak, buffer_seconds
+    ) VALUES ('route-suc', 3, 'upstream_capacity', 2, 45)`
+  );
+
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-success",
+      lease_token: "ltok",
+      attempt_id: "att-ok",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "success",
+      provider_status_code: 200,
+      observed_input_tokens: 10,
+      observed_output_tokens: 20,
+    },
+  ]);
+
+  const route = [...sql.exec("SELECT upstream_capacity_streak, last_failure_class, throttle_streak, buffer_seconds FROM routes WHERE route_id = 'route-suc'")][0];
+  assert.equal(route.upstream_capacity_streak, 0);
+  assert.equal(route.last_failure_class, "");
+  assert.equal(route.throttle_streak, 0);
+  assert.equal(route.buffer_seconds, 0);
+});
