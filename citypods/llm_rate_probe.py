@@ -334,8 +334,16 @@ def _throttle_class(route: dict[str, Any], resp: dict[str, Any]) -> str | None:
 # on one of these is how the 2026-09-09 run recorded five routes at the search floor (see
 # run_phase_2's docstring).
 _NON_SIZE_CLASSES = frozenset(
-    {"upstream_capacity", "gateway_limit", "server_error", "own_rpm", "own_rpd", "own_tpm",
-     "payment_required", "unknown_429"}
+    {
+        "upstream_capacity",
+        "gateway_limit",
+        "server_error",
+        "own_rpm",
+        "own_rpd",
+        "own_tpm",
+        "payment_required",
+        "unknown_429",
+    }
 )
 
 
@@ -347,6 +355,8 @@ def run_phase_2(
     throttle_retries: int = 0,
     throttle_wait_seconds: float = 60.0,
     provider_reported_tpm: int | None = None,
+    confirm_rounds: int = 2,
+    confirm_wait_seconds: float = 25.0,
 ) -> dict[str, Any]:
     """Phase 2: enforced input ceiling by binary search.
 
@@ -385,9 +395,7 @@ def run_phase_2(
     def _probe(size: int) -> dict[str, Any]:
         char_count = size * chars_per_token
         multiplier = max(1, char_count // len(filler_sentence))
-        return runner.send_request(
-            route, (filler_sentence * multiplier)[:char_count], max_tokens=1
-        )
+        return runner.send_request(route, (filler_sentence * multiplier)[:char_count], max_tokens=1)
 
     probes = 0
     while probes < max_probes and low < high - 1000:
@@ -428,6 +436,51 @@ def run_phase_2(
             inconclusive_reason = f"unexpected status {resp.get('status')} at size {mid}"
             break
 
+    # Boundary confirmation. A rejection at the boundary may not be a property of the ROUTE at
+    # all: this account's Gemini/Gemma, NVIDIA and Airforce routes carry live production traffic
+    # from the v2 Worker every few minutes, so a probe can be refused for budget another process
+    # just spent. Accepting that first refusal as the ceiling understates it -- the same mistake
+    # in a subtler form as reading a 429 as a size limit. So re-test the smallest rejected size a
+    # few times, spaced; if it ever succeeds, the boundary was contention and the search resumes
+    # upward from there rather than freezing at an artificially low number.
+    contention_detected = False
+    rounds = confirm_rounds
+    while rounds > 0 and largest_rejected is not None and probes < max_probes + confirm_rounds * 2:
+        rounds -= 1
+        if confirm_wait_seconds:
+            time.sleep(confirm_wait_seconds)
+        resp = _probe(largest_rejected)
+        if resp.get("dry_run"):
+            break
+        probes += 1
+        if resp.get("status") == 200:
+            # The "ceiling" moved once contention cleared -- it was never a ceiling.
+            contention_detected = True
+            observed_ceiling = largest_rejected
+            low = largest_rejected
+            high = min(context_limit, 250000)
+            if provider_tpm:
+                high = min(high, provider_tpm)
+            largest_rejected = None
+            while probes < max_probes + confirm_rounds * 2 and low < high - 1000:
+                mid = (low + high) // 2
+                resp = _probe(mid)
+                if resp.get("dry_run"):
+                    break
+                probes += 1
+                if resp.get("status") == 200:
+                    observed_ceiling = mid
+                    low = mid
+                elif _throttle_class(route, resp) in _NON_SIZE_CLASSES:
+                    break
+                elif resp.get("status") in (400, 413):
+                    largest_rejected = (
+                        mid if largest_rejected is None else min(largest_rejected, mid)
+                    )
+                    high = mid
+                else:
+                    break
+
     return {
         "phase": "2",
         # None means "not established". Never fall back to the search floor: an unverified number
@@ -441,6 +494,10 @@ def run_phase_2(
         # The provider's own stated budget, when it gave one. Where this sits below our configured
         # `tpm`, config is wrong and should be corrected; where it sits far above, our `tpm` is
         # merely conservative and a larger ceiling is available.
+        # True when a size we had recorded as rejected later succeeded unchanged -- proof the
+        # first refusal was contention for a shared account budget, not a property of the route.
+        # Any ceiling from such a run is a LOWER BOUND and must not be promoted to enforcement.
+        "contention_detected": contention_detected,
         "provider_reported_tpm": provider_tpm,
         "configured_tpm": route.get("tpm"),
         "search_upper_bound": high,
@@ -541,8 +598,8 @@ def run_endurance(
         apply=apply,
         # Endurance runs deliberately outside the one-shot caps: the whole point is sustained
         # polling. The wall clock is the real budget, so make the count ceilings non-binding.
-        max_requests_per_route=10 ** 9,
-        max_requests_total=10 ** 9,
+        max_requests_per_route=10**9,
+        max_requests_total=10**9,
         max_wall_seconds=int(hours * 3600) + 3600,
         session=session,
     )
@@ -601,8 +658,10 @@ def run_endurance(
             if resp.get("status") == 200:
                 st["successes"] += 1
                 st["first_success_seconds"] = round(time.monotonic() - started, 1)
-                log(f"  [{st['first_success_seconds']:>7.1f}s] {rid} SUCCEEDED after "
-                    f"{st['attempts']} attempt(s)")
+                log(
+                    f"  [{st['first_success_seconds']:>7.1f}s] {rid} SUCCEEDED after "
+                    f"{st['attempts']} attempt(s)"
+                )
                 pending.pop(rid, None)
                 next_due.pop(rid, None)
             else:
@@ -632,9 +691,7 @@ def run_endurance(
     for rid, s in state.items():
         s = dict(s)
         s["viable"] = s["successes"] > 0
-        s["recommend_disable"] = (
-            s["successes"] == 0 and s["skipped"] is None and s["attempts"] > 0
-        )
+        s["recommend_disable"] = s["successes"] == 0 and s["skipped"] is None and s["attempts"] > 0
         s["ceiling"] = ceilings.get(rid)
         results.append(s)
     results.sort(key=lambda s: (not s["viable"], s["route_id"]))

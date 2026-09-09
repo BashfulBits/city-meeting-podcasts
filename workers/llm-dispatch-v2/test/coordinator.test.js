@@ -1633,3 +1633,55 @@ test("every catalog route can be ranked (no route is silently unclaimable)", asy
     .map((r) => r.route_id);
   assert.deepEqual(dead, [], `routes unrankable on a clean ledger: ${dead.join(", ")}`);
 });
+
+test("unconfigured account credentials are reported, never used to gate dispatch", () => {
+  // This is a DIAGNOSTIC, deliberately not a dispatch gate. Gating on secret presence would mean
+  // that if the DO env ever failed to expose secrets the way this assumes, the whole catalog would
+  // drop out of the ranking silently -- the same failure shape as the `rpd: null` coercion fixed
+  // in this review. Reporting it lets an operator see an unconfigured account without risking that.
+  const { coordinator } = makeCoordinator({ PRESENT_KEY: "sk-real" });
+  const limits = {
+    providers: {
+      p: { accounts: [{ id: "primary", api_key_env: "PRESENT_KEY" }, { id: "second", api_key_env: "ABSENT_KEY" }] },
+    },
+  };
+
+  assert.equal(
+    coordinator._routeCredentialConfigured({ provider: "p", account_id: "primary" }, limits),
+    true
+  );
+  assert.equal(
+    coordinator._routeCredentialConfigured({ provider: "p", account_id: "second" }, limits),
+    false
+  );
+  // An account_id that does not exist at all must not fall through to "configured".
+  assert.equal(
+    coordinator._routeCredentialConfigured({ provider: "p", account_id: "ghost" }, limits),
+    false
+  );
+  // A provider declaring no accounts is not something this gate can judge; leave it rankable.
+  assert.equal(
+    coordinator._routeCredentialConfigured({ provider: "q" }, { providers: { q: {} } }),
+    true
+  );
+});
+
+test("stats() names accounts whose secret is not set in this deployment", async () => {
+  const { coordinator } = makeCoordinator({
+    PRESENT_KEY: "sk-real",
+    DISPATCH_LIMITS_OVERRIDE: {
+      providers: {
+        p: {
+          accounts: [
+            { id: "primary", api_key_env: "PRESENT_KEY" },
+            { id: "tertiary", api_key_env: "ABSENT_KEY" },
+          ],
+        },
+      },
+      routes_by_id: {},
+      model_routes_map: {},
+    },
+  });
+  const stats = await coordinator.stats(Date.now(), 20);
+  assert.deepEqual(stats.unconfigured_accounts, ["p:tertiary (ABSENT_KEY)"]);
+});

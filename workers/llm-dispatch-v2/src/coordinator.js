@@ -1239,6 +1239,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
       .sort((a, b) => b.blocked_until - a.blocked_until)
       .slice(0, limit);
 
+    // Which declared accounts this deployment actually holds a key for. Purely informational
+    // (see _routeCredentialConfigured on why it must never gate dispatch), but it is the only
+    // place an operator can see that a route is configured against a secret that was never set --
+    // otherwise those jobs just churn through their retry budget as generic "retryable_error".
+    const dispatchLimitsForStats = this._dispatchLimits();
+    const unconfiguredAccounts = [];
+    for (const [provider, cfg] of Object.entries(dispatchLimitsForStats?.providers || {})) {
+      for (const account of cfg?.accounts || []) {
+        if (account?.api_key_env && !this.env?.[account.api_key_env]) {
+          unconfiguredAccounts.push(`${provider}:${account.id} (${account.api_key_env})`);
+        }
+      }
+    }
+
     const scheduler = one("SELECT * FROM scheduler WHERE id = 1");
 
     const today = new Date(now).toISOString().slice(0, 10);
@@ -1260,6 +1274,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         oldest_queued_age_ms: oldestQueued == null ? null : now - oldestQueued,
       },
       queued_by_model: queuedByModel,
+      unconfigured_accounts: unconfiguredAccounts,
       routes: {
         total: routes.length,
         // A route here contributes nothing to dispatch. If this covers every route, the
@@ -1702,6 +1717,35 @@ export class LLMSchedulerDO extends DurableObjectBase {
       buffer_seconds: 0,
       buffer_updated_at: 0,
     };
+  }
+
+  /**
+   * Whether this deployment actually holds the API key the route's account needs.
+   *
+   * A route whose secret is absent cannot possibly succeed, but it was still ranked and claimed:
+   * `resolveProviderCredentials` then threw "missing secret X" inside the executor, which
+   * `attemptProviderCall` caught as a generic `retryable_error`, so every job routed there churned
+   * through its whole retry budget before failing -- and the operator surface said "retryable
+   * error", never "that key is not set".
+   *
+   * DIAGNOSTIC ONLY -- deliberately NOT used to gate ranking. Gating dispatch on secret presence
+   * would mean that if the DO's `env` ever failed to expose provider secrets the way this assumes,
+   * every route in the catalog would silently drop out of the ranking with no blocked_until and no
+   * error: the exact failure shape as the `rpd: null` coercion this same review had to fix, and
+   * not worth re-creating for a convenience. `stats()` reports it so an operator can SEE which
+   * accounts are unconfigured, and a missing secret still surfaces per-attempt via
+   * resolveProviderCredentials -- it is now merely visible rather than silent.
+   */
+  _routeCredentialConfigured(catalogRoute, dispatchLimits) {
+    const providerCfg = dispatchLimits?.providers?.[catalogRoute?.provider];
+    const accounts = providerCfg?.accounts || [];
+    if (accounts.length === 0) return true; // nothing declared to check against
+    const account = catalogRoute?.account_id
+      ? accounts.find((candidate) => candidate.id === catalogRoute.account_id)
+      : accounts[0];
+    const envName = account?.api_key_env;
+    if (!envName) return false;
+    return Boolean(this.env?.[envName]);
   }
 
   _capacityFraction(route, now, windowSeconds) {

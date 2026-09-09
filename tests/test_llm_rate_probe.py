@@ -296,3 +296,45 @@ def test_provider_reported_token_limit_tolerates_every_error_body_shape():
     assert f({"headers": {}, "body": []}) is None
     assert f({"headers": {}, "body": None}) is None
     assert f({}) is None
+
+
+def test_phase_2_reopens_the_search_when_a_rejection_was_only_contention():
+    """This account's Gemini/NVIDIA/Airforce routes carry live production traffic, so a probe can
+    be refused for budget another process just spent. Accepting that first refusal as the ceiling
+    understates it. Re-testing the boundary must reopen the search when it later succeeds."""
+    from citypods.llm_rate_probe import run_phase_2
+
+    reject = {"status": 413, "headers": {}, "body": {"error": {"message": "too large"}}}
+    ok = {"status": 200, "headers": {}, "body": {}}
+
+    class _Seq:
+        def __init__(self, seq):
+            self.seq, self.calls = list(seq), 0
+
+        def send_request(self, route, prompt, *, max_tokens=1):
+            self.calls += 1
+            return self.seq[min(self.calls - 1, len(self.seq) - 1)]
+
+    # First probe rejected (contention), every later probe fine.
+    result = run_phase_2(
+        _Seq([reject, ok]),
+        _route(input_context_limit=9000),
+        confirm_rounds=2,
+        confirm_wait_seconds=0,
+    )
+    assert result["contention_detected"] is True
+    assert result["observed_input_ceiling"] is not None
+    assert result["observed_input_ceiling"] >= 5000
+
+
+def test_phase_2_confirms_a_genuine_ceiling_without_flagging_contention():
+    from citypods.llm_rate_probe import run_phase_2
+
+    reject = {"status": 413, "headers": {}, "body": {"error": {"message": "too large"}}}
+    result = run_phase_2(
+        _ScriptedRunner([reject]),
+        _route(input_context_limit=9000),
+        confirm_rounds=2,
+        confirm_wait_seconds=0,
+    )
+    assert result["contention_detected"] is False
