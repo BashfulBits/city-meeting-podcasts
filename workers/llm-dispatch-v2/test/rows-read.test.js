@@ -203,3 +203,83 @@ test("rows read per operation does not grow with accumulated history", async () 
     `total rows read scaled with history: ${small.total} -> ${large.total}`
   );
 });
+
+test("route_failures queries use index and catch unindexed scan regression", async () => {
+  // Test both scales: 20 rows (small) vs 200 rows (10x history)
+  for (const scale of [20, 200]) {
+    const { storage, db } = createRecordingSqlStorage();
+    const coordinator = new LLMSchedulerDO({ storage }, withTestReservations());
+    const now = Date.now();
+
+    db.exec("BEGIN");
+    for (let i = 0; i < scale; i++) {
+      const day = new Date(now - i * 86_400_000).toISOString().slice(0, 10);
+      db.prepare(
+        `INSERT INTO route_failures (
+           utc_day, route_id, failure_class, count, last_status, last_seen_at
+         ) VALUES (?, 'route-a', 'own_rpm', 1, 429, ?)`
+      ).run(day, now - i * 86_400_000);
+    }
+    db.exec("COMMIT");
+
+    // 1. stats() query plan check: must use the primary key index
+    const today = new Date(now).toISOString().slice(0, 10);
+    const statsQuery =
+      "SELECT utc_day, route_id, failure_class, count, last_status, last_seen_at" +
+      " FROM route_failures WHERE utc_day = ? ORDER BY count DESC LIMIT 20";
+    const statsPlan = db.prepare(`EXPLAIN QUERY PLAN ${statsQuery}`).all(today);
+    assert.ok(
+      !statsPlan.some((r) => r.detail.includes("SCAN route_failures")),
+      `stats query plan scanned route_failures at scale ${scale}`
+    );
+    assert.ok(
+      statsPlan.some(
+        (r) =>
+          r.detail.includes("SEARCH route_failures USING INDEX") ||
+          r.detail.includes("SEARCH route_failures USING COVERING INDEX")
+      ),
+      `expected indexed search for stats query at scale ${scale}`
+    );
+
+    // 2. prune query plan check: must use the primary key index
+    const pruneQuery =
+      "SELECT utc_day, route_id, failure_class FROM route_failures" +
+      " WHERE utc_day < ? ORDER BY utc_day ASC LIMIT 10";
+    const prunePlan = db.prepare(`EXPLAIN QUERY PLAN ${pruneQuery}`).all(today);
+    assert.ok(
+      !prunePlan.some((r) => r.detail.includes("SCAN route_failures")),
+      `prune query plan scanned route_failures at scale ${scale}`
+    );
+    assert.ok(
+      prunePlan.some(
+        (r) =>
+          r.detail.includes("SEARCH route_failures USING INDEX") ||
+          r.detail.includes("SEARCH route_failures USING COVERING INDEX")
+      ),
+      `expected indexed search for prune query at scale ${scale}`
+    );
+  }
+
+  // 3. Deliberate mutation: recreate table without PRIMARY KEY.
+  // Proves that the test is sensitive and catches an unindexed SCAN regression.
+  const { db } = createRecordingSqlStorage();
+  db.exec(`
+    CREATE TABLE unindexed_route_failures (
+      utc_day       TEXT    NOT NULL,
+      route_id      TEXT    NOT NULL,
+      failure_class TEXT    NOT NULL,
+      count         INTEGER NOT NULL DEFAULT 0,
+      last_status   INTEGER,
+      last_seen_at  INTEGER NOT NULL
+    );
+  `);
+  const mutatedPlan = db.prepare(
+    "EXPLAIN QUERY PLAN SELECT utc_day, route_id, failure_class, count, last_status, last_seen_at" +
+      " FROM unindexed_route_failures WHERE utc_day = ? ORDER BY count DESC LIMIT 20"
+  ).all("2026-09-09");
+  const hasScan = mutatedPlan.some((r) => r.detail.includes("SCAN unindexed_route_failures"));
+  assert.ok(
+    hasScan,
+    "mutation test failed: removing PRIMARY KEY should have resulted in SCAN"
+  );
+});

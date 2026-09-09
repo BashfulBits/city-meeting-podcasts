@@ -598,7 +598,12 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
   try {
     response = await callAiGateway({ env, route, payload: job.payload, dispatchLimits, idempotencyKey, signal: controller.signal });
   } catch (err) {
-    return { result: baseAttemptResult(job, attemptId, actualStartAt, Date.now(), "retryable_error") };
+    return {
+      result: {
+        ...baseAttemptResult(job, attemptId, actualStartAt, Date.now(), "retryable_error"),
+        failure_class: "server_error",
+      },
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -646,10 +651,18 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
           observed_output_tokens: usage.output,
           provider_status_code: response.status,
           gateway_correlation_id: response.correlationId,
+          failure_class: "server_error",
         },
       };
     }
   }
+
+  const cls = classifyProviderFailure({
+    status: response.status,
+    body: response.body,
+    headers: response.headers,
+    route,
+  });
 
   return {
     result: {
@@ -675,6 +688,8 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
       ),
       provider_status_code: response.status,
       gateway_correlation_id: response.correlationId,
+      failure_class: cls.failure_class,
+      rule_id: cls.rule_id,
     },
   };
 }
