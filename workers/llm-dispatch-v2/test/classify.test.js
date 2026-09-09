@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { classifyProviderFailure, FAILURE_SIGNATURES } from "../src/classify.js";
+import { upstreamEmptyCompletion } from "../src/gateway.js";
 
 test("classifyProviderFailure handles HTTP 402 as payment_required", () => {
   const res = classifyProviderFailure({
@@ -383,4 +384,25 @@ test("an ordinary exhausted limit is still pacing, not billing", () => {
   });
   assert.equal(result.failure_class, "own_rpm");
   assert.equal(result.rule_id, "remaining-zero-header");
+});
+
+test("a 2xx carrying no completion is upstream capacity, never a success", () => {
+  // Airforce returns HTTP 200 with no `choices` and an error whose own code says 503. response.ok
+  // is true for it, so the executor stored that error object in B2 as the job's RESULT and settled
+  // the job completed -- a permanently wrong answer no retry would revisit -- while the success
+  // path cleared every backoff signal, keeping a route that served nothing ranked as healthy.
+  assert.equal(
+    upstreamEmptyCompletion(200, {
+      error: { message: "No content was returned", type: "upstream_unavailable", code: "503" },
+    }),
+    true
+  );
+  assert.equal(upstreamEmptyCompletion(200, { choices: [] }), true);
+  assert.equal(upstreamEmptyCompletion(200, {}), true);
+  assert.equal(upstreamEmptyCompletion(200, null), true);
+  assert.equal(upstreamEmptyCompletion(429, { choices: [{ message: {} }] }), false);
+  assert.equal(
+    upstreamEmptyCompletion(200, { choices: [{ message: { content: "hi" } }] }),
+    false
+  );
 });

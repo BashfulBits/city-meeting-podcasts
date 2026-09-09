@@ -57,12 +57,14 @@ class RateProbeRunner:
         max_requests_total: int = 400,
         max_wall_seconds: int = 900,
         session: requests.Session | None = None,
+        request_timeout_seconds: float = 15.0,
     ) -> None:
         self.apply = apply
         self.max_requests_per_route = max_requests_per_route
         self.max_requests_total = max_requests_total
         self.max_wall_seconds = max_wall_seconds
         self.session = session or requests.Session()
+        self.request_timeout_seconds = request_timeout_seconds
         self.total_requests = 0
         self.route_request_counts: dict[str, int] = {}
         self.start_time = time.monotonic()
@@ -130,7 +132,9 @@ class RateProbeRunner:
         self.route_request_counts[route_id] = self.route_request_counts.get(route_id, 0) + 1
 
         try:
-            resp = self.session.post(url, headers=headers, json=payload, timeout=15)
+            resp = self.session.post(
+                url, headers=headers, json=payload, timeout=self.request_timeout_seconds
+            )
             status = resp.status_code
             captured_headers = {
                 k.lower(): v for k, v in resp.headers.items() if HEADER_REGEX.search(k)
@@ -251,7 +255,7 @@ def run_phase_1b(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, An
         resp = runner.send_request(route, FIXED_PROMPT, max_tokens=1)
         if resp.get("dry_run"):
             return {"phase": "1b", "dry_run": True, "max_burst_probes": burst_limit}
-        if resp.get("status") == 200:
+        if is_usable_completion(resp):
             observed_burst += 1
         else:
             break
@@ -261,6 +265,25 @@ def run_phase_1b(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, An
         "max_burst_probes": burst_limit,
         "observed_burst": observed_burst,
     }
+
+
+def is_usable_completion(resp: Mapping[str, Any]) -> bool:
+    """A 200 is not automatically an answer.
+
+    Airforce returns HTTP 200 with no `choices` and an error object whose own code says 503
+    (confirmed live 2026-09-09). Counting that as a success would mark a route that is serving
+    nothing as "viable" -- in a run whose entire purpose is separating a dead route from a busy
+    one, which is the one distinction it must not get wrong.
+    """
+    if resp.get("status") != 200:
+        return False
+    body = resp.get("body")
+    if not isinstance(body, dict):
+        return False
+    if body.get("error"):
+        return False
+    choices = body.get("choices")
+    return isinstance(choices, list) and len(choices) > 0
 
 
 def direct_chat_url(route: Mapping[str, Any]) -> str:
@@ -451,7 +474,7 @@ def run_phase_2(
             attempts_left -= 1
             cls = _throttle_class(route, resp)
 
-        if resp.get("status") == 200:
+        if is_usable_completion(resp):
             observed_ceiling = mid
             low = mid
         elif cls in _NON_SIZE_CLASSES:
@@ -481,7 +504,7 @@ def run_phase_2(
         if resp.get("dry_run"):
             break
         probes += 1
-        if resp.get("status") == 200:
+        if is_usable_completion(resp):
             # The "ceiling" moved once contention cleared -- it was never a ceiling.
             contention_detected = True
             observed_ceiling = largest_rejected
@@ -496,7 +519,7 @@ def run_phase_2(
                 if resp.get("dry_run"):
                     break
                 probes += 1
-                if resp.get("status") == 200:
+                if is_usable_completion(resp):
                     observed_ceiling = mid
                     low = mid
                 elif _throttle_class(route, resp) in _NON_SIZE_CLASSES:
@@ -630,6 +653,10 @@ def run_endurance(
         max_requests_total=10**9,
         max_wall_seconds=int(hours * 3600) + 3600,
         session=session,
+        # Endurance asks whether a route can EVER serve, not whether it is fast. NVIDIA has been
+        # observed taking >45s for a one-token request; at the 15s default those routes record as
+        # transport failures and would be recommended for disable purely for being slow.
+        request_timeout_seconds=90.0,
     )
     state: dict[str, dict[str, Any]] = {
         r["route_id"]: {
@@ -683,7 +710,7 @@ def run_endurance(
             ):
                 st["provider_reported_tpm"] = reported
             next_due[rid] = time.monotonic() + interval_seconds
-            if resp.get("status") == 200:
+            if is_usable_completion(resp):
                 st["successes"] += 1
                 st["first_success_seconds"] = round(time.monotonic() - started, 1)
                 log(

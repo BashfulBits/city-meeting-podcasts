@@ -13,7 +13,7 @@ import {
   validateSchemaRetryRequest,
 } from "./protocol.js";
 import { B2Client } from "./b2.js";
-import { callAiGateway, observedTokens, upstreamCapacityFailure } from "./gateway.js";
+import { callAiGateway, observedTokens, upstreamCapacityFailure, upstreamEmptyCompletion } from "./gateway.js";
 import { classifyProviderFailure } from "./classify.js";
 
 export { LLMSchedulerDO };
@@ -624,6 +624,27 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
       retryAfterSeconds: response.retryAfterSeconds,
       failureClass: cls.failure_class,
       ruleId: cls.rule_id,
+    };
+  }
+
+  if (upstreamEmptyCompletion(response.status, response.body)) {
+    // A 2xx carrying no completion. Never settle this as success: doing so stores a non-answer as
+    // the job's durable result AND clears the route's backoff, so a provider serving nothing looks
+    // healthy. Retryable, and classified as the provider's problem rather than the job's.
+    const cls = classifyProviderFailure({
+      status: response.status,
+      body: response.body,
+      headers: response.headers,
+      route,
+    });
+    return {
+      result: {
+        ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "retryable_error"),
+        provider_status_code: response.status,
+        gateway_correlation_id: response.correlationId,
+        failure_class: "upstream_capacity",
+        classify_rule_id: cls.rule_id,
+      },
     };
   }
 

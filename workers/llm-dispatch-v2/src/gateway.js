@@ -211,6 +211,32 @@ export function upstreamCapacityFailure(status, body) {
 }
 
 /**
+ * A 2xx response that is not actually an answer.
+ *
+ * Airforce returns HTTP **200** with no `choices` at all and an error object whose own `code`
+ * says 503 (confirmed live 2026-09-09):
+ *
+ *   200 {"error":{"message":"No content was returned for model 'mistral-medium-3.5' - every
+ *        upstream provider returned an empty completion...","type":"upstream_unavailable",
+ *        "code":"503"}}
+ *
+ * `response.ok` is true for this, so the executor stored the error object in B2 as the job's
+ * RESULT and settled the job `completed` -- a permanently wrong answer that no retry would ever
+ * revisit. Worse, the success path clears every backoff signal on the route, so a provider that
+ * was returning nothing but empty completions kept reading as healthy and kept being ranked.
+ *
+ * Treated as upstream capacity rather than a defect in the job: the request was fine, the
+ * provider had nothing to serve.
+ */
+export function upstreamEmptyCompletion(status, body) {
+  if (status < 200 || status >= 300) return false;
+  if (!body || typeof body !== "object") return true;
+  if (body.error) return true;
+  const choices = body.choices;
+  return !Array.isArray(choices) || choices.length === 0;
+}
+
+/**
  * Parse Go/Groq-style duration strings into whole seconds, rounding up.
  * Examples: "7.66s", "2m59.56s", "500ms", "1h30m", "15s".
  */

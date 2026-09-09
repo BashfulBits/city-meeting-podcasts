@@ -226,7 +226,11 @@ def test_phase_2_does_not_treat_a_rate_limit_as_a_size_limit():
 def test_phase_2_records_only_a_size_that_actually_returned_200():
     from citypods.llm_rate_probe import run_phase_2
 
-    ok = {"status": 200, "headers": {}, "body": {"usage": {"prompt_tokens": 1}}}
+    ok = {
+        "status": 200,
+        "headers": {},
+        "body": {"choices": [{"message": {"content": "x"}}], "usage": {"prompt_tokens": 1}},
+    }
     result = run_phase_2(_ScriptedRunner([ok]), _route(input_context_limit=9000))
 
     assert result["conclusive"] is True
@@ -240,7 +244,7 @@ def test_phase_2_retries_through_a_throttle_before_giving_up():
     from citypods.llm_rate_probe import run_phase_2
 
     throttled = {"status": 429, "headers": {}, "body": {"error": {"message": "overloaded"}}}
-    ok = {"status": 200, "headers": {}, "body": {}}
+    ok = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
     runner = _ScriptedRunner([throttled, ok])
     result = run_phase_2(
         runner, _route(input_context_limit=9000), throttle_retries=2, throttle_wait_seconds=0
@@ -267,7 +271,11 @@ def test_phase_2_clamps_the_search_at_the_provider_reported_token_budget():
     advertises a 131,072-token context on an account whose real ITPM is 7,000."""
     from citypods.llm_rate_probe import run_phase_2
 
-    ok = {"status": 200, "headers": {"x-ratelimit-limit-tokens": "7000"}, "body": {}}
+    ok = {
+        "status": 200,
+        "headers": {"x-ratelimit-limit-tokens": "7000"},
+        "body": {"choices": [{"message": {"content": "x"}}]},
+    }
 
     # The endurance path learns the budget while polling and hands it in, so the search is bounded
     # from the very first probe rather than after an overshoot.
@@ -305,7 +313,7 @@ def test_phase_2_reopens_the_search_when_a_rejection_was_only_contention():
     from citypods.llm_rate_probe import run_phase_2
 
     reject = {"status": 413, "headers": {}, "body": {"error": {"message": "too large"}}}
-    ok = {"status": 200, "headers": {}, "body": {}}
+    ok = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
 
     class _Seq:
         def __init__(self, seq):
@@ -367,3 +375,49 @@ def test_direct_chat_url_collapses_a_duplicated_segment():
         )
         == "https://api.z.ai/api/paas/v4/chat/completions"
     )
+
+
+def test_a_200_carrying_no_completion_is_not_a_success():
+    """Airforce returns HTTP 200 with no `choices` and an error object whose own code says 503.
+    Counting that as a success marks a route serving nothing as viable -- the one distinction an
+    endurance run must not get wrong -- and in production it settled the job `completed` with a
+    non-answer as its durable result."""
+    from citypods.llm_rate_probe import is_usable_completion
+
+    airforce = {
+        "status": 200,
+        "body": {
+            "error": {
+                "message": "No content was returned",
+                "type": "upstream_unavailable",
+                "code": "503",
+            }
+        },
+    }
+    assert is_usable_completion(airforce) is False
+    assert is_usable_completion({"status": 200, "body": {"choices": []}}) is False
+    assert is_usable_completion({"status": 200, "body": {}}) is False
+    assert is_usable_completion({"status": 200, "body": "not json"}) is False
+    assert is_usable_completion({"status": 429, "body": {"choices": [{"message": {}}]}}) is False
+    assert (
+        is_usable_completion({"status": 200, "body": {"choices": [{"message": {"content": "hi"}}]}})
+        is True
+    )
+
+
+def test_endurance_uses_a_timeout_long_enough_for_slow_providers(monkeypatch):
+    """NVIDIA has been observed taking >45s for a one-token request. At the 15s default those
+    routes record as transport failures, and an endurance run would recommend disabling them for
+    being slow rather than broken."""
+    import citypods.llm_rate_probe as probe
+
+    captured = {}
+
+    class _Runner(probe.RateProbeRunner):
+        def __init__(self, *a, **kw):
+            captured["timeout"] = kw.get("request_timeout_seconds")
+            super().__init__(*a, **kw)
+
+    monkeypatch.setattr(probe, "RateProbeRunner", _Runner)
+    probe.run_endurance([], apply=False, hours=0.001, interval_seconds=1)
+    assert captured["timeout"] >= 60
