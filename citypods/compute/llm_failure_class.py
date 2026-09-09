@@ -10,6 +10,15 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+
+def _error_dict(body: Any) -> dict[str, Any]:
+    if isinstance(body, dict):
+        err = body.get("error")
+        if isinstance(err, dict):
+            return err
+    return {}
+
+
 # Ordered rule table for HTTP 429 responses. First match wins.
 # Each rule is a dict: rule_id, provider, failure_class, match.
 # provider: None applies to all providers.
@@ -44,10 +53,7 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         "rule_id": "gemini-resource-exhausted",
         "provider": "gemini",
         "failure_class": "own_rpm",
-        "match": lambda ctx: (
-            isinstance(ctx.get("body"), dict)
-            and ctx["body"].get("error", {}).get("status") == "RESOURCE_EXHAUSTED"
-        ),
+        "match": lambda ctx: _error_dict(ctx.get("body")).get("status") == "RESOURCE_EXHAUSTED",
     },
     {
         "rule_id": "groq-tpd",
@@ -59,10 +65,7 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         "rule_id": "groq-rate-limit",
         "provider": "groq",
         "failure_class": "own_rpm",
-        "match": lambda ctx: (
-            isinstance(ctx.get("body"), dict)
-            and ctx["body"].get("error", {}).get("code") == "rate_limit_exceeded"
-        ),
+        "match": lambda ctx: _error_dict(ctx.get("body")).get("code") == "rate_limit_exceeded",
     },
     {
         "rule_id": "airforce-guaranteed-response",
@@ -74,10 +77,7 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         "rule_id": "opencode-server-error",
         "provider": "opencode",
         "failure_class": "upstream_capacity",
-        "match": lambda ctx: (
-            isinstance(ctx.get("body"), dict)
-            and ctx["body"].get("error", {}).get("type") == "server_error"
-        ),
+        "match": lambda ctx: _error_dict(ctx.get("body")).get("type") == "server_error",
     },
     {
         "rule_id": "openrouter-upstream",
@@ -86,13 +86,12 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         "match": lambda ctx: (
             "provider returned error" in ctx["msg"]
             or (
-                isinstance(ctx.get("body"), dict)
-                and isinstance(ctx["body"].get("error"), dict)
+                isinstance(_error_dict(ctx.get("body")).get("metadata"), dict)
                 and (
-                    ctx["body"]["error"].get("metadata", {}).get("limit_source")
+                    _error_dict(ctx.get("body"))["metadata"].get("limit_source")
                     == "upstream_provider_shared_pool"
                     or "upstream"
-                    in str(ctx["body"]["error"].get("metadata", {}).get("raw", "")).lower()
+                    in str(_error_dict(ctx.get("body"))["metadata"].get("raw", "")).lower()
                 )
             )
         ),
@@ -102,11 +101,8 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         "provider": None,
         "failure_class": "own_rpm",
         "match": lambda ctx: (
-            isinstance(ctx.get("body"), dict)
-            and (
-                ctx["body"].get("error", {}).get("type") == "rate_limit_exceeded"
-                or ctx["body"].get("error", {}).get("code") == "rate_limit_exceeded"
-            )
+            _error_dict(ctx.get("body")).get("type") == "rate_limit_exceeded"
+            or _error_dict(ctx.get("body")).get("code") == "rate_limit_exceeded"
         ),
     },
     {

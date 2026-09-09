@@ -46,6 +46,7 @@ from citypods.compute.llm_deferred import (
     terminal_failure_retry_allowed,
     write_deferred,
 )
+from citypods.compute.llm_failure_class import _is_upstream_400, classify_provider_failure
 from citypods.compute.llm_policy import (
     DEFAULT_OUTPUT_TOKEN_MARGIN,
     ROUTE_CANDIDATES,
@@ -58,7 +59,12 @@ from citypods.compute.llm_policy import (
     canonical_model,
     estimate_tokens,
 )
-from citypods.compute.llm_scheduler import SelectionResult, select_and_reserve, select_route
+from citypods.compute.llm_scheduler import (
+    SelectionResult,
+    _next_local_midnight,
+    select_and_reserve,
+    select_route,
+)
 from citypods.compute.structured import ResponseModel, response_model
 from citypods.security import SecurityError, validate_source_url
 from citypods.storage.s3 import b2_from_env
@@ -117,6 +123,8 @@ SUPPORTED_MODELS = frozenset(ROUTE_CANDIDATES)
 
 # Fallback backoff when a 429 carries no parseable Retry-After hint.
 _DEFAULT_BLOCK_SECONDS = 60.0
+# Brief cooldown for transient upstream provider capacity errors before sibling retries.
+UPSTREAM_CAPACITY_COOLDOWN_SECONDS = 15.0
 _SAFE_DIAGNOSTICS_ENV = "LLM_SAFE_DIAGNOSTICS"
 
 # Longest single sleep the pacing loop takes between capacity re-checks. This bounds responsiveness
@@ -560,6 +568,56 @@ def _retry_after_seconds(source: Any) -> float | None:
     if not math.isfinite(parsed) or parsed <= 0:
         return None
     return parsed
+
+
+def _extract_failure_details(source: Any) -> tuple[int, Any, Mapping[str, str]]:
+    """Extract (status_code, body, headers) from a response or exception."""
+    status = getattr(source, "status_code", None)
+    response = getattr(source, "response", None)
+    if status is None and response is not None:
+        status = getattr(response, "status_code", None)
+    if status is None:
+        status = 429
+
+    headers = getattr(source, "headers", None)
+    if headers is None and response is not None:
+        headers = getattr(response, "headers", None)
+    norm_headers: dict[str, str] = {}
+    if headers and hasattr(headers, "items"):
+        norm_headers = {str(k): str(v) for k, v in headers.items()}
+
+    body: Any = None
+    if response is not None and hasattr(response, "json") and callable(response.json):
+        try:
+            body = response.json()
+        except Exception:
+            body = getattr(response, "text", None) or getattr(response, "content", None)
+    if body is None and hasattr(source, "json") and callable(source.json):
+        try:
+            body = source.json()
+        except Exception:
+            pass
+    if body is None:
+        body = getattr(source, "body", None)
+    if body is None:
+        msg = getattr(source, "message", None) or str(source)
+        if msg:
+            body = {"error": {"message": msg}}
+    return int(status), body, norm_headers
+
+
+def _is_rate_limited_or_capacity(source: Any) -> bool:
+    """Detect HTTP 429 rate limit or HTTP 400 upstream capacity error."""
+    status = getattr(source, "status_code", None)
+    response = getattr(source, "response", None)
+    if status is None and response is not None:
+        status = getattr(response, "status_code", None)
+    if status == 429:
+        return True
+    if status == 400:
+        _, body, _ = _extract_failure_details(source)
+        return _is_upstream_400(body)
+    return False
 
 
 def _messages(job: InferenceJob) -> list[dict[str, Any]]:
@@ -1340,23 +1398,58 @@ class LiteLLMBackend(Backend):
         input_tokens = estimate_tokens(admission_messages)
         output_tokens = self._output_token_budget(job)
         per_attempt_tokens = input_tokens + output_tokens
-        selection = select_and_reserve(
-            self.storage,
-            job.recipe_hash,
-            policy,
-            routes=ROUTE_REGISTRY,
-            available_transports=available_transports,
-            estimated_tokens=per_attempt_tokens * max_provider_attempts,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            requests=max_provider_attempts,
+        max_capacity_retries = min(
+            len(policy.allowed_models) if policy.allowed_models else len(ROUTE_REGISTRY), 10
         )
-        if selection.model is None or selection.route is None:
-            return self._deferred_handle(job, structured, messages, policy)
+        for _capacity_attempt in range(max_capacity_retries + 1):
+            selection = select_and_reserve(
+                self.storage,
+                job.recipe_hash,
+                policy,
+                routes=ROUTE_REGISTRY,
+                available_transports=available_transports,
+                estimated_tokens=per_attempt_tokens * max_provider_attempts,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                requests=max_provider_attempts,
+            )
+            if selection.model is None or selection.route is None:
+                return self._deferred_handle(job, structured, messages, policy)
+            result_or_handle, retry_sibling = self._attempt_policy_route(
+                job,
+                policy,
+                structured,
+                messages,
+                selection,
+                per_attempt_tokens=per_attempt_tokens,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                max_provider_attempts=max_provider_attempts,
+            )
+            if retry_sibling:
+                continue
+            assert result_or_handle is not None
+            return result_or_handle
+
+        return self._deferred_handle(job, structured, messages, policy)
+
+    def _attempt_policy_route(
+        self,
+        job: InferenceJob,
+        policy: LLMRequestPolicy,
+        structured: tuple[str, ResponseModel] | None,
+        messages: list[dict[str, Any]],
+        selection: SelectionResult,
+        *,
+        per_attempt_tokens: int,
+        input_tokens: int,
+        output_tokens: int,
+        max_provider_attempts: int,
+    ) -> tuple[JobResult | JobHandle | None, bool]:
         resolved_model = selection.model
         route = selection.route
         owner = selection.owner
-        assert owner is not None  # always set when a route was selected
+        assert resolved_model is not None and route is not None and owner is not None
         attempted = False
         attempted_requests = 0
 
@@ -1375,11 +1468,39 @@ class LiteLLMBackend(Backend):
             else:
                 release_route_reservation(self.storage, owner, resolved_model, route=route)
 
-        def _rate_limited(retry_after: float | None) -> JobHandle:
-            until = datetime.now(UTC) + timedelta(seconds=retry_after or _DEFAULT_BLOCK_SECONDS)
+        def _rate_limited(source: Any) -> tuple[JobHandle | None, bool]:
+            retry_after = _retry_after_seconds(source)
+            status, body, headers = _extract_failure_details(source)
+            classification = classify_provider_failure(
+                status=status,
+                body=body,
+                headers=headers,
+                route=route,
+                retry_after_seconds=int(retry_after) if retry_after is not None else None,
+            )
+            now = datetime.now(UTC)
+            if classification.failure_class == "own_rpd":
+                tz = route.quota.reset_timezone or "UTC"
+                until = _next_local_midnight(tz, now)
+                if retry_after is not None:
+                    until = max(until, now + timedelta(seconds=retry_after))
+                retry_sibling = False
+            elif classification.failure_class == "upstream_capacity":
+                cooldown = (
+                    retry_after if retry_after is not None else UPSTREAM_CAPACITY_COOLDOWN_SECONDS
+                )
+                until = now + timedelta(seconds=cooldown)
+                retry_sibling = True
+            else:
+                cooldown = retry_after if retry_after is not None else _DEFAULT_BLOCK_SECONDS
+                until = now + timedelta(seconds=cooldown)
+                retry_sibling = False
+
+            retry_after_str = f"{retry_after}" if retry_after is not None else "unspecified"
             print(
                 f"llm rate limit: 429 from model={resolved_model} "
-                f"(retry_after={retry_after if retry_after is not None else 'unspecified'}s), "
+                f"class={classification.failure_class} rule={classification.rule_id} "
+                f"(retry_after={retry_after_str}s), "
                 f"blocked until {until.isoformat()}",
                 flush=True,
             )
@@ -1398,7 +1519,9 @@ class LiteLLMBackend(Backend):
                 # charged -- so subtract exactly the rejected attempt, not the whole count.
                 actual_requests=max(attempted_requests - 1, 0),
             )
-            return self._deferred_handle(job, structured, messages, policy)
+            if retry_sibling:
+                return None, True
+            return self._deferred_handle(job, structured, messages, policy), False
 
         # `selection.transport` is the single source of truth for which transport *this call*
         # actually uses -- resolved once, in `select_route` (`llm_scheduler.py`), from the same
@@ -1506,29 +1629,32 @@ class LiteLLMBackend(Backend):
                     # leaves an inflight entry until the reservation expiry is reaped. The shared
                     # ledger's expiry is what keeps concurrency-only routes from being stuck.
                     input_rate, output_rate, _ = route.pricing.rates_at(datetime.now(UTC))
-                    return JobHandle(
-                        task=job.task,
-                        recipe_hash=job.recipe_hash,
-                        backend=self.name,
-                        ref=ref,
-                        structured_output=structured_name,
-                        model=resolved_model,
-                        owner=owner,
-                        route_id=route.route_id or None,
-                        input_per_token=input_rate,
-                        output_per_token=output_rate,
-                        attempted_requests=attempted_requests,
+                    return (
+                        JobHandle(
+                            task=job.task,
+                            recipe_hash=job.recipe_hash,
+                            backend=self.name,
+                            ref=ref,
+                            structured_output=structured_name,
+                            model=resolved_model,
+                            owner=owner,
+                            route_id=route.route_id or None,
+                            input_per_token=input_rate,
+                            output_per_token=output_rate,
+                            attempted_requests=attempted_requests,
+                        ),
+                        False,
                     )
-                elif response.status_code == 429:
-                    return _rate_limited(_retry_after_seconds(response))
+                elif _is_rate_limited_or_capacity(response):
+                    return _rate_limited(response)
                 else:
                     raise LLMBackendError(f"LLM dispatch returned HTTP {response.status_code}")
         except requests.RequestException as exc:
             _cleanup()
             raise LLMBackendError("LLM request failed") from exc
         except BaseException as exc:
-            if _is_rate_limited(exc):
-                return _rate_limited(_retry_after_seconds(exc))
+            if _is_rate_limited_or_capacity(exc):
+                return _rate_limited(exc)
             _cleanup()
             raise
 
@@ -1554,7 +1680,7 @@ class LiteLLMBackend(Backend):
             actual_cost=actual_cost,
             actual_requests=max(attempted_requests, 1),
         )
-        return result
+        return result, False
 
     # Overridable for deterministic tests (no real wall-clock sleeps / clock).
     _sleep = staticmethod(time.sleep)
