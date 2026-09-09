@@ -1,13 +1,20 @@
 # review/45 — System Architecture Evolution & Refactoring Plan
 
 **Maturity: L3 dev-ready per workstream · authored 2026-09-04 · hardened 2026-09-04 · detailed to
-L3 2026-09-04**
+L3 2026-09-04 · reconciled against `main` 2026-09-08 · Initiative 20 added 2026-09-08**
 
 Owner: maintainers & agents. Scope: comprehensive system architecture evolution across
 throughput, reliability, observability, LLM job admission/refinement, and structural
 codebase refactoring.
 
-> **Implementation status.** This is an umbrella document covering 19 initiatives plus the
+> **Reconciliation notice (2026-09-08).** 123 commits landed on `main` between this document's
+> last detailing pass (`b91a3bc`, 2026-09-04) and this reconciliation. Most were urgent workflow /
+> diarization / feed-config fixes, but four of them changed code this document cites directly.
+> Every stale figure, line number, and premise has been corrected in place, and every correction is
+> itemized in §1.1 below. **Read §1.1 before picking up any initiative** — one initiative
+> (Initiative 4) is now half-shipped and its remaining scope is narrower than its original text.
+
+> **Implementation status.** This is an umbrella document covering 20 initiatives plus the
 > state-store partitioning (§2) and v1 retirement (§3) programs; it is not one single feature with
 > one rollout. Each workstream below is now individually **L3 dev-ready**: exact file/function
 > references, verbatim signatures, concrete algorithms, schemas, and test names, grounded directly
@@ -39,9 +46,13 @@ coupling points, performance bottlenecks, and operational debt:
    `chapter-locator`, `moments`) download, mutate, and re-upload the same monolithic
    `state/sources/<source>/episodes.json` file. Despite `records.merge_preserving_foreign()`,
    concurrent writes risk silent data loss.
-2. **Serial & Unfiltered Checkpoint I/O (GH #1458)**: `push_records_merged` processes owned sources
-   serially ($N=1$) and re-encodes/re-uploads untouched sources at every checkpoint, causing
-   severe wall-clock inflation and runner timeouts in `tag.yml` and other long-running workflows.
+2. **Unfiltered Checkpoint I/O (GH #1458) — half fixed 2026-09-04.** `push_records_merged` used to
+   process owned sources serially ($N=1$) *and* re-encode/re-upload untouched sources at every
+   checkpoint. PR #1465 (`47f44d0`) fixed the first half: the per-source loop is now a
+   `ThreadPoolExecutor` fan-out (`citypods/statesync.py:775-785`). The second half is untouched —
+   every owned source still does a full remote fetch → merge → local save → PUT at every
+   checkpoint whether or not anything in it changed. See Initiative 4 for the corrected remaining
+   scope.
 3. **Workflow Overrun Reporting Blindspots (GH #1459)**: Long-running workflow jobs lacking
    step-level timeouts get terminated by GitHub's job-level timeout, rendering grey (cancelled)
    and skipping vital trailing reporting steps (e.g., diarization projection, sweep summaries).
@@ -55,9 +66,45 @@ coupling points, performance bottlenecks, and operational debt:
 5. **Durable Object Quota Exhaustion**: The Cloudflare Workers free plan enforces a 5M daily
    Durable Object row-read ceiling. On 2026-08-27, unindexed bookkeeping scans exhausted this quota,
    halting inference. Pre-breach alerting and structured telemetry are essential.
-6. **Core Module Monoliths**: Four files contain ~18,800 lines of code: `stages.py` (7,667 LOC),
-   `run.py` (4,356 LOC), `compute/llm.py` (3,118 LOC), and `media.py` (3,691 LOC). This creates
-   severe cognitive load, complex merge conflicts, and elevated regression risks.
+6. **Core Module Monoliths**: Four files contain ~20,500 lines of code: `stages.py` (8,982 LOC),
+   `run.py` (4,552 LOC), `compute/llm.py` (3,273 LOC), and `media.py` (3,699 LOC). This creates
+   severe cognitive load, complex merge conflicts, and elevated regression risks. These figures
+   grew ~1,700 lines in the four days between this document's first draft and its 2026-09-08
+   reconciliation — see Initiative 17.
+7. **LLM Failure-Class Blindness (throughput ceiling)**: the dispatch Worker collapses every
+   provider HTTP 429 into a single "we went too fast" response — a route penalty plus a single
+   retry, after which the job is **failed outright**, the only transient-looking status that
+   destroys work (402, 5xx, and upstream-400 all requeue). Across a 65-route catalog that is
+   mostly free tiers and free-router aggregators, a large share of 429s are the *provider's* pooled
+   upstream saturating, not our request rate; the current behavior penalizes a healthy route and
+   throws away the job. There is also no persisted evidence of which 429 is which: nothing
+   aggregates `attempts.provider_status_code`, no reason is stored, and `/v2/stats` reports no
+   failure breakdown. See Initiative 20.
+
+---
+
+## §1.1. Reconciliation Log — What Changed on `main` Between 2026-09-04 and 2026-09-08
+
+Range: `b91a3bc..1892059` (123 commits). Verified by direct inspection of the current working tree,
+not by reading commit messages. Anything not listed here was re-checked and is **still accurate as
+written** — including §3's 15-workflow v1 inventory, §2's `moments`/`integrity` ownership gaps, and
+Initiative 6's per-workflow timeout table.
+
+| # | What the doc said | What is true now | Where it is corrected |
+|---|---|---|---|
+| 1 | `push_records_merged` is serial ($N=1$) and re-pushes untouched sources | PR #1465 (`47f44d0`) **parallelized** it (`ThreadPoolExecutor`, `citypods/statesync.py:775-785`). Dirty-skipping did **not** ship. Both `DIAGNOSTIC` blocks are still live and now execute *inside worker threads* | §1 item 2, Initiative 4 |
+| 2 | `stages.py` has 19 stage classes; `EnrichmentStage` Protocol at `stages.py:570-578` | **17** concrete stage classes — PR #1595 retired `ProviderTranscriptDiarizeStage` and migrated its records; `NativeDiarizeStage` is the survivor. The Protocol moved to `stages.py:694-703` and is still not `@runtime_checkable` | Initiative 8 |
+| 3 | `ctx.stop` null-check idiom: 31 occurrences, mixed | Now **21**: 4 × `if ctx.stop and ctx.stop():`, 17 × `if ctx.stop is not None and ctx.stop():`. PR #1475 added stop-honoring to `_run_bounded`'s refill loop, so the idiom is now load-bearing in more places | Initiative 8 |
+| 4 | `print(` call sites: 104 in `run.py`, 60 in `stages.py`; `_flush_tag_batch` at `run.py:1998-2016` | **108** and **72**. `_flush_tag_batch` is now `run.py:2051-2069`; `_checkpoint_if_due` is `run.py:2071-2084` | Initiative 9 |
+| 5 | Monolith LOC: 7,667 / 4,356 / 3,118 / 3,691 (~18,800) | **8,982 / 4,552 / 3,273 / 3,699 (~20,506)**. `LinksStage` moved to `stages.py:3565-3613`; `AudioArtifact`/`AudioArtifactCache` moved to `media.py:2951-3004`. Both remain the correct first seams | Initiative 17 |
+| 6 | `enqueue_batch` does a per-job inline `put_cas` at `llm.py:1911-1918`, before the POST at `:1952-1959` | PR #1465 replaced the inline write with a **batched, thread-pooled staging step**: jobs accumulate into a `payload_writes` list during a now-pure preparation loop, then `_stage_payload` fans out under `_BATCH_B2_IO_MAX_WORKERS` (`llm.py:2042-2054`). The POST is at `llm.py:2059`. The premise is unchanged — payloads are still written before admission is known — but the *insertion point* for a pre-check is now a single clean seam instead of a per-job branch | Initiative 19 |
+| 7 | (not covered) | PR #1475 added `tag_run_time_budget_minutes: 140` (× 0.85 → a 119m cutoff) to `config/site_config.yml` `defaults`, and PR #1594 added `diarize_backstop_minutes: 320` with the documented ordering invariant `diarize_start_cutoff_minutes (285) < diarize_backstop_minutes (320) < r7-diarization.yml timeout-minutes (330)`, pinned by `tests/test_workflows.py`. These are the first worked examples of Initiative 6's Python-side/Actions-side cooperation contract | Initiative 6 |
+| 8 | (not covered) | PR #1476 (`e371168`) added `LLMRoute.hard_input_ceiling`, set on 14 of 65 routes, after **live testing** established that Gemini's free-tier enforced per-request input ceiling (~125,000) sits well below both its configured `tpm` (250,000) and its advertised context window — and that NVIDIA does **not** behave that way (it accepted ~3× its configured `tpm`). PRs #1477/#1478/#1479 followed with lane overflow models, Worker-batch-limit chunking in the deferred sweep, and provider budget-cycle preservation | Initiative 20 (this is its founding evidence) |
+| 9 | v1 proxy is "~8,536 lines" | The figure is fine as a *source+test+bench+README* count (3,719 + 3,868 + 569 + 285 = 8,441). Counting the generated `src/dispatch_limits.json` too, the directory is **~10,430 lines**. State which count is meant when citing it | §3 |
+
+**Nothing else in this document was invalidated.** In particular the two most expensive programs —
+§2 (state-store partitioning) and §3 (v1 retirement) — are untouched by the last four days of work,
+and their preconditions still hold exactly as written.
 
 ---
 
@@ -324,10 +371,12 @@ gh workflow run tag.yml -f city=arlington-tx
 ## §3. v1 LLM Dispatch Retirement — L3 Evidence Gates & Removal Surface
 
 v1 retirement is a migration of data, producer configuration, generated route metadata, and a
-deployed Worker—not a source deletion. `workers/llm-dispatch-proxy/` is **~8,536 lines** across
-`src/index.js` (3,719), `test/index.test.js` (3,868), `bench/` (569), `README.md` (285), and
-config — not the "~800 lines" Initiative 11 previously estimated; correct that figure wherever it
-recurs (it also appears as this section's own Impact line).
+deployed Worker—not a source deletion. `workers/llm-dispatch-proxy/` is **~8,441 hand-written
+lines** — `src/index.js` (3,719), `test/index.test.js` (3,868), `bench/` (569), `README.md` (285) —
+or **~10,430 lines** counting the generated `src/dispatch_limits.json` (1,884) and config. Say which
+count you mean when citing it. Either way it is not the "~800 lines" Initiative 11 previously
+estimated; correct that figure wherever it recurs (it also appears as this section's own Impact
+line).
 
 **This is a gate on [`review/44`](44-bounded-bundled-llm-dispatch.md)'s own "Phase 3 — Exit
 coexistence," not a parallel plan.** Phase 3 already specifies the mechanics: monitor the v1
@@ -432,12 +481,12 @@ which has a paired v2 branch that must survive unchanged).
 
 ---
 
-## §4. The 5 Core Architectural Pillars & 19 L3-Detailed Initiatives
+## §4. The 5 Core Architectural Pillars & 20 L3-Detailed Initiatives
 
 Each entry below is individually L3 dev-ready — implementable directly from this document. Being
 detailed is not the same as being scheduled: entering the active queue still requires a measured
 trigger (the problem it fixes has actually recurred, or the metric it improves has actually been
-profiled), and picking up all 18 at once is not the intent — pick one, per §5's dependency order.
+profiled), and picking up all 20 at once is not the intent — pick one, per §5's dependency order.
 Existing accepted designs take precedence where they overlap; several entries below (5, 11, 15, 16,
 18) are explicit pointers into those existing designs rather than independent plans.
 
@@ -551,8 +600,16 @@ Existing accepted designs take precedence where they overlap; several entries be
 - **Impact**: Reduces network transfer for verification stages by up to 95%.
 
 #### Initiative 4: Parallelized & Dirty-Skipping State Push — L3 (issue: [GH#1458](https://github.com/BashfulBits/city-meeting-podcasts/issues/1458))
-- **Problem**: `push_records_merged` serially iterates through owned sources and unconditionally
-  re-reads, re-merges, re-encodes, and re-uploads untouched records at every checkpoint.
+- **Problem, half fixed 2026-09-04 — read this before starting.** PR #1465 (`47f44d0`) already
+  landed the parallelization half of this initiative: the per-source body was extracted into a
+  nested `_push_one(sk: str) -> int` and the loop is now
+  `ThreadPoolExecutor(max_workers=min(_STATE_SYNC_MAX_WORKERS, len(source_keys)))` +
+  `sum(pool.map(_push_one, source_keys))` (`citypods/statesync.py:775-785`, with a single-key
+  fast path that skips the pool entirely). **Do not re-do that work.** The remaining, unshipped
+  half is the dirty-skipping: `push_records_merged` still unconditionally re-reads, re-merges,
+  re-encodes, and re-uploads *every* owned source at every checkpoint whether or not that source
+  changed, so an unchanged source still costs one GET + one PUT (+ a third GET whenever
+  DIAGNOSTIC block B fires) every 180 seconds.
 - **Evidence already on file**: the issue's own instrumented `tag` lane run measured 224.9s and
   555.1s per checkpoint pushing 42 sources (5.4s and 13.2s per source), all serial round-trips
   against `_STATE_SYNC_MAX_WORKERS` sitting idle at concurrency 1; this is the direct cause of
@@ -561,24 +618,28 @@ Existing accepted designs take precedence where they overlap; several entries be
   `speaker-identity` — and therefore `tag.yml`, `r7-diarization.yml`, and
   `tournament-tag-backfill.yml`; scoped `audio.yml`/`asr.yml` shards pay a smaller, single-call
   version of the same cost at end-of-run.
-- **Implementation**: `push_state()` is already parallelized (`statesync.py:509-516`,
-  `ThreadPoolExecutor(max_workers=min(_STATE_SYNC_MAX_WORKERS, len(changed)))` where
-  `_STATE_SYNC_MAX_WORKERS = 16` is defined at `statesync.py:55` — copy this exact template into
-  `push_records_merged`, do not reinvent it); the remaining hot path is the serial fetch/merge/put
-  loop in `push_records_merged` (`statesync.py:640-768`). Select dirty *source record files* before
-  any remote read (the existing `DIRTY_JOURNAL_NAME` journal or a pre-merge digest comparison both
-  work), preserve the existing fail-safe "unreadable remote means no write" rule, and parallelize
+- **Implementation (remaining scope only)**: the parallel fan-out template from
+  `push_state()` (`statesync.py:509-516`) has already been copied in; `_STATE_SYNC_MAX_WORKERS = 16`
+  at `statesync.py:55` is the shared bound. What is left is to **select dirty source record files
+  before any remote read** (the existing `DIRTY_JOURNAL_NAME` journal or a pre-merge
+  digest comparison both work), preserve the existing fail-safe "unreadable remote means no
+  write" rule, and parallelize
   only distinct source keys. Do not share a mutable local record map, clear a dirty entry before
   its PUT and manifest update both succeed, or assume `_STATE_SYNC_MAX_WORKERS` is automatically
   the right bound here: make it storage-connection-pool aware, configurable, and measured —
   reusing the existing constant is the right default unless a measurement says otherwise.
   **Before touching the hot path**, resolve or explicitly account for `push_records_merged`'s two
   live `DIAGNOSTIC` blocks tied to the still-open agenda-extraction storage-recall investigation:
-  block A (`_diag_new_artifact_keys`, the local-pre-merge and merged-pre-push checkpoints,
-  `statesync.py:706-742`) and block B (the post-push readback, `statesync.py:749-766`, which
-  re-fetches the just-written record and adds a *fourth* round-trip per source whenever a new
-  `*_artifact_key` is present). A naive parallelization would silently change their behavior or
-  interleaving. Tests need interleaved same-source/cross-source writes, one failed PUT,
+  block A (`_diag_new_artifact_keys`, the local-pre-merge and merged-pre-push checkpoints, now
+  `statesync.py:707-743`) and block B (the post-push readback, now `statesync.py:750-767`, which
+  re-fetches the just-written record and adds a *third* round-trip per source whenever a new
+  `*_artifact_key` is present). **These blocks now already run inside worker threads** — PR #1465
+  parallelized around them without changing them, so their `emit(...)` lines can now interleave
+  across sources in a nondeterministic order, which is exactly the behavior change this document
+  warned about. Deciding their disposition (keep, make thread-safe/ordered, or remove as
+  root-caused) is now a prerequisite for the dirty-skip work rather than for the parallelization
+  work, because a dirty-skip changes *whether* they run at all for an unchanged source.
+  Tests need interleaved same-source/cross-source writes, one failed PUT,
   deterministic logging, and a retry after a cancelled checkpoint — extend the existing
   `tests/test_statesync.py` suite directly (`test_push_records_merged_preserves_concurrent_audio`,
   `test_push_records_merged_owned_uids_no_sibling_shard_clobber`,
@@ -588,8 +649,12 @@ Existing accepted designs take precedence where they overlap; several entries be
   writing a parallel suite; a before/after timing comparison on one real `workflow_dispatch` run of
   `tag.yml` (the checkpoint's own `persist=..s push=..s` log line) is the issue's own suggested
   verification.
-- **Impact**: Drops checkpoint latency from 15–30s down to <2s; resolves timeout cancellation in
-  `tag.yml` and long-running enrichment workflows.
+- **Impact (revised)**: the parallelization already delivered the wall-clock collapse from the
+  serial B2 tail. The remaining dirty-skip removes the *per-source constant cost* on unchanged
+  sources — the one that scales with catalog size rather than with work done — which is what keeps
+  a 42-source `tag` checkpoint from growing back into the same timeout as the catalog grows. Claim
+  a number only from a before/after `persist=..s push=..s` comparison on one real
+  `workflow_dispatch` run of `tag.yml`.
 
 ---
 
@@ -618,7 +683,7 @@ Existing accepted designs take precedence where they overlap; several entries be
   | `chapter-agenda.yml :: extract` | 240m | **Yes — 225m**, step "Extract agenda candidates" |
   | `chapter-locator.yml :: locate` | 45m | **Yes — 38m**, step "Locate agenda candidates in complete transcripts" |
   | `llm-tournament.yml :: tournament` | 30m | **Yes — 22m**, step "Run bounded tag samples" |
-  | `r7-diarization.yml :: diarize` | 330m | No — a cancel skips the unconditional trailing "Project speaker identities and queue review candidates" step; diarization work finishes but is never projected or queued for review |
+  | `r7-diarization.yml :: diarize` | 330m | No — a cancel skips the unconditional trailing "Project speaker identities and queue review candidates" step; diarization work finishes but is never projected or queued for review. **It did gain a Python-side budget on 2026-09-07** (`diarize_backstop_minutes: 320`), so the step timeout that is still missing must sit between 320m and 330m |
   | `audio.yml :: audio` | 360m | No — its `if: always()`-guarded "Collect H16 run event"/"Upload H16 shard evidence" steps are only partially protected, inside the runner's cancellation grace period before force-termination |
   | `llm-deferred-sweep.yml :: sweep` | 360m | No — loses the `llm_deferred_sweep_end` summary, the only place `submit_failed` currently surfaces |
   | `r5-benchmark.yml :: benchmark` | 180m | No |
@@ -642,6 +707,19 @@ Existing accepted designs take precedence where they overlap; several entries be
   Reproduce this exact comment (adjusted per-job) and a step ratio of ~88–93% of the job timeout
   for each of the six remaining rows; give `asr.yml`'s two jobs an explicit job-level timeout as
   its own decision first (there is no existing value to derive a ratio from).
+- **Two worked examples now exist — copy their shape, do not invent a new one.** Both landed after
+  this table was written and both are already pinned by `tests/test_workflows.py`:
+  - `tag.yml`: `config/site_config.yml` `defaults.tag_run_time_budget_minutes: 140`, multiplied by
+    an 0.85 safety factor to a **119m** in-process cutoff, under the **165m** step timeout, under
+    the **180m** job timeout. Three tiers, each strictly below the next.
+  - `r7-diarization.yml`: `diarize_start_cutoff_minutes: 285` (bounds what may *begin*) <
+    `diarize_backstop_minutes: 320` (bounds how long an in-flight item may keep the job alive) <
+    the **330m** job timeout (the gap is what lets the run persist its records). The missing piece
+    is only the step timeout between the last two.
+
+  The generalized rule to apply to every remaining row: **in-process cutoff < in-process backstop <
+  step `timeout-minutes` < job `timeout-minutes`**, with each boundary asserted in
+  `tests/test_workflows.py` so the ordering cannot drift silently.
 - **Cooperation contract with the Python-side stop mechanism** (`citypods/run.py`): the SIGTERM
   handler is `install_signal_handlers()` (`run.py:4161`, called only from the two CLI entry points
   in `citypods/cli.py`), which registers `_signal_stop_handler` (`run.py:4147`) writing to the
@@ -730,15 +808,17 @@ Existing accepted designs take precedence where they overlap; several entries be
 
 #### Initiative 8: `EnrichmentStage` Protocol Hardening — L3 (premise corrected)
 - **The original problem statement is factually wrong for the current code — do not act on it as
-  written.** All 19 stage classes in `citypods/stages.py` already implement the *identical*
-  signature:
+  written.** All **17** stage classes in `citypods/stages.py` already implement the *identical*
+  signature (it was 19 when this was first written; PR #1595 retired
+  `ProviderTranscriptDiarizeStage` and migrated its stale provider speaker records, leaving
+  `NativeDiarizeStage` as the only diarization stage):
   ```python
   def process(
       self, provider, city: City, episodes: list[Episode], ctx: StageContext
   ) -> StageStats:
   ```
-  (verified at all 19 class definitions). A `Protocol` already exists —
-  `citypods/stages.py:570-578`:
+  (verified at all 17 class definitions; `grep -c 'def process('` returns 18 — the 17 stages plus
+  the Protocol's own stub). A `Protocol` already exists — `citypods/stages.py:694-703`:
   ```python
   class EnrichmentStage(Protocol):
       name: str
@@ -758,13 +838,15 @@ Existing accepted designs take precedence where they overlap; several entries be
   is not — no such decorator is imported/used anywhere in the file) so `isinstance(stage,
   EnrichmentStage)` becomes usable at registration/test time; consider relocating it into a new
   `citypods/pipeline/contract.py` for discoverability, re-exporting from `stages.py` for backward
-  compatibility. (2) Normalize the `ctx.stop` null-check idiom, which genuinely is ad hoc: 31
-  occurrences split between `if ctx.stop and ctx.stop():` (e.g. lines 955, 1211, 1297, 1364) and
-  `if ctx.stop is not None and ctx.stop():` (e.g. lines 1688, 1998, 2143, 2555) — functionally
-  identical, stylistically inconsistent. Pick one and apply it uniformly; this is the actual
-  substance behind "ad-hoc wall-clock stop budget handling," not a structural defect.
+  compatibility. (2) Normalize the `ctx.stop` null-check idiom, which genuinely is ad hoc: **21**
+  occurrences split **4** × `if ctx.stop and ctx.stop():` and **17** ×
+  `if ctx.stop is not None and ctx.stop():` — functionally identical, stylistically inconsistent.
+  Re-grep for the current line numbers; they move constantly. Pick the majority form
+  (`is not None`) and apply it uniformly. This got slightly more load-bearing on 2026-09-04, when
+  PR #1475 made `_run_bounded`'s task-refill loop honor `ctx.stop` across enrich passes; this is
+  the actual substance behind "ad-hoc wall-clock stop budget handling," not a structural defect.
 - **Do not** rename `process`→`execute`, invent a `should_run` method that doesn't exist, or touch
-  all 19 classes' primary entrypoint — there is no behavioral divergence to fix there, and doing so
+  all 17 classes' primary entrypoint — there is no behavioral divergence to fix there, and doing so
   would be a pure-cost, zero-benefit rewrite of the one uniform call site.
 - **Impact**: Makes the existing stage contract mechanically verifiable at registration/test time
   and removes one real stylistic inconsistency; corrects a previously-inaccurate problem statement.
@@ -775,8 +857,9 @@ Existing accepted designs take precedence where they overlap; several entries be
 
 #### Initiative 9: Structured Event Telemetry & Durable Object Quota Alarms — L3
 - **Problem**: `citypods/run.py` and `citypods/stages.py` narrate exclusively through unstructured
-  `print(..., flush=True)` (104 call sites in `run.py`, 60 in `stages.py`; zero use of stdlib
-  `logging` anywhere in `citypods/`), blocking programmatic ingestion. Separately, the Cloudflare
+  `print(..., flush=True)` (**108** call sites in `run.py`, **72** in `stages.py` as of 2026-09-08;
+  zero use of stdlib `logging` anywhere in `citypods/`), blocking programmatic ingestion.
+  Separately, the Cloudflare
   Workers Free plan's 5M-daily Durable Object row-read ceiling was exhausted on 2026-08-27
   (review/44's "Durable Objects rows-read overage retrospective") with no pre-breach warning.
 - **Structured events — implementation**:
@@ -796,14 +879,16 @@ Existing accepted designs take precedence where they overlap; several entries be
      most multi-step functions. Do not rewrite all ~164 print call sites. Add one `emit_event(...)`
      call at the start and end of each already-narrated phase boundary; the L3 issue must enumerate
      every site by a fresh grep (line numbers shift as nearby code lands — re-grep, don't trust a
-     stale citation), but these five are confirmed real as of this writing and keep their existing
-     human-readable print line unchanged alongside the new structured one: `run.py:2168`/`2176`
-     (audio pass start/done), `run.py:2190`/`2200` (transcript pass start/done),
-     `run.py:1998-2016`'s `_flush_tag_batch()` (tag LLM batch flush — port its existing
-     `jobs=`/`pending=`/`completed=`/`errors=` values verbatim into `emit_event`'s fields; this
-     function now runs at both `_checkpoint_if_due()` and end-of-pass, so instrument it once inside
-     the shared helper rather than at each call site), `run.py:2705-2707` (state restore summary),
-     and `stages.py:2660-2668` (`_log_asr_external_required` — already structured-ish; port its
+     stale citation), but these five seams are confirmed real as of 2026-09-08 and keep their
+     existing
+     human-readable print line unchanged alongside the new structured one. **Locate each by name,
+     not by line number** — the four days between this doc's drafting and its reconciliation moved
+     every one of them: the audio pass start/done pair, the transcript pass start/done pair,
+     `_flush_tag_batch()` (now `run.py:2051-2069`; tag LLM batch flush — port its existing
+     `jobs=`/`pending=`/`completed=`/`errors=` values verbatim into `emit_event`'s fields; it runs
+     at both `_checkpoint_if_due()` (`run.py:2071-2084`) and end-of-pass, so instrument it once
+     inside the shared helper rather than at each call site), the state-restore summary in
+     `run.py`, and `stages.py`'s `_log_asr_external_required` (already structured-ish; port its
      fields).
   3. **Redaction enforced by construction.** `emit_event`'s `**fields` accepts only
      `int | float | str | bool | None`; passing anything else (a list, dict, or object) must raise
@@ -1009,11 +1094,27 @@ Existing accepted designs take precedence where they overlap; several entries be
   score thresholds, cost ceiling, and a no-auto-production-route rule.
 
 #### Initiative 19: Admission-First & Registry-First Tag Dispatch ([GH#1463](https://github.com/BashfulBits/city-meeting-podcasts/issues/1463)) — L3
-- **Problem, confirmed against the real code**: `LiteLLMBackend.enqueue_batch()`
-  (`citypods/compute/llm.py:1806-2124`) unconditionally writes every job's B2 payload —
-  `storage.put_cas(payload_key, canonical_payload_str.encode("utf-8"), "application/json")`
-  (`:1911-1918`) — **before** it ever POSTs the batch to the Worker's
-  `v2/jobs:enqueue-batch` (`:1952-1959`). Admission/capacity rejection (`purpose_not_registered`,
+- **Problem, confirmed against the real code (re-verified 2026-09-08, mechanics changed under it)**:
+  `LiteLLMBackend.enqueue_batch()` (`citypods/compute/llm.py:1901+`) still unconditionally writes
+  every job's B2 payload **before** it ever POSTs the batch to the Worker's
+  `v2/jobs:enqueue-batch` (`llm.py:2059`) — but PR #1465 restructured *how*. The per-job inline
+  `put_cas` is gone; the preparation loop is now pure and appends
+  `(payload_key, canonical_payload_str.encode("utf-8"))` tuples to a `payload_writes` list, which
+  a single staging step then fans out:
+  ```python
+  def _stage_payload(item: tuple[str, bytes]) -> None:
+      payload_key, payload_body = item
+      storage.put_cas(payload_key, payload_body, "application/json")
+
+  if payload_writes:
+      workers = min(_BATCH_B2_IO_MAX_WORKERS, len(payload_writes))
+      ...
+  ```
+  (`llm.py:2042-2054`). **This makes Item 1 materially easier than when it was written**: the
+  admission pre-check now has exactly one insertion point — immediately before `if payload_writes:`
+  — instead of needing a per-job branch, and jobs the reservation refuses can simply be dropped
+  from `payload_writes`/`prepared_jobs` before any B2 write happens at all.
+  Admission/capacity rejection (`purpose_not_registered`,
   `model_not_in_lane`, per-purpose `daily_write_units` exhaustion, global
   `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`) happens entirely inside the DO's
   `enqueueBatch` (`workers/llm-dispatch-v2/src/coordinator.js:650+`), *after* that write has
@@ -1082,24 +1183,475 @@ Existing accepted designs take precedence where they overlap; several entries be
   Initiative 4's checkpoint-skipping can safely rely on; gives operators real per-purpose
   admission/rejection visibility via the existing stats surface.
 
+
+#### Initiative 20: Endpoint Rate-Limit Characterization & Failure-Class-Aware Backoff — L3
+
+> **The pivotal throughput item.** Every other Pillar-4 initiative optimizes *what* we send.
+> This one fixes *what we do when a provider says no* — currently the single largest source of
+> avoidable lost LLM work in the fleet.
+
+##### 20.0 Problem — one bucket for nine different "no"s
+
+`workers/llm-dispatch-v2/` reduces every non-2xx provider response to five coarse outcomes:
+HTTP 429 (`index.js:606` → `{ retry429: true }`), 402, 5xx, a 400 whose body blames the upstream
+(`gateway.js:199` `upstreamCapacityFailure`), and "everything else is terminal". The 429 bucket is
+the throughput problem, because it is one bucket with exactly one response.
+
+`Coordinator.authorizeRetry` (`coordinator.js:2191-2264`) treats **every** 429 as "we went too
+fast," unconditionally:
+
+```js
+UPDATE routes SET throttle_streak = ?, last_provider_status = 429,
+                  buffer_seconds = ?, buffer_updated_at = ?,
+                  blocked_until = MAX(COALESCE(blocked_until, 0), ?)
+ WHERE route_id = ?
+```
+
+with `buffer_seconds = min(MAX_ROUTE_BUFFER_SECONDS=120, effectiveBuffer + (retryAfter ?? 60))`,
+and the whole retry path bounded by **`MAX_429_RETRIES = 1`** (`wrangler.jsonc:80`). When that one
+retry is refused, `dispatchOneJob` (`index.js:749-757`) returns `terminal_error` with
+`provider_status_code: 429`, and `completeBatch`'s switch (`coordinator.js:2380-2384`) moves the job
+to **`failed`**.
+
+**429 is therefore the only transient-looking status that destroys a job.** 402 requeues
+(`isPaymentRequired`), 5xx requeues (`isFinal5xx`), upstream-400 requeues
+(`isUpstreamCapacityFailure`). Only 429 — the status most likely to be someone else's problem —
+throws the work away.
+
+That is backwards for this fleet's actual route mix. The catalog is **65 routes across 12
+providers** (`workers/llm-dispatch-v2/src/dispatch_limits.json`), and most are free tiers or
+free-router aggregators (`airforce`, `opencode`, `nvidia`, `kilo`, `siliconflow`, `zai`,
+`openrouter`, plus `gemini`/`groq` free tiers — `route.free === true`). An aggregator returns 429
+when *its own pooled upstream* is saturated, with no relation to our request rate: a route we have
+not called in an hour can 429 on its first request. Today that response (a) adds a 60-second buffer
+and a `throttle_streak` increment to a route that did nothing wrong, (b) burns the single 429
+retry, and (c) fails the job.
+
+Two further conflations live in the same bucket:
+
+- **Daily-quota 429s are indistinguishable from per-minute 429s.** Gemini's free tier returns 429
+  `RESOURCE_EXHAUSTED` for `GenerateRequestsPerDayPerProjectPerModel` in exactly the same shape as
+  its per-minute metric. Both currently get a ≤120s buffer, so the Worker keeps re-attempting a
+  route whose quota does not reset until midnight `America/Los_Angeles`. The correct machinery
+  already exists and is never reached: `dailyQuotaReadyAt` / `nextZonedMidnightMs` /
+  `routeResetTimezone` (`pacing.js:82-124`) only fire off `rpd_count`, and **nothing in the 429
+  path ever writes `rpd_count`**.
+- **Token-quota 429s are charged to the request counter.** A TPM rejection means the token bucket
+  is wrong, not that request *spacing* is wrong. `buffer_seconds` delays the next request without
+  correcting `full_token_budget`, so the route immediately re-offers capacity it does not have.
+
+And there is no evidence base to tune against. `attempts.provider_status_code` is retained for 7
+days (`_attemptRetentionMs`) but never aggregated; no *reason* is persisted anywhere;
+`GET /v2/stats` (`index.js:308` → `coordinator.js:1090`) reports no failure breakdown.
+
+**The precedent this initiative generalizes.** PR #1476 (`e371168`, 2026-09-04) found by
+hand-testing the live Gemini API that its configured `tpm: 250000` was *not* the enforced
+per-request ceiling (~125,000 was), added `LLMRoute.hard_input_ceiling`, and set it on 14 routes —
+while explicitly confirming the same rule did **not** hold for NVIDIA, which accepted ~3× its
+configured `tpm`. That is exactly the right method, applied once, manually, to one field, on 14 of
+65 routes. Initiative 20 turns it into a repeatable, evidence-producing loop across all 65.
+
+##### 20.1 Scope and non-goals
+
+**In scope**: classifying provider failures; changing route-penalty and job-disposition behavior per
+class; a live probe harness that measures enforced limits; bounded per-class telemetry; feeding
+measured values back into `config/provider_limits.yml`.
+
+**Explicitly NOT in scope** (do not touch these while implementing this initiative):
+`push_records_merged` (Initiative 4), the ingress admission reservation (Initiative 19 item 1),
+prompt caching (Initiative 13), lane priority (Initiative 14), and v1 (`llm-dispatch-proxy`) —
+v1 is being retired by §3 and must not receive new classification logic.
+
+##### 20.2 The failure-class taxonomy (fixed enum — do not add classes ad hoc)
+
+Exactly nine string values. They are the contract between the classifier, the Worker's policy
+table, the telemetry table, and the probe's report:
+
+| class | means | who caused it |
+|---|---|---|
+| `own_rpm` | our per-minute **request** quota on this route/account is spent | us |
+| `own_rpd` | our per-day **request** quota on this route/account is spent | us |
+| `own_tpm` | our per-minute **token** quota on this route/account is spent | us |
+| `upstream_capacity` | the provider's own upstream/pool is saturated, overloaded, or the model is temporarily unavailable | **not us** |
+| `gateway_limit` | Cloudflare AI Gateway itself rate-limited or rejected the call before the provider saw it | infrastructure |
+| `payment_required` | billing-layer exhaustion (HTTP 402) | us, but not fixable by pacing |
+| `request_defect` | our request is genuinely malformed/unauthorized/unknown-model | us, permanently |
+| `server_error` | provider 5xx | not us |
+| `unknown_429` | a 429 no signature matched | unknown → treated conservatively |
+
+##### 20.3 PR-1 — the classifier (pure function, zero behavior change)
+
+Create **`workers/llm-dispatch-v2/src/classify.js`**. It must export exactly two things and must
+not import anything from `coordinator.js`, `index.js`, or `b2.js` (keeping it unit-testable in
+isolation, the same shape as `pacing.js`).
+
+```js
+/** Ordered rule table. First match wins. Each rule is data, not code, so adding a provider is
+ * a data edit. `provider: null` means "applies to every provider". */
+export const FAILURE_SIGNATURES = [ /* see 20.4 */ ];
+
+/**
+ * @param {{status:number, body:any, headers:Headers|null, route:{provider:string,route_id:string,
+ *          upstream_429_default?:string}}} input
+ * @returns {{failure_class:string, rule_id:string, retry_after_seconds:number|null,
+ *            scope:"route"|"provider"|"account"}}
+ */
+export function classifyProviderFailure({ status, body, headers, route }) { /* ... */ }
+```
+
+Rules for the implementation, in order:
+
+1. `status === 402` → `payment_required`, rule `"http-402"`, scope `"route"`.
+2. `status >= 500 && status <= 599` → `server_error`, rule `"http-5xx"`, scope `"route"`.
+3. `status === 400 && upstreamCapacityFailure(status, body)` (import from `gateway.js`) →
+   `upstream_capacity`, rule `"upstream-400-body"`, scope `"route"`.
+4. If `headers` has `cf-aig-error` **or** (`status === 429` and there is no `retry-after`, no
+   `x-ratelimit-*` header, and the body has no `error` object) → `gateway_limit`, rule
+   `"cf-aig"`, scope `"provider"`.
+5. `status === 429` → walk `FAILURE_SIGNATURES` in order; the first rule whose `provider` is
+   `null` or equals `route.provider` **and** whose `match` predicate returns true wins.
+6. `status === 429` with no signature match → `route.upstream_429_default === "upstream_capacity"`
+   ? `upstream_capacity` (rule `"route-default-upstream"`) : `unknown_429` (rule `"unmatched-429"`).
+7. Any other status → `request_defect`, rule `"http-4xx"`, scope `"route"`.
+
+`retry_after_seconds` is always `parseRetryAfterSeconds(response, body)`'s value, imported from
+`gateway.js` — **do not write a second parser**; that function already handles integer seconds,
+Go-style durations, HTTP-dates, `x-ratelimit-reset-*`, and body-message text.
+
+**Do not modify any caller in PR-1.** PR-1 ships the module plus
+`workers/llm-dispatch-v2/test/classify.test.js` only.
+
+##### 20.4 The signature table (the data a simple model extends)
+
+Each entry: `{ rule_id, provider, failure_class, match }` where `match({status, body, headers})`
+returns boolean. `body?.error?.message` is lowercased once by the caller and passed as `msg`.
+Seed it with these — every one is grounded in a shape this repo has already observed or already
+parses:
+
+| `rule_id` | provider | class | matches when |
+|---|---|---|---|
+| `gemini-rpd` | `gemini` | `own_rpd` | `msg` contains `perday` or `requests per day` or `generaterequestsperdayper` |
+| `gemini-tpm` | `gemini` | `own_tpm` | `msg` contains `inputtokensperminute` or `tokens per minute` |
+| `gemini-rpm` | `gemini` | `own_rpm` | `msg` contains `requests per minute` or `generaterequestsperminuteper` |
+| `gemini-resource-exhausted` | `gemini` | `own_rpm` | `body?.error?.status === "RESOURCE_EXHAUSTED"` (fallback after the three above) |
+| `groq-rate-limit` | `groq` | `own_rpm` | `body?.error?.code === "rate_limit_exceeded"` |
+| `groq-tpd` | `groq` | `own_rpd` | `msg` contains `tokens per day` or `requests per day` |
+| `openai-shaped-rate-limit` | `null` | `own_rpm` | `body?.error?.type === "rate_limit_exceeded"` or `body?.error?.code === "rate_limit_exceeded"` |
+| `remaining-zero-header` | `null` | `own_rpm` | `headers.get("x-ratelimit-remaining-requests") === "0"` |
+| `remaining-tokens-zero-header` | `null` | `own_tpm` | `headers.get("x-ratelimit-remaining-tokens") === "0"` |
+| `overloaded` | `null` | `upstream_capacity` | `msg` contains `overloaded`, `no capacity`, `capacity`, `try again later`, `temporarily unavailable`, `model is unavailable`, `upstream`, `server busy`, `all providers`, `no available provider`, or `service unavailable` |
+| `airforce-guaranteed-response` | `airforce` | `upstream_capacity` | `msg` contains `guaranteed response` (the shared-pool queue hint `parseErrorMessageRetryAfter` already parses) |
+| `opencode-server-error` | `opencode` | `upstream_capacity` | `body?.error?.type === "server_error"` |
+| `concurrency` | `null` | `upstream_capacity` | `msg` contains `concurrent` or `too many concurrent requests` |
+
+Ordering matters: put the three specific Gemini metric rules **before** `gemini-resource-exhausted`,
+and put every provider-scoped rule before the `provider: null` catch-alls.
+
+Mirror this table verbatim in Python at **`citypods/compute/llm_failure_class.py`** with the same
+`rule_id` values and the same order (this repo's convention is that each Worker directory is
+self-contained — see `pacing.js`'s own `zonedDateKey` comment on duplicating rather than sharing).
+Add **`tests/test_llm_failure_class.py::test_rule_ids_match_worker_table`**, which reads
+`workers/llm-dispatch-v2/src/classify.js`, extracts every `rule_id:` string with a regex, and
+asserts the ordered list equals the Python module's ordered list — so the two can never drift.
+
+##### 20.5 PR-2 — the probe harness
+
+Create **`citypods/llm_rate_probe.py`**, modeled directly on `citypods/llm_compat_probe.py`'s
+contract: *a fixed harmless prompt; never opens storage, records, or the LLM budget ledger*. Repeat
+that promise in its module docstring and enforce it by importing neither `citypods.storage` nor
+`citypods.compute.budget`.
+
+CLI (argparse), following the house `--apply` convention (`scripts/reset_agenda_chapter_state.py`
+et al.: dry run unconditionally by default, no `--dry-run` flag, print a trailer reminding the
+operator to pass `--apply`):
+
+```
+python -m citypods.llm_rate_probe
+    [--route ROUTE_ID]...        # repeatable; default: every route in the catalog
+    [--provider NAME]...         # repeatable; expands to that provider's routes
+    [--phase {0,1,2,3,4}]...     # repeatable; default: 0
+    [--include-paid]             # default: only routes with free == true
+    [--max-requests-per-route N] # default 40
+    [--max-requests-total N]     # default 400
+    [--max-wall-seconds N]       # default 900
+    [--out PATH]                 # default llm_route_characterization.json
+    [--apply]                    # without this, print the plan and issue ZERO live calls
+```
+
+Route catalog source: `citypods/compute/llm_routes.json` (already emitted by
+`scripts/compile_llm_limits.py`; do not re-parse the YAML). Credentials come from the same
+`api_key_env` names the catalog already carries — `MISTRAL_API_KEY`, `AIRFORCE_API_KEY`,
+`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `SILICONFLOW_API_KEY`, `GROQ_API_KEY`, `SAMBANOVA_API_KEY`,
+`ZAI_API_KEY`, `OPENROUTER_API_KEY`, `KILO_API_KEY`, `OPENCODE_API_KEY`, `NVIDIA_API_KEY` (plus the
+`_SECONDARY` variants). A route whose env var is unset is **skipped and reported as skipped**, never
+failed.
+
+Phases — each is a separate function returning a list of observation dicts:
+
+- **Phase 0 — reachability & header inventory** (1 request/route). Send the fixed prompt with
+  `max_tokens: 1`. Record: `status`, every response header whose *name* matches
+  `^(x-ratelimit-|ratelimit-|retry-after|cf-aig-|cf-ray|x-request-id)` (name **and** value — these
+  are limit metadata, never credentials), `body.error.type` / `.code` / `.status`, and
+  `body.error.message` truncated to 300 characters. Then run `classifyProviderFailure`'s Python
+  twin over it and record `failure_class` + `rule_id`.
+- **Phase 1 — declared-vs-enforced RPM.** Send `min(rpm, 20) + 2` requests spaced at
+  `60 / rpm` seconds. Record the 1-based index of the first 429 and its class. No 429 → record
+  `enforced_rpm_at_least: <count>`.
+- **Phase 1b — burst capacity.** Send requests back-to-back with zero spacing until the first 429
+  or `min(2 * rpm + 5, 40)`. Record `observed_burst`.
+- **Phase 2 — enforced input ceiling.** Binary-search, in **at most 8 probes**, the largest
+  accepted input size between 1,000 tokens and `route.input_context_limit`, padding the user
+  message with repeated filler text. Record `observed_input_ceiling`. This generalizes exactly what
+  PR #1476 did by hand for Gemini.
+- **Phase 3 — recovery timing.** After any 429, poll a 1-token request at 5s, 15s, 30s, 60s, 120s,
+  300s until one succeeds. Record `observed_recovery_seconds` and, alongside it, the
+  `retry_after_seconds` the 429 had advertised. Set `retry_after_trustworthy: true` only when the
+  advertised value is within ±50% of the observed recovery.
+- **Phase 4 — upstream-vs-own labeling.** Any route that 429s during **Phase 0** — the first
+  request after an idle period, before this run sent it any volume — **cannot** be rate-limited by
+  our own rate. Record `ground_truth: "upstream_capacity"` for it, then check whether the classifier
+  agreed. The per-route disagreement rate is the classifier's measured accuracy and the acceptance
+  gate for PR-3.
+
+Safety rails, all mandatory: every request uses `max_tokens: 1` except Phase 2; the prompt is a
+single fixed harmless string; totals are hard-capped by `--max-requests-total` and
+`--max-wall-seconds` (check both before *every* request, not per phase); paid routes are excluded
+unless `--include-paid`; nothing is written to B2, records, or any ledger; and **the probe never
+edits config** — it emits a report a human turns into a PR.
+
+Add **`.github/workflows/llm-rate-probe.yml`**, copied from `.github/workflows/llm-compat-probe.yml`
+(`workflow_dispatch` only, `permissions: contents: read`, `concurrency: group: llm-rate-probe`,
+`timeout-minutes: 30`, SHA-pinned actions, `pip install -e ".[llm]" -c constraints/prod.txt`). Add
+inputs for `provider`, `phases`, and an `apply` boolean that defaults to `false`. Upload the report
+as an artifact and render its summary table into `$GITHUB_STEP_SUMMARY`.
+
+##### 20.6 PR-3 — class-aware route penalties and job disposition (the throughput fix)
+
+Wire `classifyProviderFailure` into the Worker. Two files change.
+
+**`index.js`** — in `attemptProviderCall`, classify **before** returning, and carry the class
+through. The 429 return becomes:
+
+```js
+if (response.status === 429) {
+  const cls = classifyProviderFailure({ status: 429, body: response.body,
+                                        headers: response.headers, route });
+  return { retry429: true, actualStartAt, actualEndAt,
+           correlationId: response.correlationId,
+           retryAfterSeconds: response.retryAfterSeconds,
+           failureClass: cls.failure_class, ruleId: cls.rule_id };
+}
+```
+
+Pass `failureClass` into `coordinator.authorizeRetry(...)` as a new trailing argument, and put it on
+every `AttemptResult` as `failure_class` so `completeBatch` can act on it.
+
+**`coordinator.js`** — replace `authorizeRetry`'s single unconditional `UPDATE routes` with this
+policy table, applied inside the same `transactionSync`:
+
+| `failure_class` | route ledger effect | job disposition |
+|---|---|---|
+| `own_rpm` | **unchanged from today**: `throttle_streak += 1`, `buffer_seconds = min(MAX_ROUTE_BUFFER_SECONDS, effectiveBufferSeconds(ledger, now) + (retryAfter ?? MAX_429_BACKOFF_SECONDS))`, `buffer_updated_at = now`, `blocked_until = MAX(blocked_until, now + retryAfter*1000)` | authorize in-window retry as today; on refusal **requeue** (not fail) |
+| `own_rpd` | `rpd_count = <route rpd>`, `rpd_day_key = zonedDateKey(now, routeResetTimezone(route))`, `blocked_until = MAX(blocked_until, nextZonedMidnightMs(now, routeResetTimezone(route)))`. **No** `buffer_seconds`, **no** `throttle_streak` | **do not** retry in-window — requeue immediately so a sibling route can serve it now |
+| `own_tpm` | `full_token_budget = 0`, `token_budget_updated_at = now`, `tpm_reserved = <route tpm>`, `tpm_window_start = now`. **No** `buffer_seconds`, **no** `throttle_streak` | requeue |
+| `upstream_capacity` | `upstream_capacity_streak += 1`; `blocked_until = MAX(blocked_until, now + cooldownMs)` where `cooldownMs = min(UPSTREAM_CAPACITY_MAX_COOLDOWN_SECONDS, UPSTREAM_CAPACITY_COOLDOWN_SECONDS * 2**(streak-1)) * 1000 * (1 + Math.random()*0.5)`. **No** `buffer_seconds`, **no** `throttle_streak` — this route is healthy, its supplier is not | requeue, charged to the existing `transient_retry_count` budget (`_max5xxRetries()`), exactly like a 5xx |
+| `gateway_limit` | apply the same cooldown to **every route of that provider** (scope `"provider"`) | requeue |
+| `unknown_429` | conservative — same as `own_rpm` | requeue |
+
+New env knobs in `wrangler.jsonc` `vars`, read through the existing `_envInt` helper:
+`"UPSTREAM_CAPACITY_COOLDOWN_SECONDS": "15"` and `"UPSTREAM_CAPACITY_MAX_COOLDOWN_SECONDS": "300"`.
+
+New `routes` columns, added with the existing `_ensureColumn` idiom (`coordinator.js:249-258`) so an
+already-deployed DO migrates on boot:
+
+```js
+this._ensureColumn("routes", "upstream_capacity_streak", "INTEGER NOT NULL DEFAULT 0");
+this._ensureColumn("routes", "last_failure_class", "TEXT NOT NULL DEFAULT ''");
+```
+
+Extend the existing success handler (`coordinator.js:2453-2460`) — which already clears
+`throttle_streak`, `buffer_seconds`, `payment_required_streak`, and `blocked_until` on any success —
+to also clear `upstream_capacity_streak` and `last_failure_class`. That is the only reset path
+needed; do not add a second one.
+
+**The single highest-value line in this initiative**, in `completeBatch`'s switch
+(`coordinator.js:2367-2384`): a job whose terminal outcome carries `provider_status_code === 429`
+must **requeue under the transient budget instead of failing**. Add it to the existing predicate
+family:
+
+```js
+const isRateLimitTerminal =
+  result.provider_status_code === 429 &&
+  job.transient_retry_count < this._max5xxRetries();
+// ... newState = shouldRetry5xx || isPaymentRequired || isRateLimitTerminal ? "queued" : "failed";
+```
+
+Route it through the **same** requeue branch that `shouldRetry5xx || isPaymentRequired` uses — the
+one that also calls `this._indexQueuedJobModels(job)`. Its existing comment explains exactly why:
+claiming a job deletes its `job_models` index rows, so a requeue that only rewrites `state` strands
+the job permanently. Do not add a new branch.
+
+##### 20.7 PR-4 — bounded per-class telemetry
+
+Add one table, keyed so it can never grow with traffic (65 routes × 9 classes × retention days —
+the same bounded shape as `ingress_purpose`, and explicitly **not** a per-failure row, which would
+reproduce the 2026-08-27 rows-read incident):
+
+```sql
+CREATE TABLE IF NOT EXISTS route_failures (
+  utc_day       TEXT    NOT NULL,
+  route_id      TEXT    NOT NULL,
+  failure_class TEXT    NOT NULL,
+  count         INTEGER NOT NULL DEFAULT 0,
+  last_status   INTEGER,
+  last_seen_at  INTEGER NOT NULL,
+  PRIMARY KEY (utc_day, route_id, failure_class)
+);
+```
+
+Increment with a single `INSERT ... ON CONFLICT(utc_day, route_id, failure_class) DO UPDATE SET
+count = count + 1, last_status = excluded.last_status, last_seen_at = excluded.last_seen_at` from
+both `authorizeRetry` and `completeBatch`. Prune rows older than `ATTEMPT_RETENTION_DAYS` using the
+existing `_maxAttemptPrunePerTick` budget idiom — reuse it, do not add a third knob.
+
+Expose it from the existing bounded diagnostic RPC `stats(now, limit = 20)`
+(`coordinator.js:1090`), already served at `GET /v2/stats` (`index.js:308`) — do not invent a second
+reporting path. Add today's rows only, ordered by `count DESC`, capped at `limit`.
+
+Extend **`workers/llm-dispatch-v2/test/rows-read.test.js`** with the same methodology that file
+already uses: seed at two scales, assert the new query plan contains no `SCAN` over a growable
+table via `EXPLAIN QUERY PLAN`, and add one deliberate mutation (drop the primary-key index) that
+proves the test actually catches the regression it claims to.
+
+##### 20.8 PR-5 — feed the measurements back into config
+
+Per route in `config/provider_limits.yml`, all optional, all defaulting to "absent = unchanged
+behavior":
+
+```yaml
+observed_on: 2026-09-15            # date the probe ran
+observed_rpm: 8                    # enforced RPM when it differs from the declared one
+observed_burst: 3                  # back-to-back requests accepted before the first 429
+observed_input_ceiling: 125000     # feeds hard_input_ceiling
+observed_recovery_seconds: 45      # measured, from Phase 3
+retry_after_trustworthy: false     # when false, the Worker prefers observed_recovery_seconds
+upstream_429_default: upstream_capacity   # this route's unmatched 429s default to not-our-fault
+```
+
+Thread each field through the **same four files** PR #1476 used for `hard_input_ceiling` — that PR
+is the exact template to copy: `scripts/compile_llm_limits.py` (emit onto every route in **all
+three** outputs: v1's `dispatch_limits.json`, v2's `dispatch_limits.json`, and
+`citypods/compute/llm_routes.json`), `citypods/compute/llm_policy.py` (`LLMRoute` field), the
+Worker's `pacing.js`/`classify.js` consumers, and tests.
+
+**`retry_after_trustworthy: false` is the one that changes behavior**: `authorizeRetry` currently
+treats a provider-supplied `Retry-After` as an authoritative floor ("never cap it at
+`MAX_ROUTE_BUFFER_SECONDS`"). Keep that for trustworthy routes; for a route measured as
+untrustworthy, use `max(retryAfter, observed_recovery_seconds)`.
+
+**A probe never edits config.** Its report goes into a human-reviewed PR that copies the numbers in
+with the `observed_on` date. State in that PR whether any value changes a recipe hash or pipeline
+version (it should not — these are routing/pacing fields, not prompt or output fields).
+
+##### 20.9 PR-6 — client-side (direct-transport) parity
+
+`citypods/compute/llm.py`'s direct path has the same single-bucket flaw at a smaller scale:
+`_rate_limited(retry_after)` (`llm.py:1378-1400`) calls `block_route_until(self.storage,
+resolved_model, until, route=route)` for **every** 429, blocking for `retry_after` or
+`_DEFAULT_BLOCK_SECONDS`, then defers the job.
+
+Change it to classify first, using `citypods/compute/llm_failure_class.py` from PR-1's Python twin:
+- `own_rpd` → block until the route's next quota reset (`_next_quota_reset` already exists in
+  `llm_scheduler.py:180`), not for 60 seconds.
+- `upstream_capacity` → block for `UPSTREAM_CAPACITY_COOLDOWN_SECONDS` only, and **immediately
+  re-enter `select_route` for a sibling route within the same call** rather than deferring the job.
+  This is where the direct path recovers the most throughput: a busy aggregator currently costs a
+  whole deferred job and a cron cycle.
+- `own_rpm` / `own_tpm` / `unknown_429` → today's behavior.
+
+Keep the existing print line's shape and add `class=<failure_class> rule=<rule_id>` to it.
+
+##### 20.10 Tests (exact names)
+
+- `workers/llm-dispatch-v2/test/classify.test.js`: one case per `rule_id` in the table (13 minimum),
+  plus `unmatched-429`, plus `route-default-upstream`, plus an ordering test asserting
+  `gemini-rpd` wins over `gemini-resource-exhausted` for a body matching both.
+- `workers/llm-dispatch-v2/test/coordinator.test.js`:
+  `test("upstream_capacity 429 does not raise buffer_seconds or throttle_streak")`,
+  `test("own_rpd 429 blocks the route until the provider's next zoned midnight")`,
+  `test("own_tpm 429 zeroes the token bucket instead of adding a request buffer")`,
+  `test("a terminal 429 requeues under the transient budget and re-indexes job_models")`,
+  `test("a success clears upstream_capacity_streak")`.
+- `workers/llm-dispatch-v2/test/rows-read.test.js`: the `route_failures` scaling + mutation test
+  from 20.7.
+- `tests/test_llm_failure_class.py`: `test_rule_ids_match_worker_table` (the drift guard),
+  plus one case per rule.
+- `tests/test_llm_rate_probe.py`: `test_dry_run_issues_no_requests` (assert the HTTP session is
+  never called without `--apply`), `test_respects_max_requests_total`,
+  `test_skips_routes_with_missing_api_key_env`, `test_paid_routes_excluded_by_default`,
+  `test_report_records_header_names_and_values_but_no_api_key`.
+- `tests/test_compute_llm.py`: `test_upstream_capacity_429_retries_sibling_route_without_deferring`.
+- `tests/test_workflows.py`: assert `llm-rate-probe.yml` has `timeout-minutes`, SHA-pinned actions,
+  and `permissions: contents: read` only.
+
+##### 20.11 Ordered implementation checklist
+
+Each row is one PR, mergeable and revertible on its own, in this order. Do not start a row until
+the row above it is merged.
+
+1. **PR-1 classifier** — `classify.js` + `llm_failure_class.py` + both test files. **Zero callers
+   changed.** Acceptance: all tests pass;
+   `grep -rn "classifyProviderFailure" workers/llm-dispatch-v2/src` returns only `classify.js`.
+2. **PR-2 probe** — `citypods/llm_rate_probe.py` + `llm-rate-probe.yml` +
+   `tests/test_llm_rate_probe.py`. Acceptance: `python -m citypods.llm_rate_probe` with no flags
+   prints a plan and issues zero HTTP requests; one `--apply --phase 0 --provider gemini` run
+   completes inside the request cap.
+3. **RUN THE PROBE** (not a PR): Phase 0 + Phase 4 across every free route. Attach the report to
+   the Initiative-20 tracking issue. **This is the acceptance gate for PR-3**: the classifier must
+   agree with Phase 4's ground truth on ≥90% of routes that 429'd on a cold first request. If it
+   does not, fix the signature table (a PR-1 follow-up) and re-run before touching PR-3.
+4. **PR-3 class-aware behavior** — the policy table, the two new columns, the two env knobs, and the
+   terminal-429 requeue. Acceptance: every test in 20.10's coordinator list passes; a staging
+   `/v2/stats` shows `upstream_capacity` cooldowns measured in seconds where 60-second buffers used
+   to appear.
+5. **PR-4 telemetry** — `route_failures` + `stats()` + the rows-read test.
+6. **RUN THE PROBE AGAIN**: Phases 1, 1b, 2, 3 across every free route, now with PR-4's telemetry
+   available to cross-check.
+7. **PR-5 config feedback** — the `observed_*` fields, compiled through all three outputs.
+8. **PR-6 direct-path parity** — `_rate_limited` classification and sibling-route retry.
+
+##### 20.12 Impact and how to prove it
+
+The claim to test, before and after, on one real `tag.yml` or `llm-deferred-sweep.yml` run using
+PR-4's own counters: **jobs failed with `provider_status_code = 429` should go to zero** (they
+requeue instead), and **`buffer_seconds` should stop being applied to routes whose 429s classify as
+`upstream_capacity`**. Report the delta in successful completions per run alongside the per-class
+counter breakdown. Do not claim a percentage before that comparison exists — the whole point of
+this initiative is that the fleet currently has no evidence base, and shipping it without producing
+one would repeat the mistake it exists to fix.
+
 ---
 
 ### Pillar 5: Architectural Consistency & De-Monolithization
 
 #### Initiative 17: Modularize 4 Monolith Modules (<1,000 LOC per File) — L3
-- **Problem**: `stages.py` (7,667 LOC), `run.py` (4,356 LOC), `compute/llm.py` (3,118 LOC), and
-  `media.py` (3,691 LOC) are oversized monoliths that impede safe refactoring.
+- **Problem**: `stages.py` (**8,982** LOC), `run.py` (**4,552** LOC), `compute/llm.py` (**3,273**
+  LOC), and `media.py` (**3,699** LOC) are oversized monoliths that impede safe refactoring.
+  **These are the 2026-09-08 figures; the first three grew by 1,315 / 196 / 155 lines in the four
+  days since this document's first draft.** `stages.py` alone is now +17% on a document that has
+  not yet been acted on — treat the growth rate itself as the measured trigger §5 asks for, and
+  re-measure with `wc -l` before quoting any figure in a PR.
 - **Namespace hazard**: do not create `citypods/stages/`, `citypods/media/`, or
   `citypods/compute/llm/` alongside same-named `.py` facades — Python import resolution would
   shadow the facade and can silently break imports. First extract into distinct implementation
   namespaces (for example `citypods/_stage_impl/`, `_media_impl/`, and `compute/_llm_impl/`) while
   the existing modules explicitly re-export the public API.
 - **First-seam candidates, identified by actual coupling (fewest private-helper cross-references),
-  not guessed**: in `stages.py`, `LinksStage` (lines 3114-3160, 49 lines, exactly **1** distinct
-  private-helper call — the shared `_materialize_set`, used by every stage and not
+  not guessed**: in `stages.py`, `LinksStage` (now lines **3565-3613**, 49 lines, exactly **1**
+  distinct private-helper call — the shared `_materialize_set`, used by every stage and not
   `LinksStage`-specific coupling; no I/O, fully self-contained business logic). In `media.py`,
-  `AudioArtifact`/`AudioArtifactCache` (lines 2943-2996, ~53 lines combined, **zero** calls into
-  any module-private helper — depends only on stdlib `threading` and its own dataclass):
+  `AudioArtifact`/`AudioArtifactCache` (now lines **2951-3004**, ~53 lines combined, **zero**
+  calls into any module-private helper — depends only on stdlib `threading` and its own dataclass):
   ```python
   class AudioArtifact:
       """Successful audio result shared by duplicate stable-meeting source views."""
@@ -1114,9 +1666,12 @@ Existing accepted designs take precedence where they overlap; several entries be
           self._inflight: set[tuple[str, str, str]] = set()
       # register / canonical_source / claim / complete / abort
   ```
-  Do **not** start with `TranscriptStage` (1,730 lines, 49 distinct private-helper references —
+  Do **not** start with `TranscriptStage` (~1,750 lines, 49 distinct private-helper references —
   the most deeply entangled class in `stages.py`) or `CommandFfmpeg` (509 lines, 24 distinct
   private-helper references — the most entangled in `media.py`); both are far riskier first moves.
+  Re-run the coupling count before committing to a seam: `NativeDiarizeStage` and
+  `SpeakerIdentityStage` absorbed most of the +1,315 lines `stages.py` gained in September, so the
+  ranking below `LinksStage` may have shifted even though `LinksStage` itself has not.
 - **Export-shim scope**: only `compute/llm.py` has an existing `__all__` (13 names, e.g.
   `LiteLLMBackend`, `dispatch_job_batch`) to preserve — `stages.py`, `run.py`, and `media.py` have
   none, so their re-export list must be enumerated from scratch by grep, not copied from an
@@ -1150,12 +1705,22 @@ a calendar commitment: every row is already L3 dev-ready per §4/§2/§3, so not
 on further design — pick a row, open it as its own issue/PR series, and use its stated criterion
 as the definition of done, not as a precondition to start.
 
+0. **Initiative 20 — LLM endpoint characterization and failure-class-aware backoff.** Promoted to
+   the head of the order on 2026-09-08. It is the only row here whose *current* behavior is
+   actively destroying completed-able work (a terminal 429 fails the job), it has no dependency on
+   any other row, its first two PRs change zero existing behavior, and it produces the measurement
+   base every other Pillar-4 row silently assumes exists. Its own internal order is fixed by
+   §20.11 and includes two mandatory measurement steps between PRs. Complete only when the
+   classifier's Phase-4 ground-truth agreement is ≥90%, `route_failures` passes the rows-read
+   scaling and mutation tests, and a before/after run shows zero jobs failed at
+   `provider_status_code = 429`.
 1. **[GH#1458](https://github.com/BashfulBits/city-meeting-podcasts/issues/1458) checkpoint
-   profiling and dirty-source push.** Root cause and a representative trace are already recorded
-   on the issue (Initiative 4) — this row is comparatively lower research risk than the rows
-   below and can move to L3 fastest, provided the two live `DIAGNOSTIC` blocks are resolved or
-   accounted for first. Complete only with no lost-update regression, a cancelled-PUT retry, and
-   measured cold/warm improvement.
+   dirty-source push.** *Half shipped* — PR #1465 landed the parallelization; only the dirty-skip
+   remains (Initiative 4). Root cause and a representative trace are already recorded on the issue.
+   This row is comparatively lower research risk than the rows below, provided the two live
+   `DIAGNOSTIC` blocks — which now run inside worker threads — are resolved or accounted for first.
+   Complete only with no lost-update regression, a cancelled-PUT retry, and measured cold/warm
+   improvement.
 2. **[GH#1459](https://github.com/BashfulBits/city-meeting-podcasts/issues/1459) graceful timeout
    envelope.** The affected-jobs table and suggested step values are already recorded on the issue
    (Initiative 6), including the separate `asr.yml` gap (no job timeout at all). Also comparatively
@@ -1192,7 +1757,10 @@ as the definition of done, not as a precondition to start.
 
 Work that review/26 and review/34 already own stays there. Range slicing, OpenTelemetry, confidence
 fallbacks, and a stage protocol remain backlog candidates until their measurement or product trigger
-is recorded. None may be bundled merely to fill a sprint.
+is recorded. None may be bundled merely to fill a sprint. Initiative 20 is the one exception to the
+"wait for a measured trigger" rule, and only because its trigger is already recorded in production
+behavior rather than in a metric that still needs collecting: a 429 currently fails the job, and
+that is visible in the `jobs` table today without any new instrumentation.
 
 ---
 
@@ -1231,8 +1799,20 @@ is recorded. None may be bundled merely to fill a sprint.
      state the pipeline-version/backfill disposition.
 7. **Durable Object Mutation & Invariant Guards**:
    - Run `test/rows-read.test.js` in `workers/llm-dispatch-v2/` to ensure no database statement
-     scans an unbounded or traffic-growable table.
-8. **Live/security contract tests**:
+     scans an unbounded or traffic-growable table. Initiative 20's `route_failures` table and
+     Initiative 19's rejection counter each add a case here, with the same seed-at-two-scales +
+     `EXPLAIN QUERY PLAN` + deliberate-mutation methodology the file already uses.
+8. **Failure-classification drift guard** (Initiative 20):
+   - `tests/test_llm_failure_class.py::test_rule_ids_match_worker_table` reads
+     `workers/llm-dispatch-v2/src/classify.js`, extracts every `rule_id`, and asserts the ordered
+     list matches `citypods/compute/llm_failure_class.py`. The two tables are deliberately
+     duplicated (per this repo's self-contained-Worker convention) and must never diverge.
+9. **Live probes are opt-in, capped, and never mutate config** (Initiative 20):
+   - `citypods/llm_rate_probe.py` is dry-run by default (`--apply` to issue live calls), excludes
+     paid routes unless `--include-paid`, enforces per-route/total/wall-clock caps before every
+     request, and writes a report only. Its findings reach `config/provider_limits.yml` through a
+     human-reviewed PR carrying an `observed_on` date, never automatically.
+10. **Live/security contract tests**:
    - Gate only the selected route/security changes behind opt-in live tests with no production
      mutation. Record provider, dependency, and baseline versions with the results; mocked tests
      alone cannot establish provider schema or DNS-pinning behavior.
@@ -1245,7 +1825,11 @@ Per the repository lifecycle contract in `CONTRIBUTING.md` and `review/11`:
 - **`review/11-technical-design-roadmap.md`**: Catalog this as an **L3 dev-ready per-workstream**
   umbrella (updated in this same change) and point each selected initiative at its exact
   file/function references here rather than re-deriving them. Mark superseded overlap with
-  review/26 and review/34.
+  review/26 and review/34. The §"Rate-limited LLM dispatch Worker" row is the one Initiative 20
+  extends — link it there rather than opening a parallel row.
+- **`ARCHITECTURE.md`** (Initiative 20 specifically): once PR-3 merges, the LLM-dispatch row must
+  say that provider failures are classified into a nine-value taxonomy and that route penalties and
+  job disposition are per class — the current text describes one undifferentiated 429 path.
 - **`ROADMAP.md`**: Describe review/45 as an architectural program whose workstreams are each
   individually implementable, sequenced by §5 — not an adopted sprint schedule and not a completed
   state-store cutover (nothing here has shipped merely because this document is L3).
