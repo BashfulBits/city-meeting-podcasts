@@ -153,6 +153,22 @@ def test_classify_other_provider_signatures():
     assert opencode.failure_class == "upstream_capacity"
     assert opencode.rule_id == "opencode-server-error"
 
+    openrouter = classify_provider_failure(
+        status=429,
+        body={
+            "error": {
+                "message": "Provider returned error",
+                "metadata": {
+                    "limit_source": "upstream_provider_shared_pool",
+                    "raw": "google/gemma is temporarily rate-limited upstream",
+                },
+            }
+        },
+        route={"provider": "openrouter"},
+    )
+    assert openrouter.failure_class == "upstream_capacity"
+    assert openrouter.rule_id == "openrouter-upstream"
+
 
 def test_classify_catchall_signatures():
     openai_rpm = classify_provider_failure(
@@ -171,6 +187,15 @@ def test_classify_catchall_signatures():
     )
     assert hdr_rpm.failure_class == "own_rpm"
     assert hdr_rpm.rule_id == "remaining-zero-header"
+
+    hdr_min_rpm = classify_provider_failure(
+        status=429,
+        body={"error": {"message": "Limit"}},
+        headers={"x-ratelimit-remaining-req-minute": "0"},
+        route={"provider": "mistral"},
+    )
+    assert hdr_min_rpm.failure_class == "own_rpm"
+    assert hdr_min_rpm.rule_id == "remaining-zero-header"
 
     hdr_tpm = classify_provider_failure(
         status=429,

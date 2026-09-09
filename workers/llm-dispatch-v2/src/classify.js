@@ -62,6 +62,19 @@ export const FAILURE_SIGNATURES = [
     match: ({ body }) => body?.error?.type === "server_error",
   },
   {
+    rule_id: "openrouter-upstream",
+    provider: "openrouter",
+    failure_class: "upstream_capacity",
+    match: ({ body, msg }) => {
+      const meta = body?.error?.metadata;
+      return (
+        msg.includes("provider returned error") ||
+        meta?.limit_source === "upstream_provider_shared_pool" ||
+        (typeof meta?.raw === "string" && meta.raw.toLowerCase().includes("upstream"))
+      );
+    },
+  },
+  {
     rule_id: "openai-shaped-rate-limit",
     provider: null,
     failure_class: "own_rpm",
@@ -74,7 +87,8 @@ export const FAILURE_SIGNATURES = [
     provider: null,
     failure_class: "own_rpm",
     match: ({ headers }) =>
-      headers?.get("x-ratelimit-remaining-requests") === "0",
+      headers?.get("x-ratelimit-remaining-requests") === "0" ||
+      headers?.get("x-ratelimit-remaining-req-minute") === "0",
   },
   {
     rule_id: "remaining-tokens-zero-header",

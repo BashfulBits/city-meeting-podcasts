@@ -210,6 +210,25 @@ test("classifyProviderFailure matches opencode-server-error", () => {
   assert.equal(res.rule_id, "opencode-server-error");
 });
 
+test("classifyProviderFailure matches openrouter-upstream", () => {
+  const res = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        message: "Provider returned error",
+        metadata: {
+          limit_source: "upstream_provider_shared_pool",
+          raw: "google/gemma is temporarily rate-limited upstream",
+        },
+      },
+    },
+    headers: null,
+    route: { provider: "openrouter", route_id: "openrouter/free" },
+  });
+  assert.equal(res.failure_class, "upstream_capacity");
+  assert.equal(res.rule_id, "openrouter-upstream");
+});
+
 test("classifyProviderFailure matches openai-shaped-rate-limit", () => {
   const res = classifyProviderFailure({
     status: 429,
@@ -235,6 +254,15 @@ test("classifyProviderFailure matches remaining-zero-header", () => {
   });
   assert.equal(res.failure_class, "own_rpm");
   assert.equal(res.rule_id, "remaining-zero-header");
+
+  const resMinute = classifyProviderFailure({
+    status: 429,
+    body: { error: { message: "Slow down" } },
+    headers: { "x-ratelimit-remaining-req-minute": "0" },
+    route: { provider: "mistral", route_id: "mistral/devstral" },
+  });
+  assert.equal(resMinute.failure_class, "own_rpm");
+  assert.equal(resMinute.rule_id, "remaining-zero-header");
 });
 
 test("classifyProviderFailure matches remaining-tokens-zero-header", () => {

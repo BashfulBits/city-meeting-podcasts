@@ -20,6 +20,7 @@ import {
   dailyQuotaReadyAt,
   zonedDateKey,
   routeResetTimezone,
+  nextZonedMidnightMs,
   effectiveBufferSeconds,
 } from "./pacing.js";
 
@@ -139,7 +140,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         blocked_until            INTEGER,
         buffer_seconds           REAL NOT NULL DEFAULT 0,
         buffer_updated_at        INTEGER NOT NULL DEFAULT 0,
-        payment_required_streak  INTEGER NOT NULL DEFAULT 0
+        payment_required_streak  INTEGER NOT NULL DEFAULT 0,
+        upstream_capacity_streak INTEGER NOT NULL DEFAULT 0,
+        last_failure_class       TEXT NOT NULL DEFAULT ''
       );
 
       CREATE TABLE IF NOT EXISTS providers (
@@ -251,6 +254,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Daily quotas reset on the provider's calendar day, not 24h after first use.
     this._ensureColumn("routes", "rpd_day_key", "TEXT NOT NULL DEFAULT ''");
     this._ensureColumn("routes", "payment_required_streak", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("routes", "upstream_capacity_streak", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("routes", "last_failure_class", "TEXT NOT NULL DEFAULT ''");
     // buffer_seconds needs a timestamp to decay against; without one it was a permanent kill
     // switch (see pacing.js's effectiveBufferSeconds). Existing rows get 0, which reads as
     // "fully elapsed" -- deliberately, since those are the routes stuck under the old behaviour.
@@ -335,6 +340,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["rpd_count", "INTEGER NOT NULL DEFAULT 0"],
       ["rpd_day_key", "TEXT NOT NULL DEFAULT ''"],
       ["payment_required_streak", "INTEGER NOT NULL DEFAULT 0"],
+      ["upstream_capacity_streak", "INTEGER NOT NULL DEFAULT 0"],
+      ["last_failure_class", "TEXT NOT NULL DEFAULT ''"],
       ["transient_retry_count", "INTEGER NOT NULL DEFAULT 0"],
       ["buffer_updated_at", "INTEGER NOT NULL DEFAULT 0"],
       ["token_reservation", "INTEGER NOT NULL DEFAULT 0"],
@@ -531,6 +538,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _max429BackoffMs() {
     return this._envInt("MAX_429_BACKOFF_SECONDS", 60) * 1000;
+  }
+
+  _upstreamCapacityCooldownSeconds() {
+    return this._envInt("UPSTREAM_CAPACITY_COOLDOWN_SECONDS", 15);
+  }
+
+  _upstreamCapacityMaxCooldownSeconds() {
+    return this._envInt("UPSTREAM_CAPACITY_MAX_COOLDOWN_SECONDS", 300);
   }
 
   /** AI Gateway already made its own short retry series, so this is a small durable outer budget. */
@@ -2188,7 +2203,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * retry that wouldn't fit before the dispatch window or lease expires is declined, not granted
    * late.
    */
-  async authorizeRetry(jobId, leaseToken, attemptId, now, retryAfterSeconds) {
+  async authorizeRetry(jobId, leaseToken, attemptId, now, retryAfterSeconds, failureClass = "unknown_429") {
     const sql = this._getSql();
     return this.ctx.storage.transactionSync(() => {
       const jobRows = [...sql.exec(
@@ -2215,54 +2230,142 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
       const routeId = job.lease_route_id;
       const ledger = this._getOrCreateRouteLedger(routeId, now, {});
-      const newStreak = (ledger.throttle_streak || 0) + 1;
-      const maxBufferSeconds = this._maxRouteBufferSeconds();
-      const rawRetryAfterSeconds = Number(retryAfterSeconds);
-      // A provider-supplied Retry-After (including Airforce's "next guaranteed response" body
-      // hint) is an authoritative floor, not a backoff suggestion. In particular, never cap it
-      // at MAX_ROUTE_BUFFER_SECONDS or apply the ordinary +/- jitter below it: either lets a
-      // later retry land before the provider explicitly said it could succeed.
-      const retryAfterSec =
-        Number.isFinite(rawRetryAfterSeconds) && rawRetryAfterSeconds > 0
-          ? rawRetryAfterSeconds
-          : null;
-      const addedBufferSeconds = retryAfterSec !== null
-        ? Math.min(maxBufferSeconds, retryAfterSec)
-        : this._max429BackoffMs() / 1000;
-      // Compound from what is actually still owed, not from the raw stored figure -- otherwise
-      // 429s hours apart stack to the ceiling as if they were simultaneous.
-      const newBufferSeconds = Math.min(
-        maxBufferSeconds,
-        effectiveBufferSeconds(ledger, now) + addedBufferSeconds
-      );
-      sql.exec(
-        `UPDATE routes SET throttle_streak = ?, last_provider_status = 429,
-                            buffer_seconds = ?, buffer_updated_at = ?,
-                            blocked_until = MAX(COALESCE(blocked_until, 0), ?)
-         WHERE route_id = ?`,
-        newStreak,
-        newBufferSeconds,
-        now,
-        retryAfterSec !== null ? now + Math.ceil(retryAfterSec * 1000) : 0,
-        routeId
-      );
+      const dispatchLimits = this._dispatchLimits();
+      const route = dispatchLimits?.routes_by_id?.[routeId];
 
-      const baseBackoffMs = retryAfterSec !== null
-        ? retryAfterSec * 1000
-        : Math.min(this._max429BackoffMs(), newStreak * 1000);
-      // Keep retry traffic from converging without ever retrying before an upstream deadline.
-      // The no-hint fallback keeps its historical 50%--150% jitter; an explicit provider delay
-      // gets only a small, positive jitter after its floor.
-      const backoffMs = retryAfterSec !== null
-        ? Math.ceil(baseBackoffMs + Math.random() * Math.min(1000, baseBackoffMs * 0.1))
-        : Math.round(baseBackoffMs * (0.5 + Math.random()));
-      const retryNotBefore = now + backoffMs;
-      const deadline = Math.min(bundle.dispatch_window_end, bundle.lease_expires_at);
-      if (retryNotBefore >= deadline) {
-        return { authorized: false, retry_not_before: null };
+      switch (failureClass) {
+        case "own_rpd": {
+          const rpd = route?.rpd || 0;
+          const tz = routeResetTimezone(route);
+          const dayKey = zonedDateKey(now, tz);
+          const midnightMs = nextZonedMidnightMs(now, tz);
+          sql.exec(
+            `UPDATE routes SET rpd_count = ?, rpd_day_key = ?, last_provider_status = 429,
+                               last_failure_class = ?, blocked_until = MAX(COALESCE(blocked_until, 0), ?)
+             WHERE route_id = ?`,
+            rpd,
+            dayKey,
+            failureClass,
+            midnightMs,
+            routeId
+          );
+          // Daily quota exhausted: do not retry in-window; requeue immediately so siblings can serve.
+          return { authorized: false, retry_not_before: null };
+        }
+        case "own_tpm": {
+          const tpm = route?.tpm || 0;
+          sql.exec(
+            `UPDATE routes SET full_token_budget = 0, token_budget_updated_at = ?,
+                               tpm_reserved = ?, tpm_window_start = ?,
+                               last_provider_status = 429, last_failure_class = ?
+             WHERE route_id = ?`,
+            now,
+            tpm,
+            now,
+            failureClass,
+            routeId
+          );
+          // Token budget exhausted: do not retry in-window.
+          return { authorized: false, retry_not_before: null };
+        }
+        case "upstream_capacity": {
+          const streak = (ledger.upstream_capacity_streak || 0) + 1;
+          const baseCooldown = this._upstreamCapacityCooldownSeconds();
+          const maxCooldown = this._upstreamCapacityMaxCooldownSeconds();
+          const expCooldown = Math.min(maxCooldown, baseCooldown * Math.pow(2, streak - 1));
+          const cooldownMs = Math.ceil(expCooldown * 1000 * (1 + Math.random() * 0.5));
+          sql.exec(
+            `UPDATE routes SET upstream_capacity_streak = ?, last_provider_status = 429,
+                               last_failure_class = ?, blocked_until = MAX(COALESCE(blocked_until, 0), ?)
+             WHERE route_id = ?`,
+            streak,
+            failureClass,
+            now + cooldownMs,
+            routeId
+          );
+          return { authorized: false, retry_not_before: null };
+        }
+        case "gateway_limit": {
+          const streak = (ledger.upstream_capacity_streak || 0) + 1;
+          const baseCooldown = this._upstreamCapacityCooldownSeconds();
+          const maxCooldown = this._upstreamCapacityMaxCooldownSeconds();
+          const expCooldown = Math.min(maxCooldown, baseCooldown * Math.pow(2, streak - 1));
+          const cooldownMs = Math.ceil(expCooldown * 1000 * (1 + Math.random() * 0.5));
+          const provider = route?.provider;
+          if (provider) {
+            for (const [otherRouteId, otherRoute] of Object.entries(dispatchLimits?.routes_by_id || {})) {
+              if (otherRoute.provider === provider) {
+                this._getOrCreateRouteLedger(otherRouteId, now, {});
+                sql.exec(
+                  `UPDATE routes SET upstream_capacity_streak = ?, last_provider_status = 429,
+                                     last_failure_class = ?, blocked_until = MAX(COALESCE(blocked_until, 0), ?)
+                   WHERE route_id = ?`,
+                  streak,
+                  failureClass,
+                  now + cooldownMs,
+                  otherRouteId
+                );
+              }
+            }
+          } else {
+            sql.exec(
+              `UPDATE routes SET upstream_capacity_streak = ?, last_provider_status = 429,
+                                 last_failure_class = ?, blocked_until = MAX(COALESCE(blocked_until, 0), ?)
+               WHERE route_id = ?`,
+              streak,
+              failureClass,
+              now + cooldownMs,
+              routeId
+            );
+          }
+          return { authorized: false, retry_not_before: null };
+        }
+        case "own_rpm":
+        case "unknown_429":
+        default: {
+          const newStreak = (ledger.throttle_streak || 0) + 1;
+          const maxBufferSeconds = this._maxRouteBufferSeconds();
+          const rawRetryAfterSeconds = Number(retryAfterSeconds);
+          // A provider-supplied Retry-After is an authoritative floor, not a backoff suggestion.
+          const retryAfterSec =
+            Number.isFinite(rawRetryAfterSeconds) && rawRetryAfterSeconds > 0
+              ? rawRetryAfterSeconds
+              : null;
+          const addedBufferSeconds = retryAfterSec !== null
+            ? Math.min(maxBufferSeconds, retryAfterSec)
+            : this._max429BackoffMs() / 1000;
+          const newBufferSeconds = Math.min(
+            maxBufferSeconds,
+            effectiveBufferSeconds(ledger, now) + addedBufferSeconds
+          );
+          sql.exec(
+            `UPDATE routes SET throttle_streak = ?, last_provider_status = 429,
+                               last_failure_class = ?, buffer_seconds = ?, buffer_updated_at = ?,
+                               blocked_until = MAX(COALESCE(blocked_until, 0), ?)
+             WHERE route_id = ?`,
+            newStreak,
+            failureClass,
+            newBufferSeconds,
+            now,
+            retryAfterSec !== null ? now + Math.ceil(retryAfterSec * 1000) : 0,
+            routeId
+          );
+
+          const baseBackoffMs = retryAfterSec !== null
+            ? retryAfterSec * 1000
+            : Math.min(this._max429BackoffMs(), newStreak * 1000);
+          const backoffMs = retryAfterSec !== null
+            ? Math.ceil(baseBackoffMs + Math.random() * Math.min(1000, baseBackoffMs * 0.1))
+            : Math.round(baseBackoffMs * (0.5 + Math.random()));
+          const retryNotBefore = now + backoffMs;
+          const deadline = Math.min(bundle.dispatch_window_end, bundle.lease_expires_at);
+          if (retryNotBefore >= deadline) {
+            return { authorized: false, retry_not_before: null };
+          }
+
+          return { authorized: true, retry_not_before: retryNotBefore };
+        }
       }
-
-      return { authorized: true, retry_not_before: retryNotBefore };
     });
   }
 
@@ -2362,8 +2465,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const blockedUntil = isTransientRouteFailure
           ? this._5xxBlockedUntil(nextTransientRetryCount, now)
           : null;
+        const isRateLimitTerminal =
+          result.provider_status_code === 429 &&
+          job.transient_retry_count < this._max5xxRetries();
         const shouldRetry5xx =
           isTransientRouteFailure && job.transient_retry_count < this._max5xxRetries();
+        const shouldRequeue =
+          shouldRetry5xx || isPaymentRequired || isRateLimitTerminal;
 
         let newState;
         switch (result.outcome) {
@@ -2377,10 +2485,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // A final 5xx has already exhausted AI Gateway's short retry sequence. Give it one
             // durable, minute-scale retry; ambiguous transport failures and B2-write failures
             // must surface as failed instead of silently becoming an unclaimable state.
-            newState = shouldRetry5xx || isPaymentRequired ? "queued" : "failed";
+            newState = shouldRequeue ? "queued" : "failed";
             break;
           case "terminal_error":
-            newState = "failed";
+            // review/45 §20.6: a job whose terminal outcome carries provider_status_code === 429
+            // must requeue under the transient budget instead of failing.
+            newState = shouldRequeue ? "queued" : "failed";
             break;
           default:
             continue; // unrecognized outcome; leave the job's state untouched
@@ -2394,7 +2504,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             result.job_id
           );
           this._indexQueuedJobModels(job);
-        } else if (shouldRetry5xx || isPaymentRequired) {
+        } else if (shouldRequeue) {
           // Must go through this branch, not the generic UPDATE below: claiming a job deletes its
           // job_models index rows, so a requeue that only rewrites `state` leaves the job queued
           // with no index row and holding a stale lease -- claimDispatchWindow can never select it
@@ -2454,7 +2564,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // 402's included, not just the 429 ones already cleared here.
             sql.exec(
               `UPDATE routes SET throttle_streak = 0, buffer_seconds = 0, buffer_updated_at = 0,
-                                  payment_required_streak = 0, blocked_until = NULL,
+                                  payment_required_streak = 0, upstream_capacity_streak = 0,
+                                  last_failure_class = '', blocked_until = NULL,
                                   last_provider_status = ? WHERE route_id = ?`,
               result.provider_status_code ?? 200,
               job.lease_route_id
