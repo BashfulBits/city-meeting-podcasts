@@ -1487,3 +1487,16 @@ def test_remedy_has_direct_diagnostics_verification_tools_and_bounded_fallback()
     assert "always()" in fallback["if"]
     assert "remedy-comment-posted" in fallback["run"]
     subprocess.run(["bash", "-n"], input=fallback["run"], text=True, check=True)
+
+
+def test_llm_rate_probe_workflow_contract():
+    """Static contract test for llm-rate-probe.yml per review/45 §20.10."""
+    wf, job = _job("llm-rate-probe.yml", "probe")
+    assert wf["permissions"] == {"contents": "read"}
+    assert job["timeout-minutes"] == 30
+    assert wf.get("concurrency", {}).get("group") == "llm-rate-probe"
+
+    for step in job["steps"]:
+        uses = step.get("uses", "")
+        if uses:
+            assert _PINNED_SHA.search(uses), f"Unpinned action: {uses}"
