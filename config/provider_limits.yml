@@ -430,6 +430,68 @@ routes:
     observed_on: "2026-09-09"
     observed_burst: 6
 
+  - route_id: gemini_3_8_flash_primary
+    model: gemini/gemini-3.8-flash
+    provider: gemini
+    upstream_model: gemini-3.8-flash
+    input_context_limit: 1048576
+    output_context_limit: 65536
+    account_id: project_primary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
+    hard_input_ceiling: 120000
+    free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
+
+  - route_id: gemini_3_8_flash_secondary
+    model: gemini/gemini-3.8-flash
+    provider: gemini
+    upstream_model: gemini-3.8-flash
+    input_context_limit: 1048576
+    output_context_limit: 65536
+    account_id: project_secondary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
+    hard_input_ceiling: 120000
+    free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
+
+  - route_id: gemini_3_7_flash_primary
+    model: gemini/gemini-3.7-flash
+    provider: gemini
+    upstream_model: gemini-3.7-flash
+    input_context_limit: 1048576
+    output_context_limit: 65536
+    account_id: project_primary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
+    hard_input_ceiling: 120000
+    free: true
+    observed_on: "2026-09-09"
+    observed_burst: 7
+
+  - route_id: gemini_3_7_flash_secondary
+    model: gemini/gemini-3.7-flash
+    provider: gemini
+    upstream_model: gemini-3.7-flash
+    input_context_limit: 1048576
+    output_context_limit: 65536
+    account_id: project_secondary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
+    hard_input_ceiling: 120000
+    free: true
+    observed_on: "2026-09-09"
+    observed_burst: 7
+
   - route_id: gemini_3_6_flash_primary
     model: gemini/gemini-3.6-flash
     provider: gemini
