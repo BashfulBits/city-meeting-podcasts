@@ -47,6 +47,46 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **review/45 reconciled against `main` and extended with Initiative 20 — endpoint rate-limit
+  characterization & failure-class-aware LLM backoff (planning only; no code changes).** 123
+  commits landed between review/45's L3 detailing pass (`b91a3bc`, 2026-09-04) and this
+  reconciliation. Four of them moved code the document cites directly, and every stale figure is
+  corrected in place with an itemized audit in the new **§1.1 Reconciliation Log**: Initiative 4 is
+  now **half shipped** (PR #1465 parallelized `push_records_merged`; the dirty-skip did not land,
+  and both `DIAGNOSTIC` blocks now run inside worker threads); `stages.py` has **17** stage classes,
+  not 19, after `ProviderTranscriptDiarizeStage`'s retirement, and the `EnrichmentStage` Protocol
+  moved to `stages.py:694-703`; the `ctx.stop` idiom count dropped 31 → 21; monolith LOC grew
+  ~18,800 → **~20,506** in four days; `enqueue_batch`'s per-job `put_cas` became a batched,
+  thread-pooled staging step, which gives Initiative 19's admission pre-check a single clean
+  insertion point instead of a per-job branch. §2 (state partitioning), §3 (v1 retirement, still
+  exactly 15 workflows), and Initiative 6's timeout table were re-verified and stand unchanged.
+
+  **Initiative 20** is the new pivotal throughput item, promoted to the head of §5's dependency
+  order. The dispatch Worker currently collapses every provider HTTP 429 into one "we went too
+  fast" response — `throttle_streak` + `buffer_seconds` + `MAX_429_RETRIES=1`, after which the job
+  is **failed outright**, making 429 the only transient-looking status that destroys work (402,
+  5xx, and upstream-400 all requeue). Across a 65-route catalog that is mostly free tiers and
+  free-router aggregators, a large share of 429s are the provider's own pooled upstream saturating,
+  unrelated to our request rate — so a healthy route is penalized and the job is thrown away.
+  Daily-quota and token-quota 429s are conflated into the same 60-second buffer, leaving
+  `dailyQuotaReadyAt`/`nextZonedMidnightMs` unreachable because nothing in the 429 path writes
+  `rpd_count`. Nothing persists a failure *reason* anywhere, so there is no evidence base to tune
+  against. The initiative specifies, as six independently mergeable PRs with two mandatory live
+  measurement steps between them (§20.11): a nine-value failure taxonomy and an ordered signature
+  table duplicated across `workers/llm-dispatch-v2/src/classify.js` and
+  `citypods/compute/llm_failure_class.py` with a drift-guard test; a probe harness
+  (`citypods/llm_rate_probe.py` + `llm-rate-probe.yml`, dry-run by default per house `--apply`
+  convention, free-routes-only, hard request/wall-clock caps, never edits config) that measures
+  enforced RPM, burst capacity, real input ceilings, and actual recovery timing against advertised
+  `Retry-After`; per-class route penalties replacing the single unconditional `UPDATE routes`; a
+  terminal 429 that **requeues under the existing transient budget instead of failing**; and a
+  bounded `(utc_day, route_id, failure_class)` counter surfaced through the existing `/v2/stats`
+  and guarded by `test/rows-read.test.js`. It generalizes PR #1476's hand-run live Gemini test —
+  which found the enforced per-request ceiling (~125,000) sat far below the configured `tpm`
+  (250,000), and that NVIDIA did not behave the same way — from one field on 14 routes into a
+  repeatable loop across all 65. No production behavior changed in this entry; review/11's
+  §"Rate-limited LLM dispatch Worker" row is updated to point at it.
+
 - **Unexpected-body remediation now handles historical selector families safely.**
   Recurring Granicus/Swagit labels with the same dated body prefix are locally collapsed to a
   wildcard such as `Agenda Committee on *`; the classifier cannot invent that selector, and
