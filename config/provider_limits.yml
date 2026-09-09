@@ -304,6 +304,9 @@ routes:
     tpm: 250000
     hard_input_ceiling: 120000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 10
+    observed_input_ceiling: 133281
 
   - route_id: gemini_3_1_flash_lite_primary
     model: gemini/gemini-3.1-flash-lite
@@ -317,6 +320,8 @@ routes:
     tpm: 250000
     hard_input_ceiling: 120000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 1
 
   - route_id: gemini_3_1_flash_lite_secondary
     model: gemini/gemini-3.1-flash-lite
@@ -330,6 +335,8 @@ routes:
     tpm: 250000
     hard_input_ceiling: 120000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 1
 
   # Gemma 4 Massive Free Quota Pools (14.4k RPD / 30 RPM each)
   - route_id: gemma_4_26b_primary
@@ -359,6 +366,8 @@ routes:
     tpm: 16000
     hard_input_ceiling: 8000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 31
 
   - route_id: gemma_4_31b_primary
     model: google/gemma-4-31b-it
@@ -372,6 +381,8 @@ routes:
     tpm: 16000
     hard_input_ceiling: 8000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 2
 
   - route_id: gemma_4_31b_secondary
     model: google/gemma-4-31b-it
@@ -385,6 +396,8 @@ routes:
     tpm: 16000
     hard_input_ceiling: 8000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 2
 
   # Additional Free Flash Burst Pools (20 RPD / 5-10 RPM each)
   - route_id: gemini_3_flash_preview_primary
@@ -399,6 +412,8 @@ routes:
     tpm: 250000
     hard_input_ceiling: 120000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 6
 
   - route_id: gemini_3_flash_preview_secondary
     model: gemini/gemini-3-flash-preview
@@ -412,6 +427,8 @@ routes:
     tpm: 250000
     hard_input_ceiling: 120000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 6
 
   - route_id: gemini_3_6_flash_primary
     model: gemini/gemini-3.6-flash
@@ -425,6 +442,9 @@ routes:
     tpm: 250000
     hard_input_ceiling: 120000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: gemini_3_6_flash_secondary
     model: gemini/gemini-3.6-flash
@@ -438,6 +458,9 @@ routes:
     tpm: 250000
     hard_input_ceiling: 120000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: gemini_3_5_flash_primary
     model: gemini/gemini-3.5-flash
@@ -451,6 +474,8 @@ routes:
     tpm: 250000
     hard_input_ceiling: 120000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 1
 
   - route_id: gemini_3_5_flash_secondary
     model: gemini/gemini-3.5-flash
@@ -464,6 +489,8 @@ routes:
     tpm: 250000
     hard_input_ceiling: 120000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 1
 
   # ==========================================
   # ==========================================
@@ -754,6 +781,9 @@ routes:
     rpm: 49
     tpm: 1000000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   # Mistral Small 2603: 0.83 RPS (49 RPM), 50k TPM
   - route_id: mistral_small_2603_primary
@@ -766,6 +796,9 @@ routes:
     rpm: 49
     tpm: 50000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   # Mistral Medium Latest: 0.83 RPS (50 RPM), 25k TPM
   - route_id: mistral_medium_latest_primary
@@ -778,6 +811,9 @@ routes:
     rpm: 50
     tpm: 25000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   # Airforce Mistral Medium 3.5 (free tier): alias for mistral/mistral-medium-latest
   # While documentation reported 20 RPM, error bodies returned 1 RPM (plan_rpm: 1); rpm: 1 is used.
@@ -817,6 +853,9 @@ routes:
     rpm: 50
     tpm: 25000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: mistral_medium_2505_alias_primary
     model: mistral/mistral-medium-2505
@@ -829,6 +868,9 @@ routes:
     rpm: 50
     tpm: 25000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   # Mistral Large 2512: 0.07 RPS (4.2 RPM -> 4 RPM), 250k TPM
   - route_id: mistral_large_2512_primary
@@ -841,6 +883,9 @@ routes:
     rpm: 4
     tpm: 250000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   # Mistral Large 3: 4 RPM, 250k TPM
   - route_id: mistral_large_3_primary
@@ -853,6 +898,9 @@ routes:
     rpm: 4
     tpm: 250000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   # Labs Leanstral: 0.63 RPS (37 RPM), 5,000,000 TPM
   - route_id: mistral_labs_leanstral_1_5_1_primary
@@ -865,6 +913,9 @@ routes:
     rpm: 37
     tpm: 5000000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   # Secondary account: original per-model limits, independent of the paused primary account.
   - route_id: mistral_codestral_2508_secondary
@@ -877,6 +928,8 @@ routes:
     rpm: 124
     tpm: 625000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 40
 
   - route_id: mistral_devstral_2512_secondary
     model: mistral/devstral-2512
@@ -888,6 +941,9 @@ routes:
     rpm: 49
     tpm: 1000000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: mistral_small_2603_secondary
     model: mistral/mistral-small-2603
@@ -899,6 +955,9 @@ routes:
     rpm: 49
     tpm: 50000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: mistral_medium_latest_secondary
     model: mistral/mistral-medium-latest
@@ -910,6 +969,9 @@ routes:
     rpm: 50
     tpm: 25000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: mistral_large_2512_secondary
     model: mistral/mistral-large-2512
@@ -921,6 +983,9 @@ routes:
     rpm: 4
     tpm: 250000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: mistral_large_3_secondary
     model: mistral/mistral-large-3
@@ -932,6 +997,9 @@ routes:
     rpm: 4
     tpm: 250000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: mistral_labs_leanstral_1_5_1_secondary
     model: mistral/labs-leanstral-1-5-1
@@ -943,6 +1011,9 @@ routes:
     rpm: 37
     tpm: 5000000
     free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   # ==========================================
   # Z.AI ROUTES (Zhipu AI Global GLM Series)
@@ -1288,6 +1359,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    observed_burst: 2
+    observed_input_ceiling: 1000
 
   # Both DeepSeek routes below were disabled 2026-08-29 on a misdiagnosis: their 404s were blamed
   # on a per-key NVIDIA "Public API Endpoints" entitlement gap. The real cause was this provider
@@ -1323,6 +1397,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    observed_burst: 6
+    observed_input_ceiling: 249027
 
   - route_id: nvidia_deepseek_v4_flash_0731_free
     model: nvidia/deepseek-v4-flash-0731
@@ -1349,6 +1426,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: nvidia_gemma_4_31b_it_free
     model: google/gemma-4-31b-it
@@ -1376,6 +1456,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: nvidia_gpt_oss_120b_free
     model: openai/gpt-oss-120b
@@ -1403,6 +1486,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: nvidia_nemotron_3_ultra_550b_a55b_free
     model: nvidia/nemotron-3-ultra-550b-a55b
@@ -1433,6 +1519,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: nvidia_nemotron_3_super_120b_a12b_free
     model: nvidia/nemotron-3-super-120b-a12b
@@ -1463,6 +1552,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    observed_burst: 5
+    observed_input_ceiling: 249027
 
   - route_id: nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free
     model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
@@ -1492,6 +1584,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: nvidia_riva_translate_4b_instruct_v2_free
     model: nvidia/riva-translate-4b-instruct-v2
@@ -1521,6 +1616,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-09"
+    observed_burst: 5
+    observed_input_ceiling: 8942
 
 
 
