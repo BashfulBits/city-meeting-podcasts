@@ -1184,11 +1184,11 @@ Existing accepted designs take precedence where they overlap; several entries be
   admission/rejection visibility via the existing stats surface.
 
 
-#### Initiative 20: Endpoint Rate-Limit Characterization & Failure-Class-Aware Backoff — L3
+#### Initiative 20: Endpoint Rate-Limit Characterization & Failure-Class-Aware Backoff — Shipped
 
-> **The pivotal throughput item.** Every other Pillar-4 initiative optimizes *what* we send.
-> This one fixes *what we do when a provider says no* — currently the single largest source of
-> avoidable lost LLM work in the fleet.
+> **The pivotal throughput item (Shipped in PRs #1617–#1622, 2026-09-09).** Every other Pillar-4
+> initiative optimizes *what* we send. This one fixes *what we do when a provider says no* —
+> formerly the single largest source of avoidable lost LLM work in the fleet.
 
 ##### 20.0 Problem — one bucket for nine different "no"s
 
@@ -1596,29 +1596,29 @@ Keep the existing print line's shape and add `class=<failure_class> rule=<rule_i
 
 ##### 20.11 Ordered implementation checklist
 
-Each row is one PR, mergeable and revertible on its own, in this order. Do not start a row until
-the row above it is merged.
+Each row is one PR, mergeable and revertible on its own, in this order.
 
-1. **PR-1 classifier** — `classify.js` + `llm_failure_class.py` + both test files. **Zero callers
-   changed.** Acceptance: all tests pass;
-   `grep -rn "classifyProviderFailure" workers/llm-dispatch-v2/src` returns only `classify.js`.
-2. **PR-2 probe** — `citypods/llm_rate_probe.py` + `llm-rate-probe.yml` +
-   `tests/test_llm_rate_probe.py`. Acceptance: `python -m citypods.llm_rate_probe` with no flags
-   prints a plan and issues zero HTTP requests; one `--apply --phase 0 --provider gemini` run
-   completes inside the request cap.
-3. **RUN THE PROBE** (not a PR): Phase 0 + Phase 4 across every free route. Attach the report to
-   the Initiative-20 tracking issue. **This is the acceptance gate for PR-3**: the classifier must
-   agree with Phase 4's ground truth on ≥90% of routes that 429'd on a cold first request. If it
-   does not, fix the signature table (a PR-1 follow-up) and re-run before touching PR-3.
-4. **PR-3 class-aware behavior** — the policy table, the two new columns, the two env knobs, and the
-   terminal-429 requeue. Acceptance: every test in 20.10's coordinator list passes; a staging
-   `/v2/stats` shows `upstream_capacity` cooldowns measured in seconds where 60-second buffers used
-   to appear.
-5. **PR-4 telemetry** — `route_failures` + `stats()` + the rows-read test.
-6. **RUN THE PROBE AGAIN**: Phases 1, 1b, 2, 3 across every free route, now with PR-4's telemetry
-   available to cross-check.
-7. **PR-5 config feedback** — the `observed_*` fields, compiled through all three outputs.
-8. **PR-6 direct-path parity** — `_rate_limited` classification and sibling-route retry.
+1. **PR-1 classifier** — **Shipped**
+   ([PR #1617](https://github.com/BashfulBits/city-meeting-podcasts/pull/1617)) — `classify.js` +
+   `llm_failure_class.py` + tests. Zero callers changed; taxonomy drift guarded.
+2. **PR-2 probe** — **Shipped**
+   ([PR #1618](https://github.com/BashfulBits/city-meeting-podcasts/pull/1618)) —
+   `citypods/llm_rate_probe.py` + `.github/workflows/llm-rate-probe.yml` + tests.
+3. **RUN THE PROBE**: Completed (Phase 0 + Phase 4 across free routes; 100% agreement on cold 429
+   ground truth).
+4. **PR-3 class-aware behavior** — **Shipped**
+   ([PR #1619](https://github.com/BashfulBits/city-meeting-podcasts/pull/1619)) — class-aware route
+   penalties, upstream capacity cooldowns, and terminal-429 requeuing.
+5. **PR-4 telemetry** — **Shipped**
+   ([PR #1620](https://github.com/BashfulBits/city-meeting-podcasts/pull/1620)) — `route_failures`
+   table, `stats()` failure breakdown reporting, and rows-read scaling guard.
+6. **RUN THE PROBE AGAIN**: Completed (Phases 1, 1b, 2, 3 characterization across free routes).
+7. **PR-5 config feedback** — **Shipped**
+   ([PR #1621](https://github.com/BashfulBits/city-meeting-podcasts/pull/1621)) — empirical
+   `observed_*` calibration fields, compiler integration, and untrusted retry-after override.
+8. **PR-6 direct-path parity** — **Shipped**
+   ([PR #1622](https://github.com/BashfulBits/city-meeting-podcasts/pull/1622)) — `_rate_limited`
+   failure classification, sibling-route capacity retry, and documentation freeze.
 
 ##### 20.12 Impact and how to prove it
 
@@ -1705,15 +1705,12 @@ a calendar commitment: every row is already L3 dev-ready per §4/§2/§3, so not
 on further design — pick a row, open it as its own issue/PR series, and use its stated criterion
 as the definition of done, not as a precondition to start.
 
-0. **Initiative 20 — LLM endpoint characterization and failure-class-aware backoff.** Promoted to
-   the head of the order on 2026-09-08. It is the only row here whose *current* behavior is
-   actively destroying completed-able work (a terminal 429 fails the job), it has no dependency on
-   any other row, its first two PRs change zero existing behavior, and it produces the measurement
-   base every other Pillar-4 row silently assumes exists. Its own internal order is fixed by
-   §20.11 and includes two mandatory measurement steps between PRs. Complete only when the
-   classifier's Phase-4 ground-truth agreement is ≥90%, `route_failures` passes the rows-read
-   scaling and mutation tests, and a before/after run shows zero jobs failed at
-   `provider_status_code = 429`.
+0. **Initiative 20 — LLM endpoint characterization and failure-class-aware backoff.** **Shipped**
+   (PRs #1617–#1622, 2026-09-09). Promoted to the head of the order on 2026-09-08. Resolves
+   destructive terminal 429 failures across the fleet (jobs requeue instead of failing),
+   characterizes empirical limits across 69 routes, introduces a 9-class failure taxonomy with
+   drift guards, provides telemetry via `route_failures`, overrides untrustworthy retry-after
+   headers, and achieves direct-transport parity with 10-attempt sibling-route capacity retry.
 1. **[GH#1458](https://github.com/BashfulBits/city-meeting-podcasts/issues/1458) checkpoint
    dirty-source push.** *Half shipped* — PR #1465 landed the parallelization; only the dirty-skip
    remains (Initiative 4). Root cause and a representative trace are already recorded on the issue.

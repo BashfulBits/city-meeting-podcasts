@@ -47,6 +47,24 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Direct-transport failure classification parity & sibling-route capacity retry (PR-6 /
+  Initiative 20; review/45 §20.9).**
+  - Added failure classification parity to the direct LLM transport in `citypods/compute/llm.py`
+    using `citypods/compute/llm_failure_class.py`.
+  - When an HTTP 429 occurs on the direct path, it is classified across the 9-class taxonomy. On
+    `upstream_capacity` (e.g., OpenRouter shared upstream pool saturation, Airforce guaranteed
+    response failures, OpenCode server errors, or transient capacity messages), the exhausted
+    route enters a 15-second cooldown without deferring the job, and the scheduler retries an
+    available sibling route (or eligible fallback model) up to 10 times.
+  - On `own_rpd`, the direct path blocks the route until the provider's next zoned midnight
+    (`_next_local_midnight`) before deferring.
+  - On `own_rpm`/`own_tpm`/`unknown_429`, the direct path blocks the route for 60 seconds (or
+    advertised `Retry-After`) and defers.
+  - Handled non-dict JSON error payloads gracefully in `citypods/compute/llm_failure_class.py`.
+  - Concluded Initiative 20 (PR-1 through PR-6): bringing end-to-end empirical characterization,
+    9-class failure taxonomy, sibling route failover, and dual-transport parity to LLM dispatch
+    and direct invocation.
+
 - **LLM rate-limit characterization & config feedback (PR-5 / Initiative 20; review/45 §20.8).**
   - Extended route schema in `config/provider_limits.yml` and `LLMRoute` dataclass
     (`citypods/compute/llm_policy.py`) with empirical rate characterization fields: `observed_on`,

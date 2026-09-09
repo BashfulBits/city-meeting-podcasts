@@ -301,6 +301,138 @@ def test_direct_mode_429_defers_and_blocks_the_route_reactively():
     assert ledger.blocked_until != ""
 
 
+def test_upstream_capacity_429_retries_sibling_route_without_deferring():
+    """An upstream capacity 429 retries an available sibling route rather than deferring,
+    marking the exhausted route in cooldown."""
+
+    class CapacityLimited(Exception):
+        status_code = 429
+        headers = {"retry-after": "15"}
+
+    call_count = 0
+
+    def completion(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise CapacityLimited("upstream provider overloaded, please try again later")
+        return SimpleNamespace(
+            model_dump=lambda: {
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"total_tokens": 12},
+            }
+        )
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    policy = LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",))
+    result = backend.run_inference(job(content="meeting text", llm_policy=policy))
+
+    assert isinstance(result, JobResult)
+    assert result.output["choices"][0]["message"]["content"] == "ok"
+    assert call_count == 2
+
+    budget, _ = load_llm_budget_cas(storage)
+    ledger1 = budget.routes["gemini_3_flash_preview_primary"]
+    assert ledger1.inflight == {}
+    assert ledger1.requests_minute == 0
+    assert ledger1.blocked_until != ""
+
+    ledger2 = budget.routes["gemini_3_flash_preview_secondary"]
+    assert ledger2.inflight == {}
+    assert ledger2.requests_minute == 1
+    assert ledger2.blocked_until == ""
+
+
+def test_upstream_capacity_429_retries_across_models_when_all_sibling_routes_capacity_fail():
+    """When both primary and secondary routes for model A hit capacity, the direct loop
+    retries an eligible fallback model B."""
+
+    class CapacityLimited(Exception):
+        status_code = 429
+        headers = {"retry-after": "15"}
+
+    attempted_models: list[str] = []
+
+    def completion(**kwargs):
+        model = kwargs.get("model")
+        attempted_models.append(model)
+        if model == "gemini/gemini-3-flash-preview":
+            raise CapacityLimited("upstream provider overloaded, please try again later")
+        return SimpleNamespace(
+            model_dump=lambda: {
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"total_tokens": 12},
+            }
+        )
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    policy = LLMRequestPolicy(
+        allowed_models=(
+            "gemini/gemini-3-flash-preview",
+            "gemini/gemini-3.5-flash",
+        )
+    )
+    result = backend.run_inference(job(content="meeting text", llm_policy=policy))
+
+    assert isinstance(result, JobResult)
+    assert result.output["choices"][0]["message"]["content"] == "ok"
+    assert attempted_models == [
+        "gemini/gemini-3-flash-preview",
+        "gemini/gemini-3-flash-preview",
+        "gemini/gemini-3.5-flash",
+    ]
+
+    budget, _ = load_llm_budget_cas(storage)
+    assert budget.routes["gemini_3_flash_preview_primary"].blocked_until != ""
+    assert budget.routes["gemini_3_flash_preview_secondary"].blocked_until != ""
+    assert budget.routes["gemini_3_5_flash_primary"].requests_minute == 1
+
+
+def test_own_rpd_429_blocks_until_next_local_midnight():
+    """An own_rpd 429 blocks the route until the provider's next zoned midnight."""
+
+    class RateLimitedRPD(Exception):
+        status_code = 429
+        headers = {"retry-after": "60"}
+
+    def completion(**kwargs):
+        raise RateLimitedRPD(
+            "Resource has been exhausted (e.g. check quota): "
+            "GenerateRequestsPerDayPerProjectPerRegion"
+        )
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    now = datetime.now(UTC)
+    result = backend.run_inference(
+        job(
+            content="meeting text",
+            llm_policy=LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",)),
+        )
+    )
+
+    assert isinstance(result, JobHandle)
+    budget, _ = load_llm_budget_cas(storage)
+    ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
+    assert ledger.blocked_until != ""
+    blocked_until = datetime.fromisoformat(ledger.blocked_until)
+    assert blocked_until > now + timedelta(minutes=5)
+
+
 def test_dispatch_mode_429_defers_and_blocks_the_route_reactively():
     class Response:
         def __init__(self, status, body, headers=None):

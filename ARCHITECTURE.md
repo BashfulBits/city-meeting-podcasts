@@ -448,7 +448,34 @@ exist or what each may spend, because the deployed Worker's reservation map is c
 committed file alone. `llm_lanes` chooses *among* the catalog below; the catalog itself — physical
 routes, quotas, and capabilities — remains `config/provider_limits.yml`'s job.
 
-The pipeline routes LLM jobs across 12 independent providers via [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both `workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python `citypods/compute/llm_routes.json`). The generated catalog contains 63 physical provider/account routes representing 34 deduplicated logical models; every route supports direct LiteLLM and asynchronous dispatch. Structured-output profiles in the same YAML declare each route's JSON mode, direct handler, schema relaxation, and prompt-schema behavior; runtime code consumes those materialized capabilities rather than inferring them from model or route names. Input/output context ceilings are mandatory on each physical route, because model families and gateways can differ (for example, OpenRouter's free Gemma route has a lower effective input ceiling than the native model). A route may also declare an optional, tighter `hard_input_ceiling`, separate from its context window: some providers' `tpm` is enforced as a hard per-request cap with no burst room above it regardless of how idle the account is (confirmed live against Gemini's free tier — the real usable ceiling can sit well below both `tpm` and the model's advertised context window), while others genuinely tolerate a request several times their configured `tpm` (confirmed live against NVIDIA's free tier). This field is therefore never derived from `tpm` automatically; it is set only where a provider's hard-reject behavior has actually been verified (today, every direct Google AI Studio Gemini/Gemma route — the same Gemma models fronted by OpenRouter's or NVIDIA's free gateways remain `null` pending their own verification), and is enforced both in `select_route` (`citypods/compute/llm_scheduler.py`) and in the Cloudflare dispatch Worker's own token-bucket pacing (`workers/llm-dispatch-v2/src/pacing.js`). Static catalog quotas are only candidate capacity: production routing records observed RPM, TPM, RPD/reset behavior, latency, failures, and structured-output validity before promoting a route.
+The pipeline routes LLM jobs across 12 independent providers via
+[`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both
+`workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python
+`citypods/compute/llm_routes.json`). The generated catalog contains 69 physical provider/account
+routes representing 36 deduplicated logical models; every route supports direct LiteLLM and
+asynchronous dispatch. Structured-output profiles in the same YAML declare each route's JSON mode,
+direct handler, schema relaxation, and prompt-schema behavior; runtime code consumes those
+materialized capabilities rather than inferring them from model or route names. Input/output
+context ceilings are mandatory on each physical route, because model families and gateways can
+differ (for example, OpenRouter's free Gemma route has a lower effective input ceiling than the
+native model). A route may also declare an optional, tighter `hard_input_ceiling`, separate from
+its context window: some providers' `tpm` is enforced as a hard per-request cap with no burst room
+above it regardless of how idle the account is (confirmed live against Gemini's free tier — the
+real usable ceiling can sit well below both `tpm` and the model's advertised context window), while
+others genuinely tolerate a request several times their configured `tpm` (confirmed live against
+NVIDIA's free tier). This field is therefore never derived from `tpm` automatically; it is set
+only where a provider's hard-reject behavior has actually been verified (today, every direct Google
+AI Studio Gemini/Gemma route — the same Gemma models fronted by OpenRouter's or NVIDIA's free
+gateways remain `null` pending their own verification), and is enforced both in `select_route`
+(`citypods/compute/llm_scheduler.py`) and in the Cloudflare dispatch Worker's own token-bucket
+pacing (`workers/llm-dispatch-v2/src/pacing.js`). Static catalog quotas are candidate capacity:
+production routing records observed RPM, burst tolerance, input ceilings, and recovery timing
+via automated probes (`citypods/llm_rate_probe.py`). Rate-limit and capacity errors are classified
+across a 9-class failure taxonomy (`citypods/compute/llm_failure_class.py` and
+`workers/llm-dispatch-v2/src/classify.js`): in direct mode, upstream capacity errors apply a brief
+cooldown (`UPSTREAM_CAPACITY_COOLDOWN_SECONDS`) and immediately retry on an available sibling
+route within the same call without deferring the job, while daily quota exhaustion (`own_rpd`)
+blocks the route until the provider's zoned midnight.
 
 | Canonical Model Name (`model`) | Quality Tier & Architecture | Providers in Pool | Representative Context Window* | Combined Free Capacity (RPM / Daily Quota) | Current Wired Task in Citypods | Recommended Civic Tasks & Future Verbs |
 |---|---|---|---|---|---|---|
