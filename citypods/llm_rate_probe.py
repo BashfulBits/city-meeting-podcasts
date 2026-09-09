@@ -14,6 +14,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -111,9 +112,7 @@ class RateProbeRunner:
                 "body": None,
             }
 
-        api_base = str(route.get("api_base", "")).rstrip("/")
-        chat_path = route.get("chat_path", "/v1/chat/completions")
-        url = f"{api_base}{chat_path}"
+        url = direct_chat_url(route)
 
         headers = {
             "Accept": "application/json",
@@ -262,6 +261,35 @@ def run_phase_1b(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, An
         "max_burst_probes": burst_limit,
         "observed_burst": observed_burst,
     }
+
+
+def direct_chat_url(route: Mapping[str, Any]) -> str:
+    """The provider's real direct chat-completions URL for a route.
+
+    `api_base` + `chat_path` cannot simply be concatenated. Those two fields are authored for
+    Cloudflare AI Gateway's custom-provider path rewrite (see ARCHITECTURE on the undocumented
+    "last Base URL segment becomes /v1" behaviour), which requires some providers to repeat a
+    segment that is ALREADY part of `api_base`. Airforce is the live example:
+
+        api_base  https://api.airforce/v1
+        chat_path /v1/chat/completions
+        naive     https://api.airforce/v1/v1/chat/completions  -> 404 not_found
+        correct   https://api.airforce/v1/chat/completions     -> reaches the provider
+
+    So a duplicated leading segment is collapsed. Production is unaffected either way -- it calls
+    these providers through the Gateway, which applies its own rewrite -- but the probe goes
+    direct, and with the naive join it silently 404'd every airforce request. That made a
+    reachable route look permanently dead in an endurance run whose entire purpose is telling
+    "dead" apart from "busy".
+    """
+    api_base = str(route.get("api_base", "")).rstrip("/")
+    chat_path = str(route.get("chat_path") or "/v1/chat/completions")
+    if not chat_path.startswith("/"):
+        chat_path = "/" + chat_path
+    first_segment = chat_path.split("/")[1] if "/" in chat_path[1:] else ""
+    if first_segment and api_base.endswith("/" + first_segment):
+        chat_path = chat_path[len(first_segment) + 1 :]
+    return f"{api_base}{chat_path}"
 
 
 def provider_reported_token_limit(resp: dict[str, Any]) -> int | None:

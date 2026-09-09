@@ -338,3 +338,32 @@ def test_phase_2_confirms_a_genuine_ceiling_without_flagging_contention():
         confirm_wait_seconds=0,
     )
     assert result["contention_detected"] is False
+
+
+def test_direct_chat_url_collapses_a_duplicated_segment():
+    """`api_base` + `chat_path` are authored for AI Gateway's custom-provider path rewrite, so
+    some providers repeat a segment already present in api_base. Concatenating naively 404'd every
+    airforce request, making a reachable route look permanently dead in an endurance run whose
+    whole purpose is telling "dead" apart from "busy"."""
+    from citypods.llm_rate_probe import direct_chat_url
+
+    airforce = {"api_base": "https://api.airforce/v1", "chat_path": "/v1/chat/completions"}
+    assert direct_chat_url(airforce) == "https://api.airforce/v1/chat/completions"
+
+    # Every other provider in the catalog is unaffected.
+    assert (
+        direct_chat_url(
+            {"api_base": "https://api.groq.com/openai/v1", "chat_path": "/chat/completions"}
+        )
+        == "https://api.groq.com/openai/v1/chat/completions"
+    )
+    assert (
+        direct_chat_url({"api_base": "https://api.mistral.ai", "chat_path": "/v1/chat/completions"})
+        == "https://api.mistral.ai/v1/chat/completions"
+    )
+    assert (
+        direct_chat_url(
+            {"api_base": "https://api.z.ai/api/paas/v4", "chat_path": "/chat/completions"}
+        )
+        == "https://api.z.ai/api/paas/v4/chat/completions"
+    )
