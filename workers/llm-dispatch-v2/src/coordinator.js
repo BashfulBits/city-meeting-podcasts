@@ -229,6 +229,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
         PRIMARY KEY (utc_day, purpose)
       );
 
+      -- Bounded per-class telemetry table (Initiative 20 / review/45 §20.7).
+      -- Keyed so it can never grow with traffic (bounded at 65 routes * 9 classes
+      -- * retention days).
+      CREATE TABLE IF NOT EXISTS route_failures (
+        utc_day       TEXT    NOT NULL,
+        route_id      TEXT    NOT NULL,
+        failure_class TEXT    NOT NULL,
+        count         INTEGER NOT NULL DEFAULT 0,
+        last_status   INTEGER,
+        last_seen_at  INTEGER NOT NULL,
+        PRIMARY KEY (utc_day, route_id, failure_class)
+      );
+
       -- Keeps the model-queue index's ordering priority synchronized with a direct jobs.priority
       -- edit -- review/44 documents an operator promoting an already-queued job for
       -- recovery/testing as a direct SQLite edit through Cloudflare's dashboard Data Studio or
@@ -334,6 +347,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       "attempts",
       "estimates",
       "scheduler",
+      "ingress_purpose",
+      "route_failures",
     ]);
     const ALLOWED_COLUMNS = new Map([
       ["rpd_window_start", "INTEGER NOT NULL DEFAULT 0"],
@@ -1181,6 +1196,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
     const scheduler = one("SELECT * FROM scheduler WHERE id = 1");
 
+    const today = new Date(now).toISOString().slice(0, 10);
+    const routeFailures = [...sql.exec(
+      `SELECT utc_day, route_id, failure_class, count, last_status, last_seen_at
+         FROM route_failures
+        WHERE utc_day = ?
+        ORDER BY count DESC
+        LIMIT ?`,
+      today,
+      limit
+    )];
+
     return {
       now,
       jobs: {
@@ -1198,6 +1224,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         blocked: blockedRoutes,
         all: routes.slice(0, limit),
       },
+      route_failures: routeFailures,
       bundles: {
         active: one("SELECT COUNT(*) AS n FROM bundles WHERE state = 'active'").n,
         active_expired: one(
@@ -1375,6 +1402,29 @@ export class LLMSchedulerDO extends DurableObjectBase {
   // completion settlement and calibration (Units 5 and 7).
   // ---------------------------------------------------------------------------------------
 
+  /**
+   * Increment bounded per-class failure telemetry (Initiative 20 / review/45 §20.7).
+   * Keyed by (utc_day, route_id, failure_class) so it can never grow with traffic.
+   */
+  _recordRouteFailure(sql, now, routeId, failureClass, lastStatus) {
+    if (!routeId || !failureClass) return;
+    const utcDay = new Date(now).toISOString().slice(0, 10);
+    sql.exec(
+      `INSERT INTO route_failures (
+         utc_day, route_id, failure_class, count, last_status, last_seen_at
+       ) VALUES (?, ?, ?, 1, ?, ?)
+       ON CONFLICT(utc_day, route_id, failure_class) DO UPDATE SET
+         count = count + 1,
+         last_status = excluded.last_status,
+         last_seen_at = excluded.last_seen_at`,
+      utcDay,
+      routeId,
+      failureClass,
+      lastStatus != null ? Number(lastStatus) : null,
+      now
+    );
+  }
+
   /** Read a route's live ledger row, seeding a fresh one (full token budget, no prior usage) the
    * first time this route is ever touched. `catalogRoute` supplies the static tpm limit used to
    * size the seed budget; it is not persisted (the catalog itself is not per-DO state). */
@@ -1535,6 +1585,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const attemptLimit = this._maxAttemptPrunePerTick();
     let bundlesDeleted = 0;
     let attemptsDeleted = 0;
+    let routeFailuresDeleted = 0;
 
     if (bundleLimit > 0) {
       const cutoff = now - this._bundleRetentionMs();
@@ -1566,9 +1617,28 @@ export class LLMSchedulerDO extends DurableObjectBase {
         sql.exec(`DELETE FROM attempts WHERE attempt_id IN (${placeholders})`, ...chunk);
         attemptsDeleted += chunk.length;
       }
+
+      // review/45 §20.7: Prune route_failures older than ATTEMPT_RETENTION_DAYS using
+      // the existing _maxAttemptPrunePerTick budget idiom.
+      const cutoffDay = new Date(cutoff).toISOString().slice(0, 10);
+      const staleFailures = [...sql.exec(
+        `SELECT utc_day, route_id, failure_class FROM route_failures
+         WHERE utc_day < ? ORDER BY utc_day ASC LIMIT ?`,
+        cutoffDay,
+        attemptLimit
+      )];
+      for (const row of staleFailures) {
+        sql.exec(
+          `DELETE FROM route_failures WHERE utc_day = ? AND route_id = ? AND failure_class = ?`,
+          row.utc_day,
+          row.route_id,
+          row.failure_class
+        );
+        routeFailuresDeleted += 1;
+      }
     }
 
-    return { bundlesDeleted, attemptsDeleted };
+    return { bundlesDeleted, attemptsDeleted, routeFailuresDeleted };
   }
 
   _freshRouteLedger(catalogRoute, now) {
@@ -2215,6 +2285,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
       const job = jobRows[0];
 
+      const routeId = job.lease_route_id;
+      this._recordRouteFailure(sql, now, routeId, failureClass, 429);
+
       if (job.attempts > this._max429Retries()) {
         return { authorized: false, retry_not_before: null };
       }
@@ -2228,7 +2301,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
       const bundle = bundleRows[0];
 
-      const routeId = job.lease_route_id;
       const ledger = this._getOrCreateRouteLedger(routeId, now, {});
       const dispatchLimits = this._dispatchLimits();
       const route = dispatchLimits?.routes_by_id?.[routeId];
@@ -2472,6 +2544,31 @@ export class LLMSchedulerDO extends DurableObjectBase {
           isTransientRouteFailure && job.transient_retry_count < this._max5xxRetries();
         const shouldRequeue =
           shouldRetry5xx || isPaymentRequired || isRateLimitTerminal;
+
+        if (result.outcome === "retryable_error" || result.outcome === "terminal_error") {
+          if (result.provider_status_code !== 429) {
+            const failureClass =
+              result.failure_class ||
+              (result.provider_status_code === 402
+                ? "payment_required"
+                : isUpstreamCapacityFailure
+                  ? "upstream_capacity"
+                  : isFinal5xx
+                    ? "server_error"
+                    : (Number.isInteger(result.provider_status_code) &&
+                       result.provider_status_code >= 400 &&
+                       result.provider_status_code < 500)
+                      ? "request_defect"
+                      : "server_error");
+            this._recordRouteFailure(
+              sql,
+              now,
+              job.lease_route_id || routeIdForAttempt,
+              failureClass,
+              result.provider_status_code
+            );
+          }
+        }
 
         let newState;
         switch (result.outcome) {

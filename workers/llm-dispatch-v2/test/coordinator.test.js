@@ -1334,3 +1334,196 @@ test("completeBatch success clears upstream_capacity_streak and last_failure_cla
   assert.equal(route.throttle_streak, 0);
   assert.equal(route.buffer_seconds, 0);
 });
+
+test("authorizeRetry records route_failures telemetry for 429s", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  sql.exec(
+    `INSERT INTO bundles (
+      bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at
+    ) VALUES ('b-telem', 'tok', 'active', ?, ?, ?)`,
+    now + 60_000,
+    now + 60_000,
+    now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-telem', 'idem-1', 'digest-1', '{}', 'leased', 'b-telem', 'route-telem',
+      'ltok', 'tags', 100, 50, 'payloads/j-telem/request.json', ?, ?
+    )`,
+    now,
+    now
+  );
+
+  // First 429 encounter
+  await coordinator.authorizeRetry("j-telem", "ltok", "att-1", now, null, "upstream_capacity");
+  let rows = [...sql.exec(
+    "SELECT * FROM route_failures WHERE utc_day = ? AND route_id = 'route-telem'",
+    today
+  )];
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].failure_class, "upstream_capacity");
+  assert.equal(rows[0].count, 1);
+  assert.equal(rows[0].last_status, 429);
+  assert.equal(rows[0].last_seen_at, now);
+
+  // Second 429 encounter on the same route/class increments count
+  await coordinator.authorizeRetry(
+    "j-telem", "ltok", "att-2", now + 1000, null, "upstream_capacity"
+  );
+  rows = [...sql.exec(
+    "SELECT * FROM route_failures WHERE utc_day = ? AND route_id = 'route-telem'",
+    today
+  )];
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].count, 2);
+  assert.equal(rows[0].last_seen_at, now + 1000);
+});
+
+test("completeBatch records route_failures telemetry for non-429 failures", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  sql.exec(
+    `INSERT INTO bundles (
+      bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at
+    ) VALUES ('b-batch-fail', 'tok', 'active', ?, ?, ?)`,
+    now + 60_000,
+    now + 60_000,
+    now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-402', 'idem-402', 'digest-402', '{}', 'leased', 'b-batch-fail', 'route-402',
+      'tok-402', 'tags', 100, 50, 'payloads/402.json', ?, ?
+    ), (
+      'j-500', 'idem-500', 'digest-500', '{}', 'leased', 'b-batch-fail', 'route-500',
+      'tok-500', 'tags', 100, 50, 'payloads/500.json', ?, ?
+    ), (
+      'j-400', 'idem-400', 'digest-400', '{}', 'leased', 'b-batch-fail', 'route-400',
+      'tok-400', 'tags', 100, 50, 'payloads/400.json', ?, ?
+    )`,
+    now, now, now, now, now, now
+  );
+
+  await coordinator.completeBatch("b-batch-fail", "tok", [
+    {
+      job_id: "j-402",
+      lease_token: "tok-402",
+      attempt_id: "att-402",
+      planned_at: now,
+      outcome: "retryable_error",
+      provider_status_code: 402,
+    },
+    {
+      job_id: "j-500",
+      lease_token: "tok-500",
+      attempt_id: "att-500",
+      planned_at: now,
+      outcome: "retryable_error",
+      provider_status_code: 503,
+    },
+    {
+      job_id: "j-400",
+      lease_token: "tok-400",
+      attempt_id: "att-400",
+      planned_at: now,
+      outcome: "retryable_error",
+      provider_status_code: 400,
+      failure_class: "upstream_capacity",
+    },
+  ]);
+
+  const rows = [...sql.exec(
+    "SELECT route_id, failure_class, count, last_status FROM route_failures WHERE utc_day = ?",
+    today
+  )];
+  assert.equal(rows.length, 3);
+
+  const row402 = rows.find((r) => r.route_id === "route-402");
+  assert.ok(row402);
+  assert.equal(row402.failure_class, "payment_required");
+  assert.equal(row402.last_status, 402);
+  assert.equal(row402.count, 1);
+
+  const row500 = rows.find((r) => r.route_id === "route-500");
+  assert.ok(row500);
+  assert.equal(row500.failure_class, "server_error");
+  assert.equal(row500.last_status, 503);
+  assert.equal(row500.count, 1);
+
+  const row400 = rows.find((r) => r.route_id === "route-400");
+  assert.ok(row400);
+  assert.equal(row400.failure_class, "upstream_capacity");
+  assert.equal(row400.last_status, 400);
+  assert.equal(row400.count, 1);
+});
+
+test("_pruneTerminalRecords prunes route_failures older than attempt retention", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    ATTEMPT_RETENTION_DAYS: "7",
+    MAX_ATTEMPT_PRUNE_PER_TICK: "10",
+  });
+  const now = Date.now();
+  const staleDay = new Date(now - 14 * 86_400_000).toISOString().slice(0, 10);
+  const today = new Date(now).toISOString().slice(0, 10);
+
+  sql.exec(
+    `INSERT INTO route_failures (utc_day, route_id, failure_class, count, last_status, last_seen_at)
+     VALUES (?, 'route-stale', 'own_rpm', 5, 429, ?),
+            (?, 'route-fresh', 'own_rpm', 2, 429, ?)`,
+    staleDay,
+    now - 14 * 86_400_000,
+    today,
+    now
+  );
+
+  const result = coordinator._pruneTerminalRecords(now);
+  assert.equal(result.routeFailuresDeleted, 1);
+
+  const remaining = [...sql.exec("SELECT utc_day, route_id FROM route_failures")];
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].utc_day, today);
+  assert.equal(remaining[0].route_id, "route-fresh");
+});
+
+test("stats exposes today's route_failures ordered by count DESC capped at limit", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const yesterday = new Date(now - 86_400_000).toISOString().slice(0, 10);
+
+  sql.exec(
+    `INSERT INTO route_failures (utc_day, route_id, failure_class, count, last_status, last_seen_at)
+     VALUES (?, 'r-1', 'own_rpm', 10, 429, ?),
+            (?, 'r-2', 'upstream_capacity', 25, 429, ?),
+            (?, 'r-3', 'payment_required', 5, 402, ?),
+            (?, 'r-old', 'own_rpm', 99, 429, ?)`,
+    today,
+    now,
+    today,
+    now,
+    today,
+    now,
+    yesterday,
+    now - 86_400_000
+  );
+
+  const s = await coordinator.stats(now, 2);
+  assert.ok(Array.isArray(s.route_failures), "stats must include route_failures");
+  assert.equal(s.route_failures.length, 2, "must be capped at limit=2");
+  assert.equal(s.route_failures[0].route_id, "r-2");
+  assert.equal(s.route_failures[0].count, 25);
+  assert.equal(s.route_failures[1].route_id, "r-1");
+  assert.equal(s.route_failures[1].count, 10);
+  assert.ok(!s.route_failures.some((r) => r.utc_day === yesterday), "must only include today");
+});

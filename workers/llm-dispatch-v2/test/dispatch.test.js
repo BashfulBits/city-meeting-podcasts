@@ -769,15 +769,18 @@ test("_pruneTerminalRecords deletes aged-out terminal bundles and attempts, boun
   }
 
   const first = coordinator._pruneTerminalRecords(now);
-  assert.deepEqual(first, { bundlesDeleted: 10, attemptsDeleted: 10 });
+  assert.deepEqual(first, { bundlesDeleted: 10, attemptsDeleted: 10, routeFailuresDeleted: 0 });
   assert.equal([...sql.exec("SELECT COUNT(*) n FROM bundles")][0].n, 15);
   assert.equal([...sql.exec("SELECT COUNT(*) n FROM attempts")][0].n, 15);
 
   // Repeated ticks drain the backlog and then stop finding work.
   coordinator._pruneTerminalRecords(now);
   const third = coordinator._pruneTerminalRecords(now);
-  assert.deepEqual(third, { bundlesDeleted: 5, attemptsDeleted: 5 });
-  assert.deepEqual(coordinator._pruneTerminalRecords(now), { bundlesDeleted: 0, attemptsDeleted: 0 });
+  assert.deepEqual(third, { bundlesDeleted: 5, attemptsDeleted: 5, routeFailuresDeleted: 0 });
+  assert.deepEqual(
+    coordinator._pruneTerminalRecords(now),
+    { bundlesDeleted: 0, attemptsDeleted: 0, routeFailuresDeleted: 0 }
+  );
 });
 
 test("_pruneTerminalRecords never removes an active bundle, a recent one, or one whose lease could still be current", async () => {
@@ -806,7 +809,10 @@ test("a zero per-tick prune cap pauses retention without affecting dispatch", as
   const old = now - 30 * 86_400_000;
   sql.exec("INSERT INTO bundles VALUES ('stale-1','t','completed',?,0,?,?)", old, old, old);
 
-  assert.deepEqual(coordinator._pruneTerminalRecords(now), { bundlesDeleted: 0, attemptsDeleted: 0 });
+  assert.deepEqual(
+    coordinator._pruneTerminalRecords(now),
+    { bundlesDeleted: 0, attemptsDeleted: 0, routeFailuresDeleted: 0 }
+  );
   assert.equal([...sql.exec("SELECT COUNT(*) n FROM bundles")][0].n, 1);
 
   await coordinator.enqueueBatch([makeJob("j1")]);
