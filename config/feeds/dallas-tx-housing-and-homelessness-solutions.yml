@@ -17,6 +17,8 @@ source:
       body: "Housing Public Meeting"
     - provider_guid: "205534"
       body: "Virtual Town Hall Meeting Citizen Homelessness Commission - Public Input"
+    - provider_guid: "204142"
+      body: "Neighborhood Public Meeting for FY 2022-23 HUD Grant Funds"
   body_any:
     - "Housing"
     - "Housing Policy Public Input Virtual Meeting Topic 4 of 4"

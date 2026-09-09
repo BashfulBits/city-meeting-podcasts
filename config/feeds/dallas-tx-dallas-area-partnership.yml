@@ -6,6 +6,9 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: Dallas Area Partnership Meeting
+  body_includes:
+    - provider_guid: "204050"
+      body: "Dallas Area Partnership to End and Prevent Homelessness LGC"
 lifecycle:
   status: retired
   reason: latest observed meeting was 2023-11-02 (1041 days ago)

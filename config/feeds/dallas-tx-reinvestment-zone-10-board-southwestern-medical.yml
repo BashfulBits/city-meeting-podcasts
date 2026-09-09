@@ -6,6 +6,15 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: Reinvestment Zone 10 Board Southwestern Medical
+  body_any:
+    - "Southwestern Medical TIF Board of Directors Meeting"
+    - "Reinvestment Zone 10 Board Southwest Medical TIF"
+    - "Reinvestment Zone 10 Board Southwest Medical"
+  body_includes:
+    - provider_guid: "204645"
+      body: "Reinvestment Zone 10 Southwestern Medical"
+    - provider_guid: "204626"
+      body: "Reinvestment Zone 10 TIF Southwest Medical"
 lifecycle:
   status: retired
   reason: latest observed meeting was 2022-01-27 (1685 days ago)
