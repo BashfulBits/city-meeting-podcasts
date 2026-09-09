@@ -83,6 +83,33 @@ export const FAILURE_SIGNATURES = [
       body?.error?.code === "rate_limit_exceeded",
   },
   {
+    // A rate-limit header whose LIMIT (not "remaining") is literally 0 means the provider has
+    // provisioned this account no allowance at all -- an account/billing state, not pacing. No
+    // amount of backoff inside the window recovers it, so it belongs on the day -> week -> month
+    // cooldown ladder rather than buying a 60-second buffer and retrying forever.
+    //
+    // This is how Mistral actually reports it, and the message gives nothing away:
+    //   429 {"message":"Rate limit exceeded","type":"rate_limited","code":"1300"}
+    //   x-ratelimit-limit-req-minute: 0
+    //   x-ratelimit-remaining-req-minute: 0
+    // Confirmed live 2026-09-09 while /v1/models still returned 200, so credentials were valid.
+    // Ordered before `remaining-zero-header`, which would otherwise read the same response as an
+    // ordinary exhausted minute and keep hammering a route that can never serve a request.
+    rule_id: "zero-provisioned-limit",
+    provider: null,
+    failure_class: "payment_required",
+    match: ({ headers }) => {
+      if (!headers) return false;
+      for (const [name, value] of headers.entries ? headers.entries() : Object.entries(headers)) {
+        const key = String(name).toLowerCase();
+        if (!key.startsWith("x-ratelimit-limit") && !key.startsWith("ratelimit-limit")) continue;
+        const parsed = Number(String(value).trim());
+        if (Number.isFinite(parsed) && parsed === 0) return true;
+      }
+      return false;
+    },
+  },
+  {
     rule_id: "remaining-zero-header",
     provider: null,
     failure_class: "own_rpm",

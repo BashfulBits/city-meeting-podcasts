@@ -106,6 +106,25 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         ),
     },
     {
+        # A rate-limit header whose LIMIT (not "remaining") is literally 0 means the provider has
+        # provisioned this account no allowance at all -- an account/billing state, not pacing.
+        # Mistral reports exactly this, with a message that gives nothing away:
+        #   429 {"message":"Rate limit exceeded","type":"rate_limited","code":"1300"}
+        #   x-ratelimit-limit-req-minute: 0
+        # Confirmed live 2026-09-09 while /v1/models still returned 200. Ordered before
+        # "remaining-zero-header", which would read the same response as an ordinary exhausted
+        # minute and retry a route that can never serve a request.
+        "rule_id": "zero-provisioned-limit",
+        "provider": None,
+        "failure_class": "payment_required",
+        "match": lambda ctx: any(
+            str(name).lower().startswith(("x-ratelimit-limit", "ratelimit-limit"))
+            and str(value).strip().replace(".0", "").isdigit()
+            and int(float(str(value).strip())) == 0
+            for name, value in (ctx.get("headers") or {}).items()
+        ),
+    },
+    {
         "rule_id": "remaining-zero-header",
         "provider": None,
         "failure_class": "own_rpm",

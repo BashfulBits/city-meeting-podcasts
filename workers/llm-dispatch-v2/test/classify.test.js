@@ -350,3 +350,37 @@ test("FAILURE_SIGNATURES has at least 13 rules", () => {
   const ids = new Set(FAILURE_SIGNATURES.map((r) => r.rule_id));
   assert.equal(ids.size, FAILURE_SIGNATURES.length, "all rule_id values must be unique");
 });
+
+test("a zero PROVISIONED limit is billing, not pacing", () => {
+  // Mistral reports an account with no allowance as a plain 429 whose message gives nothing away;
+  // the only tell is `x-ratelimit-limit-req-minute: 0` -- the limit, not the remaining. Read as
+  // own_rpm it bought a 60s buffer and retried forever against a route that can never serve a
+  // request. Confirmed live 2026-09-09 while /v1/models still returned 200.
+  const headers = new Map([
+    ["x-ratelimit-limit-req-minute", "0"],
+    ["x-ratelimit-remaining-req-minute", "0"],
+  ]);
+  const result = classifyProviderFailure({
+    status: 429,
+    body: { message: "Rate limit exceeded", type: "rate_limited", code: "1300" },
+    headers,
+    route: { provider: "mistral" },
+  });
+  assert.equal(result.failure_class, "payment_required");
+  assert.equal(result.rule_id, "zero-provisioned-limit");
+});
+
+test("an ordinary exhausted limit is still pacing, not billing", () => {
+  const headers = new Map([
+    ["x-ratelimit-limit-requests", "1000"],
+    ["x-ratelimit-remaining-requests", "0"],
+  ]);
+  const result = classifyProviderFailure({
+    status: 429,
+    body: { error: { message: "slow down" } },
+    headers,
+    route: { provider: "groq" },
+  });
+  assert.equal(result.failure_class, "own_rpm");
+  assert.equal(result.rule_id, "remaining-zero-header");
+});

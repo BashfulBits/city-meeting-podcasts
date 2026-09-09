@@ -864,6 +864,23 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"observed_rpm: {obs_rpm!r}"
                 )
             route["observed_rpm"] = float(obs_rpm)
+            # Consumed in ONE direction only: it may lower the effective `rpm`, never raise it.
+            #
+            # This is deliberately asymmetric, and the asymmetry is the whole safety argument.
+            # Clamping DOWN means "the provider throttles us harder than we configured" -- acting
+            # on it prevents 429s, and its worst case is a route that runs slower than it could.
+            # Raising would mean betting a route can absorb more than its authored limit on the
+            # strength of one probe run, whose worst case is a sustained overdrive into throttling
+            # or a ban. Given a bad probe run had already turned `observed_input_ceiling` into a
+            # total route block on 2026-09-09, an observation gets to make things safer on its own
+            # and must go through a human to make them faster.
+            #
+            # The `max(1.0, ...)` floor is the lesson from that incident stated as code: no
+            # measurement may ever drive a limit to 0, because 0 is this repository's "paused"
+            # convention and would silently remove the route from dispatch entirely.
+            declared_rpm = route.get("rpm")
+            if declared_rpm is not None and route["observed_rpm"] < declared_rpm:
+                route["rpm"] = max(1.0, route["observed_rpm"])
 
         obs_burst = route.get("observed_burst")
         if obs_burst is not None:

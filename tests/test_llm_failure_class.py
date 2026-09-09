@@ -246,3 +246,33 @@ def test_classify_generic_4xx():
     assert res.failure_class == "request_defect"
     assert res.rule_id == "http-4xx"
     assert res.scope == "route"
+
+
+def test_zero_provisioned_limit_is_billing_not_pacing():
+    """Mistral reports an account with no provisioned allowance as a plain 429 whose message says
+    nothing ("Rate limit exceeded", type rate_limited, code 1300) -- the only tell is
+    `x-ratelimit-limit-req-minute: 0`, the LIMIT rather than the remaining. Read as own_rpm it
+    bought a 60s buffer and retried forever against a route that can never serve a request;
+    21,287 jobs were queued behind exactly this on 2026-09-09 while /v1/models still returned 200.
+    """
+    result = classify_provider_failure(
+        status=429,
+        body={"message": "Rate limit exceeded", "type": "rate_limited", "code": "1300"},
+        headers={"x-ratelimit-limit-req-minute": "0", "x-ratelimit-remaining-req-minute": "0"},
+        route={"provider": "mistral"},
+    )
+    assert result.failure_class == "payment_required"
+    assert result.rule_id == "zero-provisioned-limit"
+
+
+def test_ordinary_exhaustion_is_still_pacing_not_billing():
+    """The mirror case: a real limit that happens to be spent is our own pacing, and must keep the
+    short buffer rather than the month-long billing ladder."""
+    result = classify_provider_failure(
+        status=429,
+        body={"error": {"message": "slow down"}},
+        headers={"x-ratelimit-limit-requests": "1000", "x-ratelimit-remaining-requests": "0"},
+        route={"provider": "groq"},
+    )
+    assert result.failure_class == "own_rpm"
+    assert result.rule_id == "remaining-zero-header"

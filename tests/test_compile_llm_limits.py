@@ -751,3 +751,54 @@ def test_observed_characterization_fields_invalid_rejects():
         )
         with pytest.raises(ValueError, match="observed_input_ceiling"):
             compile_llm_limits.compile_limits()
+
+
+def test_observed_rpm_lowers_the_effective_limit_but_never_raises_it():
+    """`observed_rpm` is consumed in one direction only.
+
+    Lowering is safety-positive (it prevents 429s; worst case the route runs slower than it
+    could). Raising would bet a route can absorb more than its authored limit on the strength of
+    one probe run, whose worst case is sustained overdrive into throttling. And no measurement may
+    drive a limit to 0 -- that is this repository's "paused" convention, and it would silently
+    remove the route from dispatch, which is exactly how a bad probe run blocked five routes on
+    2026-09-09.
+    """
+
+    def _rpm(observed, declared):
+        raw = {
+            "providers": {
+                "test_prov": {
+                    "api_base": "https://api.test.com",
+                    "structured_output_profile": "standard_json_schema",
+                    "accounts": [{"id": "primary", "api_key_env": "TEST_KEY"}],
+                }
+            },
+            "structured_output_profiles": {
+                "standard_json_schema": {
+                    "response_format": "json_schema",
+                    "direct_handler": "instructor",
+                    "include_schema_in_prompt": False,
+                    "strip_schema_keys": [],
+                }
+            },
+            "routes": [
+                {
+                    "route_id": "r1",
+                    "model": "test/model",
+                    "provider": "test_prov",
+                    "input_context_limit": 100000,
+                    "output_context_limit": 4096,
+                    "rpm": declared,
+                    "observed_rpm": observed,
+                }
+            ],
+        }
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr(
+                compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+            )
+            return compile_llm_limits.compile_limits()["routes_by_id"]["r1"]["rpm"]
+
+    assert _rpm(5, 30) == 5, "a measured limit below the declared one must clamp it down"
+    assert _rpm(90, 30) == 30, "a measured limit above the declared one must NOT raise it"
+    assert _rpm(0.2, 30) == 1.0, "no measurement may drive rpm to 0 (the paused convention)"
