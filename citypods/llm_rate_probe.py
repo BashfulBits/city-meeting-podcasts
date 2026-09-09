@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -38,6 +39,10 @@ def load_route_catalog() -> list[dict[str, Any]]:
 
 class ProbeBudgetExceeded(Exception):
     """Raised when total request or wall-clock budget is exceeded."""
+
+
+class RouteBudgetExceeded(Exception):
+    """Raised when request budget for a single route is exceeded."""
 
 
 class RateProbeRunner:
@@ -72,7 +77,7 @@ class RateProbeRunner:
             raise ProbeBudgetExceeded(f"Max total requests of {self.max_requests_total} reached")
         route_count = self.route_request_counts.get(route_id, 0)
         if route_count >= self.max_requests_per_route:
-            raise ProbeBudgetExceeded(
+            raise RouteBudgetExceeded(
                 f"Max requests per route ({self.max_requests_per_route}) reached for {route_id}"
             )
 
@@ -199,9 +204,9 @@ def run_phase_0(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, Any
 
 def run_phase_1(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, Any]:
     """Phase 1: Declared-vs-enforced RPM."""
-    rpm = route.get("rpm") or 10
-    target_count = min(rpm, 20) + 2
-    spacing = 60.0 / float(rpm)
+    rpm = float(route.get("rpm") or 10)
+    target_count = int(math.ceil(min(rpm, 20.0))) + 2
+    spacing = 60.0 / rpm if rpm > 0 else 6.0
 
     first_429_index = None
     first_429_class = None
@@ -225,6 +230,8 @@ def run_phase_1(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, Any
             break
         if resp.get("status") == 200:
             successful_requests += 1
+        else:
+            break
 
     return {
         "phase": "1",
@@ -237,18 +244,18 @@ def run_phase_1(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, Any
 
 def run_phase_1b(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, Any]:
     """Phase 1b: Burst capacity."""
-    rpm = route.get("rpm") or 10
-    burst_limit = min(2 * rpm + 5, 40)
+    rpm = float(route.get("rpm") or 10)
+    burst_limit = int(math.ceil(min(2 * rpm + 5, 40.0)))
     observed_burst = 0
 
     for _ in range(burst_limit):
         resp = runner.send_request(route, FIXED_PROMPT, max_tokens=1)
         if resp.get("dry_run"):
             return {"phase": "1b", "dry_run": True, "max_burst_probes": burst_limit}
-        if resp.get("status") == 429:
-            break
         if resp.get("status") == 200:
             observed_burst += 1
+        else:
+            break
 
     return {
         "phase": "1b",
@@ -295,7 +302,11 @@ def run_phase_2(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, Any
     }
 
 
-def run_phase_3(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, Any]:
+def run_phase_3(
+    runner: RateProbeRunner,
+    route: dict[str, Any],
+    last_429: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Phase 3: Recovery timing after 429."""
     intervals = [5, 15, 30, 60, 120, 300]
     observed_recovery = None
@@ -310,9 +321,25 @@ def run_phase_3(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, Any
             observed_recovery = delay
             break
 
+    advertised_retry_after = None
+    retry_after_trustworthy = None
+    if last_429:
+        headers = last_429.get("headers") or {}
+        ra_val = headers.get("retry-after")
+        if ra_val is not None:
+            try:
+                advertised_retry_after = float(ra_val)
+                if observed_recovery is not None and advertised_retry_after > 0:
+                    ratio = advertised_retry_after / float(observed_recovery)
+                    retry_after_trustworthy = 0.5 <= ratio <= 1.5
+            except (ValueError, TypeError):
+                pass
+
     return {
         "phase": "3",
         "observed_recovery_seconds": observed_recovery,
+        "advertised_retry_after_seconds": advertised_retry_after,
+        "retry_after_trustworthy": retry_after_trustworthy,
     }
 
 
@@ -366,14 +393,20 @@ def run_probes(
             "observations": {},
         }
 
+        last_429 = None
         try:
             p0_res = None
             if "0" in phases:
                 p0_res = run_phase_0(runner, route)
                 route_record["observations"]["phase_0"] = p0_res
+                if p0_res.get("status") == 429:
+                    last_429 = p0_res
 
             if "1" in phases:
-                route_record["observations"]["phase_1"] = run_phase_1(runner, route)
+                p1_res = run_phase_1(runner, route)
+                route_record["observations"]["phase_1"] = p1_res
+                if p1_res.get("first_429_index") is not None:
+                    last_429 = p1_res
 
             if "1b" in phases:
                 route_record["observations"]["phase_1b"] = run_phase_1b(runner, route)
@@ -382,7 +415,9 @@ def run_probes(
                 route_record["observations"]["phase_2"] = run_phase_2(runner, route)
 
             if "3" in phases:
-                route_record["observations"]["phase_3"] = run_phase_3(runner, route)
+                route_record["observations"]["phase_3"] = run_phase_3(
+                    runner, route, last_429=last_429
+                )
 
             if "4" in phases:
                 if p0_res:
@@ -391,6 +426,10 @@ def run_probes(
                         route_record["observations"]["phase_4"] = p4_res
 
             results.append(route_record)
+        except RouteBudgetExceeded as exc:
+            route_record["budget_interrupted"] = str(exc)
+            results.append(route_record)
+            continue
         except ProbeBudgetExceeded as exc:
             route_record["budget_interrupted"] = str(exc)
             results.append(route_record)
@@ -554,6 +593,7 @@ def main(argv: list[str] | None = None) -> int:
 
     report = run_probes(selected, phases, runner)
 
+    args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     emit_github_step_summary(report)
 

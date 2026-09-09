@@ -313,6 +313,14 @@ _WORKER_ROUTE_FIELDS = (
     "output_per_token",
     "pricing",
     "reset_timezone",
+    # Rate probe characterization measurements (PR-5 / Initiative 20).
+    "observed_on",
+    "observed_rpm",
+    "observed_burst",
+    "observed_input_ceiling",
+    "observed_recovery_seconds",
+    "retry_after_trustworthy",
+    "upstream_429_default",
     # Read by the Worker's upstreamRequestForRoute to relax a route's outbound structured-output
     # schema. Every other structured_output_* field is Python-direct-dispatch-only and stays out
     # of this list, which whitelists what the Worker receives per route -- but each entry lands
@@ -820,6 +828,83 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"({route['input_context_limit']}); it can never bind and should be removed"
                 )
             route["hard_input_ceiling"] = int(hard_ceiling)
+        # Rate probe characterization measurements (PR-5 / Initiative 20).
+        obs_ceil = route.get("observed_input_ceiling")
+        if obs_ceil is not None:
+            if (
+                isinstance(obs_ceil, bool)
+                or not isinstance(obs_ceil, (int, float))
+                or (obs_ceil < 1)
+            ):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"observed_input_ceiling: {obs_ceil!r}"
+                )
+            if obs_ceil > route["input_context_limit"]:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has "
+                    f"observed_input_ceiling ({obs_ceil}) above its own input_context_limit "
+                    f"({route['input_context_limit']})"
+                )
+            route["observed_input_ceiling"] = int(obs_ceil)
+            if route.get("hard_input_ceiling") is None:
+                route["hard_input_ceiling"] = int(obs_ceil)
+
+        obs_rpm = route.get("observed_rpm")
+        if obs_rpm is not None:
+            if isinstance(obs_rpm, bool) or not isinstance(obs_rpm, (int, float)) or obs_rpm <= 0:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"observed_rpm: {obs_rpm!r}"
+                )
+            route["observed_rpm"] = float(obs_rpm)
+
+        obs_burst = route.get("observed_burst")
+        if obs_burst is not None:
+            if isinstance(obs_burst, bool) or not isinstance(obs_burst, int) or obs_burst < 0:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"observed_burst: {obs_burst!r}"
+                )
+            route["observed_burst"] = int(obs_burst)
+
+        obs_rec = route.get("observed_recovery_seconds")
+        if obs_rec is not None:
+            if isinstance(obs_rec, bool) or not isinstance(obs_rec, (int, float)) or obs_rec <= 0:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"observed_recovery_seconds: {obs_rec!r}"
+                )
+            route["observed_recovery_seconds"] = float(obs_rec)
+
+        ra_trust = route.get("retry_after_trustworthy")
+        if ra_trust is not None:
+            if not isinstance(ra_trust, bool):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"retry_after_trustworthy: {ra_trust!r}"
+                )
+            route["retry_after_trustworthy"] = bool(ra_trust)
+
+        up_default = route.get("upstream_429_default")
+        if up_default is not None:
+            if up_default not in (
+                "upstream_capacity",
+                "gateway_limit",
+                "own_rpm",
+                "own_tpm",
+                "own_rpd",
+                "unknown_429",
+            ):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has unknown "
+                    f"upstream_429_default: {up_default!r}"
+                )
+            route["upstream_429_default"] = str(up_default)
+
+        obs_on = route.get("observed_on")
+        if obs_on is not None:
+            route["observed_on"] = str(obs_on)
         profile_name = route.get(
             "structured_output_profile",
             provider_cfg.get("structured_output_profile", "standard_json_schema"),

@@ -196,6 +196,14 @@ class LLMRoute:
     # automatically -- only set it where a provider's hard-reject behavior has actually been
     # verified. `None` (the default) means "no extra ceiling beyond `input_context_limit`."
     hard_input_ceiling: int | None = None
+    # Characterization measurements (PR-5 / Initiative 20). All optional, defaulting to None.
+    observed_on: str | None = None
+    observed_rpm: float | None = None
+    observed_burst: int | None = None
+    observed_input_ceiling: int | None = None
+    observed_recovery_seconds: float | None = None
+    retry_after_trustworthy: bool | None = None
+    upstream_429_default: str | None = None
 
     def __post_init__(self) -> None:
         # Hand-built fallback and test routes intentionally omit provider adapter metadata.  They
@@ -323,6 +331,35 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                 hard_input_ceiling=(
                     int(item["hard_input_ceiling"])
                     if item.get("hard_input_ceiling") is not None
+                    else None
+                ),
+                observed_on=(
+                    str(item["observed_on"]) if item.get("observed_on") is not None else None
+                ),
+                observed_rpm=(
+                    float(item["observed_rpm"]) if item.get("observed_rpm") is not None else None
+                ),
+                observed_burst=(
+                    int(item["observed_burst"]) if item.get("observed_burst") is not None else None
+                ),
+                observed_input_ceiling=(
+                    int(item["observed_input_ceiling"])
+                    if item.get("observed_input_ceiling") is not None
+                    else None
+                ),
+                observed_recovery_seconds=(
+                    float(item["observed_recovery_seconds"])
+                    if item.get("observed_recovery_seconds") is not None
+                    else None
+                ),
+                retry_after_trustworthy=(
+                    bool(item["retry_after_trustworthy"])
+                    if item.get("retry_after_trustworthy") is not None
+                    else None
+                ),
+                upstream_429_default=(
+                    str(item["upstream_429_default"])
+                    if item.get("upstream_429_default") is not None
                     else None
                 ),
             )

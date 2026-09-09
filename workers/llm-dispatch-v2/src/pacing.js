@@ -202,7 +202,7 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   // so this never over-restricts a route we haven't tested. It is an *input*-only cap -- mirror
   // the Python scheduler's `select_route` contract (`llm_scheduler.py`) and compare it against the
   // client's input estimate alone, not `reservation`, which also carries the output-token budget.
-  const hardCeiling = Number(route?.hard_input_ceiling);
+  const hardCeiling = Number(route?.hard_input_ceiling || route?.observed_input_ceiling);
   const inputEstimate = Number(job?.input_token_estimate) || 0;
   if (Number.isFinite(hardCeiling) && hardCeiling > 0 && inputEstimate > hardCeiling) {
     return null;

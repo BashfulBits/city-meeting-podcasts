@@ -421,7 +421,8 @@ def select_route(
         # has actually been verified -- see its docstring in `llm_policy.py`. Without this gate, an
         # oversized request for such a route would pass the check above (it's under the model's
         # real context window) and only fail once it reaches the provider as a genuine 429.
-        if route.hard_input_ceiling is not None and input_tokens > route.hard_input_ceiling:
+        hard_ceiling = route.hard_input_ceiling or route.observed_input_ceiling
+        if hard_ceiling is not None and input_tokens > hard_ceiling:
             rejected.append((model, "hard input ceiling"))
             continue
         if output_tokens > route.output_context_limit:
