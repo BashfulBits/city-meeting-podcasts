@@ -1580,3 +1580,56 @@ test("authorizeRetry overrides untrustworthy Retry-After with observed_recovery_
   assert.ok(routeRow.blocked_until >= now + 45_000);
 });
 
+
+// ---------------------------------------------------------------------------
+// Regressions from the 2026-09-09 Initiative 20 review.
+// ---------------------------------------------------------------------------
+
+test("a route with no declared rpd is unlimited on that axis, not treated as paused", () => {
+  // THE bug: `Number(null) === 0`, and this repo uses an explicit 0 to mean "paused/exhausted",
+  // so a route whose compiled JSON carried `"rpd": null` scored capacity 0. claimDispatchWindow
+  // filters `score > 0`, so those routes were never ranked, never claimed, never dispatched --
+  // with no blocked_until and no error. That was 34 of 69 catalog routes, including all 14
+  // Mistral routes, behind which 21,287 jobs sat queued for 22 days.
+  const { coordinator } = makeCoordinator({});
+  const now = Date.now();
+
+  const unlimited = coordinator._capacityFraction(
+    { route_id: "r", rpm: 60, rpd: null, tpm: null, rpm_window_start: 0, rpd_day_key: "" },
+    now,
+    25
+  );
+  assert.ok(unlimited > 0, "rpd:null must not zero the route out of the ranking");
+
+  const paused = coordinator._capacityFraction(
+    { route_id: "r", rpm: 60, rpd: 0, tpm: null, rpm_window_start: 0, rpd_day_key: "" },
+    now,
+    25
+  );
+  assert.equal(paused, 0, "an explicit rpd:0 is still the repository's paused convention");
+});
+
+test("a route with no declared rpm is unlimited on that axis, not treated as paused", () => {
+  const { coordinator } = makeCoordinator({});
+  const score = coordinator._capacityFraction(
+    { route_id: "r", rpm: null, rpd: 500, tpm: null, rpd_day_key: "" },
+    Date.now(),
+    25
+  );
+  assert.ok(score > 0, "rpm:null must not zero the route out of the ranking");
+});
+
+test("every catalog route can be ranked (no route is silently unclaimable)", async () => {
+  // A fleet-wide guard: if any compiled route scores 0 on a clean ledger, it can never be
+  // dispatched and no operator surface would say why.
+  const { default: limits } = await import("../src/dispatch_limits.json", {
+    with: { type: "json" },
+  });
+  const { coordinator } = makeCoordinator({});
+  const now = Date.now();
+  const dead = Object.values(limits.routes_by_id)
+    .filter((r) => Number(r.rpd) !== 0)
+    .filter((r) => coordinator._capacityFraction({ ...r, rpd_day_key: "" }, now, 25) === 0)
+    .map((r) => r.route_id);
+  assert.deepEqual(dead, [], `routes unrankable on a clean ledger: ${dead.join(", ")}`);
+});

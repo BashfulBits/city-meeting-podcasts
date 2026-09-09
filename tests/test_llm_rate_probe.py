@@ -165,3 +165,134 @@ def test_phase_4_ground_truth_agreement():
 
     # Status 200 produces no Phase 4 evaluation
     assert run_phase_4({"status": 200}) is None
+
+
+def _route(**over):
+    base = {
+        "route_id": "r1",
+        "provider": "groq",
+        "upstream_model": "m",
+        "api_key_env": "K",
+        "api_base": "https://example.invalid",
+        "chat_path": "/v1/chat/completions",
+        "input_context_limit": 131072,
+        "free": True,
+    }
+    base.update(over)
+    return base
+
+
+class _ScriptedRunner:
+    """A RateProbeRunner stand-in returning a canned response for every probe."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = 0
+
+    def send_request(self, route, prompt, *, max_tokens=1):
+        self.calls += 1
+        return self._responses[min(self.calls - 1, len(self._responses) - 1)]
+
+
+def test_phase_2_reports_inconclusive_rather_than_the_search_floor():
+    """Regression: the 2026-09-09 run recorded five routes at exactly 1000 -- the search floor --
+    because `observed_ceiling` was seeded to it and only raised on a 200. That unverified number
+    was then auto-promoted to an enforced hard ceiling and blocked the routes outright. A run
+    where nothing is ever accepted must report None, never a number."""
+    from citypods.llm_rate_probe import run_phase_2
+
+    throttled = {"status": 429, "headers": {}, "body": {"error": {"message": "high demand"}}}
+    result = run_phase_2(_ScriptedRunner([throttled]), _route(provider="sambanova"))
+
+    assert result["observed_input_ceiling"] is None
+    assert result["conclusive"] is False
+    assert result["inconclusive_reason"]
+
+
+def test_phase_2_does_not_treat_a_rate_limit_as_a_size_limit():
+    """A 429 says nothing about request size -- narrowing the search on one is what produced the
+    bogus 1000s. The search must abandon as inconclusive instead of shrinking toward the floor."""
+    from citypods.llm_rate_probe import run_phase_2
+
+    throttled = {"status": 429, "headers": {}, "body": {"error": {"message": "overloaded"}}}
+    runner = _ScriptedRunner([throttled])
+    result = run_phase_2(runner, _route(), max_probes=8)
+
+    # One probe, then stop -- not eight probes bisecting down to the floor.
+    assert runner.calls == 1
+    assert result["observed_input_ceiling"] is None
+
+
+def test_phase_2_records_only_a_size_that_actually_returned_200():
+    from citypods.llm_rate_probe import run_phase_2
+
+    ok = {"status": 200, "headers": {}, "body": {"usage": {"prompt_tokens": 1}}}
+    result = run_phase_2(_ScriptedRunner([ok]), _route(input_context_limit=9000))
+
+    assert result["conclusive"] is True
+    # Converges upward to the largest size that actually returned 200, not to the floor.
+    assert result["observed_input_ceiling"] == 8000
+
+
+def test_phase_2_retries_through_a_throttle_before_giving_up():
+    """Endurance semantics: a throttle is waited out and the SAME size re-probed, so a busy route
+    still yields a real measurement instead of being written off."""
+    from citypods.llm_rate_probe import run_phase_2
+
+    throttled = {"status": 429, "headers": {}, "body": {"error": {"message": "overloaded"}}}
+    ok = {"status": 200, "headers": {}, "body": {}}
+    runner = _ScriptedRunner([throttled, ok])
+    result = run_phase_2(
+        runner, _route(input_context_limit=9000), throttle_retries=2, throttle_wait_seconds=0
+    )
+
+    assert runner.calls >= 2
+    assert result["observed_input_ceiling"] == 8000
+
+
+def test_provider_reported_token_limit_prefers_header_then_message():
+    from citypods.llm_rate_probe import provider_reported_token_limit as f
+
+    assert f({"headers": {"x-ratelimit-limit-tokens": "8000"}, "body": None}) == 8000
+    itpm = {"headers": {}, "body": {"error": {"message": "(ITPM): Limit 7000, Requested 1"}}}
+    assert f(itpm) == 7000
+    assert f({"headers": {}, "body": {"error": {"message": "TPM: Limit 250,000"}}}) == 250000
+    assert f({"headers": {}, "body": {"error": {"message": "overloaded"}}}) is None
+
+
+def test_phase_2_clamps_the_search_at_the_provider_reported_token_budget():
+    """A request can never exceed the per-minute token budget it would have to spend, so the
+    search must be bounded by what the provider states -- not by the advertised context window and
+    not by our own configured `tpm`, which is a pacing input rather than a measurement. Groq
+    advertises a 131,072-token context on an account whose real ITPM is 7,000."""
+    from citypods.llm_rate_probe import run_phase_2
+
+    ok = {"status": 200, "headers": {"x-ratelimit-limit-tokens": "7000"}, "body": {}}
+
+    # The endurance path learns the budget while polling and hands it in, so the search is bounded
+    # from the very first probe rather than after an overshoot.
+    result = run_phase_2(
+        _ScriptedRunner([ok]), _route(input_context_limit=131072), provider_reported_tpm=7000
+    )
+    assert result["search_upper_bound"] <= 7000
+    assert result["observed_input_ceiling"] <= 7000
+
+    # A budget first revealed mid-search still pulls the upper bound down for later probes.
+    unbounded = run_phase_2(_ScriptedRunner([ok]), _route(input_context_limit=131072))
+    assert unbounded["provider_reported_tpm"] == 7000
+    assert unbounded["search_upper_bound"] <= 7000
+
+
+def test_provider_reported_token_limit_tolerates_every_error_body_shape():
+    """Regression: a live endurance run crashed on the first provider returning a bare-string
+    `error`, because the parser assumed a dict. Response bodies are untrusted third-party shapes;
+    every access has to be shape-checked."""
+    from citypods.llm_rate_probe import provider_reported_token_limit as f
+
+    assert f({"headers": {}, "body": {"error": "Limit 500 exceeded"}}) == 500
+    assert f({"headers": {}, "body": {"error": None}}) is None
+    assert f({"headers": {}, "body": {"detail": "TPM: Limit 900"}}) == 900
+    assert f({"headers": {}, "body": "Limit 42"}) == 42
+    assert f({"headers": {}, "body": []}) is None
+    assert f({"headers": {}, "body": None}) is None
+    assert f({}) is None

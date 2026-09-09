@@ -67,11 +67,17 @@ providers:
     chat_path: /v1/chat/completions
     # Mistral's account-wide limit is 60 RPM (one submission per second), shared by every model.
     rpm: 60
-    # HOTFIX (2026-08-18): Mistral switched to account-wide monthly token metering (effective
-    # until the policy is re-evaluated after their next billing cycle reset on 2026-08-31).
-    # Zeroed out as a stopgap to stop consumption until a real monthly allowance is sized -- see
-    # AGENTS.md / review/11 for the follow-up to pick a real value.
-    monthly_tpm: 0
+    # Mistral meters tokens account-wide per month. The 2026-08-18 hotfix zeroed this to stop
+    # consumption; that stopgap is reverted here (2026-09-09) because it never actually gated
+    # anything -- `monthly_tpm` has no consumer in either the Worker or the Python scheduler, and
+    # compile_llm_limits.py drops it from the compiled provider block entirely, so it only ever
+    # scaled itself. What genuinely stops consumption is the billing-signal path: an "insufficient
+    # budget"/"out of credits" response now classifies as `payment_required`
+    # (workers/llm-dispatch-v2/src/classify.js, rule `insufficient-budget`), which drives
+    # pacing.js's paymentRequiredBackoffUntil day -> week -> month cooldown ladder and pins the
+    # route until the allowance actually rolls over. Restored to Mistral's published free-tier
+    # monthly allowance, the pre-hotfix value.
+    monthly_tpm: 1000000000
     reset_day: 1
     accounts:
       - id: primary
@@ -584,7 +590,6 @@ routes:
     free: true
     observed_on: "2026-09-09"
     observed_burst: 0
-    observed_input_ceiling: 1000
     upstream_429_default: upstream_capacity
 
   - route_id: openrouter_meta_llama_llama_3_3_70b_instruct
@@ -616,7 +621,6 @@ routes:
     free: true
     observed_on: "2026-09-09"
     observed_burst: 30
-    observed_input_ceiling: 1000
 
   - route_id: groq_qwen_3_6_27b_primary
     model: qwen/qwen3.6-27b
@@ -631,7 +635,6 @@ routes:
     free: true
     observed_on: "2026-09-09"
     observed_burst: 30
-    observed_input_ceiling: 1000
 
   - route_id: groq_qwen_3_8_27b_primary
     model: qwen/qwen3.8-27b
@@ -646,7 +649,6 @@ routes:
     free: true
     observed_on: "2026-09-09"
     observed_burst: 30
-    observed_input_ceiling: 1000
 
   # ==========================================
   # QWEN 2.5 72B MULTI-PROVIDER POOL (SambaNova + SiliconFlow)
@@ -1423,7 +1425,6 @@ routes:
     output_per_token: 0.0
     observed_on: "2026-09-09"
     observed_burst: 2
-    observed_input_ceiling: 1000
 
   # Both DeepSeek routes below were disabled 2026-08-29 on a misdiagnosis: their 404s were blamed
   # on a per-key NVIDIA "Public API Endpoints" entitlement gap. The real cause was this provider
@@ -1680,7 +1681,6 @@ routes:
     output_per_token: 0.0
     observed_on: "2026-09-09"
     observed_burst: 5
-    observed_input_ceiling: 8942
 
 
 

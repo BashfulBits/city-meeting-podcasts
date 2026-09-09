@@ -47,6 +47,44 @@ try {
   DurableObjectBase = class {};
 }
 
+/**
+ * A route's configured numeric limit, or `null` when the route declares none.
+ *
+ * `Number(null) === 0`, and this repository uses an explicit `0` to mean "paused/exhausted" --
+ * so coercing an unset limit with `Number()` made "no daily limit configured" indistinguishable
+ * from "deliberately paused". `_capacityFraction` scored both 0, and `claimDispatchWindow`
+ * filters `score > 0`, so every route with no `rpd` was silently dropped from the ranking: never
+ * ranked, never claimed, never dispatched, with no `blocked_until` and no error to show for it.
+ * That was 34 of 69 catalog routes, including all 14 Mistral routes -- which is why 21,287
+ * `mistral/mistral-medium-latest` jobs sat queued for 22 days behind a route whose last
+ * observed provider status was a plain 200.
+ *
+ * `undefined` (key absent) happened to survive, because `Number(undefined)` is `NaN` and the
+ * `!Number.isFinite` branch returns a full score -- so this only ever bit routes whose compiled
+ * JSON carried an explicit `null`, which is exactly what `compile_llm_limits.py` emits.
+ */
+/**
+ * Failure classes where the provider never served the request, so it consumed none of our own
+ * rate/token quota and the claim-time reservation must be refunded (see completeBatch).
+ *
+ * `own_rpm` / `own_rpd` / `own_tpm` are excluded on purpose: those rejections are evidence the
+ * counters were RIGHT. `unknown_429` is excluded because we cannot demonstrate the request was
+ * not ours, and over-charging a route is recoverable while under-charging it invites a real ban.
+ */
+const NON_CONSUMING_FAILURE_CLASSES = new Set([
+  "upstream_capacity",
+  "gateway_limit",
+  "server_error",
+  "payment_required",
+  "request_defect",
+]);
+
+function configuredLimit(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export class LLMSchedulerDO extends DurableObjectBase {
   constructor(ctx, env) {
     super(ctx, env);
@@ -564,6 +602,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   /** AI Gateway already made its own short retry series, so this is a small durable outer budget. */
+  /** Retry budget for failures the provider caused (upstream saturation, gateway limits).
+   * Larger than the 5xx budget on purpose: these clear on their own and cost us nothing to wait
+   * out, whereas failing the job throws away work that was already admitted and paid for. */
+  _maxUpstreamCapacityRetries() {
+    return this._envInt("MAX_UPSTREAM_CAPACITY_RETRIES", 8);
+  }
+
   _max5xxRetries() {
     return this._envInt("MAX_5XX_RETRIES", 1);
   }
@@ -1666,6 +1711,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
     if (effectiveBufferSeconds(route, now) * 1000 >= windowSeconds * 1000) return 0;
 
     const windowFraction = (limit, windowStart, count, durationMs) => {
+      // `limit === null` means the route declares no limit on this axis -- unlimited, full score.
+      // It is NOT the same as an explicit 0. See configuredLimit() on why these must not be
+      // collapsed by Number().
+      if (limit === null) return 1;
       // rpd: 0 is the repository's explicit "paused/exhausted" convention, not an unlimited
       // route. Other absent limits do not constrain this coarse, route-ranking score.
       if (limit === 0) return 0;
@@ -1675,16 +1724,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
     };
 
     const rpmFraction = windowFraction(
-      Number(route.rpm),
+      configuredLimit(route.rpm),
       route.rpm_window_start,
       route.rpm_count,
       rpmWindowDurationMs(route)
     );
     // rpd is keyed on the provider's calendar day: a stale key means the provider already reset,
     // so the route is at full daily capacity regardless of how recently we last used it.
-    const rpdLimit = Number(route.rpd);
+    const rpdLimit = configuredLimit(route.rpd);
     let rpdFraction;
-    if (rpdLimit === 0) rpdFraction = 0; // repository convention: paused/exhausted
+    if (rpdLimit === null) rpdFraction = 1; // no daily limit declared -- unlimited on this axis
+    else if (rpdLimit === 0) rpdFraction = 0; // repository convention: paused/exhausted
     else if (!Number.isFinite(rpdLimit) || rpdLimit < 0) rpdFraction = 1;
     else if (route.rpd_day_key !== zonedDateKey(now, routeResetTimezone(route))) rpdFraction = 1;
     else
@@ -2346,9 +2396,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const maxCooldown = this._upstreamCapacityMaxCooldownSeconds();
           const expCooldown = Math.min(maxCooldown, baseCooldown * Math.pow(2, streak - 1));
           const cooldownMs = Math.ceil(expCooldown * 1000 * (1 + Math.random() * 0.5));
+          // Clearing throttle_streak/buffer_seconds here is not housekeeping -- it is the
+          // conclusion this classification licenses. The provider just told us its own pool is
+          // saturated, which is positive evidence our pacing is NOT the problem, so any own-rate
+          // penalty still on the row is stale and must go. Without this, penalties accrued before
+          // the classifier existed never clear, because the only other reset path requires a
+          // success and these routes rarely get one: observed live 2026-09-09 on
+          // openrouter_google_gemma_4_31b_it_free, carrying throttle_streak=465 and
+          // buffer_seconds=60 while every one of that day's 19 failures classified
+          // upstream_capacity. (That route then succeeded on the 3rd attempt of an endurance
+          // probe, confirming it was merely busy, never rate-limited by us.)
           sql.exec(
             `UPDATE routes SET upstream_capacity_streak = ?, last_provider_status = 429,
-                               last_failure_class = ?, blocked_until = MAX(COALESCE(blocked_until, 0), ?)
+                               last_failure_class = ?, throttle_streak = 0,
+                               buffer_seconds = 0, buffer_updated_at = 0,
+                               blocked_until = MAX(COALESCE(blocked_until, 0), ?)
              WHERE route_id = ?`,
             streak,
             failureClass,
@@ -2544,13 +2606,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const blockedUntil = isTransientRouteFailure
           ? this._5xxBlockedUntil(nextTransientRetryCount, now)
           : null;
+        // An upstream/gateway failure is by definition not this job's fault and recurs on its own
+        // schedule, so it gets its own, larger budget rather than sharing the single 5xx slot.
+        // With MAX_5XX_RETRIES=1 shared across every transient cause, two unrelated upstream
+        // blips destroyed a job that had done nothing wrong -- 26 such events landed on just two
+        // routes on 2026-09-09 alone.
+        const isUpstreamClass =
+          result.failure_class === "upstream_capacity" ||
+          result.failure_class === "gateway_limit";
+        const isUpstreamRetryable =
+          isUpstreamClass && job.transient_retry_count < this._maxUpstreamCapacityRetries();
         const isRateLimitTerminal =
           result.provider_status_code === 429 &&
           job.transient_retry_count < this._max5xxRetries();
         const shouldRetry5xx =
           isTransientRouteFailure && job.transient_retry_count < this._max5xxRetries();
         const shouldRequeue =
-          shouldRetry5xx || isPaymentRequired || isRateLimitTerminal;
+          shouldRetry5xx || isPaymentRequired || isRateLimitTerminal || isUpstreamRetryable;
 
         if (result.outcome === "retryable_error" || result.outcome === "terminal_error") {
           if (result.provider_status_code !== 429) {
@@ -2652,7 +2724,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
             Number(job.token_reservation) > 0
               ? Number(job.token_reservation)
               : (result.token_reservation ?? observedTotal ?? 0);
-          const settledUsage = observedTotal ?? reservation;
+          // A request the provider never served consumed none of OUR quota, so the rpm/rpd slot
+          // and the token budget it reserved at claim time must be given back -- otherwise a
+          // route that is merely upstream-saturated bleeds its own daily allowance one rejected
+          // request at a time. Observed live 2026-09-09: openrouter_google_gemma_4_31b_it_free
+          // had burned 75 rpd slots against 19 `upstream_capacity` rejections and zero completions.
+          //
+          // Deliberately excludes own_rpm / own_rpd / own_tpm (those rejections are proof we DID
+          // reach our limit, so the counters are correct and must stand) and unknown_429 (we
+          // cannot show it was not ours, so we stay conservative and keep the charge).
+          const nonConsuming = NON_CONSUMING_FAILURE_CLASSES.has(result.failure_class || "");
+          const settledUsage = nonConsuming ? 0 : (observedTotal ?? reservation);
           sql.exec(
             `UPDATE routes SET
                provisional_reservation = MAX(0, provisional_reservation - ?),
@@ -2662,6 +2744,34 @@ export class LLMSchedulerDO extends DurableObjectBase {
             settledUsage,
             job.lease_route_id
           );
+          if (nonConsuming && result.outcome !== "success") {
+            const catalogRoute = this._dispatchLimits()?.routes_by_id?.[job.lease_route_id];
+            const tpmCap = Number(catalogRoute?.tpm) > 0
+              ? Number(catalogRoute.tpm) * FULL_TOKEN_BUDGET_WINDOWS
+              : null;
+            if (tpmCap !== null) {
+              sql.exec(
+                `UPDATE routes SET
+                   rpm_count = MAX(0, rpm_count - 1),
+                   rpd_count = MAX(0, rpd_count - 1),
+                   tpm_reserved = MAX(0, tpm_reserved - ?),
+                   full_token_budget = MIN(?, full_token_budget + ?)
+                 WHERE route_id = ?`,
+                reservation,
+                tpmCap,
+                reservation,
+                job.lease_route_id
+              );
+            } else {
+              sql.exec(
+                `UPDATE routes SET
+                   rpm_count = MAX(0, rpm_count - 1),
+                   rpd_count = MAX(0, rpd_count - 1)
+                 WHERE route_id = ?`,
+                job.lease_route_id
+              );
+            }
+          }
 
           if (result.outcome === "success") {
             // A successful call proves the route is healthy again -- clear every backoff signal,

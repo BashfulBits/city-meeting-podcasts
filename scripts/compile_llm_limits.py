@@ -847,8 +847,14 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"({route['input_context_limit']})"
                 )
             route["observed_input_ceiling"] = int(obs_ceil)
-            if route.get("hard_input_ceiling") is None:
-                route["hard_input_ceiling"] = int(obs_ceil)
+            # Deliberately NOT promoted to `hard_input_ceiling`. An observation is evidence; a
+            # hard ceiling is enforcement that makes a route permanently unserviceable for any
+            # larger job (pacing.js's earliestSafeStart returns null, not "not yet"). Auto-promoting
+            # the two meant a single bad probe run silently blocked five routes on 2026-09-09 --
+            # including moonshotai/kimi-k3, the overflow route added specifically for jobs too
+            # large for Gemini, which live-tested fine at 17,864 tokens against a recorded ceiling
+            # of 1,000. review/45 §20.8 is explicit that observed values reach enforcement only
+            # through a human-reviewed PR; promote by authoring `hard_input_ceiling` yourself.
 
         obs_rpm = route.get("observed_rpm")
         if obs_rpm is not None:

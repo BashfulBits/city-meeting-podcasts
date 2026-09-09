@@ -121,6 +121,31 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         "match": lambda ctx: ctx.get("headers", {}).get("x-ratelimit-remaining-tokens") == "0",
     },
     {
+        # A monthly/prepaid allowance being exhausted is a BILLING signal, not a pacing one -- no
+        # amount of backoff inside the window recovers it, so it must reach the payment-required
+        # day -> week -> month cooldown ladder rather than buying a 60-second buffer. Ordered
+        # before "overloaded" because real bodies mix the vocabularies ("capacity exceeded:
+        # insufficient budget"), and the billing reading is the actionable one.
+        "rule_id": "insufficient-budget",
+        "provider": None,
+        "failure_class": "payment_required",
+        "match": lambda ctx: any(
+            token in ctx["msg"]
+            for token in (
+                "insufficient budget",
+                "insufficient credit",
+                "insufficient balance",
+                "insufficient funds",
+                "quota exceeded",
+                "monthly limit",
+                "monthly quota",
+                "out of credits",
+                "no credits",
+                "billing",
+            )
+        ),
+    },
+    {
         "rule_id": "overloaded",
         "provider": None,
         "failure_class": "upstream_capacity",
@@ -303,6 +328,50 @@ def classify_provider_failure(
         )
 
     # 7. Any other status -> request_defect
+    # A "too large" status whose body actually reports a RATE limit, not a size limit. Groq
+    # returns 413 for a per-minute token throttle; classified as request_defect it failed the job
+    # terminally even though the same model accepted ~3,600 tokens seconds earlier (confirmed live
+    # 2026-09-09). A plain 413 with no rate-limit language is a genuine oversized request and
+    # still falls through to request_defect.
+    if status in (400, 413):
+        msg = str(
+            _error_dict(body).get("message")
+            or (body.get("message") if isinstance(body, dict) else "")
+            or (body if isinstance(body, str) else "")
+        ).lower()
+        if msg:
+            if any(
+                token in msg
+                for token in (
+                    "tokens per minute",
+                    "token per minute",
+                    "(tpm)",
+                    "(itpm)",
+                    "tokens per day",
+                    "(tpd)",
+                )
+            ):
+                return FailureClassification(
+                    failure_class="own_tpm",
+                    rule_id="size-status-token-rate-limit",
+                    retry_after_seconds=retry_after_seconds,
+                    scope="route",
+                )
+            if "requests per minute" in msg or "(rpm)" in msg:
+                return FailureClassification(
+                    failure_class="own_rpm",
+                    rule_id="size-status-request-rate-limit",
+                    retry_after_seconds=retry_after_seconds,
+                    scope="route",
+                )
+            if "requests per day" in msg or "(rpd)" in msg:
+                return FailureClassification(
+                    failure_class="own_rpd",
+                    rule_id="size-status-daily-rate-limit",
+                    retry_after_seconds=retry_after_seconds,
+                    scope="route",
+                )
+
     return FailureClassification(
         failure_class="request_defect",
         rule_id="http-4xx",

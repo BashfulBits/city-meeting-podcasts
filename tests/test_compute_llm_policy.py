@@ -104,8 +104,12 @@ def test_generated_catalog_includes_observed_characterization_fields() -> None:
     assert groq is not None
     assert groq.observed_on == "2026-09-09"
     assert groq.observed_burst == 30
-    assert groq.observed_input_ceiling == 1000
-    assert groq.hard_input_ceiling == 1000
+    # The 1,000 recorded on 2026-09-09 was the ceiling search's own floor, not a measurement:
+    # the route live-accepted ~3,600 tokens. Removed from config, so nothing is asserted here.
+    assert groq.observed_input_ceiling is None
+    # ...and because it is no longer auto-promoted, the route carries no enforced ceiling either.
+    # A hard ceiling here would make every job over that size permanently unserviceable.
+    assert groq.hard_input_ceiling is None
 
     airforce = next(
         (r for r in routes if r.route_id == "airforce_mistral_medium_3_5_primary"), None

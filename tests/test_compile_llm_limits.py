@@ -459,10 +459,12 @@ def test_token_estimate_buffer_scales_route_and_provider_token_budgets():
     assert gemini["input_context_limit"] == 1048576
     assert gemini["output_context_limit"] == 65536
 
-    # Provider monthly_tpm scaling: hotfixed to 0 (Mistral's new account-wide monthly metering,
-    # see config/provider_limits.yml), preserved as 0.
+    # Provider monthly_tpm scaling. The 2026-08-18 `monthly_tpm: 0` hotfix was reverted on
+    # 2026-09-09: it gated nothing (no consumer reads monthly_tpm, and the compiled provider block
+    # drops it), so what actually stops consumption is now the `insufficient-budget` ->
+    # payment_required cooldown ladder. Scaled by token_estimate_buffer like any token budget.
     mistral = compiled["providers"]["mistral"]
-    assert mistral["monthly_tpm"] == 0
+    assert mistral["monthly_tpm"] == 900_000_000
 
 
 def test_validate_token_buffer_accepts_valid_formats():
@@ -712,8 +714,10 @@ def test_observed_characterization_fields_validation_and_compilation():
         assert r["observed_on"] == "2026-09-09"
         assert r["observed_burst"] == 15
         assert r["observed_input_ceiling"] == 50000
-        # observed_input_ceiling feeds hard_input_ceiling
-        assert r["hard_input_ceiling"] == 50000
+        # An observation is evidence, never enforcement: observed_input_ceiling must NOT be
+        # promoted to hard_input_ceiling. Auto-promoting the two let a single bad probe run block
+        # five routes on 2026-09-09 (review/45 §20.8 requires a human-reviewed promotion).
+        assert r.get("hard_input_ceiling") is None
         assert r["observed_recovery_seconds"] == 30.5
         assert r["retry_after_trustworthy"] is False
         assert r["upstream_429_default"] == "upstream_capacity"

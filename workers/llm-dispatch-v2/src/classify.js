@@ -98,6 +98,27 @@ export const FAILURE_SIGNATURES = [
       headers?.get("x-ratelimit-remaining-tokens") === "0",
   },
   {
+    // A monthly/prepaid allowance being exhausted is a BILLING signal, not a pacing one -- no
+    // amount of backoff inside the window recovers it, so it must reach paymentRequiredBackoffUntil's
+    // day -> week -> month cooldown ladder rather than buying a 60-second buffer. Mistral reports
+    // account-wide monthly token metering this way; it is the signal that replaced the inert
+    // `monthly_tpm: 0` stopgap in config/provider_limits.yml.
+    rule_id: "insufficient-budget",
+    provider: null,
+    failure_class: "payment_required",
+    match: ({ msg }) =>
+      msg.includes("insufficient budget") ||
+      msg.includes("insufficient credit") ||
+      msg.includes("insufficient balance") ||
+      msg.includes("insufficient funds") ||
+      msg.includes("quota exceeded") ||
+      msg.includes("monthly limit") ||
+      msg.includes("monthly quota") ||
+      msg.includes("out of credits") ||
+      msg.includes("no credits") ||
+      msg.includes("billing"),
+  },
+  {
     rule_id: "overloaded",
     provider: null,
     failure_class: "upstream_capacity",
@@ -270,7 +291,59 @@ export function classifyProviderFailure({ status, body, headers, route }) {
     };
   }
 
-  // 7. Any other status -> request_defect
+  // 7. A "too large" status whose body actually reports a RATE limit, not a size limit.
+  //
+  // Groq returns HTTP 413 for a per-minute token throttle, with the limit named in the message:
+  //   413 {"error":{"message":"Request too large for model `openai/gpt-oss-120b` in organization
+  //        `org_...` service tier `on_demand` on tokens per minute (TPM): Limit 8..."}}
+  // Confirmed live 2026-09-09 against both Groq routes: the same model accepted ~3,600 input
+  // tokens seconds earlier, so this is a throughput ceiling that clears on its own, not a defect
+  // in the request. Classified as request_defect it failed the job terminally -- the exact class
+  // of avoidable loss this initiative exists to remove. A plain 413 with no rate-limit language
+  // IS a genuine oversized request and still falls through to request_defect below.
+  if (status === 413 || status === 400) {
+    const rawMsg =
+      body?.error?.message ||
+      body?.message ||
+      body?.detail ||
+      (typeof body === "string" ? body : "");
+    const msg = String(rawMsg || "").toLowerCase();
+    if (msg) {
+      if (
+        msg.includes("tokens per minute") ||
+        msg.includes("token per minute") ||
+        msg.includes("(tpm)") ||
+        msg.includes("(itpm)") ||
+        msg.includes("tokens per day") ||
+        msg.includes("(tpd)")
+      ) {
+        return {
+          failure_class: "own_tpm",
+          rule_id: "size-status-token-rate-limit",
+          retry_after_seconds: retryAfterSeconds,
+          scope: "route",
+        };
+      }
+      if (msg.includes("requests per minute") || msg.includes("(rpm)")) {
+        return {
+          failure_class: "own_rpm",
+          rule_id: "size-status-request-rate-limit",
+          retry_after_seconds: retryAfterSeconds,
+          scope: "route",
+        };
+      }
+      if (msg.includes("requests per day") || msg.includes("(rpd)")) {
+        return {
+          failure_class: "own_rpd",
+          rule_id: "size-status-daily-rate-limit",
+          retry_after_seconds: retryAfterSeconds,
+          scope: "route",
+        };
+      }
+    }
+  }
+
+  // 8. Any other status -> request_defect
   return {
     failure_class: "request_defect",
     rule_id: "http-4xx",
