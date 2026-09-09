@@ -161,15 +161,15 @@ HEAVY_WORKFLOWS = [("audio.yml", "audio", "audio"), ("asr.yml", "transcribe", "a
 
 
 def test_workflows_use_node24_cache_actions_without_force_flag():
-    """actions/cache v5 runs on Node 24; the old force flag should not linger. Cache actions are
-    SHA-pinned to the current v5 tip (review/22 / GH#734), not the movable @v5 tag."""
+    """actions/cache v6 runs on Node 24; the old force flag should not linger. Cache actions are
+    SHA-pinned to the current v6 tip (review/22 / GH#734), not the movable @v6 tag."""
     workflow_text = "\n".join(path.read_text() for path in WORKFLOWS.glob("*.yml"))
     assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24" not in workflow_text
     assert "actions/cache@v4" not in workflow_text
     assert "actions/cache/restore@v4" not in workflow_text
-    # SHA-pinned with a `# v5` readability comment; the bare movable tag must not linger.
-    assert "actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5" in workflow_text
-    assert "actions/cache@v5" not in workflow_text
+    # SHA-pinned with a `# v6` readability comment; the bare movable tag must not linger.
+    assert "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6" in workflow_text
+    assert "actions/cache@v6" not in workflow_text
 
 
 def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
@@ -202,7 +202,7 @@ def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
         "SWAGIT_PROXY_TOKEN",
     ):
         assert identity["env"][name] == f"${{{{ secrets.{name} }}}}"
-    cache_index = _step_index(job, "actions/cache@caa296126883cff596d87d8935842f9db880ef25")
+    cache_index = _step_index(job, "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9")
     assert cache_index >= 0
     assert job["steps"][cache_index]["with"]["path"] == "/home/runner/.cache/citypods-diarize"
     assert job["steps"].index(preflight) > cache_index
@@ -877,8 +877,8 @@ def test_granicus_worker_deploy_is_path_scoped_and_uses_cloudflare_secrets():
     test_step = next(step for step in job["steps"] if step.get("name") == "Test Worker")
     assert test_step["working-directory"] == "workers/granicus-media-proxy"
     deploy = next(step for step in job["steps"] if step.get("name") == "Deploy Worker")
-    # SHA-pinned per review/22 / GH#734 (the `# v3` comment is stripped by the YAML parser).
-    assert deploy["uses"] == "cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd"
+    # SHA-pinned per review/22 / GH#734 (the `# v4` comment is stripped by the YAML parser).
+    assert deploy["uses"] == "cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0"
     assert deploy["with"]["workingDirectory"] == "workers/granicus-media-proxy"
     assert deploy["with"]["apiToken"] == "${{ secrets.CLOUDFLARE_API_TOKEN }}"
     assert deploy["with"]["accountId"] == "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
