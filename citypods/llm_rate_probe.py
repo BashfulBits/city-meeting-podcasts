@@ -371,8 +371,13 @@ def _throttle_class(route: dict[str, Any], resp: dict[str, Any]) -> str | None:
     Uses the same shared signature table the Worker enforces with, so the probe and production
     can never disagree about what a given provider body means.
     """
-    if resp.get("status") == 200:
+    if is_usable_completion(resp):
         return None
+    if resp.get("status") == 200:
+        # A 2xx with no completion. Not a success and not a defect in our request -- the provider
+        # had nothing to serve. Airforce logged 43 of these in one 3-hour run, all labelled
+        # "unknown" before this, which hid the single most important fact about that route.
+        return "upstream_capacity"
     return classify_provider_failure(
         status=resp.get("status") or 0,
         body=resp.get("body"),
@@ -730,8 +735,17 @@ def run_endurance(
     # Measure the true ceiling only for routes that proved they can be served at all.
     viable = [rid for rid, s in state.items() if s["successes"] > 0]
     ceilings: dict[str, Any] = {}
+    # The ceiling phase needs its own deadline. Its per-route cost is unbounded in principle --
+    # eight probes, each retrying through throttles with a wait between -- so on a contended
+    # provider it can run far past the window the operator actually asked for. Budget it at a
+    # third of the polling window and stop cleanly; a route measured as None simply keeps whatever
+    # ceiling config already had, which is the safe direction.
+    ceiling_deadline = time.monotonic() + max(300.0, hours * 3600.0 / 3.0)
     if apply:
         for rid in viable:
+            if time.monotonic() >= ceiling_deadline:
+                ceilings[rid] = {"phase": "2", "skipped": "ceiling phase deadline reached"}
+                continue
             route = next(r for r in routes if r["route_id"] == rid)
             ceilings[rid] = run_phase_2(
                 runner,

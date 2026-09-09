@@ -421,3 +421,20 @@ def test_endurance_uses_a_timeout_long_enough_for_slow_providers(monkeypatch):
     monkeypatch.setattr(probe, "RateProbeRunner", _Runner)
     probe.run_endurance([], apply=False, hours=0.001, interval_seconds=1)
     assert captured["timeout"] >= 60
+
+
+def test_a_200_without_a_completion_labels_as_upstream_capacity_not_unknown():
+    """Airforce logged 43 of these in one 3-hour run, all labelled "unknown" -- which hid the
+    single most important fact about that route. A 2xx with no completion is the provider having
+    nothing to serve."""
+    from citypods.llm_rate_probe import _throttle_class
+
+    empty_200 = {
+        "status": 200,
+        "headers": {},
+        "body": {"error": {"message": "No content was returned", "code": "503"}},
+    }
+    assert _throttle_class({"provider": "airforce"}, empty_200) == "upstream_capacity"
+
+    good = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
+    assert _throttle_class({"provider": "airforce"}, good) is None
