@@ -276,3 +276,56 @@ def test_ordinary_exhaustion_is_still_pacing_not_billing():
     )
     assert result.failure_class == "own_rpm"
     assert result.rule_id == "remaining-zero-header"
+
+
+def test_gemini_array_wrapped_body_is_unwrapped_before_classification():
+    """Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY
+    (`[{"error": {...}}]`), not a bare object. Confirmed live 2026-09-13 during an endurance
+    ceiling probe: this genuine, real quota exhaustion on gemma-4-26b/31b (a per-model,
+    per-account token quota, nothing to do with Cloudflare's AI Gateway -- the probe calls
+    Gemini directly, never touching the Gateway) was falling through every dict-shaped check and
+    landing on the isAig429 fallback as gateway_limit. In production that misclassification would
+    incorrectly cool down every OTHER Gemini route sharing the account, not just the one model
+    whose own quota was exhausted."""
+    body = [
+        {
+            "error": {
+                "code": 429,
+                "message": (
+                    "You exceeded your current quota, please check your plan and billing "
+                    "details. Quota exceeded for metric: generativelanguage.googleapis.com/"
+                    "generate_content_free_tier_input_token_count, limit: 16000, "
+                    "model: gemma-4-26b\nPlease retry in 31.44s."
+                ),
+                "status": "RESOURCE_EXHAUSTED",
+            }
+        }
+    ]
+    result = classify_provider_failure(
+        status=429, body=body, headers={}, route={"provider": "gemini"}
+    )
+    assert result.failure_class == "own_tpm"
+    assert result.rule_id == "gemini-tpm"
+    # Never gateway_limit or the generic own_rpm fallback -- both would be wrong here.
+    assert result.failure_class != "gateway_limit"
+
+
+def test_gemini_input_token_count_quota_metric_is_own_tpm_not_generic_resource_exhausted():
+    """The real message never spells out 'tokens per minute' -- it names the machine quota
+    metric ('..._input_token_count') instead. Without this match, the message falls through to
+    gemini-resource-exhausted's generic RESOURCE_EXHAUSTED -> own_rpm fallback, mislabeling a
+    token quota as a request-count one."""
+    body = {
+        "error": {
+            "message": (
+                "Quota exceeded for metric: .../generate_content_free_tier_input_token_count, "
+                "limit: 16000"
+            ),
+            "status": "RESOURCE_EXHAUSTED",
+        }
+    }
+    result = classify_provider_failure(
+        status=429, body=body, headers={}, route={"provider": "gemini"}
+    )
+    assert result.failure_class == "own_tpm"
+    assert result.rule_id == "gemini-tpm"

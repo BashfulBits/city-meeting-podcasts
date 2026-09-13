@@ -406,3 +406,50 @@ test("a 2xx carrying no completion is upstream capacity, never a success", () =>
     false
   );
 });
+
+test("gemini's array-wrapped error body is unwrapped before classification", () => {
+  // Confirmed live 2026-09-13 during an endurance ceiling probe: Gemini's OpenAI-compatible
+  // endpoint wraps its error body in a JSON ARRAY, not a bare object. This genuine, real quota
+  // exhaustion on gemma-4-26b/31b (a per-model token quota -- nothing to do with Cloudflare's AI
+  // Gateway, since the probe calls Gemini directly) was falling through every dict-shaped check
+  // and landing on the isAig429 fallback as gateway_limit -- which in production incorrectly
+  // cools down every OTHER Gemini route sharing the account, not just the exhausted model.
+  const body = [
+    {
+      error: {
+        code: 429,
+        message:
+          "You exceeded your current quota, please check your plan and billing details. " +
+          "Quota exceeded for metric: generativelanguage.googleapis.com/" +
+          "generate_content_free_tier_input_token_count, limit: 16000, model: gemma-4-26b\n" +
+          "Please retry in 31.44s.",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+  ];
+  const result = classifyProviderFailure({
+    status: 429,
+    body,
+    headers: new Map(),
+    route: { provider: "gemini" },
+  });
+  assert.equal(result.failure_class, "own_tpm");
+  assert.equal(result.rule_id, "gemini-tpm");
+  assert.equal(result.retry_after_seconds, 32);
+});
+
+test("gemini's input_token_count quota metric is own_tpm, not the generic resource-exhausted fallback", () => {
+  const result = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        message: "Quota exceeded for metric: .../generate_content_free_tier_input_token_count, limit: 16000",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+    headers: new Map(),
+    route: { provider: "gemini" },
+  });
+  assert.equal(result.failure_class, "own_tpm");
+  assert.equal(result.rule_id, "gemini-tpm");
+});

@@ -38,7 +38,16 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         "provider": "gemini",
         "failure_class": "own_tpm",
         "match": lambda ctx: (
-            "inputtokensperminute" in ctx["msg"] or "tokens per minute" in ctx["msg"]
+            "inputtokensperminute" in ctx["msg"]
+            or "tokens per minute" in ctx["msg"]
+            # Real observed shape (2026-09-13): the human-readable message never spells out
+            # "tokens per minute" -- it names the machine quota metric instead, e.g. "Quota
+            # exceeded for metric: generativelanguage.googleapis.com/
+            # generate_content_free_tier_input_token_count, limit: 16000, model: gemma-4-26b".
+            # Ordered before gemini-resource-exhausted's generic RESOURCE_EXHAUSTED->own_rpm
+            # fallback, which this would otherwise fall into.
+            or "input_token_count" in ctx["msg"]
+            or "output_token_count" in ctx["msg"]
         ),
     },
     {
@@ -244,6 +253,12 @@ def classify_provider_failure(
     retry_after_seconds: int | None = None,
 ) -> FailureClassification:
     """Classify an HTTP response into the 9-class provider failure taxonomy."""
+    # Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY -- `[{"error":
+    # {...}}]` -- not a bare object. Mirrors the same unwrap in classify.js: without it, a
+    # completely genuine Gemini 429 quota exhaustion falls through every dict-shaped check below
+    # and is misclassified.
+    if isinstance(body, list) and len(body) == 1 and isinstance(body[0], dict):
+        body = body[0]
     norm_headers = {k.lower(): str(v) for k, v in (headers or {}).items()}
 
     # 1. HTTP 402 -> payment_required

@@ -20,7 +20,16 @@ export const FAILURE_SIGNATURES = [
     provider: "gemini",
     failure_class: "own_tpm",
     match: ({ msg }) =>
-      msg.includes("inputtokensperminute") || msg.includes("tokens per minute"),
+      msg.includes("inputtokensperminute") ||
+      msg.includes("tokens per minute") ||
+      // Real observed shape (2026-09-13): the human-readable message never spells out "tokens
+      // per minute" -- it names the machine quota metric instead, e.g. "Quota exceeded for
+      // metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count,
+      // limit: 16000, model: gemma-4-26b". Ordered before gemini-resource-exhausted's generic
+      // RESOURCE_EXHAUSTED->own_rpm fallback, which this would otherwise fall into --
+      // mislabeling a genuine per-model token quota as a request-count one.
+      msg.includes("input_token_count") ||
+      msg.includes("output_token_count"),
   },
   {
     rule_id: "gemini-rpm",
@@ -225,8 +234,20 @@ function hasRateLimitHeader(normHeaders) {
  *            scope:"route"|"provider"|"account"}}
  */
 export function classifyProviderFailure({ status, body, headers, route }) {
+  // Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY -- `[{"error": {...}}]`
+  // -- not a bare object. Every check below (`body.error`, upstreamCapacityFailure, the
+  // FAILURE_SIGNATURES message extraction) assumes a bare object; against the unwrapped array,
+  // `body.error` is `undefined` on the array itself, so a completely genuine Gemini 429 (a real
+  // quota exhaustion, confirmed live 2026-09-13: "You exceeded your current quota... Quota
+  // exceeded for metric: generate_content_free_tier_input_token_count, limit: 16000") fell
+  // through to the `isAig429` heuristic and was misclassified `gateway_limit` -- which, in
+  // production, incorrectly cools down every OTHER route on the same provider
+  // (authorizeRetry's `gateway_limit` case fans out to every sibling route), not just the one
+  // model whose own quota was actually exhausted.
+  const normalizedBody = Array.isArray(body) ? body[0] : body;
   const normHeaders = normalizeHeaders(headers);
-  const retryAfterSeconds = parseRetryAfterSeconds({ headers: normHeaders }, body);
+  const retryAfterSeconds = parseRetryAfterSeconds({ headers: normHeaders }, normalizedBody);
+  body = normalizedBody;
 
   // 1. HTTP 402 -> payment_required
   if (status === 402) {
