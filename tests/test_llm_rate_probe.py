@@ -584,3 +584,60 @@ def test_phase_2_continues_search_when_provider_tpm_proves_current_size_impossib
     # 8 probes x 10 retries (=80) worst case if every oversized probe retried in full instead
     # of short-circuiting the moment provider_tpm proves the size impossible.
     assert runner.calls <= 15
+
+
+def test_phase_2_retries_a_transport_timeout_instead_of_giving_up_immediately():
+    """A transport-level failure (status=None: timeout, connection reset) is NOT evidence about
+    size or pacing at all -- confirmed live 2026-09-13, NVIDIA alone has been observed taking
+    40-90s+ for large requests, and a single timeout used to end the whole search immediately
+    with zero retries, indistinguishable from a genuinely unexpected HTTP status."""
+    from citypods.llm_rate_probe import run_phase_2
+
+    class _FlakyThenOk:
+        def __init__(self):
+            self.calls = 0
+
+        def send_request(self, route, prompt, *, max_tokens=1):
+            self.calls += 1
+            if self.calls <= 2:
+                return {"status": None, "headers": {}, "body": None, "exception": "ReadTimeout"}
+            return {
+                "status": 200,
+                "headers": {},
+                "body": {"choices": [{"message": {"content": "x"}}]},
+            }
+
+    runner = _FlakyThenOk()
+    result = run_phase_2(
+        runner,
+        _route(input_context_limit=262144),
+        throttle_wait_seconds=0.0,
+        confirm_wait_seconds=0.0,
+    )
+    assert result["conclusive"] is True
+    assert runner.calls > 2  # it retried through the timeouts rather than giving up on the first
+
+
+def test_phase_2_gives_up_cleanly_when_transport_failures_never_clear():
+    """Bounded, not infinite: a persistently unreachable route must still terminate with an
+    honest inconclusive result rather than retrying forever."""
+    from citypods.llm_rate_probe import run_phase_2
+
+    class _AlwaysTimeout:
+        def __init__(self):
+            self.calls = 0
+
+        def send_request(self, route, prompt, *, max_tokens=1):
+            self.calls += 1
+            return {"status": None, "headers": {}, "body": None, "exception": "ReadTimeout"}
+
+    runner = _AlwaysTimeout()
+    result = run_phase_2(
+        runner,
+        _route(input_context_limit=262144),
+        throttle_wait_seconds=0.0,
+        confirm_wait_seconds=0.0,
+    )
+    assert result["conclusive"] is False
+    assert "transport failure" in result["inconclusive_reason"]
+    assert runner.calls < 20  # bounded -- must not loop forever

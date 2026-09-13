@@ -454,6 +454,7 @@ def run_phase_2(
     observed_ceiling: int | None = None
     largest_rejected: int | None = None
     inconclusive_reason: str | None = None
+    transport_retries_left = 3
 
     filler_sentence = "The quick brown fox jumps over the lazy dog. "
     chars_per_token = 4
@@ -511,6 +512,21 @@ def run_phase_2(
         elif resp.get("status") in (400, 413):
             largest_rejected = mid if largest_rejected is None else min(largest_rejected, mid)
             high = mid
+        elif resp.get("status") is None:
+            # A transport-level failure (timeout, connection reset) -- distinct from any real
+            # HTTP response, and NOT evidence about size or pacing at all. Confirmed live
+            # 2026-09-13: NVIDIA alone has been observed taking 40-90s+ for large requests, and a
+            # single timeout here used to end the whole search immediately with zero retries,
+            # indistinguishable from a genuinely "unexpected" HTTP status. Give it a few retries
+            # at the SAME size on a short, fixed wait (not the full throttle_wait_seconds -- this
+            # is accommodating slow processing, not a rate-limit cooldown) before giving up.
+            if transport_retries_left > 0:
+                transport_retries_left -= 1
+                time.sleep(min(10.0, throttle_wait_seconds))
+                probes -= 1  # this attempt taught us nothing; don't count it against max_probes
+                continue
+            inconclusive_reason = f"transport failure persisted at size {mid}"
+            break
         else:
             inconclusive_reason = f"unexpected status {resp.get('status')} at size {mid}"
             break
