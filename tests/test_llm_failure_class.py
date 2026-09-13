@@ -278,6 +278,53 @@ def test_ordinary_exhaustion_is_still_pacing_not_billing():
     assert result.rule_id == "remaining-zero-header"
 
 
+def test_bare_ratelimit_limit_header_is_still_zero_provisioned_not_gateway_limit():
+    """Some providers emit the newer, unprefixed standard header instead of the older de facto
+    X-RateLimit-* convention. Before _has_rate_limit_header recognized it, this shape fell through
+    to the generic AI-Gateway heuristic (no known rate-limit header + no body `error` key) and was
+    misclassified gateway_limit -- which fans out a cooldown to every sibling route on the
+    provider, not just the one whose own zero allowance was actually the problem."""
+    result = classify_provider_failure(
+        status=429,
+        body={"message": "Rate limit exceeded"},
+        headers={"ratelimit-limit": "0"},
+        route={"provider": "mistral"},
+    )
+    assert result.failure_class == "payment_required"
+    assert result.rule_id == "zero-provisioned-limit"
+
+
+def test_bare_quota_exceeded_from_non_gemini_provider_stays_own_rpm_not_billing():
+    """insufficient-budget used to match the bare phrase "quota exceeded" for any provider.
+    Gemini's own RPD/TPM messages say exactly that ("Resource exhausted: quota exceeded for
+    GenerateRequestsPerDayPerProjectPerModel"), and are correctly caught by earlier, gemini-scoped
+    rules -- but a provider-agnostic match would have routed an ordinary rate 429 from any OTHER
+    provider onto the day/week/month payment_required cooldown ladder instead of the correct
+    short-lived own_rpm backoff."""
+    result = classify_provider_failure(
+        status=429,
+        body={"error": {"message": "quota exceeded, please slow down"}},
+        headers=None,
+        route={"provider": "some-other-provider"},
+    )
+    assert result.failure_class != "payment_required"
+
+
+def test_size_status_daily_token_quota_is_own_rpd_not_own_tpm():
+    """"tokens per day"/"(tpd)" used to be lumped into the same branch as the per-minute cases,
+    applying own_tpm's ~60s bucket-wait pacing to a quota that only resets on the provider's
+    calendar day -- matching the existing groq-tpd rule's own_rpd classification for the same
+    axis elsewhere in this file."""
+    result = classify_provider_failure(
+        status=413,
+        body={"error": {"message": "Request too large: exceeds tokens per day (TPD) limit"}},
+        headers=None,
+        route={"provider": "groq"},
+    )
+    assert result.failure_class == "own_rpd"
+    assert result.rule_id == "size-status-daily-rate-limit"
+
+
 def test_gemini_array_wrapped_body_is_unwrapped_before_classification():
     """Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY
     (`[{"error": {...}}]`), not a bare object. Confirmed live 2026-09-13 during an endurance

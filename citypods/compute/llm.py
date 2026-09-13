@@ -1201,12 +1201,16 @@ class LiteLLMBackend(Backend):
         raise AssertionError("unreachable: loop always returns or raises")
 
     @staticmethod
-    def _structured_content(output: Mapping[str, Any]) -> str:
-        choices = output.get("choices")
-        if isinstance(choices, list) and choices and isinstance(choices[0], Mapping):
-            message = choices[0].get("message")
-            if isinstance(message, Mapping) and isinstance(message.get("content"), str):
-                return message["content"]
+    def _raise_if_upstream_passthrough(output: Mapping[str, Any]) -> None:
+        """Raise if `output` is a provider/gateway error object, not a real completion.
+
+        Applies regardless of whether the job asked for structured output: an error passthrough
+        for an ORDINARY (non-structured) job never went through `_structured_content` at all --
+        `_validate_reconciled` returns immediately when `structured_output` is unset, so
+        `_completed_dispatch_result` built and returned a `JobResult` straight from the raw
+        `{"error": {...}}` body as if it were a genuine successful completion (CodeRabbit,
+        2026-09-13: this call site was the one `ff936d4` missed).
+        """
         if output.get("error"):
             # A top-level `error` object is the provider/gateway's own signal that no completion
             # was produced -- a real reply never carries one instead of/alongside `choices`. See
@@ -1215,6 +1219,15 @@ class LiteLLMBackend(Backend):
             raise LLMUpstreamPassthroughError(
                 "LLM dispatch result is a provider/gateway error passthrough, not a completion"
             )
+
+    @staticmethod
+    def _structured_content(output: Mapping[str, Any]) -> str:
+        choices = output.get("choices")
+        if isinstance(choices, list) and choices and isinstance(choices[0], Mapping):
+            message = choices[0].get("message")
+            if isinstance(message, Mapping) and isinstance(message.get("content"), str):
+                return message["content"]
+        LiteLLMBackend._raise_if_upstream_passthrough(output)
         raise LLMStructuredOutputError("structured LLM response did not contain message content")
 
     def _validate_reconciled(
@@ -1242,6 +1255,11 @@ class LiteLLMBackend(Backend):
         """Validate and normalize a terminal Worker response from either POST or poll."""
         if not isinstance(output, Mapping):
             raise LLMBackendError("LLM dispatch returned a non-object response")
+        # Checked unconditionally, before _validate_reconciled: that method returns immediately
+        # for a job with no structured_output, so an upstream error passthrough for an ORDINARY
+        # (non-structured) job would otherwise fall straight through to the JobResult below and
+        # be persisted/acknowledged as a genuine successful completion.
+        self._raise_if_upstream_passthrough(output)
         self._validate_reconciled(output, structured_output)
         return JobResult(task=task, recipe_hash=recipe_hash, output=output, model=model)
 
@@ -2022,6 +2040,15 @@ class LiteLLMBackend(Backend):
                 # The deferred sweep owns the one schema-correction retry. Leave the completed
                 # Worker record intact here so it can clone the exact original request before
                 # replacing this handle with the corrective attempt.
+                self._settle_dispatched_reservation(handle, output)
+                raise
+            except LLMUpstreamPassthroughError:
+                # A terminal provider/gateway error, not a malformed reply -- no schema-correction
+                # retry applies (see LLMUpstreamPassthroughError's docstring), but this boundary
+                # otherwise only ever calls _settle_dispatched_reservation on the success path
+                # below. Without this catch, a policy-tracked reservation stayed inflight until it
+                # expired on its own instead of being released the moment the terminal failure was
+                # discovered (CodeRabbit, 2026-09-13).
                 self._settle_dispatched_reservation(handle, output)
                 raise
         except requests.RequestException as exc:

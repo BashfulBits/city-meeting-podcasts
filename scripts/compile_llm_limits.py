@@ -875,12 +875,18 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
             # total route block on 2026-09-09, an observation gets to make things safer on its own
             # and must go through a human to make them faster.
             #
-            # The `max(1.0, ...)` floor is the lesson from that incident stated as code: no
-            # measurement may ever drive a limit to 0, because 0 is this repository's "paused"
-            # convention and would silently remove the route from dispatch entirely.
+            # No `max(1.0, ...)` floor (CodeRabbit, 2026-09-13; an earlier version of this
+            # comment justified one as "no measurement may ever drive a limit to 0, because 0 is
+            # this repository's paused convention"): the validation above already rejects
+            # `obs_rpm <= 0` outright, so `route["observed_rpm"]` here is always strictly
+            # positive -- there is no path through which this assignment could produce a 0. A
+            # floor of 1.0 instead silently RAISED a genuinely fractional observation below 1.0
+            # (e.g. declared 0.5, observed 0.2 -- both legitimate; both schedulers pace
+            # fractional rpm correctly) back up by 5x, which is exactly the direction this
+            # one-way clamp exists to forbid.
             declared_rpm = route.get("rpm")
             if declared_rpm is not None and route["observed_rpm"] < declared_rpm:
-                route["rpm"] = max(1.0, route["observed_rpm"])
+                route["rpm"] = route["observed_rpm"]
 
         obs_burst = route.get("observed_burst")
         if obs_burst is not None:

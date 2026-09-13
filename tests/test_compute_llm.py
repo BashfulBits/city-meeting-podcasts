@@ -2366,6 +2366,23 @@ def test_structured_content_distinguishes_upstream_passthrough_from_malformed_re
     assert not issubclass(LLMUpstreamPassthroughError, LLMStructuredOutputError)
 
 
+def test_completed_dispatch_result_catches_upstream_passthrough_for_an_unstructured_job():
+    """_validate_reconciled returns immediately when structured_output is unset, so it never
+    calls _structured_content at all for an ordinary (non-structured) job -- an error passthrough
+    for one of those used to fall straight through _completed_dispatch_result to a JobResult built
+    directly from the raw {"error": {...}} body, persisted and acknowledged as a genuine
+    successful completion (CodeRabbit, 2026-09-13: the one call site ff936d4 missed)."""
+    backend = LiteLLMBackend(LLMBackendConfig(model="gemini/gemini-3-flash-preview"))
+    airforce_524 = {"error": {"message": "the provider refused this request (HTTP 524)"}}
+    with pytest.raises(LLMUpstreamPassthroughError, match="error passthrough"):
+        backend._completed_dispatch_result(
+            task="chapter-locator",
+            recipe_hash="r1",
+            output=airforce_524,
+            structured_output=None,
+        )
+
+
 def test_validate_reconciled_propagates_upstream_passthrough_uncaught():
     """_validate_reconciled's except clause only catches (ValueError, TypeError) from Pydantic
     validation -- LLMUpstreamPassthroughError (a RuntimeError subclass) must pass through

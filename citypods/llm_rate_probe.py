@@ -807,14 +807,28 @@ def run_endurance(
                 ceilings[rid] = {"phase": "2", "skipped": "ceiling phase deadline reached"}
                 continue
             route = next(r for r in routes if r["route_id"] == rid)
-            ceilings[rid] = run_phase_2(
-                runner,
-                route,
-                max_probes=8,
-                throttle_retries=3,
-                throttle_wait_seconds=20.0,
-                provider_reported_tpm=state[rid].get("provider_reported_tpm"),
-            )
+            try:
+                ceilings[rid] = run_phase_2(
+                    runner,
+                    route,
+                    max_probes=8,
+                    throttle_retries=3,
+                    throttle_wait_seconds=20.0,
+                    provider_reported_tpm=state[rid].get("provider_reported_tpm"),
+                )
+            except (ProbeBudgetExceeded, RouteBudgetExceeded) as exc:
+                # run_endurance's own runner.max_wall_seconds (hours*3600 + 3600) can be reached
+                # inside the ceiling phase itself -- 3h of polling plus up to another hours/3 of
+                # ceiling search together can hit it -- and nothing here caught it, so it
+                # propagated out of main() before args.out.write_text() ran, discarding the whole
+                # report (the polling phase's viability/recommend_disable verdicts included), not
+                # just the ceiling measurement (CodeRabbit, 2026-09-13). run_probes already guards
+                # the one-shot path the same way; this mirrors it for endurance's ceiling phase.
+                ceilings[rid] = {"phase": "2", "skipped": f"budget exceeded: {exc}"}
+                # A ProbeBudgetExceeded is wall-clock/total-request -- true for every remaining
+                # route too, so stop rather than re-raising the identical failure once per route.
+                if isinstance(exc, ProbeBudgetExceeded):
+                    break
 
     results = []
     for rid, s in state.items():

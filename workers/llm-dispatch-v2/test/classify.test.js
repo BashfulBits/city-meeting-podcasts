@@ -386,6 +386,54 @@ test("an ordinary exhausted limit is still pacing, not billing", () => {
   assert.equal(result.rule_id, "remaining-zero-header");
 });
 
+test("a bare RateLimit-Limit: 0 (no x- prefix) is still read as zero-provisioned, not gateway_limit", () => {
+  // Some providers emit the newer, unprefixed standard header instead of the older de facto
+  // X-RateLimit-* convention. Before hasRateLimitHeader recognized it, this shape fell through to
+  // the generic AI-Gateway heuristic (isAig429: no known rate-limit header + no body `error` key)
+  // and was misclassified gateway_limit -- which fans out a cooldown to every sibling route on the
+  // provider, not just the one whose own zero allowance was actually the problem.
+  const headers = new Map([["ratelimit-limit", "0"]]);
+  const result = classifyProviderFailure({
+    status: 429,
+    body: { message: "Rate limit exceeded" },
+    headers,
+    route: { provider: "mistral" },
+  });
+  assert.equal(result.failure_class, "payment_required");
+  assert.equal(result.rule_id, "zero-provisioned-limit");
+});
+
+test("a bare 'quota exceeded' 429 from a non-gemini provider stays own_rpm, not billing", () => {
+  // insufficient-budget used to match the bare phrase "quota exceeded" for any provider. Gemini's
+  // own RPD/TPM messages say exactly that ("Resource exhausted: quota exceeded for
+  // GenerateRequestsPerDayPerProjectPerModel"), and are correctly caught by earlier, gemini-scoped
+  // rules -- but a provider-agnostic match would have routed an ordinary rate 429 from any OTHER
+  // provider onto the day/week/month payment_required cooldown ladder instead of the correct
+  // short-lived own_rpm backoff.
+  const result = classifyProviderFailure({
+    status: 429,
+    body: { error: { message: "quota exceeded, please slow down" } },
+    headers: null,
+    route: { provider: "some-other-provider" },
+  });
+  assert.notEqual(result.failure_class, "payment_required");
+});
+
+test("a size-status daily token quota is own_rpd, not own_tpm", () => {
+  // "tokens per day"/"(tpd)" used to be lumped into the same branch as the per-minute cases,
+  // applying own_tpm's ~60s bucket-wait pacing to a quota that only resets on the provider's
+  // calendar day -- matching the existing groq-tpd rule's own_rpd classification for the same
+  // axis elsewhere in this file.
+  const result = classifyProviderFailure({
+    status: 413,
+    body: { error: { message: "Request too large: exceeds tokens per day (TPD) limit" } },
+    headers: null,
+    route: { provider: "groq" },
+  });
+  assert.equal(result.failure_class, "own_rpd");
+  assert.equal(result.rule_id, "size-status-daily-rate-limit");
+});
+
 test("a 2xx carrying no completion is upstream capacity, never a success", () => {
   // Airforce returns HTTP 200 with no `choices` and an error whose own code says 503. response.ok
   // is true for it, so the executor stored that error object in B2 as the job's RESULT and settled

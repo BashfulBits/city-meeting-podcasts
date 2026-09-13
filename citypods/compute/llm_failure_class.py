@@ -154,6 +154,15 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         # day -> week -> month cooldown ladder rather than buying a 60-second buffer. Ordered
         # before "overloaded" because real bodies mix the vocabularies ("capacity exceeded:
         # insufficient budget"), and the billing reading is the actionable one.
+        #
+        # NOT "quota exceeded" alone (CodeRabbit, 2026-09-13): that bare phrase is how many
+        # providers word an ordinary RPM/RPD/TPM 429, not just a billing one -- Gemini's own RPD/
+        # TPM messages say exactly that ("Resource exhausted: quota exceeded for
+        # GenerateRequestsPerDayPerProjectPerModel"). Those are already caught by earlier,
+        # provider-scoped rules (gemini-rpd/gemini-tpm), but a provider-agnostic match on the bare
+        # phrase would catch an ordinary rate 429 from any OTHER provider too, routing it onto the
+        # day/week/month payment_required cooldown ladder instead of the correct short-lived
+        # own_rpm/own_rpd/own_tpm backoff. Require an explicit billing/credit/monthly signal.
         "rule_id": "insufficient-budget",
         "provider": None,
         "failure_class": "payment_required",
@@ -164,7 +173,6 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
                 "insufficient credit",
                 "insufficient balance",
                 "insufficient funds",
-                "quota exceeded",
                 "monthly limit",
                 "monthly quota",
                 "out of credits",
@@ -239,7 +247,12 @@ def _is_upstream_400(body: Any) -> bool:
 def _has_rate_limit_header(headers: Mapping[str, str]) -> bool:
     for k in headers:
         k_lower = k.lower()
-        if k_lower == "retry-after" or k_lower.startswith("x-ratelimit-"):
+        # Some providers emit the newer, unprefixed standard header (RateLimit-Limit) rather than
+        # the older de facto X-RateLimit-* convention. Missing it here meant a 429 using the bare
+        # form fell through to the generic AI-Gateway heuristic below as if it carried no rate-
+        # limit information at all, misclassifying it gateway_limit before a more specific
+        # provider signature (e.g. zero-provisioned-limit) ever got a chance to match.
+        if k_lower == "retry-after" or k_lower.startswith(("x-ratelimit-", "ratelimit-")):
             return True
     return False
 
@@ -376,14 +389,7 @@ def classify_provider_failure(
         if msg:
             if any(
                 token in msg
-                for token in (
-                    "tokens per minute",
-                    "token per minute",
-                    "(tpm)",
-                    "(itpm)",
-                    "tokens per day",
-                    "(tpd)",
-                )
+                for token in ("tokens per minute", "token per minute", "(tpm)", "(itpm)")
             ):
                 return FailureClassification(
                     failure_class="own_tpm",
@@ -398,7 +404,17 @@ def classify_provider_failure(
                     retry_after_seconds=retry_after_seconds,
                     scope="route",
                 )
-            if "requests per day" in msg or "(rpd)" in msg:
+            # A daily quota resets on the provider's own calendar day, not a minute-scale bucket
+            # -- own_tpm's pacing would retry every ~60s for the rest of the day for nothing.
+            # Matches the existing groq-tpd rule's own_rpd classification for the same axis
+            # (CodeRabbit, 2026-09-13: this branch originally lumped "tokens per day" in with the
+            # per-minute cases above).
+            if (
+                "requests per day" in msg
+                or "(rpd)" in msg
+                or "tokens per day" in msg
+                or "(tpd)" in msg
+            ):
                 return FailureClassification(
                     failure_class="own_rpd",
                     rule_id="size-status-daily-rate-limit",

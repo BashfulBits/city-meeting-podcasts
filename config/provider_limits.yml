@@ -1150,6 +1150,13 @@ routes:
     observed_on: "2026-09-12"
     observed_input_ceiling: 249027
 
+  # rpm/tpm not independently measured for this account -- mirrored from primary/secondary
+  # (identical to each other for every route below), per the account-diversity convention
+  # elsewhere in this file: a same-tier Mistral account is presumed to share the model's
+  # plan-wide rate limit until proven otherwise, and an unset limit here left the route with NO
+  # rpm/tpm gate at all (routeAvailable's rpm/tpm checks are both gated on `route.<limit> != null`
+  # in workers/llm-dispatch-proxy/src/index.js), i.e. effectively unrate-limited rather than
+  # merely unverified.
   - route_id: mistral_devstral_2512_tertiary
     model: mistral/devstral-2512
     provider: mistral
@@ -1157,6 +1164,8 @@ routes:
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: tertiary
+    rpm: 49
+    tpm: 1000000
     free: true
     upstream_429_default: upstream_capacity
 
@@ -1167,6 +1176,8 @@ routes:
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: tertiary
+    rpm: 49
+    tpm: 50000
     free: true
     upstream_429_default: upstream_capacity
 
@@ -1177,6 +1188,8 @@ routes:
     input_context_limit: 131072
     output_context_limit: 8192
     account_id: tertiary
+    rpm: 50
+    tpm: 25000
     free: true
     upstream_429_default: upstream_capacity
 
@@ -1187,6 +1200,8 @@ routes:
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: tertiary
+    rpm: 4
+    tpm: 250000
     free: true
     upstream_429_default: upstream_capacity
 
@@ -1197,6 +1212,8 @@ routes:
     input_context_limit: 262144
     output_context_limit: 131072
     account_id: tertiary
+    rpm: 37
+    tpm: 5000000
     free: true
     upstream_429_default: upstream_capacity
 

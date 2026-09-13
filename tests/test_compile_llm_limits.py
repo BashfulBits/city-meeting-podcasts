@@ -803,4 +803,8 @@ def test_observed_rpm_lowers_the_effective_limit_but_never_raises_it():
 
     assert _rpm(5, 30) == 5, "a measured limit below the declared one must clamp it down"
     assert _rpm(90, 30) == 30, "a measured limit above the declared one must NOT raise it"
-    assert _rpm(0.2, 30) == 1.0, "no measurement may drive rpm to 0 (the paused convention)"
+    # A positive fractional observation must stay exactly as measured, not be floored up to 1.0
+    # (CodeRabbit, 2026-09-13): validation already rejects `observed_rpm <= 0` outright, so there
+    # is no path through which a real observation could reach here as 0 -- a floor of 1.0 instead
+    # silently raised a genuine sub-1.0 measurement, the opposite of what a one-way clamp permits.
+    assert _rpm(0.2, 30) == 0.2, "positive measurements must remain fractional, never floored up"

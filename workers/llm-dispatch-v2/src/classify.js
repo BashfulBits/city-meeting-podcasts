@@ -139,6 +139,14 @@ export const FAILURE_SIGNATURES = [
     // day -> week -> month cooldown ladder rather than buying a 60-second buffer. Mistral reports
     // account-wide monthly token metering this way; it is the signal that replaced the inert
     // `monthly_tpm: 0` stopgap in config/provider_limits.yml.
+    // NOT "quota exceeded" alone (CodeRabbit, 2026-09-13): that bare phrase is how many
+    // providers word an ordinary RPM/RPD/TPM 429, not just a billing one -- Gemini's own RPD/TPM
+    // messages say exactly that ("Resource exhausted: quota exceeded for
+    // GenerateRequestsPerDayPerProjectPerModel"). Those are already caught by earlier,
+    // provider-scoped rules (gemini-rpd/gemini-tpm), but a PROVIDER-AGNOSTIC match on the bare
+    // phrase would catch an ordinary rate 429 from any OTHER provider too, routing it onto the
+    // day/week/month payment_required cooldown ladder instead of the correct short-lived
+    // own_rpm/own_rpd/own_tpm backoff. Require an explicit billing/credit/monthly signal.
     rule_id: "insufficient-budget",
     provider: null,
     failure_class: "payment_required",
@@ -147,7 +155,6 @@ export const FAILURE_SIGNATURES = [
       msg.includes("insufficient credit") ||
       msg.includes("insufficient balance") ||
       msg.includes("insufficient funds") ||
-      msg.includes("quota exceeded") ||
       msg.includes("monthly limit") ||
       msg.includes("monthly quota") ||
       msg.includes("out of credits") ||
@@ -216,7 +223,13 @@ function hasRateLimitHeader(normHeaders) {
   if (normHeaders.get("x-ratelimit-limit-tokens") !== null) return true;
   if (typeof normHeaders.entries === "function") {
     for (const [k] of normHeaders.entries()) {
-      if (String(k).toLowerCase().startsWith("x-ratelimit-")) {
+      // Some providers emit the newer, unprefixed standard header (RateLimit-Limit) rather than
+      // the older de facto X-RateLimit-* convention. Missing it here meant a 429 using the bare
+      // form fell through to isAig429 as if it carried no rate-limit information at all,
+      // misclassifying it gateway_limit before a more specific provider signature (e.g.
+      // zero-provisioned-limit) ever got a chance to match in FAILURE_SIGNATURES.
+      const key = String(k).toLowerCase();
+      if (key.startsWith("x-ratelimit-") || key.startsWith("ratelimit-")) {
         return true;
       }
     }
@@ -361,9 +374,7 @@ export function classifyProviderFailure({ status, body, headers, route }) {
         msg.includes("tokens per minute") ||
         msg.includes("token per minute") ||
         msg.includes("(tpm)") ||
-        msg.includes("(itpm)") ||
-        msg.includes("tokens per day") ||
-        msg.includes("(tpd)")
+        msg.includes("(itpm)")
       ) {
         return {
           failure_class: "own_tpm",
@@ -380,7 +391,17 @@ export function classifyProviderFailure({ status, body, headers, route }) {
           scope: "route",
         };
       }
-      if (msg.includes("requests per day") || msg.includes("(rpd)")) {
+      // A daily quota resets on the provider's own calendar day, not a minute-scale bucket --
+      // own_tpm's pacing would retry every ~60s for the rest of the day for nothing. Matches the
+      // existing groq-tpd rule's own_rpd classification for the same axis (CodeRabbit,
+      // 2026-09-13: this branch originally lumped "tokens per day" in with the per-minute cases
+      // above).
+      if (
+        msg.includes("requests per day") ||
+        msg.includes("(rpd)") ||
+        msg.includes("tokens per day") ||
+        msg.includes("(tpd)")
+      ) {
         return {
           failure_class: "own_rpd",
           rule_id: "size-status-daily-rate-limit",
