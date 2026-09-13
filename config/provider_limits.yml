@@ -1526,7 +1526,18 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
-    tpm: 40000
+    # tpm raised 40000 -> 60000 (compiles to 54000 after the 0.9 token_estimate_buffer,
+    # 2026-09-12): the old figure was silently defeating a REAL, measured capability on this
+    # exact route. The Worker's pacing.js rejects any single request above
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS (5) unconditionally, before hard_input_ceiling is ever
+    # consulted -- hard_input_ceiling can only TIGHTEN that bound, never loosen it. At the old
+    # compiled tpm=36000, the absolute cutoff was 180,000 tokens, silently capping routes
+    # confirmed live to accept up to 249,027. 54000*5=270,000 clears every NVIDIA route sharing
+    # this tpm with margin. Consistent with NVIDIA's own confirmed live behaviour elsewhere
+    # ("accepted a request ~3x its configured tpm outright", pacing.js's own comment) -- NVIDIA
+    # tolerates real bursts well past a conservative per-account tpm figure that was never
+    # independently measured per model in the first place.
+    tpm: 60000
     hard_input_ceiling: 234437
     # Raised back to 4 on 2026-08-30. The ceiling of 1 was set the day before on the
     # theory that NVIDIA rejects any overlapping request with a fast ~8.3s 429. Gateway
@@ -1570,7 +1581,18 @@ routes:
     # quota caps us either way. Sub-1 rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s
     # minute bucket both used to clamp a fractional rate UP to 1.
     rpm: 0.5
-    tpm: 40000
+    # tpm raised 40000 -> 60000 (compiles to 54000 after the 0.9 token_estimate_buffer,
+    # 2026-09-12): the old figure was silently defeating a REAL, measured capability on this
+    # exact route. The Worker's pacing.js rejects any single request above
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS (5) unconditionally, before hard_input_ceiling is ever
+    # consulted -- hard_input_ceiling can only TIGHTEN that bound, never loosen it. At the old
+    # compiled tpm=36000, the absolute cutoff was 180,000 tokens, silently capping routes
+    # confirmed live to accept up to 249,027. 54000*5=270,000 clears every NVIDIA route sharing
+    # this tpm with margin. Consistent with NVIDIA's own confirmed live behaviour elsewhere
+    # ("accepted a request ~3x its configured tpm outright", pacing.js's own comment) -- NVIDIA
+    # tolerates real bursts well past a conservative per-account tpm figure that was never
+    # independently measured per model in the first place.
+    tpm: 60000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
@@ -1582,8 +1604,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 6
+    hard_input_ceiling: 249027
     observed_input_ceiling: 249027
 
   - route_id: nvidia_deepseek_v4_flash_0731_free
@@ -1692,7 +1715,18 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
-    tpm: 40000
+    # tpm raised 40000 -> 60000 (compiles to 54000 after the 0.9 token_estimate_buffer,
+    # 2026-09-12): the old figure was silently defeating a REAL, measured capability on this
+    # exact route. The Worker's pacing.js rejects any single request above
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS (5) unconditionally, before hard_input_ceiling is ever
+    # consulted -- hard_input_ceiling can only TIGHTEN that bound, never loosen it. At the old
+    # compiled tpm=36000, the absolute cutoff was 180,000 tokens, silently capping routes
+    # confirmed live to accept up to 249,027. 54000*5=270,000 clears every NVIDIA route sharing
+    # this tpm with margin. Consistent with NVIDIA's own confirmed live behaviour elsewhere
+    # ("accepted a request ~3x its configured tpm outright", pacing.js's own comment) -- NVIDIA
+    # tolerates real bursts well past a conservative per-account tpm figure that was never
+    # independently measured per model in the first place.
+    tpm: 60000
     hard_input_ceiling: 246109
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1727,7 +1761,18 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
-    tpm: 40000
+    # tpm raised 40000 -> 60000 (compiles to 54000 after the 0.9 token_estimate_buffer,
+    # 2026-09-12): the old figure was silently defeating a REAL, measured capability on this
+    # exact route. The Worker's pacing.js rejects any single request above
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS (5) unconditionally, before hard_input_ceiling is ever
+    # consulted -- hard_input_ceiling can only TIGHTEN that bound, never loosen it. At the old
+    # compiled tpm=36000, the absolute cutoff was 180,000 tokens, silently capping routes
+    # confirmed live to accept up to 249,027. 54000*5=270,000 clears every NVIDIA route sharing
+    # this tpm with margin. Consistent with NVIDIA's own confirmed live behaviour elsewhere
+    # ("accepted a request ~3x its configured tpm outright", pacing.js's own comment) -- NVIDIA
+    # tolerates real bursts well past a conservative per-account tpm figure that was never
+    # independently measured per model in the first place.
+    tpm: 60000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
@@ -1739,8 +1784,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 5
+    hard_input_ceiling: 249027
     observed_input_ceiling: 249027
 
   - route_id: nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free
@@ -1759,7 +1805,18 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
-    tpm: 40000
+    # tpm raised 40000 -> 60000 (compiles to 54000 after the 0.9 token_estimate_buffer,
+    # 2026-09-12): the old figure was silently defeating a REAL, measured capability on this
+    # exact route. The Worker's pacing.js rejects any single request above
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS (5) unconditionally, before hard_input_ceiling is ever
+    # consulted -- hard_input_ceiling can only TIGHTEN that bound, never loosen it. At the old
+    # compiled tpm=36000, the absolute cutoff was 180,000 tokens, silently capping routes
+    # confirmed live to accept up to 249,027. 54000*5=270,000 clears every NVIDIA route sharing
+    # this tpm with margin. Consistent with NVIDIA's own confirmed live behaviour elsewhere
+    # ("accepted a request ~3x its configured tpm outright", pacing.js's own comment) -- NVIDIA
+    # tolerates real bursts well past a conservative per-account tpm figure that was never
+    # independently measured per model in the first place.
+    tpm: 60000
     hard_input_ceiling: 234437
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /

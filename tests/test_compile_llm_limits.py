@@ -804,3 +804,25 @@ def test_observed_rpm_lowers_the_effective_limit_but_never_raises_it():
     assert _rpm(5, 30) == 5, "a measured limit below the declared one must clamp it down"
     assert _rpm(90, 30) == 30, "a measured limit above the declared one must NOT raise it"
     assert _rpm(0.2, 30) == 1.0, "no measurement may drive rpm to 0 (the paused convention)"
+
+
+def test_no_route_has_a_hard_ceiling_the_tpm_bucket_can_never_admit():
+    """pacing.js's earliestSafeStart rejects any single request above
+    tpm * FULL_TOKEN_BUDGET_WINDOWS (5) unconditionally, BEFORE hard_input_ceiling is ever
+    consulted -- hard_input_ceiling can only tighten that bound, never loosen it. A route whose
+    hard_input_ceiling exceeds tpm*5 is silently unreachable at that size in production even
+    though config claims the size works: exactly what happened to 5 NVIDIA routes on 2026-09-12,
+    where tpm=36000 (tpm*5=180,000) silently defeated ceilings measured live up to 249,027.
+    """
+    FULL_TOKEN_BUDGET_WINDOWS = 5
+    compiled = compile_llm_limits.compile_limits()
+    violations = []
+    for route_id, route in compiled["routes_by_id"].items():
+        hard_ceiling = route.get("hard_input_ceiling")
+        tpm = route.get("tpm")
+        if hard_ceiling is None or tpm is None:
+            continue
+        cap = tpm * FULL_TOKEN_BUDGET_WINDOWS
+        if hard_ceiling > cap:
+            violations.append(f"{route_id}: hard_input_ceiling={hard_ceiling} > tpm*5={cap}")
+    assert violations == [], "\n".join(violations)
