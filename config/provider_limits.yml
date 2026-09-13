@@ -356,6 +356,21 @@ routes:
     observed_input_ceiling: 218875
 
   # Gemma 4 Massive Free Quota Pools (14.4k RPD / 30 RPM each)
+  #
+  # hard_input_ceiling re-measured 2026-09-12 (was 8000, dated 2026-09-09 -- from BEFORE that
+  # day's array-wrapped-error-body fix to classify.js/llm_failure_class.py/
+  # provider_reported_token_limit(); Gemini's real error body is `[{"error": {...}}]`, not
+  # `{"error": {...}}`, so the old search was reading genuine quota-exceeded 429s as
+  # gateway_limit and narrowing on them as if they were size rejections -- an artificially low
+  # floor, not a real boundary). Re-run with the fix, on the secondary key only (primary is
+  # shared with the in-production v2 worker; see the account-diversity note elsewhere in this
+  # file) -- conclusive, contention_detected: false, provider_reported_tpm: 16000 (matches the
+  # configured tpm exactly, confirming Google publishes 16000 TPM for this tier). Applied to both
+  # primary and secondary per that same account-diversity convention. A same-day, single clean
+  # request at this input size plus a realistic 1000-token max_tokens succeeded fine (13,164
+  # total, well under 16000) on a rested key, ruling out any extra server-side output reservation
+  # as an explanation for the ~1-6% headroom below tpm -- it is a real, if narrow, per-model
+  # ceiling, not a measurement artifact.
   - route_id: gemma_4_26b_primary
     model: google/gemma-4-26b-a4b-it
     provider: gemini
@@ -366,9 +381,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 8000
+    hard_input_ceiling: 15062
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 15062
     observed_burst: 31
 
   - route_id: gemma_4_26b_secondary
@@ -381,9 +397,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 8000
+    hard_input_ceiling: 15062
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 15062
     observed_burst: 31
 
   - route_id: gemma_4_31b_primary
@@ -396,9 +413,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 8000
+    hard_input_ceiling: 12250
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 12250
     observed_burst: 2
 
   - route_id: gemma_4_31b_secondary
@@ -411,9 +429,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 8000
+    hard_input_ceiling: 12250
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 12250
     observed_burst: 2
 
   # Additional Free Flash Burst Pools (20 RPD / 5-10 RPM each)
