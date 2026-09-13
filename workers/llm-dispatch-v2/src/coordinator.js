@@ -48,22 +48,6 @@ try {
 }
 
 /**
- * A route's configured numeric limit, or `null` when the route declares none.
- *
- * `Number(null) === 0`, and this repository uses an explicit `0` to mean "paused/exhausted" --
- * so coercing an unset limit with `Number()` made "no daily limit configured" indistinguishable
- * from "deliberately paused". `_capacityFraction` scored both 0, and `claimDispatchWindow`
- * filters `score > 0`, so every route with no `rpd` was silently dropped from the ranking: never
- * ranked, never claimed, never dispatched, with no `blocked_until` and no error to show for it.
- * That was 34 of 69 catalog routes, including all 14 Mistral routes -- which is why 21,287
- * `mistral/mistral-medium-latest` jobs sat queued for 22 days behind a route whose last
- * observed provider status was a plain 200.
- *
- * `undefined` (key absent) happened to survive, because `Number(undefined)` is `NaN` and the
- * `!Number.isFinite` branch returns a full score -- so this only ever bit routes whose compiled
- * JSON carried an explicit `null`, which is exactly what `compile_llm_limits.py` emits.
- */
-/**
  * Failure classes where the provider never served the request, so it consumed none of our own
  * rate/token quota and the claim-time reservation must be refunded (see completeBatch).
  *
@@ -79,6 +63,22 @@ const NON_CONSUMING_FAILURE_CLASSES = new Set([
   "request_defect",
 ]);
 
+/**
+ * A route's configured numeric limit, or `null` when the route declares none.
+ *
+ * `Number(null) === 0`, and this repository uses an explicit `0` to mean "paused/exhausted" --
+ * so coercing an unset limit with `Number()` made "no daily limit configured" indistinguishable
+ * from "deliberately paused". `_capacityFraction` scored both 0, and `claimDispatchWindow`
+ * filters `score > 0`, so every route with no `rpd` was silently dropped from the ranking: never
+ * ranked, never claimed, never dispatched, with no `blocked_until` and no error to show for it.
+ * That was 34 of 69 catalog routes, including all 14 Mistral routes -- which is why 21,287
+ * `mistral/mistral-medium-latest` jobs sat queued for 22 days behind a route whose last
+ * observed provider status was a plain 200.
+ *
+ * `undefined` (key absent) happened to survive, because `Number(undefined)` is `NaN` and the
+ * `!Number.isFinite` branch returns a full score -- so this only ever bit routes whose compiled
+ * JSON carried an explicit `null`, which is exactly what `compile_llm_limits.py` emits.
+ */
 function configuredLimit(value) {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);

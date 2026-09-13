@@ -586,13 +586,13 @@ def run_phase_2(
         "probes_used": probes,
         "inconclusive_reason": inconclusive_reason,
         "conclusive": observed_ceiling is not None,
-        # The provider's own stated budget, when it gave one. Where this sits below our configured
-        # `tpm`, config is wrong and should be corrected; where it sits far above, our `tpm` is
-        # merely conservative and a larger ceiling is available.
         # True when a size we had recorded as rejected later succeeded unchanged -- proof the
         # first refusal was contention for a shared account budget, not a property of the route.
         # Any ceiling from such a run is a LOWER BOUND and must not be promoted to enforcement.
         "contention_detected": contention_detected,
+        # The provider's own stated budget, when it gave one. Where this sits below our configured
+        # `tpm`, config is wrong and should be corrected; where it sits far above, our `tpm` is
+        # merely conservative and a larger ceiling is available.
         "provider_reported_tpm": provider_tpm,
         "configured_tpm": route.get("tpm"),
         "search_upper_bound": high,
