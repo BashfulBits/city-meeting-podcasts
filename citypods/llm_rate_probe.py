@@ -478,6 +478,19 @@ def run_phase_2(
                 high = max(low + 1, provider_tpm)
 
         cls = _throttle_class(route, resp)
+
+        # A response that just told us the account's real per-minute budget is smaller than the
+        # size we probed explains itself by SIZE, not by timing: no amount of waiting admits a
+        # request bigger than the account will ever be allotted in one window. Confirmed live
+        # 2026-09-13 on gemma-4-26b/31b -- without this, the retry-through-throttle loop below
+        # burned its whole budget (10 retries x 40s) re-probing the SAME too-large size, then gave
+        # up as fully inconclusive, even though `high` had already been correctly narrowed to the
+        # model's real 16,000-token quota one line above. Treat it as an ordinary size rejection
+        # and let the search continue with the corrected bounds instead of retrying or giving up.
+        if provider_tpm is not None and mid > provider_tpm:
+            largest_rejected = mid if largest_rejected is None else min(largest_rejected, mid)
+            continue
+
         attempts_left = throttle_retries
         while cls in _NON_SIZE_CLASSES and attempts_left > 0:
             # A throttle says nothing about size. Wait it out and re-probe the SAME size.

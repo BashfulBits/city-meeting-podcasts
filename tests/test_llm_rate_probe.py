@@ -533,3 +533,54 @@ def test_provider_reported_token_limit_unwraps_geminis_array_wrapped_body():
 
     # A multi-element array (never actually observed) must not be misread as a single object.
     assert f({"status": 429, "headers": {}, "body": [{"error": {}}, {"error": {}}]}) is None
+
+
+def test_phase_2_continues_search_when_provider_tpm_proves_current_size_impossible():
+    """Regression: even after correctly learning provider_tpm and clamping `high`, the search used
+    to burn its whole throttle-retry budget re-probing the SAME too-large size, then give up as
+    fully inconclusive -- observed live 2026-09-13 on gemma-4-26b/31b, whose real quota (16,000) is
+    ~8x smaller than the search's own starting midpoint (125,500). A response that reveals the
+    real budget explains itself by SIZE, not timing, and must let the search continue with the
+    corrected bounds instead of retrying or giving up."""
+    from citypods.llm_rate_probe import run_phase_2
+
+    quota_body = [
+        {
+            "error": {
+                "message": (
+                    "Quota exceeded for metric: .../generate_content_free_tier_input_token_count, "
+                    "limit: 16000, model: gemma-4-26b"
+                )
+            }
+        }
+    ]
+    ok = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
+    throttled = {"status": 429, "headers": {}, "body": quota_body}
+
+    class _Runner:
+        def __init__(self):
+            self.calls = 0
+
+        def send_request(self, route, prompt, *, max_tokens=1):
+            self.calls += 1
+            size = len(prompt) // 4
+            return ok if size <= 15000 else throttled
+
+    runner = _Runner()
+    result = run_phase_2(
+        runner,
+        _route(provider="gemini", input_context_limit=262144),
+        max_probes=8,
+        throttle_retries=10,
+        throttle_wait_seconds=0.0,
+        confirm_wait_seconds=0.0,
+    )
+
+    assert result["conclusive"] is True
+    assert result["provider_reported_tpm"] == 16000
+    assert result["observed_input_ceiling"] is not None
+    assert result["observed_input_ceiling"] < 16000
+    # Converged, not exhausted the whole per-size retry budget: far fewer calls than the
+    # 8 probes x 10 retries (=80) worst case if every oversized probe retried in full instead
+    # of short-circuiting the moment provider_tpm proves the size impossible.
+    assert runner.calls <= 15
