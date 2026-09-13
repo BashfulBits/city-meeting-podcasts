@@ -84,6 +84,14 @@ providers:
         api_key_env: MISTRAL_API_KEY
       - id: secondary
         api_key_env: MISTRAL_API_KEY_SECONDARY
+      # Not payment-limited, per the maintainer (2026-09-12) -- unlike primary, whose
+      # mistral-medium-latest/-small-2603/devstral-2512 routes report a provisioned rpm of
+      # LITERALLY 0 (see the "zero-provisioned-limit" classifier rule; not a spent minute, no
+      # allowance at all). Starting limits below are copied from secondary as a placeholder; the
+      # endurance probe measures this key's real limits directly, since a lack of payment limits
+      # does not mean a lack of rate limits.
+      - id: tertiary
+        api_key_env: MISTRAL_API_KEY_TERTIARY
   # Airforce custom provider: serves Mistral Medium 3.5. At 1 RPM, more than one in-flight
   # request cannot increase sustainable throughput and can race the upstream limiter.
   # While published docs claimed 20 RPM, live 429 error responses report 1 RPM (plan_rpm: 1),
@@ -1077,6 +1085,75 @@ routes:
     free: true
     observed_on: "2026-09-09"
     observed_burst: 0
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_codestral_2508_tertiary
+    model: mistral/codestral-2508
+    provider: mistral
+    upstream_model: codestral-2508
+    input_context_limit: 256000
+    output_context_limit: 256000
+    account_id: tertiary
+    free: true
+
+  - route_id: mistral_devstral_2512_tertiary
+    model: mistral/devstral-2512
+    provider: mistral
+    upstream_model: devstral-2512
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: tertiary
+    free: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_small_2603_tertiary
+    model: mistral/mistral-small-2603
+    provider: mistral
+    upstream_model: mistral-small-2603
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: tertiary
+    free: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_medium_latest_tertiary
+    model: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: tertiary
+    free: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_large_2512_tertiary
+    model: mistral/mistral-large-2512
+    provider: mistral
+    upstream_model: mistral-large-2512
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: tertiary
+    free: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_large_3_tertiary
+    model: mistral/mistral-large-3
+    provider: mistral
+    upstream_model: mistral-large-3
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: tertiary
+    free: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_labs_leanstral_1_5_1_tertiary
+    model: mistral/labs-leanstral-1-5-1
+    provider: mistral
+    upstream_model: labs-leanstral-1-5-1
+    input_context_limit: 262144
+    output_context_limit: 131072
+    account_id: tertiary
+    free: true
     upstream_429_default: upstream_capacity
 
   # ==========================================

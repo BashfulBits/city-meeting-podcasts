@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 69,
+    "routes_count": 76,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -21,6 +21,10 @@
         {
           "id": "secondary",
           "api_key_env": "MISTRAL_API_KEY_SECONDARY"
+        },
+        {
+          "id": "tertiary",
+          "api_key_env": "MISTRAL_API_KEY_TERTIARY"
         }
       ]
     },
@@ -1522,6 +1526,195 @@
       "upstream_429_default": "upstream_capacity",
       "structured_output_schema_strip_keys": []
     },
+    "mistral_codestral_2508_tertiary": {
+      "route_id": "mistral_codestral_2508_tertiary",
+      "provider": "mistral",
+      "upstream_model": "codestral-2508",
+      "input_context_limit": 256000,
+      "output_context_limit": 256000,
+      "hard_input_ceiling": null,
+      "account_id": "tertiary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": null,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": null,
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": null,
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_devstral_2512_tertiary": {
+      "route_id": "mistral_devstral_2512_tertiary",
+      "provider": "mistral",
+      "upstream_model": "devstral-2512",
+      "input_context_limit": 262144,
+      "output_context_limit": 262144,
+      "hard_input_ceiling": null,
+      "account_id": "tertiary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": null,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": null,
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_small_2603_tertiary": {
+      "route_id": "mistral_small_2603_tertiary",
+      "provider": "mistral",
+      "upstream_model": "mistral-small-2603",
+      "input_context_limit": 262144,
+      "output_context_limit": 262144,
+      "hard_input_ceiling": null,
+      "account_id": "tertiary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": null,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": null,
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_medium_latest_tertiary": {
+      "route_id": "mistral_medium_latest_tertiary",
+      "provider": "mistral",
+      "upstream_model": "mistral-medium-latest",
+      "input_context_limit": 131072,
+      "output_context_limit": 8192,
+      "hard_input_ceiling": null,
+      "account_id": "tertiary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": null,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": null,
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_large_2512_tertiary": {
+      "route_id": "mistral_large_2512_tertiary",
+      "provider": "mistral",
+      "upstream_model": "mistral-large-2512",
+      "input_context_limit": 262144,
+      "output_context_limit": 262144,
+      "hard_input_ceiling": null,
+      "account_id": "tertiary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": null,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": null,
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_large_3_tertiary": {
+      "route_id": "mistral_large_3_tertiary",
+      "provider": "mistral",
+      "upstream_model": "mistral-large-3",
+      "input_context_limit": 262144,
+      "output_context_limit": 262144,
+      "hard_input_ceiling": null,
+      "account_id": "tertiary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": null,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": null,
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
+    "mistral_labs_leanstral_1_5_1_tertiary": {
+      "route_id": "mistral_labs_leanstral_1_5_1_tertiary",
+      "provider": "mistral",
+      "upstream_model": "labs-leanstral-1-5-1",
+      "input_context_limit": 262144,
+      "output_context_limit": 131072,
+      "hard_input_ceiling": null,
+      "account_id": "tertiary",
+      "rpm": null,
+      "rpd": null,
+      "tpm": null,
+      "concurrency": null,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": null,
+      "output_per_token": null,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": null,
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
     "zai_glm_4_7_flash_primary": {
       "route_id": "zai_glm_4_7_flash_primary",
       "provider": "zai",
@@ -2295,32 +2488,39 @@
     ],
     "mistral/codestral-2508": [
       "mistral_codestral_2508_primary",
-      "mistral_codestral_2508_secondary"
+      "mistral_codestral_2508_secondary",
+      "mistral_codestral_2508_tertiary"
     ],
     "mistral/devstral-2512": [
       "mistral_devstral_2512_primary",
-      "mistral_devstral_2512_secondary"
+      "mistral_devstral_2512_secondary",
+      "mistral_devstral_2512_tertiary"
     ],
     "mistral/mistral-small-2603": [
       "mistral_small_2603_primary",
-      "mistral_small_2603_secondary"
+      "mistral_small_2603_secondary",
+      "mistral_small_2603_tertiary"
     ],
     "mistral/mistral-medium-latest": [
       "mistral_medium_latest_primary",
       "airforce_mistral_medium_3_5_primary",
-      "mistral_medium_latest_secondary"
+      "mistral_medium_latest_secondary",
+      "mistral_medium_latest_tertiary"
     ],
     "mistral/mistral-large-2512": [
       "mistral_large_2512_primary",
-      "mistral_large_2512_secondary"
+      "mistral_large_2512_secondary",
+      "mistral_large_2512_tertiary"
     ],
     "mistral/mistral-large-3": [
       "mistral_large_3_primary",
-      "mistral_large_3_secondary"
+      "mistral_large_3_secondary",
+      "mistral_large_3_tertiary"
     ],
     "mistral/labs-leanstral-1-5-1": [
       "mistral_labs_leanstral_1_5_1_primary",
-      "mistral_labs_leanstral_1_5_1_secondary"
+      "mistral_labs_leanstral_1_5_1_secondary",
+      "mistral_labs_leanstral_1_5_1_tertiary"
     ],
     "zai/glm-4.7-flash": [
       "zai_glm_4_7_flash_primary"

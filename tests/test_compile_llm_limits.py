@@ -109,7 +109,8 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     mistral_medium_key = "mistral/mistral-medium-latest"
     medium_routes = compiled["model_routes_map"][mistral_medium_key]
-    assert len(medium_routes) == 3
+    # primary + secondary + tertiary Mistral accounts, plus the airforce overflow route.
+    assert len(medium_routes) == 4
     assert {compiled["routes_by_id"][route_id]["provider"] for route_id in medium_routes} == {
         "airforce",
         "mistral",
@@ -231,6 +232,7 @@ def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
         "mistral_medium_latest_primary",
         "airforce_mistral_medium_3_5_primary",
         "mistral_medium_latest_secondary",
+        "mistral_medium_latest_tertiary",
     ]
     assert (
         compiled["model_aliases"]["mistral/mistral-medium-2508"] == "mistral/mistral-medium-latest"
