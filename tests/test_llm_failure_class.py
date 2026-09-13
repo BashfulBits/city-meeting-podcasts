@@ -311,7 +311,7 @@ def test_bare_quota_exceeded_from_non_gemini_provider_stays_own_rpm_not_billing(
 
 
 def test_size_status_daily_token_quota_is_own_rpd_not_own_tpm():
-    """"tokens per day"/"(tpd)" used to be lumped into the same branch as the per-minute cases,
+    """ "tokens per day"/"(tpd)" used to be lumped into the same branch as the per-minute cases,
     applying own_tpm's ~60s bucket-wait pacing to a quota that only resets on the provider's
     calendar day -- matching the existing groq-tpd rule's own_rpd classification for the same
     axis elsewhere in this file."""
