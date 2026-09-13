@@ -506,3 +506,30 @@ def test_endurance_keeps_retrying_a_genuinely_transient_failure(monkeypatch):
     assert row["stopped_early"] is None
     assert row["attempts"] > 1
     assert calls["n"] > 1
+
+
+def test_provider_reported_token_limit_unwraps_geminis_array_wrapped_body():
+    """Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY, not a bare
+    object. Confirmed live 2026-09-13: without unwrapping it, this function could never learn
+    Gemini's own quoted limit, so the ceiling search kept probing sizes up to 250,000 against
+    gemma-4-26b/31b -- whose real per-minute quota is 16,000 -- for 11+ probes without ever
+    converging. Not contention: a single request that size structurally cannot fit an
+    8x-smaller quota no matter how long the search waits between retries."""
+    from citypods.llm_rate_probe import provider_reported_token_limit as f
+
+    body = [
+        {
+            "error": {
+                "message": (
+                    "Quota exceeded for metric: generativelanguage.googleapis.com/"
+                    "generate_content_free_tier_input_token_count, limit: 16000, "
+                    "model: gemma-4-26b\nPlease retry in 31.44s."
+                ),
+                "status": "RESOURCE_EXHAUSTED",
+            }
+        }
+    ]
+    assert f({"status": 429, "headers": {}, "body": body}) == 16000
+
+    # A multi-element array (never actually observed) must not be misread as a single object.
+    assert f({"status": 429, "headers": {}, "body": [{"error": {}}, {"error": {}}]}) is None

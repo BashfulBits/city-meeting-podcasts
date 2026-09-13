@@ -340,6 +340,16 @@ def provider_reported_token_limit(resp: dict[str, Any]) -> int | None:
                 return parsed
 
     body = resp.get("body")
+    # Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY --
+    # `[{"error": {...}}]` -- not a bare object. Without unwrapping it, the isinstance(body, dict)
+    # check below never fires, `message` stays empty, and this function can never learn Gemini's
+    # own quoted limit (e.g. "...free_tier_input_token_count, limit: 16000..."). That silently
+    # broke the whole point of this function for Gemini: the ceiling search kept probing sizes up
+    # to 250,000 against a model whose real per-minute quota is 16,000, for 11+ probes, never
+    # converging -- not because of contention, but because a single request that size structurally
+    # cannot fit an 8x-smaller quota no matter how long the search waits between retries.
+    if isinstance(body, list) and len(body) == 1 and isinstance(body[0], dict):
+        body = body[0]
     message = ""
     if isinstance(body, dict):
         # `error` is a dict for most providers but a bare string for some (and absent for others),
