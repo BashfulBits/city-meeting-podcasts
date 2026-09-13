@@ -168,6 +168,7 @@ const ENV = {
   UPSTREAM_MODEL: "mistral-large-2512",
   MISTRAL_API_KEY: "mistral-secret",
   MISTRAL_API_KEY_SECONDARY: "mistral-secondary-secret",
+  MISTRAL_API_KEY_TERTIARY: "mistral-tertiary-secret",
   GEMINI_API_KEY: "gemini-primary-secret",
   GEMINI_API_KEY_SECONDARY: "gemini-secondary-secret",
   DEEPSEEK_API_KEY: "deepseek-secret",
@@ -1008,6 +1009,20 @@ test("ready-marker lookahead skips a blocked provider and dispatches a later pro
           requests_day: 1,
           tokens_minute: 0,
           requests_available_at: new Date(now.getTime() + 60_000).toISOString(),
+        },
+        // The tertiary account (af04364) is a third real candidate for this model -- block it
+        // too, or it dispatches instead of the test falling through to the next provider (gemini)
+        // the way this test means to exercise. `blocked_until` rather than
+        // requests_minute/requests_available_at: af04364 never measured this account's rpm/rpd/
+        // tpm (config/provider_limits.yml's mistral_large_2512_tertiary declares none), and
+        // routeAvailable's rpm-window check -- requests_available_at included -- is entirely
+        // gated on `route.rpm != null`, so it is silently skipped for an unmeasured route.
+        // blocked_until is checked unconditionally regardless of which limits are configured.
+        mistral_large_2512_tertiary: {
+          requests_minute: 0,
+          requests_day: 0,
+          tokens_minute: 0,
+          blocked_until: new Date(now.getTime() + 60_000).toISOString(),
         },
       },
     }),
@@ -2166,6 +2181,7 @@ test("credential-resolution failure never touches the ledger, and a persistent l
   const withoutMistralKey = { ...env };
   delete withoutMistralKey.MISTRAL_API_KEY;
   delete withoutMistralKey.MISTRAL_API_KEY_SECONDARY;
+  delete withoutMistralKey.MISTRAL_API_KEY_TERTIARY;
   const credFailure = await dispatchOne(withoutMistralKey, okUpstream(), new Date());
   assert.equal(credFailure.status, "failed");
   const storedCoord = await env.LLM_QUEUE.get("state/dispatch_coordinator.json");
@@ -2318,16 +2334,21 @@ test("dispatchBatch staggers same-route candidates within allowed stagger delay"
     },
   );
   assert.equal(batchResult.status, "completed");
-  // The secondary native route and the independent paid fallback let three candidates proceed;
-  // the two paced submissions wait for the native route's 15-second interval.
-  assert.equal(batchResult.count, 3);
-  assert.equal(batchResult.completedCount, 3);
-  assert.equal(calls.length, 3);
-  assert.equal(slept.length, 2);
+  // af04364 added a third native mistral account (tertiary). All four submissions now find a
+  // route and complete within this one batch call (previously three did); three of the four
+  // still pace out a route's 15-second same-route stagger interval before dispatching (mocked
+  // sleep, so the batch itself does not actually wait in real time).
+  assert.equal(batchResult.count, 4);
+  assert.equal(batchResult.completedCount, 4);
+  assert.equal(calls.length, 4);
+  assert.equal(slept.length, 3);
+  // Three same-route candidates now stagger (was two, pre-af04364), each roughly 1s further out
+  // than the last (observed: 15000/16000/17000) -- widen the upper bound accordingly rather than
+  // pin exact values to timing jitter.
   for (const delay of slept) {
     assert.ok(
-      delay > 13_000 && delay <= 16_000,
-      `expected slept delay within (13000, 16000], got ${delay}`,
+      delay > 13_000 && delay <= 17_000,
+      `expected slept delay within (13000, 17000], got ${delay}`,
     );
   }
 
@@ -2335,7 +2356,7 @@ test("dispatchBatch staggers same-route candidates within allowed stagger delay"
   const completedObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "completed",
   );
-  assert.equal(completedObjects.length, 3);
+  assert.equal(completedObjects.length, 4);
 });
 
 test("dispatchBatch defers same-route candidates when MAX_IN_BATCH_STAGGER_SECONDS is 0", async () => {
@@ -2733,7 +2754,10 @@ test("the Free-plan scheduler prioritizes fast work before long work", async () 
     null,
     now.getTime() + 820_000,
   );
-  assert.equal(selected.length, 3);
+  // af04364 added a third native mistral account (tertiary), so all four "fast" submissions now
+  // find a route within this batch's touch limit of 4 -- "long" (the fifth, lowest-priority
+  // enqueue) is never reached at all, same as before.
+  assert.equal(selected.length, 4);
   const records = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completed = await Promise.all(
     records.objects.map(async (object) => ({ key: object.key, record: await (await env.LLM_QUEUE.get(object.key)).json() })),
@@ -3433,6 +3457,9 @@ test("a batch that dispatches nothing persists a reaped reservation but not a wi
   // abandoned reservation is durable state nothing else will clear.
   const route = "mistral_large_2512_primary";
   const secondaryRoute = "mistral_large_2512_secondary";
+  // The tertiary account (af04364) is a third real candidate for this model -- block it too, or
+  // it dispatches instead of the batch correctly finding no capacity anywhere.
+  const tertiaryRoute = "mistral_large_2512_tertiary";
   // Ahead of the enqueues below, so their markers are already eligible when the batch runs.
   const now = new Date(Date.now() + 1_000);
 
@@ -3451,6 +3478,17 @@ test("a batch that dispatches nothing persists a reaped reservation but not a wi
         inflight,
       },
       [secondaryRoute]: {
+        requests_minute: 0,
+        tokens_minute: 0,
+        requests_available_at: "",
+        tokens_available_at: "",
+        requests_minute_key: "1999-01-01T00:00",
+        requests_day: 0,
+        requests_day_key: "1999-01-01",
+        blocked_until: new Date(now.getTime() + 3_600_000).toISOString(),
+        inflight: {},
+      },
+      [tertiaryRoute]: {
         requests_minute: 0,
         tokens_minute: 0,
         requests_available_at: "",
