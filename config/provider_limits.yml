@@ -301,11 +301,11 @@ routes:
     rpm: 15
     rpd: 500
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 10
-    observed_input_ceiling: 133281
+    observed_input_ceiling: 218875
 
   - route_id: gemini_3_5_flash_lite_secondary
     model: gemini/gemini-3.5-flash-lite
@@ -317,11 +317,11 @@ routes:
     rpm: 15
     rpd: 500
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 10
-    observed_input_ceiling: 133281
+    observed_input_ceiling: 218875
 
   - route_id: gemini_3_1_flash_lite_primary
     model: gemini/gemini-3.1-flash-lite
@@ -333,10 +333,11 @@ routes:
     rpm: 15
     rpd: 500
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 1
+    observed_input_ceiling: 218875
 
   - route_id: gemini_3_1_flash_lite_secondary
     model: gemini/gemini-3.1-flash-lite
@@ -348,10 +349,11 @@ routes:
     rpm: 15
     rpd: 500
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 1
+    observed_input_ceiling: 218875
 
   # Gemma 4 Massive Free Quota Pools (14.4k RPD / 30 RPM each)
   - route_id: gemma_4_26b_primary
@@ -425,10 +427,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 6
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_flash_preview_secondary
     model: gemini/gemini-3-flash-preview
@@ -440,10 +443,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 6
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_8_flash_primary
     model: gemini/gemini-3.8-flash
@@ -455,10 +459,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 0
+    observed_input_ceiling: 218875
     upstream_429_default: upstream_capacity
 
   - route_id: gemini_3_8_flash_secondary
@@ -471,10 +476,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 0
+    observed_input_ceiling: 218875
     upstream_429_default: upstream_capacity
 
   - route_id: gemini_3_7_flash_primary
@@ -487,10 +493,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 7
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_7_flash_secondary
     model: gemini/gemini-3.7-flash
@@ -502,10 +509,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 7
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_6_flash_primary
     model: gemini/gemini-3.6-flash
@@ -517,10 +525,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 0
+    observed_input_ceiling: 218875
     upstream_429_default: upstream_capacity
 
   - route_id: gemini_3_6_flash_secondary
@@ -533,10 +542,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 0
+    observed_input_ceiling: 218875
     upstream_429_default: upstream_capacity
 
   - route_id: gemini_3_5_flash_primary
@@ -549,10 +559,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 1
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_5_flash_secondary
     model: gemini/gemini-3.5-flash
@@ -564,10 +575,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 1
+    observed_input_ceiling: 234437
 
   # ==========================================
   # ==========================================
@@ -627,9 +639,11 @@ routes:
     rpm: 30
     rpd: 1000
     tpm: 8000
+    hard_input_ceiling: 7125
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 30
+    observed_input_ceiling: 7125
 
   - route_id: groq_qwen_3_6_27b_primary
     model: qwen/qwen3.6-27b
@@ -640,10 +654,19 @@ routes:
     account_id: primary
     rpm: 30
     rpd: 1000
-    tpm: 8000
+    # Distinct from gpt-oss-120b's 8000: this model's error body reports a separate, stricter
+    # "input tokens per minute (ITPM): Limit 7000" (confirmed live 2026-09-12, reproduced twice).
+    # 8000 (Groq's general per-model TPM header, which this route previously copied from
+    # gpt-oss-120b) overstates what this specific model actually allows.
+    tpm: 7000
+    # Same 7000 figure as tpm above: the binary-search ceiling probe converged near 7125 (an
+    # estimate from char/4 token counting), but the directly-quoted ITPM=7000 is exact and
+    # stricter, so it is used here instead of the noisier estimate.
+    hard_input_ceiling: 7000
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 30
+    observed_input_ceiling: 7000
 
   - route_id: groq_qwen_3_8_27b_primary
     model: qwen/qwen3.8-27b
@@ -654,10 +677,17 @@ routes:
     account_id: primary
     rpm: 30
     rpd: 1000
-    tpm: 8000
+    # Same correction as qwen3.6-27b above: "input tokens per minute (ITPM): Limit 7000"
+    # (confirmed live 2026-09-12), stricter than the 8000 previously copied from gpt-oss-120b.
+    tpm: 7000
+    # Same 7000 figure as tpm above: the binary-search ceiling probe converged near 7125 (an
+    # estimate from char/4 token counting), but the directly-quoted ITPM=7000 is exact and
+    # stricter, so it is used here instead of the noisier estimate.
+    hard_input_ceiling: 7000
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 30
+    observed_input_ceiling: 7000
 
   # ==========================================
   # QWEN 2.5 72B MULTI-PROVIDER POOL (SambaNova + SiliconFlow)
@@ -839,9 +869,11 @@ routes:
     account_id: primary
     rpm: 124
     tpm: 625000
+    hard_input_ceiling: 249027
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 40
+    observed_input_ceiling: 249027
 
   # ACCOUNT-TIER MAP (verified 2026-09-12 against /v1/models + live probes on all three keys --
   # primary, secondary, and tertiary all show the IDENTICAL restriction, ruling out a per-key
@@ -1009,9 +1041,11 @@ routes:
     account_id: secondary
     rpm: 124
     tpm: 625000
+    hard_input_ceiling: 249027
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 40
+    observed_input_ceiling: 249027
 
   - route_id: mistral_devstral_2512_secondary
     model: mistral/devstral-2512
@@ -1090,7 +1124,12 @@ routes:
     input_context_limit: 256000
     output_context_limit: 256000
     account_id: tertiary
+    rpm: 124
+    tpm: 625000
+    hard_input_ceiling: 249027
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 249027
 
   - route_id: mistral_devstral_2512_tertiary
     model: mistral/devstral-2512
@@ -1153,10 +1192,13 @@ routes:
     input_context_limit: 200000
     output_context_limit: 131072
     account_id: primary
+    hard_input_ceiling: 199222
     rpm: 15
     rpd: 500
     concurrency: 2
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 199222
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1167,10 +1209,13 @@ routes:
     input_context_limit: 200000
     output_context_limit: 98304
     account_id: primary
+    hard_input_ceiling: 147140
     rpm: 15
     rpd: 500
     concurrency: 2
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 147140
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1252,10 +1297,13 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 65536
     account_id: primary
+    hard_input_ceiling: 234437
     rpm: 10
     rpd: 200
     concurrency: 1
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 234437
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1266,10 +1314,13 @@ routes:
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: primary
+    hard_input_ceiling: 249027
     rpm: 10
     rpd: 200
     concurrency: 1
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 249027
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1324,7 +1375,10 @@ routes:
     rpm: 20
     rpd: 200
     tpm: 100000
+    hard_input_ceiling: 249027
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 249027
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1340,7 +1394,10 @@ routes:
     rpm: 20
     rpd: 200
     tpm: 100000
+    hard_input_ceiling: 234437
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 234437
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1470,6 +1527,7 @@ routes:
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
     tpm: 40000
+    hard_input_ceiling: 234437
     # Raised back to 4 on 2026-08-30. The ceiling of 1 was set the day before on the
     # theory that NVIDIA rejects any overlapping request with a fast ~8.3s 429. Gateway
     # logs since the routing fix landed at 14Z say otherwise: nemotron-3-super ran 39
@@ -1486,8 +1544,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 2
+    observed_input_ceiling: 234437
 
   # Both DeepSeek routes below were disabled 2026-08-29 on a misdiagnosis: their 404s were blamed
   # on a per-key NVIDIA "Public API Endpoints" entitlement gap. The real cause was this provider
@@ -1634,6 +1693,7 @@ routes:
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
     tpm: 40000
+    hard_input_ceiling: 246109
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
@@ -1645,8 +1705,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 0
+    observed_input_ceiling: 246109
     upstream_429_default: upstream_capacity
 
   - route_id: nvidia_nemotron_3_super_120b_a12b_free
@@ -1699,6 +1760,7 @@ routes:
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
     tpm: 40000
+    hard_input_ceiling: 234437
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
@@ -1710,8 +1772,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 0
+    observed_input_ceiling: 234437
     upstream_429_default: upstream_capacity
 
   - route_id: nvidia_riva_translate_4b_instruct_v2_free
@@ -1731,6 +1794,11 @@ routes:
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
     tpm: 40000
+    # conservative vs the 8942-token binary-search estimate: this model's OWN error message states
+    # its real total context is exactly 8192 tokens (confirmed live 2026-09-12: "This model's
+    # maximum context length is 8192 tokens"), a more trustworthy figure than a char/4 estimate
+    # landing above it.
+    hard_input_ceiling: 8192
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
@@ -1742,8 +1810,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 5
+    observed_input_ceiling: 8192
 
 
 
