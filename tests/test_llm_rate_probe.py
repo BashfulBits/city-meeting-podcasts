@@ -438,3 +438,71 @@ def test_a_200_without_a_completion_labels_as_upstream_capacity_not_unknown():
 
     good = {"status": 200, "headers": {}, "body": {"choices": [{"message": {"content": "x"}}]}}
     assert _throttle_class({"provider": "airforce"}, good) is None
+
+
+def test_endurance_stops_immediately_on_a_payment_required_classification(monkeypatch):
+    """A billing/quota state (a zero-provisioned limit, an exhausted monthly allowance) does not
+    clear on a minute-scale retry cadence -- paymentRequiredBackoffUntil's own first rung is a
+    full day out, escalating to a week then a month for a recurring streak. Continuing to poll
+    every 60s for up to three hours after the FIRST such classification produces zero additional
+    information and must stop immediately -- unlike a genuinely transient
+    upstream_capacity/own_rpm/own_tpm failure, which keeps being retried."""
+    import citypods.llm_rate_probe as probe
+
+    zero_provisioned_limit = {
+        "status": 429,
+        "headers": {"x-ratelimit-limit-req-minute": "0", "x-ratelimit-remaining-req-minute": "0"},
+        "body": {"message": "Rate limit exceeded", "type": "rate_limited", "code": "1300"},
+    }
+
+    def _fake_send_request(self, route, prompt, *, max_tokens=1):
+        return zero_provisioned_limit
+
+    monkeypatch.setattr(probe.RateProbeRunner, "send_request", _fake_send_request)
+    monkeypatch.setenv("FAKE_MISTRAL_KEY", "sk-test")
+
+    route = {
+        "route_id": "mistral_medium_latest_secondary",
+        "provider": "mistral",
+        "api_key_env": "FAKE_MISTRAL_KEY",
+    }
+
+    started = probe.time.monotonic()
+    # A long window, short interval: if the early-exit did not fire, returning would require
+    # waiting out either the interval or the whole window -- it must return almost immediately.
+    result = probe.run_endurance([route], apply=True, hours=3.0, interval_seconds=60.0)
+    elapsed = probe.time.monotonic() - started
+
+    row = result["routes"][0]
+    assert row["stopped_early"] == "payment_required"
+    assert row["attempts"] == 1
+    assert row["recommend_disable"] is True
+    assert row["viable"] is False
+    assert elapsed < 5.0, "must not wait out the 60s interval or 3h window after a billing block"
+
+
+def test_endurance_keeps_retrying_a_genuinely_transient_failure(monkeypatch):
+    """The mirror case: upstream_capacity, own_rpm, own_tpm, server_error, and gateway_limit are
+    NOT billing states and must keep being polled through the window, exactly like before --
+    only payment_required gets the early exit."""
+    import citypods.llm_rate_probe as probe
+
+    busy = {"status": 429, "headers": {}, "body": {"error": {"message": "overloaded"}}}
+
+    calls = {"n": 0}
+
+    def _fake_send_request(self, route, prompt, *, max_tokens=1):
+        calls["n"] += 1
+        return busy
+
+    monkeypatch.setattr(probe.RateProbeRunner, "send_request", _fake_send_request)
+    monkeypatch.setenv("FAKE_KEY", "sk-test")
+    route = {"route_id": "some_route", "provider": "sambanova", "api_key_env": "FAKE_KEY"}
+
+    # A short window with a short interval: it should poll multiple times, not stop after one.
+    result = probe.run_endurance([route], apply=True, hours=0.001, interval_seconds=0.05)
+
+    row = result["routes"][0]
+    assert row["stopped_early"] is None
+    assert row["attempts"] > 1
+    assert calls["n"] > 1

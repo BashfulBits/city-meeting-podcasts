@@ -674,6 +674,7 @@ def run_endurance(
             "failure_classes": {},
             "last_status": None,
             "provider_reported_tpm": None,
+            "stopped_early": None,
             "skipped": None,
         }
         for r in routes
@@ -727,6 +728,26 @@ def run_endurance(
             else:
                 cls = _throttle_class(route, resp) or "unknown"
                 st["failure_classes"][cls] = st["failure_classes"].get(cls, 0) + 1
+                if cls == "payment_required":
+                    # A billing/quota state (a zero-provisioned limit, an exhausted monthly
+                    # allowance) does not clear on a minute-scale retry cadence --
+                    # paymentRequiredBackoffUntil's own first rung is a full day out, escalating
+                    # to a week then a month for a recurring streak. Every other classification
+                    # here is either transient (upstream_capacity/server_error/gateway_limit) or
+                    # can genuinely resolve inside the window (own_rpm within a minute, own_tpm
+                    # within a minute, own_rpd possibly within the window depending on time of
+                    # day) -- payment_required is the one class where continuing to poll every
+                    # 60s for up to three hours produces zero additional information after the
+                    # first occurrence. Stop immediately rather than spend the rest of the window
+                    # re-confirming a fact already established.
+                    st["stopped_early"] = "payment_required"
+                    log(
+                        f"  [{round(time.monotonic() - started, 1):>7.1f}s] {rid} STOPPED EARLY "
+                        f"(payment_required -- a billing state, not a pacing one; further "
+                        f"retries within this window cannot succeed)"
+                    )
+                    pending.pop(rid, None)
+                    next_due.pop(rid, None)
 
     elapsed = round(time.monotonic() - started, 1)
     for rid in pending:
@@ -761,6 +782,7 @@ def run_endurance(
         s = dict(s)
         s["viable"] = s["successes"] > 0
         s["recommend_disable"] = s["successes"] == 0 and s["skipped"] is None and s["attempts"] > 0
+        s.setdefault("stopped_early", None)
         s["ceiling"] = ceilings.get(rid)
         results.append(s)
     results.sort(key=lambda s: (not s["viable"], s["route_id"]))
