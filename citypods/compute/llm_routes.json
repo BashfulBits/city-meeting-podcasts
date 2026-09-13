@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 76,
+    "routes_count": 73,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -1294,38 +1294,6 @@
       "provider_rpm": 60
     },
     {
-      "route_id": "mistral_large_3_primary",
-      "model": "mistral/mistral-large-3",
-      "provider": "mistral",
-      "upstream_model": "mistral-large-3",
-      "input_context_limit": 262144,
-      "output_context_limit": 262144,
-      "account_id": "primary",
-      "rpm": 4,
-      "tpm": 225000,
-      "free": true,
-      "observed_on": "2026-09-09",
-      "observed_burst": 0,
-      "upstream_429_default": "upstream_capacity",
-      "structured_output_profile": "standard_json_schema",
-      "structured_output_response_format": "json_schema",
-      "structured_output_direct_handler": "instructor",
-      "structured_output_include_schema_in_prompt": false,
-      "structured_output_schema_strip_keys": [],
-      "transports": [
-        "direct",
-        "llm-dispatch"
-      ],
-      "direct_model": "mistral/mistral-large-3",
-      "api_base": "https://api.mistral.ai",
-      "ai_gateway_slug": "mistral",
-      "ai_gateway_chat_path": "/v1/chat/completions",
-      "chat_path": "/v1/chat/completions",
-      "api_key_env": "MISTRAL_API_KEY",
-      "reset_timezone": "UTC",
-      "provider_rpm": 60
-    },
-    {
       "route_id": "mistral_labs_leanstral_1_5_1_primary",
       "model": "mistral/labs-leanstral-1-5-1",
       "provider": "mistral",
@@ -1517,38 +1485,6 @@
       "provider_rpm": 60
     },
     {
-      "route_id": "mistral_large_3_secondary",
-      "model": "mistral/mistral-large-3",
-      "provider": "mistral",
-      "upstream_model": "mistral-large-3",
-      "input_context_limit": 262144,
-      "output_context_limit": 262144,
-      "account_id": "secondary",
-      "rpm": 4,
-      "tpm": 225000,
-      "free": true,
-      "observed_on": "2026-09-09",
-      "observed_burst": 0,
-      "upstream_429_default": "upstream_capacity",
-      "structured_output_profile": "standard_json_schema",
-      "structured_output_response_format": "json_schema",
-      "structured_output_direct_handler": "instructor",
-      "structured_output_include_schema_in_prompt": false,
-      "structured_output_schema_strip_keys": [],
-      "transports": [
-        "direct",
-        "llm-dispatch"
-      ],
-      "direct_model": "mistral/mistral-large-3",
-      "api_base": "https://api.mistral.ai",
-      "ai_gateway_slug": "mistral",
-      "ai_gateway_chat_path": "/v1/chat/completions",
-      "chat_path": "/v1/chat/completions",
-      "api_key_env": "MISTRAL_API_KEY_SECONDARY",
-      "reset_timezone": "UTC",
-      "provider_rpm": 60
-    },
-    {
       "route_id": "mistral_labs_leanstral_1_5_1_secondary",
       "model": "mistral/labs-leanstral-1-5-1",
       "provider": "mistral",
@@ -1711,34 +1647,6 @@
         "llm-dispatch"
       ],
       "direct_model": "mistral/mistral-large-2512",
-      "api_base": "https://api.mistral.ai",
-      "ai_gateway_slug": "mistral",
-      "ai_gateway_chat_path": "/v1/chat/completions",
-      "chat_path": "/v1/chat/completions",
-      "api_key_env": "MISTRAL_API_KEY_TERTIARY",
-      "reset_timezone": "UTC",
-      "provider_rpm": 60
-    },
-    {
-      "route_id": "mistral_large_3_tertiary",
-      "model": "mistral/mistral-large-3",
-      "provider": "mistral",
-      "upstream_model": "mistral-large-3",
-      "input_context_limit": 262144,
-      "output_context_limit": 262144,
-      "account_id": "tertiary",
-      "free": true,
-      "upstream_429_default": "upstream_capacity",
-      "structured_output_profile": "standard_json_schema",
-      "structured_output_response_format": "json_schema",
-      "structured_output_direct_handler": "instructor",
-      "structured_output_include_schema_in_prompt": false,
-      "structured_output_schema_strip_keys": [],
-      "transports": [
-        "direct",
-        "llm-dispatch"
-      ],
-      "direct_model": "mistral/mistral-large-3",
       "api_base": "https://api.mistral.ai",
       "ai_gateway_slug": "mistral",
       "ai_gateway_chat_path": "/v1/chat/completions",

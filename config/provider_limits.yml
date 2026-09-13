@@ -84,12 +84,13 @@ providers:
         api_key_env: MISTRAL_API_KEY
       - id: secondary
         api_key_env: MISTRAL_API_KEY_SECONDARY
-      # Not payment-limited, per the maintainer (2026-09-12) -- unlike primary, whose
-      # mistral-medium-latest/-small-2603/devstral-2512 routes report a provisioned rpm of
-      # LITERALLY 0 (see the "zero-provisioned-limit" classifier rule; not a spent minute, no
-      # allowance at all). Starting limits below are copied from secondary as a placeholder; the
-      # endurance probe measures this key's real limits directly, since a lack of payment limits
-      # does not mean a lack of rate limits.
+      # Added 2026-09-12 specifically to test whether primary's zero-provisioned flagship models
+      # (below) were a per-key state a fresh key could bypass. VERIFIED they are not: primary,
+      # secondary, and this tertiary key all report the IDENTICAL zero rate limit
+      # (x-ratelimit-limit-req-minute: 0) for the same model set, and /v1/models lists the exact
+      # same 46 model ids on all three keys. This is an account/organization-tier restriction
+      # shared by every key issued under it, not a per-key billing/budget state -- see the
+      # comment on mistral-medium-latest below for the full account-tier map this established.
       - id: tertiary
         api_key_env: MISTRAL_API_KEY_TERTIARY
   # Airforce custom provider: serves Mistral Medium 3.5. At 1 RPM, more than one in-flight
@@ -842,6 +843,30 @@ routes:
     observed_on: "2026-09-09"
     observed_burst: 40
 
+  # ACCOUNT-TIER MAP (verified 2026-09-12 against /v1/models + live probes on all three keys --
+  # primary, secondary, and tertiary all show the IDENTICAL restriction, ruling out a per-key
+  # billing/budget state in favor of an account/organization-tier one; a fourth key under the same
+  # organization would very likely show it too):
+  #   WORKS on this account: Ministral (3b/8b/14b, dated and -latest), Codestral (-2508/-latest),
+  #     mistral-embed(-2312), voxtral-*, mistral-ocr-*, mistral-code-*, mistral-vibe-cli-*,
+  #     mistral-moderation-2603.
+  #   BLOCKED on this account (HTTP 429, x-ratelimit-limit-req-minute: 0 -- not a spent minute,
+  #     no allowance at all -- classified payment_required, "zero-provisioned-limit" rule):
+  #     devstral-2512, mistral-small-2603/-latest, mistral-medium-latest and every medium variant
+  #     (mistral-medium, -2604, -3, -3-5, -3.5), magistral-medium-latest, magistral-small-latest.
+  #     None of these are naming/config bugs -- every one is a real, correctly-spelled model this
+  #     account's plan does not include; a fresh key under the same org will not unblock them.
+  #   BLOCKED differently (HTTP 403 "not available in your subscription tier"; same underlying
+  #     cause, a different Mistral-side mechanism for reporting it): mistral-large-2512.
+  #   BLOCKED differently again (HTTP 403 "is a Labs model", listed in /v1/models under
+  #     labs-leanstral-1-5/-1-5-1): an account PREFERENCE toggle, not a plan/billing gate --
+  #     distinct from every case above, and the one restriction here a dashboard setting (not a
+  #     paid plan) could lift.
+  #   NOT A REAL MODEL (removed 2026-09-12): mistral-large-3 -- HTTP 400 "Invalid model", absent
+  #     from /v1/models on all three keys, and no such name exists in Mistral's own published
+  #     model list. This was a config authoring error, unrelated to the account-tier findings
+  #     above; do not re-add it under this name.
+  #
   # Devstral 2512: 0.83 RPS (49 RPM), 1,000,000 TPM
   - route_id: mistral_devstral_2512_primary
     model: mistral/devstral-2512
@@ -959,21 +984,6 @@ routes:
     observed_burst: 0
     upstream_429_default: upstream_capacity
 
-  # Mistral Large 3: 4 RPM, 250k TPM
-  - route_id: mistral_large_3_primary
-    model: mistral/mistral-large-3
-    provider: mistral
-    upstream_model: mistral-large-3
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: primary
-    rpm: 4
-    tpm: 250000
-    free: true
-    observed_on: "2026-09-09"
-    observed_burst: 0
-    upstream_429_default: upstream_capacity
-
   # Labs Leanstral: 0.63 RPS (37 RPM), 5,000,000 TPM
   - route_id: mistral_labs_leanstral_1_5_1_primary
     model: mistral/labs-leanstral-1-5-1
@@ -1059,20 +1069,6 @@ routes:
     observed_burst: 0
     upstream_429_default: upstream_capacity
 
-  - route_id: mistral_large_3_secondary
-    model: mistral/mistral-large-3
-    provider: mistral
-    upstream_model: mistral-large-3
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: secondary
-    rpm: 4
-    tpm: 250000
-    free: true
-    observed_on: "2026-09-09"
-    observed_burst: 0
-    upstream_429_default: upstream_capacity
-
   - route_id: mistral_labs_leanstral_1_5_1_secondary
     model: mistral/labs-leanstral-1-5-1
     provider: mistral
@@ -1130,16 +1126,6 @@ routes:
     model: mistral/mistral-large-2512
     provider: mistral
     upstream_model: mistral-large-2512
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: tertiary
-    free: true
-    upstream_429_default: upstream_capacity
-
-  - route_id: mistral_large_3_tertiary
-    model: mistral/mistral-large-3
-    provider: mistral
-    upstream_model: mistral-large-3
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: tertiary
