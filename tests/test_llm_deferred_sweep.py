@@ -4,7 +4,11 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 from citypods.compute.base import JobHandle, JobResult
-from citypods.compute.llm import LLMDispatchTerminalError, LLMStructuredOutputError
+from citypods.compute.llm import (
+    LLMDispatchTerminalError,
+    LLMStructuredOutputError,
+    LLMUpstreamPassthroughError,
+)
 from citypods.compute.llm_deferred import DeferredSnapshot, DeferredSnapshotEntry
 from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
 from citypods.storage import StorageReadUnavailable
@@ -231,6 +235,63 @@ def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, cap
     assert events == ["write", "marker", "ack", "delete"]
     assert "2 failed (1 terminally recovered)" in out.out
     assert "submitted one schema correction" in out.err
+
+
+def test_sweep_never_schema_corrects_an_upstream_error_passthrough(monkeypatch, capsys):
+    """LLMUpstreamPassthroughError (Airforce's HTTP 200 body containing {"error": {"message":
+    "the provider refused this request (HTTP 524)", ...}} when its own upstream times out) must
+    route straight to discard_terminal_failure, exactly like LLMDispatchTerminalError -- never
+    through retry_malformed_dispatched's "fix your JSON" corrective retry, which is nonsensical
+    for a request the model never answered and would burn one of the bounded
+    MAX_TERMINAL_FAILURE_RETRIES attempts on a retry that cannot possibly succeed."""
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda _storage, **_kwargs: _snapshot([_handle("recipe-airforce-524")]),
+    )
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda _storage, _snapshot, **_kw: 0,
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "schema_correction_attempted", lambda *_args: False)
+    recovered = []
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "discard_terminal_failure",
+        lambda _storage, _snapshot, handle, error, **kwargs: (
+            recovered.append((handle.recipe_hash, type(error).__name__, kwargs.get("exhausted")))
+            or 1
+        ),
+    )
+
+    class FakeBackend:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def reconcile(self, _handle):
+            raise LLMUpstreamPassthroughError(
+                "LLM dispatch result is a provider/gateway error passthrough, not a completion"
+            )
+
+        def retry_malformed_dispatched(self, _handle):
+            raise AssertionError(
+                "an upstream error passthrough must never trigger a schema-correction retry"
+            )
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
+
+    assert llm_deferred_sweep.main([]) == 0
+    out = capsys.readouterr()
+    # exhausted is never passed by recover_terminal's LLMDispatchTerminalError branch (it relies
+    # on discard_terminal_failure's own count>=MAX_TERMINAL_FAILURE_RETRIES check) -- matching
+    # test_sweep_recovers_terminal_and_malformed_dispatch_records's LLMDispatchTerminalError case.
+    assert recovered == [("recipe-airforce-524", "LLMUpstreamPassthroughError", None)]
+    assert "1 failed (1 terminally recovered)" in out.out
+    assert "submitted one schema correction" not in out.err
 
 
 def test_sweep_exhausts_a_second_malformed_reply_without_submitting_another_correction(

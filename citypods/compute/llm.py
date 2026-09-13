@@ -254,6 +254,32 @@ class LLMDispatchTerminalError(LLMBackendError):
     """The dispatch Worker recorded a terminal failure for this one request."""
 
 
+class LLMUpstreamPassthroughError(LLMDispatchTerminalError):
+    """A stored "completed" result is actually a provider/gateway error object, not a completion.
+
+    Airforce returns HTTP 200 with a body like ``{"error": {"message": "the provider refused
+    this request (HTTP 524)", "code": "524"}}`` when its own upstream times out or is at
+    capacity -- no ``choices`` at all, confirmed live 2026-09 in 413 of 6,561 stored v2 results
+    during an Airforce outage. ``workers/llm-dispatch-v2/src/gateway.js``'s
+    ``upstreamEmptyCompletion()`` now catches this at the Worker before it is ever persisted as
+    "completed" (review/45 Initiative 20 follow-up), but this is the Python-side safety net for
+    anything that still reaches here -- an older stored result, a transport that predates that
+    fix, or a future provider with the same shape.
+
+    Deliberately a subclass of ``LLMDispatchTerminalError``, not ``LLMStructuredOutputError``:
+    the isinstance checks in ``scripts/llm_deferred_sweep.py``'s ``recover_terminal`` route
+    ``LLMStructuredOutputError`` into a corrective schema retry ("Return only one JSON object
+    that exactly matches the requested response schema"), which is nonsensical here -- the model
+    never produced output for this exception to be correcting. Applying it anyway used to burn
+    one of the bounded ``MAX_TERMINAL_FAILURE_RETRIES`` attempts on a retry that could not
+    possibly succeed, before an eventually correct discard. Subclassing the terminal-error branch
+    instead routes straight to ``discard_terminal_failure`` as an ordinary retryable failure --
+    no schema-correction call, no wasted retry budget -- while every existing
+    ``isinstance(result, (LLMStructuredOutputError, LLMDispatchTerminalError))`` gate still
+    matches it unchanged.
+    """
+
+
 class _LLMBatchItemError(LLMBackendError):
     """An error attached to one batch item, optionally eligible for one isolated retry."""
 
@@ -1181,6 +1207,14 @@ class LiteLLMBackend(Backend):
             message = choices[0].get("message")
             if isinstance(message, Mapping) and isinstance(message.get("content"), str):
                 return message["content"]
+        if output.get("error"):
+            # A top-level `error` object is the provider/gateway's own signal that no completion
+            # was produced -- a real reply never carries one instead of/alongside `choices`. See
+            # LLMUpstreamPassthroughError's docstring for why this must not be classified as a
+            # malformed model reply.
+            raise LLMUpstreamPassthroughError(
+                "LLM dispatch result is a provider/gateway error passthrough, not a completion"
+            )
         raise LLMStructuredOutputError("structured LLM response did not contain message content")
 
     def _validate_reconciled(
@@ -3389,6 +3423,7 @@ __all__ = [
     "LLMBackendError",
     "LLMDispatchTerminalError",
     "LLMStructuredOutputError",
+    "LLMUpstreamPassthroughError",
     "LLM_TASKS",
     "LiteLLMBackend",
     "PerModelBatchingBackends",
