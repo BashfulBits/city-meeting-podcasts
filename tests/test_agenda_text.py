@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -232,6 +233,26 @@ def test_pdf_quality_gate_fails_closed_when_ocr_is_ambiguous(monkeypatch):
     assert assessment.reason == "ambiguous-native-and-ocr"
 
 
+def test_pdf_quality_gate_rejects_raw_pdf_bytes_leaking_through_as_native_text(monkeypatch):
+    """End-to-end regression: even if some extraction path leaks the PDF's own undecoded bytes as
+    "native text" (as _extract_pdf's ImportError fallback used to), the quality gate must not
+    accept it as a real agenda_text_artifact. Raw PDF container syntax and garbled
+    compressed-stream bytes decode into plausible, keyword-bearing noise that would otherwise
+    clear the alpha-char/agenda-content-score thresholds by chance."""
+    import citypods.agenda_text as agenda_text
+
+    content = (FIXTURES / "arlington_pz_2021_01_20_agenda.pdf").read_bytes()
+    raw_pdf_like = "%PDF-1.5\n1 0 obj\n<<\n>>\nendobj\n" + "agenda 1. item x" * 200
+    monkeypatch.setattr(agenda_text, "extract_document", lambda *args, **kwargs: (raw_pdf_like, []))
+    assessment, _ = assess_agenda_document(
+        content,
+        content_type="application/pdf",
+        source_url="https://example.test/agenda.pdf",
+        ocr_runner=lambda *args, **kwargs: ("", None),
+    )
+    assert assessment.status == "rejected"
+
+
 def test_pdf_quality_gate_records_ocr_unavailability(monkeypatch):
     import citypods.agenda_text as agenda_text
 
@@ -382,6 +403,40 @@ def test_real_legistar_attachment_pdf_extracts_cleanly():
     content = (FIXTURES / "pflugerville_legistar_attachment.pdf").read_bytes()
     text, _ = _extract_pdf(content)
     assert "PARKS AND RECREATION MONTH" in text
+
+
+def test_extract_pdf_treats_missing_pypdf_as_extraction_failure_not_raw_bytes(monkeypatch):
+    """Regression: pypdf is a hard, pinned dependency (pyproject.toml), so this should never
+    happen in a correctly provisioned production run -- but when `from pypdf import PdfReader`
+    fails, _extract_pdf used to decode the PDF's own raw bytes as UTF-8 and hand that back as if
+    it were extracted text. Real PDF container syntax and garbled compressed-stream bytes decode
+    into plausible, keyword-bearing noise rather than raising, so that corruption slipped past
+    assess_agenda_document's quality gate and was persisted as a genuine agenda_text_artifact."""
+    content = (FIXTURES / "arlington_pz_2021_01_20_agenda.pdf").read_bytes()
+    monkeypatch.setitem(sys.modules, "pypdf", None)
+    text, links = _extract_pdf(content, source_url="https://example.test/agenda.pdf")
+    assert text == ""
+    assert links == []
+
+
+def test_pdf_layout_text_treats_missing_pypdf_as_extraction_failure(monkeypatch):
+    """Same failure mode as _extract_pdf's ImportError branch, for the parallel layout-mode
+    extractor that shared the identical raw-bytes-decode anti-pattern."""
+    content = (FIXTURES / "arlington_pz_2021_01_20_agenda.pdf").read_bytes()
+    monkeypatch.setitem(sys.modules, "pypdf", None)
+    assert extract_pdf_layout_text(content) == ""
+
+
+def test_classify_agenda_text_rejects_raw_undecoded_pdf_bytes():
+    """Regression for the gap in placeholder detection: raw PDF container bytes decoded as UTF-8
+    (see the _extract_pdf ImportError fallback bug) read as substantial, keyword-bearing prose to
+    the placeholder heuristics below it -- decompressed-stream noise easily clears the alpha-char
+    and agenda-content-score thresholds by chance. The %PDF- file-signature guard catches it
+    structurally instead of relying on those score-based checks."""
+    raw_pdf_like = "%PDF-1.5\n%\x93\x8c\x8b\x9e\n1 0 obj\n<<\n>>\nendobj\n" + (
+        "agenda item xyz garbled endstream " * 40
+    )
+    assert classify_agenda_text(raw_pdf_like) == "viewer-placeholder"
 
 
 def test_extract_agenda_title_candidates_handles_numbered_and_split_pdf_lines():

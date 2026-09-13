@@ -270,6 +270,26 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Raw, undecoded PDF bytes could be persisted as a real `agenda_text_artifact`
+  (`citypods/agenda_text.py`, `tests/test_agenda_text.py`, GH#1092 follow-up).** `_extract_pdf`'s
+  fallback for a non-importable `pypdf` (a hard, pinned dependency — should never fire in a
+  correctly provisioned run) decoded the PDF's own raw bytes as UTF-8 and returned that as if it
+  were extracted text. Real PDF container syntax and garbled compressed-stream bytes decode into
+  plausible, keyword-bearing noise rather than raising, so the corruption cleared
+  `assess_agenda_document`'s alpha-char/agenda-content-score thresholds by chance and slipped
+  past the placeholder/quality gate GH#1092 built for exactly this class of bad extraction —
+  confirmed against a real production episode (Austin Integrated Water Resource Planning
+  Community Task Force) whose durable artifact was 53k characters of PDF structural syntax and
+  binary noise. Fixed on both sides: the `ImportError` fallback (in both `_extract_pdf` and the
+  parallel `extract_pdf_layout_text`) now returns no text instead of raw bytes, so a genuinely
+  unreadable native PDF falls through to the existing suspicious-native/OCR path like any other
+  bad extraction; `_is_placeholder_text` gained a structural `%PDF-` file-signature guard as a
+  second, independent layer; and `_extract_pdf`'s inner exception handling now also catches
+  `pypdf.errors.PyPdfError` (previously uncaught, so a genuinely malformed PDF skipped the
+  OCR-repair path entirely instead of degrading gracefully like every other bad-PDF case).
+  `scripts/audit_raw_pdf_agenda_artifacts.py` surveys durably stored artifacts for the same
+  raw-bytes signature so any pre-fix episodes can be found and reset for re-derivation.
+
 - **Bounded research/review workflows now survive oversized and stale work (`tournament.py`, shared
   review resolver).** The tag tournament previously loaded chapter artifacts for the entire
   append-only catalog before taking its newest bounded sample, so the 46-sample weekly run hit its
