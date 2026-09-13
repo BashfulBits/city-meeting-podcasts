@@ -12,16 +12,34 @@
  * of blocking slightly early at a window boundary, never in the direction of over-admitting.
  *
  * TPM is a token *bucket*, not a third fixed window: `full_token_budget` refills continuously at
- * `tpm` tokens per 60s, capped at `tpm * FULL_TOKEN_BUDGET_WINDOWS` (a several-window ceiling,
- * not just one window's worth) specifically so a job whose conservative estimate exceeds one
- * window's entire tpm allowance is not automatically unserviceable -- it waits for enough budget
- * to accumulate across several windows, up to that ceiling. A job whose estimate exceeds the
- * ceiling itself can never be admitted on this route at all; routeHasCapacityFor returns false for
- * it permanently, not just "not yet."
+ * `tpm` tokens per 60s, WITHOUT an upper cap (see the 2026-09-13 redesign note below) -- a job
+ * whose reservation exceeds what is available right now simply waits longer, for as long as it
+ * takes for that many tokens to accrue.
+ *
+ * SIZE ADMISSIBILITY -- can this job go on this route AT ALL, regardless of waiting -- is answered
+ * by a SEPARATE, single, input-only fact: `route.hard_input_ceiling` (see earliestSafeStart). This
+ * used to also be gated by an absolute `reservation > tpm * FULL_TOKEN_BUDGET_WINDOWS` cutoff --
+ * a single hardcoded multiplier (5) applied identically to every route as a stand-in for a fact
+ * this project now measures directly per route, and it was wrong in both directions at once:
+ * Gemini/Gemma enforce `tpm` as a hard per-request ceiling with NO burst room at all (confirmed
+ * live, 2026-09 -- a single request over the real usable window fails outright no matter how idle
+ * the account is, and that real ceiling can sit AT OR EVEN BELOW `tpm` -- ratio ~1x, occasionally
+ * measured a little under 1x from estimation noise), while NVIDIA's measured single-request
+ * ceiling ran ~6-7x its configured `tpm` (234k-249k tokens against a configured 36k-40k) -- MORE
+ * burst room than the old flat 5x already assumed, including for the one provider it was
+ * originally calibrated from. Retired 2026-09-13: `hard_input_ceiling` already measures exactly
+ * what that multiplier was trying to guess, per route, so a second, cruder, tpm-derived
+ * admissibility gate that could disagree with it served no purpose. A route with no
+ * `hard_input_ceiling` set gets NO extra admissibility restriction here beyond
+ * `input_context_limit` (a separate, earlier filter -- see routes.js); it simply waits, however
+ * long the bucket needs, once admitted.
  */
 
 const MS_PER_MINUTE = 60_000;
 const MS_PER_DAY = 24 * 60 * 60_000;
+// Retained ONLY for the provider-level shared budget below (a distinct, unmeasured mechanism --
+// no equivalent per-provider ceiling has ever been measured, so that budget keeps its original
+// bounded-burst assumption rather than inheriting the route-level redesign above).
 export const FULL_TOKEN_BUDGET_WINDOWS = 5;
 
 /**
@@ -135,11 +153,14 @@ function fixedWindowReadyAt(windowStart, count, limit, windowMs, now) {
 export function availableTokenBudget(route, now) {
   const tpm = Number(route?.tpm);
   if (!Number.isFinite(tpm) || tpm <= 0) return Number.POSITIVE_INFINITY; // unlimited / unconfigured
-  const cap = tpm * FULL_TOKEN_BUDGET_WINDOWS;
+  // No upper cap (2026-09-13 redesign, see module docstring): size admissibility is answered once,
+  // separately, by hard_input_ceiling in earliestSafeStart. A route that clears that gate simply
+  // waits however long this bucket needs to refill for a large reservation -- unbounded idle time
+  // accrues unbounded budget, matching the Python direct-transport scheduler's own linear-spacing
+  // model (llm_budget.py), which has never had a cap either.
   const updatedAt = Number(route?.token_budget_updated_at) || 0;
   const elapsedMs = Math.max(0, now - updatedAt);
-  const refilled = (Number(route?.full_token_budget) || 0) + (elapsedMs * tpm) / MS_PER_MINUTE;
-  return Math.min(cap, refilled);
+  return (Number(route?.full_token_budget) || 0) + (elapsedMs * tpm) / MS_PER_MINUTE;
 }
 
 /**
@@ -189,19 +210,13 @@ export function reservationFor(job, { estimateFloor = 0, calibratedMargin = 0 } 
 export function earliestSafeStart(route, job, earliestCandidateTime, now, options = {}) {
   const reservation = reservationFor(job, options);
   const tpm = Number(route?.tpm);
-  if (Number.isFinite(tpm) && tpm > 0 && reservation > tpm * FULL_TOKEN_BUDGET_WINDOWS) {
-    return null; // exceeds the route's burst/request capacity outright -- not a timing problem
-  }
-  // A SEPARATE, tighter, opt-in ceiling from the bucket math above. `FULL_TOKEN_BUDGET_WINDOWS`
-  // assumes every route can burst up to several windows deep -- true for at least one provider
-  // confirmed live (NVIDIA accepted a request ~3x its configured tpm outright), but not for
-  // Gemini/Gemma: confirmed live, a single request over its real usable window is rejected
-  // outright by the provider no matter how idle the account is, and that real ceiling can sit
-  // well below both `tpm` and the model's own context window. `route.hard_input_ceiling` is only
-  // ever set (compile_llm_limits.py) where that hard-reject behavior has actually been verified,
-  // so this never over-restricts a route we haven't tested. It is an *input*-only cap -- mirror
-  // the Python scheduler's `select_route` contract (`llm_scheduler.py`) and compare it against the
-  // client's input estimate alone, not `reservation`, which also carries the output-token budget.
+  // ONE absolute admissibility gate (2026-09-13 redesign, see module docstring): does this
+  // route's own measured per-request ceiling admit this job's INPUT, at all -- not a timing
+  // question, and not compared against `reservation` (which also carries the output-token
+  // budget): mirrors the Python scheduler's `select_route` contract (`llm_scheduler.py`) exactly,
+  // so the two never disagree about which jobs a route can serve. `input_context_limit` is a
+  // separate, coarser, earlier filter (routes.js); a route with no `hard_input_ceiling` measured
+  // gets no extra restriction here at all -- it simply waits, however long, once admitted.
   const hardCeiling = Number(route?.hard_input_ceiling);
   const inputEstimate = Number(job?.input_token_estimate) || 0;
   if (Number.isFinite(hardCeiling) && hardCeiling > 0 && inputEstimate > hardCeiling) {

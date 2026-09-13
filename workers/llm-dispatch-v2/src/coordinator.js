@@ -1910,11 +1910,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
     let fullTokenBudget = mergedRoute.full_token_budget;
     let tokenBudgetUpdatedAt = mergedRoute.token_budget_updated_at;
     if (tpm > 0) {
-      const elapsedMs = Math.max(0, notBeforeAt - (tokenBudgetUpdatedAt || 0));
-      const refilled = Math.min(
-        tpm * FULL_TOKEN_BUDGET_WINDOWS,
-        (fullTokenBudget || 0) + (elapsedMs * tpm) / 60_000
-      );
+      // Uncapped refill (2026-09-13 redesign, see pacing.js) -- this used to duplicate
+      // availableTokenBudget()'s math inline with an extra `Math.min(tpm * FULL_TOKEN_BUDGET_WINDOWS,
+      // ...)`, which silently re-imposed the retired route-level burst cap on every write even
+      // after the pure function itself stopped capping. Route-level size admissibility is
+      // `hard_input_ceiling`'s job alone now; this bucket just refills.
+      const refilled = availableTokenBudget(mergedRoute, notBeforeAt);
       fullTokenBudget = Math.max(0, refilled - reservation);
       tokenBudgetUpdatedAt = notBeforeAt;
     }
@@ -2790,19 +2791,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
           );
           if (nonConsuming && result.outcome !== "success") {
             const catalogRoute = this._dispatchLimits()?.routes_by_id?.[job.lease_route_id];
-            const tpmCap = Number(catalogRoute?.tpm) > 0
-              ? Number(catalogRoute.tpm) * FULL_TOKEN_BUDGET_WINDOWS
-              : null;
-            if (tpmCap !== null) {
+            // Uncapped refill (2026-09-13 redesign, see pacing.js) -- refunding a reservation
+            // that was never consumed no longer clamps at `tpm * FULL_TOKEN_BUDGET_WINDOWS`; it
+            // just gives the tokens back, same as ordinary refill.
+            if (Number(catalogRoute?.tpm) > 0) {
               sql.exec(
                 `UPDATE routes SET
                    rpm_count = MAX(0, rpm_count - 1),
                    rpd_count = MAX(0, rpd_count - 1),
                    tpm_reserved = MAX(0, tpm_reserved - ?),
-                   full_token_budget = MIN(?, full_token_budget + ?)
+                   full_token_budget = full_token_budget + ?
                  WHERE route_id = ?`,
                 reservation,
-                tpmCap,
                 reservation,
                 job.lease_route_id
               );
