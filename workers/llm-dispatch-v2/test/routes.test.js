@@ -17,11 +17,16 @@ function eligibleMistralRoutes(inputTokens, outputTokens) {
   ).filter((route) => route.provider === "mistral");
 }
 
-test("both native Mistral Medium latest routes admit a request within context limit", () => {
+test("all native Mistral Medium latest routes admit a request within context limit", () => {
+  // primary + secondary + tertiary (the maintainer's third, non-payment-limited key, 2026-09-12).
   const routes = eligibleMistralRoutes(120000, 8000);
   assert.deepEqual(
     routes.map((route) => route.route_id),
-    ["mistral_medium_latest_primary", "mistral_medium_latest_secondary"],
+    [
+      "mistral_medium_latest_primary",
+      "mistral_medium_latest_secondary",
+      "mistral_medium_latest_tertiary",
+    ],
   );
 });
 

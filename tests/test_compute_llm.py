@@ -16,6 +16,7 @@ from citypods.compute.llm import (
     LLMBackendError,
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
+    LLMUpstreamPassthroughError,
     _messages,
     _pacing_wait_seconds,
     _priced_actual,
@@ -2318,3 +2319,75 @@ def test_immediate_schema_repair_is_local_and_never_persists_a_handle():
     assert "corrected JSON" in calls[1]["messages"][-1]["content"]
     assert result.output["choices"][0]["message"]["content"] == '{"value":"fixed"}'
     assert not any("llm_deferred" in key for key in storage.objs)
+
+
+def test_structured_content_distinguishes_upstream_passthrough_from_malformed_reply():
+    """A stored "completed" result that is actually a provider/gateway error object -- Airforce's
+    HTTP 200 body containing {"error": {"message": "the provider refused this request (HTTP
+    524)", ...}} when its own upstream times out (confirmed live 2026-09, 413 of 6,561 stored v2
+    results during an outage) -- must raise LLMUpstreamPassthroughError, not
+    LLMStructuredOutputError. The two are NOT interchangeable: llm_deferred_sweep.py's
+    recover_terminal routes LLMStructuredOutputError into a "fix your JSON" corrective retry,
+    which is nonsensical when the model never produced output, and burns one of the bounded
+    MAX_TERMINAL_FAILURE_RETRIES attempts on a retry that cannot possibly succeed."""
+    airforce_524 = {
+        "error": {
+            "message": "the provider refused this request (HTTP 524)",
+            "type": "upstream_error",
+            "code": "524",
+        }
+    }
+    with pytest.raises(LLMUpstreamPassthroughError, match="error passthrough"):
+        LiteLLMBackend._structured_content(airforce_524)
+
+    airforce_429 = {
+        "error": {
+            "message": "the provider is at capacity right now — try again shortly",
+            "type": "upstream_error",
+            "code": "429",
+        }
+    }
+    with pytest.raises(LLMUpstreamPassthroughError, match="error passthrough"):
+        LiteLLMBackend._structured_content(airforce_429)
+
+    # A genuinely malformed reply (no error key, no usable content) keeps its original class --
+    # this class of failure legitimately can benefit from the corrective retry.
+    with pytest.raises(LLMStructuredOutputError, match="did not contain message content"):
+        LiteLLMBackend._structured_content({"choices": []})
+    with pytest.raises(LLMStructuredOutputError, match="did not contain message content"):
+        LiteLLMBackend._structured_content({})
+
+    # LLMUpstreamPassthroughError IS a LLMDispatchTerminalError (so every existing
+    # isinstance(result, (LLMStructuredOutputError, LLMDispatchTerminalError)) gate in
+    # scripts/llm_deferred_sweep.py still matches it) but is NOT a LLMStructuredOutputError (so
+    # recover_terminal's isinstance(exc, LLMStructuredOutputError) branch, which triggers the
+    # schema-correction retry, correctly skips it).
+    assert issubclass(LLMUpstreamPassthroughError, LLMDispatchTerminalError)
+    assert not issubclass(LLMUpstreamPassthroughError, LLMStructuredOutputError)
+
+
+def test_completed_dispatch_result_catches_upstream_passthrough_for_an_unstructured_job():
+    """_validate_reconciled returns immediately when structured_output is unset, so it never
+    calls _structured_content at all for an ordinary (non-structured) job -- an error passthrough
+    for one of those used to fall straight through _completed_dispatch_result to a JobResult built
+    directly from the raw {"error": {...}} body, persisted and acknowledged as a genuine
+    successful completion (CodeRabbit, 2026-09-13: the one call site ff936d4 missed)."""
+    backend = LiteLLMBackend(LLMBackendConfig(model="gemini/gemini-3-flash-preview"))
+    airforce_524 = {"error": {"message": "the provider refused this request (HTTP 524)"}}
+    with pytest.raises(LLMUpstreamPassthroughError, match="error passthrough"):
+        backend._completed_dispatch_result(
+            task="chapter-locator",
+            recipe_hash="r1",
+            output=airforce_524,
+            structured_output=None,
+        )
+
+
+def test_validate_reconciled_propagates_upstream_passthrough_uncaught():
+    """_validate_reconciled's except clause only catches (ValueError, TypeError) from Pydantic
+    validation -- LLMUpstreamPassthroughError (a RuntimeError subclass) must pass through
+    unchanged, not get rewrapped as a generic LLMStructuredOutputError."""
+    backend = LiteLLMBackend(LLMBackendConfig(model="gemini/gemini-3-flash-preview"))
+    airforce_524 = {"error": {"message": "the provider refused this request (HTTP 524)"}}
+    with pytest.raises(LLMUpstreamPassthroughError):
+        backend._validate_reconciled(airforce_524, "test-output")

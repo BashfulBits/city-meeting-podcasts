@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { classifyProviderFailure, FAILURE_SIGNATURES } from "../src/classify.js";
+import { upstreamEmptyCompletion } from "../src/gateway.js";
 
 test("classifyProviderFailure handles HTTP 402 as payment_required", () => {
   const res = classifyProviderFailure({
@@ -349,4 +350,154 @@ test("FAILURE_SIGNATURES has at least 13 rules", () => {
   assert.ok(FAILURE_SIGNATURES.length >= 13);
   const ids = new Set(FAILURE_SIGNATURES.map((r) => r.rule_id));
   assert.equal(ids.size, FAILURE_SIGNATURES.length, "all rule_id values must be unique");
+});
+
+test("a zero PROVISIONED limit is billing, not pacing", () => {
+  // Mistral reports an account with no allowance as a plain 429 whose message gives nothing away;
+  // the only tell is `x-ratelimit-limit-req-minute: 0` -- the limit, not the remaining. Read as
+  // own_rpm it bought a 60s buffer and retried forever against a route that can never serve a
+  // request. Confirmed live 2026-09-09 while /v1/models still returned 200.
+  const headers = new Map([
+    ["x-ratelimit-limit-req-minute", "0"],
+    ["x-ratelimit-remaining-req-minute", "0"],
+  ]);
+  const result = classifyProviderFailure({
+    status: 429,
+    body: { message: "Rate limit exceeded", type: "rate_limited", code: "1300" },
+    headers,
+    route: { provider: "mistral" },
+  });
+  assert.equal(result.failure_class, "payment_required");
+  assert.equal(result.rule_id, "zero-provisioned-limit");
+});
+
+test("an ordinary exhausted limit is still pacing, not billing", () => {
+  const headers = new Map([
+    ["x-ratelimit-limit-requests", "1000"],
+    ["x-ratelimit-remaining-requests", "0"],
+  ]);
+  const result = classifyProviderFailure({
+    status: 429,
+    body: { error: { message: "slow down" } },
+    headers,
+    route: { provider: "groq" },
+  });
+  assert.equal(result.failure_class, "own_rpm");
+  assert.equal(result.rule_id, "remaining-zero-header");
+});
+
+test("a bare RateLimit-Limit: 0 (no x- prefix) is still read as zero-provisioned, not gateway_limit", () => {
+  // Some providers emit the newer, unprefixed standard header instead of the older de facto
+  // X-RateLimit-* convention. Before hasRateLimitHeader recognized it, this shape fell through to
+  // the generic AI-Gateway heuristic (isAig429: no known rate-limit header + no body `error` key)
+  // and was misclassified gateway_limit -- which fans out a cooldown to every sibling route on the
+  // provider, not just the one whose own zero allowance was actually the problem.
+  const headers = new Map([["ratelimit-limit", "0"]]);
+  const result = classifyProviderFailure({
+    status: 429,
+    body: { message: "Rate limit exceeded" },
+    headers,
+    route: { provider: "mistral" },
+  });
+  assert.equal(result.failure_class, "payment_required");
+  assert.equal(result.rule_id, "zero-provisioned-limit");
+});
+
+test("a bare 'quota exceeded' 429 from a non-gemini provider stays own_rpm, not billing", () => {
+  // insufficient-budget used to match the bare phrase "quota exceeded" for any provider. Gemini's
+  // own RPD/TPM messages say exactly that ("Resource exhausted: quota exceeded for
+  // GenerateRequestsPerDayPerProjectPerModel"), and are correctly caught by earlier, gemini-scoped
+  // rules -- but a provider-agnostic match would have routed an ordinary rate 429 from any OTHER
+  // provider onto the day/week/month payment_required cooldown ladder instead of the correct
+  // short-lived own_rpm backoff.
+  const result = classifyProviderFailure({
+    status: 429,
+    body: { error: { message: "quota exceeded, please slow down" } },
+    headers: null,
+    route: { provider: "some-other-provider" },
+  });
+  assert.notEqual(result.failure_class, "payment_required");
+});
+
+test("a size-status daily token quota is own_rpd, not own_tpm", () => {
+  // "tokens per day"/"(tpd)" used to be lumped into the same branch as the per-minute cases,
+  // applying own_tpm's ~60s bucket-wait pacing to a quota that only resets on the provider's
+  // calendar day -- matching the existing groq-tpd rule's own_rpd classification for the same
+  // axis elsewhere in this file.
+  const result = classifyProviderFailure({
+    status: 413,
+    body: { error: { message: "Request too large: exceeds tokens per day (TPD) limit" } },
+    headers: null,
+    route: { provider: "groq" },
+  });
+  assert.equal(result.failure_class, "own_rpd");
+  assert.equal(result.rule_id, "size-status-daily-rate-limit");
+});
+
+test("a 2xx carrying no completion is upstream capacity, never a success", () => {
+  // Airforce returns HTTP 200 with no `choices` and an error whose own code says 503. response.ok
+  // is true for it, so the executor stored that error object in B2 as the job's RESULT and settled
+  // the job completed -- a permanently wrong answer no retry would revisit -- while the success
+  // path cleared every backoff signal, keeping a route that served nothing ranked as healthy.
+  assert.equal(
+    upstreamEmptyCompletion(200, {
+      error: { message: "No content was returned", type: "upstream_unavailable", code: "503" },
+    }),
+    true
+  );
+  assert.equal(upstreamEmptyCompletion(200, { choices: [] }), true);
+  assert.equal(upstreamEmptyCompletion(200, {}), true);
+  assert.equal(upstreamEmptyCompletion(200, null), true);
+  assert.equal(upstreamEmptyCompletion(429, { choices: [{ message: {} }] }), false);
+  assert.equal(
+    upstreamEmptyCompletion(200, { choices: [{ message: { content: "hi" } }] }),
+    false
+  );
+});
+
+test("gemini's array-wrapped error body is unwrapped before classification", () => {
+  // Confirmed live 2026-09-13 during an endurance ceiling probe: Gemini's OpenAI-compatible
+  // endpoint wraps its error body in a JSON ARRAY, not a bare object. This genuine, real quota
+  // exhaustion on gemma-4-26b/31b (a per-model token quota -- nothing to do with Cloudflare's AI
+  // Gateway, since the probe calls Gemini directly) was falling through every dict-shaped check
+  // and landing on the isAig429 fallback as gateway_limit -- which in production incorrectly
+  // cools down every OTHER Gemini route sharing the account, not just the exhausted model.
+  const body = [
+    {
+      error: {
+        code: 429,
+        message:
+          "You exceeded your current quota, please check your plan and billing details. " +
+          "Quota exceeded for metric: generativelanguage.googleapis.com/" +
+          "generate_content_free_tier_input_token_count, limit: 16000, model: gemma-4-26b\n" +
+          "Please retry in 31.44s.",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+  ];
+  const result = classifyProviderFailure({
+    status: 429,
+    body,
+    headers: new Map(),
+    route: { provider: "gemini" },
+  });
+  assert.equal(result.failure_class, "own_tpm");
+  assert.equal(result.rule_id, "gemini-tpm");
+  assert.equal(result.retry_after_seconds, 32);
+});
+
+test("gemini's input_token_count quota metric is own_tpm, not the generic resource-exhausted fallback", () => {
+  const result = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        message: "Quota exceeded for metric: .../generate_content_free_tier_input_token_count, limit: 16000",
+        status: "RESOURCE_EXHAUSTED",
+      },
+    },
+    headers: new Map(),
+    route: { provider: "gemini" },
+  });
+  assert.equal(result.failure_class, "own_tpm");
+  assert.equal(result.rule_id, "gemini-tpm");
 });

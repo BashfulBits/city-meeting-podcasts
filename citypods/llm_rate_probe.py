@@ -14,6 +14,7 @@ import os
 import re
 import sys
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -56,12 +57,14 @@ class RateProbeRunner:
         max_requests_total: int = 400,
         max_wall_seconds: int = 900,
         session: requests.Session | None = None,
+        request_timeout_seconds: float = 15.0,
     ) -> None:
         self.apply = apply
         self.max_requests_per_route = max_requests_per_route
         self.max_requests_total = max_requests_total
         self.max_wall_seconds = max_wall_seconds
         self.session = session or requests.Session()
+        self.request_timeout_seconds = request_timeout_seconds
         self.total_requests = 0
         self.route_request_counts: dict[str, int] = {}
         self.start_time = time.monotonic()
@@ -111,9 +114,7 @@ class RateProbeRunner:
                 "body": None,
             }
 
-        api_base = str(route.get("api_base", "")).rstrip("/")
-        chat_path = route.get("chat_path", "/v1/chat/completions")
-        url = f"{api_base}{chat_path}"
+        url = direct_chat_url(route)
 
         headers = {
             "Accept": "application/json",
@@ -131,7 +132,9 @@ class RateProbeRunner:
         self.route_request_counts[route_id] = self.route_request_counts.get(route_id, 0) + 1
 
         try:
-            resp = self.session.post(url, headers=headers, json=payload, timeout=15)
+            resp = self.session.post(
+                url, headers=headers, json=payload, timeout=self.request_timeout_seconds
+            )
             status = resp.status_code
             captured_headers = {
                 k.lower(): v for k, v in resp.headers.items() if HEADER_REGEX.search(k)
@@ -252,7 +255,7 @@ def run_phase_1b(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, An
         resp = runner.send_request(route, FIXED_PROMPT, max_tokens=1)
         if resp.get("dry_run"):
             return {"phase": "1b", "dry_run": True, "max_burst_probes": burst_limit}
-        if resp.get("status") == 200:
+        if is_usable_completion(resp):
             observed_burst += 1
         else:
             break
@@ -264,41 +267,335 @@ def run_phase_1b(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, An
     }
 
 
-def run_phase_2(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, Any]:
-    """Phase 2: Enforced input ceiling via binary search (max 8 probes)."""
+def is_usable_completion(resp: Mapping[str, Any]) -> bool:
+    """A 200 is not automatically an answer.
+
+    Airforce returns HTTP 200 with no `choices` and an error object whose own code says 503
+    (confirmed live 2026-09-09). Counting that as a success would mark a route that is serving
+    nothing as "viable" -- in a run whose entire purpose is separating a dead route from a busy
+    one, which is the one distinction it must not get wrong.
+    """
+    if resp.get("status") != 200:
+        return False
+    body = resp.get("body")
+    if not isinstance(body, dict):
+        return False
+    if body.get("error"):
+        return False
+    choices = body.get("choices")
+    return isinstance(choices, list) and len(choices) > 0
+
+
+def direct_chat_url(route: Mapping[str, Any]) -> str:
+    """The provider's real direct chat-completions URL for a route.
+
+    `api_base` + `chat_path` cannot simply be concatenated. Those two fields are authored for
+    Cloudflare AI Gateway's custom-provider path rewrite (see ARCHITECTURE on the undocumented
+    "last Base URL segment becomes /v1" behaviour), which requires some providers to repeat a
+    segment that is ALREADY part of `api_base`. Airforce is the live example:
+
+        api_base  https://api.airforce/v1
+        chat_path /v1/chat/completions
+        naive     https://api.airforce/v1/v1/chat/completions  -> 404 not_found
+        correct   https://api.airforce/v1/chat/completions     -> reaches the provider
+
+    So a duplicated leading segment is collapsed. Production is unaffected either way -- it calls
+    these providers through the Gateway, which applies its own rewrite -- but the probe goes
+    direct, and with the naive join it silently 404'd every airforce request. That made a
+    reachable route look permanently dead in an endurance run whose entire purpose is telling
+    "dead" apart from "busy".
+    """
+    api_base = str(route.get("api_base", "")).rstrip("/")
+    chat_path = str(route.get("chat_path") or "/v1/chat/completions")
+    if not chat_path.startswith("/"):
+        chat_path = "/" + chat_path
+    first_segment = chat_path.split("/")[1] if "/" in chat_path[1:] else ""
+    if first_segment and api_base.endswith("/" + first_segment):
+        chat_path = chat_path[len(first_segment) + 1 :]
+    return f"{api_base}{chat_path}"
+
+
+def provider_reported_token_limit(resp: dict[str, Any]) -> int | None:
+    """The provider's OWN per-minute token budget, read from the response it just sent us.
+
+    Two sources, header first because it is present on successes too:
+      * ``x-ratelimit-limit-tokens: 8000``
+      * the error body, e.g. "...on input tokens per minute (ITPM): Limit 7000, Requested 17789..."
+
+    This is the only trustworthy bound for a ceiling search. Our own configured ``tpm`` is an
+    input to pacing, not a measurement -- it can be stale or conservative -- and the model's
+    advertised context window is irrelevant when a per-minute token budget sits far below it
+    (Groq advertises a 131,072-token context on an account whose ITPM is 7,000, so no single
+    request may exceed ~7,000 no matter what the context window says).
+    """
+    headers = resp.get("headers") or {}
+    for key in ("x-ratelimit-limit-tokens", "x-ratelimit-limit-input-tokens"):
+        raw = headers.get(key)
+        if raw is not None:
+            try:
+                parsed = int(float(str(raw).strip()))
+            except (TypeError, ValueError):
+                parsed = 0
+            if parsed > 0:
+                return parsed
+
+    body = resp.get("body")
+    # Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY --
+    # `[{"error": {...}}]` -- not a bare object. Without unwrapping it, the isinstance(body, dict)
+    # check below never fires, `message` stays empty, and this function can never learn Gemini's
+    # own quoted limit (e.g. "...free_tier_input_token_count, limit: 16000..."). That silently
+    # broke the whole point of this function for Gemini: the ceiling search kept probing sizes up
+    # to 250,000 against a model whose real per-minute quota is 16,000, for 11+ probes, never
+    # converging -- not because of contention, but because a single request that size structurally
+    # cannot fit an 8x-smaller quota no matter how long the search waits between retries.
+    if isinstance(body, list) and len(body) == 1 and isinstance(body[0], dict):
+        body = body[0]
+    message = ""
+    if isinstance(body, dict):
+        # `error` is a dict for most providers but a bare string for some (and absent for others),
+        # so every access has to be shape-checked -- a live endurance run died here on the first
+        # provider that returned {"error": "..."}.
+        err = body.get("error")
+        if isinstance(err, dict):
+            message = str(err.get("message") or err.get("detail") or "")
+        elif isinstance(err, str):
+            message = err
+        if not message:
+            message = str(body.get("message") or body.get("detail") or "")
+    elif isinstance(body, str):
+        message = body
+    match = re.search(r"limit[:\s]+([0-9][0-9,_]*)", message, re.IGNORECASE)
+    if match:
+        try:
+            parsed = int(match.group(1).replace(",", "").replace("_", ""))
+        except ValueError:
+            return None
+        if parsed > 0:
+            return parsed
+    return None
+
+
+def _throttle_class(route: dict[str, Any], resp: dict[str, Any]) -> str | None:
+    """The failure class of a non-200 response, or None for a success.
+
+    Uses the same shared signature table the Worker enforces with, so the probe and production
+    can never disagree about what a given provider body means.
+    """
+    if is_usable_completion(resp):
+        return None
+    if resp.get("status") == 200:
+        # A 2xx with no completion. Not a success and not a defect in our request -- the provider
+        # had nothing to serve. Airforce logged 43 of these in one 3-hour run, all labelled
+        # "unknown" before this, which hid the single most important fact about that route.
+        return "upstream_capacity"
+    return classify_provider_failure(
+        status=resp.get("status") or 0,
+        body=resp.get("body"),
+        headers=resp.get("headers") or {},
+        route=route,
+    ).failure_class
+
+
+# Classes that say nothing whatsoever about how large the request was. Narrowing a ceiling search
+# on one of these is how the 2026-09-09 run recorded five routes at the search floor (see
+# run_phase_2's docstring).
+_NON_SIZE_CLASSES = frozenset(
+    {
+        "upstream_capacity",
+        "gateway_limit",
+        "server_error",
+        "own_rpm",
+        "own_rpd",
+        "own_tpm",
+        "payment_required",
+        "unknown_429",
+    }
+)
+
+
+def run_phase_2(
+    runner: RateProbeRunner,
+    route: dict[str, Any],
+    *,
+    max_probes: int = 8,
+    throttle_retries: int = 0,
+    throttle_wait_seconds: float = 60.0,
+    provider_reported_tpm: int | None = None,
+    confirm_rounds: int = 2,
+    confirm_wait_seconds: float = 25.0,
+) -> dict[str, Any]:
+    """Phase 2: enforced input ceiling by binary search.
+
+    Two bugs in the original made this actively dangerous, because its output was auto-promoted
+    into an enforced `hard_input_ceiling` that permanently removes a route from the ranking:
+
+    1. It seeded `observed_ceiling` to the search FLOOR (1000) and only ever raised it on a 200,
+       so "nothing was ever accepted" and "the ceiling is exactly 1000" produced identical output.
+    2. It narrowed the search on 429, treating a rate limit as a size signal -- the precise
+       confusion Initiative 20 exists to remove. A route that was merely upstream-saturated got
+       recorded as having a 1,000-token context window.
+
+    Both are fixed here: the ceiling starts as None and is only ever set to a size that actually
+    returned 200, and only a *size* rejection narrows the search. A throttle is retried at the
+    same size (up to ``throttle_retries``) and otherwise abandons the search as INCONCLUSIVE
+    rather than inventing a number. A None result must never be written to config.
+    """
     context_limit = route.get("input_context_limit") or 32000
     low = 1000
+    # Upper bound: the model's advertised context window, but never above the provider's own
+    # per-minute token budget once it tells us one -- a request can never exceed the budget it
+    # would have to spend. `provider_tpm` is refined from every response below, so a route that
+    # only reveals its budget in an error still gets a correctly-bounded search. The 250,000 cap
+    # is a probe-cost guard, not a claim about any provider.
+    provider_tpm = provider_reported_tpm
     high = min(context_limit, 250000)
-    observed_ceiling = low
+    if provider_tpm:
+        high = min(high, provider_tpm)
+    observed_ceiling: int | None = None
+    largest_rejected: int | None = None
+    inconclusive_reason: str | None = None
+    transport_retries_left = 3
 
     filler_sentence = "The quick brown fox jumps over the lazy dog. "
     chars_per_token = 4
 
-    for _ in range(8):
-        if low >= high - 1000:
-            break
-        mid = (low + high) // 2
-        char_count = mid * chars_per_token
+    def _probe(size: int) -> dict[str, Any]:
+        char_count = size * chars_per_token
         multiplier = max(1, char_count // len(filler_sentence))
-        prompt = (filler_sentence * multiplier)[:char_count]
+        return runner.send_request(route, (filler_sentence * multiplier)[:char_count], max_tokens=1)
 
-        resp = runner.send_request(route, prompt, max_tokens=1)
+    probes = 0
+    while probes < max_probes and low < high - 1000:
+        mid = (low + high) // 2
+        resp = _probe(mid)
         if resp.get("dry_run"):
             return {"phase": "2", "dry_run": True, "context_limit": context_limit}
+        probes += 1
 
-        status = resp.get("status")
-        if status == 200:
+        reported = provider_reported_token_limit(resp)
+        if reported and (provider_tpm is None or reported < provider_tpm):
+            provider_tpm = reported
+            if provider_tpm < high:
+                high = max(low + 1, provider_tpm)
+
+        cls = _throttle_class(route, resp)
+
+        # A response that just told us the account's real per-minute budget is smaller than the
+        # size we probed explains itself by SIZE, not by timing: no amount of waiting admits a
+        # request bigger than the account will ever be allotted in one window. Confirmed live
+        # 2026-09-13 on gemma-4-26b/31b -- without this, the retry-through-throttle loop below
+        # burned its whole budget (10 retries x 40s) re-probing the SAME too-large size, then gave
+        # up as fully inconclusive, even though `high` had already been correctly narrowed to the
+        # model's real 16,000-token quota one line above. Treat it as an ordinary size rejection
+        # and let the search continue with the corrected bounds instead of retrying or giving up.
+        if provider_tpm is not None and mid > provider_tpm:
+            largest_rejected = mid if largest_rejected is None else min(largest_rejected, mid)
+            continue
+
+        attempts_left = throttle_retries
+        while cls in _NON_SIZE_CLASSES and attempts_left > 0:
+            # A throttle says nothing about size. Wait it out and re-probe the SAME size.
+            time.sleep(throttle_wait_seconds)
+            resp = _probe(mid)
+            if resp.get("dry_run"):
+                return {"phase": "2", "dry_run": True, "context_limit": context_limit}
+            probes += 1
+            attempts_left -= 1
+            cls = _throttle_class(route, resp)
+
+        if is_usable_completion(resp):
             observed_ceiling = mid
             low = mid
-        elif status in (400, 413, 429):
-            high = mid
-        else:
+        elif cls in _NON_SIZE_CLASSES:
+            inconclusive_reason = f"throttled ({cls}) and never cleared at size {mid}"
             break
+        elif resp.get("status") in (400, 413):
+            largest_rejected = mid if largest_rejected is None else min(largest_rejected, mid)
+            high = mid
+        elif resp.get("status") is None:
+            # A transport-level failure (timeout, connection reset) -- distinct from any real
+            # HTTP response, and NOT evidence about size or pacing at all. Confirmed live
+            # 2026-09-13: NVIDIA alone has been observed taking 40-90s+ for large requests, and a
+            # single timeout here used to end the whole search immediately with zero retries,
+            # indistinguishable from a genuinely "unexpected" HTTP status. Give it a few retries
+            # at the SAME size on a short, fixed wait (not the full throttle_wait_seconds -- this
+            # is accommodating slow processing, not a rate-limit cooldown) before giving up.
+            if transport_retries_left > 0:
+                transport_retries_left -= 1
+                time.sleep(min(10.0, throttle_wait_seconds))
+                probes -= 1  # this attempt taught us nothing; don't count it against max_probes
+                continue
+            inconclusive_reason = f"transport failure persisted at size {mid}"
+            break
+        else:
+            inconclusive_reason = f"unexpected status {resp.get('status')} at size {mid}"
+            break
+
+    # Boundary confirmation. A rejection at the boundary may not be a property of the ROUTE at
+    # all: this account's Gemini/Gemma, NVIDIA and Airforce routes carry live production traffic
+    # from the v2 Worker every few minutes, so a probe can be refused for budget another process
+    # just spent. Accepting that first refusal as the ceiling understates it -- the same mistake
+    # in a subtler form as reading a 429 as a size limit. So re-test the smallest rejected size a
+    # few times, spaced; if it ever succeeds, the boundary was contention and the search resumes
+    # upward from there rather than freezing at an artificially low number.
+    contention_detected = False
+    rounds = confirm_rounds
+    while rounds > 0 and largest_rejected is not None and probes < max_probes + confirm_rounds * 2:
+        rounds -= 1
+        if confirm_wait_seconds:
+            time.sleep(confirm_wait_seconds)
+        resp = _probe(largest_rejected)
+        if resp.get("dry_run"):
+            break
+        probes += 1
+        if is_usable_completion(resp):
+            # The "ceiling" moved once contention cleared -- it was never a ceiling.
+            contention_detected = True
+            observed_ceiling = largest_rejected
+            low = largest_rejected
+            high = min(context_limit, 250000)
+            if provider_tpm:
+                high = min(high, provider_tpm)
+            largest_rejected = None
+            while probes < max_probes + confirm_rounds * 2 and low < high - 1000:
+                mid = (low + high) // 2
+                resp = _probe(mid)
+                if resp.get("dry_run"):
+                    break
+                probes += 1
+                if is_usable_completion(resp):
+                    observed_ceiling = mid
+                    low = mid
+                elif _throttle_class(route, resp) in _NON_SIZE_CLASSES:
+                    break
+                elif resp.get("status") in (400, 413):
+                    largest_rejected = (
+                        mid if largest_rejected is None else min(largest_rejected, mid)
+                    )
+                    high = mid
+                else:
+                    break
 
     return {
         "phase": "2",
+        # None means "not established". Never fall back to the search floor: an unverified number
+        # here becomes a permanent route block downstream.
         "observed_input_ceiling": observed_ceiling,
+        "smallest_rejected_size": largest_rejected,
         "advertised_context_limit": context_limit,
+        "probes_used": probes,
+        "inconclusive_reason": inconclusive_reason,
+        "conclusive": observed_ceiling is not None,
+        # True when a size we had recorded as rejected later succeeded unchanged -- proof the
+        # first refusal was contention for a shared account budget, not a property of the route.
+        # Any ceiling from such a run is a LOWER BOUND and must not be promoted to enforcement.
+        "contention_detected": contention_detected,
+        # The provider's own stated budget, when it gave one. Where this sits below our configured
+        # `tpm`, config is wrong and should be corrected; where it sits far above, our `tpm` is
+        # merely conservative and a larger ceiling is available.
+        "provider_reported_tpm": provider_tpm,
+        "configured_tpm": route.get("tpm"),
+        "search_upper_bound": high,
     }
 
 
@@ -361,6 +658,197 @@ def run_phase_4(
         "classified_as": classifier_class,
         "rule_id": cls_info.get("rule_id"),
         "agreed": agreed,
+    }
+
+
+def run_endurance(
+    routes: list[dict[str, Any]],
+    *,
+    apply: bool,
+    hours: float = 3.0,
+    interval_seconds: float = 60.0,
+    session: requests.Session | None = None,
+    log=print,
+) -> dict[str, Any]:
+    """Persist against every route for up to ``hours``, never giving up on a throttle.
+
+    The question this answers is deliberately different from Phase 0/1's. Those ask "what happens
+    when we call this route once?" -- which conflates a route that is permanently broken with one
+    that is merely busy right now. This asks "does this route EVER accept a job if we keep asking
+    politely for three hours?", which is the question production actually cares about, because
+    production can keep retrying.
+
+    Policy, per the 2026-09-09 review:
+      * A throttle (429, a rate-limit-shaped 413, 5xx, gateway limit) is never terminal here. The
+        route stays in the rotation and is retried on the next tick.
+      * Every route is polled at least once per ``interval_seconds`` until it succeeds once.
+      * A route that never returns a single 200 in the whole window is reported ``viable: False``
+        -- it is not useful to production and should be disabled.
+      * A route that succeeds even once is ``viable: True``; production should keep retrying it.
+        Its true input ceiling is then measured with the throttle-tolerant Phase 2 search, which
+        retries through a rate limit instead of mistaking it for a size limit.
+    """
+    deadline = time.monotonic() + hours * 3600.0
+    runner = RateProbeRunner(
+        apply=apply,
+        # Endurance runs deliberately outside the one-shot caps: the whole point is sustained
+        # polling. The wall clock is the real budget, so make the count ceilings non-binding.
+        max_requests_per_route=10**9,
+        max_requests_total=10**9,
+        max_wall_seconds=int(hours * 3600) + 3600,
+        session=session,
+        # Endurance asks whether a route can EVER serve, not whether it is fast. NVIDIA has been
+        # observed taking >45s for a one-token request; at the 15s default those routes record as
+        # transport failures and would be recommended for disable purely for being slow.
+        request_timeout_seconds=90.0,
+    )
+    state: dict[str, dict[str, Any]] = {
+        r["route_id"]: {
+            "route_id": r["route_id"],
+            "provider": r.get("provider"),
+            "upstream_model": r.get("upstream_model"),
+            "attempts": 0,
+            "successes": 0,
+            "first_success_seconds": None,
+            "failure_classes": {},
+            "last_status": None,
+            "provider_reported_tpm": None,
+            "stopped_early": None,
+            "skipped": None,
+        }
+        for r in routes
+    }
+    started = time.monotonic()
+    pending = {r["route_id"]: r for r in routes}
+    next_due = {rid: started for rid in pending}
+
+    # Drop routes with no credential up front rather than burning the window on them.
+    for rid, route in list(pending.items()):
+        if apply and not os.environ.get(route.get("api_key_env") or ""):
+            state[rid]["skipped"] = f"missing {route.get('api_key_env')}"
+            pending.pop(rid)
+            next_due.pop(rid, None)
+
+    log(
+        f"endurance: {len(pending)} routes, {hours}h window, "
+        f">=1 request/{interval_seconds:.0f}s each"
+    )
+    while pending and time.monotonic() < deadline:
+        now = time.monotonic()
+        due = [rid for rid, at in next_due.items() if at <= now and rid in pending]
+        if not due:
+            time.sleep(min(1.0, max(0.0, min(next_due.values()) - now)))
+            continue
+        for rid in due:
+            if time.monotonic() >= deadline:
+                break
+            route = pending[rid]
+            resp = runner.send_request(route, FIXED_PROMPT, max_tokens=1)
+            if resp.get("dry_run"):
+                return {"mode": "endurance", "dry_run": True, "routes": len(routes)}
+            st = state[rid]
+            st["attempts"] += 1
+            st["last_status"] = resp.get("status")
+            reported = provider_reported_token_limit(resp)
+            if reported and (
+                st.get("provider_reported_tpm") is None or reported < st["provider_reported_tpm"]
+            ):
+                st["provider_reported_tpm"] = reported
+            next_due[rid] = time.monotonic() + interval_seconds
+            if is_usable_completion(resp):
+                st["successes"] += 1
+                st["first_success_seconds"] = round(time.monotonic() - started, 1)
+                log(
+                    f"  [{st['first_success_seconds']:>7.1f}s] {rid} SUCCEEDED after "
+                    f"{st['attempts']} attempt(s)"
+                )
+                pending.pop(rid, None)
+                next_due.pop(rid, None)
+            else:
+                cls = _throttle_class(route, resp) or "unknown"
+                st["failure_classes"][cls] = st["failure_classes"].get(cls, 0) + 1
+                if cls == "payment_required":
+                    # A billing/quota state (a zero-provisioned limit, an exhausted monthly
+                    # allowance) does not clear on a minute-scale retry cadence --
+                    # paymentRequiredBackoffUntil's own first rung is a full day out, escalating
+                    # to a week then a month for a recurring streak. Every other classification
+                    # here is either transient (upstream_capacity/server_error/gateway_limit) or
+                    # can genuinely resolve inside the window (own_rpm within a minute, own_tpm
+                    # within a minute, own_rpd possibly within the window depending on time of
+                    # day) -- payment_required is the one class where continuing to poll every
+                    # 60s for up to three hours produces zero additional information after the
+                    # first occurrence. Stop immediately rather than spend the rest of the window
+                    # re-confirming a fact already established.
+                    st["stopped_early"] = "payment_required"
+                    log(
+                        f"  [{round(time.monotonic() - started, 1):>7.1f}s] {rid} STOPPED EARLY "
+                        f"(payment_required -- a billing state, not a pacing one; further "
+                        f"retries within this window cannot succeed)"
+                    )
+                    pending.pop(rid, None)
+                    next_due.pop(rid, None)
+
+    elapsed = round(time.monotonic() - started, 1)
+    for rid in pending:
+        state[rid]["exhausted_window"] = True
+
+    # Measure the true ceiling only for routes that proved they can be served at all.
+    viable = [rid for rid, s in state.items() if s["successes"] > 0]
+    ceilings: dict[str, Any] = {}
+    # The ceiling phase needs its own deadline. Its per-route cost is unbounded in principle --
+    # eight probes, each retrying through throttles with a wait between -- so on a contended
+    # provider it can run far past the window the operator actually asked for. Budget it at a
+    # third of the polling window and stop cleanly; a route measured as None simply keeps whatever
+    # ceiling config already had, which is the safe direction.
+    ceiling_deadline = time.monotonic() + max(300.0, hours * 3600.0 / 3.0)
+    if apply:
+        for rid in viable:
+            if time.monotonic() >= ceiling_deadline:
+                ceilings[rid] = {"phase": "2", "skipped": "ceiling phase deadline reached"}
+                continue
+            route = next(r for r in routes if r["route_id"] == rid)
+            try:
+                ceilings[rid] = run_phase_2(
+                    runner,
+                    route,
+                    max_probes=8,
+                    throttle_retries=3,
+                    throttle_wait_seconds=20.0,
+                    provider_reported_tpm=state[rid].get("provider_reported_tpm"),
+                )
+            except (ProbeBudgetExceeded, RouteBudgetExceeded) as exc:
+                # run_endurance's own runner.max_wall_seconds (hours*3600 + 3600) can be reached
+                # inside the ceiling phase itself -- 3h of polling plus up to another hours/3 of
+                # ceiling search together can hit it -- and nothing here caught it, so it
+                # propagated out of main() before args.out.write_text() ran, discarding the whole
+                # report (the polling phase's viability/recommend_disable verdicts included), not
+                # just the ceiling measurement (CodeRabbit, 2026-09-13). run_probes already guards
+                # the one-shot path the same way; this mirrors it for endurance's ceiling phase.
+                ceilings[rid] = {"phase": "2", "skipped": f"budget exceeded: {exc}"}
+                # A ProbeBudgetExceeded is wall-clock/total-request -- true for every remaining
+                # route too, so stop rather than re-raising the identical failure once per route.
+                if isinstance(exc, ProbeBudgetExceeded):
+                    break
+
+    results = []
+    for rid, s in state.items():
+        s = dict(s)
+        s["viable"] = s["successes"] > 0
+        s["recommend_disable"] = s["successes"] == 0 and s["skipped"] is None and s["attempts"] > 0
+        s.setdefault("stopped_early", None)
+        s["ceiling"] = ceilings.get(rid)
+        results.append(s)
+    results.sort(key=lambda s: (not s["viable"], s["route_id"]))
+
+    return {
+        "mode": "endurance",
+        "window_hours": hours,
+        "interval_seconds": interval_seconds,
+        "elapsed_seconds": elapsed,
+        "total_requests": runner.total_requests,
+        "viable_count": len(viable),
+        "unreliable_count": sum(1 for s in results if s["recommend_disable"]),
+        "routes": results,
     }
 
 
@@ -561,6 +1049,29 @@ def main(argv: list[str] | None = None) -> int:
         default=False,
         help="Execute live HTTP calls (without this, dry-run only)",
     )
+    parser.add_argument(
+        "--endurance",
+        action="store_true",
+        default=False,
+        help=(
+            "Endurance mode: poll every selected route at least once per --endurance-interval "
+            "until it returns a 200 or --endurance-hours elapses. A throttle is never terminal. "
+            "Routes that never succeed are reported as unreliable and recommended for disable; "
+            "routes that succeed even once get a throttle-tolerant input-ceiling measurement."
+        ),
+    )
+    parser.add_argument(
+        "--endurance-hours",
+        type=float,
+        default=3.0,
+        help="Endurance window in hours (default: 3)",
+    )
+    parser.add_argument(
+        "--endurance-interval",
+        type=float,
+        default=60.0,
+        help="Minimum seconds between attempts on one route (default: 60)",
+    )
 
     args = parser.parse_args(argv)
     phases = args.phases or ["0"]
@@ -584,18 +1095,26 @@ def main(argv: list[str] | None = None) -> int:
         f"Mode: {'LIVE (--apply)' if args.apply else 'DRY RUN'}"
     )
 
-    runner = RateProbeRunner(
-        apply=args.apply,
-        max_requests_per_route=args.max_requests_per_route,
-        max_requests_total=args.max_requests_total,
-        max_wall_seconds=args.max_wall_seconds,
-    )
-
-    report = run_probes(selected, phases, runner)
+    if args.endurance:
+        report = run_endurance(
+            selected,
+            apply=args.apply,
+            hours=args.endurance_hours,
+            interval_seconds=args.endurance_interval,
+        )
+    else:
+        runner = RateProbeRunner(
+            apply=args.apply,
+            max_requests_per_route=args.max_requests_per_route,
+            max_requests_total=args.max_requests_total,
+            max_wall_seconds=args.max_wall_seconds,
+        )
+        report = run_probes(selected, phases, runner)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    emit_github_step_summary(report)
+    if not args.endurance:
+        emit_github_step_summary(report)
 
     print(f"Probe complete. Report saved to {args.out}")
     if not args.apply:

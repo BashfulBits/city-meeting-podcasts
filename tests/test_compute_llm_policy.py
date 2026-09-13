@@ -102,10 +102,16 @@ def test_generated_catalog_includes_observed_characterization_fields() -> None:
     routes, _, _ = _load_generated_catalog()
     groq = next((r for r in routes if r.route_id == "groq_gpt_oss_120b_primary"), None)
     assert groq is not None
-    assert groq.observed_on == "2026-09-09"
     assert groq.observed_burst == 30
-    assert groq.observed_input_ceiling == 1000
-    assert groq.hard_input_ceiling == 1000
+    # The 1,000 recorded on 2026-09-09 was the ceiling search's own floor, not a measurement --
+    # removed. Re-measured 2026-09-12 by a throttle-tolerant 3h endurance probe (contention
+    # confirmed absent): the route conclusively accepts up to 7,125 estimated input tokens,
+    # consistent with Groq's own quoted 8,000 TPM budget once output tokens are accounted for.
+    # Written explicitly here (not auto-promoted -- review/45 §20.8 still requires a
+    # human-reviewed promotion for every route; this one was).
+    assert groq.observed_on == "2026-09-12"
+    assert groq.observed_input_ceiling == 7125
+    assert groq.hard_input_ceiling == 7125
 
     airforce = next(
         (r for r in routes if r.route_id == "airforce_mistral_medium_3_5_primary"), None

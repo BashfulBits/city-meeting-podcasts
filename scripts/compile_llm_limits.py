@@ -847,8 +847,14 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"({route['input_context_limit']})"
                 )
             route["observed_input_ceiling"] = int(obs_ceil)
-            if route.get("hard_input_ceiling") is None:
-                route["hard_input_ceiling"] = int(obs_ceil)
+            # Deliberately NOT promoted to `hard_input_ceiling`. An observation is evidence; a
+            # hard ceiling is enforcement that makes a route permanently unserviceable for any
+            # larger job (pacing.js's earliestSafeStart returns null, not "not yet"). Auto-promoting
+            # the two meant a single bad probe run silently blocked five routes on 2026-09-09 --
+            # including moonshotai/kimi-k3, the overflow route added specifically for jobs too
+            # large for Gemini, which live-tested fine at 17,864 tokens against a recorded ceiling
+            # of 1,000. review/45 §20.8 is explicit that observed values reach enforcement only
+            # through a human-reviewed PR; promote by authoring `hard_input_ceiling` yourself.
 
         obs_rpm = route.get("observed_rpm")
         if obs_rpm is not None:
@@ -858,6 +864,29 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"observed_rpm: {obs_rpm!r}"
                 )
             route["observed_rpm"] = float(obs_rpm)
+            # Consumed in ONE direction only: it may lower the effective `rpm`, never raise it.
+            #
+            # This is deliberately asymmetric, and the asymmetry is the whole safety argument.
+            # Clamping DOWN means "the provider throttles us harder than we configured" -- acting
+            # on it prevents 429s, and its worst case is a route that runs slower than it could.
+            # Raising would mean betting a route can absorb more than its authored limit on the
+            # strength of one probe run, whose worst case is a sustained overdrive into throttling
+            # or a ban. Given a bad probe run had already turned `observed_input_ceiling` into a
+            # total route block on 2026-09-09, an observation gets to make things safer on its own
+            # and must go through a human to make them faster.
+            #
+            # No `max(1.0, ...)` floor (CodeRabbit, 2026-09-13; an earlier version of this
+            # comment justified one as "no measurement may ever drive a limit to 0, because 0 is
+            # this repository's paused convention"): the validation above already rejects
+            # `obs_rpm <= 0` outright, so `route["observed_rpm"]` here is always strictly
+            # positive -- there is no path through which this assignment could produce a 0. A
+            # floor of 1.0 instead silently RAISED a genuinely fractional observation below 1.0
+            # (e.g. declared 0.5, observed 0.2 -- both legitimate; both schedulers pace
+            # fractional rpm correctly) back up by 5x, which is exactly the direction this
+            # one-way clamp exists to forbid.
+            declared_rpm = route.get("rpm")
+            if declared_rpm is not None and route["observed_rpm"] < declared_rpm:
+                route["rpm"] = route["observed_rpm"]
 
         obs_burst = route.get("observed_burst")
         if obs_burst is not None:

@@ -109,7 +109,8 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     mistral_medium_key = "mistral/mistral-medium-latest"
     medium_routes = compiled["model_routes_map"][mistral_medium_key]
-    assert len(medium_routes) == 3
+    # primary + secondary + tertiary Mistral accounts, plus the airforce overflow route.
+    assert len(medium_routes) == 4
     assert {compiled["routes_by_id"][route_id]["provider"] for route_id in medium_routes} == {
         "airforce",
         "mistral",
@@ -231,6 +232,7 @@ def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
         "mistral_medium_latest_primary",
         "airforce_mistral_medium_3_5_primary",
         "mistral_medium_latest_secondary",
+        "mistral_medium_latest_tertiary",
     ]
     assert (
         compiled["model_aliases"]["mistral/mistral-medium-2508"] == "mistral/mistral-medium-latest"
@@ -459,10 +461,12 @@ def test_token_estimate_buffer_scales_route_and_provider_token_budgets():
     assert gemini["input_context_limit"] == 1048576
     assert gemini["output_context_limit"] == 65536
 
-    # Provider monthly_tpm scaling: hotfixed to 0 (Mistral's new account-wide monthly metering,
-    # see config/provider_limits.yml), preserved as 0.
+    # Provider monthly_tpm scaling. The 2026-08-18 `monthly_tpm: 0` hotfix was reverted on
+    # 2026-09-09: it gated nothing (no consumer reads monthly_tpm, and the compiled provider block
+    # drops it), so what actually stops consumption is now the `insufficient-budget` ->
+    # payment_required cooldown ladder. Scaled by token_estimate_buffer like any token budget.
     mistral = compiled["providers"]["mistral"]
-    assert mistral["monthly_tpm"] == 0
+    assert mistral["monthly_tpm"] == 900_000_000
 
 
 def test_validate_token_buffer_accepts_valid_formats():
@@ -712,8 +716,10 @@ def test_observed_characterization_fields_validation_and_compilation():
         assert r["observed_on"] == "2026-09-09"
         assert r["observed_burst"] == 15
         assert r["observed_input_ceiling"] == 50000
-        # observed_input_ceiling feeds hard_input_ceiling
-        assert r["hard_input_ceiling"] == 50000
+        # An observation is evidence, never enforcement: observed_input_ceiling must NOT be
+        # promoted to hard_input_ceiling. Auto-promoting the two let a single bad probe run block
+        # five routes on 2026-09-09 (review/45 §20.8 requires a human-reviewed promotion).
+        assert r.get("hard_input_ceiling") is None
         assert r["observed_recovery_seconds"] == 30.5
         assert r["retry_after_trustworthy"] is False
         assert r["upstream_429_default"] == "upstream_capacity"
@@ -747,3 +753,58 @@ def test_observed_characterization_fields_invalid_rejects():
         )
         with pytest.raises(ValueError, match="observed_input_ceiling"):
             compile_llm_limits.compile_limits()
+
+
+def test_observed_rpm_lowers_the_effective_limit_but_never_raises_it():
+    """`observed_rpm` is consumed in one direction only.
+
+    Lowering is safety-positive (it prevents 429s; worst case the route runs slower than it
+    could). Raising would bet a route can absorb more than its authored limit on the strength of
+    one probe run, whose worst case is sustained overdrive into throttling. And no measurement may
+    drive a limit to 0 -- that is this repository's "paused" convention, and it would silently
+    remove the route from dispatch, which is exactly how a bad probe run blocked five routes on
+    2026-09-09.
+    """
+
+    def _rpm(observed, declared):
+        raw = {
+            "providers": {
+                "test_prov": {
+                    "api_base": "https://api.test.com",
+                    "structured_output_profile": "standard_json_schema",
+                    "accounts": [{"id": "primary", "api_key_env": "TEST_KEY"}],
+                }
+            },
+            "structured_output_profiles": {
+                "standard_json_schema": {
+                    "response_format": "json_schema",
+                    "direct_handler": "instructor",
+                    "include_schema_in_prompt": False,
+                    "strip_schema_keys": [],
+                }
+            },
+            "routes": [
+                {
+                    "route_id": "r1",
+                    "model": "test/model",
+                    "provider": "test_prov",
+                    "input_context_limit": 100000,
+                    "output_context_limit": 4096,
+                    "rpm": declared,
+                    "observed_rpm": observed,
+                }
+            ],
+        }
+        with pytest.MonkeyPatch.context() as monkeypatch:
+            monkeypatch.setattr(
+                compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+            )
+            return compile_llm_limits.compile_limits()["routes_by_id"]["r1"]["rpm"]
+
+    assert _rpm(5, 30) == 5, "a measured limit below the declared one must clamp it down"
+    assert _rpm(90, 30) == 30, "a measured limit above the declared one must NOT raise it"
+    # A positive fractional observation must stay exactly as measured, not be floored up to 1.0
+    # (CodeRabbit, 2026-09-13): validation already rejects `observed_rpm <= 0` outright, so there
+    # is no path through which a real observation could reach here as 0 -- a floor of 1.0 instead
+    # silently raised a genuine sub-1.0 measurement, the opposite of what a one-way clamp permits.
+    assert _rpm(0.2, 30) == 0.2, "positive measurements must remain fractional, never floored up"

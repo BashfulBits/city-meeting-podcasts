@@ -1216,6 +1216,44 @@ test("authorizeRetry with own_tpm zeroes token budget and refuses in-window retr
   assert.equal(row.last_failure_class, "own_tpm");
 });
 
+test("authorizeRetry with payment_required sets the billing day cooldown, not a short own_rpm backoff", async () => {
+  // A 429 the classifier reads as payment_required (zero-provisioned-limit, insufficient-budget)
+  // used to fall into authorizeRetry's default branch alongside own_rpm/unknown_429, buying only
+  // a short retry-friendly buffer instead of the day/week/month billing ladder a state that
+  // "does not clear on a retry cadence" actually needs (CodeRabbit, 2026-09-13).
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const bundleDeadline = now + 60_000;
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    bundleDeadline, bundleDeadline, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-pr', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'gemini_3_5_flash_primary',
+      'ltok', 'tags', 100, 50, 'payloads/j-pr/request.json', ?, ?
+    )`,
+    now, now
+  );
+
+  const auth = await coordinator.authorizeRetry("j-pr", "ltok", "att-1", now, null, "payment_required");
+  assert.equal(auth.authorized, false);
+  assert.equal(auth.retry_not_before, null);
+
+  const row = [...sql.exec("SELECT throttle_streak, buffer_seconds, payment_required_streak, blocked_until, last_failure_class FROM routes WHERE route_id = 'gemini_3_5_flash_primary'")][0];
+  assert.equal(row.throttle_streak, 0, "payment_required must not go through the own_rpm buffer path");
+  assert.equal(row.buffer_seconds, 0);
+  assert.equal(row.payment_required_streak, 1);
+  // paymentRequiredBackoffUntil's first rung is the start of the next UTC day -- always far more
+  // than the few-second own_rpm buffer the default branch would otherwise have applied.
+  assert.ok(row.blocked_until > now + 3_600_000, "must be a day-scale cooldown, not a short buffer");
+  assert.equal(row.last_failure_class, "payment_required");
+});
+
 test("authorizeRetry with upstream_capacity sets cooldown and preserves healthy route stats", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
@@ -1246,6 +1284,70 @@ test("authorizeRetry with upstream_capacity sets cooldown and preserves healthy 
   assert.equal(row.upstream_capacity_streak, 1);
   assert.ok(row.blocked_until >= now + 15_000, "cooldown must be at least 15s");
   assert.equal(row.last_failure_class, "upstream_capacity");
+});
+
+test("a non-consuming refund does not decrement a route window newer than the one it reserved", async () => {
+  // claimDispatchWindow stores only lease_route_id/token_reservation on the job -- not the
+  // reservation's own rpm/rpd/tpm window identity. If the route's window rolls over between claim
+  // and this refund (a slow provider call spanning a window boundary is enough), an unconditional
+  // decrement would undercount a NEWER reservation with nothing to do with this one, which can
+  // admit excess requests (CodeRabbit, 2026-09-13, "Heavy lift"). full_token_budget has no such
+  // risk -- it is a continuously-refilling bucket, not a discrete window-keyed counter -- so it
+  // still refunds unconditionally.
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const routeId = "gemini_3_5_flash_primary"; // a real route with tpm configured
+  coordinator._getOrCreateRouteLedger(routeId, now, {});
+  // Simulate the route having rolled into a brand-new window since this job's claim, already
+  // carrying its own usage that a blind decrement would corrupt.
+  sql.exec(
+    `UPDATE routes SET rpm_window_start = ?, rpm_count = 5, rpd_day_key = '2099-01-01',
+                       rpd_count = 3, tpm_window_start = ?, tpm_reserved = 1000,
+                       full_token_budget = 100 WHERE route_id = ?`,
+    now + 60_000,
+    now + 60_000,
+    routeId
+  );
+
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, token_reservation,
+      reservation_rpm_window_start, reservation_rpd_day_key, reservation_tpm_window_start
+    ) VALUES (
+      'j-stale-window', 'idem-1', 'digest-1', '{}', 'leased', 'b1', ?,
+      'ltok', 'tags', 100, 50, 'payloads/j-stale-window/request.json', ?, ?, 500, 1000, '2020-01-01', 1000
+    )`,
+    routeId, now, now
+  );
+
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-stale-window",
+      lease_token: "ltok",
+      attempt_id: "att-stale",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "retryable_error",
+      provider_status_code: 200,
+      failure_class: "upstream_capacity",
+    },
+  ]);
+
+  const row = [...sql.exec(
+    "SELECT rpm_count, rpd_count, tpm_reserved, full_token_budget FROM routes WHERE route_id = ?",
+    routeId
+  )][0];
+  assert.equal(row.rpm_count, 5, "a mismatched rpm window must not be decremented");
+  assert.equal(row.rpd_count, 3, "a mismatched rpd day must not be decremented");
+  assert.equal(row.tpm_reserved, 1000, "a mismatched tpm window must not be decremented");
+  assert.equal(row.full_token_budget, 600, "the token bucket refunds unconditionally regardless of window");
 });
 
 test("completeBatch requeues terminal 429 under transient retry budget instead of failing", async () => {
@@ -1287,6 +1389,49 @@ test("completeBatch requeues terminal 429 under transient retry budget instead o
 
   const models = [...sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id = 'j-429-requeue'")][0].n;
   assert.ok(models > 0, "job must be re-indexed in job_models for future claims");
+});
+
+test("completeBatch applies the upstream_capacity cooldown to a 2xx with no usable completion", async () => {
+  // c7a1a6c classifies an empty-2xx response upstream_capacity, but isTransientRouteFailure only
+  // covered that failure class arriving as a 400 (gateway.js's upstreamCapacityFailure) -- this
+  // status-200 shape fell through to a branch that only records last_provider_status, with no
+  // cooldown at all. The same saturated route could be reselected on the very next tick and burn
+  // through the whole upstream-capacity retry budget back to back (CodeRabbit, 2026-09-13).
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, transient_retry_count
+    ) VALUES (
+      'j-empty-2xx', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
+      'ltok', 'tags', 100, 50, 'payloads/j-empty-2xx/request.json', ?, ?, 0
+    )`,
+    now, now
+  );
+
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-empty-2xx",
+      lease_token: "ltok",
+      attempt_id: "att-empty",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "retryable_error",
+      provider_status_code: 200,
+      failure_class: "upstream_capacity",
+    },
+  ]);
+
+  const row = [...sql.exec("SELECT upstream_capacity_streak, blocked_until FROM routes WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")][0];
+  assert.equal(row.upstream_capacity_streak, 1);
+  assert.ok(row.blocked_until >= now + 15_000, "cooldown must be at least the base 15s, same as authorizeRetry's");
 });
 
 test("completeBatch success clears upstream_capacity_streak and last_failure_class", async () => {
@@ -1580,3 +1725,135 @@ test("authorizeRetry overrides untrustworthy Retry-After with observed_recovery_
   assert.ok(routeRow.blocked_until >= now + 45_000);
 });
 
+
+// ---------------------------------------------------------------------------
+// Regressions from the 2026-09-09 Initiative 20 review.
+// ---------------------------------------------------------------------------
+
+test("a route with no declared rpd is unlimited on that axis, not treated as paused", () => {
+  // THE bug: `Number(null) === 0`, and this repo uses an explicit 0 to mean "paused/exhausted",
+  // so a route whose compiled JSON carried `"rpd": null` scored capacity 0. claimDispatchWindow
+  // filters `score > 0`, so those routes were never ranked, never claimed, never dispatched --
+  // with no blocked_until and no error. That was 34 of 69 catalog routes, including all 14
+  // Mistral routes, behind which 21,287 jobs sat queued for 22 days.
+  const { coordinator } = makeCoordinator({});
+  const now = Date.now();
+
+  const unlimited = coordinator._capacityFraction(
+    { route_id: "r", rpm: 60, rpd: null, tpm: null, rpm_window_start: 0, rpd_day_key: "" },
+    now,
+    25
+  );
+  assert.ok(unlimited > 0, "rpd:null must not zero the route out of the ranking");
+
+  const paused = coordinator._capacityFraction(
+    { route_id: "r", rpm: 60, rpd: 0, tpm: null, rpm_window_start: 0, rpd_day_key: "" },
+    now,
+    25
+  );
+  assert.equal(paused, 0, "an explicit rpd:0 is still the repository's paused convention");
+});
+
+test("a route with no declared rpm is unlimited on that axis, not treated as paused", () => {
+  const { coordinator } = makeCoordinator({});
+  const score = coordinator._capacityFraction(
+    { route_id: "r", rpm: null, rpd: 500, tpm: null, rpd_day_key: "" },
+    Date.now(),
+    25
+  );
+  assert.ok(score > 0, "rpm:null must not zero the route out of the ranking");
+});
+
+test("every catalog route can be ranked (no route is silently unclaimable)", async () => {
+  // A fleet-wide guard: if any compiled route scores 0 on a clean ledger, it can never be
+  // dispatched and no operator surface would say why.
+  const { default: limits } = await import("../src/dispatch_limits.json", {
+    with: { type: "json" },
+  });
+  const { coordinator } = makeCoordinator({});
+  const now = Date.now();
+  const dead = Object.values(limits.routes_by_id)
+    .filter((r) => Number(r.rpd) !== 0)
+    .filter((r) => coordinator._capacityFraction({ ...r, rpd_day_key: "" }, now, 25) === 0)
+    .map((r) => r.route_id);
+  assert.deepEqual(dead, [], `routes unrankable on a clean ledger: ${dead.join(", ")}`);
+});
+
+test("_rankModelsByCapacity does not drop a model whose every route declares no rpd", () => {
+  // Number(null) === 0, so a route with no rpd configured -- unlimited on that axis, per
+  // _capacityFraction's own treatment of the same field -- was silently weighted zero here.
+  // A model whose every route declares neither rpd nor rpm (several real NVIDIA/DeepSeek/zai
+  // routes today) got totalWeight === 0, forcing score to 0 and dropping the model out of ranking
+  // entirely via the `score > 0` filter (CodeRabbit, 2026-09-13) -- not merely under-weighted, but
+  // invisible to dispatch no matter how available its routes actually were.
+  const { coordinator } = makeCoordinator({});
+  const dispatchLimits = {
+    providers: {},
+    routes_by_id: {
+      unlimited_route: {
+        route_id: "unlimited_route",
+        provider: "x",
+        rpd: null,
+        rpm: null,
+        tpm: null,
+      },
+    },
+    model_routes_map: { "x/unlimited": ["unlimited_route"] },
+  };
+  const ranked = coordinator._rankModelsByCapacity(Date.now(), 25, dispatchLimits);
+  const entry = ranked.find((r) => r.model === "x/unlimited");
+  assert.ok(entry, "a model with no rpd/rpm/tpm on any route must still appear in ranking");
+  assert.ok(entry.score > 0, "its score must be positive, not the hardcoded zero-weight fallback");
+});
+
+test("unconfigured account credentials are reported, never used to gate dispatch", () => {
+  // This is a DIAGNOSTIC, deliberately not a dispatch gate. Gating on secret presence would mean
+  // that if the DO env ever failed to expose secrets the way this assumes, the whole catalog would
+  // drop out of the ranking silently -- the same failure shape as the `rpd: null` coercion fixed
+  // in this review. Reporting it lets an operator see an unconfigured account without risking that.
+  const { coordinator } = makeCoordinator({ PRESENT_KEY: "sk-real" });
+  const limits = {
+    providers: {
+      p: { accounts: [{ id: "primary", api_key_env: "PRESENT_KEY" }, { id: "second", api_key_env: "ABSENT_KEY" }] },
+    },
+  };
+
+  assert.equal(
+    coordinator._routeCredentialConfigured({ provider: "p", account_id: "primary" }, limits),
+    true
+  );
+  assert.equal(
+    coordinator._routeCredentialConfigured({ provider: "p", account_id: "second" }, limits),
+    false
+  );
+  // An account_id that does not exist at all must not fall through to "configured".
+  assert.equal(
+    coordinator._routeCredentialConfigured({ provider: "p", account_id: "ghost" }, limits),
+    false
+  );
+  // A provider declaring no accounts is not something this gate can judge; leave it rankable.
+  assert.equal(
+    coordinator._routeCredentialConfigured({ provider: "q" }, { providers: { q: {} } }),
+    true
+  );
+});
+
+test("stats() names accounts whose secret is not set in this deployment", async () => {
+  const { coordinator } = makeCoordinator({
+    PRESENT_KEY: "sk-real",
+    DISPATCH_LIMITS_OVERRIDE: {
+      providers: {
+        p: {
+          accounts: [
+            { id: "primary", api_key_env: "PRESENT_KEY" },
+            { id: "tertiary", api_key_env: "ABSENT_KEY" },
+          ],
+        },
+      },
+      routes_by_id: {},
+      model_routes_map: {},
+    },
+  });
+  const stats = await coordinator.stats(Date.now(), 20);
+  assert.deepEqual(stats.unconfigured_accounts, ["p:tertiary (ABSENT_KEY)"]);
+});

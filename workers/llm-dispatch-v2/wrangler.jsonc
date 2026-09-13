@@ -84,6 +84,7 @@
     // AI Gateway handles the fast five-attempt retry series. A final 5xx gets one durable
     // fallback attempt on a later cron tick. The failed route is unavailable for 60 seconds,
     // growing to at most five minutes if this outer retry budget is raised.
+    "MAX_UPSTREAM_CAPACITY_RETRIES": "8",
     "MAX_5XX_RETRIES": "1",
     "MAX_5XX_BACKOFF_SECONDS": "300",
     "MAX_ROUTE_BUFFER_SECONDS": "120",

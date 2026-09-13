@@ -20,7 +20,16 @@ export const FAILURE_SIGNATURES = [
     provider: "gemini",
     failure_class: "own_tpm",
     match: ({ msg }) =>
-      msg.includes("inputtokensperminute") || msg.includes("tokens per minute"),
+      msg.includes("inputtokensperminute") ||
+      msg.includes("tokens per minute") ||
+      // Real observed shape (2026-09-13): the human-readable message never spells out "tokens
+      // per minute" -- it names the machine quota metric instead, e.g. "Quota exceeded for
+      // metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count,
+      // limit: 16000, model: gemma-4-26b". Ordered before gemini-resource-exhausted's generic
+      // RESOURCE_EXHAUSTED->own_rpm fallback, which this would otherwise fall into --
+      // mislabeling a genuine per-model token quota as a request-count one.
+      msg.includes("input_token_count") ||
+      msg.includes("output_token_count"),
   },
   {
     rule_id: "gemini-rpm",
@@ -83,6 +92,33 @@ export const FAILURE_SIGNATURES = [
       body?.error?.code === "rate_limit_exceeded",
   },
   {
+    // A rate-limit header whose LIMIT (not "remaining") is literally 0 means the provider has
+    // provisioned this account no allowance at all -- an account/billing state, not pacing. No
+    // amount of backoff inside the window recovers it, so it belongs on the day -> week -> month
+    // cooldown ladder rather than buying a 60-second buffer and retrying forever.
+    //
+    // This is how Mistral actually reports it, and the message gives nothing away:
+    //   429 {"message":"Rate limit exceeded","type":"rate_limited","code":"1300"}
+    //   x-ratelimit-limit-req-minute: 0
+    //   x-ratelimit-remaining-req-minute: 0
+    // Confirmed live 2026-09-09 while /v1/models still returned 200, so credentials were valid.
+    // Ordered before `remaining-zero-header`, which would otherwise read the same response as an
+    // ordinary exhausted minute and keep hammering a route that can never serve a request.
+    rule_id: "zero-provisioned-limit",
+    provider: null,
+    failure_class: "payment_required",
+    match: ({ headers }) => {
+      if (!headers) return false;
+      for (const [name, value] of headers.entries ? headers.entries() : Object.entries(headers)) {
+        const key = String(name).toLowerCase();
+        if (!key.startsWith("x-ratelimit-limit") && !key.startsWith("ratelimit-limit")) continue;
+        const parsed = Number(String(value).trim());
+        if (Number.isFinite(parsed) && parsed === 0) return true;
+      }
+      return false;
+    },
+  },
+  {
     rule_id: "remaining-zero-header",
     provider: null,
     failure_class: "own_rpm",
@@ -96,6 +132,34 @@ export const FAILURE_SIGNATURES = [
     failure_class: "own_tpm",
     match: ({ headers }) =>
       headers?.get("x-ratelimit-remaining-tokens") === "0",
+  },
+  {
+    // A monthly/prepaid allowance being exhausted is a BILLING signal, not a pacing one -- no
+    // amount of backoff inside the window recovers it, so it must reach paymentRequiredBackoffUntil's
+    // day -> week -> month cooldown ladder rather than buying a 60-second buffer. Mistral reports
+    // account-wide monthly token metering this way; it is the signal that replaced the inert
+    // `monthly_tpm: 0` stopgap in config/provider_limits.yml.
+    // NOT "quota exceeded" alone (CodeRabbit, 2026-09-13): that bare phrase is how many
+    // providers word an ordinary RPM/RPD/TPM 429, not just a billing one -- Gemini's own RPD/TPM
+    // messages say exactly that ("Resource exhausted: quota exceeded for
+    // GenerateRequestsPerDayPerProjectPerModel"). Those are already caught by earlier,
+    // provider-scoped rules (gemini-rpd/gemini-tpm), but a PROVIDER-AGNOSTIC match on the bare
+    // phrase would catch an ordinary rate 429 from any OTHER provider too, routing it onto the
+    // day/week/month payment_required cooldown ladder instead of the correct short-lived
+    // own_rpm/own_rpd/own_tpm backoff. Require an explicit billing/credit/monthly signal.
+    rule_id: "insufficient-budget",
+    provider: null,
+    failure_class: "payment_required",
+    match: ({ msg }) =>
+      msg.includes("insufficient budget") ||
+      msg.includes("insufficient credit") ||
+      msg.includes("insufficient balance") ||
+      msg.includes("insufficient funds") ||
+      msg.includes("monthly limit") ||
+      msg.includes("monthly quota") ||
+      msg.includes("out of credits") ||
+      msg.includes("no credits") ||
+      msg.includes("billing"),
   },
   {
     rule_id: "overloaded",
@@ -159,7 +223,13 @@ function hasRateLimitHeader(normHeaders) {
   if (normHeaders.get("x-ratelimit-limit-tokens") !== null) return true;
   if (typeof normHeaders.entries === "function") {
     for (const [k] of normHeaders.entries()) {
-      if (String(k).toLowerCase().startsWith("x-ratelimit-")) {
+      // Some providers emit the newer, unprefixed standard header (RateLimit-Limit) rather than
+      // the older de facto X-RateLimit-* convention. Missing it here meant a 429 using the bare
+      // form fell through to isAig429 as if it carried no rate-limit information at all,
+      // misclassifying it gateway_limit before a more specific provider signature (e.g.
+      // zero-provisioned-limit) ever got a chance to match in FAILURE_SIGNATURES.
+      const key = String(k).toLowerCase();
+      if (key.startsWith("x-ratelimit-") || key.startsWith("ratelimit-")) {
         return true;
       }
     }
@@ -177,8 +247,20 @@ function hasRateLimitHeader(normHeaders) {
  *            scope:"route"|"provider"|"account"}}
  */
 export function classifyProviderFailure({ status, body, headers, route }) {
+  // Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY -- `[{"error": {...}}]`
+  // -- not a bare object. Every check below (`body.error`, upstreamCapacityFailure, the
+  // FAILURE_SIGNATURES message extraction) assumes a bare object; against the unwrapped array,
+  // `body.error` is `undefined` on the array itself, so a completely genuine Gemini 429 (a real
+  // quota exhaustion, confirmed live 2026-09-13: "You exceeded your current quota... Quota
+  // exceeded for metric: generate_content_free_tier_input_token_count, limit: 16000") fell
+  // through to the `isAig429` heuristic and was misclassified `gateway_limit` -- which, in
+  // production, incorrectly cools down every OTHER route on the same provider
+  // (authorizeRetry's `gateway_limit` case fans out to every sibling route), not just the one
+  // model whose own quota was actually exhausted.
+  const normalizedBody = Array.isArray(body) ? body[0] : body;
   const normHeaders = normalizeHeaders(headers);
-  const retryAfterSeconds = parseRetryAfterSeconds({ headers: normHeaders }, body);
+  const retryAfterSeconds = parseRetryAfterSeconds({ headers: normHeaders }, normalizedBody);
+  body = normalizedBody;
 
   // 1. HTTP 402 -> payment_required
   if (status === 402) {
@@ -270,7 +352,67 @@ export function classifyProviderFailure({ status, body, headers, route }) {
     };
   }
 
-  // 7. Any other status -> request_defect
+  // 7. A "too large" status whose body actually reports a RATE limit, not a size limit.
+  //
+  // Groq returns HTTP 413 for a per-minute token throttle, with the limit named in the message:
+  //   413 {"error":{"message":"Request too large for model `openai/gpt-oss-120b` in organization
+  //        `org_...` service tier `on_demand` on tokens per minute (TPM): Limit 8..."}}
+  // Confirmed live 2026-09-09 against both Groq routes: the same model accepted ~3,600 input
+  // tokens seconds earlier, so this is a throughput ceiling that clears on its own, not a defect
+  // in the request. Classified as request_defect it failed the job terminally -- the exact class
+  // of avoidable loss this initiative exists to remove. A plain 413 with no rate-limit language
+  // IS a genuine oversized request and still falls through to request_defect below.
+  if (status === 413 || status === 400) {
+    const rawMsg =
+      body?.error?.message ||
+      body?.message ||
+      body?.detail ||
+      (typeof body === "string" ? body : "");
+    const msg = String(rawMsg || "").toLowerCase();
+    if (msg) {
+      if (
+        msg.includes("tokens per minute") ||
+        msg.includes("token per minute") ||
+        msg.includes("(tpm)") ||
+        msg.includes("(itpm)")
+      ) {
+        return {
+          failure_class: "own_tpm",
+          rule_id: "size-status-token-rate-limit",
+          retry_after_seconds: retryAfterSeconds,
+          scope: "route",
+        };
+      }
+      if (msg.includes("requests per minute") || msg.includes("(rpm)")) {
+        return {
+          failure_class: "own_rpm",
+          rule_id: "size-status-request-rate-limit",
+          retry_after_seconds: retryAfterSeconds,
+          scope: "route",
+        };
+      }
+      // A daily quota resets on the provider's own calendar day, not a minute-scale bucket --
+      // own_tpm's pacing would retry every ~60s for the rest of the day for nothing. Matches the
+      // existing groq-tpd rule's own_rpd classification for the same axis (CodeRabbit,
+      // 2026-09-13: this branch originally lumped "tokens per day" in with the per-minute cases
+      // above).
+      if (
+        msg.includes("requests per day") ||
+        msg.includes("(rpd)") ||
+        msg.includes("tokens per day") ||
+        msg.includes("(tpd)")
+      ) {
+        return {
+          failure_class: "own_rpd",
+          rule_id: "size-status-daily-rate-limit",
+          retry_after_seconds: retryAfterSeconds,
+          scope: "route",
+        };
+      }
+    }
+  }
+
+  // 8. Any other status -> request_defect
   return {
     failure_class: "request_defect",
     rule_id: "http-4xx",

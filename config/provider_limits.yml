@@ -67,17 +67,32 @@ providers:
     chat_path: /v1/chat/completions
     # Mistral's account-wide limit is 60 RPM (one submission per second), shared by every model.
     rpm: 60
-    # HOTFIX (2026-08-18): Mistral switched to account-wide monthly token metering (effective
-    # until the policy is re-evaluated after their next billing cycle reset on 2026-08-31).
-    # Zeroed out as a stopgap to stop consumption until a real monthly allowance is sized -- see
-    # AGENTS.md / review/11 for the follow-up to pick a real value.
-    monthly_tpm: 0
+    # Mistral meters tokens account-wide per month. The 2026-08-18 hotfix zeroed this to stop
+    # consumption; that stopgap is reverted here (2026-09-09) because it never actually gated
+    # anything -- `monthly_tpm` has no consumer in either the Worker or the Python scheduler, and
+    # compile_llm_limits.py drops it from the compiled provider block entirely, so it only ever
+    # scaled itself. What genuinely stops consumption is the billing-signal path: an "insufficient
+    # budget"/"out of credits" response now classifies as `payment_required`
+    # (workers/llm-dispatch-v2/src/classify.js, rule `insufficient-budget`), which drives
+    # pacing.js's paymentRequiredBackoffUntil day -> week -> month cooldown ladder and pins the
+    # route until the allowance actually rolls over. Restored to Mistral's published free-tier
+    # monthly allowance, the pre-hotfix value.
+    monthly_tpm: 1000000000
     reset_day: 1
     accounts:
       - id: primary
         api_key_env: MISTRAL_API_KEY
       - id: secondary
         api_key_env: MISTRAL_API_KEY_SECONDARY
+      # Added 2026-09-12 specifically to test whether primary's zero-provisioned flagship models
+      # (below) were a per-key state a fresh key could bypass. VERIFIED they are not: primary,
+      # secondary, and this tertiary key all report the IDENTICAL zero rate limit
+      # (x-ratelimit-limit-req-minute: 0) for the same model set, and /v1/models lists the exact
+      # same 46 model ids on all three keys. This is an account/organization-tier restriction
+      # shared by every key issued under it, not a per-key billing/budget state -- see the
+      # comment on mistral-medium-latest below for the full account-tier map this established.
+      - id: tertiary
+        api_key_env: MISTRAL_API_KEY_TERTIARY
   # Airforce custom provider: serves Mistral Medium 3.5. At 1 RPM, more than one in-flight
   # request cannot increase sustainable throughput and can race the upstream limiter.
   # While published docs claimed 20 RPM, live 429 error responses report 1 RPM (plan_rpm: 1),
@@ -286,11 +301,11 @@ routes:
     rpm: 15
     rpd: 500
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 10
-    observed_input_ceiling: 133281
+    observed_input_ceiling: 218875
 
   - route_id: gemini_3_5_flash_lite_secondary
     model: gemini/gemini-3.5-flash-lite
@@ -302,11 +317,11 @@ routes:
     rpm: 15
     rpd: 500
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 10
-    observed_input_ceiling: 133281
+    observed_input_ceiling: 218875
 
   - route_id: gemini_3_1_flash_lite_primary
     model: gemini/gemini-3.1-flash-lite
@@ -318,10 +333,11 @@ routes:
     rpm: 15
     rpd: 500
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 1
+    observed_input_ceiling: 218875
 
   - route_id: gemini_3_1_flash_lite_secondary
     model: gemini/gemini-3.1-flash-lite
@@ -333,12 +349,28 @@ routes:
     rpm: 15
     rpd: 500
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 1
+    observed_input_ceiling: 218875
 
   # Gemma 4 Massive Free Quota Pools (14.4k RPD / 30 RPM each)
+  #
+  # hard_input_ceiling re-measured 2026-09-12 (was 8000, dated 2026-09-09 -- from BEFORE that
+  # day's array-wrapped-error-body fix to classify.js/llm_failure_class.py/
+  # provider_reported_token_limit(); Gemini's real error body is `[{"error": {...}}]`, not
+  # `{"error": {...}}`, so the old search was reading genuine quota-exceeded 429s as
+  # gateway_limit and narrowing on them as if they were size rejections -- an artificially low
+  # floor, not a real boundary). Re-run with the fix, on the secondary key only (primary is
+  # shared with the in-production v2 worker; see the account-diversity note elsewhere in this
+  # file) -- conclusive, contention_detected: false, provider_reported_tpm: 16000 (matches the
+  # configured tpm exactly, confirming Google publishes 16000 TPM for this tier). Applied to both
+  # primary and secondary per that same account-diversity convention. A same-day, single clean
+  # request at this input size plus a realistic 1000-token max_tokens succeeded fine (13,164
+  # total, well under 16000) on a rested key, ruling out any extra server-side output reservation
+  # as an explanation for the ~1-6% headroom below tpm -- it is a real, if narrow, per-model
+  # ceiling, not a measurement artifact.
   - route_id: gemma_4_26b_primary
     model: google/gemma-4-26b-a4b-it
     provider: gemini
@@ -349,9 +381,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 8000
+    hard_input_ceiling: 15062
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 15062
     observed_burst: 31
 
   - route_id: gemma_4_26b_secondary
@@ -364,9 +397,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 8000
+    hard_input_ceiling: 15062
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 15062
     observed_burst: 31
 
   - route_id: gemma_4_31b_primary
@@ -379,9 +413,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 8000
+    hard_input_ceiling: 12250
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 12250
     observed_burst: 2
 
   - route_id: gemma_4_31b_secondary
@@ -394,9 +429,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 8000
+    hard_input_ceiling: 12250
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 12250
     observed_burst: 2
 
   # Additional Free Flash Burst Pools (20 RPD / 5-10 RPM each)
@@ -410,10 +446,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 6
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_flash_preview_secondary
     model: gemini/gemini-3-flash-preview
@@ -425,10 +462,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 6
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_8_flash_primary
     model: gemini/gemini-3.8-flash
@@ -440,10 +478,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 0
+    observed_input_ceiling: 218875
     upstream_429_default: upstream_capacity
 
   - route_id: gemini_3_8_flash_secondary
@@ -456,10 +495,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 0
+    observed_input_ceiling: 218875
     upstream_429_default: upstream_capacity
 
   - route_id: gemini_3_7_flash_primary
@@ -472,10 +512,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 7
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_7_flash_secondary
     model: gemini/gemini-3.7-flash
@@ -487,10 +528,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 7
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_6_flash_primary
     model: gemini/gemini-3.6-flash
@@ -502,10 +544,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 0
+    observed_input_ceiling: 218875
     upstream_429_default: upstream_capacity
 
   - route_id: gemini_3_6_flash_secondary
@@ -518,10 +561,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 0
+    observed_input_ceiling: 218875
     upstream_429_default: upstream_capacity
 
   - route_id: gemini_3_5_flash_primary
@@ -534,10 +578,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 1
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_5_flash_secondary
     model: gemini/gemini-3.5-flash
@@ -549,10 +594,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 1
+    observed_input_ceiling: 234437
 
   # ==========================================
   # ==========================================
@@ -584,7 +630,6 @@ routes:
     free: true
     observed_on: "2026-09-09"
     observed_burst: 0
-    observed_input_ceiling: 1000
     upstream_429_default: upstream_capacity
 
   - route_id: openrouter_meta_llama_llama_3_3_70b_instruct
@@ -613,10 +658,11 @@ routes:
     rpm: 30
     rpd: 1000
     tpm: 8000
+    hard_input_ceiling: 7125
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 30
-    observed_input_ceiling: 1000
+    observed_input_ceiling: 7125
 
   - route_id: groq_qwen_3_6_27b_primary
     model: qwen/qwen3.6-27b
@@ -627,11 +673,19 @@ routes:
     account_id: primary
     rpm: 30
     rpd: 1000
-    tpm: 8000
+    # Distinct from gpt-oss-120b's 8000: this model's error body reports a separate, stricter
+    # "input tokens per minute (ITPM): Limit 7000" (confirmed live 2026-09-12, reproduced twice).
+    # 8000 (Groq's general per-model TPM header, which this route previously copied from
+    # gpt-oss-120b) overstates what this specific model actually allows.
+    tpm: 7000
+    # Same 7000 figure as tpm above: the binary-search ceiling probe converged near 7125 (an
+    # estimate from char/4 token counting), but the directly-quoted ITPM=7000 is exact and
+    # stricter, so it is used here instead of the noisier estimate.
+    hard_input_ceiling: 7000
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 30
-    observed_input_ceiling: 1000
+    observed_input_ceiling: 7000
 
   - route_id: groq_qwen_3_8_27b_primary
     model: qwen/qwen3.8-27b
@@ -642,11 +696,17 @@ routes:
     account_id: primary
     rpm: 30
     rpd: 1000
-    tpm: 8000
+    # Same correction as qwen3.6-27b above: "input tokens per minute (ITPM): Limit 7000"
+    # (confirmed live 2026-09-12), stricter than the 8000 previously copied from gpt-oss-120b.
+    tpm: 7000
+    # Same 7000 figure as tpm above: the binary-search ceiling probe converged near 7125 (an
+    # estimate from char/4 token counting), but the directly-quoted ITPM=7000 is exact and
+    # stricter, so it is used here instead of the noisier estimate.
+    hard_input_ceiling: 7000
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 30
-    observed_input_ceiling: 1000
+    observed_input_ceiling: 7000
 
   # ==========================================
   # QWEN 2.5 72B MULTI-PROVIDER POOL (SambaNova + SiliconFlow)
@@ -828,10 +888,36 @@ routes:
     account_id: primary
     rpm: 124
     tpm: 625000
+    hard_input_ceiling: 249027
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 40
+    observed_input_ceiling: 249027
 
+  # ACCOUNT-TIER MAP (verified 2026-09-12 against /v1/models + live probes on all three keys --
+  # primary, secondary, and tertiary all show the IDENTICAL restriction, ruling out a per-key
+  # billing/budget state in favor of an account/organization-tier one; a fourth key under the same
+  # organization would very likely show it too):
+  #   WORKS on this account: Ministral (3b/8b/14b, dated and -latest), Codestral (-2508/-latest),
+  #     mistral-embed(-2312), voxtral-*, mistral-ocr-*, mistral-code-*, mistral-vibe-cli-*,
+  #     mistral-moderation-2603.
+  #   BLOCKED on this account (HTTP 429, x-ratelimit-limit-req-minute: 0 -- not a spent minute,
+  #     no allowance at all -- classified payment_required, "zero-provisioned-limit" rule):
+  #     devstral-2512, mistral-small-2603/-latest, mistral-medium-latest and every medium variant
+  #     (mistral-medium, -2604, -3, -3-5, -3.5), magistral-medium-latest, magistral-small-latest.
+  #     None of these are naming/config bugs -- every one is a real, correctly-spelled model this
+  #     account's plan does not include; a fresh key under the same org will not unblock them.
+  #   BLOCKED differently (HTTP 403 "not available in your subscription tier"; same underlying
+  #     cause, a different Mistral-side mechanism for reporting it): mistral-large-2512.
+  #   BLOCKED differently again (HTTP 403 "is a Labs model", listed in /v1/models under
+  #     labs-leanstral-1-5/-1-5-1): an account PREFERENCE toggle, not a plan/billing gate --
+  #     distinct from every case above, and the one restriction here a dashboard setting (not a
+  #     paid plan) could lift.
+  #   NOT A REAL MODEL (removed 2026-09-12): mistral-large-3 -- HTTP 400 "Invalid model", absent
+  #     from /v1/models on all three keys, and no such name exists in Mistral's own published
+  #     model list. This was a config authoring error, unrelated to the account-tier findings
+  #     above; do not re-add it under this name.
+  #
   # Devstral 2512: 0.83 RPS (49 RPM), 1,000,000 TPM
   - route_id: mistral_devstral_2512_primary
     model: mistral/devstral-2512
@@ -949,21 +1035,6 @@ routes:
     observed_burst: 0
     upstream_429_default: upstream_capacity
 
-  # Mistral Large 3: 4 RPM, 250k TPM
-  - route_id: mistral_large_3_primary
-    model: mistral/mistral-large-3
-    provider: mistral
-    upstream_model: mistral-large-3
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: primary
-    rpm: 4
-    tpm: 250000
-    free: true
-    observed_on: "2026-09-09"
-    observed_burst: 0
-    upstream_429_default: upstream_capacity
-
   # Labs Leanstral: 0.63 RPS (37 RPM), 5,000,000 TPM
   - route_id: mistral_labs_leanstral_1_5_1_primary
     model: mistral/labs-leanstral-1-5-1
@@ -989,9 +1060,11 @@ routes:
     account_id: secondary
     rpm: 124
     tpm: 625000
+    hard_input_ceiling: 249027
     free: true
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 40
+    observed_input_ceiling: 249027
 
   - route_id: mistral_devstral_2512_secondary
     model: mistral/devstral-2512
@@ -1049,20 +1122,6 @@ routes:
     observed_burst: 0
     upstream_429_default: upstream_capacity
 
-  - route_id: mistral_large_3_secondary
-    model: mistral/mistral-large-3
-    provider: mistral
-    upstream_model: mistral-large-3
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: secondary
-    rpm: 4
-    tpm: 250000
-    free: true
-    observed_on: "2026-09-09"
-    observed_burst: 0
-    upstream_429_default: upstream_capacity
-
   - route_id: mistral_labs_leanstral_1_5_1_secondary
     model: mistral/labs-leanstral-1-5-1
     provider: mistral
@@ -1077,6 +1136,87 @@ routes:
     observed_burst: 0
     upstream_429_default: upstream_capacity
 
+  - route_id: mistral_codestral_2508_tertiary
+    model: mistral/codestral-2508
+    provider: mistral
+    upstream_model: codestral-2508
+    input_context_limit: 256000
+    output_context_limit: 256000
+    account_id: tertiary
+    rpm: 124
+    tpm: 625000
+    hard_input_ceiling: 249027
+    free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 249027
+
+  # rpm/tpm not independently measured for this account -- mirrored from primary/secondary
+  # (identical to each other for every route below), per the account-diversity convention
+  # elsewhere in this file: a same-tier Mistral account is presumed to share the model's
+  # plan-wide rate limit until proven otherwise, and an unset limit here left the route with NO
+  # rpm/tpm gate at all (routeAvailable's rpm/tpm checks are both gated on `route.<limit> != null`
+  # in workers/llm-dispatch-proxy/src/index.js), i.e. effectively unrate-limited rather than
+  # merely unverified.
+  - route_id: mistral_devstral_2512_tertiary
+    model: mistral/devstral-2512
+    provider: mistral
+    upstream_model: devstral-2512
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: tertiary
+    rpm: 49
+    tpm: 1000000
+    free: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_small_2603_tertiary
+    model: mistral/mistral-small-2603
+    provider: mistral
+    upstream_model: mistral-small-2603
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: tertiary
+    rpm: 49
+    tpm: 50000
+    free: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_medium_latest_tertiary
+    model: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: tertiary
+    rpm: 50
+    tpm: 25000
+    free: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_large_2512_tertiary
+    model: mistral/mistral-large-2512
+    provider: mistral
+    upstream_model: mistral-large-2512
+    input_context_limit: 262144
+    output_context_limit: 262144
+    account_id: tertiary
+    rpm: 4
+    tpm: 250000
+    free: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_labs_leanstral_1_5_1_tertiary
+    model: mistral/labs-leanstral-1-5-1
+    provider: mistral
+    upstream_model: labs-leanstral-1-5-1
+    input_context_limit: 262144
+    output_context_limit: 131072
+    account_id: tertiary
+    rpm: 37
+    tpm: 5000000
+    free: true
+    upstream_429_default: upstream_capacity
+
   # ==========================================
   # Z.AI ROUTES (Zhipu AI Global GLM Series)
   # ==========================================
@@ -1088,10 +1228,13 @@ routes:
     input_context_limit: 200000
     output_context_limit: 131072
     account_id: primary
+    hard_input_ceiling: 199222
     rpm: 15
     rpd: 500
     concurrency: 2
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 199222
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1102,10 +1245,13 @@ routes:
     input_context_limit: 200000
     output_context_limit: 98304
     account_id: primary
+    hard_input_ceiling: 147140
     rpm: 15
     rpd: 500
     concurrency: 2
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 147140
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1187,10 +1333,13 @@ routes:
     input_context_limit: 1000000
     output_context_limit: 65536
     account_id: primary
+    hard_input_ceiling: 234437
     rpm: 10
     rpd: 200
     concurrency: 1
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 234437
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1201,10 +1350,13 @@ routes:
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: primary
+    hard_input_ceiling: 249027
     rpm: 10
     rpd: 200
     concurrency: 1
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 249027
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1259,7 +1411,10 @@ routes:
     rpm: 20
     rpd: 200
     tpm: 100000
+    hard_input_ceiling: 249027
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 249027
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1275,7 +1430,10 @@ routes:
     rpm: 20
     rpd: 200
     tpm: 100000
+    hard_input_ceiling: 234437
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 234437
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1404,7 +1562,24 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
+    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
+    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
+    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
+    # formula, not measured or published. Input-ceiling (max size of one request, measured
+    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
+    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
+    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
+    # developer forums: "limits vary by model and are not published"). This tpm value remains
+    # exactly what it was before this session -- an unverified inherited placeholder, not a
+    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
+    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
+    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
+    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
+    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
+    # request this size, exactly the behavior this route's real ~6x ratio calls for.
     tpm: 40000
+    hard_input_ceiling: 234437
     # Raised back to 4 on 2026-08-30. The ceiling of 1 was set the day before on the
     # theory that NVIDIA rejects any overlapping request with a fast ~8.3s 429. Gateway
     # logs since the routing fix landed at 14Z say otherwise: nemotron-3-super ran 39
@@ -1421,9 +1596,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 2
-    observed_input_ceiling: 1000
+    observed_input_ceiling: 234437
 
   # Both DeepSeek routes below were disabled 2026-08-29 on a misdiagnosis: their 404s were blamed
   # on a per-key NVIDIA "Public API Endpoints" entitlement gap. The real cause was this provider
@@ -1447,6 +1622,22 @@ routes:
     # quota caps us either way. Sub-1 rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s
     # minute bucket both used to clamp a fractional rate UP to 1.
     rpm: 0.5
+    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
+    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
+    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
+    # formula, not measured or published. Input-ceiling (max size of one request, measured
+    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
+    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
+    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
+    # developer forums: "limits vary by model and are not published"). This tpm value remains
+    # exactly what it was before this session -- an unverified inherited placeholder, not a
+    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
+    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
+    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
+    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
+    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
+    # request this size, exactly the behavior this route's real ~6x ratio calls for.
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1459,8 +1650,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 6
+    hard_input_ceiling: 249027
     observed_input_ceiling: 249027
 
   - route_id: nvidia_deepseek_v4_flash_0731_free
@@ -1569,7 +1761,24 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
+    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
+    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
+    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
+    # formula, not measured or published. Input-ceiling (max size of one request, measured
+    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
+    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
+    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
+    # developer forums: "limits vary by model and are not published"). This tpm value remains
+    # exactly what it was before this session -- an unverified inherited placeholder, not a
+    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
+    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
+    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
+    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
+    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
+    # request this size, exactly the behavior this route's real ~6x ratio calls for.
     tpm: 40000
+    hard_input_ceiling: 246109
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
@@ -1581,8 +1790,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 0
+    observed_input_ceiling: 246109
     upstream_429_default: upstream_capacity
 
   - route_id: nvidia_nemotron_3_super_120b_a12b_free
@@ -1602,6 +1812,22 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
+    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
+    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
+    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
+    # formula, not measured or published. Input-ceiling (max size of one request, measured
+    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
+    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
+    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
+    # developer forums: "limits vary by model and are not published"). This tpm value remains
+    # exactly what it was before this session -- an unverified inherited placeholder, not a
+    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
+    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
+    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
+    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
+    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
+    # request this size, exactly the behavior this route's real ~6x ratio calls for.
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1614,8 +1840,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 5
+    hard_input_ceiling: 249027
     observed_input_ceiling: 249027
 
   - route_id: nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free
@@ -1634,7 +1861,24 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
+    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
+    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
+    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
+    # formula, not measured or published. Input-ceiling (max size of one request, measured
+    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
+    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
+    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
+    # developer forums: "limits vary by model and are not published"). This tpm value remains
+    # exactly what it was before this session -- an unverified inherited placeholder, not a
+    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
+    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
+    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
+    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
+    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
+    # request this size, exactly the behavior this route's real ~6x ratio calls for.
     tpm: 40000
+    hard_input_ceiling: 234437
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
@@ -1646,8 +1890,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 0
+    observed_input_ceiling: 234437
     upstream_429_default: upstream_capacity
 
   - route_id: nvidia_riva_translate_4b_instruct_v2_free
@@ -1667,6 +1912,11 @@ routes:
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
     tpm: 40000
+    # conservative vs the 8942-token binary-search estimate: this model's OWN error message states
+    # its real total context is exactly 8192 tokens (confirmed live 2026-09-12: "This model's
+    # maximum context length is 8192 tokens"), a more trustworthy figure than a char/4 estimate
+    # landing above it.
+    hard_input_ceiling: 8192
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
@@ -1678,9 +1928,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-09"
+    observed_on: "2026-09-12"
     observed_burst: 5
-    observed_input_ceiling: 8942
+    observed_input_ceiling: 8192
 
 
 

@@ -20,6 +20,7 @@ from citypods.compute.llm import (
     LLMBackendError,
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
+    LLMUpstreamPassthroughError,
     dispatch_job_batch,
 )
 from citypods.compute.llm_policy import LLMRequestPolicy
@@ -925,6 +926,70 @@ def test_poll_batch_validates_structured_output_and_preserves_sibling_results():
     results = backend.poll_batch([h_good, h_bad])
     assert isinstance(results["j-good"], JobResult)
     assert isinstance(results["j-bad"], LLMStructuredOutputError)
+
+
+def test_poll_batch_classifies_an_upstream_error_passthrough_distinctly():
+    """A stored "completed" v2 result that is actually a provider/gateway error object -- e.g.
+    Airforce's HTTP 200 body {"error": {"message": "the provider refused this request (HTTP
+    524)", ...}} when its own upstream times out (confirmed live 2026-09, 413 of 6,561 stored
+    results during an outage) -- must resolve to LLMUpstreamPassthroughError, not the generic
+    LLMStructuredOutputError. scripts/llm_deferred_sweep.py's recover_terminal keys off exactly
+    this distinction to skip a nonsensical "fix your JSON" corrective retry for a request the
+    model never even answered."""
+    storage = MockStorage()
+    mock_session = MagicMock()
+
+    storage.put_cas(
+        "results/j-airforce/lt1.json",
+        json.dumps(
+            {
+                "error": {
+                    "message": "the provider refused this request (HTTP 524)",
+                    "type": "upstream_error",
+                    "code": "524",
+                }
+            }
+        ).encode("utf-8"),
+        "application/json",
+    )
+
+    mock_session.post.return_value = _mock_response(
+        status_code=200,
+        json_data={
+            "statuses": [
+                {
+                    "id": "j-airforce",
+                    "state": "completed",
+                    "result_key": "results/j-airforce/lt1.json",
+                    "attempts": 1,
+                },
+            ]
+        },
+    )
+
+    config = LLMBackendConfig(
+        model="mistral/mistral-medium-latest",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    h_airforce = JobHandle(
+        task="tag",
+        recipe_hash="r-airforce",
+        backend="llm-dispatch-v2",
+        ref="j-airforce",
+        structured_output="dispatch-v2-test-pong",
+    )
+
+    results = backend.poll_batch([h_airforce])
+    assert isinstance(results["j-airforce"], LLMUpstreamPassthroughError)
+    assert isinstance(results["j-airforce"], LLMDispatchTerminalError)
+    assert not isinstance(results["j-airforce"], LLMStructuredOutputError)
+
+    from citypods.compute.llm_deferred import look_up_deferred
+
+    # write_deferred must never have run for this recipe -- the error object is not a completion.
+    assert look_up_deferred(storage, "r-airforce") is None
 
 
 def _router(routes: dict):
