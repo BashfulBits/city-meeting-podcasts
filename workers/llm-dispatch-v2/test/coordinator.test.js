@@ -1392,7 +1392,9 @@ test("authorizeRetry with payment_required sets the billing day cooldown, not a 
   // a short retry-friendly buffer instead of the day/week/month billing ladder a state that
   // "does not clear on a retry cadence" actually needs (CodeRabbit, 2026-09-13).
   const { coordinator, sql } = makeCoordinator();
-  const now = Date.now();
+  // Fix the clock away from midnight: the first billing rung is the next UTC midnight, which can
+  // legitimately be less than an hour away in production.
+  const now = Date.UTC(2026, 8, 14, 12, 0, 0);
   const bundleDeadline = now + 60_000;
   sql.exec(
     "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
@@ -1418,9 +1420,8 @@ test("authorizeRetry with payment_required sets the billing day cooldown, not a 
   assert.equal(row.throttle_streak, 0, "payment_required must not go through the own_rpm buffer path");
   assert.equal(row.buffer_seconds, 0);
   assert.equal(row.payment_required_streak, 1);
-  // paymentRequiredBackoffUntil's first rung is the start of the next UTC day -- always far more
-  // than the few-second own_rpm buffer the default branch would otherwise have applied.
-  assert.ok(row.blocked_until > now + 3_600_000, "must be a day-scale cooldown, not a short buffer");
+  // The first billing rung is exactly the next UTC midnight, not the short own_rpm buffer.
+  assert.equal(row.blocked_until, Date.UTC(2026, 8, 15));
   assert.equal(row.last_failure_class, "payment_required");
 });
 
