@@ -406,12 +406,13 @@ def test_real_legistar_attachment_pdf_extracts_cleanly():
 
 
 def test_extract_pdf_treats_missing_pypdf_as_extraction_failure_not_raw_bytes(monkeypatch):
-    """Regression: pypdf is a hard, pinned dependency (pyproject.toml), so this should never
-    happen in a correctly provisioned production run -- but when `from pypdf import PdfReader`
-    fails, _extract_pdf used to decode the PDF's own raw bytes as UTF-8 and hand that back as if
-    it were extracted text. Real PDF container syntax and garbled compressed-stream bytes decode
-    into plausible, keyword-bearing noise rather than raising, so that corruption slipped past
-    assess_agenda_document's quality gate and was persisted as a genuine agenda_text_artifact."""
+    """Regression: pypdf is a required dependency (pyproject.toml declares `pypdf>=5.0`), so this
+    should never happen in a correctly provisioned production run -- but when
+    `from pypdf import PdfReader` fails, _extract_pdf used to decode the PDF's own raw bytes as
+    UTF-8 and hand that back as if it were extracted text. Real PDF container syntax and garbled
+    compressed-stream bytes decode into plausible, keyword-bearing noise rather than raising, so
+    that corruption slipped past assess_agenda_document's quality gate and was persisted as a
+    genuine agenda_text_artifact."""
     content = (FIXTURES / "arlington_pz_2021_01_20_agenda.pdf").read_bytes()
     monkeypatch.setitem(sys.modules, "pypdf", None)
     text, links = _extract_pdf(content, source_url="https://example.test/agenda.pdf")

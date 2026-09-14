@@ -25,6 +25,13 @@ Requires a populated local state mirror (``--pull-state`` refreshes it from the 
 object-store snapshot, same as ``scripts/research/agenda_chapters/audit_chapters.py``) and B2
 credentials (``B2_ENDPOINT``/``B2_KEY_ID``/``B2_APP_KEY``/``B2_BUCKET``) in the environment.
 
+Under ``--json``, stdout carries only ``{"hits": [...], "failed_keys": [...]}`` -- all
+progress/diagnostic lines go to stderr, so redirecting stdout to a file always yields valid JSON.
+A non-empty ``failed_keys`` means the survey is incomplete (some artifacts could not be read, so
+they are neither confirmed clean nor confirmed corrupt); exit code is 3 in that case regardless of
+whether any hits were also found, distinct from 1 (hits found, survey complete) and 0 (clean,
+complete).
+
 Usage:
     PYTHONPATH=. python scripts/audit_raw_pdf_agenda_artifacts.py --pull-state
     PYTHONPATH=. python scripts/audit_raw_pdf_agenda_artifacts.py --state-dir /path/to/state --json
@@ -90,44 +97,61 @@ def collect_artifact_keys(cities, state_dir: Path) -> dict[str, list[dict]]:
 
 def _check_one_key(
     key: str, episodes: list[dict], storage: S3CompatibleStorage
-) -> RawPdfHit | None:
+) -> tuple[RawPdfHit | None, bool]:
+    """Return ``(hit_or_none, failed)``. ``failed=True`` means the read itself did not complete --
+    distinct from a clean read that simply found nothing, so a failure can never look like a
+    clean "not corrupted" result to a caller."""
     try:
         prefix = storage.get_range(key, 0, _PROBE_BYTES - 1)
     except Exception as exc:  # noqa: BLE001 - one bad read must not stop the survey
         print(f"[skip] {key}: read failed ({exc})", file=sys.stderr, flush=True)
-        return None
+        return None, True
     if prefix and _looks_like_raw_pdf(prefix):
-        return RawPdfHit(
-            key=key, prefix=prefix.decode("utf-8", errors="replace"), episodes=episodes
-        )
-    return None
+        hit = RawPdfHit(key=key, prefix=prefix.decode("utf-8", errors="replace"), episodes=episodes)
+        return hit, False
+    return None, False
 
 
 def find_raw_pdf_artifacts(
     by_key: dict[str, list[dict]], storage: S3CompatibleStorage, *, concurrency: int = 1
-) -> list[RawPdfHit]:
+) -> tuple[list[RawPdfHit], list[str]]:
     """Check every unique key, serially or with a small bounded thread pool.
 
     A shared boto3 client is safe to call concurrently for reads (botocore's connection pool
     handles it -- default pool size 10, so keep ``concurrency`` at or below that). Each key is
     still read exactly once regardless of pool size; concurrency only shortens wall time.
+
+    Returns ``(hits, failed_keys)``. All progress/diagnostic output goes to stderr, regardless of
+    output mode -- stdout is reserved for the final report (plain text or, under ``--json``, the
+    JSON document alone), never interleaved with it.
     """
     hits: list[RawPdfHit] = []
+    failed_keys: list[str] = []
     items = sorted(by_key.items())
     total = len(items)
     checked = 0
 
+    def _record(key: str, hit: RawPdfHit | None, failed: bool) -> None:
+        nonlocal checked
+        if hit is not None:
+            hits.append(hit)
+            print(f"[hit] {hit.key} ({len(hit.episodes)} episode(s))", file=sys.stderr, flush=True)
+        if failed:
+            failed_keys.append(key)
+        checked += 1
+        if checked % 200 == 0 or checked == total:
+            print(
+                f"[progress] {checked}/{total} unique artifacts checked",
+                file=sys.stderr,
+                flush=True,
+            )
+
     if concurrency <= 1:
         for key, episodes in items:
-            hit = _check_one_key(key, episodes, storage)
-            if hit is not None:
-                hits.append(hit)
-                print(f"[hit] {hit.key} ({len(hit.episodes)} episode(s))", flush=True)
-            checked += 1
-            if checked % 200 == 0 or checked == total:
-                print(f"[progress] {checked}/{total} unique artifacts checked", flush=True)
+            hit, failed = _check_one_key(key, episodes, storage)
+            _record(key, hit, failed)
             time.sleep(_REQUEST_DELAY_SECONDS)
-        return hits
+        return hits, failed_keys
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -136,14 +160,10 @@ def find_raw_pdf_artifacts(
             pool.submit(_check_one_key, key, episodes, storage): key for key, episodes in items
         }
         for future in as_completed(futures):
-            hit = future.result()
-            if hit is not None:
-                hits.append(hit)
-                print(f"[hit] {hit.key} ({len(hit.episodes)} episode(s))", flush=True)
-            checked += 1
-            if checked % 200 == 0 or checked == total:
-                print(f"[progress] {checked}/{total} unique artifacts checked", flush=True)
-    return hits
+            key = futures[future]
+            hit, failed = future.result()
+            _record(key, hit, failed)
+    return hits, failed_keys
 
 
 def main() -> int:
@@ -192,12 +212,22 @@ def main() -> int:
     print(
         f"{len(by_key)} unique agenda_text_artifact object(s) across "
         f"{sum(len(v) for v in by_key.values())} episode reference(s).",
+        file=sys.stderr,
         flush=True,
     )
-    hits = find_raw_pdf_artifacts(by_key, storage, concurrency=args.concurrency)
+    hits, failed_keys = find_raw_pdf_artifacts(by_key, storage, concurrency=args.concurrency)
 
     if args.json:
-        print(json.dumps([asdict(hit) for hit in hits], indent=2, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "hits": [asdict(hit) for hit in hits],
+                    "failed_keys": failed_keys,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
     else:
         if not hits:
             print("No raw-PDF-bytes agenda_text_artifact documents found.")
@@ -205,6 +235,16 @@ def main() -> int:
             episode_list = ", ".join(f"{ep['slug']}/{ep['uid']}" for ep in hit.episodes)
             print(f"{hit.key}: {episode_list}\n    {hit.prefix!r}")
         print(f"\n{len(hits)} affected object(s) found.")
+    if failed_keys:
+        # A failed read is not "clean" -- distinct exit code so a caller can never mistake an
+        # incomplete survey (some keys simply weren't checked) for a confirmed-clean one, even
+        # when zero hits were found among whatever did get checked.
+        print(
+            f"error: {len(failed_keys)} artifact read(s) failed; this survey is incomplete "
+            "and its manifest must not be treated as exhaustive -- rerun before relying on it",
+            file=sys.stderr,
+        )
+        return 3
     return 1 if hits else 0
 
 

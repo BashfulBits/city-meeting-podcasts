@@ -145,9 +145,9 @@ def _extract_pdf(
         from pypdf import PdfReader
         from pypdf.errors import PyPdfError
     except ImportError:
-        # pypdf is a hard, pinned dependency (pyproject.toml); its absence here means a broken
-        # environment, not a malformed document. This used to decode the PDF's own raw bytes as
-        # UTF-8 and return that as "extracted text" -- real PDF container syntax and garbled
+        # pypdf is a required dependency (pyproject.toml declares "pypdf>=5.0"); its absence here
+        # means a broken environment, not a malformed document. This used to decode the PDF's own
+        # raw bytes as UTF-8 and return that as "extracted text" -- real PDF container syntax and
         # compressed-stream bytes decode into plausible-looking, keyword-bearing noise rather than
         # raising, so it slipped past the quality gate (see the %PDF- guard added to
         # _is_placeholder_text as a second layer) and was persisted as a genuine
@@ -182,7 +182,12 @@ def _extract_pdf(
         # to AgendaTextStage's own per-candidate try/except, which just skips the candidate rather
         # than decoding anything) -- but it also meant a malformed PDF never got the chance at the
         # OCR-repair path below, unlike every other "native extraction is untrustworthy" case.
-        pass
+        #
+        # Discard whatever partial text/links were collected before the failure rather than
+        # returning them: the failure can land after several pages already appended to `texts`,
+        # and if that partial prefix happens to pass the native quality checks on its own,
+        # assess_agenda_document would accept a truncated agenda and skip OCR recovery entirely.
+        return "", []
     text = "\n".join(texts)[:MAX_TEXT_CHARS]
     return text, _dedupe_links(links + _links_from_text(text, source_url))
 

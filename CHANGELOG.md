@@ -272,10 +272,10 @@ Phase R (Research-Tool Surface)._
 
 - **Raw, undecoded PDF bytes could be persisted as a real `agenda_text_artifact`
   (`citypods/agenda_text.py`, `tests/test_agenda_text.py`, GH#1092 follow-up).** `_extract_pdf`'s
-  fallback for a non-importable `pypdf` (a hard, pinned dependency — should never fire in a
-  correctly provisioned run) decoded the PDF's own raw bytes as UTF-8 and returned that as if it
-  were extracted text. Real PDF container syntax and garbled compressed-stream bytes decode into
-  plausible, keyword-bearing noise rather than raising, so the corruption cleared
+  fallback for a non-importable `pypdf` (a required dependency, `pypdf>=5.0` — should never fire
+  in a correctly provisioned run) decoded the PDF's own raw bytes as UTF-8 and returned that as
+  if it were extracted text. Real PDF container syntax and garbled compressed-stream bytes decode
+  into plausible, keyword-bearing noise rather than raising, so the corruption cleared
   `assess_agenda_document`'s alpha-char/agenda-content-score thresholds by chance and slipped
   past the placeholder/quality gate GH#1092 built for exactly this class of bad extraction —
   confirmed against a real production episode (Austin Integrated Water Resource Planning
@@ -286,7 +286,11 @@ Phase R (Research-Tool Surface)._
   bad extraction; `_is_placeholder_text` gained a structural `%PDF-` file-signature guard as a
   second, independent layer; and `_extract_pdf`'s inner exception handling now also catches
   `pypdf.errors.PyPdfError` (previously uncaught, so a genuinely malformed PDF skipped the
-  OCR-repair path entirely instead of degrading gracefully like every other bad-PDF case).
+  OCR-repair path entirely instead of degrading gracefully like every other bad-PDF case) and, on
+  any of these now-caught exceptions, discards whatever partial text/links a multi-page PDF had
+  already accumulated before the failure rather than returning that truncated prefix — a
+  CodeRabbit catch: a partial prefix that happened to pass the native quality checks on its own
+  would otherwise let a truncated agenda through and skip OCR recovery entirely.
   `scripts/audit_raw_pdf_agenda_artifacts.py` surveys durably stored artifacts for the same
   raw-bytes signature so any pre-fix episodes can be found and reset for re-derivation — reading
   directly from the B2 origin and deduplicated by content-addressed key (never the public,
@@ -294,11 +298,19 @@ Phase R (Research-Tool Surface)._
   full-catalog run resolved 312,821 episode references down to 17,312 unique artifacts). Run
   against production, it found 67 corrupted objects across 70 episodes, all in Austin, TX
   (committed as `scripts/fixtures/raw_pdf_agenda_hits_2026-09-13.json`).
+  A storage read failure is tracked separately from a clean "not corrupted" result (the survey's
+  `--json` output is `{"hits": [...], "failed_keys": [...]}`, all progress/diagnostics on stderr
+  so stdout stays valid JSON, and the process exits 3 — distinct from 0/1 — whenever any key
+  couldn't be read, so an incomplete run is never mistaken for a confirmed-clean one).
   `scripts/reset_raw_pdf_agenda_state.py` + the `Reset raw-PDF-bytes agenda state` workflow clear
   those 70 records' derived agenda/chapter state from that manifest, re-verifying each against
   current state first (a record already reprocessed since the survey is left alone) and pushing
   one source at a time (`--sequential`) since the cohort mixes normal-sized and very large,
-  80-120MB, `episodes.json` files under what would otherwise be one 16-way-concurrent push.
+  80-120MB, `episodes.json` files under what would otherwise be one 16-way-concurrent push. The
+  reset acquires its maintenance lease before syncing/re-verifying state (narrowing, though not
+  eliminating — `AgendaTextStage`'s own push does not check this lease, the same limitation
+  `reset_agenda_chapter_state.py` already has for the same fields — the window for a concurrent
+  write to be clobbered) and refuses to plan or apply against an incompletely-synced source.
 
 - **Bounded research/review workflows now survive oversized and stale work (`tournament.py`, shared
   review resolver).** The tag tournament previously loaded chapter artifacts for the entire

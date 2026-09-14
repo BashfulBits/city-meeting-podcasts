@@ -62,8 +62,17 @@ def sync_targeted_sources(storage, state_dir: Path, source_keys: list[str]) -> i
 
 
 def load_hit_targets(hits_file: Path, slug_to_source: dict[str, str]) -> dict[str, dict[str, str]]:
-    """Return ``{source_key: {uid: expected_agenda_text_artifact_key}}`` from a survey manifest."""
-    data = json.loads(hits_file.read_text())
+    """Return ``{source_key: {uid: expected_agenda_text_artifact_key}}`` from a survey manifest.
+
+    Accepts either JSON shape the survey script has produced: a bare list of hits (the committed
+    ``scripts/fixtures/raw_pdf_agenda_hits_2026-09-13.json``), or ``{"hits": [...],
+    "failed_keys": [...]}`` (current ``audit_raw_pdf_agenda_artifacts.py --json`` output, which
+    also reports keys it could not read). A non-empty ``failed_keys`` means that survey was
+    incomplete; this reads only ``hits`` regardless, since every target here is still re-verified
+    against current record state before being touched (see ``plan_resets``).
+    """
+    raw = json.loads(hits_file.read_text())
+    data = raw["hits"] if isinstance(raw, dict) else raw
     targets: dict[str, dict[str, str]] = {}
     for hit in data:
         key = hit["key"]
@@ -215,22 +224,41 @@ def main(argv: list[str] | None = None) -> int:
                 f"warning: --source value(s) not in the hits file: {sorted(missing)}",
                 file=sys.stderr,
             )
-    if storage is not None:
-        synced = sync_targeted_sources(storage, state_dir, list(targets))
-        print(f"state: synced {synced} source file(s)")
-
-    planned = plan_resets(state_dir, targets)
-    count = sum(len(uids) for uids in planned.values())
-    if not count:
-        print("no surveyed hits still match current record state -- nothing to reset")
+    if not targets:
+        print("no targets selected from the hits file -- nothing to do", file=sys.stderr)
         return 1
-    print(f"{len(targets)} source(s) in the survey; still-corrupt records: {count}")
-    for key, uids in planned.items():
-        print(f"  {key}: {len(uids)} record(s)")
+
     if not args.apply:
+        # Dry-run: a plain preview: no lease needed since nothing is written.
+        if storage is not None:
+            synced = sync_targeted_sources(storage, state_dir, list(targets))
+            print(f"state: synced {synced}/{len(targets)} source file(s)")
+        planned = plan_resets(state_dir, targets)
+        count = sum(len(uids) for uids in planned.values())
+        if not count:
+            print("no surveyed hits still match current record state -- nothing to reset")
+            return 1
+        print(f"{len(targets)} source(s) in the survey; still-corrupt records: {count}")
+        for key, uids in planned.items():
+            print(f"  {key}: {len(uids)} record(s)")
         print("dry-run: re-run with --apply to clear and push these records")
         return 0
 
+    # --apply: acquire the maintenance lease FIRST, then sync and plan against the freshest
+    # possible state immediately before writing anything -- narrows the window between "confirmed
+    # still corrupt" and "actually reset" during which a concurrent writer could legitimately
+    # update one of these exact records.
+    #
+    # Residual limitation (not fully closeable here): this lease
+    # (AGENDA_CHAPTER_RESET_MAINTENANCE_LEASE_KEYS) is honored by the chapter-agenda/
+    # chapter-locator lanes' own writes (citypods/run.py's _chapter_record_write_lease), but
+    # AgendaTextStage -- the "audio" lane that actually owns agenda_text_artifact_key -- never
+    # checks it at all (the identical gap scripts/reset_agenda_chapter_state.py already has for
+    # the same fields). A concurrent AgendaTextStage run that happens to reprocess one of these
+    # specific episodes in the brief window between the sync below and the push could still have
+    # its fresh, good key overwritten by this reset's tombstone. Closing that fully would mean
+    # making the audio lane's push lease-aware -- a change to core production code well beyond
+    # this one-off recovery tool's scope.
     lease_owner = os.environ.get("CITYPODS_MAINTENANCE_LEASE_OWNER") or (
         f"github-actions:{os.environ.get('GITHUB_WORKFLOW', 'manual-reset')}"
         f":{os.environ.get('GITHUB_RUN_ID', 'local')}"
@@ -247,6 +275,25 @@ def main(argv: list[str] | None = None) -> int:
         target_keys = AGENDA_CHAPTER_RESET_MAINTENANCE_LEASE_KEYS
     maintenance_lease = acquire_maintenance_lease(storage, owner=lease_owner, key=target_keys)
     try:
+        synced = sync_targeted_sources(storage, state_dir, list(targets))
+        if synced != len(targets):
+            print(
+                f"error: synced {synced}/{len(targets)} source file(s) -- refusing to plan or "
+                "apply against incomplete state (a missing source would plan against a stale or "
+                "absent local copy)",
+                file=sys.stderr,
+            )
+            return 1
+
+        planned = plan_resets(state_dir, targets)
+        count = sum(len(uids) for uids in planned.values())
+        if not count:
+            print("no surveyed hits still match current record state -- nothing to reset")
+            return 1
+        print(f"{len(targets)} source(s) in the survey; still-corrupt records: {count}")
+        for key, uids in planned.items():
+            print(f"  {key}: {len(uids)} record(s)")
+
         reset_count, failed = apply_planned(
             state_dir,
             planned,
