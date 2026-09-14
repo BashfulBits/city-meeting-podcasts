@@ -95,6 +95,7 @@ from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError, is_transient_provider_error
 from citypods.records import (
+    RESET_GUARDED_AGENDA_LINK_KEYS,
     assign_uids,
     attach_auxiliary_agenda_links,
     episode_to_record,
@@ -253,6 +254,13 @@ class SourcePipeline:
         self._aggregate_persist: dict[str, list[Episode]] = {}
         self._notes: dict[str, str] = {}
         self._dirty_uids: dict[str, dict[str, str]] = {}
+        # Each source's RESET_GUARDED_AGENDA_LINK_KEYS values as pulled at the START of this run
+        # (fetch_merge's ``persisted``, before any stage touches them this run) — the audio lane's
+        # push uses it to tell a stale carried-over links value apart from one this run actually
+        # (re)derived, so a concurrent agenda/chapter maintenance reset's tombstone is never
+        # resurrected. See ARCHITECTURE.md's maintenance-lease section and
+        # records.merge_preserving_foreign's ``agenda_link_baseline``.
+        self.agenda_link_baseline: dict[str, dict[str, dict[str, object]]] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
         self._guard = threading.Lock()
         # Per-stage cost totals across all sources this run (for run history / projection).
@@ -389,6 +397,13 @@ class SourcePipeline:
         Returns ``(provider, episodes, persisted, seeded)``. ``ProviderError`` propagates."""
         provider = get_provider(city.provider)
         persisted = load_records(self.state_dir, key)
+        # Snapshot BEFORE any stage below can touch it — see ``agenda_link_baseline``'s docstring
+        # at __init__. `enrich()` calls `fetch_merge` at most once per source per run (cache-guarded
+        # by `self._cache`), so this always reflects the state this run actually started from.
+        self.agenda_link_baseline[key] = {
+            uid: {k: (rec.get("links") or {}).get(k) for k in RESET_GUARDED_AGENDA_LINK_KEYS}
+            for uid, rec in persisted.items()
+        }
         metadata = self.refresh_state.get(key) or {}
         due = refresh_due(
             metadata,
@@ -3760,6 +3775,13 @@ def _build_impl(
                     "owned_uids": shard_owned_uids,
                     "log": lambda msg: print(msg, flush=True),
                 }
+                if lane == "audio":
+                    # Closes the audio-lane vs agenda/chapter-reset TOCTOU: without it, a scoped
+                    # audio push always trusts its own (possibly stale) `links` snapshot for the
+                    # keys it owns, silently resurrecting a reset tool's just-written tombstone.
+                    # See ARCHITECTURE.md's maintenance-lease section and
+                    # merge_preserving_foreign's docstring.
+                    push_kwargs["agenda_link_baseline"] = pipeline.agenda_link_baseline
                 if maintenance_lease is not None:
                     push_kwargs["maintenance_lease"] = maintenance_lease
                 # The per-lane leases let extraction and locator work overlap, but their source

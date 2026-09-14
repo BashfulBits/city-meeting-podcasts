@@ -595,6 +595,45 @@ def test_push_records_merged_preserves_remote_decoded_plan_from_stale_audio_lane
     assert load_records(state_dir, sk)["u1"]["sources"][0]["duration_basis"] == "decoded"
 
 
+def test_push_records_merged_audio_lane_defers_to_reset_tombstone(tmp_path):
+    """End-to-end version of the TOCTOU regression (GH#1627 CodeRabbit review): a concurrent
+    agenda/chapter maintenance reset tombstones ``links.agenda_text_artifact_key`` in remote after
+    this audio run's local snapshot was taken. Without ``agenda_link_baseline`` the audio lane
+    "owns" `links` and would resurrect the stale key on push; with it, remote's tombstone wins."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    sk = "src1"
+    _seed_remote(
+        bucket,
+        sk,
+        {"u1": {"uid": "u1", "links": {"agenda_text_artifact_key": None}}},
+    )
+    # This run's local copy still carries the pre-reset value: AgendaTextStage's reuse fast-path
+    # never touched it, since the field was still present when this run started.
+    save_records(
+        state_dir,
+        sk,
+        {"u1": {"uid": "u1", "links": {"agenda_text_artifact_key": "stale-key"}}},
+    )
+    baseline = {sk: {"u1": {"agenda_text_artifact_key": "stale-key"}}}
+
+    pushed = push_records_merged(
+        bucket,
+        state_dir,
+        [sk],
+        protected_blocks=protected_blocks_for_lane("audio"),
+        lane="audio",
+        agenda_link_baseline=baseline,
+    )
+
+    assert pushed == 1
+    restored = tmp_path / "restored"
+    pull_state(bucket, restored)
+    final = load_records(restored, sk)["u1"]
+    assert final["links"]["agenda_text_artifact_key"] is None
+    assert load_records(state_dir, sk)["u1"]["links"]["agenda_text_artifact_key"] is None
+
+
 def test_push_records_merged_owned_uids_no_sibling_shard_clobber(tmp_path):
     """Two transcribe shards split ONE source per-episode (review/18 §3.2). Each pulled the whole
     source, so each local carries a snapshot-stale transcript for the uid it does not own. Pushing

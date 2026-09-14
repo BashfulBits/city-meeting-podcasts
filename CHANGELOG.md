@@ -398,6 +398,31 @@ Phase R (Research-Tool Surface)._
   `reset_agenda_chapter_state.py` already has for the same fields — the window for a concurrent
   write to be clobbered) and refuses to plan or apply against an incompletely-synced source.
 
+- **Audio-lane push now actually closes the agenda/chapter maintenance-reset TOCTOU noted just
+  above (`citypods/records.py`, `citypods/statesync.py`, `citypods/run.py`; CodeRabbit review on
+  #1627).** Both `scripts/reset_agenda_chapter_state.py` and `scripts/reset_raw_pdf_agenda_state.py`
+  (which reuses the former's `reset_record`/`reset_agenda_chapter_state` mechanics unchanged)
+  acquire a maintenance lease and write explicit `null` tombstones for
+  `links["agenda_text_artifact_key"]`/`agenda_backup_artifact_key` (and their non-`_key` URL
+  companions) before pushing, so a scoped merge can't resurrect the stale pointer — but the
+  regular Audio workflow's own `lane=audio` push never checked or waited on that lease at all, so
+  a concurrent audio run that had already decided (from an earlier read) to reuse the existing
+  artifact could push its stale, unchanged value straight over either reset tool's fresh
+  tombstone, silently undoing the reset for that episode. Rather than making the continuous,
+  wall-clock-bounded audio pipeline acquire the chapter leases for its whole run (which
+  chapter-agenda/chapter-locator can afford as short, infrequent cron jobs but audio can't,
+  without risking an in-flight run being aborted or a reset starving behind it), the fix works at
+  the data level: `SourcePipeline.fetch_merge` snapshots each uid's own
+  `RESET_GUARDED_AGENDA_LINK_KEYS` (new shared constant, `citypods/records.py`) values as pulled
+  at the *start* of the run, before any stage can touch them, and `merge_preserving_foreign` gains
+  an `agenda_link_baseline` parameter: a push whose local value for one of these keys still equals
+  that snapshot (this run never actually recomputed it) defers to `remote`'s current value when it
+  has since diverged — the reset's tombstone landing mid-run — instead of resurrecting the stale
+  pointer merely because the audio lane "owns" `links`; a run that genuinely (re)derived the key
+  always wins, so un-tombstoning on the very next normal run still works correctly.
+  `scripts/reset_agenda_chapter_state.py` now imports the shared constant instead of a private
+  duplicate, so both reset tools' target field list and this protection can never drift apart. See
+  ARCHITECTURE.md's maintenance-lease section for the full mechanism.
 - **Bounded research/review workflows now survive oversized and stale work (`tournament.py`, shared
   review resolver).** The tag tournament previously loaded chapter artifacts for the entire
   append-only catalog before taking its newest bounded sample, so the 46-sample weekly run hit its
