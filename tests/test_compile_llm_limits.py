@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml as pyyaml
 
 from scripts import compile_llm_limits
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PROVIDER_LIMITS_YAML = REPO_ROOT / "config" / "provider_limits.yml"
+
+
+def _raw_provider_limits() -> dict:
+    return pyyaml.safe_load(PROVIDER_LIMITS_YAML.read_text(encoding="utf-8"))
 
 
 def test_default_compile_never_touches_the_network(monkeypatch):
@@ -808,3 +818,34 @@ def test_observed_rpm_lowers_the_effective_limit_but_never_raises_it():
     # is no path through which a real observation could reach here as 0 -- a floor of 1.0 instead
     # silently raised a genuine sub-1.0 measurement, the opposite of what a one-way clamp permits.
     assert _rpm(0.2, 30) == 0.2, "positive measurements must remain fractional, never floored up"
+
+
+def test_nvidia_provider_wide_rpm_is_not_below_the_sum_of_its_own_routes():
+    """Regression guard for the nvidia block's stale comment/value (fixed alongside the Nemotron
+    migration): its provider-wide `rpm` is explicitly documented as a safety net only, with
+    per-route pacing meant to be the real binding constraint -- unlike e.g. Mistral, whose
+    provider-wide `rpm` genuinely IS an account-wide limit shared by every model by design, so
+    this check is NVIDIA-specific rather than a rule for every provider."""
+    raw = _raw_provider_limits()
+    nvidia_routes = [route for route in raw["routes"] if route["provider"] == "nvidia"]
+    assert nvidia_routes, "expected at least one nvidia route in config/provider_limits.yml"
+    route_rpm_sum = sum(route.get("rpm", 0) or 0 for route in nvidia_routes)
+    provider_rpm = raw["providers"]["nvidia"]["rpm"]
+    assert provider_rpm >= route_rpm_sum, (
+        f"providers['nvidia'].rpm ({provider_rpm}) is below the sum of its own routes' rpm "
+        f"({route_rpm_sum}); per-route pacing can never be the binding constraint like this"
+    )
+
+
+def test_mistral_medium_legacy_aliases_match_latest_account_coverage():
+    """mistral/mistral-medium-2505 and -2508 are legacy aliases for mistral/mistral-medium-latest
+    (`model_key`) -- their account coverage (which accounts have a route at all) must match the
+    live name's, or a job pinned to the legacy name silently has fewer routes to fall back to."""
+    raw = _raw_provider_limits()
+    accounts_by_model: dict[str, set[str]] = {}
+    for route in raw["routes"]:
+        accounts_by_model.setdefault(route["model"], set()).add(route["account_id"])
+    latest_accounts = accounts_by_model["mistral/mistral-medium-latest"]
+    assert latest_accounts == {"primary", "secondary", "tertiary"}
+    for alias in ("mistral/mistral-medium-2505", "mistral/mistral-medium-2508"):
+        assert accounts_by_model[alias] == latest_accounts, alias

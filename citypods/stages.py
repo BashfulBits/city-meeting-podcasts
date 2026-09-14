@@ -4368,7 +4368,15 @@ PROVIDER_NATIVE_PIPELINE_VERSION = "1"
 # that were already fine.
 DIARIZE_PIPELINE_VERSION = "3"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
-CHAPTER_AGENDA_PIPELINE_VERSION = "1"
+# Bumped 1 -> 2: chapter-agenda's model swapped from Mistral Medium to NVIDIA Nemotron 3 Ultra
+# (plus Gemini Flash Lite backups), and finalize_agenda_job now runs the GH#1078 recovery-shadow
+# layer instead of strict-only validation -- a post-processing behavior change independent of
+# which model produced the response. AgendaChapterCandidatesStage.process() now compares both
+# AGENDA_PRODUCTION_MODEL and this version against each completed episode's stored artifact
+# before reusing it (see the stage's own `is_current_artifact` check), so this bump is what
+# actually re-queues the back catalog -- gradually, bounded by the lane's own
+# max_dispatches_per_run/daily budget, not instantly. See chapter_titles.py's block comment.
+CHAPTER_AGENDA_PIPELINE_VERSION = "2"
 CHAPTER_LOCATOR_PIPELINE_VERSION = "1"
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
@@ -8396,7 +8404,7 @@ def _write_chapter_json(storage, key: str, value: dict) -> str:
 
 
 class AgendaChapterCandidatesStage:
-    """Extract source-grounded agenda candidates through the production Mistral route."""
+    """Extract source-grounded agenda candidates through the production LLM route."""
 
     name = "chapter_agenda"
     version = CHAPTER_AGENDA_PIPELINE_VERSION
@@ -8406,7 +8414,11 @@ class AgendaChapterCandidatesStage:
     ) -> StageStats:
         from citypods.chapter_artifacts import artifact_key
         from citypods.chapter_jobs import build_agenda_job, finalize_agenda_job
-        from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL
+        from citypods.chapter_titles import (
+            AGENDA_BACKUP_MODELS,
+            AGENDA_PRODUCTION_MODEL,
+            AGENDA_PRODUCTION_MODELS,
+        )
         from citypods.compute.base import JobHandle, JobResult
         from citypods.compute.llm import dispatch_job_batch
         from citypods.compute.llm_deferred import look_up_deferred
@@ -8471,7 +8483,22 @@ class AgendaChapterCandidatesStage:
 
             raw_agenda = ep.generated_agenda_candidates or {}
             agenda_status = raw_agenda.get("status")
-            if agenda_status in {"completed", "accepted", "not_applicable"}:
+            # A completed/accepted artifact is only current -- and therefore safe to reuse without
+            # redoing the extraction -- if it was produced by a CURRENTLY valid production model
+            # (primary or backup: finalize_agenda_job legitimately records result.model as a
+            # backup model once one completes the job, and that must not look stale just because
+            # it isn't the primary) under the CURRENT pipeline version. Either changing means real
+            # work: a new model to dispatch to, or (e.g. the recovery-shadow-layer wiring) new
+            # post-processing behavior applied to what a model already returned. Without this
+            # check, stage_is_dirty's own fingerprint (which does bake in both) makes every such
+            # episode dirty, process() would reach this branch, "reuse" it anyway, and
+            # _mark_stage_complete would then re-stamp it under the fresh fingerprint --
+            # permanently laundering stale output as current.
+            is_current_artifact = agenda_status == "not_applicable" or (
+                raw_agenda.get("model") in {*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS}
+                and raw_agenda.get("pipeline_version") == CHAPTER_AGENDA_PIPELINE_VERSION
+            )
+            if agenda_status in {"completed", "accepted", "not_applicable"} and is_current_artifact:
                 stats.reused += 1
                 continue
 
@@ -8480,16 +8507,32 @@ class AgendaChapterCandidatesStage:
             agenda_recipe = raw_agenda.get("recipe")
             is_new_dispatch = True
             if agenda_status == "pending" and isinstance(agenda_recipe, str):
-                cached = look_up_deferred(ctx.storage, agenda_recipe)
-                if isinstance(cached, JobHandle):
-                    if cached.ref and cached.ref != raw_agenda.get("job_ref"):
-                        raw_agenda = dict(raw_agenda)
-                        raw_agenda["job_ref"] = cached.ref
-                        ep.generated_agenda_candidates = raw_agenda
-                    stats.defer("llm-pending")
-                    continue
-                if isinstance(cached, JobResult):
-                    is_new_dispatch = False
+                pending_model = raw_agenda.get("model")
+                current_models = {*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS}
+                if isinstance(pending_model, str) and pending_model not in current_models:
+                    # This job was dispatched under a model no longer in production rotation (e.g.
+                    # Mistral, now blocked by an account-tier issue) -- deferring to it forever
+                    # would never pick up the current model. Retire it and fall through to a fresh
+                    # build_agenda_job() dispatch below, same as an episode with no prior attempt.
+                    # Membership is checked against the union of primary + backup models so a job
+                    # that already legitimately escalated to a backup is left alone.
+                    stale_state = {"recipe": agenda_recipe, "job_ref": raw_agenda.get("job_ref")}
+                    _cancel_chapter_fallbacks(ctx, stats, [stale_state])
+                    raw_agenda = {}
+                    ep.generated_agenda_candidates = {}
+                    agenda_status = None
+                    agenda_recipe = None
+                else:
+                    cached = look_up_deferred(ctx.storage, agenda_recipe)
+                    if isinstance(cached, JobHandle):
+                        if cached.ref and cached.ref != raw_agenda.get("job_ref"):
+                            raw_agenda = dict(raw_agenda)
+                            raw_agenda["job_ref"] = cached.ref
+                            ep.generated_agenda_candidates = raw_agenda
+                        stats.defer("llm-pending")
+                        continue
+                    if isinstance(cached, JobResult):
+                        is_new_dispatch = False
 
             if is_new_dispatch and not ctx.reserve_chapter_agenda_dispatch():
                 stats.defer("producer-cap")
@@ -8517,6 +8560,7 @@ class AgendaChapterCandidatesStage:
                     episode_uid=uid,
                     agenda_text=agenda_text,
                     agenda_source_hash=source_hash,
+                    pipeline_version=CHAPTER_AGENDA_PIPELINE_VERSION,
                 )
             except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort the
                 # build pass for every other episode
@@ -8565,6 +8609,7 @@ class AgendaChapterCandidatesStage:
                     episode_uid=uid,
                     agenda_text=agenda_text,
                     agenda_source_hash=source_hash,
+                    pipeline_version=CHAPTER_AGENDA_PIPELINE_VERSION,
                 )
                 key = artifact_key("agenda", uid, artifact.recipe)
                 url = _write_chapter_json(ctx.storage, key, artifact.to_dict())

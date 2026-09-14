@@ -2302,7 +2302,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 6,
+      "provider_rpm": 35,
       "provider_tpm": 90000,
       "provider_concurrency": 2
     },
@@ -2340,7 +2340,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 6,
+      "provider_rpm": 35,
       "provider_tpm": 90000,
       "provider_concurrency": 2
     },
@@ -2377,7 +2377,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 6,
+      "provider_rpm": 35,
       "provider_tpm": 90000,
       "provider_concurrency": 2
     },
@@ -2414,7 +2414,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 6,
+      "provider_rpm": 35,
       "provider_tpm": 90000,
       "provider_concurrency": 2
     },
@@ -2451,7 +2451,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 6,
+      "provider_rpm": 35,
       "provider_tpm": 90000,
       "provider_concurrency": 2
     },
@@ -2490,7 +2490,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 6,
+      "provider_rpm": 35,
       "provider_tpm": 90000,
       "provider_concurrency": 2
     },
@@ -2528,7 +2528,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 6,
+      "provider_rpm": 35,
       "provider_tpm": 90000,
       "provider_concurrency": 2
     },
@@ -2567,7 +2567,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 6,
+      "provider_rpm": 35,
       "provider_tpm": 90000,
       "provider_concurrency": 2
     },
@@ -2605,7 +2605,7 @@
       "chat_path": "/chat/completions",
       "api_key_env": "NVIDIA_API_KEY",
       "reset_timezone": "UTC",
-      "provider_rpm": 6,
+      "provider_rpm": 35,
       "provider_tpm": 90000,
       "provider_concurrency": 2
     }

@@ -382,6 +382,78 @@ test("completeBatch requeues one final 5xx after Gateway retries, then fails the
   assert.equal(row.state, "failed");
 });
 
+test("a job with backup_models survives past the ordinary 5xx ceiling to reach backup eligibility", async () => {
+  // Without the retry-ceiling extension, this job would terminally fail on its SECOND attempt
+  // (MAX_5XX_RETRIES=1 allows exactly one retry) -- long before attempts could ever reach
+  // backup_after_attempts=3, which sits well inside the 5-20 range backupModelsActive (routes.js)
+  // expects callers to use. A raw 503 classifies as `server_error` (classify.js's HTTP-5xx rule
+  // runs before any 429/400 check), so this is the realistic dominant failure mode for a
+  // best-effort free route, not an edge case.
+  const { coordinator, sql } = makeCoordinator({ MAX_5XX_RETRIES: "1" });
+  await coordinator.enqueueBatch([
+    makeJob("j1", {
+      policy_json: JSON.stringify({
+        allowed_models: ["gemini/gemini-flash-lite"],
+        backup_models: ["mistral/mistral-small"],
+        backup_after_attempts: 3,
+        allow_paid: false,
+      }),
+    }),
+  ]);
+
+  let now = Date.now();
+  let attemptNumber = 0;
+  let state = "queued";
+  // Bounded loop: the extended ceiling is backup_after_attempts(3) + MAX_5XX_RETRIES(1) = 4, so
+  // this must terminally fail well before 10 iterations if the extension is bounded correctly.
+  while (state === "queued" && attemptNumber < 10) {
+    attemptNumber += 1;
+    const plan = await coordinator.claimDispatchWindow(now, 25);
+    assert.equal(plan.jobs.length, 1, `expected a claimable job on attempt ${attemptNumber}`);
+    const claimed = plan.jobs[0];
+
+    if (attemptNumber === 2) {
+      // The exact point the OLD (unextended) ceiling would have already failed the job: attempt 1
+      // failed and requeued (transient_retry_count=1), and the old code checked
+      // `1 < MAX_5XX_RETRIES(1)` -> false -> failed, on THIS attempt's own completion. Assert the
+      // job is claimable at all, which it could not be if it had already failed after attempt 1.
+      assert.ok(claimed, "job must still be claimable past the ordinary 5xx ceiling");
+    }
+
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: "j1",
+        lease_token: claimed.lease_token,
+        attempt_id: `attempt-${attemptNumber}`,
+        planned_at: claimed.not_before_at,
+        outcome: "retryable_error",
+        provider_status_code: 503,
+      },
+    ]);
+    const row = [...sql.exec("SELECT state, attempts FROM jobs WHERE id='j1'")][0];
+    state = row.state;
+    if (row.attempts >= 3) {
+      // Once attempts crosses backup_after_attempts, the backup model must be indexed alongside
+      // the primary -- confirming eligibility actually activated, not just that the job survived.
+      const models = [...sql.exec(
+        "SELECT model FROM job_models WHERE job_id='j1' ORDER BY model"
+      )].map((r) => r.model);
+      assert.deepEqual(models, ["gemini/gemini-flash-lite", "mistral/mistral-small"]);
+    }
+    // Comfortably above _max5xxBackoffMs()'s 300s cap so a route blocked by a prior 503 clears
+    // its cooldown before the next claim -- otherwise, with only 2 gemini routes and backups not
+    // yet eligible early on, both can be simultaneously blocked and nothing is claimable at all,
+    // independent of the fix under test.
+    now += 400_000;
+  }
+
+  assert.equal(state, "failed", "must still terminally fail eventually, not retry forever");
+  assert.ok(attemptNumber > 2, "must survive past the ordinary (unextended) 5xx ceiling");
+  // Whether route-c actually wins the ranking once eligible is a separate concern (capacity
+  // score, free-before-paid) from reachability, which is what this test and the fix are about --
+  // the job_models assertion above is the direct proof that eligibility itself activated.
+});
+
 test("completeBatch escalates blocked_until on consecutive 402s and clears it on the next success", async () => {
   const { coordinator, sql } = makeCoordinator();
   // Single-route model (see the next test's comment) so every claim below lands on route-c,

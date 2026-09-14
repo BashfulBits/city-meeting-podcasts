@@ -15,6 +15,92 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Added
+
+- **Generic "preferred + backup model after N failed attempts" dispatch infrastructure**
+  (`citypods/compute/llm_lanes.py`'s `LaneConfig.backup_models`/`backup_after_attempts`,
+  `citypods/compute/llm_policy.py`'s matching `LLMRequestPolicy` fields,
+  `workers/llm-dispatch-v2/src/routes.js`'s `backupModelsActive`/`modelsForJob`). Any
+  `queue_only` lane may now declare backup models that become eligible once a queued job's
+  Worker-durable `jobs.attempts` counter crosses a configured threshold without a successful
+  response, or the job has already needed a JSON-schema-validation correction
+  (`jobs.schema_retry_count >= 1`, carried forward — not reset — across `schemaRetry` clones so a
+  chain of corrections crosses the same threshold as plain dispatch retries; the ingress write-unit
+  charge for a correction clone is computed from that same incremented count, not the source job's
+  pre-correction one, so a clone that activates backup-model indexing is charged for those extra
+  index rows rather than undercounted). Enforced through the
+  same ingress lane allowlist as `models` (`_modelsOutsideLane`), and never counted in a job's
+  per-job write-unit cost at enqueue time. Direct-mode (non-`queue_only`) dispatch has no
+  persistent cross-run attempt counter today and does not honor these fields — a Worker-only
+  scope, deliberately, since it's what every current consumer (`chapter-agenda`) uses.
+  - `completeBatch` raises its own class-specific retry ceilings (`MAX_5XX_RETRIES`,
+    `MAX_UPSTREAM_CAPACITY_RETRIES`) to `backup_after_attempts + <that class's own budget>` for a
+    job with backups configured (`_retryCeiling`, `coordinator.js`) — without this, a raw 5xx (the
+    realistic dominant failure mode for a best-effort free route) would terminally fail the job on
+    its second attempt, long before `attempts` could reach a double-digit threshold, making
+    backups unreachable in practice (caught in review).
+  - `_backupThresholdBelowLaneMinimum` (`coordinator.js`) rejects a job whose own
+    `policy_json.backup_after_attempts` undercuts its lane's compiled minimum
+    (`backup_after_attempts_below_lane_minimum`), the same way `_modelsOutsideLane` already
+    constrains *which* models a job may name — `scripts/compile_llm_lanes.py` now compiles
+    `backup_after_attempts` into the reservation map alongside `backup_models`.
+  - `pollBatch` now resolves a completed job's actual route (`lease_route_id`) back to its
+    canonical model (`routes.js::modelForRouteId`, a cached reverse of `model_routes_map`) and
+    returns it; `citypods/compute/llm.py`'s poll path now prefers that over the stale
+    enqueue-time-guessed `JobHandle.model` when building the final `JobResult`. Without this, a
+    job that completed on a backup route would still be recorded under its primary model.
+
+### Changed
+
+- **`chapter-agenda` lane repinned from `mistral/mistral-medium-latest` to
+  `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite` +
+  `gemini/gemini-3.5-flash-lite` as backup models (`config/site_config.yml`,
+  `backup_after_attempts: 12`).** Mistral Medium is blocked by an account-tier issue
+  (primary/secondary/tertiary keys all report an identical zero rate limit for every flagship
+  model). A 30-episode benchmark scored with the project's own `_pair_features`/`_chapter_status`
+  matcher (`scripts/research/agenda_chapters/audit_locator_crosswalk.py`) found Nemotron Ultra at
+  `max_tokens=32768` the best replacement (29/30 valid JSON, 77.9% recall, 87.4% precision — best
+  of any model tested — after fixing the same reasoning-token-budget-exhaustion bug already found
+  in DeepSeek); Gemini 3.1/3.5 Flash Lite were the next-most-reliable candidates. Bumped
+  `CHAPTER_AGENDA_PIPELINE_VERSION` `"1"` → `"2"` (`citypods/stages.py`) so the back catalog
+  reprocesses under the new model — **backfill is gradual and automatic**: every episode whose
+  stored artifact no longer matches the current production model/pipeline version is picked up by
+  the ordinary chapter-agenda cron (every 2 hours), bounded by `max_dispatches_per_run: 1000`/day,
+  draining over however many days the backlog takes.
+  - Fixed a real, independent bug found while wiring the version-bump check:
+    `AgendaChapterCandidatesStage.process()` had its own status-only early exit
+    (`raw_agenda.get("status") in {"completed", "accepted", "not_applicable"}`) with no comparison
+    to the current model or pipeline version, so on any run where nothing else in the batch also
+    deferred, an already-completed episode would be "reused" and then re-stamped complete under
+    the fresh fingerprint by `_mark_stage_complete` -- permanently laundering stale output as
+    current. Fixed by adding `pipeline_version` to `AgendaCandidatesArtifact`
+    (`citypods/chapter_artifacts.py`, empty default so pre-existing artifacts compare unequal to
+    any real version) and gating the reuse check on both `model` and `pipeline_version` matching
+    production. The currency check accepts both `AGENDA_PRODUCTION_MODELS` and
+    `AGENDA_BACKUP_MODELS`, not just the primary — otherwise a completed backup-model artifact
+    would look permanently stale and be needlessly re-dispatched (caught in review).
+  - A `"pending"` episode whose in-flight job named a model no longer in production rotation (e.g.
+    a stuck Mistral job) would defer to that dead/blocked job forever, since its recorded recipe
+    hash could never match a fresh dispatch under the new model. Fixed: such jobs are now
+    cancelled (reusing the existing `_cancel_chapter_fallbacks` primitive) and the episode falls
+    through to a fresh dispatch in the same pass, checked against the union of primary + backup
+    models so a job that already legitimately escalated to a backup is left alone.
+- **`recover_agenda_item_extractor_response` (the GH#1078 recovery-shadow layer) is now wired into
+  production** (`citypods/chapter_jobs.py::finalize_agenda_job`) instead of only the strict
+  `validate_agenda_item_extractor_response`, which raised on the first rejected item and aborted
+  the whole episode's extraction. A borderline item whose `display_ref` doesn't literally validate
+  but whose evidence a source-only search confirms is now rescued and included, tagged with a new
+  `AgendaCandidate.source` provenance field (`"strict"` | `"recovery"`,
+  `citypods/chapter_artifacts.py`, backward-compatible default); `finalize_agenda_job` still raises
+  on genuinely `unrecovered` items.
+- **`config/provider_limits.yml` audit**: the `nvidia` provider block's `rpm` (and its comment's
+  arithmetic) was stale -- 8 of its 9 routes are actually `rpm: 4` and one is `rpm: 0.5` (real sum
+  32.5), while the field itself was `rpm: 6`, making the provider-wide cap the accidental binding
+  constraint instead of per-route pacing (the block's own stated design). Raised to `rpm: 35` and
+  corrected the comment. Added matching `secondary`/`tertiary` routes for the
+  `mistral/mistral-medium-2505`/`2508` legacy aliases, whose account coverage previously lagged
+  `mistral/mistral-medium-latest`'s.
+
 ### Removed
 
 - **`ProviderTranscriptDiarizeStage` retired (`citypods/stages.py`, `citypods/records.py`,

@@ -496,6 +496,29 @@ export async function handleRequest(request, env) {
       if (result.status === "daily_cap_exceeded") {
         return errorResponse(429, "daily_cap_exceeded", "Daily job admission cap exceeded");
       }
+      // These four were already returned by coordinator.schemaRetry() but fell through to a
+      // misleading 200 with id/idempotency_key both undefined (they share the same admission
+      // gates as enqueueBatch, which -- unlike this single-job endpoint -- reports rejections in
+      // a per-job array rather than the HTTP status, so there was no existing precedent to copy).
+      if (result.status === "purpose_not_registered") {
+        return errorResponse(422, "purpose_not_registered", "Source job's purpose has no llm_lanes entry");
+      }
+      if (result.status === "model_not_in_lane") {
+        return errorResponse(422, "model_not_in_lane", "Source job names a model outside its lane");
+      }
+      if (result.status === "backup_after_attempts_below_lane_minimum") {
+        return errorResponse(
+          422,
+          "backup_after_attempts_below_lane_minimum",
+          "Source job's backup_after_attempts is below its lane's configured minimum"
+        );
+      }
+      if (result.status === "purpose_write_budget_exceeded") {
+        return errorResponse(429, "purpose_write_budget_exceeded", "Purpose's daily write-unit budget exceeded");
+      }
+      if (result.status === "ingress_write_budget_reserved") {
+        return errorResponse(429, "ingress_write_budget_reserved", "Global ingress write-unit budget exceeded");
+      }
       return jsonResponse({ id: result.id, idempotency_key: result.idempotency_key }, 200);
     } catch (err) {
       const detail = describeError(err);
