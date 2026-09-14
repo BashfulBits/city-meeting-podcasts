@@ -288,7 +288,17 @@ Phase R (Research-Tool Surface)._
   `pypdf.errors.PyPdfError` (previously uncaught, so a genuinely malformed PDF skipped the
   OCR-repair path entirely instead of degrading gracefully like every other bad-PDF case).
   `scripts/audit_raw_pdf_agenda_artifacts.py` surveys durably stored artifacts for the same
-  raw-bytes signature so any pre-fix episodes can be found and reset for re-derivation.
+  raw-bytes signature so any pre-fix episodes can be found and reset for re-derivation — reading
+  directly from the B2 origin and deduplicated by content-addressed key (never the public,
+  worker-proxied `audio.citymeetings.fyi` domain, which a naive per-episode survey saturates: a
+  full-catalog run resolved 312,821 episode references down to 17,312 unique artifacts). Run
+  against production, it found 67 corrupted objects across 70 episodes, all in Austin, TX
+  (committed as `scripts/fixtures/raw_pdf_agenda_hits_2026-09-13.json`).
+  `scripts/reset_raw_pdf_agenda_state.py` + the `Reset raw-PDF-bytes agenda state` workflow clear
+  those 70 records' derived agenda/chapter state from that manifest, re-verifying each against
+  current state first (a record already reprocessed since the survey is left alone) and pushing
+  one source at a time (`--sequential`) since the cohort mixes normal-sized and very large,
+  80-120MB, `episodes.json` files under what would otherwise be one 16-way-concurrent push.
 
 - **Bounded research/review workflows now survive oversized and stale work (`tournament.py`, shared
   review resolver).** The tag tournament previously loaded chapter artifacts for the entire

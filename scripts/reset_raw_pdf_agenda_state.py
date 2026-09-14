@@ -107,6 +107,58 @@ def plan_resets(state_dir: Path, targets: dict[str, dict[str, str]]) -> dict[str
     return planned
 
 
+def apply_planned(
+    state_dir: Path,
+    planned: dict[str, list[str]],
+    *,
+    storage,
+    maintenance_lease,
+    sequential: bool,
+) -> tuple[int, list[str]]:
+    """Apply the reset; return (records reset, source keys that failed to push).
+
+    Default: one ``reset_agenda_chapter_state`` call covering every source (its own
+    ``push_records_merged`` launches up to 16 concurrent uploads). ``sequential=True`` instead
+    pushes one source at a time, isolating a failure to that source alone -- the rest already
+    pushed are not retried, and the failed source(s) are reported so a rerun (safe:
+    ``plan_resets`` re-verifies current state first) only needs to retry what's left. Slower, but
+    the safer default for a cohort that mixes normal-sized and very large (80-120MB)
+    ``episodes.json`` files under one concurrent batch.
+    """
+    if not sequential:
+        summary = reset_agenda_chapter_state(
+            state_dir, planned, apply=True, storage=storage, maintenance_lease=maintenance_lease
+        )
+        expected = len(summary["touched_sources"])
+        ok = summary["pushed"]["chapter"] == expected and summary["pushed"]["audio"] == expected
+        return summary["reset"], ([] if ok else list(summary["touched_sources"]))
+
+    total_reset = 0
+    failed: list[str] = []
+    for src in sorted(planned):
+        one_source = {src: planned[src]}
+        try:
+            summary = reset_agenda_chapter_state(
+                state_dir,
+                one_source,
+                apply=True,
+                storage=storage,
+                maintenance_lease=maintenance_lease,
+            )
+        except Exception as exc:  # noqa: BLE001 - one source's failure must not stop the rest
+            print(f"error: {src}: {exc}", file=sys.stderr)
+            failed.append(src)
+            continue
+        expected = len(summary["touched_sources"])
+        if summary["pushed"]["chapter"] != expected or summary["pushed"]["audio"] != expected:
+            print(f"error: {src}: scoped push incomplete: {summary['pushed']}", file=sys.stderr)
+            failed.append(src)
+            continue
+        total_reset += summary["reset"]
+        print(f"  {src}: reset {summary['reset']} record(s), pushed")
+    return total_reset, failed
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -126,6 +178,17 @@ def main(argv: list[str] | None = None) -> int:
             "normal-sized episodes.json files, but a mixed batch that includes a very large one "
             "(some sources here are 100MB+) is more prone to connection failures under that "
             "burst. Pass this to push a small group (or one source) at a time instead."
+        ),
+    )
+    parser.add_argument(
+        "--sequential",
+        action="store_true",
+        help=(
+            "Push one source at a time instead of one call covering every source (which "
+            "launches up to 16 concurrent uploads -- fine normally, but this cohort mixes "
+            "normal-sized and very large, 80-120MB, episodes.json files under one batch). A "
+            "failed source is reported and skipped rather than aborting the run; a rerun safely "
+            "retries only what's left, since plan_resets() re-verifies current state first."
         ),
     )
     parser.add_argument("--site-config", default="config/site_config.yml")
@@ -184,26 +247,24 @@ def main(argv: list[str] | None = None) -> int:
         target_keys = AGENDA_CHAPTER_RESET_MAINTENANCE_LEASE_KEYS
     maintenance_lease = acquire_maintenance_lease(storage, owner=lease_owner, key=target_keys)
     try:
-        summary = reset_agenda_chapter_state(
+        reset_count, failed = apply_planned(
             state_dir,
             planned,
-            apply=True,
             storage=storage,
             maintenance_lease=maintenance_lease,
+            sequential=args.sequential,
         )
     finally:
         maintenance_lease.release()
-    expected_sources = len(summary["touched_sources"])
-    if (
-        summary["pushed"]["chapter"] != expected_sources
-        or summary["pushed"]["audio"] != expected_sources
-    ):
-        print(f"error: scoped push incomplete: {summary['pushed']}", file=sys.stderr)
+    if failed:
+        print(f"error: {len(failed)} source(s) failed to push: {sorted(failed)}", file=sys.stderr)
+        print(
+            f"reset {reset_count} record(s) before the failure(s); rerun to retry "
+            "(already-pushed sources are skipped automatically)",
+            file=sys.stderr,
+        )
         return 1
-    print(
-        f"reset {summary['reset']} record(s); pushed chapter={summary['pushed']['chapter']} "
-        f"audio={summary['pushed']['audio']} source file(s)"
-    )
+    print(f"reset {reset_count} record(s) across {len(planned)} source(s)")
     return 0
 
 
