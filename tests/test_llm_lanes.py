@@ -134,9 +134,7 @@ class TestBackupModels:
     """LaneConfig.backup_models/backup_after_attempts: a generic preferred+backup mechanism."""
 
     def test_accepts_backup_models_with_a_threshold(self):
-        lane = parse_lanes(
-            _lane(backup_models=["m2"], backup_after_attempts=5)
-        )["a-purpose"]
+        lane = parse_lanes(_lane(backup_models=["m2"], backup_after_attempts=5))["a-purpose"]
         assert lane.backup_models == ("m2",)
         assert lane.backup_after_attempts == 5
 

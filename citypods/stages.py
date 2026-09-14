@@ -8513,9 +8513,8 @@ class AgendaChapterCandidatesStage:
                     # build_agenda_job() dispatch below, same as an episode with no prior attempt.
                     # Membership is checked against the union of primary + backup models so a job
                     # that already legitimately escalated to a backup is left alone.
-                    _cancel_chapter_fallbacks(
-                        ctx, stats, [{"recipe": agenda_recipe, "job_ref": raw_agenda.get("job_ref")}]
-                    )
+                    stale_state = {"recipe": agenda_recipe, "job_ref": raw_agenda.get("job_ref")}
+                    _cancel_chapter_fallbacks(ctx, stats, [stale_state])
                     raw_agenda = {}
                     ep.generated_agenda_candidates = {}
                     agenda_status = None

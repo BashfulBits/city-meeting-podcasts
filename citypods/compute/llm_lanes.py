@@ -79,9 +79,10 @@ class LaneConfig:
     dispatch_shape: str = "pooled"
     # Models eligible only once a queued job has failed enough that ``models`` alone looks stuck --
     # see LLMRequestPolicy.backup_models/backup_after_attempts and workers/llm-dispatch-v2/src/
-    # routes.js's backupModelsActive()/modelsForJob(). Worker (queue_only) dispatch only: direct-mode
-    # calls have no persistent cross-run attempt counter to gate on today. Never part of a job's
-    # indexed model set at enqueue time, so ingress_write_units_per_job stays keyed on ``models``.
+    # routes.js's backupModelsActive()/modelsForJob(). Worker (queue_only) dispatch only:
+    # direct-mode calls have no persistent cross-run attempt counter to gate on today. Never part
+    # of a job's indexed model set at enqueue time, so ingress_write_units_per_job stays keyed on
+    # ``models``.
     backup_models: tuple[str, ...] = ()
     # How many times a job must have been dispatched without a successful response (Worker
     # ``jobs.attempts``) before backup_models become eligible -- or, independently, a job that has
