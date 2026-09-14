@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import DISPATCH_LIMITS from "../src/dispatch_limits.json" with { type: "json" };
-import { backupModelsActive, modelsForJob, routesEligibleFor } from "../src/routes.js";
+import {
+  backupModelsActive,
+  modelForRouteId,
+  modelsForJob,
+  routesEligibleFor,
+} from "../src/routes.js";
 
 function eligibleMistralRoutes(inputTokens, outputTokens) {
   return routesEligibleFor(
@@ -114,4 +119,29 @@ test("routesEligibleFor includes backup-model routes only once backupModelsActiv
   const atThreshold = routesEligibleFor(job(12), DISPATCH_LIMITS);
   assert.ok(atThreshold.some((route) => route.model === "gemini/gemini-3.1-flash-lite"));
   assert.ok(atThreshold.some((route) => route.model === "nvidia/nemotron-3-ultra-550b-a55b:free"));
+});
+
+// --- modelForRouteId --------------------------------------------------------------------------
+
+test("modelForRouteId resolves a real compiled route_id to its canonical model", () => {
+  // routes_by_id entries carry no `model` field of their own (confirmed against the real
+  // compiled catalog) -- model_routes_map is the only place the association exists, and only in
+  // the model -> routes direction.
+  assert.equal(
+    modelForRouteId("gemini_3_1_flash_lite_primary", DISPATCH_LIMITS),
+    "gemini/gemini-3.1-flash-lite"
+  );
+});
+
+test("modelForRouteId returns null for an unknown route_id or a missing catalog", () => {
+  assert.equal(modelForRouteId("no-such-route", DISPATCH_LIMITS), null);
+  assert.equal(modelForRouteId(null, DISPATCH_LIMITS), null);
+  assert.equal(modelForRouteId("gemini_3_1_flash_lite_primary", null), null);
+});
+
+test("modelForRouteId caches per dispatchLimits object identity, not globally", () => {
+  const catalogA = { model_routes_map: { "model-a": ["route-1"] } };
+  const catalogB = { model_routes_map: { "model-b": ["route-1"] } };
+  assert.equal(modelForRouteId("route-1", catalogA), "model-a");
+  assert.equal(modelForRouteId("route-1", catalogB), "model-b");
 });

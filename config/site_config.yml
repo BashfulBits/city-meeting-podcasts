@@ -132,11 +132,14 @@ llm_lanes:
     backup_models:
       - "gemini/gemini-3.1-flash-lite"
       - "gemini/gemini-3.5-flash-lite"
-    # 12 sits above the Worker's own bounded retry budgets (MAX_5XX_RETRIES=1 -> 2 attempts,
-    # MAX_UPSTREAM_CAPACITY_RETRIES=8 -> 9 attempts -- the class a rate-limited free NVIDIA route is
-    # likely to hit), so backups never preempt an already-intentional bounded retry, while staying
-    # low given Nemotron's benchmarked ~97% success rate (a job needing 12 attempts is a genuine
-    # outlier).
+    # 12 is comfortably within the 5-20 range this mechanism expects: once a lane declares
+    # backup_models, the Worker's own class-specific retry ceilings (MAX_5XX_RETRIES,
+    # MAX_UPSTREAM_CAPACITY_RETRIES) are automatically raised to guarantee the job survives to
+    # this threshold before any of them could terminally fail it (coordinator.js's completeBatch,
+    # `_retryCeiling`) -- confirmed necessary live: a raw 5xx (e.g. NVIDIA's own "Service
+    # temporarily overloaded" 503, the realistic dominant failure mode here) classifies as
+    # `server_error`, gated by MAX_5XX_RETRIES=1 (only 2 attempts) without that extension. Given
+    # Nemotron's benchmarked ~97% success rate, a job needing 12 attempts is a genuine outlier.
     backup_after_attempts: 12
     # Equal to what daily_write_units funds (4000 / 4 units per job). A higher run cap is not a
     # harmless ceiling: the producer submits to it and the Worker rejects the surplus.

@@ -109,11 +109,31 @@ export function backupModelsActive(job, policy) {
 correctly re-derived on every requeue (every requeue path already re-indexes from a freshly-read
 row that carries the current `attempts`).
 
-**Chosen `backup_after_attempts: 12`** for `chapter-agenda`: above the Worker's own bounded retry
-budgets for the failure classes a rate-limited free NVIDIA route is likely to hit
-(`MAX_5XX_RETRIES=1` → 2 attempts, `MAX_UPSTREAM_CAPACITY_RETRIES=8` → 9 attempts), so backups
-never preempt an already-intentional bounded retry, while staying low given Nemotron's benchmarked
-~97% real-world success rate (a job needing 12 attempts is a genuine outlier, not the common case).
+### Reachability: extending the retry ceiling for a job with backups configured
+
+The Worker's own class-specific retry ceilings exist to bound how long a job with **no fallback**
+gets retried (`MAX_5XX_RETRIES=1` → 2 attempts, `MAX_UPSTREAM_CAPACITY_RETRIES=8` → 9 attempts)
+before `completeBatch` marks it `failed`. Left as-is, these ceilings make a `backup_after_attempts`
+in the 5-20 range **unreachable** for the realistic dominant failure mode here: a raw HTTP 5xx
+(e.g. NVIDIA's own "Service temporarily overloaded" 503) classifies as `server_error`
+(`classify.js`'s HTTP-5xx rule runs before any 429/400 check), gated by `MAX_5XX_RETRIES=1` — the
+job would terminally fail on its second attempt, long before `attempts` could ever reach a
+double-digit threshold. Caught in review (CodeRabbit) against the first version of this change,
+which picked `backup_after_attempts: 12` specifically to sit *above* the retry budgets instead of
+fixing this.
+
+Fix: `completeBatch` reads the job's own `policy_json.backup_models`/`backup_after_attempts` and,
+when both are set, raises every one of its class-specific ceilings to
+`backup_after_attempts + <that class's own normal budget>` (`_retryCeiling`, `coordinator.js`).
+This guarantees the job survives to backup eligibility on `attempts` alone, then gets its ordinary
+per-class retry allowance again once a backup model is in play, rather than an untested unbounded
+extension — a job with no configured backups is completely unaffected (`_retryCeiling` returns the
+base ceiling unchanged).
+
+**Chosen `backup_after_attempts: 12`** for `chapter-agenda`: comfortably within the 5-20 range this
+mechanism expects, now that reachability no longer depends on ducking under a fixed retry budget.
+Given Nemotron's benchmarked ~97% real-world success rate, a job needing 12 attempts is a genuine
+outlier, not the common case.
 
 ### Scope: Worker (`queue_only`) dispatch only
 
@@ -124,6 +144,30 @@ direct-mode dispatch would need a new counter (most naturally living in the LLM 
 `citypods/compute/llm_budget.py`) and is left as a follow-up if a direct-mode lane ever needs it.
 Every current dispatching lane that might want this (`chapter-agenda`, `chapter-locator`,
 `topic-tags:*`, `r6-moments`) already uses `queue_only=True`.
+
+### Ingress enforcement of `backup_after_attempts`
+
+`_modelsOutsideLane` already stops a job naming a model outside its lane's declared
+`models`/`backup_models`, but that alone doesn't stop a job from declaring a *lower*
+`backup_after_attempts` than the lane intends — the models named would still be legal, only the
+threshold would be wrong. `scripts/compile_llm_lanes.py` also compiles `backup_after_attempts`
+into the reservation map, and `coordinator.js::_backupThresholdBelowLaneMinimum` rejects
+(`backup_after_attempts_below_lane_minimum`) any job whose own policy undercuts it, at the same
+three admission points `_modelsOutsideLane` already guards (new-job enqueue, idempotent supersede,
+`schemaRetry`). A job that declares no backup models at all is unaffected.
+
+### Recording which model actually completed a job
+
+`JobHandle.model` is set once at enqueue time from `allowed_models[0]` and never updated
+afterward — it always names the *primary* model, even for a job that later completes on a backup
+route. `pollBatch` now resolves a completed job's actual route (`lease_route_id`, left untouched by
+`completeBatch`'s success path) back to its canonical model via `routes.js::modelForRouteId` (a
+cached reverse of `model_routes_map`, since `routes_by_id` entries carry no `model` field of their
+own) and returns it; the Python client (`_poll_batch_chunk`/`_resolve_completed`,
+`citypods/compute/llm.py`) prefers that returned model over the handle's stale guess when building
+the final `JobResult`. Without this, `AgendaCandidatesArtifact.model` (and by extension the
+`AgendaChapterCandidatesStage.process()` currency check above) would silently misattribute every
+backup completion to the primary model.
 
 ## Alternatives considered
 

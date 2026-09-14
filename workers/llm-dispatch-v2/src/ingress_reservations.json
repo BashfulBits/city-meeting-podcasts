@@ -15,6 +15,7 @@
         "gemini/gemini-3.1-flash-lite",
         "gemini/gemini-3.5-flash-lite"
       ],
+      "backup_after_attempts": 12,
       "dispatch_shape": "pooled",
       "write_units_per_job": 4
     },
@@ -27,6 +28,7 @@
         "moonshotai/kimi-k3"
       ],
       "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 6
     },
@@ -37,6 +39,7 @@
         "google/gemma-4-31b-it"
       ],
       "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 4
     },
@@ -49,6 +52,7 @@
         "zai/glm-4.7-flash"
       ],
       "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "per_model",
       "write_units_per_job": 4
     },
@@ -62,6 +66,7 @@
         "openai/gpt-oss-120b"
       ],
       "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 7
     },
@@ -77,6 +82,7 @@
         "moonshotai/kimi-k3"
       ],
       "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 9
     },
@@ -87,6 +93,7 @@
         "google/gemma-4-31b-it"
       ],
       "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 4
     },
@@ -97,6 +104,7 @@
         "gemini/gemini-3.1-flash-lite"
       ],
       "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 4
     },
@@ -110,6 +118,7 @@
         "google/gemma-4-26b-a4b-it"
       ],
       "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "per_model",
       "write_units_per_job": 4
     },
@@ -120,6 +129,7 @@
         "google/gemma-4-31b-it"
       ],
       "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 4
     }

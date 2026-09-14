@@ -25,11 +25,30 @@ Phase R (Research-Tool Surface)._
   Worker-durable `jobs.attempts` counter crosses a configured threshold without a successful
   response, or the job has already needed a JSON-schema-validation correction
   (`jobs.schema_retry_count >= 1`, carried forward — not reset — across `schemaRetry` clones so a
-  chain of corrections crosses the same threshold as plain dispatch retries). Enforced through the
+  chain of corrections crosses the same threshold as plain dispatch retries; the ingress write-unit
+  charge for a correction clone is computed from that same incremented count, not the source job's
+  pre-correction one, so a clone that activates backup-model indexing is charged for those extra
+  index rows rather than undercounted). Enforced through the
   same ingress lane allowlist as `models` (`_modelsOutsideLane`), and never counted in a job's
   per-job write-unit cost at enqueue time. Direct-mode (non-`queue_only`) dispatch has no
   persistent cross-run attempt counter today and does not honor these fields — a Worker-only
   scope, deliberately, since it's what every current consumer (`chapter-agenda`) uses.
+  - `completeBatch` raises its own class-specific retry ceilings (`MAX_5XX_RETRIES`,
+    `MAX_UPSTREAM_CAPACITY_RETRIES`) to `backup_after_attempts + <that class's own budget>` for a
+    job with backups configured (`_retryCeiling`, `coordinator.js`) — without this, a raw 5xx (the
+    realistic dominant failure mode for a best-effort free route) would terminally fail the job on
+    its second attempt, long before `attempts` could reach a double-digit threshold, making
+    backups unreachable in practice (caught in review).
+  - `_backupThresholdBelowLaneMinimum` (`coordinator.js`) rejects a job whose own
+    `policy_json.backup_after_attempts` undercuts its lane's compiled minimum
+    (`backup_after_attempts_below_lane_minimum`), the same way `_modelsOutsideLane` already
+    constrains *which* models a job may name — `scripts/compile_llm_lanes.py` now compiles
+    `backup_after_attempts` into the reservation map alongside `backup_models`.
+  - `pollBatch` now resolves a completed job's actual route (`lease_route_id`) back to its
+    canonical model (`routes.js::modelForRouteId`, a cached reverse of `model_routes_map`) and
+    returns it; `citypods/compute/llm.py`'s poll path now prefers that over the stale
+    enqueue-time-guessed `JobHandle.model` when building the final `JobResult`. Without this, a
+    job that completed on a backup route would still be recorded under its primary model.
 
 ### Changed
 
@@ -57,7 +76,9 @@ Phase R (Research-Tool Surface)._
     current. Fixed by adding `pipeline_version` to `AgendaCandidatesArtifact`
     (`citypods/chapter_artifacts.py`, empty default so pre-existing artifacts compare unequal to
     any real version) and gating the reuse check on both `model` and `pipeline_version` matching
-    production.
+    production. The currency check accepts both `AGENDA_PRODUCTION_MODELS` and
+    `AGENDA_BACKUP_MODELS`, not just the primary — otherwise a completed backup-model artifact
+    would look permanently stale and be needlessly re-dispatched (caught in review).
   - A `"pending"` episode whose in-flight job named a model no longer in production rotation (e.g.
     a stuck Mistral job) would defer to that dead/blocked job forever, since its recorded recipe
     hash could never match a fresh dispatch under the new model. Fixed: such jobs are now

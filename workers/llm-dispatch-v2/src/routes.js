@@ -29,6 +29,35 @@ export function routeFromCatalog(routeId, dispatchLimits, model) {
   return stored ? { ...stored, route_id: routeId, model } : null;
 }
 
+// Reverse of model_routes_map (model -> [route_ids]), built lazily and cached per dispatchLimits
+// object identity -- there can be more than one live catalog object in a test process (a real
+// DISPATCH_LIMITS import plus a per-test DISPATCH_LIMITS_OVERRIDE), so a single module-level cache
+// would leak a stale mapping across them. A WeakMap key means a discarded test catalog's entry is
+// GC'd for free, and a keyless plain object is never accidentally cached against `undefined`.
+const _routeModelCache = new WeakMap();
+
+/**
+ * The canonical model a given `route_id` serves. `routes_by_id` entries carry no `model` field of
+ * their own (confirmed against the real compiled catalog) -- `model_routes_map` is the only place
+ * that association exists, and only in the model -> routes direction, so this builds the reverse
+ * map once per catalog rather than scanning it on every call.
+ */
+export function modelForRouteId(routeId, dispatchLimits) {
+  if (!routeId || !dispatchLimits) return null;
+  let cache = _routeModelCache.get(dispatchLimits);
+  if (!cache) {
+    cache = new Map();
+    for (const [model, routeIds] of Object.entries(dispatchLimits.model_routes_map || {})) {
+      if (!Array.isArray(routeIds)) continue;
+      for (const id of routeIds) {
+        if (!cache.has(id)) cache.set(id, model);
+      }
+    }
+    _routeModelCache.set(dispatchLimits, cache);
+  }
+  return cache.get(routeId) ?? null;
+}
+
 /**
  * Check a request against one route's context ceilings.
  *

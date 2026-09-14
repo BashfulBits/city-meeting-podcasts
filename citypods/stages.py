@@ -8484,15 +8484,18 @@ class AgendaChapterCandidatesStage:
             raw_agenda = ep.generated_agenda_candidates or {}
             agenda_status = raw_agenda.get("status")
             # A completed/accepted artifact is only current -- and therefore safe to reuse without
-            # redoing the extraction -- if it was produced by the CURRENT production model under
-            # the CURRENT pipeline version. Either changing means real work: a new model to
-            # dispatch to, or (e.g. the recovery-shadow-layer wiring) new post-processing behavior
-            # applied to what a model already returned. Without this check, stage_is_dirty's own
-            # fingerprint (which does bake in both) makes every such episode dirty, process() would
-            # reach this branch, "reuse" it anyway, and _mark_stage_complete would then re-stamp it
-            # under the fresh fingerprint -- permanently laundering stale output as current.
+            # redoing the extraction -- if it was produced by a CURRENTLY valid production model
+            # (primary or backup: finalize_agenda_job legitimately records result.model as a
+            # backup model once one completes the job, and that must not look stale just because
+            # it isn't the primary) under the CURRENT pipeline version. Either changing means real
+            # work: a new model to dispatch to, or (e.g. the recovery-shadow-layer wiring) new
+            # post-processing behavior applied to what a model already returned. Without this
+            # check, stage_is_dirty's own fingerprint (which does bake in both) makes every such
+            # episode dirty, process() would reach this branch, "reuse" it anyway, and
+            # _mark_stage_complete would then re-stamp it under the fresh fingerprint --
+            # permanently laundering stale output as current.
             is_current_artifact = agenda_status == "not_applicable" or (
-                raw_agenda.get("model") == AGENDA_PRODUCTION_MODEL
+                raw_agenda.get("model") in {*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS}
                 and raw_agenda.get("pipeline_version") == CHAPTER_AGENDA_PIPELINE_VERSION
             )
             if agenda_status in {"completed", "accepted", "not_applicable"} and is_current_artifact:

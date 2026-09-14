@@ -8,7 +8,14 @@ import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 // the same block citypods/compute/llm_lanes.py reads, so client and Worker cannot disagree
 // about which purposes exist or what each may spend. Drift-checked in the deploy workflow.
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
-import { canonicalModelName, modelsForJob, routeFitsContext, routesEligibleFor } from "./routes.js";
+import {
+  canonicalModelName,
+  jobPolicy,
+  modelForRouteId,
+  modelsForJob,
+  routeFitsContext,
+  routesEligibleFor,
+} from "./routes.js";
 import {
   availableTokenBudget,
   computeRouteLaneWait,
@@ -540,6 +547,34 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return offenders;
   }
 
+  /**
+   * A registered purpose whose lane declares `backup_models` still may not activate them earlier
+   * than the lane's own configured `backup_after_attempts` -- `_modelsOutsideLane` above only
+   * enforces WHICH models a job may name, never WHEN a caller's own `policy_json` says they
+   * activate. `validateEnqueueJob` never validates `policy_json` and the coordinator otherwise
+   * only checks purpose/model allowlists, so without this a producer could pass a lower threshold
+   * than the lane declares and unlock a reviewed/budgeted backup model far sooner than intended.
+   * `schema_retry_count`'s independent activation trigger (routes.js's `backupModelsActive`) is
+   * untouched -- this only floors the attempts-based threshold.
+   *
+   * Returns `false` (admit) when the job names no backup models, or when the lane itself declares
+   * no `backup_after_attempts` floor to enforce.
+   */
+  _backupThresholdBelowLaneMinimum(job, reservation) {
+    let policy;
+    try {
+      policy = typeof job.policy_json === "string" ? JSON.parse(job.policy_json) : job.policy_json;
+    } catch {
+      return false;
+    }
+    const requestedBackupModels = Array.isArray(policy?.backup_models) ? policy.backup_models : [];
+    if (requestedBackupModels.length === 0) return false;
+    const laneThreshold = reservation?.backup_after_attempts;
+    if (!Number.isInteger(laneThreshold) || laneThreshold <= 0) return false;
+    const requestedThreshold = policy?.backup_after_attempts;
+    return !Number.isInteger(requestedThreshold) || requestedThreshold < laneThreshold;
+  }
+
   _purposeForJob(job) {
     if (typeof job.purpose === "string" && job.purpose.trim()) return job.purpose.trim();
     try {
@@ -875,6 +910,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
               });
               continue;
             }
+            if (
+              this._backupThresholdBelowLaneMinimum(
+                { ...job, policy_json: policyJson },
+                ingressReservations[purpose]
+              )
+            ) {
+              rejected.push({
+                id: job.id,
+                reason: "backup_after_attempts_below_lane_minimum",
+                purpose,
+              });
+              continue;
+            }
             sql.exec(
               `UPDATE jobs SET
                  request_digest = ?, provider_idempotency_key = ?, state = 'queued',
@@ -947,6 +995,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
             reason: "model_not_in_lane",
             purpose,
             models: offendingModels,
+          });
+          continue;
+        }
+        if (this._backupThresholdBelowLaneMinimum({ ...job, policy_json: policyJson }, reservation)) {
+          rejected.push({
+            id: job.id,
+            reason: "backup_after_attempts_below_lane_minimum",
+            purpose,
           });
           continue;
         }
@@ -1102,15 +1158,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
       if (this._modelsOutsideLane(source, reservation, this._dispatchLimits()).length > 0) {
         return { status: "model_not_in_lane" };
       }
+      if (this._backupThresholdBelowLaneMinimum(source, reservation)) {
+        return { status: "backup_after_attempts_below_lane_minimum" };
+      }
       const purposeUsage = [...sql.exec(
         "SELECT write_units FROM ingress_purpose WHERE utc_day = ? AND purpose = ?",
         sched.utc_day,
         purpose
       )][0]?.write_units || 0;
+      // Computed before the write-unit charge (not alongside the INSERT below) so
+      // _ingressWriteUnitsFor -> _modelsToIndex -> backupModelsActive sees the SAME
+      // schema_retry_count the clone will actually be created with -- otherwise a correction that
+      // activates backup-model indexing (schema_retry_count >= 1) would be charged as if it only
+      // indexed the primary model, undercounting against the purpose/global write-unit budgets.
+      const nextSchemaRetryCount = (Number(source.schema_retry_count) || 0) + 1;
       const retryJob = {
         ...source,
         input_token_estimate: retry.corrected_input_token_estimate,
         max_output_token_estimate: source.max_output_token_estimate,
+        attempts: source.attempts,
+        schema_retry_count: nextSchemaRetryCount,
       };
       const writeUnits = this._ingressWriteUnitsFor(retryJob);
       const purposeWriteLimit = Number(reservation.daily_write_units);
@@ -1139,7 +1206,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // the same backup_after_attempts threshold as a job that failed the same number of times on
       // plain dispatch attempts (backupModelsActive, routes.js) -- otherwise a schema-correction
       // clone would always start over at attempts=0 and could never surface a backup model.
-      const nextSchemaRetryCount = (Number(source.schema_retry_count) || 0) + 1;
+      // (nextSchemaRetryCount computed above, before the write-unit charge.)
       sql.exec(
         `INSERT INTO jobs (
           id, idempotency_key, request_digest, provider_idempotency_key,
@@ -1359,11 +1426,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
 
     const sql = this._getSql();
+    // A completed job's `lease_route_id` is left untouched by completeBatch's success UPDATE (it
+    // only rewrites `state`/`result_key`/`updated_at`), so it still names the physical route the
+    // job actually completed on -- including a backup route a primary-pinned job escalated to.
+    // Without returning the model that route serves, the client falls back to whichever model it
+    // guessed at enqueue time (JobHandle.model, set from allowed_models[0]), which is always the
+    // PRIMARY model regardless of which one actually produced the response.
+    const dispatchLimits = this._dispatchLimits();
     const statuses = [];
     for (const chunk of this._chunks(ids)) {
       const placeholders = chunk.map(() => "?").join(",");
       const rows = [...sql.exec(
-        `SELECT id, state, result_key, attempts FROM jobs WHERE id IN (${placeholders})`,
+        `SELECT id, state, result_key, attempts, lease_route_id FROM jobs WHERE id IN (${placeholders})`,
         ...chunk
       )];
       for (const row of rows) {
@@ -1373,6 +1447,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           result_key: row.state === "completed" ? row.result_key : null,
           error: row.state === "failed" ? "job_failed" : null,
           attempts: row.attempts,
+          model:
+            row.state === "completed"
+              ? modelForRouteId(row.lease_route_id, dispatchLimits)
+              : null,
         });
       }
     }
@@ -2718,6 +2796,29 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         const job = jobRows[0];
 
+        // A job with configured backup_models must actually survive long enough to try them.
+        // Every class-specific retry ceiling below (MAX_5XX_RETRIES, MAX_UPSTREAM_CAPACITY_RETRIES)
+        // is tuned for a job with no fallback -- confirmed live: a raw 5xx (e.g. NVIDIA's own
+        // "Service temporarily overloaded" 503) classifies as `server_error` (classify.js's HTTP
+        // 5xx rule runs before any 429/400 check), gated by MAX_5XX_RETRIES=1, i.e. only 2 total
+        // attempts before terminal failure -- nowhere near a `backup_after_attempts` in the 5-20
+        // range backupModelsActive (routes.js) expects. Without this, backups configured for
+        // exactly this failure mode would almost never actually be reached. Once backups are
+        // configured, every ceiling below is raised to `backup_after_attempts + <its own normal
+        // budget>`: the job survives (at minimum) to backup eligibility on `attempts` alone, then
+        // gets its ordinary per-class retry allowance again while a backup model is in play,
+        // rather than an untested, unbounded extension.
+        const backupPolicy = jobPolicy(job);
+        const backupAfterAttempts =
+          Array.isArray(backupPolicy?.backup_models) &&
+          backupPolicy.backup_models.length > 0 &&
+          Number.isInteger(backupPolicy?.backup_after_attempts) &&
+          backupPolicy.backup_after_attempts > 0
+            ? backupPolicy.backup_after_attempts
+            : 0;
+        const _retryCeiling = (base) =>
+          backupAfterAttempts > 0 ? backupAfterAttempts + base : base;
+
         const isFinal5xx =
           result.outcome === "retryable_error" &&
           Number.isInteger(result.provider_status_code) &&
@@ -2730,7 +2831,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const isPaymentRequired =
           result.outcome === "retryable_error" &&
           result.provider_status_code === 402 &&
-          job.transient_retry_count < this._max5xxRetries();
+          job.transient_retry_count < _retryCeiling(this._max5xxRetries());
         // A 400 only ever arrives as `retryable_error` when the dispatcher read the body and found
         // the provider blaming its own upstream (see gateway.js's upstreamCapacityFailure). The DO
         // never sees payloads, so the pair (retryable_error, 400) is the whole signal here. The
@@ -2753,12 +2854,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
           result.failure_class === "upstream_capacity" ||
           result.failure_class === "gateway_limit";
         const isUpstreamRetryable =
-          isUpstreamClass && job.transient_retry_count < this._maxUpstreamCapacityRetries();
+          isUpstreamClass &&
+          job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
         const isRateLimitTerminal =
           result.provider_status_code === 429 &&
-          job.transient_retry_count < this._max5xxRetries();
+          job.transient_retry_count < _retryCeiling(this._max5xxRetries());
         const shouldRetry5xx =
-          isTransientRouteFailure && job.transient_retry_count < this._max5xxRetries();
+          isTransientRouteFailure &&
+          job.transient_retry_count < _retryCeiling(this._max5xxRetries());
         const shouldRequeue =
           shouldRetry5xx || isPaymentRequired || isRateLimitTerminal || isUpstreamRetryable;
 
