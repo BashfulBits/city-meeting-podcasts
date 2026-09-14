@@ -130,6 +130,58 @@ class TestParsing:
             parse_lanes({"topic-tags:rules": _lane()["a-purpose"]})
 
 
+class TestBackupModels:
+    """LaneConfig.backup_models/backup_after_attempts: a generic preferred+backup mechanism."""
+
+    def test_accepts_backup_models_with_a_threshold(self):
+        lane = parse_lanes(
+            _lane(backup_models=["m2"], backup_after_attempts=5)
+        )["a-purpose"]
+        assert lane.backup_models == ("m2",)
+        assert lane.backup_after_attempts == 5
+
+    def test_defaults_to_no_backup_models(self):
+        lane = parse_lanes(_lane())["a-purpose"]
+        assert lane.backup_models == ()
+        assert lane.backup_after_attempts is None
+
+    def test_rejects_backup_models_without_a_threshold(self):
+        with pytest.raises(ValueError, match="backup_models must be a non-empty list"):
+            parse_lanes(_lane(backup_models=["m2"]))
+
+    def test_rejects_a_threshold_without_backup_models(self):
+        with pytest.raises(ValueError, match="backup_models must be a non-empty list"):
+            parse_lanes(_lane(backup_after_attempts=5))
+
+    def test_rejects_overlap_with_models(self):
+        with pytest.raises(ValueError, match="overlaps its own models"):
+            parse_lanes(_lane(backup_models=["m1"], backup_after_attempts=5))
+
+    def test_rejects_backup_models_on_a_per_model_lane(self):
+        with pytest.raises(ValueError, match="per_model"):
+            parse_lanes(
+                _lane(
+                    dispatch_shape="per_model",
+                    backup_models=["m2"],
+                    backup_after_attempts=5,
+                )
+            )
+
+    def test_rejects_a_non_positive_threshold(self):
+        with pytest.raises(ValueError, match="backup_after_attempts must be positive"):
+            parse_lanes(_lane(backup_models=["m2"], backup_after_attempts=0))
+
+    def test_rejects_duplicate_backup_models(self):
+        with pytest.raises(ValueError, match="duplicates"):
+            parse_lanes(_lane(backup_models=["m2", "m2"], backup_after_attempts=5))
+
+    def test_backup_models_are_not_counted_in_ingress_write_units(self):
+        lane = parse_lanes(
+            _lane(models=["m1"], backup_models=["m2", "m3"], backup_after_attempts=5)
+        )["a-purpose"]
+        assert lane.ingress_write_units_per_job == 4  # 3 + len(models), backups excluded
+
+
 class TestWriteUnitAccounting:
     def test_a_pooled_lane_charges_one_index_row_per_model(self):
         # Mirrors coordinator.js's _ingressWriteUnitsFor: job row + purpose ledger + scheduler
@@ -221,6 +273,7 @@ class TestRepositoryConfig:
             assert entry["reserved_write_units"] == lane.reserved_write_units
             assert entry["daily_write_units"] == lane.daily_write_units
             assert entry["models"] == list(lane.models)
+            assert entry["backup_models"] == list(lane.backup_models)
 
     def test_every_lane_run_cap_is_funded_by_its_daily_budget(self):
         for lane in load_lanes().values():
@@ -247,7 +300,7 @@ class TestRecipeAffectingModelPins:
     @pytest.mark.parametrize(
         ("purpose", "expected"),
         [
-            ("chapter-agenda", "mistral/mistral-medium-latest"),
+            ("chapter-agenda", "nvidia/nemotron-3-ultra-550b-a55b:free"),
             ("chapter-locator", "gemini/gemini-3.5-flash-lite"),
             ("topic-tags:tagger", "gemini/gemini-3.1-flash-lite"),
             ("topic-tags:prelabeler", "google/gemma-4-31b-it"),
@@ -258,10 +311,20 @@ class TestRecipeAffectingModelPins:
 
     def test_constants_resolve_to_their_lane(self):
         from citypods.chapter_locator import PRODUCTION_LOCATOR_MODEL
-        from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL, AGENDA_PRODUCTION_MODELS
+        from citypods.chapter_titles import (
+            AGENDA_BACKUP_AFTER_ATTEMPTS,
+            AGENDA_BACKUP_MODELS,
+            AGENDA_PRODUCTION_MODEL,
+            AGENDA_PRODUCTION_MODELS,
+        )
 
         assert AGENDA_PRODUCTION_MODEL == lane_for("chapter-agenda").primary_model
         assert AGENDA_PRODUCTION_MODELS == lane_for("chapter-agenda").models
+        assert AGENDA_BACKUP_MODELS == (
+            "gemini/gemini-3.1-flash-lite",
+            "gemini/gemini-3.5-flash-lite",
+        )
+        assert AGENDA_BACKUP_AFTER_ATTEMPTS == 12
         assert PRODUCTION_LOCATOR_MODEL == lane_for("chapter-locator").primary_model
 
 

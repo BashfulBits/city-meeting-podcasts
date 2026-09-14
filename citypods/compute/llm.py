@@ -2203,6 +2203,19 @@ class LiteLLMBackend(Backend):
             out_tokens = self._output_token_budget(job)
             priority = policy.priority if policy else 1
 
+            policy_json_payload: dict[str, Any] = {
+                "allowed_models": allowed,
+                "allow_paid": getattr(policy, "allow_paid", False) if policy else False,
+                "purpose": getattr(policy, "purpose", "") if policy else "",
+            }
+            backup_models = getattr(policy, "backup_models", ()) if policy else ()
+            backup_after_attempts = (
+                getattr(policy, "backup_after_attempts", None) if policy else None
+            )
+            if backup_models and backup_after_attempts:
+                policy_json_payload["backup_models"] = list(backup_models)
+                policy_json_payload["backup_after_attempts"] = backup_after_attempts
+
             prepared_jobs.append(
                 {
                     "id": job_id,
@@ -2213,15 +2226,7 @@ class LiteLLMBackend(Backend):
                     "max_output_token_estimate": out_tokens,
                     "payload_key": payload_key,
                     "priority": priority,
-                    "policy_json": json.dumps(
-                        {
-                            "allowed_models": allowed,
-                            "allow_paid": (
-                                getattr(policy, "allow_paid", False) if policy else False
-                            ),
-                            "purpose": getattr(policy, "purpose", "") if policy else "",
-                        }
-                    ),
+                    "policy_json": json.dumps(policy_json_payload),
                 }
             )
             job_meta.append((idx, job, structured_name, logical_model, job_id))

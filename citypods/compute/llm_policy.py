@@ -53,6 +53,14 @@ class LLMRequestPolicy:
     # only at submission (LiteLLMBackend.enqueue_batch reads this field directly); there is
     # deliberately no API to edit priority on an already-queued job.
     priority: Literal[0, 1] = 1
+    # Models eligible only once a queued job looks stuck on `allowed_models` alone -- mirrors
+    # `LaneConfig.backup_models`/`backup_after_attempts` (citypods/compute/llm_lanes.py). Only takes
+    # effect for `queue_only=True` requests: the Worker's `jobs.attempts`/`schema_retry_count`
+    # columns are the durable, cross-lease counters this gates on (see
+    # workers/llm-dispatch-v2/src/routes.js's `backupModelsActive`/`modelsForJob`); direct-mode
+    # dispatch has no equivalent persistent counter today and ignores these fields.
+    backup_models: tuple[str, ...] = ()
+    backup_after_attempts: int | None = None
 
 
 @dataclass(frozen=True)

@@ -242,11 +242,12 @@ providers:
   # ~40 RPM, account-wide, "dependent on model, use-case, and current overall traffic" per
   # NVIDIA's own developer-forum staff replies, and developers report 429s even under light load.
   # Treat this whole provider as best-effort capacity, never a committed SLA:
-  #   - `rpm: 12` is a *self-imposed* 30% cap of the ~40 RPM community baseline (40 * 0.30 = 12),
-  #     not a limit NVIDIA documents. This is the one number this account actually enforces via
-  #     the shared `ProviderLedger` (see `citypods/compute/llm_budget.py`), pacing every model and
-  #     route below off one account-wide clock -- mirroring how the Mistral provider block already
-  #     paces every Mistral model off one shared account limit.
+  #   - `rpm: 35` is a self-imposed provider-wide safety net, set above the actual sum of every
+  #     route's own `rpm` below (8 routes at 4 + 1 at 0.5 = 32.5) so per-route pacing -- not this
+  #     account-wide clock -- stays the binding constraint (see the comment on `rpm` itself below
+  #     for the full reasoning; this is the one number this account actually enforces via the
+  #     shared `ProviderLedger`, see `citypods/compute/llm_budget.py`), mirroring how the Mistral
+  #     provider block already paces every Mistral model off one shared account limit.
   #   - Every route below also declares `tpm: 100000` as a second, independent self-imposed cap.
   #     NOTE: this is an *approximation*, not a true provider-level TPM ledger -- the schema/code
   #     (`LLMBudget`/`ProviderLedger`) only actually enforces a shared limit for `rpm`
@@ -273,14 +274,19 @@ providers:
     ai_gateway_chat_path: /v1/chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
-    # Provider-wide safety net only -- the REAL limit is per route (0.5 rpm each). NVIDIA's quota
-    # is per MODEL, not per account: verified 2026-08-29 on one key, `deepseek-v4-pro` returned 429
-    # nine times out of nine while `nemotron-3-super` returned 200 three times, twice inside the
-    # same minute (16:58:14 ok / 16:58:50 429). A tight provider-wide cap would therefore be the
-    # wrong instrument -- it would make nine models share one model's budget. This only has to sit
-    # clear of the ~40 RPM community-reported account baseline while staying above the sum of the
-    # route rates (9 x 0.5 = 4.5), leaving per-route pacing as the binding constraint.
-    rpm: 6
+    # Provider-wide safety net only -- the REAL limit is per route, and it is NOT uniform: 8 of the
+    # 9 routes below are `rpm: 4` and one (`nvidia_deepseek_v4_pro_0813_free`) is `rpm: 0.5` --
+    # verified 2026-08-29, real per-route sum 8*4 + 0.5 = 32.5, not a flat "9 routes at the same
+    # rate". NVIDIA's quota is per MODEL, not per account: on the same day, `deepseek-v4-pro`
+    # returned 429 nine times out of nine while `nemotron-3-super` returned 200 three times, twice
+    # inside the same minute (16:58:14 ok / 16:58:50 429). A tight provider-wide cap would
+    # therefore be the wrong instrument -- it would make nine models share one model's budget.
+    # This field only has to clear the real 32.5 per-route sum with margin while staying under the
+    # ~40 RPM community-reported account baseline, leaving per-route pacing as the binding
+    # constraint -- which a value below the real sum (the previous `rpm: 6`, itself inconsistent
+    # with the stale "0.5 rpm each" arithmetic once written here) defeats by becoming the
+    # accidental binding constraint instead.
+    rpm: 35
     tpm: 100000
     concurrency: 2
     accounts:
@@ -1108,6 +1114,39 @@ routes:
     observed_burst: 0
     upstream_429_default: upstream_capacity
 
+  # Legacy Medium aliases mapping to mistral/mistral-medium-latest -- account coverage matches
+  # mistral_medium_latest_secondary field-for-field (compile_llm_limits.py's alias-coalescing
+  # check requires this), same as the two `_alias_primary` routes above already do.
+  - route_id: mistral_medium_2508_alias_secondary
+    model: mistral/mistral-medium-2508
+    model_key: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: secondary
+    rpm: 50
+    tpm: 25000
+    free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_medium_2505_alias_secondary
+    model: mistral/mistral-medium-2505
+    model_key: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: secondary
+    rpm: 50
+    tpm: 25000
+    free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
+
   - route_id: mistral_large_2512_secondary
     model: mistral/mistral-large-2512
     provider: mistral
@@ -1183,6 +1222,34 @@ routes:
 
   - route_id: mistral_medium_latest_tertiary
     model: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: tertiary
+    rpm: 50
+    tpm: 25000
+    free: true
+    upstream_429_default: upstream_capacity
+
+  # Legacy Medium aliases mapping to mistral/mistral-medium-latest -- account coverage matches
+  # mistral_medium_latest_tertiary field-for-field, same as the primary/secondary alias routes.
+  - route_id: mistral_medium_2508_alias_tertiary
+    model: mistral/mistral-medium-2508
+    model_key: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: tertiary
+    rpm: 50
+    tpm: 25000
+    free: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_medium_2505_alias_tertiary
+    model: mistral/mistral-medium-2505
+    model_key: mistral/mistral-medium-latest
     provider: mistral
     upstream_model: mistral-medium-latest
     input_context_limit: 131072

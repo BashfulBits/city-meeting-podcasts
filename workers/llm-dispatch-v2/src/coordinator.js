@@ -8,7 +8,7 @@ import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 // the same block citypods/compute/llm_lanes.py reads, so client and Worker cannot disagree
 // about which purposes exist or what each may spend. Drift-checked in the deploy workflow.
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
-import { canonicalModelName, routeFitsContext, routesEligibleFor } from "./routes.js";
+import { canonicalModelName, modelsForJob, routeFitsContext, routesEligibleFor } from "./routes.js";
 import {
   availableTokenBudget,
   computeRouteLaneWait,
@@ -128,6 +128,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         lease_expires_at            INTEGER,
         bundle_id                   TEXT,
         attempts                    INTEGER NOT NULL DEFAULT 0,
+        schema_retry_count          INTEGER NOT NULL DEFAULT 0,
         transient_retry_count       INTEGER NOT NULL DEFAULT 0,
         token_reservation           INTEGER NOT NULL DEFAULT 0,
         reservation_rpm_window_start INTEGER NOT NULL DEFAULT 0,
@@ -316,6 +317,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("routes", "buffer_updated_at", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "token_reservation", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "purpose", "TEXT NOT NULL DEFAULT ''");
+    // Backup-model gating (routes.js's backupModelsActive) reads this alongside `attempts`; an
+    // already-provisioned DO's existing rows get 0, same as a freshly-created job.
+    this._ensureColumn("jobs", "schema_retry_count", "INTEGER NOT NULL DEFAULT 0");
     // The route's own rpm/rpd/tpm window identity AT CLAIM TIME, so a non-consuming refund
     // (completeBatch) can tell whether the route's current window is still the one this
     // reservation actually counted against, or whether it has since rolled over (see
@@ -409,6 +413,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["upstream_capacity_streak", "INTEGER NOT NULL DEFAULT 0"],
       ["last_failure_class", "TEXT NOT NULL DEFAULT ''"],
       ["transient_retry_count", "INTEGER NOT NULL DEFAULT 0"],
+      ["schema_retry_count", "INTEGER NOT NULL DEFAULT 0"],
       ["buffer_updated_at", "INTEGER NOT NULL DEFAULT 0"],
       ["token_reservation", "INTEGER NOT NULL DEFAULT 0"],
       ["purpose", "TEXT NOT NULL DEFAULT ''"],
@@ -501,7 +506,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * absent list must never be read as "no route is allowed".
    */
   _modelsOutsideLane(job, reservation, dispatchLimits) {
-    const declared = Array.isArray(reservation?.models) ? reservation.models : [];
+    // backup_models is enforced identically to models -- otherwise a lane could smuggle an
+    // unbudgeted/unreviewed model into production via backup_models alone, which this ingress gate
+    // would otherwise never see.
+    const declared = [
+      ...(Array.isArray(reservation?.models) ? reservation.models : []),
+      ...(Array.isArray(reservation?.backup_models) ? reservation.backup_models : []),
+    ];
     if (declared.length === 0) return [];
     const allowed = new Set(
       declared
@@ -515,7 +526,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
     } catch {
       return [];
     }
-    const requested = Array.isArray(policy?.allowed_models) ? policy.allowed_models : [];
+    const requested = [
+      ...(Array.isArray(policy?.allowed_models) ? policy.allowed_models : []),
+      ...(Array.isArray(policy?.backup_models) ? policy.backup_models : []),
+    ];
     const offenders = [];
     for (const rawModel of requested) {
       if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
@@ -1120,13 +1134,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
 
       const id = crypto.randomUUID();
+      // Carry `attempts` and `schema_retry_count` forward from `source` rather than resetting to
+      // 0: this is what lets a job that needed a JSON-schema correction (or a chain of them) cross
+      // the same backup_after_attempts threshold as a job that failed the same number of times on
+      // plain dispatch attempts (backupModelsActive, routes.js) -- otherwise a schema-correction
+      // clone would always start over at attempts=0 and could never surface a backup model.
+      const nextSchemaRetryCount = (Number(source.schema_retry_count) || 0) + 1;
       sql.exec(
         `INSERT INTO jobs (
           id, idempotency_key, request_digest, provider_idempotency_key,
           state, priority, purpose, policy_json, prompt_family,
           input_token_estimate, max_output_token_estimate,
-          payload_key, attempts, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+          payload_key, attempts, schema_retry_count, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         idempotencyKey,
         retry.corrected_request_digest,
@@ -1138,6 +1158,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         retry.corrected_input_token_estimate,
         source.max_output_token_estimate,
         retry.corrected_payload_key,
+        source.attempts,
+        nextSchemaRetryCount,
         now,
         now
       );
@@ -1148,6 +1170,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           priority: source.priority,
           input_token_estimate: retry.corrected_input_token_estimate,
           max_output_token_estimate: source.max_output_token_estimate,
+          attempts: source.attempts,
+          schema_retry_count: nextSchemaRetryCount,
           created_at: now,
         },
         source.priority,
@@ -1582,7 +1606,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /**
    * Canonical model groups a job may use. Persist every explicit allowed model, even when it has
    * no configured route yet, so a later catalog addition makes an already-queued job searchable
-   * without rewriting it. This follows aliases only: v2 does not expand config/model_routing.
+   * without rewriting it. This follows aliases only: v2 does not expand config/model_routing (that
+   * quota-exhaustion overflow map is Python-scheduler-only). It does expand a job's own
+   * `policy_json.backup_models` once `modelsForJob`/`backupModelsActive` (routes.js) say the job's
+   * `attempts`/`schema_retry_count` warrant it -- that's a per-job failure-count signal carried on
+   * the job itself, not a config-driven route substitution.
    *
    * Omits a model whose *every* currently configured route is structurally too small for this
    * job's own token estimates (routesEligibleFor's combined input/output context-limit check,
@@ -1604,7 +1632,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     } catch {
       return [];
     }
-    const allowedModels = Array.isArray(policy?.allowed_models) ? policy.allowed_models : [];
+    // modelsForJob folds in policy.backup_models once the job's attempts/schema_retry_count cross
+    // its configured threshold (backupModelsActive) -- see routes.js.
+    const allowedModels = modelsForJob(job, policy);
     const allowPaid = Boolean(policy?.allow_paid);
     const inputTokens = job.input_token_estimate || 0;
     const outputTokens = job.max_output_token_estimate || 0;

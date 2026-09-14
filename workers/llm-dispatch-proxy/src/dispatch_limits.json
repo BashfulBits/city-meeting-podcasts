@@ -172,7 +172,7 @@
       "ai_gateway_slug": "custom-nvidia",
       "ai_gateway_chat_path": "/v1/chat/completions",
       "chat_path": "/chat/completions",
-      "rpm": 6,
+      "rpm": 35,
       "tpm": 90000,
       "concurrency": 2,
       "reset_timezone": "UTC",

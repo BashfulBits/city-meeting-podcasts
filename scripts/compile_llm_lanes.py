@@ -122,6 +122,10 @@ def compile_reservations(lanes: dict[str, LaneConfig], budget: int) -> dict[str,
                 # Carried for operator legibility in Workers Logs and the /v2/stats snapshot; the
                 # coordinator's admission arithmetic uses only the two budgets above.
                 "models": list(lane.models),
+                # Enforced identically to "models" by coordinator.js's _modelsOutsideLane -- a lane
+                # cannot smuggle an unbudgeted/unreviewed model into production via backup_models
+                # alone, since ingress checks a job's policy_json.backup_models against this too.
+                "backup_models": list(lane.backup_models),
                 "dispatch_shape": lane.dispatch_shape,
                 "write_units_per_job": lane.ingress_write_units_per_job,
             }
