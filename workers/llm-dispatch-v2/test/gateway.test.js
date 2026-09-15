@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  callAiGateway,
   parseErrorMessageRetryAfter,
   parseRetryAfterSeconds,
   resolveProviderCredentials,
@@ -141,7 +142,20 @@ test("upstreamCapacityFailure recognises a 400 whose body blames the provider's 
   assert.equal(upstreamCapacityFailure(400, observed), true);
 
   // type alone is enough...
-  assert.equal(upstreamCapacityFailure(400, { error: { type: "server_error", message: "" } }), true);
+  assert.equal(
+    upstreamCapacityFailure(400, { error: { type: "server_error", message: "" } }),
+    true
+  );
+  // ...and OpenCode's MissingSessionID type is recognized as upstream capacity failure
+  assert.equal(
+    upstreamCapacityFailure(400, {
+      error: {
+        type: "MissingSessionID",
+        message: "Error from provider (Console): OpenCode's free tier can only be used in OpenCode",
+      },
+    }),
+    true
+  );
   // ...and so is the message alone, for providers that do not set a machine-readable type.
   assert.equal(
     upstreamCapacityFailure(400, { error: { type: "", message: "Upstream request failed" } }),
@@ -271,3 +285,31 @@ test("parseRetryAfterSeconds parses direct retry_after_seconds property", () => 
     30
   );
 });
+
+test("callAiGateway includes response.headers in its return value", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: {
+          "x-ratelimit-limit-req-minute": "0",
+          "x-ratelimit-remaining-req-minute": "0",
+        },
+      });
+
+    const res = await callAiGateway({
+      env: { GEMINI_API_KEY: "test-key" },
+      route: ROUTE,
+      payload: { messages: [{ role: "user", content: "hi" }] },
+      dispatchLimits: DISPATCH_LIMITS,
+    });
+
+    assert.ok(res.headers);
+    assert.equal(res.headers.get("x-ratelimit-limit-req-minute"), "0");
+    assert.equal(res.headers.get("x-ratelimit-remaining-req-minute"), "0");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
