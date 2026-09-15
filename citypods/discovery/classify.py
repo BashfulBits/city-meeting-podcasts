@@ -15,6 +15,7 @@ from citypods.compute.base import Backend, InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import TASK_VERSIONS
 from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model
+from citypods.discovery.config import discovery_allowed_models
 from citypods.discovery.models import (
     KNOWN_PLATFORMS,
     Classification,
@@ -266,7 +267,11 @@ def parse_classification(
 
 
 def classify(
-    backend: Backend, request: DiscoveryRequest, results: list[SearchResult]
+    backend: Backend,
+    request: DiscoveryRequest,
+    results: list[SearchResult],
+    *,
+    allowed_models: tuple[str, ...] | None = None,
 ) -> Classification:
     """Classify evidence through the backend's Instructor/Pydantic output contract.
 
@@ -293,6 +298,9 @@ def classify(
             "messages": _prompt(request, results),
             "structured_output": STRUCTURED_OUTPUT,
             "llm_policy": LLMRequestPolicy(
+                # The scheduler expands this primary through the compiled model_routing map,
+                # preserving primary-first ordering while still allowing vetted overflow routes.
+                allowed_models=allowed_models or (discovery_allowed_models()[0],),
                 allow_paid=False,
                 require_direct=True,
                 purpose="city-onboarding",

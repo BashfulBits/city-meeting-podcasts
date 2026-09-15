@@ -54,7 +54,11 @@ structured_output_profiles:
 # request's allowed models with this map, so it takes effect for every transport uniformly.
 #
 # Mistral Medium jobs route strictly to native Mistral and Airforce Mistral routes.
-model_routing: {}
+model_routing:
+  gemini/gemini-3.7-flash:
+    - gemini/gemini-3.6-flash
+    - gemini/gemini-3.8-flash
+    - gemini/gemini-3.5-flash
 
 
 # `api_base`/`chat_path` are the OpenAI-shaped upstream every account of that provider is called
@@ -1951,5 +1955,4 @@ routes:
     observed_on: "2026-09-12"
     observed_burst: 5
     observed_input_ceiling: 8192
-
 

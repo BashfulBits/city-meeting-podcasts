@@ -6,6 +6,7 @@ import pytest
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import LLMStructuredOutputError
+from citypods.compute.llm_policy import ROUTE_CANDIDATES
 from citypods.discovery.classify import (
     STRUCTURED_OUTPUT,
     CivicPlatformClassificationResponse,
@@ -14,7 +15,7 @@ from citypods.discovery.classify import (
     classify,
     parse_classification,
 )
-from citypods.discovery.config import discovery_llm_config
+from citypods.discovery.config import discovery_allowed_models, discovery_llm_config
 from citypods.discovery.eligibility import AgendaCoverage, auxiliary_eligibility, auxiliary_states
 from citypods.discovery.models import (
     KNOWN_PLATFORMS,
@@ -83,6 +84,35 @@ def test_discovery_llm_route_is_task_scoped_yaml_not_generic_environment(monkeyp
 
     assert config.model == "gemini/gemini-3-flash-preview"
     assert config.mode == "direct"
+
+
+def test_discovery_allowed_models_are_vetted_and_keep_configured_model_first():
+    assert discovery_allowed_models("gemini/gemini-3-flash-preview") == (
+        "gemini/gemini-3-flash-preview",
+        "gemini/gemini-3.6-flash",
+        "gemini/gemini-3.8-flash",
+        "gemini/gemini-3.5-flash",
+    )
+    assert discovery_allowed_models("gemini/gemini-3.5-flash-lite")[0] == (
+        "gemini/gemini-3.5-flash-lite"
+    )
+    assert (
+        discovery_allowed_models("gemini/gemini-3.5-flash-lite").count(
+            "gemini/gemini-3.5-flash-lite"
+        )
+        == 1
+    )
+
+
+def test_discovery_models_are_free_direct_native_and_large_context():
+    for model in discovery_allowed_models("gemini/gemini-3.7-flash"):
+        routes = ROUTE_CANDIDATES[model]
+        assert routes
+        assert all(route.free for route in routes)
+        assert all("direct" in route.transports for route in routes)
+        assert all(route.structured_output_direct_handler == "native" for route in routes)
+        assert all(route.input_context_limit >= 1_000_000 for route in routes)
+        assert all(route.output_context_limit >= 65_536 for route in routes)
 
 
 def test_auxiliary_eligibility_keeps_state_restore_logs_off_json_stdout(
@@ -218,6 +248,7 @@ def test_classifier_prompt_includes_provider_source_schemas():
             assert job.inputs["llm_policy"].allow_paid is False
             assert job.inputs["llm_policy"].purpose == "city-onboarding"
             assert job.inputs["llm_policy"].deadline_at is None
+            assert job.inputs["llm_policy"].allowed_models == ("gemini/gemini-3-flash-preview",)
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,

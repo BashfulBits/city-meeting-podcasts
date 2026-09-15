@@ -2565,5 +2565,11 @@
     "nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
     "nvidia/nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2"
   },
-  "model_routing": {}
+  "model_routing": {
+    "gemini/gemini-3.7-flash": [
+      "gemini/gemini-3.6-flash",
+      "gemini/gemini-3.8-flash",
+      "gemini/gemini-3.5-flash"
+    ]
+  }
 }

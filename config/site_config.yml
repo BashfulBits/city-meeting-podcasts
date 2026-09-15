@@ -15,7 +15,7 @@ city_request_form:
 # R12-only inference route. This is committed configuration, not a repository-wide LLM preference;
 # future summary/tag features may select different models without changing city discovery.
 city_discovery:
-  llm_model: "gemini/gemini-3-flash-preview"
+  llm_model: "gemini/gemini-3.7-flash"
   llm_mode: "direct"  # direct | dispatch
 # Generated chapter records are persisted by the chapter lanes but remain shadow-only until the
 # frozen provider-chapter validation gate passes. When enabled, the served-time overlay fills only

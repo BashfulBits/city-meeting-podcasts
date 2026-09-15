@@ -236,7 +236,13 @@ def test_full_day_pricing_surcharge_is_rejected():
 
 def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
     compiled = compile_llm_limits.compile_limits()
-    assert compiled["model_routing"] == {}
+    assert compiled["model_routing"] == {
+        "gemini/gemini-3.7-flash": [
+            "gemini/gemini-3.6-flash",
+            "gemini/gemini-3.8-flash",
+            "gemini/gemini-3.5-flash",
+        ]
+    }
     assert compiled["model_routes_map"]["mistral/mistral-medium-latest"] == [
         "mistral_medium_latest_primary",
         "airforce_mistral_medium_3_5_primary",
