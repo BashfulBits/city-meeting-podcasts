@@ -229,20 +229,42 @@ Audio and every other workflow that fetches these providers without adding stora
 | **Manual recovery** | `scripts/normalize_durations.py` + `.github/workflows/duration-normalize.yml` — manual dry-run-first catalog repair that probes hosted audio by object key (range reads only), leaves missing served duration unset when no canonical probe is available, uploads JSONL/summary artifacts, and on apply pushes only touched source records through the audio-lane-safe merge path. |
 
 The one-time agenda/chapter recovery workflow (`reset-agenda-chapter-state.yml` and
-`scripts/reset_agenda_chapter_state.py`) targets only legacy records with partial derived
+`scripts/reset_agenda_chapter_state.py`) targets legacy records with partial derived
 agenda/chapter state and no `links["agenda_text_artifact_key"]`. It preserves provider-owned agenda
 links, audio, transcripts, and stored objects; clears derived agenda/chapter blocks and completion
-markers; and writes explicit null tombstones so scoped merges cannot resurrect stale values. Apply
-pushes the `chapter`-owned blocks first and the `audio`-owned agenda blocks second, reapplying the
-reset snapshot before each push because each scoped merge preserves the sibling lane. This is
-metadata repair only: it does not bump an agenda pipeline version or globally invalidate completed
-documents. The chapter workflows and the repair workflow coordinate through CAS-backed mutexes on
-R2: `chapter-agenda` claims `maintenance-leases/chapter-agenda.json` and `chapter-locator` claims
+markers; and writes explicit null tombstones (`records.RESET_GUARDED_AGENDA_LINK_KEYS`) so scoped
+merges cannot resurrect stale values. Apply pushes the `chapter`-owned blocks first and the
+`audio`-owned agenda blocks second, reapplying the reset snapshot before each push because each
+scoped merge preserves the sibling lane. This is metadata repair only: it does not bump an agenda
+pipeline version or globally invalidate completed documents. `scripts/reset_raw_pdf_agenda_state.py`
+(the `Reset raw-PDF-bytes agenda state` workflow) targets a different, survey-sourced cohort — a
+record whose stored artifact is present but decoded from corrupted raw PDF bytes — by reusing this
+tool's `reset_record`/`reset_agenda_chapter_state` mechanics unchanged; any such tool inherits this
+section's coordination for free, since it goes through the identical `push_records_merged` path
+with the identical guarded keys. The chapter workflows and the repair workflow coordinate through
+CAS-backed mutexes on R2: `chapter-agenda`
+claims `maintenance-leases/chapter-agenda.json` and `chapter-locator` claims
 `maintenance-leases/chapter-locator.json` before starting. Their LLM work can overlap, but each
 claims the shared `maintenance-leases/chapter-record-write.json` mutex around the complete
 re-read/merge/upload commit to B2; the repair tool claims both lane leases as a composite
 transaction before mutation. The Actions idle poll remains an operator-friendly wait diagnostic,
 not the correctness boundary.
+
+The regular Audio workflow's own `lane=audio` scoped push is deliberately **not** made to claim
+either chapter lease for its whole run (unlike chapter-agenda/chapter-locator, it is the
+continuous, expensive, wall-clock-bounded production pipeline — fail-closed exclusion there would
+mean a rare manual reset could abort hours of in-flight compute, or a reset could starve waiting on
+an audio run that never finishes). Instead `records.merge_preserving_foreign`'s
+`agenda_link_baseline` closes the same TOCTOU at the data level: `SourcePipeline.fetch_merge`
+snapshots each uid's own `RESET_GUARDED_AGENDA_LINK_KEYS` values as pulled at the *start* of the
+run, before any stage can touch them, and threads that snapshot through `push_records_merged` to
+the audio lane's push only. A push whose local value for one of those keys still equals that
+snapshot (`AgendaTextStage`'s reuse fast-path never touched it this run) defers to a `remote` value
+that has since diverged — the reset's tombstone landing mid-run — instead of resurrecting the stale
+pointer merely because the audio lane "owns" `links`; a run that actually (re)derived the key
+(local differs from its own snapshot) always wins, so un-tombstoning on the next normal run still
+works. This closes the gap for both reset tools without adding any lock acquisition to the hot
+audio path.
 
 Scoped workflow telemetry is append-only under `state/run_events/`. Sibling matrix events sharing
 `GITHUB_RUN_ID` + phase + lane form one logical run; status/projection aggregates them only after every

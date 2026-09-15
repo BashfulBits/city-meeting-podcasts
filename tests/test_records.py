@@ -1842,6 +1842,86 @@ def test_merge_preserving_foreign_audio_lane_keeps_remote_transcript():
     assert merged["u1"]["audio"]["url"] == "NEW"  # local audio written (this lane owns it)
 
 
+def test_merge_preserving_foreign_audio_lane_defers_to_reset_tombstone_for_unchanged_local():
+    # TOCTOU regression: AgendaTextStage's reuse fast-path decided this uid's
+    # agenda_text_artifact_key was already present and left it byte-for-byte unchanged for the
+    # rest of the run. A concurrent agenda/chapter maintenance reset tombstoned it in `remote`
+    # (an explicit `None`) after that decision but before this push. Without `agenda_link_baseline`
+    # the audio lane "owns" `links` and would resurrect the stale key; with it, it must not.
+    remote = {"u1": {"uid": "u1", "links": {"agenda_text_artifact_key": None}}}
+    local = {"u1": {"uid": "u1", "links": {"agenda_text_artifact_key": "stale-key"}}}
+    baseline = {"u1": {"agenda_text_artifact_key": "stale-key"}}  # what this run started from
+    merged = merge_preserving_foreign(
+        remote,
+        local,
+        protected_blocks_for_lane("audio"),
+        lane="audio",
+        agenda_link_baseline=baseline,
+    )
+    assert merged["u1"]["links"]["agenda_text_artifact_key"] is None
+
+
+def test_merge_preserving_foreign_audio_lane_keeps_fresh_local_value_over_stale_baseline():
+    # The very next normal run after a reset: local re-derived a genuinely fresh value this run
+    # (it differs from the baseline it started from), so it must win even though `remote` still
+    # shows the reset's tombstone — un-tombstoning must still work.
+    remote = {"u1": {"uid": "u1", "links": {"agenda_text_artifact_key": None}}}
+    local = {"u1": {"uid": "u1", "links": {"agenda_text_artifact_key": "fresh-key"}}}
+    baseline = {"u1": {"agenda_text_artifact_key": None}}  # null at the start of this run too
+    merged = merge_preserving_foreign(
+        remote,
+        local,
+        protected_blocks_for_lane("audio"),
+        lane="audio",
+        agenda_link_baseline=baseline,
+    )
+    assert merged["u1"]["links"]["agenda_text_artifact_key"] == "fresh-key"
+
+
+def test_merge_preserving_foreign_audio_lane_without_baseline_keeps_prior_behavior():
+    # No baseline supplied (e.g. a caller that hasn't been updated, or a non-reset-adjacent push):
+    # behavior is byte-for-byte the pre-existing "owned links always win" rule.
+    remote = {"u1": {"uid": "u1", "links": {"agenda_text_artifact_key": None}}}
+    local = {"u1": {"uid": "u1", "links": {"agenda_text_artifact_key": "stale-key"}}}
+    merged = merge_preserving_foreign(
+        remote, local, protected_blocks_for_lane("audio"), lane="audio"
+    )
+    assert merged["u1"]["links"]["agenda_text_artifact_key"] == "stale-key"
+
+
+def test_merge_preserving_foreign_ignores_agenda_link_baseline_for_other_link_keys():
+    # The tombstone-deferral rule is scoped to RESET_GUARDED_AGENDA_LINK_KEYS only; an unrelated
+    # links key that happens to equal its "baseline" is unaffected even if remote diverged.
+    remote = {"u1": {"uid": "u1", "links": {"agenda_portal": "https://remote.example/portal"}}}
+    local = {"u1": {"uid": "u1", "links": {"agenda_portal": "https://local.example/portal"}}}
+    baseline = {"u1": {"agenda_portal": "https://local.example/portal"}}
+    merged = merge_preserving_foreign(
+        remote,
+        local,
+        protected_blocks_for_lane("audio"),
+        lane="audio",
+        agenda_link_baseline=baseline,
+    )
+    assert merged["u1"]["links"]["agenda_portal"] == "https://local.example/portal"
+
+
+def test_merge_preserving_foreign_non_audio_lane_ignores_agenda_link_baseline():
+    # The deferral rule only ever applies to the audio lane (the sole owner of these keys); an
+    # unscoped/full run (lane=None, owns everything, so the "not owned" short-circuit doesn't
+    # apply either) must not activate it even given a baseline that would otherwise trigger it.
+    remote = {"u1": {"uid": "u1", "links": {"agenda_text_artifact_key": None}}}
+    local = {"u1": {"uid": "u1", "links": {"agenda_text_artifact_key": "stale-key"}}}
+    baseline = {"u1": {"agenda_text_artifact_key": "stale-key"}}
+    merged = merge_preserving_foreign(
+        remote,
+        local,
+        protected_blocks_for_lane(None),
+        lane=None,
+        agenda_link_baseline=baseline,
+    )
+    assert merged["u1"]["links"]["agenda_text_artifact_key"] == "stale-key"
+
+
 def test_merge_preserving_foreign_keeps_remote_decoded_plan_over_stale_audio_snapshot():
     remote = {
         "u1": {
