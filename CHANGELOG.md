@@ -63,6 +63,11 @@ Phase R (Research-Tool Surface)._
   assertion updated to the same generated path. No pipeline-version changes or stored-artifact
   backfill are required.
 
+- **Chapter agenda and locator workflows now pass the GitHub Actions token to their bounded
+  enrich steps** and grant the minimal `actions: read` permission. This re-enables graceful yield
+  when a newer run is queued; without it, the jobs only stopped at their wall-clock budget and
+  emitted `GITHUB_TOKEN unset — graceful yield disabled`.
+  
 - **City discovery auxiliary eligibility now restores only configured source records**
   (`scripts/city_discovery.py`, `citypods/state.py`). The weekly scan previously downloaded the
   entire durable state snapshot, including thousands of unrelated sidecars, before measuring recent
