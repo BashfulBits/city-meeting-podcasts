@@ -80,6 +80,12 @@ Phase R (Research-Tool Surface)._
   three-second remux and falsely reported an upstream CDN throttle. This restores a meaningful
   upstream/proxy contract check; it changes no production route, pipeline version, or stored
   artifact.
+  
+- **LLM tag tournament incrementally decodes its archival source records.** It retains only a
+  bounded recent-candidate window while scanning each source, so one large JSON archive cannot
+  monopolize Python or force the tournament to materialize every historical record before it can
+  choose current samples. Progress now includes the scanned and retained record counts. No
+  pipeline version or stored artifact format changes.
 
 - **LLM tag tournament now reports liveness during candidate preparation.** The runner emits its
   current phase immediately and once per minute while it loads source records or transcript/agenda
