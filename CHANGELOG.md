@@ -52,6 +52,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM tag tournament restores only its working state before sampling.** It now fetches the
+  tournament record and configured sources' episode records rather than the entire
+  multi-thousand-file durable snapshot, and prints restore progress before any network work.
+  Scoped restores also skip a full state listing when a legacy deployment has no remote manifest.
+  This is an operational reliability fix only; no pipeline version or stored artifact format
+  changes.
+
 - **NVIDIA's live AI Gateway contract probe now uses Nemotron 3 Super rather than Kimi K3.** The
   generic custom-provider sweep previously selected its first free NVIDIA route, Kimi K3, which
   twice exceeded the test's 60-second read timeout even as the existing Nemotron Super URL canary

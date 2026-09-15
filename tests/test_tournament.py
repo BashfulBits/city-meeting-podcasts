@@ -99,6 +99,18 @@ def test_ticket_uses_the_configured_rolling_window_and_counts_chapters_once(tmp_
     assert estimates["new"]["retained_chapters"] == 1
 
 
+def test_tournament_state_paths_include_only_the_ticket_and_configured_sources():
+    cities = [SimpleNamespace(source_id="first"), SimpleNamespace(source_id="second")]
+
+    paths = tournament._tournament_state_paths(cities)
+
+    assert paths == {
+        tournament.STATE,
+        "sources/first/episodes.json",
+        "sources/second/episodes.json",
+    }
+
+
 def test_route_handoff_validates_the_immutable_ticket_challenger_metadata():
     ticket = {"version": 1, "task": "tag", "challengers": ["challenger"]}
     model = base64.urlsafe_b64encode(b"challenger").decode()

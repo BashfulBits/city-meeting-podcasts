@@ -478,13 +478,31 @@ def ticket_estimates(state_dir: Path, models: set[str]) -> dict[str, dict[str, f
     return estimates
 
 
-def package_ticket(*, site_config_path: str, output_dir: str, out_dir: str) -> int:
+def _tournament_state_paths(cities: list[Any]) -> set[str]:
+    """Return the durable files the tournament and its ticket renderer actually read."""
+    return {
+        STATE,
+        *(f"sources/{source_key(city)}/episodes.json" for city in cities),
+    }
+
+
+def _restore_tournament_state(storage, state_dir: Path, cities: list[Any]) -> int:
+    """Restore the tournament's small working set with visible progress."""
+    paths = _tournament_state_paths(cities)
+    print(f"llm-tournament: restoring {len(paths)} state file(s)", flush=True)
+    restored = pull_state(storage, state_dir, only_paths=paths)
+    print(f"llm-tournament: restored {restored} state file(s)", flush=True)
+    return restored
+
+
+def package_ticket(*, site_config_path: str, config_dir: str, output_dir: str, out_dir: str) -> int:
     site = load_site_config(site_config_path)
+    cities = load_city_configs(config_dir, site["defaults"])
     storage = make_storage(site, "", Path(output_dir))
     if storage is None:
         raise RuntimeError("tournament ticket requires configured storage")
     state_dir = Path(".citypods-state")
-    pull_state(storage, state_dir)
+    _restore_tournament_state(storage, state_dir, cities)
     state = _state(state_dir / STATE)
     config = site.get("tournament") or {}
     required = float(config.get("challenger_win_rate", 0.60))
@@ -523,11 +541,12 @@ def package_ticket(*, site_config_path: str, output_dir: str, out_dir: str) -> i
 
 def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int) -> int:
     site = load_site_config(site_config_path)
+    cities = load_city_configs(config_dir, site["defaults"])
     storage = make_storage(site, "", Path(output_dir))
     if storage is None or not getattr(storage, "cas_capable", False):
         raise RuntimeError("tournament requires configured CAS-capable storage")
     state_dir = Path(".citypods-state")
-    pull_state(storage, state_dir)
+    _restore_tournament_state(storage, state_dir, cities)
     state_path = state_dir / STATE
     state = _state(state_path)
     # Old episode-level records are intentionally not considered complete: R5 now compares one
@@ -540,7 +559,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
     taxonomy_path = (site.get("tagging") or {}).get("taxonomy_path", "config/taxonomy.yml")
     taxonomy = load_taxonomy(taxonomy_path)
     episode_records: list[tuple[Any, dict[str, Any]]] = []
-    for city in load_city_configs(config_dir, site["defaults"]):
+    for city in cities:
         for rec in load_records(state_dir, source_key(city)).values():
             ep = record_to_episode(rec)
             if not ep.uid:
@@ -812,7 +831,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "ticket":
         return package_ticket(
-            site_config_path=args.site_config, output_dir=args.output_dir, out_dir=args.out_dir
+            site_config_path=args.site_config,
+            config_dir=args.config_dir,
+            output_dir=args.output_dir,
+            out_dir=args.out_dir,
         )
     # The per-run sample budget comes from the lane registry, not a magic constant. It used to be
     # hard-clamped to 2 regardless of --samples, which meant the lane could never dispatch more
