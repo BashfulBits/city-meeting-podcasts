@@ -74,6 +74,14 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **OpenCode's Gateway endpoint contract now checks its live model catalog instead of queuing a
+  free inference request.** Both MiMo and the smaller Nemotron Lightning route can spend two full
+  60-second attempts waiting at OpenCode even while `/models` returns the selected model immediately
+  through the same Custom Provider and shim. The check still detects a URL-join/shim regression and
+  now also fails if the catalog's named OpenCode route disappears; it no longer mistakes volatile
+  free-model capacity for an endpoint-contract failure. No production dispatch behavior, pipeline
+  version, or stored artifact changes.
+
 - **Endpoint Contracts now runs its Granicus media-fetch check with the production-pinned
   FFmpeg 7.1.5 binary** rather than Ubuntu's independently-versioned package. The proxy had
   delivered an exact, byte-verified Arlington source, but the distro build failed its local
