@@ -52,6 +52,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Removed the retired OpenCode DeepSeek V4 Flash free definitions.** OpenCode's current catalog
+  no longer advertises `deepseek-v4-flash-free`; the live contract probe now uses the listed
+  `mimo-v2.5-free` route, and the stale DeepSeek aliases are removed from the provider registry and
+  generated catalogs. The shared `deepseek/deepseek-v4-flash` pool remains available through
+  SiliconFlow, DeepSeek Direct, and NVIDIA's free build route. No pipeline-version bump or stored
+  artifact backfill is required.
+
 - **LLM tag tournament workflow timeout aligned with its configured sample budget**
   (`.github/workflows/llm-tournament.yml`). The lane had been expanded from two samples to its
   configured ~46-sample budget while retaining a 22-minute step timeout, so GitHub cancelled the

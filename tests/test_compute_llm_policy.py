@@ -58,13 +58,7 @@ def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
     # mismatch in Cloudflare AI Gateway (see config/provider_limits.yml's `nvidia` block). Restored
     # once the path fix was verified end-to-end against the live gateway.
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
-    assert {candidate.provider for candidate in deepseek} == {
-        "deepseek",
-        "siliconflow",
-        "opencode",
-        "nvidia",
-    }
-    assert canonical_model("opencode/deepseek-v4-flash-free") == "deepseek/deepseek-v4-flash"
+    assert {candidate.provider for candidate in deepseek} == {"deepseek", "siliconflow", "nvidia"}
     assert MODEL_ALIASES["deepseek/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"
 
     # NVIDIA build's direct Nemotron 3 Ultra leg (added 2026-08-29) bypasses the OpenRouter/Kilo/

@@ -2005,9 +2005,9 @@ def test_custom_provider_routes_use_their_recorded_gateway_path(route):
     )
 
 
-# Only single-provider models belong here. A logical model served by several providers (6 of 31 in
-# the catalog -- `deepseek/deepseek-v4-flash` spans deepseek, custom-siliconflow and
-# custom-opencode) has no fixed gateway slug: the scheduler picks whichever physical route has
+# Only single-provider models belong here. A logical model served by several providers -- such as
+# `deepseek/deepseek-v4-flash`, which spans deepseek, custom-siliconflow, and custom-nvidia -- has
+# no fixed gateway slug: the scheduler picks whichever physical route has
 # capacity, so pinning one slug end-to-end would assert on scheduler choice rather than on URL
 # construction. The catalog test above covers those routes directly.
 @pytest.mark.parametrize(

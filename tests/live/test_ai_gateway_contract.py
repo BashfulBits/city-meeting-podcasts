@@ -41,6 +41,10 @@ ROUTING_FAILURE_BODIES = (
     "<html",
 )
 
+# OpenCode's former DeepSeek V4 Flash free alias is no longer in its current catalog. Keep the
+# live contract on a named, currently listed free model rather than relying on YAML route ordering.
+PREFERRED_FREE_PROBE_ROUTE_IDS = {"opencode": "opencode_mimo_v2_5_free"}
+
 
 def _one_route_per_custom_provider():
     """One route per custom provider, preferring a free one.
@@ -56,8 +60,17 @@ def _one_route_per_custom_provider():
     answers 402, which still proves routing works.)
     """
     seen: dict[str, object] = {}
+    for provider, route_id in PREFERRED_FREE_PROBE_ROUTE_IDS.items():
+        route = ROUTE_REGISTRY.get(route_id)
+        if route is None or route.provider != provider or not route.free:
+            raise AssertionError(
+                f"{provider}: preferred contract probe route {route_id!r} is missing or not free"
+            )
+        seen[provider] = route
     for route in ROUTE_REGISTRY.values():
         if not (route.ai_gateway_slug or "").startswith("custom-"):
+            continue
+        if route.provider in PREFERRED_FREE_PROBE_ROUTE_IDS:
             continue
         current = seen.get(route.provider)
         if current is None or (route.free and not current.free):

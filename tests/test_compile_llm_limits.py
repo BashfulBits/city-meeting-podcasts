@@ -81,12 +81,12 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     deepseek_key = "deepseek/deepseek-v4-flash"
     deepseek_routes = compiled["model_routes_map"][deepseek_key]
-    # SiliconFlow (paid) + DeepSeek Direct (paid) + OpenCode (free) + NVIDIA build (free) -- four
-    # independent physical pools for the same logical model. The NVIDIA leg was briefly commented
+    # SiliconFlow (paid) + DeepSeek Direct (paid) + NVIDIA build (free) -- three independent
+    # physical pools for the same logical model. The NVIDIA leg was briefly commented
     # out on 2026-08-29, blamed on NVIDIA gating this model per-key; the real cause was Cloudflare
     # AI Gateway dropping the `/v1` from the custom-provider Base URL, which broke every NVIDIA
     # route rather than this one model (see config/provider_limits.yml's `nvidia` block).
-    assert len(deepseek_routes) == 4
+    assert len(deepseek_routes) == 3
     physical_routes = [compiled["routes_by_id"][route_id] for route_id in deepseek_routes]
     assert (
         len(
@@ -95,10 +95,9 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
                 for route in physical_routes
             }
         )
-        == 4
+        == 3
     )
     assert compiled["model_aliases"]["deepseek/deepseek-v4-flash-0731"] == deepseek_key
-    assert compiled["model_aliases"]["opencode/deepseek-v4-flash-free"] == deepseek_key
     assert compiled["model_aliases"]["nvidia/deepseek-v4-flash-0731"] == deepseek_key
 
     nemotron_key = "nvidia/nemotron-3-ultra-550b-a55b:free"
