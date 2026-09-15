@@ -181,6 +181,7 @@ const ENV = {
   OPENCODE_API_KEY: "opencode-secret",
   NVIDIA_API_KEY: "nvidia-secret",
   AIRFORCE_API_KEY: "airforce-secret",
+  ORCAROUTER_API_KEY: "orcarouter-secret",
   RETRY_BASE_SECONDS: "60",
   RETRY_MAX_SECONDS: "3600",
   LLM_QUEUE: new FakeBucket(),
@@ -905,6 +906,31 @@ test("a current OpenCode free model uses its configured route", async () => {
   const record = await stored.json();
   assert.equal(record.status, "completed");
   assert.equal(record.model, "opencode/mimo-v2.5-free");
+});
+
+test("an OrcaRouter free model uses its configured route", async () => {
+  const env = isolatedEnv();
+  const queued = await handleRequest(
+    chatRequest(undefined, "orcarouter-free", "orcarouter/glm-5.3-flash"),
+    env,
+  );
+  const body = await queued.json();
+
+  const calls = [];
+  const upstream = async (url, init) => {
+    calls.push({ url, body: JSON.parse(init.body) });
+    return new Response(JSON.stringify({ id: "orcarouter-free", choices: [] }), { status: 200 });
+  };
+
+  const result = await dispatchOne(env, upstream, new Date());
+  assert.equal(result.status, "completed");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://api.orcarouter.ai/v1/chat/completions");
+  assert.equal(calls[0].body.model, "z-ai/glm-5.3-flash-free");
+  const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
+  const record = await stored.json();
+  assert.equal(record.status, "completed");
+  assert.equal(record.model, "zai/glm-5.3-flash");
 });
 
 test("a request for a canonical model with no configured route fails permanently", async () => {

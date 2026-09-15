@@ -376,3 +376,41 @@ def test_gemini_input_token_count_quota_metric_is_own_tpm_not_generic_resource_e
     )
     assert result.failure_class == "own_tpm"
     assert result.rule_id == "gemini-tpm"
+
+
+def test_orcarouter_free_tier_prompt_cap_is_request_defect():
+    """OrcaRouter free-tier returns 429 free_rate_limited without Retry-After when the prompt
+
+    exceeds the tier cap. Retrying unchanged fails identically forever, so it is a request defect.
+    """
+    body = {"error": {"code": "free_rate_limited", "message": "Rate limit exceeded"}}
+    res = classify_provider_failure(
+        status=429, body=body, headers={}, route={"provider": "orcarouter"}
+    )
+    assert res.failure_class == "request_defect"
+    assert res.rule_id == "orcarouter-prompt-cap"
+
+
+def test_orcarouter_free_tier_rate_limits_with_retry_after():
+    """OrcaRouter 429 with Retry-After maps to own_rpm (minute) or own_rpd (daily)."""
+    body = {"error": {"code": "free_rate_limited", "message": "Rate limit exceeded"}}
+
+    # Minute-scale window
+    res_rpm = classify_provider_failure(
+        status=429,
+        body=body,
+        headers={"retry-after": "45"},
+        route={"provider": "orcarouter"},
+    )
+    assert res_rpm.failure_class == "own_rpm"
+    assert res_rpm.rule_id == "orcarouter-minute-window"
+
+    # Daily-scale window (> 120s to 00:00 UTC)
+    res_rpd = classify_provider_failure(
+        status=429,
+        body=body,
+        headers={"retry-after": "3600"},
+        route={"provider": "orcarouter"},
+    )
+    assert res_rpd.failure_class == "own_rpd"
+    assert res_rpd.rule_id == "orcarouter-daily-window"

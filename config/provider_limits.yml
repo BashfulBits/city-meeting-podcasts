@@ -287,6 +287,20 @@ providers:
     accounts:
       - id: primary
         api_key_env: NVIDIA_API_KEY
+  orcarouter:
+    api_base: https://api.orcarouter.ai/v1
+    ai_gateway_slug: custom-orcarouter
+    # The registered Base URL ends in `/v1`, and the gateway now honors that path. Keep the
+    # caller path root-relative so it reaches `/v1/chat/completions` without a duplicated segment.
+    ai_gateway_chat_path: /chat/completions
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    rpm: 10
+    concurrency: 2
+    structured_output_profile: json_object
+    accounts:
+      - id: primary
+        api_key_env: ORCAROUTER_API_KEY
 routes:
   # ==========================================
   # GEMINI & GEMMA ROUTES (Google AI Studio)
@@ -1977,3 +1991,59 @@ routes:
     observed_on: "2026-09-12"
     observed_burst: 5
     observed_input_ceiling: 8192
+  # ==========================================
+  # ORCAROUTER ROUTES (api.orcarouter.ai)
+  # ==========================================
+  - route_id: orcarouter_deepseek_v4_flash_free
+    model: orcarouter/deepseek-v4-flash
+    model_key: deepseek/deepseek-v4-flash
+    provider: orcarouter
+    upstream_model: deepseek/deepseek-v4-flash-free
+    input_context_limit: 1000000
+    output_context_limit: 128000
+    account_id: primary
+    concurrency: 2
+    rpm: 10
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-14"
+    retry_after_trustworthy: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: orcarouter_tencent_hy3_free
+    model: orcarouter/tencent-hy3
+    model_key: tencent/hy3
+    provider: orcarouter
+    upstream_model: tencent/hy3-free
+    input_context_limit: 256000
+    output_context_limit: 65536
+    account_id: primary
+    concurrency: 2
+    rpm: 10
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-14"
+    retry_after_trustworthy: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: orcarouter_zai_glm_5_3_flash_free
+    model: orcarouter/glm-5.3-flash
+    model_key: zai/glm-5.3-flash
+    provider: orcarouter
+    upstream_model: z-ai/glm-5.3-flash-free
+    input_context_limit: 1000000
+    output_context_limit: 131072
+    account_id: primary
+    concurrency: 2
+    rpm: 10
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-14"
+    retry_after_trustworthy: true
+    upstream_429_default: upstream_capacity

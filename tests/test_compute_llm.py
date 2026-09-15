@@ -1965,6 +1965,7 @@ CUSTOM_PROVIDER_GATEWAY_PATHS = {
     "sambanova": "/chat/completions",
     "nvidia": "/chat/completions",
     "airforce": "/chat/completions",
+    "orcarouter": "/chat/completions",
     # Registered as `https://api.kilo.ai/api/gateway/v1` -- Kilo serves that path too, so the
     # caller path stays bare under either gateway join behavior.
     "kilo": "/chat/completions",

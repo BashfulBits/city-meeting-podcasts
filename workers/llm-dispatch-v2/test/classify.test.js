@@ -501,3 +501,50 @@ test("gemini's input_token_count quota metric is own_tpm, not the generic resour
   assert.equal(result.failure_class, "own_tpm");
   assert.equal(result.rule_id, "gemini-tpm");
 });
+
+test("orcarouter free-tier prompt cap is request_defect when Retry-After is absent", () => {
+  const result = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        code: "free_rate_limited",
+        message: "Rate limit exceeded",
+      },
+    },
+    headers: new Map(),
+    route: { provider: "orcarouter" },
+  });
+  assert.equal(result.failure_class, "request_defect");
+  assert.equal(result.rule_id, "orcarouter-prompt-cap");
+});
+
+test("orcarouter free-tier rate limits with Retry-After map to own_rpm and own_rpd", () => {
+  const body = {
+    error: {
+      code: "free_rate_limited",
+      message: "Rate limit exceeded",
+    },
+  };
+
+  // Minute window (<= 120s)
+  const headersRpm = new Map([["retry-after", "45"]]);
+  const resRpm = classifyProviderFailure({
+    status: 429,
+    body,
+    headers: headersRpm,
+    route: { provider: "orcarouter" },
+  });
+  assert.equal(resRpm.failure_class, "own_rpm");
+  assert.equal(resRpm.rule_id, "orcarouter-minute-window");
+
+  // Daily window (> 120s)
+  const headersRpd = new Map([["retry-after", "3600"]]);
+  const resRpd = classifyProviderFailure({
+    status: 429,
+    body,
+    headers: headersRpd,
+    route: { provider: "orcarouter" },
+  });
+  assert.equal(resRpd.failure_class, "own_rpd");
+  assert.equal(resRpd.rule_id, "orcarouter-daily-window");
+});

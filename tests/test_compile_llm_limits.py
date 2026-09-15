@@ -81,12 +81,9 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     deepseek_key = "deepseek/deepseek-v4-flash"
     deepseek_routes = compiled["model_routes_map"][deepseek_key]
-    # SiliconFlow (paid) + DeepSeek Direct (paid) + NVIDIA build (free) -- three independent
-    # physical pools for the same logical model. The NVIDIA leg was briefly commented
-    # out on 2026-08-29, blamed on NVIDIA gating this model per-key; the real cause was Cloudflare
-    # AI Gateway dropping the `/v1` from the custom-provider Base URL, which broke every NVIDIA
-    # route rather than this one model (see config/provider_limits.yml's `nvidia` block).
-    assert len(deepseek_routes) == 3
+    # SiliconFlow (paid) + DeepSeek Direct (paid) + NVIDIA build (free) + OrcaRouter (free) --
+    # four independent physical pools for the same logical model.
+    assert len(deepseek_routes) == 4
     physical_routes = [compiled["routes_by_id"][route_id] for route_id in deepseek_routes]
     assert (
         len(
@@ -95,10 +92,11 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
                 for route in physical_routes
             }
         )
-        == 3
+        == 4
     )
     assert compiled["model_aliases"]["deepseek/deepseek-v4-flash-0731"] == deepseek_key
     assert compiled["model_aliases"]["nvidia/deepseek-v4-flash-0731"] == deepseek_key
+    assert compiled["model_aliases"]["orcarouter/deepseek-v4-flash"] == deepseek_key
 
     nemotron_key = "nvidia/nemotron-3-ultra-550b-a55b:free"
     # OpenRouter + Kilo + OpenCode (all broker legs) + NVIDIA build direct (added 2026-08-29).
@@ -383,7 +381,7 @@ def test_python_catalog_rejects_an_unknown_route_account():
 
 
 def test_openai_compatible_provider_selectors_use_litellms_openai_adapter():
-    for provider in ("airforce", "kilo", "opencode", "siliconflow"):
+    for provider in ("airforce", "kilo", "opencode", "siliconflow", "orcarouter"):
         assert compile_llm_limits._direct_model(provider, "vendor/model") == "openai/vendor/model"
 
 
