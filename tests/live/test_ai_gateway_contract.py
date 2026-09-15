@@ -1,10 +1,10 @@
 """Live contract tests for Cloudflare AI Gateway's Custom Provider routing (``pytest -m live``).
 
-AI Gateway does **not** join a Custom Provider's Base URL the way its documentation describes.
-Rather than `{base_url}/{provider-path}`, it rewrites the Base URL's last path segment to a
-hardcoded ``v1`` before appending the caller path -- established 2026-08-29 by registering a
-throwaway custom provider pointed at an echo service (see workers/llm-provider-shim/README.md).
-Every custom provider's configuration is shaped around that undocumented behaviour.
+AI Gateway's Custom Provider URL join is undocumented and changed between the 2026-08-29 and
+2026-09-15 probes. It formerly rewrote the Base URL's last path segment to a hardcoded ``v1``;
+the current behavior honors the registered path as documented. Every custom provider's
+configuration and the provider shim must tolerate the current behavior, while the live test keeps
+watch for another edge-side change.
 
 Because the behaviour is undocumented, it can change without notice, and nothing in the offline
 suite can detect that: the deviation lives in Cloudflare's edge, not in this repo. These tests
@@ -131,9 +131,8 @@ def _gateway_base() -> str:
 def test_custom_provider_route_reaches_its_upstream(route):
     """Each custom provider's configured gateway URL must reach the real API, not a 404 page.
 
-    This is the check that would have caught the outage: every NVIDIA route, and every SambaNova
-    route, silently dispatched to the provider's origin root for want of a path prefix. 404 is not
-    in either dispatch Worker's ``retryableStatus`` set, so those hard-failed with no failover.
+    This catches a provider path mismatch before it becomes a production 404. 404 is not in either
+    dispatch Worker's ``retryableStatus`` set, so a routing 404 hard-fails with no failover.
     """
     base = _gateway_base()
     api_key = os.environ.get(route.api_key_env)
@@ -171,15 +170,13 @@ def test_custom_provider_route_reaches_its_upstream(route):
     )
 
 
-def test_gateway_still_drops_the_base_url_path_for_nvidia():
-    """Canary: NVIDIA's bare ``/chat/completions`` must still fail.
+def test_gateway_honors_the_base_url_path_for_nvidia():
+    """Canary: NVIDIA's bare ``/chat/completions`` must reach its registered ``/v1`` API.
 
-    NVIDIA is registered with Base URL ``https://integrate.api.nvidia.com/v1``, and the caller path
-    has to repeat that ``/v1`` because the gateway does not honour the registered path. If this
-    request ever *succeeds*, Cloudflare has changed the join and the extra prefix in
-    ``ai_gateway_chat_path`` is now double-prefixing for some providers -- which would be a silent
-    outage in the other direction. Failing here is the signal to re-derive the rule and simplify
-    the config, not a regression in this repo.
+    NVIDIA is registered with Base URL ``https://integrate.api.nvidia.com/v1``. The caller path is
+    intentionally bare because the gateway now honors the registered path. This request is kept as
+    a canary so a future reversal or another join change produces a named failure before it causes
+    silent 404s in production.
     """
     base = _gateway_base()
     api_key = os.environ.get("NVIDIA_API_KEY")
@@ -197,9 +194,12 @@ def test_gateway_still_drops_the_base_url_path_for_nvidia():
     )
 
     _reject_edge_block("nvidia", status, body)
-    assert status == 404, (
-        "Cloudflare AI Gateway now honours the Custom Provider Base URL path (NVIDIA's bare "
+    assert status != 404 or not any(marker in body for marker in ROUTING_FAILURE_BODIES), (
+        "Cloudflare AI Gateway did not honor NVIDIA's registered Base URL path (bare "
         f"/chat/completions returned HTTP {status}, body {body[:120]!r}). Re-derive the URL join "
-        "with an echo provider, then drop the compensating prefixes from "
-        "config/provider_limits.yml and this test."
+        "with an echo provider before changing config/provider_limits.yml."
+    )
+    assert _is_json(body), (
+        f"nvidia: non-JSON response (HTTP {status}, body {body[:120]!r}); the request did not "
+        "reach NVIDIA's provider API."
     )

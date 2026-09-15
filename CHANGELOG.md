@@ -52,6 +52,15 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Recovered AI Gateway custom-provider routing after Cloudflare changed its URL join.** The
+  latest Endpoint contracts run on 2026-09-15 showed that the gateway now honors registered Base
+  URL paths, so the old compensating `/v1` caller paths double-prefixed Airforce, SiliconFlow,
+  SambaNova, and NVIDIA. Their paths are now root-relative. The provider shim accepts both the
+  current literal `/x` path used by existing z.ai/OpenCode registrations and the former `/v1`
+  rewrite, so the fix does not require a synchronized dashboard edit. The live contract canary now
+  asserts the current join instead of asserting the old behavior. No pipeline-version changes or
+  stored-artifact backfill are required.
+
 - **`chapter-agenda` lane repinned from `mistral/mistral-medium-latest` to
   `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite` +
   `gemini/gemini-3.5-flash-lite` as backup models (`config/site_config.yml`,

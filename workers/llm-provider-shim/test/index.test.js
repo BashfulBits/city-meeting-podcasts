@@ -5,6 +5,7 @@ import { handleRequest, parseShimPath } from "../src/index.js";
 
 const ENV = { SHIM_TOKEN: "test-shim-token" };
 const VALID_URL = "https://shim.example/test-shim-token/zai/v1/chat/completions";
+const LEGACY_REGISTERED_URL = "https://shim.example/test-shim-token/zai/x/chat/completions";
 
 function request(url = VALID_URL, options = {}) {
   const headers = new Headers(options.headers);
@@ -45,6 +46,14 @@ test("forwards the query string alongside the rewritten path", async () => {
   );
 
   assert.equal(fetchImpl.calls[0].url, "https://opencode.ai/zen/v1/models?limit=2");
+});
+
+test("accepts a legacy literal registration path when the gateway honors it", async () => {
+  const fetchImpl = recordingFetch();
+  const response = await handleRequest(request(LEGACY_REGISTERED_URL), ENV, fetchImpl.impl);
+
+  assert.equal(response.status, 200);
+  assert.equal(fetchImpl.calls[0].url, "https://api.z.ai/api/paas/v4/chat/completions");
 });
 
 test("rejects a wrong token without contacting any upstream", async () => {
@@ -124,9 +133,13 @@ test("refuses path traversal that would escape the pinned prefix", async () => {
   }
 });
 
-test("requires the literal v1 segment the gateway substitutes", async () => {
+test("rejects an unrecognized gateway registration segment", async () => {
   assert.equal(
     parseShimPath("https://shim.example/test-shim-token/zai/chat/completions", ENV),
+    null,
+  );
+  assert.equal(
+    parseShimPath("https://shim.example/test-shim-token/zai/other/chat/completions", ENV),
     null,
   );
 });

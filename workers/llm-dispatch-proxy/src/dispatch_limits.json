@@ -31,7 +31,7 @@
     "airforce": {
       "api_base": "https://api.airforce/v1",
       "ai_gateway_slug": "custom-airforce",
-      "ai_gateway_chat_path": "/v1/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/v1/chat/completions",
       "ai_gateway_max_attempts": 1,
       "rpm": 1,
@@ -77,7 +77,7 @@
     "siliconflow": {
       "api_base": "https://api.siliconflow.com/v1",
       "ai_gateway_slug": "custom-siliconflow",
-      "ai_gateway_chat_path": "/v1/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -103,7 +103,7 @@
     "sambanova": {
       "api_base": "https://api.sambanova.ai/v1",
       "ai_gateway_slug": "custom-sambanova",
-      "ai_gateway_chat_path": "/v1/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "ai_gateway_max_attempts": 1,
       "rpm": 20,
@@ -170,7 +170,7 @@
     "nvidia": {
       "api_base": "https://integrate.api.nvidia.com/v1",
       "ai_gateway_slug": "custom-nvidia",
-      "ai_gateway_chat_path": "/v1/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "rpm": 35,
       "tpm": 90000,
