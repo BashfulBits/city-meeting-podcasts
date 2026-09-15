@@ -58,8 +58,10 @@ Phase R (Research-Tool Surface)._
   SambaNova, and NVIDIA. Their paths are now root-relative. The provider shim accepts both the
   current literal `/x` path used by existing z.ai/OpenCode registrations and the former `/v1`
   rewrite, so the fix does not require a synchronized dashboard edit. The live contract canary now
-  asserts the current join instead of asserting the old behavior. No pipeline-version changes or
-  stored-artifact backfill are required.
+  asserts the current join instead of asserting the old behavior. The deprecated v1 Worker suite is
+  retained because the documented retirement gate is not complete, with its custom-provider URL
+  assertion updated to the same generated path. No pipeline-version changes or stored-artifact
+  backfill are required.
 
 - **`chapter-agenda` lane repinned from `mistral/mistral-medium-latest` to
   `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite` +
