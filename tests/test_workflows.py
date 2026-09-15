@@ -168,6 +168,17 @@ def test_shared_review_resolution_isolates_one_bad_child_and_still_finalizes():
     )
 
 
+def test_llm_tournament_timeout_covers_configured_sample_budget():
+    _wf, job = _job("llm-tournament.yml", "tournament")
+    sampling = next(step for step in job["steps"] if step.get("name") == "Run bounded tag samples")
+
+    assert job["timeout-minutes"] == 180
+    assert sampling["timeout-minutes"] == 165
+    assert "python -m citypods.tournament" in sampling["run"]
+    assert "--samples 2" not in sampling["run"]
+    assert sampling["timeout-minutes"] < job["timeout-minutes"]
+
+
 # H6b split the combined enrich into two sharded, lane-pinned workflows.
 # Third element is the job name within the workflow file (audio.yml has a wait-for-contracts
 # pre-job so the heavy job must be addressed by name, not by position).

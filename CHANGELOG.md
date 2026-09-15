@@ -52,6 +52,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM tag tournament workflow timeout aligned with its configured sample budget**
+  (`.github/workflows/llm-tournament.yml`). The lane had been expanded from two samples to its
+  configured ~46-sample budget while retaining a 22-minute step timeout, so GitHub cancelled the
+  sampling step before it could publish the champion ticket. The job now has a 180-minute
+  backstop and the sampling step has a 165-minute limit, matching the other asynchronous LLM
+  lanes while preserving time for state persistence and ticket publication.
+  
 - **Recovered AI Gateway custom-provider routing after Cloudflare changed its URL join.** The
   latest Endpoint contracts run on 2026-09-15 showed that the gateway now honors registered Base
   URL paths, so the old compensating `/v1` caller paths double-prefixed Airforce, SiliconFlow,
