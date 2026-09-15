@@ -1539,6 +1539,28 @@ routes:
     input_per_token: 0.0
     output_per_token: 0.0
 
+  - route_id: opencode_nemotron_3_5_lightning_free
+    model: opencode/nemotron-3.5-lightning-free
+    # NVIDIA documents this text-only MoE as 30B total / 3B active with up to 1M-token context.
+    # Keep its generous advertised context distinct from a proven per-request ceiling: no
+    # OpenCode-specific hard ceiling has been observed yet.
+    provider: opencode
+    upstream_model: nemotron-3.5-lightning-free
+    input_context_limit: 1000000
+    output_context_limit: 128000
+    account_id: primary
+    concurrency: 1
+    # OpenCode does not publish a quota table for its temporary free routes. Start with the
+    # existing free Nemotron pool's conservative pace until production observations refine it.
+    rpm: 20
+    rpd: 200
+    tpm: 100000
+    free: true
+    observed_on: "2026-09-14"
+    upstream_429_default: upstream_capacity
+    input_per_token: 0.0
+    output_per_token: 0.0
+
   # ==========================================
   # NVIDIA BUILD ROUTES (build.nvidia.com / NIM hosted API catalog)
   # See the `nvidia` provider block above for the capacity caveats these routes share: a
@@ -1955,4 +1977,3 @@ routes:
     observed_on: "2026-09-12"
     observed_burst: 5
     observed_input_ceiling: 8192
-
