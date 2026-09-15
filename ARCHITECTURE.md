@@ -699,45 +699,43 @@ live at the provider root — which is why the routing tests assert the full req
 `api_base` alone. Worker dispatch payloads (`direct=False`) retain Gemini's OpenAI-compatible
 `…/v1beta/openai` upstream, matching the Worker's own HTTP dispatch implementation.
 
-##### Custom-provider routing: the undocumented `v1` rewrite
+##### Custom-provider routing: the changing Cloudflare URL join
 
-For **custom** providers (`custom-` slugs) the gateway does *not* join the registered Base URL the
-way [its docs](https://developers.cloudflare.com/ai-gateway/configuration/custom-providers/)
-describe (`{base_url}/{provider-path}`). It rewrites the Base URL's **last path segment to a
-hardcoded `v1`** before appending the caller path — established 2026-08-29 by registering a
-throwaway custom provider against an echo service and reading back the upstream URL
-(`/anything/prefix` → `/anything/v1`, `/anything/a/b` → `/anything/a/v1`). Because the registered
-Base URL lives in Cloudflare and not in this repo, the mapping cannot be derived from config alone;
-each provider's Cloudflare-side registration is therefore recorded in
-`CUSTOM_PROVIDER_GATEWAY_PATHS` in [`tests/test_compute_llm.py`](tests/test_compute_llm.py), and a
-new custom provider fails a completeness check until it is written down.
+For **custom** providers (`custom-` slugs), the gateway's URL join is undocumented and changed
+between the 2026-08-29 and 2026-09-15 live probes. It formerly rewrote the Base URL's **last path
+segment to a hardcoded `v1`** before appending the caller path; it now honors the registered path,
+matching [its documented](https://developers.cloudflare.com/ai-gateway/configuration/custom-providers/)
+`{base_url}/{provider-path}` join. Because the registered Base URL lives in Cloudflare and not in
+this repo, the mapping cannot be derived from config alone; each provider's Cloudflare-side
+registration is therefore recorded in `CUSTOM_PROVIDER_GATEWAY_PATHS` in
+[`tests/test_compute_llm.py`](tests/test_compute_llm.py), and a new custom provider fails a
+completeness check until it is written down.
 
 Three consequences shape the current configuration:
 
-- Providers registered at their `api_base` must repeat that path in `ai_gateway_chat_path`
-  (`siliconflow`, `sambanova`, `nvidia` → `/v1/chat/completions`). Omitting it dispatched to the
-  provider's origin root; that is what 404'd every NVIDIA and SambaNova route until 2026-08-29,
-  hard-failing with no failover because 404 is not in either Worker's `retryableStatus` set.
-- `kilo` is registered as `https://api.kilo.ai/api/gateway/v1` — a path Kilo also serves — so the
-  forced substitution lands correctly and its caller path stays bare.
-- `airforce` is registered as `https://api.airforce/v1`; its caller path repeats `/v1` so the
-  forced substitution reaches `https://api.airforce/v1/chat/completions`. Its 4k output ceiling
-  is separate from the model's 256k input context limit.
+- Providers registered at their `api_base` keep their API version in the registered Base URL and
+  use a root-relative `ai_gateway_chat_path` (`airforce`, `siliconflow`, `sambanova`, `nvidia` →
+  `/chat/completions`). The old compensating `/v1` caller paths became double prefixes when the
+  gateway began honoring the Base URL, producing the failures caught by the latest contract run.
+- `kilo` is registered as `https://api.kilo.ai/api/gateway/v1` — a path Kilo also serves — so its
+  caller path stays bare under either gateway join behavior.
+- `airforce` is registered as `https://api.airforce/v1`; its caller path stays bare so it reaches
+  `https://api.airforce/v1/chat/completions`. Its 4k output ceiling is separate from the model's
+  256k input context limit.
 - `zai` and `opencode` route through **`workers/llm-provider-shim`**, which restores the real
-  upstream prefix. z.ai's `/api/paas/v4` is otherwise inexpressible (the gateway rewrites `v4` →
-  `v1`, and no `v1`-containing path serves its API). The shim keeps them inside AI Gateway's
-  logging rather than bypassing the gateway. It forwards third-party API keys, so it pins its
-  destinations to an allowlist, fails closed without its secret, refuses upstream redirects
-  (`redirect: "manual"`, as `granicus-media-proxy` does — Workers' fetch otherwise replays
-  `Authorization` cross-origin), and returns one opaque 404 for every rejection. Its token lives in
-  the registered Base URL path because the gateway strips `cf-aig-authorization` before the
-  upstream sees it.
+  upstream prefix. z.ai's `/api/paas/v4` is otherwise inexpressible under the former rewrite
+  (`v4` → `v1`). The shim keeps them inside AI Gateway's logging rather than bypassing the gateway
+  and accepts both the current literal `/x` path from existing registrations and the former `/v1`
+  rewrite. It forwards third-party API keys, so it pins destinations to an allowlist, fails closed
+  without its secret, refuses upstream redirects (`redirect: "manual"`), and returns one opaque 404
+  for every rejection. Its token lives in the registered Base URL path because the gateway strips
+  `cf-aig-authorization` before the upstream sees it.
 
 Because this behaviour is undocumented and can change without notice — and no offline test can
 observe it — [`tests/live/test_ai_gateway_contract.py`](tests/live/test_ai_gateway_contract.py)
 probes the real gateway weekly from `contracts.yml`, asserting each provider's configured URL
-reaches its API and carrying a canary that fails if Cloudflare ever starts honouring the
-registered path (at which point the compensating prefixes become double-prefixes).
+reaches its API and carrying a canary that detects another join change before it becomes a
+production routing failure.
 
 Configuration: `CLOUDFLARE_ACCOUNT_ID` + optional `AI_GATEWAY_ID` (default `citypods-dispatch`)
 derive the standard URL, or `AI_GATEWAY_BASE_URL` overrides it outright.

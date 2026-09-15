@@ -58,6 +58,17 @@ Phase R (Research-Tool Surface)._
   sampling step before it could publish the champion ticket. The job now has a 180-minute
   backstop and the sampling step has a 165-minute limit, matching the other asynchronous LLM
   lanes while preserving time for state persistence and ticket publication.
+  
+- **Recovered AI Gateway custom-provider routing after Cloudflare changed its URL join.** The
+  latest Endpoint contracts run on 2026-09-15 showed that the gateway now honors registered Base
+  URL paths, so the old compensating `/v1` caller paths double-prefixed Airforce, SiliconFlow,
+  SambaNova, and NVIDIA. Their paths are now root-relative. The provider shim accepts both the
+  current literal `/x` path used by existing z.ai/OpenCode registrations and the former `/v1`
+  rewrite, so the fix does not require a synchronized dashboard edit. The live contract canary now
+  asserts the current join instead of asserting the old behavior. The deprecated v1 Worker suite is
+  retained because the documented retirement gate is not complete, with its custom-provider URL
+  assertion updated to the same generated path. No pipeline-version changes or stored-artifact
+  backfill are required.
 
 - **Chapter agenda and locator workflows now pass the GitHub Actions token to their bounded
   enrich steps** and grant the minimal `actions: read` permission. This re-enables graceful yield

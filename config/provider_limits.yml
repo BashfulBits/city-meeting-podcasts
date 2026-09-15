@@ -100,7 +100,7 @@ providers:
   airforce:
     api_base: https://api.airforce/v1
     ai_gateway_slug: custom-airforce
-    ai_gateway_chat_path: /v1/chat/completions
+    ai_gateway_chat_path: /chat/completions
     chat_path: /v1/chat/completions
     reset_timezone: UTC
     rpm: 1
@@ -144,10 +144,9 @@ providers:
     # `allow_paid` once no free route has capacity.
     api_base: https://api.siliconflow.com/v1
     ai_gateway_slug: custom-siliconflow
-    # Full path from the origin root (see the `nvidia` block). SiliconFlow serves the same
-    # endpoint at both `/chat/completions` and `/v1/chat/completions`, which is the only reason
-    # the old root-relative value worked; this states the intended URL explicitly.
-    ai_gateway_chat_path: /v1/chat/completions
+    # The registered Base URL ends in `/v1`, and the gateway now honors that path. Keep the
+    # caller path root-relative so it does not double the version segment.
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
@@ -166,10 +165,9 @@ providers:
   sambanova:
     api_base: https://api.sambanova.ai/v1
     ai_gateway_slug: custom-sambanova
-    # Full path from the origin root -- see the `nvidia` block below for why. Verified 2026-08-29:
-    # `/chat/completions` through the gateway returns SambaNova's plain-text `404 page not found`,
-    # `/v1/chat/completions` reaches the real API (a genuine 429 rate-limit JSON came back).
-    ai_gateway_chat_path: /v1/chat/completions
+    # The registered Base URL ends in `/v1`, and the gateway now honors that path. A root-relative
+    # caller path therefore reaches `/v1/chat/completions` without a duplicated version segment.
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     # SambaNova's documented Free-tier ceiling is 20 requests/minute. Keep this provider-wide
     # because both configured models share the same API key, and let the split-cap compiler divide
@@ -185,12 +183,11 @@ providers:
   zai:
     api_base: https://api.z.ai/api/paas/v4
     ai_gateway_slug: custom-zai
-    # Routed through `workers/llm-provider-shim`, not straight at api_base: AI Gateway rewrites the
-    # last segment of a Custom Provider's Base URL to a hardcoded `v1`, which turns z.ai's
-    # `/api/paas/v4` into `/api/paas/v1` (a real 404). No Base URL can express `/api/paas/v4`, so
-    # the shim restores it. The registered Base URL is
-    # `https://citypods-llm-provider-shim.citypods.workers.dev/<SHIM_TOKEN>/zai/x` -- the trailing
-    # `x` is sacrificial (the gateway eats it and substitutes `v1`). Verified 2026-08-29: HTTP 200.
+    # Routed through `workers/llm-provider-shim`, not straight at api_base: z.ai's `/api/paas/v4`
+    # is not reliably expressible through the gateway's changing Base URL join, so the shim
+    # restores it. The existing registered Base URL is
+    # `https://citypods-llm-provider-shim.citypods.workers.dev/<SHIM_TOKEN>/zai/x`; the shim accepts
+    # both the literal `/x` path and the former gateway-rewritten `/v1` path.
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
@@ -211,10 +208,9 @@ providers:
   kilo:
     api_base: https://api.kilo.ai/api/gateway
     ai_gateway_slug: custom-kilo
-    # The registered Base URL is `https://api.kilo.ai/api/gateway/v1`, not api_base: AI Gateway
-    # rewrites a Custom Provider Base URL's last segment to a hardcoded `v1`, so registering
-    # `/api/gateway` dispatched to `/api/v1` (a real 404). Kilo also serves `/api/gateway/v1`, so
-    # registering that lands correctly and no shim is needed. Verified 2026-08-29: HTTP 200.
+    # The registered Base URL is `https://api.kilo.ai/api/gateway/v1`, not api_base. Kilo serves
+    # that path, so it remains correct under both the former forced-`v1` rewrite and the current
+    # path-preserving join; no shim is needed.
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
@@ -229,8 +225,8 @@ providers:
     # cause never identified from outside -- replaying the gateway's full header set on a direct
     # call would not reproduce it. Going through the shim resolves it, which also ruled out the
     # leading theory that opencode.ai rejects Cloudflare-edge traffic (the shim is a Worker too).
-    # Registered Base URL: `https://.../<SHIM_TOKEN>/opencode/x`. Verified 2026-08-29: a genuine
-    # upstream 429 (free-tier quota) in place of the routing 404.
+    # Registered Base URL remains `https://.../<SHIM_TOKEN>/opencode/x`; the shim accepts both the
+    # literal `/x` path now honored by the gateway and the `/v1` path from its former rewrite.
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
@@ -264,14 +260,9 @@ providers:
   nvidia:
     api_base: https://integrate.api.nvidia.com/v1
     ai_gateway_slug: custom-nvidia
-    # Full path from the origin root, NOT just /chat/completions: Cloudflare AI Gateway ignores
-    # the path component of a Custom Provider's registered Base URL and joins the caller-supplied
-    # path at the origin root, so `https://integrate.api.nvidia.com/v1` + `/chat/completions`
-    # dispatches to `https://integrate.api.nvidia.com/chat/completions` -- NVIDIA's ELB answers
-    # that with an empty-body `text/plain` 404. Verified 2026-08-29 by curl. The other custom
-    # providers keep `/chat/completions` only because their upstreams happen to serve the same
-    # endpoint at the origin root too; NVIDIA's does not.
-    ai_gateway_chat_path: /v1/chat/completions
+    # The registered Base URL ends in `/v1`, and the gateway now honors that path. Keep the
+    # caller path root-relative so it reaches NVIDIA's `/v1/chat/completions` exactly once.
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     # Provider-wide safety net only -- the REAL limit is per route, and it is NOT uniform: 8 of the
@@ -1998,8 +1989,6 @@ routes:
     observed_on: "2026-09-12"
     observed_burst: 5
     observed_input_ceiling: 8192
-
-
 
 
 

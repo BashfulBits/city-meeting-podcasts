@@ -1994,12 +1994,11 @@ test("resolveProviderCredentials routes via AI_GATEWAY_BASE_URL when set across 
     account_id: "primary",
     upstream_model: "Qwen/Qwen2.5-72B-Instruct",
   });
-  // Custom providers carry their api_base path in ai_gateway_chat_path: AI Gateway discards the
-  // path component of a Custom Provider's registered Base URL and joins at the origin root, so
-  // dropping the `/v1` here would dispatch to https://api.siliconflow.com/chat/completions.
+  // The generated custom-provider path is root-relative because AI Gateway now honors the path
+  // component of the registered Base URL instead of rewriting it away.
   assert.equal(
     custom.url,
-    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/custom-siliconflow/v1/chat/completions",
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/custom-siliconflow/chat/completions",
   );
 });
 
