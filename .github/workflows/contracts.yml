@@ -28,6 +28,11 @@ concurrency:
 jobs:
   contracts:
     runs-on: ubuntu-latest
+    env:
+      # Match the checksum-pinned FFmpeg runtime used by Audio.  The media-fetch contract must
+      # exercise the same remux path as production rather than Ubuntu's independently-versioned
+      # distro package.
+      FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -39,9 +44,25 @@ jobs:
       - name: Install
         run: pip install -e ".[dev]" -c constraints/dev.txt
       # The media-fetch contract check truncated-downloads each provider's newest clip via ffmpeg
-      # (catches a CDN that 403s our User-Agent). Without ffmpeg that sub-check self-skips.
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # (catches a CDN that 403s our User-Agent). Use the same self-built, checksum-pinned 7.1.5
+      # binary as the Audio workflow: Ubuntu's distro build failed to remux a valid Granicus
+      # Worker response that the production runtime handles. Without ffmpeg this sub-check
+      # self-skips, so require this install to succeed.
+      - name: Install pinned static ffmpeg
+        # Built by scripts/build_ffmpeg_static.sh and vendored in our B2 bucket. Keep this URL
+        # secret-derived to match the other workflows that pin it (review/22).
+        env:
+          FFMPEG_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}/deps/ffmpeg/7.1.5/ffmpeg-7.1.5-linux64-static.tar.xz
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libgnutls30 libopus0 libvpx9 libdav1d7 libmp3lame0
+          timeout 300 python scripts/install_static_ffmpeg.py \
+            --url "${FFMPEG_URL}" \
+            --sha256 "${FFMPEG_SHA256}" \
+            --install-dir "${RUNNER_TEMP}/ffmpeg-static"
+          "${RUNNER_TEMP}/ffmpeg-static/bin/ffmpeg" -version >/dev/null
+          echo "${RUNNER_TEMP}/ffmpeg-static/bin" >> "$GITHUB_PATH"
       # Fail fast if the proxy secrets are missing/empty: without them the production fetch path
       # silently self-disables the Worker fallback, so the media-fetch check would revert to the
       # known direct-fetch 403 and report a false break instead of testing the real path. Checked

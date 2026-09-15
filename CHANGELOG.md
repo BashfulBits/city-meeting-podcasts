@@ -74,6 +74,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Endpoint Contracts now runs its Granicus media-fetch check with the production-pinned
+  FFmpeg 7.1.5 binary** rather than Ubuntu's independently-versioned package. The proxy had
+  delivered an exact, byte-verified Arlington source, but the distro build failed its local
+  three-second remux and falsely reported an upstream CDN throttle. This restores a meaningful
+  upstream/proxy contract check; it changes no production route, pipeline version, or stored
+  artifact.
+  
 - **LLM tag tournament incrementally decodes its archival source records.** It retains only a
   bounded recent-candidate window while scanning each source, so one large JSON archive cannot
   monopolize Python or force the tournament to materialize every historical record before it can
