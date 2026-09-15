@@ -52,6 +52,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **AI Gateway custom-provider probes now retry a one-off timeout or 5xx once,** while preserving
+  immediate failures for 404s and other semantic 4xx responses. z.ai's specific Alibaba WAF 405
+  page is recorded as an upstream-availability warning rather than misclassified as a Custom
+  Provider URL-join failure: direct and shim-local probes both reach its API, whereas the GitHub
+  runner's gateway egress is intermittently blocked at the upstream edge. This changes no
+  production route, pipeline version, or stored artifact.
+
 - **LLM tag tournament restores only its working state before sampling.** It now fetches the
   tournament record and configured sources' episode records rather than the entire
   multi-thousand-file durable snapshot, and prints restore progress before any network work.

@@ -105,11 +105,10 @@ jobs:
       # the Cloudflare Worker proxy when these are set (citypods.media._worker_fallback_for_403).
       # Wire them in here so the media-fetch check exercises the same path a real audio run uses —
       # a failure then means upstream *or* the proxy genuinely broke, not the known direct-fetch 403.
-      # Cloudflare AI Gateway's Custom Provider URL join is undocumented and does not match its
-      # docs: it rewrites a Base URL's last path segment to a hardcoded `v1` (see
-      # workers/llm-provider-shim/README.md). Every custom provider's config compensates for that,
-      # so a silent change on Cloudflare's side would 404 those routes with no failover -- 404 is
-      # not in either dispatch Worker's retryableStatus set. Nothing offline can catch it, so probe
+      # Cloudflare AI Gateway's Custom Provider URL join is undocumented and changed recently: it
+      # currently honors registered Base URL paths, whereas it previously rewrote their last path
+      # segment to `v1` (see workers/llm-provider-shim/README.md). A future change can turn custom
+      # routes into hard 404s with no dispatch failover. Nothing offline can catch that, so probe
       # the real gateway here. Self-skips when the secrets are absent.
       - name: Probe AI Gateway custom-provider routing
         env:

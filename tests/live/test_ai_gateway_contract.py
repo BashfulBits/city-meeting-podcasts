@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
+import warnings
 
 import pytest
 
@@ -40,6 +42,20 @@ ROUTING_FAILURE_BODIES = (
     "<!DOCTYPE html",  # a marketing site answering instead of an API -- Kilo, OpenCode
     "<html",
 )
+
+# z.ai's Alibaba edge sometimes rejects the GitHub runner's gateway egress before the API can
+# produce JSON. The fixed shim has already accepted and rewritten the request at that point, so
+# this particular branded response is evidence of the custom-provider path reaching z.ai -- not a
+# URL-join failure. It remains a warning because it is an upstream-availability limitation, not a
+# production dispatch success.
+ZAI_WAF_BLOCK_MARKERS = ("errors.aliyun.com", "potential threats to the server's security")
+
+# A second identical request distinguishes a fleeting connection/capacity failure from an endpoint
+# contract change. Never retry semantic 4xx responses: a 404, an HTML body, or a WAF response is
+# diagnostic evidence and must remain visible to this test.
+TRANSIENT_STATUSES = frozenset({500, 502, 503, 504})
+PROBE_ATTEMPTS = 2
+RETRY_DELAY_SECONDS = 1
 
 # Keep probes on named, deliberately chosen free routes rather than YAML ordering: OpenCode's former
 # DeepSeek V4 Flash alias is retired. NVIDIA's first listed Kimi K3 route has twice exceeded the
@@ -115,6 +131,30 @@ def _post(url: str, api_key: str, payload: dict, timeout: int = 60):
         return exc.code, exc.read(_MAX_BODY).decode("utf-8", "replace")
 
 
+def _post_with_retry(
+    url: str,
+    api_key: str,
+    payload: dict,
+    *,
+    timeout: int = 60,
+    post=_post,
+    sleep=time.sleep,
+):
+    """Retry exactly once for a connection failure or a transient upstream 5xx response."""
+    for attempt in range(PROBE_ATTEMPTS):
+        try:
+            status, body = post(url, api_key, payload, timeout=timeout)
+        except (TimeoutError, urllib.error.URLError):
+            if attempt + 1 == PROBE_ATTEMPTS:
+                raise
+        else:
+            if status not in TRANSIENT_STATUSES or attempt + 1 == PROBE_ATTEMPTS:
+                return status, body
+        sleep(RETRY_DELAY_SECONDS)
+
+    raise AssertionError("unreachable: final retry attempt must return or raise")
+
+
 def _is_json(body: str) -> bool:
     try:
         json.loads(body)
@@ -138,6 +178,29 @@ def _reject_edge_block(provider: str, status: int, body: str) -> None:
         )
 
 
+def _is_zai_waf_block(provider: str, status: int, body: str) -> bool:
+    """Return whether z.ai's branded upstream firewall, rather than its API, answered."""
+    body_lower = body.lower()
+    return (
+        provider == "zai"
+        and status == 405
+        and all(marker in body_lower for marker in ZAI_WAF_BLOCK_MARKERS)
+    )
+
+
+def _accept_zai_waf_block(provider: str, status: int, body: str) -> bool:
+    """Record a known z.ai edge rejection without mistaking it for a gateway path failure."""
+    if not _is_zai_waf_block(provider, status, body):
+        return False
+    warnings.warn(
+        "zai: Alibaba WAF rejected the gateway request after the custom-provider path reached "
+        "z.ai; endpoint routing is intact, but this probe could not verify API availability.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    return True
+
+
 def _gateway_base() -> str:
     account = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
     if not account or not os.environ.get("AI_GATEWAY_AUTH_TOKEN"):
@@ -158,7 +221,7 @@ def test_custom_provider_route_reaches_its_upstream(route):
         pytest.skip(f"{route.api_key_env} not set")
 
     url = f"{base}/{route.ai_gateway_slug}{route.ai_gateway_chat_path}"
-    status, body = _post(
+    status, body = _post_with_retry(
         url,
         api_key,
         {
@@ -169,6 +232,8 @@ def test_custom_provider_route_reaches_its_upstream(route):
     )
 
     _reject_edge_block(route.provider, status, body)
+    if _accept_zai_waf_block(route.provider, status, body):
+        return
     assert status != 404 or not any(marker in body for marker in ROUTING_FAILURE_BODIES), (
         f"{route.provider}: gateway call to {route.ai_gateway_chat_path} did not reach the "
         f"provider API (HTTP {status}, body {body[:120]!r}). Cloudflare's Custom Provider URL "
@@ -201,7 +266,7 @@ def test_gateway_honors_the_base_url_path_for_nvidia():
     if not api_key:
         pytest.skip("NVIDIA_API_KEY not set")
 
-    status, body = _post(
+    status, body = _post_with_retry(
         f"{base}/custom-nvidia/chat/completions",
         api_key,
         {
@@ -221,3 +286,61 @@ def test_gateway_honors_the_base_url_path_for_nvidia():
         f"nvidia: non-JSON response (HTTP {status}, body {body[:120]!r}); the request did not "
         "reach NVIDIA's provider API."
     )
+
+
+def test_post_with_retry_retries_a_transient_failure_once():
+    """A one-off 5xx gets one confirmation attempt before the contract reports a failure."""
+    calls = []
+    pauses = []
+
+    def post(*_args, **_kwargs):
+        calls.append(None)
+        return (503, "temporary") if len(calls) == 1 else (200, "{}")
+
+    assert _post_with_retry("url", "key", {}, post=post, sleep=pauses.append) == (200, "{}")
+    assert len(calls) == 2
+    assert pauses == [RETRY_DELAY_SECONDS]
+
+
+def test_post_with_retry_retries_a_timeout_once():
+    """A one-off connection timeout gets the same bounded confirmation attempt as a 5xx."""
+    calls = []
+
+    def post(*_args, **_kwargs):
+        calls.append(None)
+        if len(calls) == 1:
+            raise TimeoutError("temporary timeout")
+        return 200, "{}"
+
+    assert _post_with_retry("url", "key", {}, post=post, sleep=lambda _seconds: None) == (200, "{}")
+    assert len(calls) == 2
+
+
+def test_post_with_retry_does_not_retry_a_semantic_4xx():
+    """A possible path/API failure remains a single, immediately visible contract result."""
+    calls = []
+
+    def post(*_args, **_kwargs):
+        calls.append(None)
+        return 404, "not found"
+
+    assert _post_with_retry("url", "key", {}, post=post, sleep=lambda _seconds: None) == (
+        404,
+        "not found",
+    )
+    assert len(calls) == 1
+
+
+def test_zai_waf_block_signature_is_provider_specific():
+    """Only z.ai's exact branded WAF page is accepted as contact evidence."""
+    body = "<html>errors.aliyun.com: potential threats to the server's security</html>"
+    assert _is_zai_waf_block("zai", 405, body)
+    assert not _is_zai_waf_block("opencode", 405, body)
+    assert not _is_zai_waf_block("zai", 404, body)
+
+
+def test_zai_waf_block_becomes_an_explicit_warning():
+    """The known edge block remains visible without hiding a URL-join regression."""
+    body = "<html>errors.aliyun.com: potential threats to the server's security</html>"
+    with pytest.warns(RuntimeWarning, match="Alibaba WAF"):
+        assert _accept_zai_waf_block("zai", 405, body)
