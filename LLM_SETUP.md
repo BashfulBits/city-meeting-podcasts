@@ -14,7 +14,7 @@ LiteLLM and multi-provider routes:
 | **DeepSeek Direct** | `DEEPSEEK_API_KEY` | [platform.deepseek.com](https://platform.deepseek.com) | Direct & Dispatch | DeepSeek-V4-Flash ($0.14/M base, $0.0028 cache, $0.07 off-peak), DeepSeek-V4-Pro |
 | **OpenRouter** | `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) | Direct & Dispatch | Curated Gemma 4, Nemotron 550B/120B free endpoints and frontier models |
 | **Kilo Code** | `KILO_API_KEY` | [app.kilo.ai](https://app.kilo.ai) | Direct & Dispatch | StepFun Step-3.7-Flash & NVIDIA Nemotron-3-Ultra 550B (20 RPM / 200 Free RPD) |
-| **OpenCode Zen** | `OPENCODE_API_KEY` | [opencode.ai/auth](https://opencode.ai/auth) | Direct & Dispatch | DeepSeek-V4-Flash (1M Context), MiMo-V2.5, Nemotron 3 Ultra |
+| **OpenCode Zen** | `OPENCODE_API_KEY` | [opencode.ai/auth](https://opencode.ai/auth) | Direct & Dispatch | MiMo-V2.5 Free, Nemotron 3 Ultra Free |
 | **NVIDIA build.nvidia.com** | `NVIDIA_API_KEY` | [build.nvidia.com](https://build.nvidia.com) | Direct & Dispatch | Kimi K3, DeepSeek V4 Pro/Flash, Gemma 4 31B, GPT-OSS 120B, Nemotron 3 Ultra/Super/Nano-Omni, Riva Translate 4B — **no published rate-limit table**; self-imposed 4 RPM and 40k TPM per route in `config/provider_limits.yml` (2 RPM / 18k TPM after `token_estimate_buffer` and `split_cap_multiplier`), plus `concurrency: 1`. Rate was never the binding limit — at 1.15 req/min we still took 57% 429s, ~35x under the ~40 RPM community-reported baseline; NVIDIA rejects *overlap*, so concurrency is the real cap. See the `nvidia` provider block |
 
 > **SiliconFlow runs two separate platforms.** `siliconflow.com` (global) is the one

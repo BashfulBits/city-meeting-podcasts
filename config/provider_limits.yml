@@ -1498,44 +1498,6 @@ routes:
   # ==========================================
   # OPENCODE ZEN ROUTES (OpenCode.ai)
   # ==========================================
-  - route_id: opencode_deepseek_v4_flash_free
-    model: opencode/deepseek-v4-flash-free
-    # OpenCode Zen's current free model identifier. Keep the legacy alias route below for callers
-    # that still request the old 0731 logical name.
-    model_key: deepseek/deepseek-v4-flash
-    provider: opencode
-    upstream_model: deepseek-v4-flash-free
-    input_context_limit: 200000
-    output_context_limit: 128000
-    account_id: primary
-    concurrency: 1
-    rpm: 30
-    rpd: 500
-    tpm: 250000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-09-09"
-    upstream_429_default: upstream_capacity
-
-  - route_id: opencode_deepseek_v4_flash_0731_free
-    model: opencode/deepseek-v4-flash-0731
-    model_key: deepseek/deepseek-v4-flash
-    provider: opencode
-    upstream_model: deepseek-v4-flash-free
-    input_context_limit: 200000
-    output_context_limit: 128000
-    account_id: primary
-    concurrency: 1
-    rpm: 30
-    rpd: 500
-    tpm: 250000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-09-09"
-    upstream_429_default: upstream_capacity
-
   - route_id: opencode_mimo_v2_5_free
     model: opencode/mimo-v2.5-free
     provider: opencode
@@ -1989,6 +1951,5 @@ routes:
     observed_on: "2026-09-12"
     observed_burst: 5
     observed_input_ceiling: 8192
-
 
 

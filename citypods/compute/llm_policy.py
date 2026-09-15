@@ -415,7 +415,7 @@ ROUTES: dict[str, LLMRoute] = {
 }
 
 # Source fallback for a checkout that has not run the compiler yet.  This is intentionally kept
-# below the generated catalog and only supplies 12 routes during local development;
+# below the generated catalog and only supplies 11 routes during local development;
 # CI and packaging always compile and commit ``llm_routes.json``.
 if not _GENERATED_ROUTES:
     ROUTES = {
@@ -519,15 +519,6 @@ if not _GENERATED_ROUTES:
             transports=("llm-dispatch",),
             free=True,
             quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
-            pricing=PricingPolicy(),
-            max_provider_attempts=1,
-        ),
-        "opencode/deepseek-v4-flash-free": LLMRoute(
-            model="opencode/deepseek-v4-flash-free",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
-            free=True,
-            quota=QuotaPolicy(rpm=30, rpd=500, tpm=250_000),
             pricing=PricingPolicy(),
             max_provider_attempts=1,
         ),

@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 73,
+    "routes_count": 72,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -2012,33 +2012,6 @@
       "upstream_429_default": null,
       "structured_output_schema_strip_keys": []
     },
-    "opencode_deepseek_v4_flash_free": {
-      "route_id": "opencode_deepseek_v4_flash_free",
-      "provider": "opencode",
-      "upstream_model": "deepseek-v4-flash-free",
-      "input_context_limit": 200000,
-      "output_context_limit": 128000,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": 30,
-      "rpd": 500,
-      "tpm": 225000,
-      "concurrency": 1,
-      "request_start_margin_seconds": null,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": "2026-09-09",
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": "upstream_capacity",
-      "structured_output_schema_strip_keys": []
-    },
     "opencode_mimo_v2_5_free": {
       "route_id": "opencode_mimo_v2_5_free",
       "provider": "opencode",
@@ -2398,7 +2371,6 @@
     "deepseek/deepseek-v4-flash": [
       "siliconflow_deepseek_v4_flash_primary",
       "deepseek_v4_flash_primary",
-      "opencode_deepseek_v4_flash_free",
       "nvidia_deepseek_v4_flash_0731_free"
     ],
     "deepseek/deepseek-v4-pro": [
@@ -2493,8 +2465,6 @@
     "mistral/mistral-medium-2505": "mistral/mistral-medium-latest",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "opencode/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
-    "opencode/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "opencode/nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -2576,7 +2546,6 @@
     "openrouter/openai/gpt-4o-mini": "openrouter/openai/gpt-4o-mini",
     "stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
     "kilo/stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
-    "deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
     "mimo-v2.5-free": "opencode/mimo-v2.5-free",
     "opencode/mimo-v2.5-free": "opencode/mimo-v2.5-free",
     "nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",

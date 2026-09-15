@@ -882,10 +882,10 @@ test("provider RPM paces different models through one shared schedule", async (t
   assert.deepEqual(calls, ["codestral-2508", "mistral-small-2603"]);
 });
 
-test("legacy DeepSeek aliases use the unified free candidate pool", async () => {
+test("a current OpenCode free model uses its configured route", async () => {
   const env = isolatedEnv();
   const queued = await handleRequest(
-    chatRequest(undefined, "deepseek-alias", "opencode/deepseek-v4-flash-free"),
+    chatRequest(undefined, "opencode-free", "opencode/mimo-v2.5-free"),
     env,
   );
   const body = await queued.json();
@@ -893,30 +893,18 @@ test("legacy DeepSeek aliases use the unified free candidate pool", async () => 
   const calls = [];
   const upstream = async (url, init) => {
     calls.push({ url, body: JSON.parse(init.body) });
-    return new Response(JSON.stringify({ id: "deepseek-free", choices: [] }), { status: 200 });
+    return new Response(JSON.stringify({ id: "opencode-free", choices: [] }), { status: 200 });
   };
 
   const result = await dispatchOne(env, upstream, new Date());
   assert.equal(result.status, "completed");
   assert.equal(calls.length, 1);
-  // The point of this test is that the alias resolves into the shared pool at all, not which
-  // specific free member ends up serving it -- so assert pool membership rather than pinning one
-  // leg, which would break on every change to the pool's composition or tie-break order. (It has:
-  // NVIDIA's leg was removed and restored on 2026-08-29 over a misdiagnosed 404, and pinning
-  // OpenCode's URL here made that a test failure rather than a no-op.)
-  const freePoolUpstreams = new Map([
-    ["https://opencode.ai/zen/v1/chat/completions", "deepseek-v4-flash-free"],
-    ["https://integrate.api.nvidia.com/v1/chat/completions", "deepseek-ai/deepseek-v4-flash-0731"],
-  ]);
-  assert.ok(
-    freePoolUpstreams.has(calls[0].url),
-    `dispatched to ${calls[0].url}, which is not a free leg of deepseek/deepseek-v4-flash`,
-  );
-  assert.equal(calls[0].body.model, freePoolUpstreams.get(calls[0].url));
+  assert.equal(calls[0].url, "https://opencode.ai/zen/v1/chat/completions");
+  assert.equal(calls[0].body.model, "mimo-v2.5-free");
   const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
   const record = await stored.json();
   assert.equal(record.status, "completed");
-  assert.equal(record.model, "deepseek/deepseek-v4-flash");
+  assert.equal(record.model, "opencode/mimo-v2.5-free");
 });
 
 test("a request for a canonical model with no configured route fails permanently", async () => {
@@ -1068,9 +1056,9 @@ test("an aliased ready marker dispatches without an index-repair delay", async (
   const record = {
     id: "chatcmpl-aliased-ready",
     status: "pending",
-    model: "opencode/deepseek-v4-flash-free",
+    model: "opencode/nemotron-3-ultra-free",
     request: {
-      model: "opencode/deepseek-v4-flash-free",
+      model: "opencode/nemotron-3-ultra-free",
       messages: [{ role: "user", content: "x" }],
       stream: false,
     },

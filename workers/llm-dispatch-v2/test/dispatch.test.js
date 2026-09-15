@@ -1032,11 +1032,11 @@ const FREE_VS_PAID_CATALOG = {
   // Paid listed first on purpose: the routes tie on capacity fraction (both unused), so without
   // an explicit free-before-paid term the tie falls through to catalog order and the paid route
   // wins. Listing free first would let this test pass with the bug still present.
-  model_routes_map: { "deepseek/deepseek-v4-flash": ["paid-large", "free-small"] },
+  model_routes_map: { "opencode/mimo-v2.5-free": ["paid-large", "free-small"] },
   routes_by_id: {
     "free-small": {
       provider: "opencode",
-      upstream_model: "deepseek-v4-flash-free",
+      upstream_model: "mimo-v2.5-free",
       rpm: 5,
       rpd: 50,
       tpm: 100000,
@@ -1080,7 +1080,7 @@ test("a job allowing paid still takes the free route when the paid one has more 
     idempotency_key: `key-${id}`,
     request_digest: `digest-${id}`,
     policy_json: JSON.stringify({
-      allowed_models: ["deepseek/deepseek-v4-flash"],
+      allowed_models: ["opencode/mimo-v2.5-free"],
       allow_paid: true,
     }),
     prompt_family: "tags",
