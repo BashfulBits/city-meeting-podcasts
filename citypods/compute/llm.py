@@ -151,13 +151,17 @@ _BATCH_B2_IO_MAX_WORKERS = 8
 
 # The coordinator can reject a syntactically valid job because today's admission allocation is
 # spent. Those outcomes are ordinary deferred work: a later run must retry them, not record a
-# permanent submission error. Keep idempotency/model/purpose errors outside this set -- those need
-# an operator or code/config correction rather than a blind retry.
+# permanent submission error. A model_not_in_lane response is also retryable: the producer and
+# Worker deploys can briefly disagree during a lane/model rollout, as happened when chapter-agenda
+# moved to Nemotron while the old Worker was still deployed. Keep idempotency/purpose errors and
+# malformed backup policy outside this set -- those need an operator or code/config correction
+# rather than a blind retry.
 _DEFERRED_INGRESS_REASONS = frozenset(
     {
         "daily_cap_exceeded",
         "purpose_write_budget_exceeded",
         "ingress_write_budget_reserved",
+        "model_not_in_lane",
     }
 )
 

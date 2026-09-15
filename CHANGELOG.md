@@ -52,6 +52,15 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Chapter-agenda ingress rollout skew is now deferred and recoverable.** If the producer's lane
+  model list reaches the scheduled runner before the matching dispatch Worker deployment, v2's
+  `model_not_in_lane` response is retained as a deferred request instead of being recorded as a
+  per-episode submission error that turns the extraction run red and drops the work from the
+  normal retry path. The deferred sweep retries it after the Worker catches up; permanent policy
+  errors remain hard failures. This was triggered by the 2026-09-15 Nemotron migration incident:
+  the Worker deploy was temporarily blocked by a flaky test, so the old Mistral allowlist rejected
+  the first 1,000-job chapter-agenda batch.
+
 - **`chapter-agenda` lane repinned from `mistral/mistral-medium-latest` to
   `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite` +
   `gemini/gemini-3.5-flash-lite` as backup models (`config/site_config.yml`,

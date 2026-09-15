@@ -562,9 +562,9 @@ def test_enqueue_batch_server_rejections():
 
 @pytest.mark.parametrize(
     "reason",
-    ["purpose_write_budget_exceeded", "ingress_write_budget_reserved"],
+    ["purpose_write_budget_exceeded", "ingress_write_budget_reserved", "model_not_in_lane"],
 )
-def test_enqueue_batch_defers_per_purpose_capacity_rejections(reason):
+def test_enqueue_batch_defers_retryable_ingress_rejections(reason):
     storage = MockStorage()
     session = MagicMock()
 
