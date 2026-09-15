@@ -74,6 +74,12 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM tag tournament now reports liveness during candidate preparation.** The runner emits its
+  current phase immediately and once per minute while it loads source records or transcript/agenda
+  evidence, then records its selected sample count. This keeps long restartable reads observable
+  in hosted-runner logs and identifies the exact phase if the runner is interrupted. No pipeline
+  version or stored artifact format changes.
+  
 - **AI Gateway custom-provider probes now retry a one-off timeout or 5xx once,** while preserving
   immediate failures for 404s and other semantic 4xx responses. z.ai's specific Alibaba WAF 405
   page is recorded as an upstream-availability warning rather than misclassified as a Custom

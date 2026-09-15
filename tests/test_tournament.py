@@ -250,6 +250,9 @@ def test_run_skips_episode_on_llm_backend_error(tmp_path, monkeypatch, capsys):
 
     assert exit_code == 0
     out = capsys.readouterr().out
+    assert "loading configured source records" in out
+    assert "loading chapter evidence" in out
+    assert "selected 0 chapter sample(s)" in out
     assert "skipping 'ep-1'" in out
     assert "completed 0 sample(s)" in out
 

@@ -10,9 +10,12 @@ import argparse
 import base64
 import hashlib
 import json
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
@@ -56,6 +59,34 @@ STATE = "llm_tournament.json"
 TICKET_STATE = "llm_tournament_tickets.json"
 JUDGE_CONTRACT = "tournament-tag-judge"
 R5_FLASH_MODEL = "litellm:gemini/gemini-3.1-flash-lite"
+
+
+@contextmanager
+def _progress_heartbeat(phase: str, *, interval_seconds: float = 60.0):
+    """Emit bounded liveness while a restartable tournament preparation phase is busy.
+
+    The hosted runner's cancellation log contains no Python stack.  Candidate preparation can
+    spend minutes reading archived records or evidence from object storage, so keep that work
+    observable rather than looking indistinguishable from a stuck or externally stopped runner.
+    """
+    started = monotonic()
+    stopped = threading.Event()
+
+    def _beat() -> None:
+        while not stopped.wait(interval_seconds):
+            elapsed = int(monotonic() - started)
+            print(f"llm-tournament: still {phase} ({elapsed}s elapsed)", flush=True)
+
+    print(f"llm-tournament: {phase}", flush=True)
+    worker = threading.Thread(target=_beat, daemon=True)
+    worker.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        worker.join()
+        elapsed = int(monotonic() - started)
+        print(f"llm-tournament: finished {phase} ({elapsed}s elapsed)", flush=True)
 
 
 def contest_plan() -> tuple[tuple[str, str, str], ...]:
@@ -559,28 +590,32 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
     taxonomy_path = (site.get("tagging") or {}).get("taxonomy_path", "config/taxonomy.yml")
     taxonomy = load_taxonomy(taxonomy_path)
     episode_records: list[tuple[Any, dict[str, Any]]] = []
-    for city in cities:
-        for rec in load_records(state_dir, source_key(city)).values():
-            ep = record_to_episode(rec)
-            if not ep.uid:
-                continue
-            episode_records.append((ep, rec))
+    with _progress_heartbeat("loading configured source records"):
+        for city in cities:
+            for rec in load_records(state_dir, source_key(city)).values():
+                ep = record_to_episode(rec)
+                if not ep.uid:
+                    continue
+                episode_records.append((ep, rec))
+    print(f"llm-tournament: loaded {len(episode_records)} episode record(s)", flush=True)
 
     # Sort before loading chapter artifacts. `chapter_tag_inputs()` can read transcript and agenda
     # artifacts from object storage, so scanning every historical record before taking the newest
     # bounded sample made the weekly job spend its entire timeout on discarded candidates.
     episode_records.sort(key=lambda item: (item[0].published, item[0].uid or ""), reverse=True)
     episodes: list[tuple[Any, dict[str, Any], dict[str, Any]]] = []
-    for ep, rec in episode_records:
-        chapters = chapter_tag_inputs(ep, storage)
-        if not chapters:
-            print(f"llm-tournament: skipping {ep.uid!r} (no usable chapters)")
-            continue
-        for chapter in chapters:
-            if chapter.get("chapter_id") and (ep.uid, chapter["chapter_id"]) not in done:
-                episodes.append((ep, rec, chapter))
-        if len(episodes) >= samples:
-            break
+    with _progress_heartbeat("loading chapter evidence"):
+        for ep, rec in episode_records:
+            chapters = chapter_tag_inputs(ep, storage)
+            if not chapters:
+                print(f"llm-tournament: skipping {ep.uid!r} (no usable chapters)")
+                continue
+            for chapter in chapters:
+                if chapter.get("chapter_id") and (ep.uid, chapter["chapter_id"]) not in done:
+                    episodes.append((ep, rec, chapter))
+            if len(episodes) >= samples:
+                break
+    print(f"llm-tournament: selected {len(episodes)} chapter sample(s)", flush=True)
     deadline = datetime.now(UTC) + timedelta(minutes=20)
     completed = 0
     # Run-scoped, per-model backends. Every queue-only job this run creates -- candidate
