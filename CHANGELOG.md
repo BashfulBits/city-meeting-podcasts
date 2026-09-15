@@ -74,6 +74,12 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM tag tournament now reports liveness during candidate preparation.** The runner emits its
+  current phase immediately and once per minute while it loads source records or transcript/agenda
+  evidence, then records its selected sample count. This keeps long restartable reads observable
+  in hosted-runner logs and identifies the exact phase if the runner is interrupted. No pipeline
+  version or stored artifact format changes.
+
 - **LLM tag tournament restores only its working state before sampling.** It now fetches the
   tournament record and configured sources' episode records rather than the entire
   multi-thousand-file durable snapshot, and prints restore progress before any network work.
