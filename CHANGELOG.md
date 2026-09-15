@@ -60,6 +60,13 @@ Phase R (Research-Tool Surface)._
   rewrite, so the fix does not require a synchronized dashboard edit. The live contract canary now
   asserts the current join instead of asserting the old behavior. No pipeline-version changes or
   stored-artifact backfill are required.
+  
+- **City discovery auxiliary eligibility now restores only configured source records**
+  (`scripts/city_discovery.py`, `citypods/state.py`). The weekly scan previously downloaded the
+  entire durable state snapshot, including thousands of unrelated sidecars, before measuring recent
+  agenda coverage. It now scopes the pull to each configured source's `episodes.json`, preserving the
+  same eligibility calculation while keeping the scheduled job within its runner budget. This is a
+  read-path optimization only; no stored records or pipeline versions are invalidated.
 
 - **`chapter-agenda` lane repinned from `mistral/mistral-medium-latest` to
   `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite` +

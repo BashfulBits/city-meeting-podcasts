@@ -1035,6 +1035,22 @@ def test_pull_state_downloads_in_parallel(tmp_path):
         assert json.loads(path.read_text())["episodes"]["u"]["uid"] == f"u{i}"
 
 
+def test_pull_state_only_paths_skips_unrequested_objects(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    _seed_remote(bucket, "wanted", {"u": {"uid": "wanted"}})
+    _seed_remote(bucket, "unwanted", {"u": {"uid": "unwanted"}})
+
+    restored = pull_state(
+        bucket,
+        tmp_path / "state",
+        only_paths=["sources/wanted/episodes.json"],
+    )
+
+    assert restored == 1
+    assert (tmp_path / "state" / "sources" / "wanted" / "episodes.json").exists()
+    assert not (tmp_path / "state" / "sources" / "unwanted" / "episodes.json").exists()
+
+
 def test_reconcile_state_skips_cas_managed_budget(tmp_path):
     bucket = _CASLocal(root=tmp_path / "bucket", url_prefix="https://x")
     state_dir = tmp_path / "state"
