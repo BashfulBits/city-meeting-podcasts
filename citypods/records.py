@@ -655,6 +655,72 @@ def load_records(state_dir: Path, src_key: str) -> dict:
     return data.get("episodes", {}) if isinstance(data, dict) else {}
 
 
+def iter_records(state_dir: Path, src_key: str) -> Iterator[dict]:
+    """Yield persisted episode records one at a time without materializing the archive.
+
+    Full archive consumers use :func:`load_records`, but bounded research runners need only a
+    small recent-candidate window. ``json.loads`` holds the GIL while it constructs every nested
+    episode object, which made the tournament unable to emit liveness for minutes on a mature
+    source archive. Decoding each ``episodes`` member separately releases that pressure between
+    records and lets callers retain only the candidates they need.
+    """
+    path = records_path(state_dir, src_key)
+    if not path.exists():
+        return
+    text = path.read_text()
+    decoder = json.JSONDecoder()
+
+    def skip_whitespace(index: int) -> int:
+        while index < len(text) and text[index].isspace():
+            index += 1
+        return index
+
+    def require(character: str, index: int) -> int:
+        index = skip_whitespace(index)
+        if index >= len(text) or text[index] != character:
+            raise ValueError(f"invalid record archive: expected {character!r}")
+        return index + 1
+
+    index = require("{", 0)
+    while True:
+        index = skip_whitespace(index)
+        if index >= len(text):
+            raise ValueError("invalid record archive: missing closing brace")
+        if text[index] == "}":
+            return
+        field, index = decoder.raw_decode(text, index)
+        if not isinstance(field, str):
+            raise ValueError("invalid record archive: object field name is not a string")
+        index = require(":", index)
+        if field != "episodes":
+            _, index = decoder.raw_decode(text, skip_whitespace(index))
+        else:
+            index = require("{", index)
+            while True:
+                index = skip_whitespace(index)
+                if index >= len(text):
+                    raise ValueError("invalid record archive: missing episodes closing brace")
+                if text[index] == "}":
+                    return
+                _uid, index = decoder.raw_decode(text, index)
+                index = require(":", index)
+                record, index = decoder.raw_decode(text, skip_whitespace(index))
+                if isinstance(record, dict):
+                    yield record
+                index = skip_whitespace(index)
+                if index < len(text) and text[index] == ",":
+                    index += 1
+                    continue
+                index = require("}", index)
+                return
+        index = skip_whitespace(index)
+        if index < len(text) and text[index] == ",":
+            index += 1
+            continue
+        index = require("}", index)
+        return
+
+
 def save_records(state_dir: Path, src_key: str, records: dict) -> None:
     path = records_path(state_dir, src_key)
     path.parent.mkdir(parents=True, exist_ok=True)

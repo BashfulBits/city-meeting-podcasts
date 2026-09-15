@@ -229,7 +229,7 @@ def test_run_skips_episode_on_llm_backend_error(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
     monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
     episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
-    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "iter_records", lambda *_a, **_k: iter(({},)))
     monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
     monkeypatch.setattr(
         tournament, "episode_tag_inputs", lambda *_a, **_k: ("titles", "agenda", "transcript")
@@ -275,7 +275,7 @@ def test_run_batches_all_judge_comparisons_into_one_enqueue_call(tmp_path, monke
     monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
     monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
     episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
-    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "iter_records", lambda *_a, **_k: iter(({},)))
     monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
     monkeypatch.setattr(
         tournament,
@@ -338,7 +338,7 @@ def test_run_handles_pending_job_handles_and_skips_sample_finalization(tmp_path,
     monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
     monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
     episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
-    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "iter_records", lambda *_a, **_k: iter(({},)))
     monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
     monkeypatch.setattr(
         tournament,
@@ -403,7 +403,7 @@ def test_run_reuses_prior_resolved_comparison_without_dispatch(tmp_path, monkeyp
     monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
     monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
     episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
-    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "iter_records", lambda *_a, **_k: iter(({},)))
     monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
     monkeypatch.setattr(
         tournament,

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import heapq
 import json
 import threading
 from contextlib import contextmanager
@@ -30,7 +31,7 @@ from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model
 from citypods.config import load_city_configs, load_site_config
-from citypods.records import load_records, record_to_episode, source_key
+from citypods.records import iter_records, record_to_episode, source_key
 from citypods.review_issues import render_decision_block
 from citypods.statesync import pull_state, push_state
 from citypods.storage import make_storage
@@ -589,15 +590,38 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
     }
     taxonomy_path = (site.get("tagging") or {}).get("taxonomy_path", "config/taxonomy.yml")
     taxonomy = load_taxonomy(taxonomy_path)
-    episode_records: list[tuple[Any, dict[str, Any]]] = []
+    # Keep enough newest records to survive a few recent recordings without usable chapters while
+    # never retaining every historical record just to dispatch one bounded tournament batch.
+    candidate_limit = max(samples * 10, 200)
+    newest_records: list[tuple[datetime, str, int, Any, dict[str, Any]]] = []
+    scanned_records = 0
     with _progress_heartbeat("loading configured source records"):
         for city in cities:
-            for rec in load_records(state_dir, source_key(city)).values():
+            for rec in iter_records(state_dir, source_key(city)):
+                scanned_records += 1
                 ep = record_to_episode(rec)
                 if not ep.uid:
                     continue
-                episode_records.append((ep, rec))
-    print(f"llm-tournament: loaded {len(episode_records)} episode record(s)", flush=True)
+                candidate = (ep.published, ep.uid, scanned_records, ep, rec)
+                if len(newest_records) < candidate_limit:
+                    heapq.heappush(newest_records, candidate)
+                elif candidate[:3] > newest_records[0][:3]:
+                    heapq.heapreplace(newest_records, candidate)
+                if scanned_records % 1000 == 0:
+                    print(
+                        f"llm-tournament: scanned {scanned_records} records; retaining "
+                        f"{len(newest_records)} recent candidates",
+                        flush=True,
+                    )
+    episode_records = [
+        (candidate[3], candidate[4])
+        for candidate in sorted(newest_records, key=lambda candidate: candidate[:3], reverse=True)
+    ]
+    print(
+        f"llm-tournament: scanned {scanned_records} record(s); retained "
+        f"{len(episode_records)} recent candidate(s)",
+        flush=True,
+    )
 
     # Sort before loading chapter artifacts. `chapter_tag_inputs()` can read transcript and agenda
     # artifacts from object storage, so scanning every historical record before taking the newest

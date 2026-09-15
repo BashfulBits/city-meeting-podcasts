@@ -74,6 +74,12 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM tag tournament incrementally decodes its archival source records.** It retains only a
+  bounded recent-candidate window while scanning each source, so one large JSON archive cannot
+  monopolize Python or force the tournament to materialize every historical record before it can
+  choose current samples. Progress now includes the scanned and retained record counts. No
+  pipeline version or stored artifact format changes.
+
 - **LLM tag tournament now reports liveness during candidate preparation.** The runner emits its
   current phase immediately and once per minute while it loads source records or transcript/agenda
   evidence, then records its selected sample count. This keeps long restartable reads observable
