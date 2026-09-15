@@ -88,13 +88,27 @@ def test_discovery_llm_route_is_task_scoped_yaml_not_generic_environment(monkeyp
 def test_auxiliary_eligibility_keeps_state_restore_logs_off_json_stdout(
     monkeypatch, capsys, tmp_path
 ):
-    def fake_pull(_site, _output_dir, *, log):
+    pull_args = {}
+
+    def fake_pull(_site, _output_dir, *, only_paths, log):
+        pull_args["only_paths"] = only_paths
         log("state: restored 3 file(s) from durable storage")
         return tmp_path
 
     monkeypatch.setattr(city_discovery_script, "pull_canonical_state", fake_pull)
     monkeypatch.setattr(city_discovery_script, "load_site_config", lambda *_: {"defaults": {}})
-    monkeypatch.setattr(city_discovery_script, "load_city_configs", lambda *_: [])
+    monkeypatch.setattr(
+        city_discovery_script,
+        "load_city_configs",
+        lambda *_: [
+            SimpleNamespace(
+                slug="example-tx",
+                provider="swagit",
+                source_id="stable-source",
+                source={},
+            )
+        ],
+    )
     monkeypatch.setattr(city_discovery_script, "auxiliary_states", lambda *_: ([], {}))
 
     result = city_discovery_script._eligible_auxiliary(
@@ -111,6 +125,7 @@ def test_auxiliary_eligibility_keeps_state_restore_logs_off_json_stdout(
     assert result == {"eligible": [], "state": {}}
     assert captured.out == ""
     assert "state: restored 3 file(s) from durable storage" in captured.err
+    assert pull_args["only_paths"] == {"sources/stable-source/episodes.json"}
 
 
 def test_discovery_script_returns_tempfail_for_invalid_structured_output(monkeypatch, capsys):
