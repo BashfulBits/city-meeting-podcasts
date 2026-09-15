@@ -41,9 +41,13 @@ ROUTING_FAILURE_BODIES = (
     "<html",
 )
 
-# OpenCode's former DeepSeek V4 Flash free alias is no longer in its current catalog. Keep the
-# live contract on a named, currently listed free model rather than relying on YAML route ordering.
-PREFERRED_FREE_PROBE_ROUTE_IDS = {"opencode": "opencode_mimo_v2_5_free"}
+# Keep probes on named, known-responsive free routes rather than YAML ordering: OpenCode's former
+# DeepSeek V4 Flash alias is retired, and NVIDIA's first listed Kimi K3 route has twice exceeded
+# the contract's 60-second read timeout while the Nemotron Super URL canary stayed responsive.
+PREFERRED_FREE_PROBE_ROUTE_IDS = {
+    "nvidia": "nvidia_nemotron_3_super_120b_a12b_free",
+    "opencode": "opencode_mimo_v2_5_free",
+}
 
 
 def _one_route_per_custom_provider():

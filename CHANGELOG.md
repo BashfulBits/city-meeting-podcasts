@@ -52,6 +52,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **NVIDIA's live AI Gateway contract probe now uses Nemotron 3 Super rather than Kimi K3.** The
+  generic custom-provider sweep previously selected its first free NVIDIA route, Kimi K3, which
+  twice exceeded the test's 60-second read timeout even as the existing Nemotron Super URL canary
+  passed. Pinning the sweep to the responsive free route keeps its routing coverage while avoiding
+  a slow model's availability from turning the endpoint contract flaky. This changes neither
+  production dispatch selection nor pipeline versions or stored artifacts.
+
 - **Removed the retired OpenCode DeepSeek V4 Flash free definitions.** OpenCode's current catalog
   no longer advertises `deepseek-v4-flash-free`; the live contract probe now uses the listed
   `mimo-v2.5-free` route, and the stale DeepSeek aliases are removed from the provider registry and
