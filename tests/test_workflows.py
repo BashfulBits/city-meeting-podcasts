@@ -1187,6 +1187,19 @@ def test_chapter_workflows_have_independent_concurrency_groups(workflow, expecte
     assert wf["concurrency"] == {"group": expected_group, "cancel-in-progress": False}
 
 
+@pytest.mark.parametrize(
+    ("workflow", "job_name"),
+    [("chapter-agenda.yml", "extract"), ("chapter-locator.yml", "locate")],
+)
+def test_chapter_workflows_wire_graceful_yield(workflow, job_name):
+    """Chapter producers also use the bounded StopSignal path, so they need Actions API access
+    to yield when a newer run is queued instead of waiting for the full wall-clock window."""
+    wf, job = _job(workflow, job_name)
+    assert wf["permissions"] == {"contents": "read", "actions": "read"}
+    step = next(s for s in job["steps"] if "enrich --lane" in str(s.get("run", "")))
+    assert step["env"]["GITHUB_TOKEN"] == "${{ github.token }}"
+
+
 def test_chapter_workflows_use_alternating_two_hour_schedules():
     agenda, _agenda_job = _job("chapter-agenda.yml")
     locator, _locator_job = _job("chapter-locator.yml")
