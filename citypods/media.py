@@ -947,6 +947,11 @@ def _download_granicus_audio_fallback(
     ``None`` means this URL is not a canonical archive object or the Worker is not configured;
     ``False`` means an eligible Worker attempt failed. Provider pages and document URLs never
     enter this function, so their existing general-purpose Worker behavior remains unchanged.
+
+    A short contract probe uses the authenticated Worker URL as ffmpeg's remote input instead of
+    assembling a fixed local byte prefix. Some archive origins ignore Range and return a full MP4;
+    truncating that response at the probe's 8 MB budget can omit MP4 metadata that a local remux
+    needs. ffmpeg stops after ``max_seconds`` while streaming, preserving the bounded probe.
     """
     try:
         from citypods.granicus_proxy import GranicusWorkerFallback
@@ -969,6 +974,56 @@ def _download_granicus_audio_fallback(
     resolved = False
     raw_dest = dest.with_name(f"{dest.stem}.worker.mp4")
     try:
+        if max_seconds:
+            remote_cmd = [
+                ffmpeg_binary,
+                "-y",
+                "-loglevel",
+                "error",
+                *_ua_args(url),
+                "-protocol_whitelist",
+                "file,crypto,data,http,https,tcp,tls",
+                "-rw_timeout",
+                str(_STALL_TIMEOUT_US),
+                "-i",
+                url,
+                "-vn",
+                "-c:a",
+                "copy",
+                "-t",
+                str(max_seconds),
+                "-f",
+                "matroska",
+                str(dest),
+            ]
+            worker_cmd = fallback.rewrite_ffmpeg_command(remote_cmd, (url,))
+            if worker_cmd is None:  # Defensive: proxy_url above already established eligibility.
+                return None
+            _log_ffmpeg_event(
+                log,
+                "[enrich] granicus transport fallback phase=source-cache "
+                "strategy=cloudflare-worker-stream",
+            )
+            # _run_ffmpeg_guarded owns the provider slots for this remote source. Do not pass the
+            # caller telemetry as a direct outcome: this is an authenticated Worker retry, not a
+            # second direct CDN fetch. Its command carries a bearer header, so suppress internal
+            # command diagnostics; the caught exception is redacted before the outer event log.
+            _run_ffmpeg_guarded(
+                worker_cmd,
+                phase="source-cache-worker-stream",
+                timeout=timeout,
+                memory_floor_bytes=memory_floor_bytes,
+                rate_limit_urls=rate_limit_urls,
+                transport_telemetry=None,
+                stop=stop,
+                log=None,
+                allow_worker_fallback=False,
+                raise_rate_limited=False,
+            )
+            worker_ok = dest.exists() and dest.stat().st_size > 0
+            resolved = True
+            return worker_ok
+
         # For truncated probe fetches, cap the byte range so only the initial chunk is pulled
         effective_max_bytes = None if max_seconds else max_media_bytes
         max_download_bytes = (

@@ -74,6 +74,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **The Granicus Endpoint Contracts media probe now streams a three-second Worker-authenticated
+  sample rather than locally remuxing an 8 MB prefix.** Arlington's archive origin ignores ranges,
+  so its 8 MB truncated MP4 lacked the metadata required for a local remux even though the Worker
+  and production-style stream were healthy. The new path stops FFmpeg at three seconds (about 83
+  KB in the isolated Arlington diagnostic), preserving the bounded check while exercising the real
+  Worker route. No production route, pipeline version, or stored artifact changes.
+
 - **OpenCode's Gateway endpoint contract now checks its live model catalog instead of queuing a
   free inference request.** Both MiMo and the smaller Nemotron Lightning route can spend two full
   60-second attempts waiting at OpenCode even while `/models` returns the selected model immediately
