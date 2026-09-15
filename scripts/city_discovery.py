@@ -94,14 +94,15 @@ def _request_from_args(args: argparse.Namespace) -> tuple[DiscoveryRequest, obje
 
 def _eligible_auxiliary(args: argparse.Namespace) -> dict[str, object]:
     site = load_site_config(args.site_config)
+    cities = load_city_configs(args.config_dir, site.get("defaults", {}))
     state_dir = resolve_state_dir(site, Path(args.output_dir))
     if args.pull_state:
         state_dir = pull_canonical_state(
             site,
             Path(args.output_dir),
+            only_paths={f"sources/{source_key(city)}/episodes.json" for city in cities},
             log=lambda message: print(message, file=sys.stderr, flush=True),
         )
-    cities = load_city_configs(args.config_dir, site.get("defaults", {}))
     prior = json.loads(Path(args.prior_aux_state).read_text()) if args.prior_aux_state else {}
     if not isinstance(prior, dict):
         raise SystemExit("prior auxiliary state must be a JSON mapping")
