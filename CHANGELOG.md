@@ -52,6 +52,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Chapter agenda and locator workflows now pass the GitHub Actions token to their bounded
+  enrich steps** and grant the minimal `actions: read` permission. This re-enables graceful yield
+  when a newer run is queued; without it, the jobs only stopped at their wall-clock budget and
+  emitted `GITHUB_TOKEN unset — graceful yield disabled`.
+
 - **`chapter-agenda` lane repinned from `mistral/mistral-medium-latest` to
   `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite` +
   `gemini/gemini-3.5-flash-lite` as backup models (`config/site_config.yml`,
