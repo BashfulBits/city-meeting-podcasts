@@ -185,13 +185,9 @@ providers:
   zai:
     api_base: https://api.z.ai/api/paas/v4
     ai_gateway_slug: custom-zai
-    # Routed through `workers/llm-provider-shim`, not straight at api_base: AI Gateway rewrites the
-    # last segment of a Custom Provider's Base URL to a hardcoded `v1`, which turns z.ai's
-    # `/api/paas/v4` into `/api/paas/v1` (a real 404). No Base URL can express `/api/paas/v4`, so
-    # the shim restores it. The registered Base URL is
-    # `https://citypods-llm-provider-shim.citypods.workers.dev/<SHIM_TOKEN>/zai/x` -- the trailing
-    # `x` is sacrificial (the gateway eats it and substitutes `v1`). Verified 2026-08-29: HTTP 200.
-    ai_gateway_chat_path: /chat/completions
+    # Cloudflare AI Gateway Base URL for custom-zai is configured to `https://api.z.ai/api/paas`,
+    # so the caller path must supply `/v4/chat/completions` (verified 2026-09-15: HTTP 200).
+    ai_gateway_chat_path: /v4/chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
@@ -208,6 +204,15 @@ providers:
     accounts:
       - id: primary
         api_key_env: OPENROUTER_API_KEY
+  orcarouter:
+    api_base: https://api.orcarouter.ai/v1
+    ai_gateway_slug: custom-orcarouter
+    ai_gateway_chat_path: /v1/chat/completions
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    accounts:
+      - id: primary
+        api_key_env: ORCAROUTER_API_KEY
   kilo:
     api_base: https://api.kilo.ai/api/gateway
     ai_gateway_slug: custom-kilo
@@ -367,10 +372,10 @@ routes:
   # file) -- conclusive, contention_detected: false, provider_reported_tpm: 16000 (matches the
   # configured tpm exactly, confirming Google publishes 16000 TPM for this tier). Applied to both
   # primary and secondary per that same account-diversity convention. A same-day, single clean
-  # request at this input size plus a realistic 1000-token max_tokens succeeded fine (13,164
-  # total, well under 16000) on a rested key, ruling out any extra server-side output reservation
-  # as an explanation for the ~1-6% headroom below tpm -- it is a real, if narrow, per-model
-  # ceiling, not a measurement artifact.
+  # Google Gemma routes enforce a strict 16k TPM quota at the provider. With structured
+  # meeting/JSON transcripts tokenizing at ~2.8-3.2 chars/token, a char/4 client estimate will
+  # underestimate real token count. A conservative hard_input_ceiling: 10000 ensures requests
+  # exceeding this limit are kicked over to NVIDIA NIM or OpenRouter before hitting Gemini 429s.
   - route_id: gemma_4_26b_primary
     model: google/gemma-4-26b-a4b-it
     provider: gemini
@@ -381,10 +386,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 15062
+    hard_input_ceiling: 10000
     free: true
     observed_on: "2026-09-12"
-    observed_input_ceiling: 15062
+    observed_input_ceiling: 10000
     observed_burst: 31
 
   - route_id: gemma_4_26b_secondary
@@ -397,10 +402,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 15062
+    hard_input_ceiling: 10000
     free: true
     observed_on: "2026-09-12"
-    observed_input_ceiling: 15062
+    observed_input_ceiling: 10000
     observed_burst: 31
 
   - route_id: gemma_4_31b_primary
@@ -413,10 +418,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 12250
+    hard_input_ceiling: 10000
     free: true
     observed_on: "2026-09-12"
-    observed_input_ceiling: 12250
+    observed_input_ceiling: 10000
     observed_burst: 2
 
   - route_id: gemma_4_31b_secondary
@@ -429,10 +434,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 12250
+    hard_input_ceiling: 10000
     free: true
     observed_on: "2026-09-12"
-    observed_input_ceiling: 12250
+    observed_input_ceiling: 10000
     observed_burst: 2
 
   # Additional Free Flash Burst Pools (20 RPD / 5-10 RPM each)
@@ -599,6 +604,7 @@ routes:
     observed_on: "2026-09-12"
     observed_burst: 1
     observed_input_ceiling: 234437
+
 
   # ==========================================
   # ==========================================
@@ -1440,6 +1446,8 @@ routes:
   # ==========================================
   # OPENCODE ZEN ROUTES (OpenCode.ai)
   # ==========================================
+  # OpenCode free routes paused (rpd: 0) 2026-09-15: OpenCode free tier now requires an active
+  # OpenCode IDE session, rejecting API calls with HTTP 400 MissingSessionID.
   - route_id: opencode_deepseek_v4_flash_free
     model: opencode/deepseek-v4-flash-free
     # OpenCode Zen's current free model identifier. Keep the legacy alias route below for callers
@@ -1452,7 +1460,7 @@ routes:
     account_id: primary
     concurrency: 1
     rpm: 30
-    rpd: 500
+    rpd: 0
     tpm: 250000
     free: true
     input_per_token: 0.0
@@ -1470,7 +1478,7 @@ routes:
     account_id: primary
     concurrency: 1
     rpm: 30
-    rpd: 500
+    rpd: 0
     tpm: 250000
     free: true
     input_per_token: 0.0
@@ -1487,7 +1495,7 @@ routes:
     account_id: primary
     concurrency: 1
     rpm: 30
-    rpd: 500
+    rpd: 0
     tpm: 100000
     free: true
     input_per_token: 0.0
@@ -1507,7 +1515,7 @@ routes:
     account_id: primary
     concurrency: 1
     rpm: 20
-    rpd: 200
+    rpd: 0
     tpm: 100000
     free: true
     observed_on: "2026-09-09"
@@ -1931,6 +1939,77 @@ routes:
     observed_on: "2026-09-12"
     observed_burst: 5
     observed_input_ceiling: 8192
+
+  # ==========================================
+  # ORCAROUTER FREE ROUTES (api.orcarouter.ai)
+  # ==========================================
+  # OrcaRouter free endpoints configured as high-yield free provider priority #5.
+  - route_id: orcarouter_free
+    model: orcarouter/free
+    provider: orcarouter
+    upstream_model: orcarouter/free
+    input_context_limit: 128000
+    output_context_limit: 8192
+    account_id: primary
+    concurrency: 2
+    rpm: 20
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-15"
+    upstream_429_default: upstream_capacity
+
+  - route_id: orcarouter_deepseek_v4_flash_free
+    model: orcarouter/deepseek-v4-flash-free
+    model_key: deepseek/deepseek-v4-flash
+    provider: orcarouter
+    upstream_model: deepseek/deepseek-v4-flash-free
+    input_context_limit: 128000
+    output_context_limit: 8192
+    account_id: primary
+    concurrency: 2
+    rpm: 20
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-15"
+    upstream_429_default: upstream_capacity
+    structured_output_profile: json_object
+
+  - route_id: orcarouter_glm_5_3_flash_free
+    model: orcarouter/glm-5.3-flash-free
+    provider: orcarouter
+    upstream_model: z-ai/glm-5.3-flash-free
+    input_context_limit: 128000
+    output_context_limit: 8192
+    account_id: primary
+    concurrency: 2
+    rpm: 20
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-15"
+    upstream_429_default: upstream_capacity
+
+  - route_id: orcarouter_tencent_hy3_free
+    model: orcarouter/tencent-hy3-free
+    provider: orcarouter
+    upstream_model: tencent/hy3-free
+    input_context_limit: 128000
+    output_context_limit: 8192
+    account_id: primary
+    concurrency: 2
+    rpm: 20
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-15"
+    upstream_429_default: upstream_capacity
+
 
 
 

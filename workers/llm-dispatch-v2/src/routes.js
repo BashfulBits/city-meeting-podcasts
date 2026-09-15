@@ -35,10 +35,18 @@ export function routeFromCatalog(routeId, dispatchLimits, model) {
  * `input_context_limit` is the route's effective total context window. The provider still gets a
  * separate `output_context_limit` guard because a model can expose a smaller output maximum than
  * its total window (for example, Airforce's Mistral Medium route).
+ *
+ * `hard_input_ceiling` is an optional, measured per-request input ceiling (e.g. Google Gemma's
+ * 16k TPM token bucket). Requests exceeding it must never be admitted to this route and must fall
+ * through to alternative routes (e.g. NVIDIA NIM).
  */
 export function routeFitsContext(route, inputTokens, outputTokens) {
   const contextLimit = route.input_context_limit || 32768;
   const outputLimit = route.output_context_limit || 1024;
+  const hardCeiling = Number(route?.hard_input_ceiling);
+  if (Number.isFinite(hardCeiling) && hardCeiling > 0 && inputTokens > hardCeiling) {
+    return false;
+  }
   return (
     inputTokens <= contextLimit &&
     outputTokens <= outputLimit &&

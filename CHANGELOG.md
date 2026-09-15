@@ -45,6 +45,32 @@ Phase R (Research-Tool Surface)._
   logged `~2000 reused` for the retired stage shortly before this shipped, a figure its own code
   cannot produce against that same live data no matter how it is replayed — see review/31 §A.5.
 
+### Changed
+
+- **Free LLM route optimization & failure classification hardening (`config/provider_limits.yml`,
+  `workers/llm-dispatch-v2`, `citypods/compute/llm_failure_class.py`).**
+  - **OpenCode session isolation & route backoff:** Handled OpenCode `MissingSessionID` HTTP 400
+    errors ("free tier can only be used in OpenCode") in `upstreamCapacityFailure` and failure
+    classifiers (`classify.js`, `citypods/compute/llm_failure_class.py`), classifying them as
+    `upstream_capacity` instead of `request_defect` so failed jobs are requeued and routes backed
+    off. Paused dead OpenCode free routes with `rpd: 0`.
+  - **Mistral zero-allowance exponential backoff:** Threaded response headers through
+    `callAiGateway` in v2 dispatch and reordered `zero-provisioned-limit` before
+    `openai-shaped-rate-limit`. When Mistral returns HTTP 429 with
+    `x-ratelimit-limit-req-minute: 0`, the failure is classified as `payment_required`,
+    escalating up the day -> week -> month cooldown ladder to naturally resume probing when
+    monthly allowances rollover without setting `rpd: 0`.
+  - **Gemma hard token ceiling admission:** Enforced `hard_input_ceiling` directly inside
+    `routeFitsContext` (`workers/llm-dispatch-v2/src/routes.js`) and lowered Google Gemma 26B/31B
+    ceilings to 10,000 tokens (`config/provider_limits.yml`), preventing jobs exceeding Google's
+    16k TPM cap from entering doomed token bucket queues and kicking them to NVIDIA NIM routes.
+  - **OrcaRouter free endpoints integration:** Added OrcaRouter (`https://api.orcarouter.ai/v1`)
+    as high-yield free provider #5 (800 RPD per route), exposing `orcarouter_free`,
+    `orcarouter_deepseek_v4_flash_free` (with `json_object` structured output profile),
+    `orcarouter_glm_5_3_flash_free`, and `orcarouter_tencent_hy3_free`.
+  - **Z.ai AI Gateway path alignment:** Corrected `custom-zai` AI Gateway chat path from
+    `/chat/completions` to `/v4/chat/completions` to match Cloudflare's registered Base URL join.
+
 ### Added
 
 - **Direct-transport failure classification parity & sibling-route capacity retry (PR-6 /

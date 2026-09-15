@@ -376,3 +376,39 @@ def test_gemini_input_token_count_quota_metric_is_own_tpm_not_generic_resource_e
     )
     assert result.failure_class == "own_tpm"
     assert result.rule_id == "gemini-tpm"
+
+
+def test_opencode_missing_session_id_is_upstream_capacity():
+    """OpenCode free-tier 400 with MissingSessionID is classified as upstream_capacity."""
+    body = {
+        "error": {
+            "type": "MissingSessionID",
+            "message": (
+                "Error from provider (Console): OpenCode's free tier can only be used in OpenCode"
+            ),
+        },
+        "type": "error",
+    }
+    result = classify_provider_failure(
+        status=400, body=body, headers={}, route={"provider": "opencode"}
+    )
+    assert result.failure_class == "upstream_capacity"
+    assert result.rule_id == "upstream-400-body"
+
+
+def test_mistral_zero_provisioned_limit_precedence():
+    """Mistral 429 with 0 req/min limit is payment_required rather than own_rpm."""
+    body = {
+        "message": "Rate limit exceeded",
+        "type": "rate_limited",
+        "code": "1300",
+    }
+    headers = {
+        "x-ratelimit-limit-req-minute": "0",
+        "x-ratelimit-remaining-req-minute": "0",
+    }
+    result = classify_provider_failure(
+        status=429, body=body, headers=headers, route={"provider": "mistral"}
+    )
+    assert result.failure_class == "payment_required"
+    assert result.rule_id == "zero-provisioned-limit"

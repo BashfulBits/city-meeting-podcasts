@@ -63,6 +63,7 @@ def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
         "siliconflow",
         "opencode",
         "nvidia",
+        "orcarouter",
     }
     assert canonical_model("opencode/deepseek-v4-flash-free") == "deepseek/deepseek-v4-flash"
     assert MODEL_ALIASES["deepseek/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"

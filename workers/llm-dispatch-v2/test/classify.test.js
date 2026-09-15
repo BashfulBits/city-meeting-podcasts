@@ -45,6 +45,24 @@ test("classifyProviderFailure handles HTTP 400 upstream capacity as upstream_cap
   assert.equal(res.scope, "route");
 });
 
+test("classifyProviderFailure handles OpenCode MissingSessionID 400 as upstream_capacity", () => {
+  const res = classifyProviderFailure({
+    status: 400,
+    body: {
+      type: "error",
+      error: {
+        type: "MissingSessionID",
+        message: "Error from provider (Console): OpenCode's free tier can only be used in OpenCode",
+      },
+    },
+    headers: null,
+    route: { provider: "opencode", route_id: "opencode/deepseek-v4-flash-free" },
+  });
+  assert.equal(res.failure_class, "upstream_capacity");
+  assert.equal(res.rule_id, "upstream-400-body");
+  assert.equal(res.scope, "route");
+});
+
 test("classifyProviderFailure handles CF AI Gateway error as gateway_limit with provider scope", () => {
   const resWithHeader = classifyProviderFailure({
     status: 429,

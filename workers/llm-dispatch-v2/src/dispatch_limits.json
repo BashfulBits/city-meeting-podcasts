@@ -1,8 +1,8 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 73,
-    "providers_count": 12,
+    "routes_count": 77,
+    "providers_count": 13,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
   },
@@ -118,7 +118,7 @@
     "zai": {
       "api_base": "https://api.z.ai/api/paas/v4",
       "ai_gateway_slug": "custom-zai",
-      "ai_gateway_chat_path": "/chat/completions",
+      "ai_gateway_chat_path": "/v4/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -138,6 +138,19 @@
         {
           "id": "primary",
           "api_key_env": "OPENROUTER_API_KEY"
+        }
+      ]
+    },
+    "orcarouter": {
+      "api_base": "https://api.orcarouter.ai/v1",
+      "ai_gateway_slug": "custom-orcarouter",
+      "ai_gateway_chat_path": "/v1/chat/completions",
+      "chat_path": "/chat/completions",
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "ORCAROUTER_API_KEY"
         }
       ]
     },
@@ -327,7 +340,7 @@
       "upstream_model": "gemma-4-26b-a4b-it",
       "input_context_limit": 262144,
       "output_context_limit": 32768,
-      "hard_input_ceiling": 15062,
+      "hard_input_ceiling": 10000,
       "account_id": "project_primary",
       "rpm": 30,
       "rpd": 14400,
@@ -342,7 +355,7 @@
       "observed_on": "2026-09-12",
       "observed_rpm": null,
       "observed_burst": 31,
-      "observed_input_ceiling": 15062,
+      "observed_input_ceiling": 10000,
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
@@ -361,7 +374,7 @@
       "upstream_model": "gemma-4-26b-a4b-it",
       "input_context_limit": 262144,
       "output_context_limit": 32768,
-      "hard_input_ceiling": 15062,
+      "hard_input_ceiling": 10000,
       "account_id": "project_secondary",
       "rpm": 30,
       "rpd": 14400,
@@ -376,7 +389,7 @@
       "observed_on": "2026-09-12",
       "observed_rpm": null,
       "observed_burst": 31,
-      "observed_input_ceiling": 15062,
+      "observed_input_ceiling": 10000,
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
@@ -395,7 +408,7 @@
       "upstream_model": "gemma-4-31b-it",
       "input_context_limit": 262144,
       "output_context_limit": 32768,
-      "hard_input_ceiling": 12250,
+      "hard_input_ceiling": 10000,
       "account_id": "project_primary",
       "rpm": 30,
       "rpd": 14400,
@@ -410,7 +423,7 @@
       "observed_on": "2026-09-12",
       "observed_rpm": null,
       "observed_burst": 2,
-      "observed_input_ceiling": 12250,
+      "observed_input_ceiling": 10000,
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
@@ -429,7 +442,7 @@
       "upstream_model": "gemma-4-31b-it",
       "input_context_limit": 262144,
       "output_context_limit": 32768,
-      "hard_input_ceiling": 12250,
+      "hard_input_ceiling": 10000,
       "account_id": "project_secondary",
       "rpm": 30,
       "rpd": 14400,
@@ -444,7 +457,7 @@
       "observed_on": "2026-09-12",
       "observed_rpm": null,
       "observed_burst": 2,
-      "observed_input_ceiling": 12250,
+      "observed_input_ceiling": 10000,
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
@@ -2021,7 +2034,7 @@
       "hard_input_ceiling": null,
       "account_id": "primary",
       "rpm": 30,
-      "rpd": 500,
+      "rpd": 0,
       "tpm": 225000,
       "concurrency": 1,
       "request_start_margin_seconds": null,
@@ -2048,7 +2061,7 @@
       "hard_input_ceiling": null,
       "account_id": "primary",
       "rpm": 30,
-      "rpd": 500,
+      "rpd": 0,
       "tpm": 90000,
       "concurrency": 1,
       "request_start_margin_seconds": null,
@@ -2075,7 +2088,7 @@
       "hard_input_ceiling": null,
       "account_id": "primary",
       "rpm": 20,
-      "rpd": 200,
+      "rpd": 0,
       "tpm": 90000,
       "concurrency": 1,
       "request_start_margin_seconds": null,
@@ -2335,6 +2348,114 @@
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
       "structured_output_schema_strip_keys": []
+    },
+    "orcarouter_free": {
+      "route_id": "orcarouter_free",
+      "provider": "orcarouter",
+      "upstream_model": "orcarouter/free",
+      "input_context_limit": 128000,
+      "output_context_limit": 8192,
+      "hard_input_ceiling": null,
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 800,
+      "tpm": null,
+      "concurrency": 2,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-09-15",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
+    "orcarouter_deepseek_v4_flash_free": {
+      "route_id": "orcarouter_deepseek_v4_flash_free",
+      "provider": "orcarouter",
+      "upstream_model": "deepseek/deepseek-v4-flash-free",
+      "input_context_limit": 128000,
+      "output_context_limit": 8192,
+      "hard_input_ceiling": null,
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 800,
+      "tpm": null,
+      "concurrency": 2,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-09-15",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
+    "orcarouter_glm_5_3_flash_free": {
+      "route_id": "orcarouter_glm_5_3_flash_free",
+      "provider": "orcarouter",
+      "upstream_model": "z-ai/glm-5.3-flash-free",
+      "input_context_limit": 128000,
+      "output_context_limit": 8192,
+      "hard_input_ceiling": null,
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 800,
+      "tpm": null,
+      "concurrency": 2,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-09-15",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
+    "orcarouter_tencent_hy3_free": {
+      "route_id": "orcarouter_tencent_hy3_free",
+      "provider": "orcarouter",
+      "upstream_model": "tencent/hy3-free",
+      "input_context_limit": 128000,
+      "output_context_limit": 8192,
+      "hard_input_ceiling": null,
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 800,
+      "tpm": null,
+      "concurrency": 2,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-09-15",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
     }
   },
   "model_routes_map": {
@@ -2399,7 +2520,8 @@
       "siliconflow_deepseek_v4_flash_primary",
       "deepseek_v4_flash_primary",
       "opencode_deepseek_v4_flash_free",
-      "nvidia_deepseek_v4_flash_0731_free"
+      "nvidia_deepseek_v4_flash_0731_free",
+      "orcarouter_deepseek_v4_flash_free"
     ],
     "deepseek/deepseek-v4-pro": [
       "deepseek_v4_pro_primary",
@@ -2484,6 +2606,15 @@
     ],
     "nvidia/riva-translate-4b-instruct-v2": [
       "nvidia_riva_translate_4b_instruct_v2_free"
+    ],
+    "orcarouter/free": [
+      "orcarouter_free"
+    ],
+    "orcarouter/glm-5.3-flash-free": [
+      "orcarouter_glm_5_3_flash_free"
+    ],
+    "orcarouter/tencent-hy3-free": [
+      "orcarouter_tencent_hy3_free"
     ]
   },
   "model_aliases": {
@@ -2499,6 +2630,7 @@
     "nvidia/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "orcarouter/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
     "gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemini/gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite": "gemini/gemini-3.1-flash-lite",
@@ -2594,7 +2726,15 @@
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
-    "nvidia/nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2"
+    "nvidia/nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
+    "orcarouter/free": "orcarouter/free",
+    "orcarouter/orcarouter/free": "orcarouter/free",
+    "deepseek/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
+    "orcarouter/deepseek/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
+    "z-ai/glm-5.3-flash-free": "orcarouter/glm-5.3-flash-free",
+    "orcarouter/z-ai/glm-5.3-flash-free": "orcarouter/glm-5.3-flash-free",
+    "tencent/hy3-free": "orcarouter/tencent-hy3-free",
+    "orcarouter/tencent/hy3-free": "orcarouter/tencent-hy3-free"
   },
   "model_routing": {}
 }
