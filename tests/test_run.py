@@ -2746,6 +2746,43 @@ def test_enrich_audio_lane_threads_agenda_link_baseline_into_push(
     )
 
 
+def test_enrich_unsharded_audio_lane_still_uses_merged_persistence(
+    tmp_path, fake_provider, monkeypatch
+):
+    """CodeRabbit review on #1716: a valid ``--lane audio`` invocation with no ``--source``/
+    ``--shard`` (``scoped`` was False for "audio" alone) fell back to the plain whole-snapshot
+    ``push_state()`` push. That path has no ``agenda_link_baseline`` — or any other foreign-block
+    preservation — so this run could still resurrect a concurrent agenda/chapter maintenance
+    reset's tombstone despite this PR's fix. ``lane="audio"`` alone must now route through
+    ``push_records_merged`` exactly like the other single-lane-only workflows (tag/moments/
+    diarize/...) already do."""
+    cities = _setup(tmp_path)
+    captured = {}
+
+    def _push_merged(
+        _storage,
+        _state_dir,
+        source_keys,
+        *,
+        protected_blocks,
+        lane=None,
+        owned_uids=None,
+        agenda_link_baseline=None,
+        log=None,
+    ):
+        captured["called"] = True
+        captured["agenda_link_baseline"] = agenda_link_baseline
+        return len(set(source_keys))
+
+    monkeypatch.setattr(run, "push_records_merged", _push_merged)
+    monkeypatch.setattr(run, "reconcile_state", lambda *a, **k: 0)
+
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="audio")
+
+    assert captured.get("called") is True  # merged persistence, not the plain whole-snapshot push
+    assert captured["agenda_link_baseline"] is not None
+
+
 def test_unsharded_enrich_pushes_everything_and_reconciles(tmp_path, fake_provider, monkeypatch):
     """The full (unsharded) run keeps the whole-snapshot push + the reconcile sweep."""
     cities_dir = _setup_multi(tmp_path)

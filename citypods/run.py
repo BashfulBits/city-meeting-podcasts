@@ -2609,12 +2609,20 @@ def _build_impl(
     # H6b source/shard selection (by source_key, so a city's combined + per-board feeds stay
     # together in one shard and one record store). ``scoped`` marks a partial run for statesync.
     # Scoped lanes only own specific artifact blocks, so they must always route through merged
-    # persistence even when running without --source or --shard.
+    # persistence even when running without --source or --shard. ``audio`` is included for the
+    # same reason as the others below (CodeRabbit review on #1716): production always shards it
+    # (`audio.yml`), but a valid unsharded `--lane audio` invocation must still route through
+    # `push_records_merged` — the plain whole-snapshot `push_state()` the *unscoped* branch uses
+    # has no `agenda_link_baseline` (or any other foreign-block preservation) and would silently
+    # resurrect a concurrent agenda/chapter maintenance reset's tombstone, defeating this lane's
+    # own TOCTOU protection (`merge_preserving_foreign`'s docstring; ARCHITECTURE.md's
+    # maintenance-lease section).
     scoped = bool(
         source
         or shard
         or lane
         in {
+            "audio",
             "tag",
             "moments",
             "diarize",
