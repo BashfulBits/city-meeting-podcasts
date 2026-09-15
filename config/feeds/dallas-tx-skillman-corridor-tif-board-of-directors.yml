@@ -6,6 +6,12 @@ source:
   body: "*Skillman Corridor TIF District Board of Directors Meeting"
   body_any:
     - "Reinvestment Zone * 14 * Skillman Corridor"
+    - "Reinvestment Zone 14 Skillman Corridor"
+  body_includes:
+    - provider_guid: "204719"
+      body: "Reinvestment Zone 14 Board Skillman Corridor"
+    - provider_guid: "204685"
+      body: "Reinvestment Zone 14 Board Skillman Corridor"
 podcast_title: "Dallas: Skillman Corridor TIF District Board of Directors"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""
