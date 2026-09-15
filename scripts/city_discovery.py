@@ -106,7 +106,13 @@ def _eligible_auxiliary(args: argparse.Namespace) -> dict[str, object]:
     prior = json.loads(Path(args.prior_aux_state).read_text()) if args.prior_aux_state else {}
     if not isinstance(prior, dict):
         raise SystemExit("prior auxiliary state must be a JSON mapping")
-    records = {city.slug: load_records(state_dir, source_key(city)) for city in cities}
+    records_by_source: dict[str, dict] = {}
+    records: dict[str, dict] = {}
+    for city in cities:
+        src_key = source_key(city)
+        if src_key not in records_by_source:
+            records_by_source[src_key] = load_records(state_dir, src_key)
+        records[city.slug] = records_by_source[src_key]
     eligible, state = auxiliary_states(cities, records, prior)
     return {"eligible": eligible, "state": state}
 

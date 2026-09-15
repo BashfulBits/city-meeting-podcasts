@@ -64,6 +64,12 @@ Phase R (Research-Tool Surface)._
   same eligibility calculation while keeping the scheduled job within its runner budget. This is a
   read-path optimization only; no stored records or pipeline versions are invalidated.
 
+- **Auxiliary city discovery now deduplicates shared source records** (`scripts/city_discovery.py`,
+  `citypods/discovery/eligibility.py`). Multiple feed views can reference one canonical source;
+  discovery now parses each source once and counts its episodes once per city entity. This prevents
+  repeated large `episodes.json` expansions from exhausting the hosted runner. It is a read-path
+  optimization only; no records or pipeline versions are invalidated.
+
 - **`chapter-agenda` lane repinned from `mistral/mistral-medium-latest` to
   `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite` +
   `gemini/gemini-3.5-flash-lite` as backup models (`config/site_config.yml`,
