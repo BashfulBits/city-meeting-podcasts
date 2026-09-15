@@ -122,6 +122,7 @@ jobs:
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
         run: python -m pytest tests/live/test_ai_gateway_contract.py -m live -v
 
       - name: Probe endpoints + reconcile issues

@@ -50,6 +50,28 @@ Phase R (Research-Tool Surface)._
     enqueue-time-guessed `JobHandle.model` when building the final `JobResult`. Without this, a
     job that completed on a backup route would still be recorded under its primary model.
 
+- **OrcaRouter free model catalog & endpoint routing (`config/provider_limits.yml`,
+  `LLM_SETUP.md`, `ARCHITECTURE.md`, `workers/llm-dispatch-v2/src/classify.js`,
+  `citypods/compute/llm_failure_class.py`).**
+  - Added OrcaRouter (`api.orcarouter.ai`) as the 13th LLM provider in
+    `config/provider_limits.yml`, exposing OpenAI-compatible endpoints with `ORCAROUTER_API_KEY`.
+  - Added 3 free routes with exact upstream `-free` model names: `deepseek-v4-flash-free`
+    (1M context, 10 RPM / 800 RPD), `tencent/hy3-free` (295B MoE, 256k context, 10 RPM / 800 RPD),
+    and `z-ai/glm-5.3-flash-free` (320B MoE, 1M context, 10 RPM / 800 RPD), expanding physical
+    routes to 76 across 40 deduplicated logical models.
+  - Configured `retry_after_trustworthy: true` across OrcaRouter routes to respect exact rate
+    window refill delays without exponential backoff, per provider documentation.
+  - Added OrcaRouter 429 failure signature classification in `classify.js` and
+    `llm_failure_class.py`: an HTTP 429 without `Retry-After` maps to `request_defect`
+    (`orcarouter-prompt-cap`) to halt futile in-batch retries when the free tier prompt cap is
+    exceeded; 429 with `Retry-After` maps to `own_rpd` (> 120s) or `own_rpm` (<= 120s). Handled
+    `request_defect` in `coordinator.authorizeRetry` to refuse immediate in-flight retries.
+  - Registered `custom-orcarouter` in Cloudflare AI Gateway routing
+    (`CUSTOM_PROVIDER_GATEWAY_PATHS` in `tests/test_compute_llm.py`) with root-relative
+    `/chat/completions` path mapping.
+  - Wired `ORCAROUTER_API_KEY` into `.github/workflows/contracts.yml` for weekly custom-provider
+    gateway live contract checks and `.github/workflows/llm-rate-probe.yml`.
+
 ### Changed
 
 - **LLM tag tournament restores only its working state before sampling.** It now fetches the
@@ -202,8 +224,6 @@ Phase R (Research-Tool Surface)._
   unresolved, not zero: a direct census found none today, but two real production runs each
   logged `~2000 reused` for the retired stage shortly before this shipped, a figure its own code
   cannot produce against that same live data no matter how it is replayed — see review/31 §A.5.
-
-### Added
 
 - **Direct-transport failure classification parity & sibling-route capacity retry (PR-6 /
   Initiative 20; review/45 §20.9).**

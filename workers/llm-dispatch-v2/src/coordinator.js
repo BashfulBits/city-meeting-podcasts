@@ -2670,6 +2670,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
           );
           return { authorized: false, retry_not_before: null };
         }
+        case "request_defect": {
+          // A request defect (e.g. OrcaRouter free-tier prompt cap exceeded with no Retry-After)
+          // cannot succeed by retrying unchanged. Refuse in-batch retry immediately.
+          sql.exec(
+            `UPDATE routes SET last_provider_status = 429, last_failure_class = ?
+             WHERE route_id = ?`,
+            failureClass,
+            routeId
+          );
+          return { authorized: false, retry_not_before: null };
+        }
         case "own_rpm":
         case "unknown_429":
         default: {

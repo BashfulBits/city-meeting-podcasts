@@ -106,6 +106,50 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         ),
     },
     {
+        # OrcaRouter free-tier prompt cap: 429 with error code free_rate_limited and no Retry-After.
+        # Time/waiting cannot clear a prompt size rejection; retrying unchanged fails identically.
+        "rule_id": "orcarouter-prompt-cap",
+        "provider": "orcarouter",
+        "failure_class": "request_defect",
+        "match": lambda ctx: (
+            (
+                _error_dict(ctx.get("body")).get("code") == "free_rate_limited"
+                or "free_rate_limited" in ctx["msg"]
+            )
+            and not (ctx.get("headers") or {}).get("retry-after")
+        ),
+    },
+    {
+        # OrcaRouter free-tier daily rate window: Retry-After seconds until 00:00 UTC (> 120s).
+        "rule_id": "orcarouter-daily-window",
+        "provider": "orcarouter",
+        "failure_class": "own_rpd",
+        "match": lambda ctx: (
+            (
+                _error_dict(ctx.get("body")).get("code") == "free_rate_limited"
+                or "free_rate_limited" in ctx["msg"]
+            )
+            and (
+                float(str((ctx.get("headers") or {}).get("retry-after", "0")).strip()) > 120
+                if str((ctx.get("headers") or {}).get("retry-after", ""))
+                .strip()
+                .replace(".", "", 1)
+                .isdigit()
+                else False
+            )
+        ),
+    },
+    {
+        # OrcaRouter free-tier minute rate window: Retry-After in minute bucket (<= 120s).
+        "rule_id": "orcarouter-minute-window",
+        "provider": "orcarouter",
+        "failure_class": "own_rpm",
+        "match": lambda ctx: (
+            _error_dict(ctx.get("body")).get("code") == "free_rate_limited"
+            or "free_rate_limited" in ctx["msg"]
+        ),
+    },
+    {
         "rule_id": "openai-shaped-rate-limit",
         "provider": None,
         "failure_class": "own_rpm",
