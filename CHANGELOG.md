@@ -59,6 +59,15 @@ Phase R (Research-Tool Surface)._
   SiliconFlow, DeepSeek Direct, and NVIDIA's free build route. No pipeline-version bump or stored
   artifact backfill is required.
 
+- **City discovery now pins classification to Gemini 3.7 Flash** with Gemini 3.6 Flash, 3.8 Flash,
+  and 3.5 Flash as vetted structured-output fallbacks. This prevents the scheduler from selecting
+  unrelated free routes whose provider credentials are not present in the discovery workflow; no
+  stored records or pipeline versions are invalidated.
+
+- **Auxiliary city discovery now bounds its rolling Issue body** and uploads the complete digest as a
+  workflow artifact when it exceeds GitHub's 64KB body limit. The visible Issue retains the
+  eligibility state marker and links to the run artifact; no candidate evidence is discarded.
+
 - **LLM tag tournament workflow timeout aligned with its configured sample budget**
   (`.github/workflows/llm-tournament.yml`). The lane had been expanded from two samples to its
   configured ~46-sample budget while retaining a 22-minute step timeout, so GitHub cancelled the

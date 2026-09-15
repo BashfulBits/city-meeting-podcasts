@@ -146,13 +146,15 @@ def main(argv: list[str] | None = None) -> int:
         site_config = load_site_config(args.site_config)
         request, city = _request_from_args(args)
         results = TavilyClient().search(request)
+        llm_config = discovery_llm_config(site_config)
         classification = classify(
             LiteLLMBackend(
-                discovery_llm_config(site_config),
+                llm_config,
                 storage=make_storage(site_config, "", Path(args.output_dir)),
             ),
             request,
             results,
+            allowed_models=(llm_config.model,),
         )
         evidence = verify_discovery(request, classification, results, existing_city=city)
     except (ClassificationDeferred, LLMBackendError) as exc:

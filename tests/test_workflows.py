@@ -295,7 +295,7 @@ def test_city_discovery_llm_route_is_committed_task_config_not_repo_variables():
     assert "vars.LLM_MODEL" not in workflow
     assert "vars.LLM_MODE" not in workflow
     assert site["city_discovery"] == {
-        "llm_model": "gemini/gemini-3-flash-preview",
+        "llm_model": "gemini/gemini-3.7-flash",
         "llm_mode": "direct",
     }
 
@@ -307,6 +307,16 @@ def test_city_discovery_defers_invalid_model_output_but_surfaces_unexpected_fail
     assert workflow.count('if [ "$status" -eq "$DISCOVERY_DEFERRED" ]; then') == 2
     assert workflow.count("failures=$((failures + 1))") == 2
     assert workflow.count('if [ "$failures" -ne 0 ]; then') >= 2
+
+
+def test_city_discovery_auxiliary_body_is_bounded_and_uploaded():
+    workflow = (WORKFLOWS / "city-discovery.yml").read_text()
+
+    assert "scripts/r12_bound_issue_body.py" in workflow
+    assert "city-discovery/aux/issue-body-full.md" in workflow
+    assert "city-discovery-aux-body-${{ github.run_id }}" in workflow
+    assert "actions/upload-artifact@" in workflow
+    assert "if: ${{ always() }}" in workflow
 
 
 @pytest.mark.parametrize(

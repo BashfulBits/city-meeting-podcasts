@@ -164,6 +164,7 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
           REQUESTED_CITY: ${{ inputs.city_slug }}
+          CITY_DISCOVERY_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           mkdir -p city-discovery/aux
           if [ -z "$REQUESTED_CITY" ] && [ "${{ github.event_name }}" = schedule ] \
@@ -201,10 +202,10 @@ jobs:
               --out city-discovery/aux/queue.json
             cities=$(jq -r '.cities[]' city-discovery/aux/queue.json)
           fi
-          : > city-discovery/aux/issue-body.md
+          : > city-discovery/aux/issue-body-full.md
           python scripts/r12_aux_state.py --render-state city-discovery/aux/state.json \
-            >> city-discovery/aux/issue-body.md
-          printf '\n\n' >> city-discovery/aux/issue-body.md
+            >> city-discovery/aux/issue-body-full.md
+          printf '\n\n' >> city-discovery/aux/issue-body-full.md
           count=0
           DISCOVERY_DEFERRED=75
           failures=0
@@ -221,10 +222,14 @@ jobs:
               fi
               continue
             fi
-            cat "city-discovery/aux/$city/evidence.md" >> city-discovery/aux/issue-body.md
-            printf '\n' >> city-discovery/aux/issue-body.md
+            cat "city-discovery/aux/$city/evidence.md" >> city-discovery/aux/issue-body-full.md
+            printf '\n' >> city-discovery/aux/issue-body-full.md
             count=$((count + 1))
           done
+          python scripts/r12_bound_issue_body.py \
+            --input city-discovery/aux/issue-body-full.md \
+            --output city-discovery/aux/issue-body.md \
+            --artifact-url "$CITY_DISCOVERY_RUN_URL"
           if [ "$count" -eq 0 ]; then
             if [ "$failures" -ne 0 ]; then
               echo "::error::$failures auxiliary discovery request(s) failed unexpectedly."
@@ -242,6 +247,15 @@ jobs:
             echo "::error::$failures auxiliary discovery request(s) failed unexpectedly."
             exit 1
           fi
+
+      - name: Upload full auxiliary discovery body
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: city-discovery-aux-body-${{ github.run_id }}
+          path: city-discovery/aux/issue-body-full.md
+          if-no-files-found: ignore
+          retention-days: 14
 
   batch:
     permissions:
