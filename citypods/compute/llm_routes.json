@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 72,
+    "routes_count": 73,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -2231,6 +2231,40 @@
         "llm-dispatch"
       ],
       "direct_model": "openai/nemotron-3-ultra-free",
+      "api_base": "https://opencode.ai/zen/v1",
+      "ai_gateway_slug": "custom-opencode",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "api_key_env": "OPENCODE_API_KEY",
+      "reset_timezone": "UTC"
+    },
+    {
+      "route_id": "opencode_nemotron_3_5_lightning_free",
+      "model": "opencode/nemotron-3.5-lightning-free",
+      "provider": "opencode",
+      "upstream_model": "nemotron-3.5-lightning-free",
+      "input_context_limit": 1000000,
+      "output_context_limit": 128000,
+      "account_id": "primary",
+      "concurrency": 1,
+      "rpm": 20,
+      "rpd": 200,
+      "tpm": 90000,
+      "free": true,
+      "observed_on": "2026-09-14",
+      "upstream_429_default": "upstream_capacity",
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "structured_output_profile": "standard_json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_direct_handler": "instructor",
+      "structured_output_include_schema_in_prompt": false,
+      "structured_output_schema_strip_keys": [],
+      "transports": [
+        "direct",
+        "llm-dispatch"
+      ],
+      "direct_model": "openai/nemotron-3.5-lightning-free",
       "api_base": "https://opencode.ai/zen/v1",
       "ai_gateway_slug": "custom-opencode",
       "ai_gateway_chat_path": "/chat/completions",
