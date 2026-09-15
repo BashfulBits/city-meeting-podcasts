@@ -41,12 +41,13 @@ ROUTING_FAILURE_BODIES = (
     "<html",
 )
 
-# Keep probes on named, known-responsive free routes rather than YAML ordering: OpenCode's former
-# DeepSeek V4 Flash alias is retired, and NVIDIA's first listed Kimi K3 route has twice exceeded
-# the contract's 60-second read timeout while the Nemotron Super URL canary stayed responsive.
+# Keep probes on named, deliberately chosen free routes rather than YAML ordering: OpenCode's former
+# DeepSeek V4 Flash alias is retired. NVIDIA's first listed Kimi K3 route has twice exceeded the
+# contract's 60-second read timeout while the Nemotron Super URL canary stayed responsive; OpenCode
+# Mimo likewise timed out at the contract ceiling, so use its smaller Lightning route.
 PREFERRED_FREE_PROBE_ROUTE_IDS = {
     "nvidia": "nvidia_nemotron_3_super_120b_a12b_free",
-    "opencode": "opencode_mimo_v2_5_free",
+    "opencode": "opencode_nemotron_3_5_lightning_free",
 }
 
 

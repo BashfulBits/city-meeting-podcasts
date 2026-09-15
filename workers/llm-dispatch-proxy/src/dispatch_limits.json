@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 72,
+    "routes_count": 73,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -2066,6 +2066,33 @@
       "upstream_429_default": "upstream_capacity",
       "structured_output_schema_strip_keys": []
     },
+    "opencode_nemotron_3_5_lightning_free": {
+      "route_id": "opencode_nemotron_3_5_lightning_free",
+      "provider": "opencode",
+      "upstream_model": "nemotron-3.5-lightning-free",
+      "input_context_limit": 1000000,
+      "output_context_limit": 128000,
+      "hard_input_ceiling": null,
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 200,
+      "tpm": 90000,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-09-14",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
     "nvidia_kimi_k3_free": {
       "route_id": "nvidia_kimi_k3_free",
       "provider": "nvidia",
@@ -2448,6 +2475,9 @@
     "opencode/mimo-v2.5-free": [
       "opencode_mimo_v2_5_free"
     ],
+    "opencode/nemotron-3.5-lightning-free": [
+      "opencode_nemotron_3_5_lightning_free"
+    ],
     "moonshotai/kimi-k3": [
       "nvidia_kimi_k3_free"
     ],
@@ -2549,6 +2579,8 @@
     "mimo-v2.5-free": "opencode/mimo-v2.5-free",
     "opencode/mimo-v2.5-free": "opencode/mimo-v2.5-free",
     "nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nemotron-3.5-lightning-free": "opencode/nemotron-3.5-lightning-free",
+    "opencode/nemotron-3.5-lightning-free": "opencode/nemotron-3.5-lightning-free",
     "moonshotai/kimi-k3": "moonshotai/kimi-k3",
     "nvidia/moonshotai/kimi-k3": "moonshotai/kimi-k3",
     "deepseek-ai/deepseek-v4-pro-0813": "deepseek/deepseek-v4-pro",

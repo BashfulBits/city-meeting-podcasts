@@ -52,6 +52,12 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **OpenCode's catalog now includes NVIDIA Nemotron 3.5 Lightning as a free, text-only route,**
+  and the live custom-provider contract probe uses it instead of Mimo V2.5, which repeatedly
+  reached the probe's 60-second read timeout. Lightning's 30B-total/3B-active MoE is a candidate
+  for future bounded text-only evaluations; it does not change any production lane, pipeline
+  version, or stored artifact.
+
 - **NVIDIA's live AI Gateway contract probe now uses Nemotron 3 Super rather than Kimi K3.** The
   generic custom-provider sweep previously selected its first free NVIDIA route, Kimi K3, which
   twice exceeded the test's 60-second read timeout even as the existing Nemotron Super URL canary
