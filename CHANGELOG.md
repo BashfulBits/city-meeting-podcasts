@@ -52,6 +52,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM tag tournament workflow timeout aligned with its configured sample budget**
+  (`.github/workflows/llm-tournament.yml`). The lane had been expanded from two samples to its
+  configured ~46-sample budget while retaining a 22-minute step timeout, so GitHub cancelled the
+  sampling step before it could publish the champion ticket. The job now has a 180-minute
+  backstop and the sampling step has a 165-minute limit, matching the other asynchronous LLM
+  lanes while preserving time for state persistence and ticket publication.
+
 - **Chapter agenda and locator workflows now pass the GitHub Actions token to their bounded
   enrich steps** and grant the minimal `actions: read` permission. This re-enables graceful yield
   when a newer run is queued; without it, the jobs only stopped at their wall-clock budget and

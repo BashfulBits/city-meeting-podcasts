@@ -22,7 +22,9 @@ concurrency:
 jobs:
   tournament:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The lane now uses its configured ~46-sample budget. Keep a 15-minute tail after the
+    # sampling step for state persistence and champion-ticket publication.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -34,12 +36,12 @@ jobs:
       - uses: ./.github/actions/setup-gh-cli
       - run: pip install -e ".[storage,llm]" -c constraints/prod.txt
       - name: Run bounded tag samples
-        # Below the 30-minute job timeout so the champion-ticket step below still runs. A
-        # job-level timeout CANCELS the run, which skips every later step: the sampling work
-        # would be spent and no ticket published, reported as a grey "cancelled" that looks
-        # like someone pressed the button. This step now sizes itself from the lane budget
-        # (~46 samples, up from a hard-coded 2), so it is no longer trivially short.
-        timeout-minutes: 22
+        # Below the job timeout so the champion-ticket step below still runs. A job-level timeout
+        # CANCELS the run, which skips every later step: the sampling work would be spent and no
+        # ticket published, reported as a grey "cancelled" that looks like someone pressed the
+        # button. The sample count now comes from the lane budget (~46 samples), so the step needs
+        # the same 165-minute bounded-work window as the other asynchronous LLM lanes.
+        timeout-minutes: 165
         env:
           LLM_SAFE_DIAGNOSTICS: ${{ inputs.safe_diagnostics && '1' || '0' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
