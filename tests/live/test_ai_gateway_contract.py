@@ -59,8 +59,10 @@ RETRY_DELAY_SECONDS = 1
 
 # Keep probes on named, deliberately chosen free routes rather than YAML ordering: OpenCode's former
 # DeepSeek V4 Flash alias is retired. NVIDIA's first listed Kimi K3 route has twice exceeded the
-# contract's 60-second read timeout while the Nemotron Super URL canary stayed responsive; OpenCode
-# Mimo likewise timed out at the contract ceiling, so use its smaller Lightning route.
+# contract's 60-second read timeout while the Nemotron Super URL canary stayed responsive. OpenCode
+# checks its model list rather than a completion: both Mimo and the smaller Lightning model have
+# spent two full 60-second attempts in OpenCode's free-model queue even when its API path is
+# healthy.
 PREFERRED_FREE_PROBE_ROUTE_IDS = {
     "nvidia": "nvidia_nemotron_3_super_120b_a12b_free",
     "opencode": "opencode_nemotron_3_5_lightning_free",
@@ -155,6 +157,39 @@ def _post_with_retry(
     raise AssertionError("unreachable: final retry attempt must return or raise")
 
 
+def _get_with_retry(
+    url: str,
+    api_key: str,
+    *,
+    timeout: int = 60,
+    get=urllib.request.urlopen,
+    sleep=time.sleep,
+):
+    """GET a non-inference endpoint with the same bounded transient retry policy."""
+    request = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "cf-aig-authorization": f"Bearer {os.environ['AI_GATEWAY_AUTH_TOKEN']}",
+            "Accept": "application/json",
+            "User-Agent": "citypods-live-contract/1.0",
+        },
+        method="GET",
+    )
+    for attempt in range(PROBE_ATTEMPTS):
+        try:
+            with get(request, timeout=timeout) as response:
+                return response.status, response.read(_MAX_BODY).decode("utf-8", "replace")
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read(_MAX_BODY).decode("utf-8", "replace")
+        except (TimeoutError, urllib.error.URLError):
+            if attempt + 1 == PROBE_ATTEMPTS:
+                raise
+        sleep(RETRY_DELAY_SECONDS)
+
+    raise AssertionError("unreachable: final retry attempt must return or raise")
+
+
 def _is_json(body: str) -> bool:
     try:
         json.loads(body)
@@ -219,6 +254,25 @@ def test_custom_provider_route_reaches_its_upstream(route):
     api_key = os.environ.get(route.api_key_env)
     if not api_key:
         pytest.skip(f"{route.api_key_env} not set")
+
+    if route.provider == "opencode":
+        # This crosses the same custom-provider base URL and shim as chat completions, but does
+        # not ask an overloaded, free model to perform inference. It is both a routing check and
+        # a catalog check: the selected OpenCode model must still be advertised by the upstream.
+        status, body = _get_with_retry(f"{base}/{route.ai_gateway_slug}/models", api_key)
+        _reject_edge_block(route.provider, status, body)
+        assert status == 200 and _is_json(body), (
+            "opencode: gateway /models did not reach the provider API "
+            f"(HTTP {status}, body {body[:120]!r}). Cloudflare's Custom Provider URL join may "
+            "have changed; re-derive it with an echo provider before editing "
+            "config/provider_limits.yml."
+        )
+        model_ids = {model.get("id") for model in json.loads(body).get("data", [])}
+        assert route.upstream_model in model_ids, (
+            f"opencode: selected catalog model {route.upstream_model!r} is absent from the "
+            "provider's live /models response."
+        )
+        return
 
     url = f"{base}/{route.ai_gateway_slug}{route.ai_gateway_chat_path}"
     status, body = _post_with_retry(
