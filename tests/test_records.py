@@ -18,6 +18,7 @@ from citypods.records import (
     estimate_audio_shard_work,
     estimate_transcribe_shard_work,
     feed_content_hash,
+    iter_records,
     load_calendar_records,
     load_records,
     merge_calendar_backfill,
@@ -583,6 +584,16 @@ def test_record_store_roundtrip(tmp_path):
     # Envelope carries a schema version for future migrations.
     raw = json.loads((tmp_path / "sources" / "src" / "episodes.json").read_text())
     assert raw["schema_version"] >= 1
+
+
+def test_iter_records_decodes_episode_values_without_materializing_the_envelope(tmp_path):
+    records = {
+        "first": {"uid": "first", "published": "2026-01-01T00:00:00+00:00"},
+        "second": {"uid": "second", "published": "2026-01-02T00:00:00+00:00"},
+    }
+    save_records(tmp_path, "src", records)
+
+    assert list(iter_records(tmp_path, "src")) == list(records.values())
 
 
 def test_merge_persisted_restores_tag_fields(tmp_path):
