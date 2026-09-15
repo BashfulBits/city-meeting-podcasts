@@ -313,6 +313,7 @@ def pull_state(storage, state_dir: Path, *, only_paths=None, log=None) -> int:
 
     emit = log or (lambda msg: print(msg, flush=True))
     state_dir = Path(state_dir)
+    requested_paths = frozenset(only_paths) if only_paths is not None else None
     manifest = _load_manifest(storage, state_dir, log=emit)
     if manifest is not None:
         objects = manifest["objects"]
@@ -327,13 +328,18 @@ def pull_state(storage, state_dir: Path, *, only_paths=None, log=None) -> int:
             dirty = set()
         for rel in tombstones - dirty:
             (state_dir / rel).unlink(missing_ok=True)
+    elif requested_paths is not None:
+        # A scoped consumer already knows its exact keys.  Do not list the whole snapshot merely
+        # because an older deployment has not published a manifest yet: that fallback can contain
+        # thousands of unrelated objects and defeats the purpose of the narrow restore.
+        keys = [f"{STATE_PREFIX}/{rel}" for rel in requested_paths]
     else:
         keys = _full_state_keys(storage)
 
     # When only specific files are requested, filter the key list before checking freshness or
     # spawning the thread pool — we don't need to download or even stat any other files.
-    if only_paths is not None:
-        wanted = {f"{STATE_PREFIX}/{rel}" for rel in only_paths}
+    if requested_paths is not None:
+        wanted = {f"{STATE_PREFIX}/{rel}" for rel in requested_paths}
         keys = [k for k in keys if k in wanted]
 
     # Materialize the key list first (a single paginated LIST on fallback), then fan the per-object

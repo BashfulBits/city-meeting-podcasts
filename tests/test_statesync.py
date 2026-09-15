@@ -1051,6 +1051,28 @@ def test_pull_state_only_paths_skips_unrequested_objects(tmp_path):
     assert not (tmp_path / "state" / "sources" / "unwanted" / "episodes.json").exists()
 
 
+def test_pull_state_only_paths_avoids_full_listing_without_a_manifest(tmp_path):
+    class NoListBucket(LocalStorage):
+        def list_objects(self, _prefix):
+            raise AssertionError("a scoped restore must not list the full state snapshot")
+
+    bucket = NoListBucket(root=tmp_path / "bucket", url_prefix="https://x")
+    bucket.put_file(
+        f"{STATE_PREFIX}/sources/wanted/episodes.json",
+        _tmpfile(tmp_path, '{"episodes": {}}'),
+        "application/json",
+    )
+
+    restored = pull_state(
+        bucket,
+        tmp_path / "state",
+        only_paths=["sources/wanted/episodes.json"],
+    )
+
+    assert restored == 1
+    assert (tmp_path / "state" / "sources" / "wanted" / "episodes.json").exists()
+
+
 def test_reconcile_state_skips_cas_managed_budget(tmp_path):
     bucket = _CASLocal(root=tmp_path / "bucket", url_prefix="https://x")
     state_dir = tmp_path / "state"

@@ -52,6 +52,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM tag tournament restores only its working state before sampling.** It now fetches the
+  tournament record and configured sources' episode records rather than the entire
+  multi-thousand-file durable snapshot, and prints restore progress before any network work.
+  Scoped restores also skip a full state listing when a legacy deployment has no remote manifest.
+  This is an operational reliability fix only; no pipeline version or stored artifact format
+  changes.
+  
 - **OpenCode's catalog now includes NVIDIA Nemotron 3.5 Lightning as a free, text-only route,**
   and the live custom-provider contract probe uses it instead of Mimo V2.5, which repeatedly
   reached the probe's 60-second read timeout. Lightning's 30B-total/3B-active MoE is a candidate
