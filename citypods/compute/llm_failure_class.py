@@ -86,7 +86,10 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         "rule_id": "opencode-server-error",
         "provider": "opencode",
         "failure_class": "upstream_capacity",
-        "match": lambda ctx: _error_dict(ctx.get("body")).get("type") == "server_error",
+        "match": lambda ctx: (
+            str(_error_dict(ctx.get("body")).get("type", "")).lower() == "server_error"
+            or "free tier can only be used in opencode" in ctx["msg"]
+        ),
     },
     {
         "rule_id": "openrouter-upstream",
@@ -106,23 +109,60 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         ),
     },
     {
-        "rule_id": "openai-shaped-rate-limit",
-        "provider": None,
+        # OrcaRouter free-tier prompt cap: 429 with error code free_rate_limited and no Retry-After.
+        # Time/waiting cannot clear a prompt size rejection; retrying unchanged fails identically.
+        "rule_id": "orcarouter-prompt-cap",
+        "provider": "orcarouter",
+        "failure_class": "request_defect",
+        "match": lambda ctx: (
+            (
+                _error_dict(ctx.get("body")).get("code") == "free_rate_limited"
+                or "free_rate_limited" in ctx["msg"]
+            )
+            and not (ctx.get("headers") or {}).get("retry-after")
+        ),
+    },
+    {
+        # OrcaRouter free-tier daily rate window: Retry-After seconds until 00:00 UTC (> 120s).
+        "rule_id": "orcarouter-daily-window",
+        "provider": "orcarouter",
+        "failure_class": "own_rpd",
+        "match": lambda ctx: (
+            (
+                _error_dict(ctx.get("body")).get("code") == "free_rate_limited"
+                or "free_rate_limited" in ctx["msg"]
+            )
+            and (
+                float(str((ctx.get("headers") or {}).get("retry-after", "0")).strip()) > 120
+                if str((ctx.get("headers") or {}).get("retry-after", ""))
+                .strip()
+                .replace(".", "", 1)
+                .isdigit()
+                else False
+            )
+        ),
+    },
+    {
+        # OrcaRouter free-tier minute rate window: Retry-After in minute bucket (<= 120s).
+        "rule_id": "orcarouter-minute-window",
+        "provider": "orcarouter",
         "failure_class": "own_rpm",
         "match": lambda ctx: (
-            _error_dict(ctx.get("body")).get("type") == "rate_limit_exceeded"
-            or _error_dict(ctx.get("body")).get("code") == "rate_limit_exceeded"
+            _error_dict(ctx.get("body")).get("code") == "free_rate_limited"
+            or "free_rate_limited" in ctx["msg"]
         ),
     },
     {
         # A rate-limit header whose LIMIT (not "remaining") is literally 0 means the provider has
-        # provisioned this account no allowance at all -- an account/billing state, not pacing.
+        # provisioned this account no allowance at all -- an account/billing state, not pacing. No
+        # amount of backoff inside the window recovers it, so it belongs on the day -> week ->
+        # month cooldown ladder rather than buying a 60-second buffer and retrying forever.
         # Mistral reports exactly this, with a message that gives nothing away:
         #   429 {"message":"Rate limit exceeded","type":"rate_limited","code":"1300"}
         #   x-ratelimit-limit-req-minute: 0
         # Confirmed live 2026-09-09 while /v1/models still returned 200. Ordered before
-        # "remaining-zero-header", which would read the same response as an ordinary exhausted
-        # minute and retry a route that can never serve a request.
+        # "openai-shaped-rate-limit" and "remaining-zero-header", which would otherwise read the
+        # response as an ordinary exhausted minute and retry a route that can never serve.
         "rule_id": "zero-provisioned-limit",
         "provider": None,
         "failure_class": "payment_required",
@@ -131,6 +171,17 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
             and str(value).strip().replace(".0", "").isdigit()
             and int(float(str(value).strip())) == 0
             for name, value in (ctx.get("headers") or {}).items()
+        ),
+    },
+    {
+        "rule_id": "openai-shaped-rate-limit",
+        "provider": None,
+        "failure_class": "own_rpm",
+        "match": lambda ctx: (
+            _error_dict(ctx.get("body")).get("type") == "rate_limit_exceeded"
+            or _error_dict(ctx.get("body")).get("code") == "rate_limit_exceeded"
+            or (isinstance(ctx.get("body"), dict) and ctx["body"].get("type") == "rate_limited")
+            or (isinstance(ctx.get("body"), dict) and str(ctx["body"].get("code")) == "1300")
         ),
     },
     {
@@ -240,6 +291,7 @@ def _is_upstream_400(body: Any) -> bool:
             "model is unavailable",
             "no capacity",
             "temporarily unavailable",
+            "free tier can only be used in opencode",
         )
     )
 
@@ -306,7 +358,10 @@ def classify_provider_failure(
     is_aig_429 = (
         status == 429
         and not _has_rate_limit_header(norm_headers)
-        and not (isinstance(body, dict) and "error" in body)
+        and not (
+            isinstance(body, dict)
+            and any(k in body for k in ("error", "message", "detail", "code"))
+        )
     )
     if has_cf_aig_error or is_aig_429:
         return FailureClassification(

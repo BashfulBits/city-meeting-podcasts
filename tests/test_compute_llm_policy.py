@@ -54,32 +54,27 @@ def test_generated_catalog_deduplicates_logical_models_across_direct_routes():
 
 def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
     # NVIDIA build's leg for this model (added 2026-08-29) was briefly commented out the same day
-    # on a misdiagnosis -- the 404s were NOT NVIDIA-side model gating but a dropped `/v1` in the
-    # Cloudflare AI Gateway custom-provider path (see config/provider_limits.yml's `nvidia` block).
-    # Restored once the path fix was verified end-to-end against the live gateway.
+    # on a misdiagnosis -- the 404s were NOT NVIDIA-side model gating but a custom-provider path
+    # mismatch in Cloudflare AI Gateway (see config/provider_limits.yml's `nvidia` block). Restored
+    # once the path fix was verified end-to-end against the live gateway.
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
     assert {candidate.provider for candidate in deepseek} == {
         "deepseek",
         "siliconflow",
-        "opencode",
         "nvidia",
+        "orcarouter",
     }
-    assert canonical_model("opencode/deepseek-v4-flash-free") == "deepseek/deepseek-v4-flash"
+    assert canonical_model("orcarouter/deepseek-v4-flash") == "deepseek/deepseek-v4-flash"
     assert MODEL_ALIASES["deepseek/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"
 
-    # NVIDIA build's direct Nemotron 3 Ultra leg (added 2026-08-29) bypasses the OpenRouter/Kilo/
-    # OpenCode broker legs -- see nvidia_nemotron_3_ultra_550b_a55b_free.
+    # NVIDIA build's direct Nemotron 3 Ultra leg (added 2026-08-29) bypasses the OpenRouter/Kilo
+    # broker legs -- see nvidia_nemotron_3_ultra_550b_a55b_free.
     nemotron = ROUTE_CANDIDATES["nvidia/nemotron-3-ultra-550b-a55b:free"]
     assert {candidate.provider for candidate in nemotron} == {
         "openrouter",
         "kilo",
-        "opencode",
         "nvidia",
     }
-    assert (
-        canonical_model("opencode/nemotron-3-ultra-free")
-        == "nvidia/nemotron-3-ultra-550b-a55b:free"
-    )
 
 
 def test_deepseek_pricing_selects_the_effective_period_and_peak_windows():

@@ -168,6 +168,17 @@ def test_shared_review_resolution_isolates_one_bad_child_and_still_finalizes():
     )
 
 
+def test_llm_tournament_timeout_covers_configured_sample_budget():
+    _wf, job = _job("llm-tournament.yml", "tournament")
+    sampling = next(step for step in job["steps"] if step.get("name") == "Run bounded tag samples")
+
+    assert job["timeout-minutes"] == 180
+    assert sampling["timeout-minutes"] == 165
+    assert "python -m citypods.tournament" in sampling["run"]
+    assert "--samples 2" not in sampling["run"]
+    assert sampling["timeout-minutes"] < job["timeout-minutes"]
+
+
 # H6b split the combined enrich into two sharded, lane-pinned workflows.
 # Third element is the job name within the workflow file (audio.yml has a wait-for-contracts
 # pre-job so the heavy job must be addressed by name, not by position).
@@ -284,7 +295,7 @@ def test_city_discovery_llm_route_is_committed_task_config_not_repo_variables():
     assert "vars.LLM_MODEL" not in workflow
     assert "vars.LLM_MODE" not in workflow
     assert site["city_discovery"] == {
-        "llm_model": "gemini/gemini-3-flash-preview",
+        "llm_model": "gemini/gemini-3.7-flash",
         "llm_mode": "direct",
     }
 
@@ -296,6 +307,16 @@ def test_city_discovery_defers_invalid_model_output_but_surfaces_unexpected_fail
     assert workflow.count('if [ "$status" -eq "$DISCOVERY_DEFERRED" ]; then') == 2
     assert workflow.count("failures=$((failures + 1))") == 2
     assert workflow.count('if [ "$failures" -ne 0 ]; then') >= 2
+
+
+def test_city_discovery_auxiliary_body_is_bounded_and_uploaded():
+    workflow = (WORKFLOWS / "city-discovery.yml").read_text()
+
+    assert "scripts/r12_bound_issue_body.py" in workflow
+    assert "city-discovery/aux/issue-body-full.md" in workflow
+    assert "city-discovery-aux-body-${{ github.run_id }}" in workflow
+    assert "actions/upload-artifact@" in workflow
+    assert "if: ${{ always() }}" in workflow
 
 
 @pytest.mark.parametrize(
@@ -1185,6 +1206,19 @@ def test_chapter_workflows_use_per_lane_maintenance_leases(workflow, expected_ke
 def test_chapter_workflows_have_independent_concurrency_groups(workflow, expected_group):
     wf, _job_obj = _job(workflow)
     assert wf["concurrency"] == {"group": expected_group, "cancel-in-progress": False}
+
+
+@pytest.mark.parametrize(
+    ("workflow", "job_name"),
+    [("chapter-agenda.yml", "extract"), ("chapter-locator.yml", "locate")],
+)
+def test_chapter_workflows_wire_graceful_yield(workflow, job_name):
+    """Chapter producers also use the bounded StopSignal path, so they need Actions API access
+    to yield when a newer run is queued instead of waiting for the full wall-clock window."""
+    wf, job = _job(workflow, job_name)
+    assert wf["permissions"] == {"contents": "read", "actions": "read"}
+    step = next(s for s in job["steps"] if "enrich --lane" in str(s.get("run", "")))
+    assert step["env"]["GITHUB_TOKEN"] == "${{ github.token }}"
 
 
 def test_chapter_workflows_use_alternating_two_hour_schedules():

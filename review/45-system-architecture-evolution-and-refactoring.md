@@ -994,7 +994,7 @@ Existing accepted designs take precedence where they overlap; several entries be
   `instructor.from_litellm(completion_fn, mode=...).create_with_completion(response_model=model,
   messages=..., max_retries=1, ...)`, catching `InstructorRetryException` →
   `LLMStructuredOutputError`. Pinned versions (identical across `constraints/dev.txt` and
-  `constraints/prod.txt`): `instructor==1.15.4`, `litellm==1.95.0.dev1`.
+  `constraints/prod.txt`): `instructor==1.15.4`, `litellm==1.101.0`.
 - **Implementation**: a dependency upgrade does not by itself prove uniform provider semantics.
   Build a route × model × schema capability matrix from these exact pinned versions and live
   contract probes (extend `citypods/llm_compat_probe.py`, already the tool that confirmed Gemini's

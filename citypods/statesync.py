@@ -313,6 +313,7 @@ def pull_state(storage, state_dir: Path, *, only_paths=None, log=None) -> int:
 
     emit = log or (lambda msg: print(msg, flush=True))
     state_dir = Path(state_dir)
+    requested_paths = frozenset(only_paths) if only_paths is not None else None
     manifest = _load_manifest(storage, state_dir, log=emit)
     if manifest is not None:
         objects = manifest["objects"]
@@ -327,13 +328,18 @@ def pull_state(storage, state_dir: Path, *, only_paths=None, log=None) -> int:
             dirty = set()
         for rel in tombstones - dirty:
             (state_dir / rel).unlink(missing_ok=True)
+    elif requested_paths is not None:
+        # A scoped consumer already knows its exact keys.  Do not list the whole snapshot merely
+        # because an older deployment has not published a manifest yet: that fallback can contain
+        # thousands of unrelated objects and defeats the purpose of the narrow restore.
+        keys = [f"{STATE_PREFIX}/{rel}" for rel in requested_paths]
     else:
         keys = _full_state_keys(storage)
 
     # When only specific files are requested, filter the key list before checking freshness or
     # spawning the thread pool — we don't need to download or even stat any other files.
-    if only_paths is not None:
-        wanted = {f"{STATE_PREFIX}/{rel}" for rel in only_paths}
+    if requested_paths is not None:
+        wanted = {f"{STATE_PREFIX}/{rel}" for rel in requested_paths}
         keys = [k for k in keys if k in wanted]
 
     # Materialize the key list first (a single paginated LIST on fallback), then fan the per-object
@@ -645,6 +651,7 @@ def push_records_merged(
     protected_blocks,
     lane: str | None = None,
     owned_uids: dict[str, frozenset[str]] | None = None,
+    agenda_link_baseline: dict[str, dict[str, dict[str, object]]] | None = None,
     maintenance_lease=None,
     log=None,
     raise_on_transient: bool = False,
@@ -671,7 +678,13 @@ def push_records_merged(
     ``owned_uids`` (review/18 §3.2): for a per-episode-sharded transcribe run, ``{source: uids}``
     restricting which uids this push may write an artifact block for, so sibling shards on one
     source never regress each other's fresh transcripts. ``None`` (audio/align/source-atomic/full
-    run) owns every uid in ``local`` — byte-for-byte the prior behavior."""
+    run) owns every uid in ``local`` — byte-for-byte the prior behavior.
+
+    ``agenda_link_baseline`` (audio lane only), ``{source: {uid: {link_key: value}}}``: each uid's
+    own ``RESET_GUARDED_AGENDA_LINK_KEYS`` values as pulled at the start of this run, before any
+    stage touched them. Lets ``merge_preserving_foreign`` tell "this run's local value is a stale
+    carry-over" apart from "this run actually (re)derived it", so a concurrent agenda/chapter
+    maintenance reset's tombstone landing mid-run is never resurrected — see its docstring."""
     from citypods.records import (
         load_records,
         merge_preserving_foreign,
@@ -732,6 +745,9 @@ def push_records_merged(
             protected,
             lane=lane,
             owned_uids=owned_uids.get(sk) if owned_uids is not None else None,
+            agenda_link_baseline=(
+                agenda_link_baseline.get(sk) if agenda_link_baseline is not None else None
+            ),
         )
         for uid, added in _diag_new_artifact_keys.items():
             merged_links = (merged.get(uid) or {}).get("links") or {}

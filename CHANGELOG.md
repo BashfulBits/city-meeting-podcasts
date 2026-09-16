@@ -25,6 +25,225 @@ Phase R (Research-Tool Surface)._
   additional free capacity leg alongside native Mistral accounts), and
   `airforce_kimi_k2_7_code_primary` for `moonshotai/kimi-k2.7-code`.
 
+- **Generic "preferred + backup model after N failed attempts" dispatch infrastructure**
+  (`citypods/compute/llm_lanes.py`'s `LaneConfig.backup_models`/`backup_after_attempts`,
+  `citypods/compute/llm_policy.py`'s matching `LLMRequestPolicy` fields,
+  `workers/llm-dispatch-v2/src/routes.js`'s `backupModelsActive`/`modelsForJob`). Any
+  `queue_only` lane may now declare backup models that become eligible once a queued job's
+  Worker-durable `jobs.attempts` counter crosses a configured threshold without a successful
+  response, or the job has already needed a JSON-schema-validation correction
+  (`jobs.schema_retry_count >= 1`, carried forward — not reset — across `schemaRetry` clones so a
+  chain of corrections crosses the same threshold as plain dispatch retries; the ingress write-unit
+  charge for a correction clone is computed from that same incremented count, not the source job's
+  pre-correction one, so a clone that activates backup-model indexing is charged for those extra
+  index rows rather than undercounted). Enforced through the
+  same ingress lane allowlist as `models` (`_modelsOutsideLane`), and never counted in a job's
+  per-job write-unit cost at enqueue time. Direct-mode (non-`queue_only`) dispatch has no
+  persistent cross-run attempt counter today and does not honor these fields — a Worker-only
+  scope, deliberately, since it's what every current consumer (`chapter-agenda`) uses.
+  - `completeBatch` raises its own class-specific retry ceilings (`MAX_5XX_RETRIES`,
+    `MAX_UPSTREAM_CAPACITY_RETRIES`) to `backup_after_attempts + <that class's own budget>` for a
+    job with backups configured (`_retryCeiling`, `coordinator.js`) — without this, a raw 5xx (the
+    realistic dominant failure mode for a best-effort free route) would terminally fail the job on
+    its second attempt, long before `attempts` could reach a double-digit threshold, making
+    backups unreachable in practice (caught in review).
+  - `_backupThresholdBelowLaneMinimum` (`coordinator.js`) rejects a job whose own
+    `policy_json.backup_after_attempts` undercuts its lane's compiled minimum
+    (`backup_after_attempts_below_lane_minimum`), the same way `_modelsOutsideLane` already
+    constrains *which* models a job may name — `scripts/compile_llm_lanes.py` now compiles
+    `backup_after_attempts` into the reservation map alongside `backup_models`.
+  - `pollBatch` now resolves a completed job's actual route (`lease_route_id`) back to its
+    canonical model (`routes.js::modelForRouteId`, a cached reverse of `model_routes_map`) and
+    returns it; `citypods/compute/llm.py`'s poll path now prefers that over the stale
+    enqueue-time-guessed `JobHandle.model` when building the final `JobResult`. Without this, a
+    job that completed on a backup route would still be recorded under its primary model.
+
+- **OrcaRouter free model catalog & endpoint routing (`config/provider_limits.yml`,
+  `LLM_SETUP.md`, `ARCHITECTURE.md`, `workers/llm-dispatch-v2/src/classify.js`,
+  `citypods/compute/llm_failure_class.py`).**
+  - Added OrcaRouter (`api.orcarouter.ai`) as the 13th LLM provider in
+    `config/provider_limits.yml`, exposing OpenAI-compatible endpoints with `ORCAROUTER_API_KEY`.
+  - Added 3 free routes with exact upstream `-free` model names: `deepseek-v4-flash-free`
+    (1M context, 10 RPM / 800 RPD), `tencent/hy3-free` (295B MoE, 256k context, 10 RPM / 800 RPD),
+    and `z-ai/glm-5.3-flash-free` (320B MoE, 1M context, 10 RPM / 800 RPD), expanding physical
+    routes to 76 across 40 deduplicated logical models.
+  - Configured `retry_after_trustworthy: true` across OrcaRouter routes to respect exact rate
+    window refill delays without exponential backoff, per provider documentation.
+  - Added OrcaRouter 429 failure signature classification in `classify.js` and
+    `llm_failure_class.py`: an HTTP 429 without `Retry-After` maps to `request_defect`
+    (`orcarouter-prompt-cap`) to halt futile in-batch retries when the free tier prompt cap is
+    exceeded; 429 with `Retry-After` maps to `own_rpd` (> 120s) or `own_rpm` (<= 120s). Handled
+    `request_defect` in `coordinator.authorizeRetry` to refuse immediate in-flight retries.
+  - Registered `custom-orcarouter` in Cloudflare AI Gateway routing
+    (`CUSTOM_PROVIDER_GATEWAY_PATHS` in `tests/test_compute_llm.py`) with root-relative
+    `/chat/completions` path mapping.
+  - Wired `ORCAROUTER_API_KEY` into `.github/workflows/contracts.yml` for weekly custom-provider
+    gateway live contract checks and `.github/workflows/llm-rate-probe.yml`.
+
+### Changed
+
+- **The Granicus Endpoint Contracts media probe now streams a three-second Worker-authenticated
+  sample rather than locally remuxing an 8 MB prefix.** Arlington's archive origin ignores ranges,
+  so its 8 MB truncated MP4 lacked the metadata required for a local remux even though the Worker
+  and production-style stream were healthy. The new path stops FFmpeg at three seconds (about 83
+  KB in the isolated Arlington diagnostic), preserving the bounded check while exercising the real
+  Worker route. No production route, pipeline version, or stored artifact changes.
+
+- **OpenCode's Gateway endpoint contract now checks its live model catalog instead of queuing a
+  free inference request.** Both MiMo and the smaller Nemotron Lightning route can spend two full
+  60-second attempts waiting at OpenCode even while `/models` returns the selected model immediately
+  through the same Custom Provider and shim. The check still detects a URL-join/shim regression and
+  now also fails if the catalog's named OpenCode route disappears; it no longer mistakes volatile
+  free-model capacity for an endpoint-contract failure. No production dispatch behavior, pipeline
+  version, or stored artifact changes.
+
+- **Endpoint Contracts now runs its Granicus media-fetch check with the production-pinned
+  FFmpeg 7.1.5 binary** rather than Ubuntu's independently-versioned package. The proxy had
+  delivered an exact, byte-verified Arlington source, but the distro build failed its local
+  three-second remux and falsely reported an upstream CDN throttle. This restores a meaningful
+  upstream/proxy contract check; it changes no production route, pipeline version, or stored
+  artifact.
+  
+- **LLM tag tournament incrementally decodes its archival source records.** It retains only a
+  bounded recent-candidate window while scanning each source, so one large JSON archive cannot
+  monopolize Python or force the tournament to materialize every historical record before it can
+  choose current samples. Progress now includes the scanned and retained record counts. No
+  pipeline version or stored artifact format changes.
+
+- **LLM tag tournament now reports liveness during candidate preparation.** The runner emits its
+  current phase immediately and once per minute while it loads source records or transcript/agenda
+  evidence, then records its selected sample count. This keeps long restartable reads observable
+  in hosted-runner logs and identifies the exact phase if the runner is interrupted. No pipeline
+  version or stored artifact format changes.
+  
+- **AI Gateway custom-provider probes now retry a one-off timeout or 5xx once,** while preserving
+  immediate failures for 404s and other semantic 4xx responses. z.ai's specific Alibaba WAF 405
+  page is recorded as an upstream-availability warning rather than misclassified as a Custom
+  Provider URL-join failure: direct and shim-local probes both reach its API, whereas the GitHub
+  runner's gateway egress is intermittently blocked at the upstream edge. This changes no
+  production route, pipeline version, or stored artifact.
+
+- **LLM tag tournament restores only its working state before sampling.** It now fetches the
+  tournament record and configured sources' episode records rather than the entire
+  multi-thousand-file durable snapshot, and prints restore progress before any network work.
+  Scoped restores also skip a full state listing when a legacy deployment has no remote manifest.
+  This is an operational reliability fix only; no pipeline version or stored artifact format
+  changes.
+  
+- **OpenCode's catalog now includes NVIDIA Nemotron 3.5 Lightning as a free, text-only route,**
+  and the live custom-provider contract probe uses it instead of Mimo V2.5, which repeatedly
+  reached the probe's 60-second read timeout. Lightning's 30B-total/3B-active MoE is a candidate
+  for future bounded text-only evaluations; it does not change any production lane, pipeline
+  version, or stored artifact.
+
+- **NVIDIA's live AI Gateway contract probe now uses Nemotron 3 Super rather than Kimi K3.** The
+  generic custom-provider sweep previously selected its first free NVIDIA route, Kimi K3, which
+  twice exceeded the test's 60-second read timeout even as the existing Nemotron Super URL canary
+  passed. Pinning the sweep to the responsive free route keeps its routing coverage while avoiding
+  a slow model's availability from turning the endpoint contract flaky. This changes neither
+  production dispatch selection nor pipeline versions or stored artifacts.
+
+- **Removed the retired OpenCode DeepSeek V4 Flash free definitions.** OpenCode's current catalog
+  no longer advertises `deepseek-v4-flash-free`; the live contract probe now uses the listed
+  `mimo-v2.5-free` route, and the stale DeepSeek aliases are removed from the provider registry and
+  generated catalogs. The shared `deepseek/deepseek-v4-flash` pool remains available through
+  SiliconFlow, DeepSeek Direct, and NVIDIA's free build route. No pipeline-version bump or stored
+  artifact backfill is required.
+
+- **City discovery now pins classification to Gemini 3.7 Flash** with Gemini 3.6 Flash, 3.8 Flash,
+  and 3.5 Flash as vetted structured-output fallbacks. This prevents the scheduler from selecting
+  unrelated free routes whose provider credentials are not present in the discovery workflow; no
+  stored records or pipeline versions are invalidated.
+
+- **Auxiliary city discovery now bounds its rolling Issue body** and uploads the complete digest as a
+  workflow artifact when it exceeds GitHub's 64KB body limit. The visible Issue retains the
+  eligibility state marker and links to the run artifact; no candidate evidence is discarded.
+
+- **LLM tag tournament workflow timeout aligned with its configured sample budget**
+  (`.github/workflows/llm-tournament.yml`). The lane had been expanded from two samples to its
+  configured ~46-sample budget while retaining a 22-minute step timeout, so GitHub cancelled the
+  sampling step before it could publish the champion ticket. The job now has a 180-minute
+  backstop and the sampling step has a 165-minute limit, matching the other asynchronous LLM
+  lanes while preserving time for state persistence and ticket publication.
+  
+- **Recovered AI Gateway custom-provider routing after Cloudflare changed its URL join.** The
+  latest Endpoint contracts run on 2026-09-15 showed that the gateway now honors registered Base
+  URL paths, so the old compensating `/v1` caller paths double-prefixed Airforce, SiliconFlow,
+  SambaNova, and NVIDIA. Their paths are now root-relative. The provider shim accepts both the
+  current literal `/x` path used by existing z.ai/OpenCode registrations and the former `/v1`
+  rewrite, so the fix does not require a synchronized dashboard edit. The live contract canary now
+  asserts the current join instead of asserting the old behavior. The deprecated v1 Worker suite is
+  retained because the documented retirement gate is not complete, with its custom-provider URL
+  assertion updated to the same generated path. No pipeline-version changes or stored-artifact
+  backfill are required.
+
+- **Chapter agenda and locator workflows now pass the GitHub Actions token to their bounded
+  enrich steps** and grant the minimal `actions: read` permission. This re-enables graceful yield
+  when a newer run is queued; without it, the jobs only stopped at their wall-clock budget and
+  emitted `GITHUB_TOKEN unset — graceful yield disabled`.
+  
+- **City discovery auxiliary eligibility now restores only configured source records**
+  (`scripts/city_discovery.py`, `citypods/state.py`). The weekly scan previously downloaded the
+  entire durable state snapshot, including thousands of unrelated sidecars, before measuring recent
+  agenda coverage. It now scopes the pull to each configured source's `episodes.json`, preserving the
+  same eligibility calculation while keeping the scheduled job within its runner budget. This is a
+  read-path optimization only; no stored records or pipeline versions are invalidated.
+
+- **Auxiliary city discovery now deduplicates shared source records** (`scripts/city_discovery.py`,
+  `citypods/discovery/eligibility.py`). Multiple feed views can reference one canonical source;
+  discovery now parses each source once and counts its episodes once per city entity. This prevents
+  repeated large `episodes.json` expansions from exhausting the hosted runner. It is a read-path
+  optimization only; no records or pipeline versions are invalidated.
+
+- **`chapter-agenda` lane repinned from `mistral/mistral-medium-latest` to
+  `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite` +
+  `gemini/gemini-3.5-flash-lite` as backup models (`config/site_config.yml`,
+  `backup_after_attempts: 12`).** Mistral Medium is blocked by an account-tier issue
+  (primary/secondary/tertiary keys all report an identical zero rate limit for every flagship
+  model). A 30-episode benchmark scored with the project's own `_pair_features`/`_chapter_status`
+  matcher (`scripts/research/agenda_chapters/audit_locator_crosswalk.py`) found Nemotron Ultra at
+  `max_tokens=32768` the best replacement (29/30 valid JSON, 77.9% recall, 87.4% precision — best
+  of any model tested — after fixing the same reasoning-token-budget-exhaustion bug already found
+  in DeepSeek); Gemini 3.1/3.5 Flash Lite were the next-most-reliable candidates. Bumped
+  `CHAPTER_AGENDA_PIPELINE_VERSION` `"1"` → `"2"` (`citypods/stages.py`) so the back catalog
+  reprocesses under the new model — **backfill is gradual and automatic**: every episode whose
+  stored artifact no longer matches the current production model/pipeline version is picked up by
+  the ordinary chapter-agenda cron (every 2 hours), bounded by `max_dispatches_per_run: 1000`/day,
+  draining over however many days the backlog takes.
+  - Fixed a real, independent bug found while wiring the version-bump check:
+    `AgendaChapterCandidatesStage.process()` had its own status-only early exit
+    (`raw_agenda.get("status") in {"completed", "accepted", "not_applicable"}`) with no comparison
+    to the current model or pipeline version, so on any run where nothing else in the batch also
+    deferred, an already-completed episode would be "reused" and then re-stamped complete under
+    the fresh fingerprint by `_mark_stage_complete` -- permanently laundering stale output as
+    current. Fixed by adding `pipeline_version` to `AgendaCandidatesArtifact`
+    (`citypods/chapter_artifacts.py`, empty default so pre-existing artifacts compare unequal to
+    any real version) and gating the reuse check on both `model` and `pipeline_version` matching
+    production. The currency check accepts both `AGENDA_PRODUCTION_MODELS` and
+    `AGENDA_BACKUP_MODELS`, not just the primary — otherwise a completed backup-model artifact
+    would look permanently stale and be needlessly re-dispatched (caught in review).
+  - A `"pending"` episode whose in-flight job named a model no longer in production rotation (e.g.
+    a stuck Mistral job) would defer to that dead/blocked job forever, since its recorded recipe
+    hash could never match a fresh dispatch under the new model. Fixed: such jobs are now
+    cancelled (reusing the existing `_cancel_chapter_fallbacks` primitive) and the episode falls
+    through to a fresh dispatch in the same pass, checked against the union of primary + backup
+    models so a job that already legitimately escalated to a backup is left alone.
+- **`recover_agenda_item_extractor_response` (the GH#1078 recovery-shadow layer) is now wired into
+  production** (`citypods/chapter_jobs.py::finalize_agenda_job`) instead of only the strict
+  `validate_agenda_item_extractor_response`, which raised on the first rejected item and aborted
+  the whole episode's extraction. A borderline item whose `display_ref` doesn't literally validate
+  but whose evidence a source-only search confirms is now rescued and included, tagged with a new
+  `AgendaCandidate.source` provenance field (`"strict"` | `"recovery"`,
+  `citypods/chapter_artifacts.py`, backward-compatible default); `finalize_agenda_job` still raises
+  on genuinely `unrecovered` items.
+- **`config/provider_limits.yml` audit**: the `nvidia` provider block's `rpm` (and its comment's
+  arithmetic) was stale -- 8 of its 9 routes are actually `rpm: 4` and one is `rpm: 0.5` (real sum
+  32.5), while the field itself was `rpm: 6`, making the provider-wide cap the accidental binding
+  constraint instead of per-route pacing (the block's own stated design). Raised to `rpm: 35` and
+  corrected the comment. Added matching `secondary`/`tertiary` routes for the
+  `mistral/mistral-medium-2505`/`2508` legacy aliases, whose account coverage previously lagged
+  `mistral/mistral-medium-latest`'s.
+
 ### Removed
 
 - **Discontinued Airforce `mistral-medium-3.5` route (`config/provider_limits.yml`,
@@ -63,7 +282,35 @@ Phase R (Research-Tool Surface)._
   logged `~2000 reused` for the retired stage shortly before this shipped, a figure its own code
   cannot produce against that same live data no matter how it is replayed — see review/31 §A.5.
 
+
+### Changed
+
+- **Free LLM route optimization & failure classification hardening (`config/provider_limits.yml`,
+  `workers/llm-dispatch-v2`, `citypods/compute/llm_failure_class.py`).**
+  - **OpenCode route retirement:** Fully retired the remaining OpenCode free routes
+    (`mimo-v2.5-free`, `nemotron-3-ultra-free`, `nemotron-3.5-lightning-free`) and removed the
+    `opencode` provider block after verifying OpenCode permanently gates its free tier behind
+    proprietary IDE sessions (`HTTP 400 MissingSessionID: OpenCode's free tier can only be used in
+    OpenCode`). Hardened failure classifiers in `classify.js` and
+    `citypods/compute/llm_failure_class.py` to treat any such upstream errors as capacity rather
+    than request defects.
+  - **Mistral zero-allowance exponential backoff:** Threaded response headers through
+    `callAiGateway` in v2 dispatch and reordered `zero-provisioned-limit` before
+    `openai-shaped-rate-limit`. When Mistral returns HTTP 429 with
+    `x-ratelimit-limit-req-minute: 0`, the failure is classified as `payment_required`,
+    escalating up the day -> week -> month cooldown ladder to naturally resume probing when
+    monthly allowances rollover without setting `rpd: 0`.
+  - **Gemma hard token ceiling admission:** Enforced `hard_input_ceiling` directly inside
+    `routeFitsContext` (`workers/llm-dispatch-v2/src/routes.js`) and lowered Google Gemma 26B/31B
+    ceilings to 10,000 tokens (`config/provider_limits.yml`), preventing jobs from exceeding
+    Google's provider input token limit.
+  - **OrcaRouter structured output:** Added `structured_output_profile: json_object` to
+    `orcarouter_deepseek_v4_flash_free` in `config/provider_limits.yml`.
+  - **Z.ai AI Gateway path alignment:** Configured `custom-zai` AI Gateway chat path to
+    `/v4/chat/completions` matching Cloudflare AI Gateway's Base URL configuration.
+
 ### Added
+
 
 - **Direct-transport failure classification parity & sibling-route capacity retry (PR-6 /
   Initiative 20; review/45 §20.9).**
@@ -288,6 +535,81 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Relaxed `litellm` floor to stable `>=1.101.0` and refreshed constraint locks (`pyproject.toml`,
+  `constraints/prod.txt`, `constraints/dev.txt`, `review/45`).** An ephemeral development release pin
+  (`litellm==1.95.0.dev1`) in `constraints/prod.txt` broke CI runs (`chapter-agenda` run 471) after
+  upstream LiteLLM pruned `1.95.0.dev1` from PyPI upon releasing `1.103.0.dev1`. Relaxed the
+  pre-release lower bound (`>=1.94.0rc3`) in `pyproject.toml` to the current stable release
+  `>=1.101.0`, updated `constraints/prod.txt` and `dev.txt` to `litellm==1.101.0` and
+  `aiohttp==3.14.3`, and added `pydantic-settings==2.15.0`.
+
+- **Raw, undecoded PDF bytes could be persisted as a real `agenda_text_artifact`
+  (`citypods/agenda_text.py`, `tests/test_agenda_text.py`, GH#1092 follow-up).** `_extract_pdf`'s
+  fallback for a non-importable `pypdf` (a required dependency, `pypdf>=5.0` — should never fire
+  in a correctly provisioned run) decoded the PDF's own raw bytes as UTF-8 and returned that as
+  if it were extracted text. Real PDF container syntax and garbled compressed-stream bytes decode
+  into plausible, keyword-bearing noise rather than raising, so the corruption cleared
+  `assess_agenda_document`'s alpha-char/agenda-content-score thresholds by chance and slipped
+  past the placeholder/quality gate GH#1092 built for exactly this class of bad extraction —
+  confirmed against a real production episode (Austin Integrated Water Resource Planning
+  Community Task Force) whose durable artifact was 53k characters of PDF structural syntax and
+  binary noise. Fixed on both sides: the `ImportError` fallback (in both `_extract_pdf` and the
+  parallel `extract_pdf_layout_text`) now returns no text instead of raw bytes, so a genuinely
+  unreadable native PDF falls through to the existing suspicious-native/OCR path like any other
+  bad extraction; `_is_placeholder_text` gained a structural `%PDF-` file-signature guard as a
+  second, independent layer; and `_extract_pdf`'s inner exception handling now also catches
+  `pypdf.errors.PyPdfError` (previously uncaught, so a genuinely malformed PDF skipped the
+  OCR-repair path entirely instead of degrading gracefully like every other bad-PDF case) and, on
+  any of these now-caught exceptions, discards whatever partial text/links a multi-page PDF had
+  already accumulated before the failure rather than returning that truncated prefix — a
+  CodeRabbit catch: a partial prefix that happened to pass the native quality checks on its own
+  would otherwise let a truncated agenda through and skip OCR recovery entirely.
+  `scripts/audit_raw_pdf_agenda_artifacts.py` surveys durably stored artifacts for the same
+  raw-bytes signature so any pre-fix episodes can be found and reset for re-derivation — reading
+  directly from the B2 origin and deduplicated by content-addressed key (never the public,
+  worker-proxied `audio.citymeetings.fyi` domain, which a naive per-episode survey saturates: a
+  full-catalog run resolved 312,821 episode references down to 17,312 unique artifacts). Run
+  against production, it found 67 corrupted objects across 70 episodes, all in Austin, TX
+  (committed as `scripts/fixtures/raw_pdf_agenda_hits_2026-09-13.json`).
+  A storage read failure is tracked separately from a clean "not corrupted" result (the survey's
+  `--json` output is `{"hits": [...], "failed_keys": [...]}`, all progress/diagnostics on stderr
+  so stdout stays valid JSON, and the process exits 3 — distinct from 0/1 — whenever any key
+  couldn't be read, so an incomplete run is never mistaken for a confirmed-clean one).
+  `scripts/reset_raw_pdf_agenda_state.py` + the `Reset raw-PDF-bytes agenda state` workflow clear
+  those 70 records' derived agenda/chapter state from that manifest, re-verifying each against
+  current state first (a record already reprocessed since the survey is left alone) and pushing
+  one source at a time (`--sequential`) since the cohort mixes normal-sized and very large,
+  80-120MB, `episodes.json` files under what would otherwise be one 16-way-concurrent push. The
+  reset acquires its maintenance lease before syncing/re-verifying state (narrowing, though not
+  eliminating — `AgendaTextStage`'s own push does not check this lease, the same limitation
+  `reset_agenda_chapter_state.py` already has for the same fields — the window for a concurrent
+  write to be clobbered) and refuses to plan or apply against an incompletely-synced source.
+
+- **Audio-lane push now actually closes the agenda/chapter maintenance-reset TOCTOU noted just
+  above (`citypods/records.py`, `citypods/statesync.py`, `citypods/run.py`; CodeRabbit review on
+  #1627).** Both `scripts/reset_agenda_chapter_state.py` and `scripts/reset_raw_pdf_agenda_state.py`
+  (which reuses the former's `reset_record`/`reset_agenda_chapter_state` mechanics unchanged)
+  acquire a maintenance lease and write explicit `null` tombstones for
+  `links["agenda_text_artifact_key"]`/`agenda_backup_artifact_key` (and their non-`_key` URL
+  companions) before pushing, so a scoped merge can't resurrect the stale pointer — but the
+  regular Audio workflow's own `lane=audio` push never checked or waited on that lease at all, so
+  a concurrent audio run that had already decided (from an earlier read) to reuse the existing
+  artifact could push its stale, unchanged value straight over either reset tool's fresh
+  tombstone, silently undoing the reset for that episode. Rather than making the continuous,
+  wall-clock-bounded audio pipeline acquire the chapter leases for its whole run (which
+  chapter-agenda/chapter-locator can afford as short, infrequent cron jobs but audio can't,
+  without risking an in-flight run being aborted or a reset starving behind it), the fix works at
+  the data level: `SourcePipeline.fetch_merge` snapshots each uid's own
+  `RESET_GUARDED_AGENDA_LINK_KEYS` (new shared constant, `citypods/records.py`) values as pulled
+  at the *start* of the run, before any stage can touch them, and `merge_preserving_foreign` gains
+  an `agenda_link_baseline` parameter: a push whose local value for one of these keys still equals
+  that snapshot (this run never actually recomputed it) defers to `remote`'s current value when it
+  has since diverged — the reset's tombstone landing mid-run — instead of resurrecting the stale
+  pointer merely because the audio lane "owns" `links`; a run that genuinely (re)derived the key
+  always wins, so un-tombstoning on the very next normal run still works correctly.
+  `scripts/reset_agenda_chapter_state.py` now imports the shared constant instead of a private
+  duplicate, so both reset tools' target field list and this protection can never drift apart. See
+  ARCHITECTURE.md's maintenance-lease section for the full mechanism.
 - **Bounded research/review workflows now survive oversized and stale work (`tournament.py`, shared
   review resolver).** The tag tournament previously loaded chapter artifacts for the entire
   append-only catalog before taking its newest bounded sample, so the 46-sample weekly run hit its

@@ -15,6 +15,7 @@ from citypods.discovery.models import (
 )
 from citypods.discovery.render import evidence_digest
 from scripts.r12_batch import BatchError, apply_evidence
+from scripts.r12_bound_issue_body import main as bound_issue_body
 from scripts.r12_commands import (
     AUTHORIZATION_DENIED_REPLY,
     BOT_LOGIN,
@@ -181,6 +182,29 @@ def test_auxiliary_batch_preserves_existing_yaml_bytes(tmp_path):
     assert changed == [target.relative_to(tmp_path)]
     assert target.read_text().startswith(original)
     assert "aux_provider: civicengage" in target.read_text()
+
+
+def test_auxiliary_issue_body_is_bounded_with_a_full_body_artifact_link(tmp_path):
+    source = tmp_path / "full.md"
+    output = tmp_path / "issue.md"
+    source.write_text("x" * 70_000, encoding="utf-8")
+
+    assert (
+        bound_issue_body(
+            [
+                "--input",
+                str(source),
+                "--output",
+                str(output),
+                "--artifact-url",
+                "https://github.com/example/repo/actions/runs/123",
+            ]
+        )
+        == 0
+    )
+    body = output.read_text(encoding="utf-8")
+    assert len(body.encode("utf-8")) <= 60_000
+    assert "https://github.com/example/repo/actions/runs/123" in body
 
 
 def test_batch_rejects_config_path_escape(tmp_path):

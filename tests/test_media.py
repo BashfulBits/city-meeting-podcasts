@@ -3013,7 +3013,7 @@ def test_granicus_short_zero_exit_is_retried_through_chunked_worker(monkeypatch,
     assert dest.read_bytes() == b"complete"
 
 
-def test_granicus_truncated_probe_passes_max_download_bytes_without_max_bytes(
+def test_granicus_truncated_probe_streams_through_worker_without_prefix_download(
     monkeypatch, tmp_path
 ):
     import citypods.media as media
@@ -3032,22 +3032,23 @@ def test_granicus_truncated_probe_passes_max_download_bytes_without_max_bytes(
         Path(cmd[-1]).write_bytes(b"probe-audio")
 
     monkeypatch.setattr(media, "_run_ffmpeg_guarded", _run)
-    download_verified_kwargs: dict = {}
-
-    def _fake_download_verified(_url, _token, raw_dest, **kwargs):
-        download_verified_kwargs.update(kwargs)
-        raw_dest.write_bytes(b"video-slice")
-        return len(b"video-slice")
-
-    monkeypatch.setattr(media, "download_verified", _fake_download_verified)
+    monkeypatch.setattr(
+        media,
+        "download_verified",
+        lambda *_args, **_kwargs: pytest.fail("truncated probe must not download a local prefix"),
+    )
     source = "https://archive-video.granicus.com/arlingtontx/arlingtontx_test.mp4"
     dest = tmp_path / "probe.mka"
 
     assert media._download_audio(source, dest, max_seconds=3.0) is True
-    assert download_verified_kwargs.get("max_bytes") is None
-    assert download_verified_kwargs.get("max_download_bytes") == 8_000_000
     assert dest.read_bytes() == b"probe-audio"
     assert len(calls) == 2
+    worker_cmd = calls[1]
+    assert worker_cmd[worker_cmd.index("-i") + 1] == (
+        "https://worker.example/v1/archive/arlingtontx/arlingtontx_test.mp4"
+    )
+    assert worker_cmd[worker_cmd.index("-headers") + 1] == "Authorization: Bearer secret\r\n"
+    assert worker_cmd[worker_cmd.index("-t") + 1] == "3.0"
 
 
 def test_granicus_direct_rate_limit_is_preserved_without_worker_fallback(monkeypatch, tmp_path):

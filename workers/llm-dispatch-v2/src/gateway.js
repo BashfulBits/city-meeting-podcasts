@@ -173,6 +173,7 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
     status: response.status,
     ok: response.ok && parseError === null,
     body,
+    headers: response.headers,
     parseError,
     correlationId,
     retryAfterSeconds,
@@ -185,8 +186,10 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
  *
  * OpenCode Zen returns HTTP 400 with `{"error":{"type":"server_error","message":"Error from
  * provider (Console): Upstream request failed: Model is unavailable."}}` while still advertising
- * the model in its own /v1/models listing. Classified as terminal, every job that reached it was
- * destroyed rather than retried.
+ * the model in its own /v1/models listing. When free tier was restricted, it also started returning
+ * HTTP 400 with `{"error":{"type":"MissingSessionID","message":"Error from provider (Console):
+ * OpenCode's free tier can only be used in OpenCode"}}`. Classified as terminal, every job that
+ * reached it was destroyed rather than retried.
  *
  * Deliberately narrow. It applies only to 400 (other 4xx really are request defects: 401 bad
  * credentials, 404 unknown model, 422 schema), and only when the body self-identifies as a server
@@ -200,13 +203,15 @@ export function upstreamCapacityFailure(status, body) {
   if (status !== 400) return false;
   const providerError = body?.error;
   if (!providerError || typeof providerError !== "object") return false;
-  if (String(providerError.type || "").toLowerCase() === "server_error") return true;
+  const errType = String(providerError.type || "").toLowerCase();
+  if (errType === "server_error") return true;
   const message = String(providerError.message || "").toLowerCase();
   return (
     message.includes("upstream request failed") ||
     message.includes("model is unavailable") ||
     message.includes("no capacity") ||
-    message.includes("temporarily unavailable")
+    message.includes("temporarily unavailable") ||
+    message.includes("free tier can only be used in opencode")
   );
 }
 

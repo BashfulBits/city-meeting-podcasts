@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+import yaml as pyyaml
 
 from scripts import compile_llm_limits
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PROVIDER_LIMITS_YAML = REPO_ROOT / "config" / "provider_limits.yml"
+
+
+def _raw_provider_limits() -> dict:
+    return pyyaml.safe_load(PROVIDER_LIMITS_YAML.read_text(encoding="utf-8"))
 
 
 def test_default_compile_never_touches_the_network(monkeypatch):
@@ -65,11 +75,8 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     deepseek_key = "deepseek/deepseek-v4-flash"
     deepseek_routes = compiled["model_routes_map"][deepseek_key]
-    # SiliconFlow (paid) + DeepSeek Direct (paid) + OpenCode (free) + NVIDIA build (free) -- four
-    # independent physical pools for the same logical model. The NVIDIA leg was briefly commented
-    # out on 2026-08-29, blamed on NVIDIA gating this model per-key; the real cause was Cloudflare
-    # AI Gateway dropping the `/v1` from the custom-provider Base URL, which broke every NVIDIA
-    # route rather than this one model (see config/provider_limits.yml's `nvidia` block).
+    # SiliconFlow (paid) + DeepSeek Direct (paid) + NVIDIA build (free) + OrcaRouter (free) --
+    # four independent physical pools for the same logical model.
     assert len(deepseek_routes) == 4
     physical_routes = [compiled["routes_by_id"][route_id] for route_id in deepseek_routes]
     assert (
@@ -82,17 +89,16 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
         == 4
     )
     assert compiled["model_aliases"]["deepseek/deepseek-v4-flash-0731"] == deepseek_key
-    assert compiled["model_aliases"]["opencode/deepseek-v4-flash-free"] == deepseek_key
     assert compiled["model_aliases"]["nvidia/deepseek-v4-flash-0731"] == deepseek_key
+    assert compiled["model_aliases"]["orcarouter/deepseek-v4-flash"] == deepseek_key
 
     nemotron_key = "nvidia/nemotron-3-ultra-550b-a55b:free"
-    # OpenRouter + Kilo + OpenCode (all broker legs) + NVIDIA build direct (added 2026-08-29).
-    assert len(compiled["model_routes_map"][nemotron_key]) == 4
+    # OpenRouter + Kilo (broker legs) + NVIDIA build direct (added 2026-08-29).
+    assert len(compiled["model_routes_map"][nemotron_key]) == 3
     assert (
         compiled["model_aliases"]["openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"]
         == nemotron_key
     )
-    assert compiled["model_aliases"]["opencode/nemotron-3-ultra-free"] == nemotron_key
     assert compiled["model_aliases"]["nvidia/nemotron-3-ultra-550b-a55b"] == nemotron_key
 
     nemotron_super_key = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
@@ -228,7 +234,13 @@ def test_full_day_pricing_surcharge_is_rejected():
 
 def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
     compiled = compile_llm_limits.compile_limits()
-    assert compiled["model_routing"] == {}
+    assert compiled["model_routing"] == {
+        "gemini/gemini-3.7-flash": [
+            "gemini/gemini-3.6-flash",
+            "gemini/gemini-3.8-flash",
+            "gemini/gemini-3.5-flash",
+        ]
+    }
     assert compiled["model_routes_map"]["mistral/mistral-medium-latest"] == [
         "mistral_medium_latest_primary",
         "mistral_medium_latest_secondary",
@@ -365,7 +377,7 @@ def test_python_catalog_rejects_an_unknown_route_account():
 
 
 def test_openai_compatible_provider_selectors_use_litellms_openai_adapter():
-    for provider in ("airforce", "kilo", "opencode", "siliconflow"):
+    for provider in ("airforce", "kilo", "opencode", "siliconflow", "orcarouter"):
         assert compile_llm_limits._direct_model(provider, "vendor/model") == "openai/vendor/model"
 
 
@@ -805,3 +817,34 @@ def test_observed_rpm_lowers_the_effective_limit_but_never_raises_it():
     # is no path through which a real observation could reach here as 0 -- a floor of 1.0 instead
     # silently raised a genuine sub-1.0 measurement, the opposite of what a one-way clamp permits.
     assert _rpm(0.2, 30) == 0.2, "positive measurements must remain fractional, never floored up"
+
+
+def test_nvidia_provider_wide_rpm_is_not_below_the_sum_of_its_own_routes():
+    """Regression guard for the nvidia block's stale comment/value (fixed alongside the Nemotron
+    migration): its provider-wide `rpm` is explicitly documented as a safety net only, with
+    per-route pacing meant to be the real binding constraint -- unlike e.g. Mistral, whose
+    provider-wide `rpm` genuinely IS an account-wide limit shared by every model by design, so
+    this check is NVIDIA-specific rather than a rule for every provider."""
+    raw = _raw_provider_limits()
+    nvidia_routes = [route for route in raw["routes"] if route["provider"] == "nvidia"]
+    assert nvidia_routes, "expected at least one nvidia route in config/provider_limits.yml"
+    route_rpm_sum = sum(route.get("rpm", 0) or 0 for route in nvidia_routes)
+    provider_rpm = raw["providers"]["nvidia"]["rpm"]
+    assert provider_rpm >= route_rpm_sum, (
+        f"providers['nvidia'].rpm ({provider_rpm}) is below the sum of its own routes' rpm "
+        f"({route_rpm_sum}); per-route pacing can never be the binding constraint like this"
+    )
+
+
+def test_mistral_medium_legacy_aliases_match_latest_account_coverage():
+    """mistral/mistral-medium-2505 and -2508 are legacy aliases for mistral/mistral-medium-latest
+    (`model_key`) -- their account coverage (which accounts have a route at all) must match the
+    live name's, or a job pinned to the legacy name silently has fewer routes to fall back to."""
+    raw = _raw_provider_limits()
+    accounts_by_model: dict[str, set[str]] = {}
+    for route in raw["routes"]:
+        accounts_by_model.setdefault(route["model"], set()).add(route["account_id"])
+    latest_accounts = accounts_by_model["mistral/mistral-medium-latest"]
+    assert latest_accounts == {"primary", "secondary", "tertiary"}
+    for alias in ("mistral/mistral-medium-2505", "mistral/mistral-medium-2508"):
+        assert accounts_by_model[alias] == latest_accounts, alias

@@ -26,7 +26,8 @@ MISTRAL_LOCATOR_MODEL = "mistral/mistral-large-2512"
 # these keys and matches `allowed_models` against them, so an unqualified/provider-prefixed name
 # would silently match nothing. `deepseek/deepseek-v4-flash` also pools the paid SiliconFlow/
 # DeepSeek-direct routes, but every caller here defaults to `LLMRequestPolicy.allow_paid=False`,
-# so only the OpenCode Zen free tier is ever actually selected under that shared key.
+# so only the NVIDIA build's free leg is selected under that shared key; OpenCode's former free
+# DeepSeek alias is no longer cataloged.
 DEEPSEEK_FREE_LOCATOR_MODEL = "deepseek/deepseek-v4-flash"
 NEMOTRON_LOCATOR_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 GEMINI_LOCATOR_MODEL = "gemini/gemini-3-flash-preview"
