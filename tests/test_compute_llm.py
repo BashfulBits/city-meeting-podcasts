@@ -1969,9 +1969,9 @@ CUSTOM_PROVIDER_GATEWAY_PATHS = {
     # Registered as `https://api.kilo.ai/api/gateway/v1` -- Kilo serves that path too, so the
     # caller path stays bare under either gateway join behavior.
     "kilo": "/chat/completions",
-    # Routed through workers/llm-provider-shim, which restores the real upstream prefix, so the
-    # caller path is bare here as well.
-    "zai": "/chat/completions",
+    # custom-zai is registered at `https://api.z.ai/api/paas`, which serves at
+    # `/v4/chat/completions`.
+    "zai": "/v4/chat/completions",
     "opencode": "/chat/completions",
 }
 
@@ -2019,7 +2019,7 @@ def test_custom_provider_routes_use_their_recorded_gateway_path(route):
             f"{_GW}/google-ai-studio/v1beta/models/gemini-3.6-flash:generateContent",
         ),
         ("mistral/mistral-large-2512", f"{_GW}/mistral/v1/chat/completions"),
-        ("zai/glm-4.7-flash", f"{_GW}/custom-zai/chat/completions"),
+        ("zai/glm-4.7-flash", f"{_GW}/custom-zai/v4/chat/completions"),
     ],
 )
 def test_direct_call_requests_the_gateway_url(model, expected_request_url, gateway_env):

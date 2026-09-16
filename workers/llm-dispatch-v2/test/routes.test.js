@@ -145,3 +145,49 @@ test("modelForRouteId caches per dispatchLimits object identity, not globally", 
   assert.equal(modelForRouteId("route-1", catalogA), "model-a");
   assert.equal(modelForRouteId("route-1", catalogB), "model-b");
 });
+
+test("Gemma routes enforce hard_input_ceiling and kick large jobs to NVIDIA NIM", () => {
+  const jobUnderCeiling = {
+    policy_json: JSON.stringify({
+      allowed_models: ["google/gemma-4-31b-it"],
+      allow_paid: false,
+    }),
+    input_token_estimate: 8000,
+    max_output_token_estimate: 1000,
+  };
+  const underRoutes = routesEligibleFor(jobUnderCeiling, DISPATCH_LIMITS);
+  const underIds = underRoutes.map((r) => r.route_id);
+  assert.ok(underIds.includes("gemma_4_31b_primary"));
+  assert.ok(underIds.includes("nvidia_gemma_4_31b_it_free"));
+
+  // Above 10000 tokens (Google Gemma ceiling), Google Gemini routes are disqualified
+  // and only NVIDIA/OpenRouter routes remain eligible.
+  const jobOverCeiling = {
+    policy_json: JSON.stringify({
+      allowed_models: ["google/gemma-4-31b-it"],
+      allow_paid: false,
+    }),
+    input_token_estimate: 12000,
+    max_output_token_estimate: 1000,
+  };
+  const overRoutes = routesEligibleFor(jobOverCeiling, DISPATCH_LIMITS);
+  const overIds = overRoutes.map((r) => r.route_id);
+  assert.ok(!overIds.includes("gemma_4_31b_primary"));
+  assert.ok(!overIds.includes("gemma_4_31b_secondary"));
+  assert.ok(overIds.includes("nvidia_gemma_4_31b_it_free"));
+});
+
+test("OrcaRouter free route is eligible for deepseek-v4-flash without paid permission", () => {
+  const job = {
+    policy_json: JSON.stringify({
+      allowed_models: ["deepseek/deepseek-v4-flash"],
+      allow_paid: false,
+    }),
+    input_token_estimate: 10000,
+    max_output_token_estimate: 1000,
+  };
+  const routes = routesEligibleFor(job, DISPATCH_LIMITS);
+  const ids = routes.map((r) => r.route_id);
+  assert.ok(ids.includes("orcarouter_deepseek_v4_flash_free"));
+  assert.ok(routes.some((r) => r.provider === "orcarouter"));
+});

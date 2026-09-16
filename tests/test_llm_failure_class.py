@@ -414,3 +414,55 @@ def test_orcarouter_free_tier_rate_limits_with_retry_after():
     )
     assert res_rpd.failure_class == "own_rpd"
     assert res_rpd.rule_id == "orcarouter-daily-window"
+
+
+def test_opencode_missing_session_id_is_upstream_capacity():
+    """OpenCode free-tier 400 with MissingSessionID is classified as upstream_capacity."""
+    body = {
+        "error": {
+            "type": "MissingSessionID",
+            "message": (
+                "Error from provider (Console): OpenCode's free tier can only be used in OpenCode"
+            ),
+        },
+        "type": "error",
+    }
+    result = classify_provider_failure(
+        status=400, body=body, headers={}, route={"provider": "opencode"}
+    )
+    assert result.failure_class == "upstream_capacity"
+    assert result.rule_id == "upstream-400-body"
+
+
+def test_opencode_bare_missing_session_id_is_request_defect():
+    """OpenCode 400 with bare MissingSessionID without free-tier phrase is request_defect."""
+    body = {
+        "error": {
+            "type": "MissingSessionID",
+            "message": "Missing session ID in request headers",
+        },
+        "type": "error",
+    }
+    result = classify_provider_failure(
+        status=400, body=body, headers={}, route={"provider": "opencode"}
+    )
+    assert result.failure_class == "request_defect"
+    assert result.scope == "route"
+
+
+def test_mistral_zero_provisioned_limit_precedence():
+    """Mistral 429 with 0 req/min limit is payment_required rather than own_rpm."""
+    body = {
+        "message": "Rate limit exceeded",
+        "type": "rate_limited",
+        "code": "1300",
+    }
+    headers = {
+        "x-ratelimit-limit-req-minute": "0",
+        "x-ratelimit-remaining-req-minute": "0",
+    }
+    result = classify_provider_failure(
+        status=429, body=body, headers=headers, route={"provider": "mistral"}
+    )
+    assert result.failure_class == "payment_required"
+    assert result.rule_id == "zero-provisioned-limit"

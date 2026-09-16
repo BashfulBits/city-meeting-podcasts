@@ -28,7 +28,9 @@ attrs==26.1.0
 beautifulsoup4==4.15.0
     # via citypods (pyproject.toml)
 boto3==1.43.40
-    # via citypods (pyproject.toml)
+    # via
+    #   citypods (pyproject.toml)
+    #   litellm
 botocore==1.43.40
     # via
     #   boto3

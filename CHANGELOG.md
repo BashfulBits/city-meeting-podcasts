@@ -266,6 +266,34 @@ Phase R (Research-Tool Surface)._
   logged `~2000 reused` for the retired stage shortly before this shipped, a figure its own code
   cannot produce against that same live data no matter how it is replayed — see review/31 §A.5.
 
+
+### Changed
+
+- **Free LLM route optimization & failure classification hardening (`config/provider_limits.yml`,
+  `workers/llm-dispatch-v2`, `citypods/compute/llm_failure_class.py`).**
+  - **OpenCode session isolation & route backoff:** Handled OpenCode `MissingSessionID` HTTP 400
+    errors ("free tier can only be used in OpenCode") in `upstreamCapacityFailure` and failure
+    classifiers (`classify.js`, `citypods/compute/llm_failure_class.py`), classifying them as
+    `upstream_capacity` instead of `request_defect` so failed jobs are requeued and routes backed
+    off.
+  - **Mistral zero-allowance exponential backoff:** Threaded response headers through
+    `callAiGateway` in v2 dispatch and reordered `zero-provisioned-limit` before
+    `openai-shaped-rate-limit`. When Mistral returns HTTP 429 with
+    `x-ratelimit-limit-req-minute: 0`, the failure is classified as `payment_required`,
+    escalating up the day -> week -> month cooldown ladder to naturally resume probing when
+    monthly allowances rollover without setting `rpd: 0`.
+  - **Gemma hard token ceiling admission:** Enforced `hard_input_ceiling` directly inside
+    `routeFitsContext` (`workers/llm-dispatch-v2/src/routes.js`) and lowered Google Gemma 26B/31B
+    ceilings to 10,000 tokens (`config/provider_limits.yml`), preventing jobs from exceeding
+    Google's provider input token limit.
+  - **OrcaRouter structured output:** Added `structured_output_profile: json_object` to
+    `orcarouter_deepseek_v4_flash_free` in `config/provider_limits.yml`.
+  - **Z.ai AI Gateway path alignment:** Configured `custom-zai` AI Gateway chat path to
+    `/v4/chat/completions` matching Cloudflare AI Gateway's Base URL configuration.
+
+### Added
+
+
 - **Direct-transport failure classification parity & sibling-route capacity retry (PR-6 /
   Initiative 20; review/45 §20.9).**
   - Added failure classification parity to the direct LLM transport in `citypods/compute/llm.py`

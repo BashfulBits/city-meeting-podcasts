@@ -68,7 +68,13 @@ export const FAILURE_SIGNATURES = [
     rule_id: "opencode-server-error",
     provider: "opencode",
     failure_class: "upstream_capacity",
-    match: ({ body }) => body?.error?.type === "server_error",
+    match: ({ body, msg }) => {
+      const errType = String(body?.error?.type || "").toLowerCase();
+      return (
+        errType === "server_error" ||
+        msg.includes("free tier can only be used in opencode")
+      );
+    },
   },
   {
     rule_id: "openrouter-upstream",
@@ -118,14 +124,6 @@ export const FAILURE_SIGNATURES = [
       body?.error?.code === "free_rate_limited" || msg.includes("free_rate_limited"),
   },
   {
-    rule_id: "openai-shaped-rate-limit",
-    provider: null,
-    failure_class: "own_rpm",
-    match: ({ body }) =>
-      body?.error?.type === "rate_limit_exceeded" ||
-      body?.error?.code === "rate_limit_exceeded",
-  },
-  {
     // A rate-limit header whose LIMIT (not "remaining") is literally 0 means the provider has
     // provisioned this account no allowance at all -- an account/billing state, not pacing. No
     // amount of backoff inside the window recovers it, so it belongs on the day -> week -> month
@@ -136,8 +134,8 @@ export const FAILURE_SIGNATURES = [
     //   x-ratelimit-limit-req-minute: 0
     //   x-ratelimit-remaining-req-minute: 0
     // Confirmed live 2026-09-09 while /v1/models still returned 200, so credentials were valid.
-    // Ordered before `remaining-zero-header`, which would otherwise read the same response as an
-    // ordinary exhausted minute and keep hammering a route that can never serve a request.
+    // Ordered before rate-limit rules, which would otherwise read the response as ordinary
+    // pacing exhaustion and keep hammering a route that has no provisioned quota.
     rule_id: "zero-provisioned-limit",
     provider: null,
     failure_class: "payment_required",
@@ -151,6 +149,16 @@ export const FAILURE_SIGNATURES = [
       }
       return false;
     },
+  },
+  {
+    rule_id: "openai-shaped-rate-limit",
+    provider: null,
+    failure_class: "own_rpm",
+    match: ({ body }) =>
+      body?.error?.type === "rate_limit_exceeded" ||
+      body?.error?.code === "rate_limit_exceeded" ||
+      body?.type === "rate_limited" ||
+      body?.code === "1300",
   },
   {
     rule_id: "remaining-zero-header",
@@ -328,10 +336,14 @@ export function classifyProviderFailure({ status, body, headers, route }) {
 
   // 4. Cloudflare AI Gateway rate limit or rejection
   const hasCfAigError = normHeaders.has("cf-aig-error");
+  const hasProviderPayload =
+    Boolean(body) &&
+    typeof body === "object" &&
+    ("error" in body || "message" in body || "detail" in body || "code" in body);
   const isAig429 =
     status === 429 &&
     !hasRateLimitHeader(normHeaders) &&
-    !(body && typeof body === "object" && body.error);
+    !hasProviderPayload;
 
   if (hasCfAigError || isAig429) {
     return {

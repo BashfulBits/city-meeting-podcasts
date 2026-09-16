@@ -187,12 +187,9 @@ providers:
   zai:
     api_base: https://api.z.ai/api/paas/v4
     ai_gateway_slug: custom-zai
-    # Routed through `workers/llm-provider-shim`, not straight at api_base: z.ai's `/api/paas/v4`
-    # is not reliably expressible through the gateway's changing Base URL join, so the shim
-    # restores it. The existing registered Base URL is
-    # `https://citypods-llm-provider-shim.citypods.workers.dev/<SHIM_TOKEN>/zai/x`; the shim accepts
-    # both the literal `/x` path and the former gateway-rewritten `/v1` path.
-    ai_gateway_chat_path: /chat/completions
+    # Cloudflare AI Gateway Base URL for custom-zai is configured to `https://api.z.ai/api/paas`,
+    # so the caller path must supply `/v4/chat/completions` (verified 2026-09-15: HTTP 200).
+    ai_gateway_chat_path: /v4/chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
@@ -382,10 +379,10 @@ routes:
   # file) -- conclusive, contention_detected: false, provider_reported_tpm: 16000 (matches the
   # configured tpm exactly, confirming Google publishes 16000 TPM for this tier). Applied to both
   # primary and secondary per that same account-diversity convention. A same-day, single clean
-  # request at this input size plus a realistic 1000-token max_tokens succeeded fine (13,164
-  # total, well under 16000) on a rested key, ruling out any extra server-side output reservation
-  # as an explanation for the ~1-6% headroom below tpm -- it is a real, if narrow, per-model
-  # ceiling, not a measurement artifact.
+  # Google Gemma routes enforce a strict 16k TPM quota at the provider. With structured
+  # meeting/JSON transcripts tokenizing at ~2.8-3.2 chars/token, a char/4 client estimate will
+  # underestimate real token count. A conservative hard_input_ceiling: 10000 ensures requests
+  # exceeding this limit are kicked over to NVIDIA NIM or OpenRouter before hitting Gemini 429s.
   - route_id: gemma_4_26b_primary
     model: google/gemma-4-26b-a4b-it
     provider: gemini
@@ -396,10 +393,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 15062
+    hard_input_ceiling: 10000
     free: true
     observed_on: "2026-09-12"
-    observed_input_ceiling: 15062
+    observed_input_ceiling: 10000
     observed_burst: 31
 
   - route_id: gemma_4_26b_secondary
@@ -412,10 +409,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 15062
+    hard_input_ceiling: 10000
     free: true
     observed_on: "2026-09-12"
-    observed_input_ceiling: 15062
+    observed_input_ceiling: 10000
     observed_burst: 31
 
   - route_id: gemma_4_31b_primary
@@ -428,10 +425,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 12250
+    hard_input_ceiling: 10000
     free: true
     observed_on: "2026-09-12"
-    observed_input_ceiling: 12250
+    observed_input_ceiling: 10000
     observed_burst: 2
 
   - route_id: gemma_4_31b_secondary
@@ -444,10 +441,10 @@ routes:
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 12250
+    hard_input_ceiling: 10000
     free: true
     observed_on: "2026-09-12"
-    observed_input_ceiling: 12250
+    observed_input_ceiling: 10000
     observed_burst: 2
 
   # Additional Free Flash Burst Pools (20 RPD / 5-10 RPM each)
@@ -614,6 +611,7 @@ routes:
     observed_on: "2026-09-12"
     observed_burst: 1
     observed_input_ceiling: 234437
+
 
   # ==========================================
   # ==========================================
@@ -1516,6 +1514,8 @@ routes:
   # ==========================================
   # OPENCODE ZEN ROUTES (OpenCode.ai)
   # ==========================================
+
+
   - route_id: opencode_mimo_v2_5_free
     model: opencode/mimo-v2.5-free
     provider: opencode
@@ -1545,7 +1545,7 @@ routes:
     account_id: primary
     concurrency: 1
     rpm: 20
-    rpd: 200
+    rpd: 0
     tpm: 100000
     free: true
     observed_on: "2026-09-09"
@@ -2011,6 +2011,7 @@ routes:
     observed_on: "2026-09-14"
     retry_after_trustworthy: true
     upstream_429_default: upstream_capacity
+    structured_output_profile: json_object
 
   - route_id: orcarouter_tencent_hy3_free
     model: orcarouter/tencent-hy3
@@ -2029,6 +2030,8 @@ routes:
     observed_on: "2026-09-14"
     retry_after_trustworthy: true
     upstream_429_default: upstream_capacity
+
+
 
   - route_id: orcarouter_zai_glm_5_3_flash_free
     model: orcarouter/glm-5.3-flash
