@@ -181,7 +181,7 @@ def _direct_model(provider: str, upstream_model: str) -> str:
     compiled ``api_base`` keeps those routes usable directly without teaching the scheduler
     provider-specific URL logic.
     """
-    if provider in {"airforce", "kilo", "opencode", "siliconflow", "nvidia"}:
+    if provider in {"airforce", "kilo", "opencode", "siliconflow", "nvidia", "orcarouter"}:
         return f"openai/{upstream_model}"
     return f"{provider}/{upstream_model}"
 

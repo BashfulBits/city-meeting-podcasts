@@ -84,6 +84,40 @@ export const FAILURE_SIGNATURES = [
     },
   },
   {
+    // OrcaRouter free-tier prompt cap: 429 with error code free_rate_limited and no Retry-After.
+    // Time/waiting cannot clear a prompt size rejection; retrying unchanged fails identically.
+    rule_id: "orcarouter-prompt-cap",
+    provider: "orcarouter",
+    failure_class: "request_defect",
+    match: ({ body, headers, msg }) => {
+      const isFreeLimited =
+        body?.error?.code === "free_rate_limited" || msg.includes("free_rate_limited");
+      const hasRetryAfter = Boolean(headers?.get("retry-after"));
+      return isFreeLimited && !hasRetryAfter;
+    },
+  },
+  {
+    // OrcaRouter free-tier daily rate window: Retry-After seconds until 00:00 UTC (> 120s).
+    rule_id: "orcarouter-daily-window",
+    provider: "orcarouter",
+    failure_class: "own_rpd",
+    match: ({ body, headers, msg }) => {
+      const isFreeLimited =
+        body?.error?.code === "free_rate_limited" || msg.includes("free_rate_limited");
+      const raw = headers?.get("retry-after");
+      const retryAfter = raw ? Number(raw) : null;
+      return isFreeLimited && Number.isFinite(retryAfter) && retryAfter > 120;
+    },
+  },
+  {
+    // OrcaRouter free-tier minute rate window: Retry-After seconds in minute bucket (<= 120s).
+    rule_id: "orcarouter-minute-window",
+    provider: "orcarouter",
+    failure_class: "own_rpm",
+    match: ({ body, msg }) =>
+      body?.error?.code === "free_rate_limited" || msg.includes("free_rate_limited"),
+  },
+  {
     rule_id: "openai-shaped-rate-limit",
     provider: null,
     failure_class: "own_rpm",

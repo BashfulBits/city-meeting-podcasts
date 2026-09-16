@@ -54,7 +54,11 @@ structured_output_profiles:
 # request's allowed models with this map, so it takes effect for every transport uniformly.
 #
 # Mistral Medium jobs route strictly to native Mistral and Airforce Mistral routes.
-model_routing: {}
+model_routing:
+  gemini/gemini-3.7-flash:
+    - gemini/gemini-3.6-flash
+    - gemini/gemini-3.8-flash
+    - gemini/gemini-3.5-flash
 
 
 # `api_base`/`chat_path` are the OpenAI-shaped upstream every account of that provider is called
@@ -100,7 +104,7 @@ providers:
   airforce:
     api_base: https://api.airforce/v1
     ai_gateway_slug: custom-airforce
-    ai_gateway_chat_path: /v1/chat/completions
+    ai_gateway_chat_path: /chat/completions
     chat_path: /v1/chat/completions
     reset_timezone: UTC
     rpm: 1
@@ -144,10 +148,9 @@ providers:
     # `allow_paid` once no free route has capacity.
     api_base: https://api.siliconflow.com/v1
     ai_gateway_slug: custom-siliconflow
-    # Full path from the origin root (see the `nvidia` block). SiliconFlow serves the same
-    # endpoint at both `/chat/completions` and `/v1/chat/completions`, which is the only reason
-    # the old root-relative value worked; this states the intended URL explicitly.
-    ai_gateway_chat_path: /v1/chat/completions
+    # The registered Base URL ends in `/v1`, and the gateway now honors that path. Keep the
+    # caller path root-relative so it does not double the version segment.
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
@@ -166,10 +169,9 @@ providers:
   sambanova:
     api_base: https://api.sambanova.ai/v1
     ai_gateway_slug: custom-sambanova
-    # Full path from the origin root -- see the `nvidia` block below for why. Verified 2026-08-29:
-    # `/chat/completions` through the gateway returns SambaNova's plain-text `404 page not found`,
-    # `/v1/chat/completions` reaches the real API (a genuine 429 rate-limit JSON came back).
-    ai_gateway_chat_path: /v1/chat/completions
+    # The registered Base URL ends in `/v1`, and the gateway now honors that path. A root-relative
+    # caller path therefore reaches `/v1/chat/completions` without a duplicated version segment.
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     # SambaNova's documented Free-tier ceiling is 20 requests/minute. Keep this provider-wide
     # because both configured models share the same API key, and let the split-cap compiler divide
@@ -185,12 +187,11 @@ providers:
   zai:
     api_base: https://api.z.ai/api/paas/v4
     ai_gateway_slug: custom-zai
-    # Routed through `workers/llm-provider-shim`, not straight at api_base: AI Gateway rewrites the
-    # last segment of a Custom Provider's Base URL to a hardcoded `v1`, which turns z.ai's
-    # `/api/paas/v4` into `/api/paas/v1` (a real 404). No Base URL can express `/api/paas/v4`, so
-    # the shim restores it. The registered Base URL is
-    # `https://citypods-llm-provider-shim.citypods.workers.dev/<SHIM_TOKEN>/zai/x` -- the trailing
-    # `x` is sacrificial (the gateway eats it and substitutes `v1`). Verified 2026-08-29: HTTP 200.
+    # Routed through `workers/llm-provider-shim`, not straight at api_base: z.ai's `/api/paas/v4`
+    # is not reliably expressible through the gateway's changing Base URL join, so the shim
+    # restores it. The existing registered Base URL is
+    # `https://citypods-llm-provider-shim.citypods.workers.dev/<SHIM_TOKEN>/zai/x`; the shim accepts
+    # both the literal `/x` path and the former gateway-rewritten `/v1` path.
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
@@ -211,10 +212,9 @@ providers:
   kilo:
     api_base: https://api.kilo.ai/api/gateway
     ai_gateway_slug: custom-kilo
-    # The registered Base URL is `https://api.kilo.ai/api/gateway/v1`, not api_base: AI Gateway
-    # rewrites a Custom Provider Base URL's last segment to a hardcoded `v1`, so registering
-    # `/api/gateway` dispatched to `/api/v1` (a real 404). Kilo also serves `/api/gateway/v1`, so
-    # registering that lands correctly and no shim is needed. Verified 2026-08-29: HTTP 200.
+    # The registered Base URL is `https://api.kilo.ai/api/gateway/v1`, not api_base. Kilo serves
+    # that path, so it remains correct under both the former forced-`v1` rewrite and the current
+    # path-preserving join; no shim is needed.
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
@@ -229,8 +229,8 @@ providers:
     # cause never identified from outside -- replaying the gateway's full header set on a direct
     # call would not reproduce it. Going through the shim resolves it, which also ruled out the
     # leading theory that opencode.ai rejects Cloudflare-edge traffic (the shim is a Worker too).
-    # Registered Base URL: `https://.../<SHIM_TOKEN>/opencode/x`. Verified 2026-08-29: a genuine
-    # upstream 429 (free-tier quota) in place of the routing 404.
+    # Registered Base URL remains `https://.../<SHIM_TOKEN>/opencode/x`; the shim accepts both the
+    # literal `/x` path now honored by the gateway and the `/v1` path from its former rewrite.
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
@@ -242,11 +242,12 @@ providers:
   # ~40 RPM, account-wide, "dependent on model, use-case, and current overall traffic" per
   # NVIDIA's own developer-forum staff replies, and developers report 429s even under light load.
   # Treat this whole provider as best-effort capacity, never a committed SLA:
-  #   - `rpm: 12` is a *self-imposed* 30% cap of the ~40 RPM community baseline (40 * 0.30 = 12),
-  #     not a limit NVIDIA documents. This is the one number this account actually enforces via
-  #     the shared `ProviderLedger` (see `citypods/compute/llm_budget.py`), pacing every model and
-  #     route below off one account-wide clock -- mirroring how the Mistral provider block already
-  #     paces every Mistral model off one shared account limit.
+  #   - `rpm: 35` is a self-imposed provider-wide safety net, set above the actual sum of every
+  #     route's own `rpm` below (8 routes at 4 + 1 at 0.5 = 32.5) so per-route pacing -- not this
+  #     account-wide clock -- stays the binding constraint (see the comment on `rpm` itself below
+  #     for the full reasoning; this is the one number this account actually enforces via the
+  #     shared `ProviderLedger`, see `citypods/compute/llm_budget.py`), mirroring how the Mistral
+  #     provider block already paces every Mistral model off one shared account limit.
   #   - Every route below also declares `tpm: 100000` as a second, independent self-imposed cap.
   #     NOTE: this is an *approximation*, not a true provider-level TPM ledger -- the schema/code
   #     (`LLMBudget`/`ProviderLedger`) only actually enforces a shared limit for `rpm`
@@ -263,29 +264,43 @@ providers:
   nvidia:
     api_base: https://integrate.api.nvidia.com/v1
     ai_gateway_slug: custom-nvidia
-    # Full path from the origin root, NOT just /chat/completions: Cloudflare AI Gateway ignores
-    # the path component of a Custom Provider's registered Base URL and joins the caller-supplied
-    # path at the origin root, so `https://integrate.api.nvidia.com/v1` + `/chat/completions`
-    # dispatches to `https://integrate.api.nvidia.com/chat/completions` -- NVIDIA's ELB answers
-    # that with an empty-body `text/plain` 404. Verified 2026-08-29 by curl. The other custom
-    # providers keep `/chat/completions` only because their upstreams happen to serve the same
-    # endpoint at the origin root too; NVIDIA's does not.
-    ai_gateway_chat_path: /v1/chat/completions
+    # The registered Base URL ends in `/v1`, and the gateway now honors that path. Keep the
+    # caller path root-relative so it reaches NVIDIA's `/v1/chat/completions` exactly once.
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
-    # Provider-wide safety net only -- the REAL limit is per route (0.5 rpm each). NVIDIA's quota
-    # is per MODEL, not per account: verified 2026-08-29 on one key, `deepseek-v4-pro` returned 429
-    # nine times out of nine while `nemotron-3-super` returned 200 three times, twice inside the
-    # same minute (16:58:14 ok / 16:58:50 429). A tight provider-wide cap would therefore be the
-    # wrong instrument -- it would make nine models share one model's budget. This only has to sit
-    # clear of the ~40 RPM community-reported account baseline while staying above the sum of the
-    # route rates (9 x 0.5 = 4.5), leaving per-route pacing as the binding constraint.
-    rpm: 6
+    # Provider-wide safety net only -- the REAL limit is per route, and it is NOT uniform: 8 of the
+    # 9 routes below are `rpm: 4` and one (`nvidia_deepseek_v4_pro_0813_free`) is `rpm: 0.5` --
+    # verified 2026-08-29, real per-route sum 8*4 + 0.5 = 32.5, not a flat "9 routes at the same
+    # rate". NVIDIA's quota is per MODEL, not per account: on the same day, `deepseek-v4-pro`
+    # returned 429 nine times out of nine while `nemotron-3-super` returned 200 three times, twice
+    # inside the same minute (16:58:14 ok / 16:58:50 429). A tight provider-wide cap would
+    # therefore be the wrong instrument -- it would make nine models share one model's budget.
+    # This field only has to clear the real 32.5 per-route sum with margin while staying under the
+    # ~40 RPM community-reported account baseline, leaving per-route pacing as the binding
+    # constraint -- which a value below the real sum (the previous `rpm: 6`, itself inconsistent
+    # with the stale "0.5 rpm each" arithmetic once written here) defeats by becoming the
+    # accidental binding constraint instead.
+    rpm: 35
     tpm: 100000
     concurrency: 2
     accounts:
       - id: primary
         api_key_env: NVIDIA_API_KEY
+  orcarouter:
+    api_base: https://api.orcarouter.ai/v1
+    ai_gateway_slug: custom-orcarouter
+    # The registered Base URL ends in `/v1`, and the gateway now honors that path. Keep the
+    # caller path root-relative so it reaches `/v1/chat/completions` without a duplicated segment.
+    ai_gateway_chat_path: /chat/completions
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    rpm: 10
+    concurrency: 2
+    structured_output_profile: json_object
+    accounts:
+      - id: primary
+        api_key_env: ORCAROUTER_API_KEY
 routes:
   # ==========================================
   # GEMINI & GEMMA ROUTES (Google AI Studio)
@@ -1108,6 +1123,39 @@ routes:
     observed_burst: 0
     upstream_429_default: upstream_capacity
 
+  # Legacy Medium aliases mapping to mistral/mistral-medium-latest -- account coverage matches
+  # mistral_medium_latest_secondary field-for-field (compile_llm_limits.py's alias-coalescing
+  # check requires this), same as the two `_alias_primary` routes above already do.
+  - route_id: mistral_medium_2508_alias_secondary
+    model: mistral/mistral-medium-2508
+    model_key: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: secondary
+    rpm: 50
+    tpm: 25000
+    free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_medium_2505_alias_secondary
+    model: mistral/mistral-medium-2505
+    model_key: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: secondary
+    rpm: 50
+    tpm: 25000
+    free: true
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
+
   - route_id: mistral_large_2512_secondary
     model: mistral/mistral-large-2512
     provider: mistral
@@ -1183,6 +1231,34 @@ routes:
 
   - route_id: mistral_medium_latest_tertiary
     model: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: tertiary
+    rpm: 50
+    tpm: 25000
+    free: true
+    upstream_429_default: upstream_capacity
+
+  # Legacy Medium aliases mapping to mistral/mistral-medium-latest -- account coverage matches
+  # mistral_medium_latest_tertiary field-for-field, same as the primary/secondary alias routes.
+  - route_id: mistral_medium_2508_alias_tertiary
+    model: mistral/mistral-medium-2508
+    model_key: mistral/mistral-medium-latest
+    provider: mistral
+    upstream_model: mistral-medium-latest
+    input_context_limit: 131072
+    output_context_limit: 8192
+    account_id: tertiary
+    rpm: 50
+    tpm: 25000
+    free: true
+    upstream_429_default: upstream_capacity
+
+  - route_id: mistral_medium_2505_alias_tertiary
+    model: mistral/mistral-medium-2505
+    model_key: mistral/mistral-medium-latest
     provider: mistral
     upstream_model: mistral-medium-latest
     input_context_limit: 131072
@@ -1440,44 +1516,6 @@ routes:
   # ==========================================
   # OPENCODE ZEN ROUTES (OpenCode.ai)
   # ==========================================
-  - route_id: opencode_deepseek_v4_flash_free
-    model: opencode/deepseek-v4-flash-free
-    # OpenCode Zen's current free model identifier. Keep the legacy alias route below for callers
-    # that still request the old 0731 logical name.
-    model_key: deepseek/deepseek-v4-flash
-    provider: opencode
-    upstream_model: deepseek-v4-flash-free
-    input_context_limit: 200000
-    output_context_limit: 128000
-    account_id: primary
-    concurrency: 1
-    rpm: 30
-    rpd: 500
-    tpm: 250000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-09-09"
-    upstream_429_default: upstream_capacity
-
-  - route_id: opencode_deepseek_v4_flash_0731_free
-    model: opencode/deepseek-v4-flash-0731
-    model_key: deepseek/deepseek-v4-flash
-    provider: opencode
-    upstream_model: deepseek-v4-flash-free
-    input_context_limit: 200000
-    output_context_limit: 128000
-    account_id: primary
-    concurrency: 1
-    rpm: 30
-    rpd: 500
-    tpm: 250000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-09-09"
-    upstream_429_default: upstream_capacity
-
   - route_id: opencode_mimo_v2_5_free
     model: opencode/mimo-v2.5-free
     provider: opencode
@@ -1511,6 +1549,28 @@ routes:
     tpm: 100000
     free: true
     observed_on: "2026-09-09"
+    upstream_429_default: upstream_capacity
+    input_per_token: 0.0
+    output_per_token: 0.0
+
+  - route_id: opencode_nemotron_3_5_lightning_free
+    model: opencode/nemotron-3.5-lightning-free
+    # NVIDIA documents this text-only MoE as 30B total / 3B active with up to 1M-token context.
+    # Keep its generous advertised context distinct from a proven per-request ceiling: no
+    # OpenCode-specific hard ceiling has been observed yet.
+    provider: opencode
+    upstream_model: nemotron-3.5-lightning-free
+    input_context_limit: 1000000
+    output_context_limit: 128000
+    account_id: primary
+    concurrency: 1
+    # OpenCode does not publish a quota table for its temporary free routes. Start with the
+    # existing free Nemotron pool's conservative pace until production observations refine it.
+    rpm: 20
+    rpd: 200
+    tpm: 100000
+    free: true
+    observed_on: "2026-09-14"
     upstream_429_default: upstream_capacity
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1931,8 +1991,59 @@ routes:
     observed_on: "2026-09-12"
     observed_burst: 5
     observed_input_ceiling: 8192
+  # ==========================================
+  # ORCAROUTER ROUTES (api.orcarouter.ai)
+  # ==========================================
+  - route_id: orcarouter_deepseek_v4_flash_free
+    model: orcarouter/deepseek-v4-flash
+    model_key: deepseek/deepseek-v4-flash
+    provider: orcarouter
+    upstream_model: deepseek/deepseek-v4-flash-free
+    input_context_limit: 1000000
+    output_context_limit: 128000
+    account_id: primary
+    concurrency: 2
+    rpm: 10
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-14"
+    retry_after_trustworthy: true
+    upstream_429_default: upstream_capacity
 
+  - route_id: orcarouter_tencent_hy3_free
+    model: orcarouter/tencent-hy3
+    model_key: tencent/hy3
+    provider: orcarouter
+    upstream_model: tencent/hy3-free
+    input_context_limit: 256000
+    output_context_limit: 65536
+    account_id: primary
+    concurrency: 2
+    rpm: 10
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-14"
+    retry_after_trustworthy: true
+    upstream_429_default: upstream_capacity
 
-
-
-
+  - route_id: orcarouter_zai_glm_5_3_flash_free
+    model: orcarouter/glm-5.3-flash
+    model_key: zai/glm-5.3-flash
+    provider: orcarouter
+    upstream_model: z-ai/glm-5.3-flash-free
+    input_context_limit: 1000000
+    output_context_limit: 131072
+    account_id: primary
+    concurrency: 2
+    rpm: 10
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-14"
+    retry_after_trustworthy: true
+    upstream_429_default: upstream_capacity

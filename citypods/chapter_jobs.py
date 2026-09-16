@@ -20,12 +20,14 @@ from citypods.chapter_locator import (
     validate_locator_response,
 )
 from citypods.chapter_titles import (
+    AGENDA_BACKUP_AFTER_ATTEMPTS,
+    AGENDA_BACKUP_MODELS,
     AGENDA_ITEM_EXTRACTOR_CONTRACT,
     AGENDA_PRODUCTION_MODEL,
     AGENDA_PRODUCTION_MODELS,
     build_production_agenda_item_extraction_request,
     ensure_agenda_item_extractor_contract,
-    validate_agenda_item_extractor_response,
+    recover_agenda_item_extractor_response,
 )
 from citypods.compute.base import InferenceJob, JobResult
 from citypods.compute.llm import TASK_VERSIONS
@@ -71,7 +73,12 @@ def build_agenda_job(
     agenda_text: str,
     agenda_source_hash: str,
     candidate_hints: Sequence[Mapping[str, object]] = (),
+    pipeline_version: str = "",
 ) -> InferenceJob:
+    """``pipeline_version`` should be ``stages.CHAPTER_AGENDA_PIPELINE_VERSION`` in production --
+    folded into the recipe hash so a pipeline-version bump (a validation/post-processing behavior
+    change independent of ``model``) re-queues the catalog exactly like a model change does.
+    """
     request = build_production_agenda_item_extraction_request(
         agenda_text, candidate_hints=candidate_hints
     )
@@ -82,6 +89,7 @@ def build_agenda_job(
         "source_hash": agenda_source_hash,
         "model": AGENDA_PRODUCTION_MODEL,
         "prompt_version": AGENDA_PROMPT_VERSION,
+        "pipeline_version": pipeline_version,
     }
     if candidate_hints:
         recipe_parts["candidate_hints"] = [dict(h) for h in candidate_hints]
@@ -95,6 +103,8 @@ def build_agenda_job(
             "structured_output": AGENDA_ITEM_EXTRACTOR_CONTRACT,
             "llm_policy": LLMRequestPolicy(
                 allowed_models=AGENDA_PRODUCTION_MODELS,
+                backup_models=AGENDA_BACKUP_MODELS,
+                backup_after_attempts=AGENDA_BACKUP_AFTER_ATTEMPTS,
                 purpose="chapter-agenda",
                 # This stage persists its pending recipe and finalizes on a later chapter-lane
                 # pass, so Worker-owned queueing is safer than a runner-side deadline.
@@ -111,25 +121,35 @@ def finalize_agenda_job(
     agenda_text: str,
     agenda_source_hash: str,
     model: str | None = None,
+    pipeline_version: str = "",
 ) -> AgendaCandidatesArtifact:
     """Validate a completed agenda response and build its durable source-backed artifact.
 
     ``model`` defaults to ``result.model`` -- the model the scheduler actually dispatched to, now
     that ``AGENDA_PRODUCTION_MODELS`` (R13) offers more than one same-priority candidate.  Falls
     back to ``AGENDA_PRODUCTION_MODEL`` only for a caller/backend that never set ``result.model``.
+
+    Runs the GH#1078 recovery-shadow layer (``recover_agenda_item_extractor_response``) rather than
+    the strict-only validator: an item whose ``display_ref`` doesn't literally validate but whose
+    evidence is confirmed present in the source text by a source-only search is still a real,
+    grounded agenda item, and one borderline item must not abort the whole episode's extraction.
+    Raises only on ``unrecovered`` items -- genuinely bad output the recovery search could not
+    rescue, preserving today's fail-and-retry-later behavior for those.
     """
     resolved_model = model or result.model or AGENDA_PRODUCTION_MODEL
 
     content = _response_content(result.output)
-    items = validate_agenda_item_extractor_response(content, agenda_text=agenda_text)
+    assessment = recover_agenda_item_extractor_response(content, agenda_text=agenda_text)
+    if assessment.unrecovered:
+        raise ValueError(assessment.unrecovered[0].reason)
     lines = agenda_text.splitlines()
     candidates: list[AgendaCandidate] = []
-    for index, item in enumerate(items):
+    for item in assessment.items:
         evidence_text = "\n".join(lines[item.line_start - 1 : item.line_end]).strip()
         cues = _locator_cues(item.display_ref, evidence_text)
         candidates.append(
             AgendaCandidate(
-                index=index,
+                index=len(candidates),
                 title=item.title,
                 kind="substantive_action",
                 line_start=item.line_start,
@@ -138,6 +158,26 @@ def finalize_agenda_job(
                 locator_cues=cues,
                 display_ref=item.display_ref,
                 evidence_quote=item.evidence_quote,
+                source="strict",
+            )
+        )
+    for recovered in assessment.recovered:
+        # source_evidence is the verbatim joined source window -- safe to use as evidence_text
+        # unlike evidence_quote, which may be a discontinuous token-subsequence match.
+        evidence_text = recovered.source_evidence.strip()
+        cues = _locator_cues(recovered.display_ref, evidence_text)
+        candidates.append(
+            AgendaCandidate(
+                index=len(candidates),
+                title=recovered.title,
+                kind="substantive_action",
+                line_start=recovered.line_start,
+                line_end=recovered.line_end,
+                evidence_text=evidence_text,
+                locator_cues=cues,
+                display_ref=recovered.display_ref,
+                evidence_quote=recovered.evidence_quote,
+                source="recovery",
             )
         )
     return AgendaCandidatesArtifact(
@@ -147,7 +187,11 @@ def finalize_agenda_job(
         prompt_version=AGENDA_PROMPT_VERSION,
         recipe=result.recipe_hash,
         items=tuple(candidates),
-        diagnostics={"source_line_count": len(lines)},
+        diagnostics={
+            "source_line_count": len(lines),
+            "recovered_item_count": len(assessment.recovered),
+        },
+        pipeline_version=pipeline_version,
     )
 
 

@@ -10,6 +10,16 @@ cancelled in one batch when it has not started. An already leased job may settle
 over provider markers. This is a behavioral correction, not a pipeline-version bump: completed
 fallback artifacts for episodes still lacking provider chapters are retained and are not backfilled.
 
+**Superseded · 2026-09-13.** Mistral Medium ("the production choice" throughout this document) is
+retired from `chapter-agenda` -- its account became permanently blocked (an account-tier zero rate
+limit, not a billing state, confirmed live across all three configured keys). The lane is now
+pinned to `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite` and
+`gemini/gemini-3.5-flash-lite` as backup models. The benchmarking methodology and historical
+findings below remain an accurate record of the decision as made at the time; they are not
+retroactively edited. See `review/46` for the replacement model's benchmark, the generic
+backup-model mechanism this migration introduced, and two bugs in the reuse/backfill path fixed
+alongside it.
+
 ## Evidence and scope
 
 The chapter-prevalence audit over the supplied production snapshot found 239 broad candidates with

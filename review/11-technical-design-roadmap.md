@@ -176,6 +176,20 @@ treats a successful bulk pending observation as final for that sweep rather than
 handle individually. The tag dispatch cap/no-quota short-circuit, direct/v1 behavior, and terminal
 recovery remain intact; no pipeline-version bump or backfill is required. See review/44 Phase 4.
 
+**`chapter-agenda` repinned to Nemotron Ultra + generic backup-model infra (2026-09-13).** The
+`chapter-agenda` lane's model moved from `mistral/mistral-medium-latest` (blocked by an
+account-tier issue) to `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite`
+and `gemini/gemini-3.5-flash-lite` as backup models — the first consumer of new, generic
+`LaneConfig.backup_models`/`backup_after_attempts` infrastructure any `queue_only` lane can now
+declare (a job's Worker-durable `jobs.attempts`/`schema_retry_count` crossing a threshold unlocks
+its backups; see `workers/llm-dispatch-v2/src/routes.js`'s `backupModelsActive`/`modelsForJob`).
+`CHAPTER_AGENDA_PIPELINE_VERSION` bumped to re-queue the back catalog, alongside two bug fixes this
+change surfaced: `AgendaChapterCandidatesStage.process()`'s reuse check now also compares `model`/
+`pipeline_version` against the stored artifact (it previously reused/re-stamped a stale artifact
+on any run where nothing else deferred), and a `"pending"` job stuck on a retired model is now
+cancelled and re-dispatched instead of deferring to a dead job forever. Full design and rationale
+in `review/46`.
+
 **R10 deferred-sweep follow-up (2026-08-30).** The sweep now batches legacy queue-only v2
 submissions, and an unresolved v2 status receives at most one recovery *batch*, never a singleton
 poll fallback. Its JSON start/end summaries distinguish v1/v2 client-owned outstanding work, with

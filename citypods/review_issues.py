@@ -149,14 +149,23 @@ def append_bounded_envelope(
     return rendered, truncated
 
 
-def bounded_body(body: str, *, limit: int = SAFE_BODY_LIMIT_BYTES) -> tuple[str, bool]:
+def bounded_body(
+    body: str, *, limit: int = SAFE_BODY_LIMIT_BYTES, artifact_url: str = ""
+) -> tuple[str, bool]:
     """Bound a body by UTF-8 bytes, preserving valid text and a visible artifact hint."""
     encoded = body.encode("utf-8")
     if len(encoded) <= limit:
         return body, False
-    suffix = (
-        "\n\n*(Truncated for GitHub's 64KB limit; full body is in this workflow run artifact.)*\n"
-    )
+    if artifact_url:
+        suffix = (
+            "\n\n*(Truncated for GitHub's 64KB limit; [full body is in this workflow run "
+            f"artifact]({artifact_url}).)*\n"
+        )
+    else:
+        suffix = (
+            "\n\n*(Truncated for GitHub's 64KB limit; full body is in this workflow run "
+            "artifact.)*\n"
+        )
     room = max(0, limit - len(suffix.encode("utf-8")))
     prefix = encoded[:room].decode("utf-8", "ignore")
     newline = prefix.rfind("\n")

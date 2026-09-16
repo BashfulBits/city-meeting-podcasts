@@ -57,6 +57,7 @@ jobs:
           KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
         run: |
           ARGS=""
           if [ "$INPUT_APPLY" = "true" ]; then

@@ -14,8 +14,9 @@ LiteLLM and multi-provider routes:
 | **DeepSeek Direct** | `DEEPSEEK_API_KEY` | [platform.deepseek.com](https://platform.deepseek.com) | Direct & Dispatch | DeepSeek-V4-Flash ($0.14/M base, $0.0028 cache, $0.07 off-peak), DeepSeek-V4-Pro |
 | **OpenRouter** | `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) | Direct & Dispatch | Curated Gemma 4, Nemotron 550B/120B free endpoints and frontier models |
 | **Kilo Code** | `KILO_API_KEY` | [app.kilo.ai](https://app.kilo.ai) | Direct & Dispatch | StepFun Step-3.7-Flash & NVIDIA Nemotron-3-Ultra 550B (20 RPM / 200 Free RPD) |
-| **OpenCode Zen** | `OPENCODE_API_KEY` | [opencode.ai/auth](https://opencode.ai/auth) | Direct & Dispatch | DeepSeek-V4-Flash (1M Context), MiMo-V2.5, Nemotron 3 Ultra |
+| **OpenCode Zen** | `OPENCODE_API_KEY` | [opencode.ai/auth](https://opencode.ai/auth) | Direct & Dispatch | MiMo-V2.5 Free, Nemotron 3 Ultra Free |
 | **NVIDIA build.nvidia.com** | `NVIDIA_API_KEY` | [build.nvidia.com](https://build.nvidia.com) | Direct & Dispatch | Kimi K3, DeepSeek V4 Pro/Flash, Gemma 4 31B, GPT-OSS 120B, Nemotron 3 Ultra/Super/Nano-Omni, Riva Translate 4B — **no published rate-limit table**; self-imposed 4 RPM and 40k TPM per route in `config/provider_limits.yml` (2 RPM / 18k TPM after `token_estimate_buffer` and `split_cap_multiplier`), plus `concurrency: 1`. Rate was never the binding limit — at 1.15 req/min we still took 57% 429s, ~35x under the ~40 RPM community-reported baseline; NVIDIA rejects *overlap*, so concurrency is the real cap. See the `nvidia` provider block |
+| **OrcaRouter** | `ORCAROUTER_API_KEY` | [orcarouter.ai](https://orcarouter.ai) | Direct & Dispatch | DeepSeek-V4-Flash (1M Context), Tencent Hy3 (256k Context), Z.AI GLM-5.3-Flash (1M Context) (10 RPM / 800 Free RPD) |
 
 > **SiliconFlow runs two separate platforms.** `siliconflow.com` (global) is the one
 > `config/provider_limits.yml` calls, and `siliconflow.cn` (China) is a distinct service with its own
@@ -51,15 +52,15 @@ keys.
 
 Account and secret checklist (performed by the maintainer, never pasted into chat or committed):
 
-1. Create API keys in Google AI Studio, Groq, SambaNova, Mistral Console, Z.AI, SiliconFlow, DeepSeek, OpenRouter, Kilo Code, OpenCode, and/or NVIDIA build.nvidia.com.
+1. Create API keys in Google AI Studio, Groq, SambaNova, Mistral Console, Z.AI, SiliconFlow, DeepSeek, OpenRouter, Kilo Code, OpenCode, NVIDIA build.nvidia.com, and/or OrcaRouter.
 2. For local testing, export the corresponding keys in your shell.
 3. For GitHub Actions, add the keys as repository/environment secrets (e.g., `gh secret set GROQ_API_KEY`,
-   `gh secret set NVIDIA_API_KEY`).
+   `gh secret set NVIDIA_API_KEY`, `gh secret set ORCAROUTER_API_KEY`).
 4. For the Cloudflare Worker, from `workers/llm-dispatch-proxy/`, run `npx wrangler secret put DISPATCH_AUTH_TOKEN`
    plus `npx wrangler secret put <NAME>` for every `api_key_env` declared in [`config/provider_limits.yml`](config/provider_limits.yml)
    (`GEMINI_API_KEY`, `GEMINI_API_KEY_SECONDARY`, `GROQ_API_KEY`, `SAMBANOVA_API_KEY`,
    `MISTRAL_API_KEY`, `MISTRAL_API_KEY_SECONDARY`, `ZAI_API_KEY`,
    `SILICONFLOW_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, `KILO_API_KEY`, `OPENCODE_API_KEY`,
-   `NVIDIA_API_KEY`). The same `npx wrangler secret put NVIDIA_API_KEY` must also be run from
-   `workers/llm-dispatch-v2/` (review/44's coexisting v2 executor Worker reads the same `api_key_env`
+   `NVIDIA_API_KEY`, `ORCAROUTER_API_KEY`). The same `npx wrangler secret put NVIDIA_API_KEY` (and `ORCAROUTER_API_KEY`)
+   must also be run from `workers/llm-dispatch-v2/` (review/44's coexisting v2 executor Worker reads the same `api_key_env`
    names from its own copy of the compiled catalog).

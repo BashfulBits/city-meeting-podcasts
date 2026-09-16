@@ -655,6 +655,72 @@ def load_records(state_dir: Path, src_key: str) -> dict:
     return data.get("episodes", {}) if isinstance(data, dict) else {}
 
 
+def iter_records(state_dir: Path, src_key: str) -> Iterator[dict]:
+    """Yield persisted episode records one at a time without materializing the archive.
+
+    Full archive consumers use :func:`load_records`, but bounded research runners need only a
+    small recent-candidate window. ``json.loads`` holds the GIL while it constructs every nested
+    episode object, which made the tournament unable to emit liveness for minutes on a mature
+    source archive. Decoding each ``episodes`` member separately releases that pressure between
+    records and lets callers retain only the candidates they need.
+    """
+    path = records_path(state_dir, src_key)
+    if not path.exists():
+        return
+    text = path.read_text()
+    decoder = json.JSONDecoder()
+
+    def skip_whitespace(index: int) -> int:
+        while index < len(text) and text[index].isspace():
+            index += 1
+        return index
+
+    def require(character: str, index: int) -> int:
+        index = skip_whitespace(index)
+        if index >= len(text) or text[index] != character:
+            raise ValueError(f"invalid record archive: expected {character!r}")
+        return index + 1
+
+    index = require("{", 0)
+    while True:
+        index = skip_whitespace(index)
+        if index >= len(text):
+            raise ValueError("invalid record archive: missing closing brace")
+        if text[index] == "}":
+            return
+        field, index = decoder.raw_decode(text, index)
+        if not isinstance(field, str):
+            raise ValueError("invalid record archive: object field name is not a string")
+        index = require(":", index)
+        if field != "episodes":
+            _, index = decoder.raw_decode(text, skip_whitespace(index))
+        else:
+            index = require("{", index)
+            while True:
+                index = skip_whitespace(index)
+                if index >= len(text):
+                    raise ValueError("invalid record archive: missing episodes closing brace")
+                if text[index] == "}":
+                    return
+                _uid, index = decoder.raw_decode(text, index)
+                index = require(":", index)
+                record, index = decoder.raw_decode(text, skip_whitespace(index))
+                if isinstance(record, dict):
+                    yield record
+                index = skip_whitespace(index)
+                if index < len(text) and text[index] == ",":
+                    index += 1
+                    continue
+                index = require("}", index)
+                return
+        index = skip_whitespace(index)
+        if index < len(text) and text[index] == ",":
+            index += 1
+            continue
+        index = require("}", index)
+        return
+
+
 def save_records(state_dir: Path, src_key: str, records: dict) -> None:
     path = records_path(state_dir, src_key)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1823,6 +1889,23 @@ _LANE_OWNED_STAGE_STATUS: dict[str, frozenset[str]] = {
     "chapter": frozenset({"chapter_agenda", "chapter_locator", "generated_chapters"}),
 }
 
+# The derived agenda-document ``links`` keys a maintenance reset (``scripts/reset_agenda_
+# chapter_state.py``, and any future tool built on its ``reset_record``/
+# ``reset_agenda_chapter_state`` mechanics) ever tombstones to an explicit ``None`` so a scoped
+# merge cannot resurrect the stale pointer (the reset tools are the *only* writers that use an
+# explicit ``None`` for these keys — everywhere else either sets a real value or ``pop()``s the key
+# out entirely, which a scoped merge already never propagates as a deletion). Shared here so the
+# reset tools' target list and the audio lane's own tombstone-respecting merge rule below
+# (``agenda_link_baseline``) can never drift apart.
+RESET_GUARDED_AGENDA_LINK_KEYS: frozenset[str] = frozenset(
+    {
+        "agenda_text_artifact",
+        "agenda_text_artifact_key",
+        "agenda_backup_artifact",
+        "agenda_backup_artifact_key",
+    }
+)
+
 # ``links`` (unlike every artifact above) is not in ``ARTIFACT_BLOCKS``: it's a dict whose
 # individual keys are produced by different stages/lanes, the same shape of problem
 # ``stage_completion`` already solves per-stage-name below. Almost every key is written by the
@@ -1980,6 +2063,7 @@ def merge_preserving_foreign(
     *,
     owned_uids: frozenset[str] | None = None,
     lane: str | None = None,
+    agenda_link_baseline: dict[str, dict[str, object]] | None = None,
 ) -> dict:
     """Merge a scoped lane run's ``local`` records to push against the freshest ``remote`` snapshot,
     preserving the ``protected`` artifact blocks (the ones this lane does not own) from ``remote``.
@@ -2005,6 +2089,18 @@ def merge_preserving_foreign(
       * uid owned and in both — take ``local`` (fresh provider/render fields + this lane's
         artifact), but for each ``protected`` block keep ``remote``'s value when remote has one;
         when remote lacks the block, local's is kept so a block is never dropped.
+
+    ``agenda_link_baseline`` (audio lane only, ``{uid: {link_key: value}}``) closes a TOCTOU race
+    against the agenda/chapter maintenance reset tools: it is each uid's own ``links`` value for
+    ``RESET_GUARDED_AGENDA_LINK_KEYS`` as pulled at the *start* of this run, before any stage
+    touched it. ``AgendaTextStage``'s reuse fast-path leaves an already-present
+    ``agenda_text_artifact_key`` byte-for-byte unchanged for the rest of the run; if a reset tool's
+    tombstone (an explicit ``None``) lands in ``remote`` after that decision but before this push,
+    the audio lane would otherwise resurrect the stale pointer merely because it "owns" ``links``.
+    A run whose local value for one of these keys still equals its own baseline (never actually
+    recomputed this run) defers to a ``remote`` value that has since diverged from that baseline;
+    a run that *did* freshly (re)derive the key (local differs from baseline) always wins, same as
+    every other owned artifact here — including un-tombstoning it on the next normal run.
     """
     merged = {uid: dict(rec) for uid, rec in remote.items()}
     for uid, local_rec in local.items():
@@ -2040,9 +2136,28 @@ def merge_preserving_foreign(
                     if not protected
                     else _owned_link_keys(lane, local_links or {})
                 )
+                uid_baseline = (
+                    agenda_link_baseline.get(uid)
+                    if lane == "audio" and agenda_link_baseline
+                    else None
+                )
                 for key, value in (local_links or {}).items():
-                    if key in owned_links or key not in merged_links:
-                        merged_links[key] = value
+                    if key not in owned_links and key in merged_links:
+                        continue
+                    if (
+                        uid_baseline is not None
+                        and key in RESET_GUARDED_AGENDA_LINK_KEYS
+                        and key in merged_links
+                        and value == uid_baseline.get(key)
+                        and merged_links[key] != uid_baseline.get(key)
+                    ):
+                        # This run never actually recomputed `key` (its local value is still
+                        # exactly what was pulled at the start of the run — AgendaTextStage's
+                        # reuse fast-path), but `remote` has moved since then: most likely a
+                        # concurrent agenda/chapter maintenance reset's tombstone landed mid-run.
+                        # Keep remote's fresher value instead of resurrecting the stale one.
+                        continue
+                    merged_links[key] = value
                 rec["links"] = merged_links
             local_agenda = local_rec.get("generated_agenda_candidates")
             remote_agenda = remote_rec.get("generated_agenda_candidates")

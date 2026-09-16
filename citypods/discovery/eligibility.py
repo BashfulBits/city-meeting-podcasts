@@ -79,11 +79,17 @@ def auxiliary_states(
         grouped.setdefault(city.city_entity or city.slug, []).append(city)
     for entity, entity_cities in grouped.items():
         city = entity_cities[0]
-        records = {
-            f"{feed.slug}:{key}": value
-            for feed in entity_cities
-            for key, value in records_for_city.get(feed.slug, {}).items()
-        }
+        records: dict[str, dict[str, Any]] = {}
+        seen_record_maps: set[int] = set()
+        for feed in entity_cities:
+            feed_records = records_for_city.get(feed.slug, {})
+            if not feed_records or id(feed_records) in seen_record_maps:
+                continue
+            # Per-board feed views intentionally share one source record map. Reusing that map in
+            # the caller avoids reparsing it, and this identity guard prevents expanding every
+            # episode once per view while measuring entity-level coverage.
+            seen_record_maps.add(id(feed_records))
+            records.update(feed_records)
         coverage = measure_agenda_coverage(records)
         previous = prior.get(entity) if isinstance(prior.get(entity), dict) else {}
         prior_state = previous.get("status")

@@ -33,6 +33,7 @@ from citypods.ops.maintenance_leases import (
     acquire as acquire_maintenance_lease,
 )
 from citypods.records import (
+    RESET_GUARDED_AGENDA_LINK_KEYS,
     load_records,
     protected_blocks_for_lane,
     save_records,
@@ -42,12 +43,11 @@ from citypods.state import resolve_state_dir
 from citypods.statesync import pull_state, push_records_merged
 from citypods.storage import make_storage
 
-_DERIVED_AGENDA_LINKS = (
-    "agenda_text_artifact",
-    "agenda_text_artifact_key",
-    "agenda_backup_artifact",
-    "agenda_backup_artifact_key",
-)
+# Kept as an alias (rather than inlining the import) so this stays the obvious place to look;
+# the canonical set now lives in citypods.records so the audio lane's own tombstone-respecting
+# merge rule (merge_preserving_foreign's ``agenda_link_baseline``) can never drift from what this
+# tool actually clears.
+_DERIVED_AGENDA_LINKS = RESET_GUARDED_AGENDA_LINK_KEYS
 _RESET_STAGE_NAMES = frozenset(
     {"agenda_text", "chapter_agenda", "chapter_locator", "generated_chapters"}
 )

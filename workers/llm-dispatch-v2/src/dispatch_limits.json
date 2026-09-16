@@ -1,8 +1,8 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 73,
-    "providers_count": 12,
+    "routes_count": 76,
+    "providers_count": 13,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
   },
@@ -31,7 +31,7 @@
     "airforce": {
       "api_base": "https://api.airforce/v1",
       "ai_gateway_slug": "custom-airforce",
-      "ai_gateway_chat_path": "/v1/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/v1/chat/completions",
       "ai_gateway_max_attempts": 1,
       "rpm": 1,
@@ -77,7 +77,7 @@
     "siliconflow": {
       "api_base": "https://api.siliconflow.com/v1",
       "ai_gateway_slug": "custom-siliconflow",
-      "ai_gateway_chat_path": "/v1/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "reset_timezone": "UTC",
       "accounts": [
@@ -103,7 +103,7 @@
     "sambanova": {
       "api_base": "https://api.sambanova.ai/v1",
       "ai_gateway_slug": "custom-sambanova",
-      "ai_gateway_chat_path": "/v1/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
       "ai_gateway_max_attempts": 1,
       "rpm": 20,
@@ -170,9 +170,9 @@
     "nvidia": {
       "api_base": "https://integrate.api.nvidia.com/v1",
       "ai_gateway_slug": "custom-nvidia",
-      "ai_gateway_chat_path": "/v1/chat/completions",
+      "ai_gateway_chat_path": "/chat/completions",
       "chat_path": "/chat/completions",
-      "rpm": 6,
+      "rpm": 35,
       "tpm": 90000,
       "concurrency": 2,
       "reset_timezone": "UTC",
@@ -180,6 +180,21 @@
         {
           "id": "primary",
           "api_key_env": "NVIDIA_API_KEY"
+        }
+      ]
+    },
+    "orcarouter": {
+      "api_base": "https://api.orcarouter.ai/v1",
+      "ai_gateway_slug": "custom-orcarouter",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "rpm": 10,
+      "concurrency": 2,
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "ORCAROUTER_API_KEY"
         }
       ]
     }
@@ -2012,33 +2027,6 @@
       "upstream_429_default": null,
       "structured_output_schema_strip_keys": []
     },
-    "opencode_deepseek_v4_flash_free": {
-      "route_id": "opencode_deepseek_v4_flash_free",
-      "provider": "opencode",
-      "upstream_model": "deepseek-v4-flash-free",
-      "input_context_limit": 200000,
-      "output_context_limit": 128000,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": 30,
-      "rpd": 500,
-      "tpm": 225000,
-      "concurrency": 1,
-      "request_start_margin_seconds": null,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": "2026-09-09",
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": "upstream_capacity",
-      "structured_output_schema_strip_keys": []
-    },
     "opencode_mimo_v2_5_free": {
       "route_id": "opencode_mimo_v2_5_free",
       "provider": "opencode",
@@ -2085,6 +2073,33 @@
       "pricing": null,
       "reset_timezone": null,
       "observed_on": "2026-09-09",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
+    "opencode_nemotron_3_5_lightning_free": {
+      "route_id": "opencode_nemotron_3_5_lightning_free",
+      "provider": "opencode",
+      "upstream_model": "nemotron-3.5-lightning-free",
+      "input_context_limit": 1000000,
+      "output_context_limit": 128000,
+      "hard_input_ceiling": null,
+      "account_id": "primary",
+      "rpm": 20,
+      "rpd": 200,
+      "tpm": 90000,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-09-14",
       "observed_rpm": null,
       "observed_burst": null,
       "observed_input_ceiling": null,
@@ -2335,6 +2350,87 @@
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
       "structured_output_schema_strip_keys": []
+    },
+    "orcarouter_deepseek_v4_flash_free": {
+      "route_id": "orcarouter_deepseek_v4_flash_free",
+      "provider": "orcarouter",
+      "upstream_model": "deepseek/deepseek-v4-flash-free",
+      "input_context_limit": 1000000,
+      "output_context_limit": 128000,
+      "hard_input_ceiling": null,
+      "account_id": "primary",
+      "rpm": 10,
+      "rpd": 800,
+      "tpm": null,
+      "concurrency": 2,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-09-14",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": true,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
+    "orcarouter_tencent_hy3_free": {
+      "route_id": "orcarouter_tencent_hy3_free",
+      "provider": "orcarouter",
+      "upstream_model": "tencent/hy3-free",
+      "input_context_limit": 256000,
+      "output_context_limit": 65536,
+      "hard_input_ceiling": null,
+      "account_id": "primary",
+      "rpm": 10,
+      "rpd": 800,
+      "tpm": null,
+      "concurrency": 2,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-09-14",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": true,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
+    "orcarouter_zai_glm_5_3_flash_free": {
+      "route_id": "orcarouter_zai_glm_5_3_flash_free",
+      "provider": "orcarouter",
+      "upstream_model": "z-ai/glm-5.3-flash-free",
+      "input_context_limit": 1000000,
+      "output_context_limit": 131072,
+      "hard_input_ceiling": null,
+      "account_id": "primary",
+      "rpm": 10,
+      "rpd": 800,
+      "tpm": null,
+      "concurrency": 2,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-09-14",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": true,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
     }
   },
   "model_routes_map": {
@@ -2398,8 +2494,8 @@
     "deepseek/deepseek-v4-flash": [
       "siliconflow_deepseek_v4_flash_primary",
       "deepseek_v4_flash_primary",
-      "opencode_deepseek_v4_flash_free",
-      "nvidia_deepseek_v4_flash_0731_free"
+      "nvidia_deepseek_v4_flash_0731_free",
+      "orcarouter_deepseek_v4_flash_free"
     ],
     "deepseek/deepseek-v4-pro": [
       "deepseek_v4_pro_primary",
@@ -2476,6 +2572,9 @@
     "opencode/mimo-v2.5-free": [
       "opencode_mimo_v2_5_free"
     ],
+    "opencode/nemotron-3.5-lightning-free": [
+      "opencode_nemotron_3_5_lightning_free"
+    ],
     "moonshotai/kimi-k3": [
       "nvidia_kimi_k3_free"
     ],
@@ -2484,6 +2583,12 @@
     ],
     "nvidia/riva-translate-4b-instruct-v2": [
       "nvidia_riva_translate_4b_instruct_v2_free"
+    ],
+    "tencent/hy3": [
+      "orcarouter_tencent_hy3_free"
+    ],
+    "zai/glm-5.3-flash": [
+      "orcarouter_zai_glm_5_3_flash_free"
     ]
   },
   "model_aliases": {
@@ -2493,12 +2598,13 @@
     "mistral/mistral-medium-2505": "mistral/mistral-medium-latest",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "opencode/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
-    "opencode/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "opencode/nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "orcarouter/deepseek-v4-flash": "deepseek/deepseek-v4-flash",
+    "orcarouter/tencent-hy3": "tencent/hy3",
+    "orcarouter/glm-5.3-flash": "zai/glm-5.3-flash",
     "gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemini/gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite": "gemini/gemini-3.1-flash-lite",
@@ -2576,10 +2682,11 @@
     "openrouter/openai/gpt-4o-mini": "openrouter/openai/gpt-4o-mini",
     "stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
     "kilo/stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
-    "deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
     "mimo-v2.5-free": "opencode/mimo-v2.5-free",
     "opencode/mimo-v2.5-free": "opencode/mimo-v2.5-free",
     "nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "nemotron-3.5-lightning-free": "opencode/nemotron-3.5-lightning-free",
+    "opencode/nemotron-3.5-lightning-free": "opencode/nemotron-3.5-lightning-free",
     "moonshotai/kimi-k3": "moonshotai/kimi-k3",
     "nvidia/moonshotai/kimi-k3": "moonshotai/kimi-k3",
     "deepseek-ai/deepseek-v4-pro-0813": "deepseek/deepseek-v4-pro",
@@ -2594,7 +2701,19 @@
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
-    "nvidia/nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2"
+    "nvidia/nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
+    "deepseek/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
+    "orcarouter/deepseek/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
+    "tencent/hy3-free": "tencent/hy3",
+    "orcarouter/tencent/hy3-free": "tencent/hy3",
+    "z-ai/glm-5.3-flash-free": "zai/glm-5.3-flash",
+    "orcarouter/z-ai/glm-5.3-flash-free": "zai/glm-5.3-flash"
   },
-  "model_routing": {}
+  "model_routing": {
+    "gemini/gemini-3.7-flash": [
+      "gemini/gemini-3.6-flash",
+      "gemini/gemini-3.8-flash",
+      "gemini/gemini-3.5-flash"
+    ]
+  }
 }
