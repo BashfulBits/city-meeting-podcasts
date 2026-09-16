@@ -1,8 +1,8 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 73,
-    "providers_count": 12,
+    "routes_count": 72,
+    "providers_count": 11,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
   },
@@ -25,22 +25,6 @@
         {
           "id": "tertiary",
           "api_key_env": "MISTRAL_API_KEY_TERTIARY"
-        }
-      ]
-    },
-    "airforce": {
-      "api_base": "https://api.airforce/v1",
-      "ai_gateway_slug": "custom-airforce",
-      "ai_gateway_chat_path": "/v1/chat/completions",
-      "chat_path": "/v1/chat/completions",
-      "ai_gateway_max_attempts": 1,
-      "rpm": 1,
-      "concurrency": 1,
-      "reset_timezone": "UTC",
-      "accounts": [
-        {
-          "id": "primary",
-          "api_key_env": "AIRFORCE_API_KEY"
         }
       ]
     },
@@ -1229,33 +1213,6 @@
       "upstream_429_default": "upstream_capacity",
       "structured_output_schema_strip_keys": []
     },
-    "airforce_mistral_medium_3_5_primary": {
-      "route_id": "airforce_mistral_medium_3_5_primary",
-      "provider": "airforce",
-      "upstream_model": "mistral-medium-3.5",
-      "input_context_limit": 131072,
-      "output_context_limit": 8192,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": 1,
-      "rpd": 1000,
-      "tpm": 180000,
-      "concurrency": 1,
-      "request_start_margin_seconds": 2,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": "2026-09-09",
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": 111.0,
-      "retry_after_trustworthy": true,
-      "upstream_429_default": "upstream_capacity",
-      "structured_output_schema_strip_keys": []
-    },
     "mistral_large_2512_primary": {
       "route_id": "mistral_large_2512_primary",
       "provider": "mistral",
@@ -2422,7 +2379,6 @@
     ],
     "mistral/mistral-medium-latest": [
       "mistral_medium_latest_primary",
-      "airforce_mistral_medium_3_5_primary",
       "mistral_medium_latest_secondary",
       "mistral_medium_latest_tertiary"
     ],
@@ -2488,7 +2444,6 @@
   },
   "model_aliases": {
     "deepseek/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
-    "mistral/mistral-medium-3-5": "mistral/mistral-medium-latest",
     "mistral/mistral-medium-2508": "mistral/mistral-medium-latest",
     "mistral/mistral-medium-2505": "mistral/mistral-medium-latest",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -2545,8 +2500,6 @@
     "mistral/mistral-small-2603": "mistral/mistral-small-2603",
     "mistral-medium-latest": "mistral/mistral-medium-latest",
     "mistral/mistral-medium-latest": "mistral/mistral-medium-latest",
-    "mistral-medium-3.5": "mistral/mistral-medium-latest",
-    "airforce/mistral-medium-3.5": "mistral/mistral-medium-latest",
     "mistral-large-2512": "mistral/mistral-large-2512",
     "mistral/mistral-large-2512": "mistral/mistral-large-2512",
     "labs-leanstral-1-5-1": "mistral/labs-leanstral-1-5-1",

@@ -53,7 +53,7 @@ structured_output_profiles:
 # scheduler (`select_route`) and the `llm-dispatch-proxy` Worker (`normalizeChatRequest`) expand a
 # request's allowed models with this map, so it takes effect for every transport uniformly.
 #
-# Mistral Medium jobs route strictly to native Mistral and Airforce Mistral routes.
+# Mistral Medium jobs route strictly to native Mistral routes.
 model_routing: {}
 
 
@@ -93,22 +93,6 @@ providers:
       # comment on mistral-medium-latest below for the full account-tier map this established.
       - id: tertiary
         api_key_env: MISTRAL_API_KEY_TERTIARY
-  # Airforce custom provider: serves Mistral Medium 3.5. At 1 RPM, more than one in-flight
-  # request cannot increase sustainable throughput and can race the upstream limiter.
-  # While published docs claimed 20 RPM, live 429 error responses report 1 RPM (plan_rpm: 1),
-  # so rpm: 1 is used here.
-  airforce:
-    api_base: https://api.airforce/v1
-    ai_gateway_slug: custom-airforce
-    ai_gateway_chat_path: /v1/chat/completions
-    chat_path: /v1/chat/completions
-    reset_timezone: UTC
-    rpm: 1
-    concurrency: 1
-    ai_gateway_max_attempts: 1
-    accounts:
-      - id: primary
-        api_key_env: AIRFORCE_API_KEY
   gemini:
     api_base: https://generativelanguage.googleapis.com/v1beta/openai
     ai_gateway_slug: google-ai-studio
@@ -961,32 +945,6 @@ routes:
     free: true
     observed_on: "2026-09-09"
     observed_burst: 0
-    upstream_429_default: upstream_capacity
-
-  # Airforce Mistral Medium 3.5 (free tier): alias for mistral/mistral-medium-latest
-  # While documentation reported 20 RPM, error bodies returned 1 RPM (plan_rpm: 1); rpm: 1 is used.
-  - route_id: airforce_mistral_medium_3_5_primary
-    model: mistral/mistral-medium-3-5
-    model_key: mistral/mistral-medium-latest
-    provider: airforce
-    upstream_model: mistral-medium-3.5
-    input_context_limit: 131072
-    output_context_limit: 8192
-    account_id: primary
-    rpm: 1
-    tpm: 200000
-    rpd: 1000
-    # Preserve the 1 RPM request-time limit, then leave a small clock-skew margin before the
-    # next start. This is deliberately not response-time pacing: Airforce accepts successful
-    # pairs less than one minute apart measured from the prior response.
-    request_start_margin_seconds: 2
-    concurrency: 1
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-09-09"
-    observed_recovery_seconds: 111
-    retry_after_trustworthy: true
     upstream_429_default: upstream_capacity
 
   # Legacy Medium aliases mapping to mistral/mistral-medium-latest

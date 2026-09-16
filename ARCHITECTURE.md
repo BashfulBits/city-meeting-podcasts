@@ -484,7 +484,7 @@ blocks the route until the provider's zoned midnight.
 | **`mistral/mistral-small-2603`** | ⭐ **Tier 2 (Advanced MoE)**<br>119B MoE (128 experts) | Mistral AI | 256k tokens | 49 RPM<br>50k TPM (1B Mo pool) | Available in pool | Full 3-hour meeting ingestion, narrative chapter summaries, legislative amendments |
 | **`mistral/codestral-2508`** | ⭐ **Tier 2 (Structured Specialist)**<br>22B–32B Dense | Mistral AI | 256k tokens | 124 RPM<br>625k TPM (1B Mo pool) | Available in pool | Strict JSON schema extraction, table/ordinance parsing, agenda crosswalk recovery |
 | **`mistral/devstral-2512`** | ⭐ **Tier 2 (Agentic Reasoner)**<br>Agentic Fine-tuned | Mistral AI | 256k tokens | 49 RPM<br>1M TPM (1B Mo pool) | Available in pool | Multi-pass transcript cleanup, meeting action item tracking, tool calling |
-| **`mistral/mistral-medium-3-5`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI + Airforce | 256k tokens (Airforce output capped at 4k) | Mistral: 22 RPM / 356.25k TPM<br>Airforce: 0.69 RPM / 1,000 RPD | Agenda chapter extraction (`chapter_titles.py`) | Production agenda extraction, civic topic indexing, structured meeting summaries |
+| **`mistral/mistral-medium-latest`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI | 128k tokens | 50 RPM<br>25k TPM (1B Mo pool) | Agenda chapter extraction (`chapter_titles.py`) | Production agenda extraction, civic topic indexing, structured meeting summaries |
 | **`mistral/mistral-medium-2508`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI | 128k tokens | 22 RPM<br>356.25k TPM | Agenda chapter extraction (`chapter_titles.py`) | Production agenda extraction, civic topic indexing, structured meeting summaries |
 | **`mistral/mistral-medium-2505`** | ⭐ **Tier 2 (Enterprise Workhorse)**<br>Large Dense | Mistral AI | 128k tokens | 25 RPM<br>375k TPM | Available in pool | Fast enterprise chaptering, zoning case digest, secondary agenda verification |
 | **`meta-llama/llama-3.3-70b-instruct`** | ⭐ **Tier 2 (Open Frontier 70B)**<br>70B Dense | Groq + SambaNova + OpenRouter | 128k tokens | 50 RPM<br>2,000 Free RPD | Available in pool | Low-latency meeting digests, civic discourse classification, speaker stance analysis |
@@ -731,7 +731,7 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
 2. **Civic & Topic Classification (`tag`):** High-volume, short prompt with rigid ontology outputs.
    - *Primary Candidates:* `google/gemma-4-31b-it` (29k RPD free capacity), `google/gemma-4-26b-a4b-it`, `gemini/gemini-3.1-flash-lite`.
 3. **Structured Agenda Extraction & Crosswalk (`chapter_titles` / `agenda_crosswalk`):** Requires 100% strict JSON schema compliance and zero table-structure hallucination.
-   - *Primary Candidates:* `mistral/codestral-2508` (124 RPM, 256k context), `mistral/devstral-2512`, `mistral/mistral-medium-3-5`.
+   - *Primary Candidates:* `mistral/codestral-2508` (124 RPM, 256k context), `mistral/devstral-2512`, `mistral/mistral-medium-latest`.
 4. **Key Soundbite & Quote Selection (`soundbite-select`):** Requires speaker intent nuance, context bounding, and editorial judgment.
    - *Primary Candidates:* `mistral/mistral-large-2512`, `meta-llama/llama-3.3-70b-instruct`, `openrouter/nvidia/nemotron-3-ultra-550b-a55b:free`.
 5. **High-Volume Backfills & Reprocessing:** Requires sub-cent token pricing or massive free quotas.

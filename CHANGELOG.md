@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Removed
 
+- **Discontinued Airforce provider and `mistral-medium-3.5` route (`config/provider_limits.yml`,
+  `workers/llm-dispatch-proxy/src/dispatch_limits.json`,
+  `workers/llm-dispatch-v2/src/dispatch_limits.json`, `citypods/compute/llm_routes.json`).**
+  Upstream `api.airforce` decommissioned `mistral-medium-3.5` across all channels (returning HTTP
+  503 `model_unavailable`), removing it from their catalog. Removes the custom `airforce` provider
+  and route `airforce_mistral_medium_3_5_primary`. Mistral Medium tasks (such as `chapter-agenda`)
+  now route strictly to native Mistral accounts (`mistral/mistral-medium-latest`) across primary,
+  secondary, and tertiary credentials.
+
 - **`ProviderTranscriptDiarizeStage` retired (`citypods/stages.py`, `citypods/records.py`,
   `citypods/report.py`, `citypods/assets/status.html`, `citypods/ops/workqueue.py`; review/31
   §A.5).** A citywide survey — every city/source group with a provider-aligned transcript on

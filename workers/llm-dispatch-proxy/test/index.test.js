@@ -39,14 +39,7 @@ for (const route of Object.values(DISPATCH_LIMITS.routes_by_id)) {
     if (route.tpm) route.tpm = unscale(route.tpm);
   }
 }
-DISPATCH_LIMITS.model_routing = {
-  "mistral/mistral-medium-3-5": [
-    "deepseek/deepseek-v4-flash",
-    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-    "gemini/gemini-3.5-flash-lite",
-    "deepseek/deepseek-v4-pro",
-  ],
-};
+DISPATCH_LIMITS.model_routing = {};
 
 import {
   DISPATCH_COORDINATOR_KEY,
@@ -180,7 +173,6 @@ const ENV = {
   KILO_API_KEY: "kilo-secret",
   OPENCODE_API_KEY: "opencode-secret",
   NVIDIA_API_KEY: "nvidia-secret",
-  AIRFORCE_API_KEY: "airforce-secret",
   RETRY_BASE_SECONDS: "60",
   RETRY_MAX_SECONDS: "3600",
   LLM_QUEUE: new FakeBucket(),
@@ -559,6 +551,7 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
     routes: {
       mistral_medium_latest_primary: { blocked_until: "2026-08-23T00:00:00Z" },
       mistral_medium_latest_secondary: { blocked_until: "2026-08-23T00:00:00Z" },
+      mistral_medium_latest_tertiary: { blocked_until: "2026-08-23T00:00:00Z" },
     },
     providers: {
       mistral: { requests_available_at: "2026-08-23T00:00:00Z" },
@@ -581,17 +574,25 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
     );
   };
 
-  const batchResult = await dispatchBatch(env, fetchImpl, now, 1);
-  assert.equal(batchResult.status, "completed");
-  assert.equal(batchResult.count, 1);
-  assert.equal(batchResult.results[0].status, "completed");
-  assert.equal(batchResult.results[0].routeId, "airforce_mistral_medium_3_5_primary");
-  assert.equal(dispatchedPayload.model, "mistral-medium-3.5");
+  const originalRouting = DISPATCH_LIMITS.model_routing;
+  DISPATCH_LIMITS.model_routing = {
+    "mistral/mistral-medium-latest": ["gemini/gemini-3.5-flash-lite"],
+  };
+  try {
+    const batchResult = await dispatchBatch(env, fetchImpl, now, 1);
+    assert.equal(batchResult.status, "completed");
+    assert.equal(batchResult.count, 1);
+    assert.equal(batchResult.results[0].status, "completed");
+    assert.equal(batchResult.results[0].routeId, "gemini_3_5_flash_lite_primary");
+    assert.equal(dispatchedPayload.model, "gemini-3.5-flash-lite");
 
-  // The finished request is saved as completed and ready marker removed:
-  const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();
-  assert.equal(saved.status, "completed");
-  assert.equal(await env.LLM_QUEUE.get(mKey), null);
+    // The finished request is saved as completed and ready marker removed:
+    const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();
+    assert.equal(saved.status, "completed");
+    assert.equal(await env.LLM_QUEUE.get(mKey), null);
+  } finally {
+    DISPATCH_LIMITS.model_routing = originalRouting;
+  }
 });
 
 test("accepts the configured default route but rejects an unrecognized model", async () => {
