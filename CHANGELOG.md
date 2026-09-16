@@ -284,7 +284,8 @@ Phase R (Research-Tool Surface)._
     monthly allowances rollover without setting `rpd: 0`.
   - **Gemma hard token ceiling admission:** Enforced `hard_input_ceiling` directly inside
     `routeFitsContext` (`workers/llm-dispatch-v2/src/routes.js`) and lowered Google Gemma 26B/31B
-    ceilings to 10,000 tokens (`config/provider_limits.yml`), preventing jobs exceeding Google's
+    ceilings to 10,000 tokens (`config/provider_limits.yml`), preventing jobs from exceeding
+    Google's provider input token limit.
   - **OrcaRouter structured output:** Added `structured_output_profile: json_object` to
     `orcarouter_deepseek_v4_flash_free` in `config/provider_limits.yml`.
   - **Z.ai AI Gateway path alignment:** Configured `custom-zai` AI Gateway chat path to

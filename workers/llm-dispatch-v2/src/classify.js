@@ -72,9 +72,7 @@ export const FAILURE_SIGNATURES = [
       const errType = String(body?.error?.type || "").toLowerCase();
       return (
         errType === "server_error" ||
-        errType === "missingsessionid" ||
-        msg.includes("free tier can only be used in opencode") ||
-        msg.includes("missing session id")
+        msg.includes("free tier can only be used in opencode")
       );
     },
   },
@@ -339,9 +337,9 @@ export function classifyProviderFailure({ status, body, headers, route }) {
   // 4. Cloudflare AI Gateway rate limit or rejection
   const hasCfAigError = normHeaders.has("cf-aig-error");
   const hasProviderPayload =
-    body &&
+    Boolean(body) &&
     typeof body === "object" &&
-    (body.error || body.message || body.detail || body.code);
+    ("error" in body || "message" in body || "detail" in body || "code" in body);
   const isAig429 =
     status === 429 &&
     !hasRateLimitHeader(normHeaders) &&

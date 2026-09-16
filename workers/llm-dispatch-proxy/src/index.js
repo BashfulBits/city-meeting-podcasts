@@ -1025,15 +1025,14 @@ function retryableStatus(status) {
 function upstreamCapacityFailure(status, providerError) {
   if (status !== 400 || !providerError) return false;
   const errType = String(providerError.provider_type || providerError.type || "").toLowerCase();
-  if (errType === "server_error" || errType === "missingsessionid") return true;
+  if (errType === "server_error") return true;
   const message = String(providerError.message || "").toLowerCase();
   return (
     message.includes("upstream request failed") ||
     message.includes("model is unavailable") ||
     message.includes("no capacity") ||
     message.includes("temporarily unavailable") ||
-    message.includes("free tier can only be used in opencode") ||
-    message.includes("missing session id")
+    message.includes("free tier can only be used in opencode")
   );
 }
 

@@ -87,10 +87,8 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
         "provider": "opencode",
         "failure_class": "upstream_capacity",
         "match": lambda ctx: (
-            str(_error_dict(ctx.get("body")).get("type", "")).lower()
-            in ("server_error", "missingsessionid")
+            str(_error_dict(ctx.get("body")).get("type", "")).lower() == "server_error"
             or "free tier can only be used in opencode" in ctx["msg"]
-            or "missing session id" in ctx["msg"]
         ),
     },
     {
@@ -283,7 +281,7 @@ def _is_upstream_400(body: Any) -> bool:
     error = body.get("error")
     if not isinstance(error, dict):
         return False
-    if str(error.get("type", "")).lower() in ("server_error", "missingsessionid"):
+    if str(error.get("type", "")).lower() == "server_error":
         return True
     msg = str(error.get("message", "")).lower()
     return any(
@@ -294,7 +292,6 @@ def _is_upstream_400(body: Any) -> bool:
             "no capacity",
             "temporarily unavailable",
             "free tier can only be used in opencode",
-            "missing session id",
         )
     )
 

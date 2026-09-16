@@ -204,15 +204,14 @@ export function upstreamCapacityFailure(status, body) {
   const providerError = body?.error;
   if (!providerError || typeof providerError !== "object") return false;
   const errType = String(providerError.type || "").toLowerCase();
-  if (errType === "server_error" || errType === "missingsessionid") return true;
+  if (errType === "server_error") return true;
   const message = String(providerError.message || "").toLowerCase();
   return (
     message.includes("upstream request failed") ||
     message.includes("model is unavailable") ||
     message.includes("no capacity") ||
     message.includes("temporarily unavailable") ||
-    message.includes("free tier can only be used in opencode") ||
-    message.includes("missing session id")
+    message.includes("free tier can only be used in opencode")
   );
 }
 

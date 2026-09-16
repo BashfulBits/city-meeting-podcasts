@@ -170,6 +170,13 @@ test("upstreamCapacityFailure leaves genuine request defects terminal", () => {
     upstreamCapacityFailure(400, { error: { type: "invalid_request_error", message: "unknown field 'foo'" } }),
     false
   );
+  assert.equal(
+    upstreamCapacityFailure(400, {
+      error: { type: "MissingSessionID", message: "Missing session ID" },
+    }),
+    false,
+    "bare MissingSessionID validation error must stay terminal"
+  );
   assert.equal(upstreamCapacityFailure(400, { error: { message: "messages: field required" } }), false);
   assert.equal(upstreamCapacityFailure(400, {}), false, "no error object at all");
   assert.equal(upstreamCapacityFailure(400, null), false);

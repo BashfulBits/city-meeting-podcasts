@@ -63,6 +63,23 @@ test("classifyProviderFailure handles OpenCode MissingSessionID 400 as upstream_
   assert.equal(res.scope, "route");
 });
 
+test("classifyProviderFailure leaves bare OpenCode MissingSessionID 400 as request_defect", () => {
+  const res = classifyProviderFailure({
+    status: 400,
+    body: {
+      type: "error",
+      error: {
+        type: "MissingSessionID",
+        message: "Missing session ID in request headers",
+      },
+    },
+    headers: null,
+    route: { provider: "opencode", route_id: "opencode/deepseek-v4-flash-free" },
+  });
+  assert.equal(res.failure_class, "request_defect");
+  assert.equal(res.scope, "route");
+});
+
 test("classifyProviderFailure handles CF AI Gateway error as gateway_limit with provider scope", () => {
   const resWithHeader = classifyProviderFailure({
     status: 429,
@@ -84,6 +101,17 @@ test("classifyProviderFailure handles CF AI Gateway error as gateway_limit with 
   assert.equal(resBare429.failure_class, "gateway_limit");
   assert.equal(resBare429.rule_id, "cf-aig");
   assert.equal(resBare429.scope, "provider");
+
+  // 429 with empty provider payload field (e.g. { message: "" }) must not be classified as gateway_limit
+  const resEmptyPayload = classifyProviderFailure({
+    status: 429,
+    body: { message: "" },
+    headers: {},
+    route: { provider: "groq", route_id: "groq/llama" },
+  });
+  assert.notEqual(resEmptyPayload.failure_class, "gateway_limit");
+  assert.notEqual(resEmptyPayload.scope, "provider");
+  assert.equal(resEmptyPayload.scope, "route");
 });
 
 test("classifyProviderFailure matches gemini-rpd", () => {

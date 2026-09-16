@@ -498,17 +498,20 @@ real usable ceiling can sit well below both `tpm` and the model's advertised con
 others genuinely tolerate a request several times their configured `tpm` (confirmed live against
 NVIDIA's free tier). This field is therefore never derived from `tpm` automatically; it is set
 only where a provider's hard-reject behavior has actually been verified (today, every direct Google
-AI Studio Gemini/Gemma route — the same Gemma models fronted by OpenRouter's or NVIDIA's free
-gateways remain `null` pending their own verification), and is enforced both in `select_route`
-(`citypods/compute/llm_scheduler.py`) and in the Cloudflare dispatch Worker's own token-bucket
-pacing (`workers/llm-dispatch-v2/src/pacing.js`). Static catalog quotas are candidate capacity:
+AI Studio Gemini/Gemma route, capped at 10,000 tokens for Gemma 26B/31B — the same Gemma models fronted by
+OpenRouter's or NVIDIA's free gateways remain `null` pending their own verification), and is enforced
+both in `select_route` (`citypods/compute/llm_scheduler.py`) and in the Cloudflare dispatch Worker's
+admission filtering (`routeFitsContext` in `workers/llm-dispatch-v2/src/routes.js` and
+`workers/llm-dispatch-v2/src/pacing.js`). Static catalog quotas are candidate capacity:
 production routing records observed RPM, burst tolerance, input ceilings, and recovery timing
 via automated probes (`citypods/llm_rate_probe.py`). Rate-limit and capacity errors are classified
 across a 9-class failure taxonomy (`citypods/compute/llm_failure_class.py` and
-`workers/llm-dispatch-v2/src/classify.js`): in direct mode, upstream capacity errors apply a brief
-cooldown (`UPSTREAM_CAPACITY_COOLDOWN_SECONDS`) and immediately retry on an available sibling
-route within the same call without deferring the job, while daily quota exhaustion (`own_rpd`)
-blocks the route until the provider's zoned midnight.
+`workers/llm-dispatch-v2/src/classify.js`): in direct mode, upstream capacity errors (including OpenCode
+free-tier pool exhaustion with "free tier can only be used in opencode") apply a brief cooldown
+(`UPSTREAM_CAPACITY_COOLDOWN_SECONDS`) and immediately retry on an available sibling route within the
+same call without deferring the job, while daily quota exhaustion (`own_rpd`) blocks the route until the
+provider's zoned midnight, and Mistral zero-provisioned limits (`x-ratelimit-limit-req-minute: 0`) trigger
+a `payment_required` day-to-month backoff ladder.
 
 | Canonical Model Name (`model`) | Quality Tier & Architecture | Providers in Pool | Representative Context Window* | Combined Free Capacity (RPM / Daily Quota) | Current Wired Task in Citypods | Recommended Civic Tasks & Future Verbs |
 |---|---|---|---|---|---|---|
@@ -724,14 +727,16 @@ Three consequences shape the current configuration:
 - `airforce` is registered as `https://api.airforce/v1`; its caller path stays bare so it reaches
   `https://api.airforce/v1/chat/completions`. Its 4k output ceiling is separate from the model's
   256k input context limit.
-- `zai` and `opencode` route through **`workers/llm-provider-shim`**, which restores the real
-  upstream prefix. z.ai's `/api/paas/v4` is otherwise inexpressible under the former rewrite
-  (`v4` → `v1`). The shim keeps them inside AI Gateway's logging rather than bypassing the gateway
-  and accepts both the current literal `/x` path from existing registrations and the former `/v1`
-  rewrite. It forwards third-party API keys, so it pins destinations to an allowlist, fails closed
-  without its secret, refuses upstream redirects (`redirect: "manual"`), and returns one opaque 404
-  for every rejection. Its token lives in the registered Base URL path because the gateway strips
-  `cf-aig-authorization` before the upstream sees it.
+- `zai`'s Cloudflare AI Gateway Base URL is configured to `https://api.z.ai/api/paas` with
+  caller path `/v4/chat/completions` (verified live: HTTP 200), allowing it to route directly through
+  AI Gateway without a shim. `opencode` routes through **`workers/llm-provider-shim`**, which restores
+  the real upstream prefix. OpenCode's `/zen/v1` prefix survives the gateway's `v1` substitution, yet
+  direct gateway calls 404'd for a cause never identified from outside. The shim keeps it inside AI
+  Gateway's logging rather than bypassing the gateway and accepts both the current literal `/x` path
+  from existing registrations and the former `/v1` rewrite. It forwards third-party API keys, so it
+  pins destinations to an allowlist, fails closed without its secret, refuses upstream redirects
+  (`redirect: "manual"`), and returns one opaque 404 for every rejection. Its token lives in the
+  registered Base URL path because the gateway strips `cf-aig-authorization` before the upstream sees it.
 
 Because this behaviour is undocumented and can change without notice — and no offline test can
 observe it — [`tests/live/test_ai_gateway_contract.py`](tests/live/test_ai_gateway_contract.py)

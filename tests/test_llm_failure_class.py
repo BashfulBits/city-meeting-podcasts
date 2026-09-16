@@ -434,6 +434,22 @@ def test_opencode_missing_session_id_is_upstream_capacity():
     assert result.rule_id == "upstream-400-body"
 
 
+def test_opencode_bare_missing_session_id_is_request_defect():
+    """OpenCode 400 with bare MissingSessionID without free-tier phrase is request_defect."""
+    body = {
+        "error": {
+            "type": "MissingSessionID",
+            "message": "Missing session ID in request headers",
+        },
+        "type": "error",
+    }
+    result = classify_provider_failure(
+        status=400, body=body, headers={}, route={"provider": "opencode"}
+    )
+    assert result.failure_class == "request_defect"
+    assert result.scope == "route"
+
+
 def test_mistral_zero_provisioned_limit_precedence():
     """Mistral 429 with 0 req/min limit is payment_required rather than own_rpm."""
     body = {
