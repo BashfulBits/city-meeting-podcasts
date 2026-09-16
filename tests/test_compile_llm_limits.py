@@ -99,13 +99,12 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     assert compiled["model_aliases"]["orcarouter/deepseek-v4-flash"] == deepseek_key
 
     nemotron_key = "nvidia/nemotron-3-ultra-550b-a55b:free"
-    # OpenRouter + Kilo + OpenCode (all broker legs) + NVIDIA build direct (added 2026-08-29).
-    assert len(compiled["model_routes_map"][nemotron_key]) == 4
+    # OpenRouter + Kilo (broker legs) + NVIDIA build direct (added 2026-08-29).
+    assert len(compiled["model_routes_map"][nemotron_key]) == 3
     assert (
         compiled["model_aliases"]["openrouter/nvidia/nemotron-3-ultra-550b-a55b:free"]
         == nemotron_key
     )
-    assert compiled["model_aliases"]["opencode/nemotron-3-ultra-free"] == nemotron_key
     assert compiled["model_aliases"]["nvidia/nemotron-3-ultra-550b-a55b"] == nemotron_key
 
     nemotron_super_key = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"

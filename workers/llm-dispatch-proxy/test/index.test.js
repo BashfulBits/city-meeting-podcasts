@@ -883,30 +883,7 @@ test("provider RPM paces different models through one shared schedule", async (t
   assert.deepEqual(calls, ["codestral-2508", "mistral-small-2603"]);
 });
 
-test("a current OpenCode free model uses its configured route", async () => {
-  const env = isolatedEnv();
-  const queued = await handleRequest(
-    chatRequest(undefined, "opencode-free", "opencode/mimo-v2.5-free"),
-    env,
-  );
-  const body = await queued.json();
 
-  const calls = [];
-  const upstream = async (url, init) => {
-    calls.push({ url, body: JSON.parse(init.body) });
-    return new Response(JSON.stringify({ id: "opencode-free", choices: [] }), { status: 200 });
-  };
-
-  const result = await dispatchOne(env, upstream, new Date());
-  assert.equal(result.status, "completed");
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, "https://opencode.ai/zen/v1/chat/completions");
-  assert.equal(calls[0].body.model, "mimo-v2.5-free");
-  const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
-  const record = await stored.json();
-  assert.equal(record.status, "completed");
-  assert.equal(record.model, "opencode/mimo-v2.5-free");
-});
 
 test("an OrcaRouter free model uses its configured route", async () => {
   const env = isolatedEnv();
@@ -1082,9 +1059,9 @@ test("an aliased ready marker dispatches without an index-repair delay", async (
   const record = {
     id: "chatcmpl-aliased-ready",
     status: "pending",
-    model: "opencode/nemotron-3-ultra-free",
+    model: "nvidia/nemotron-3-ultra-550b-a55b",
     request: {
-      model: "opencode/nemotron-3-ultra-free",
+      model: "nvidia/nemotron-3-ultra-550b-a55b",
       messages: [{ role: "user", content: "x" }],
       stream: false,
     },

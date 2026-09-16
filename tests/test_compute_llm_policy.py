@@ -67,19 +67,14 @@ def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
     assert canonical_model("orcarouter/deepseek-v4-flash") == "deepseek/deepseek-v4-flash"
     assert MODEL_ALIASES["deepseek/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"
 
-    # NVIDIA build's direct Nemotron 3 Ultra leg (added 2026-08-29) bypasses the OpenRouter/Kilo/
-    # OpenCode broker legs -- see nvidia_nemotron_3_ultra_550b_a55b_free.
+    # NVIDIA build's direct Nemotron 3 Ultra leg (added 2026-08-29) bypasses the OpenRouter/Kilo
+    # broker legs -- see nvidia_nemotron_3_ultra_550b_a55b_free.
     nemotron = ROUTE_CANDIDATES["nvidia/nemotron-3-ultra-550b-a55b:free"]
     assert {candidate.provider for candidate in nemotron} == {
         "openrouter",
         "kilo",
-        "opencode",
         "nvidia",
     }
-    assert (
-        canonical_model("opencode/nemotron-3-ultra-free")
-        == "nvidia/nemotron-3-ultra-550b-a55b:free"
-    )
 
 
 def test_deepseek_pricing_selects_the_effective_period_and_peak_windows():

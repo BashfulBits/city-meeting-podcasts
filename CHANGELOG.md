@@ -271,11 +271,13 @@ Phase R (Research-Tool Surface)._
 
 - **Free LLM route optimization & failure classification hardening (`config/provider_limits.yml`,
   `workers/llm-dispatch-v2`, `citypods/compute/llm_failure_class.py`).**
-  - **OpenCode session isolation & route backoff:** Handled OpenCode `MissingSessionID` HTTP 400
-    errors ("free tier can only be used in OpenCode") in `upstreamCapacityFailure` and failure
-    classifiers (`classify.js`, `citypods/compute/llm_failure_class.py`), classifying them as
-    `upstream_capacity` instead of `request_defect` so failed jobs are requeued and routes backed
-    off.
+  - **OpenCode route retirement:** Fully retired the remaining OpenCode free routes
+    (`mimo-v2.5-free`, `nemotron-3-ultra-free`, `nemotron-3.5-lightning-free`) and removed the
+    `opencode` provider block after verifying OpenCode permanently gates its free tier behind
+    proprietary IDE sessions (`HTTP 400 MissingSessionID: OpenCode's free tier can only be used in
+    OpenCode`). Hardened failure classifiers in `classify.js` and
+    `citypods/compute/llm_failure_class.py` to treat any such upstream errors as capacity rather
+    than request defects.
   - **Mistral zero-allowance exponential backoff:** Threaded response headers through
     `callAiGateway` in v2 dispatch and reordered `zero-provisioned-limit` before
     `openai-shaped-rate-limit`. When Mistral returns HTTP 429 with

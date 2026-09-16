@@ -57,15 +57,11 @@ TRANSIENT_STATUSES = frozenset({500, 502, 503, 504})
 PROBE_ATTEMPTS = 2
 RETRY_DELAY_SECONDS = 1
 
-# Keep probes on named, deliberately chosen free routes rather than YAML ordering: OpenCode's former
-# DeepSeek V4 Flash alias is retired. NVIDIA's first listed Kimi K3 route has twice exceeded the
-# contract's 60-second read timeout while the Nemotron Super URL canary stayed responsive. OpenCode
-# checks its model list rather than a completion: both Mimo and the smaller Lightning model have
-# spent two full 60-second attempts in OpenCode's free-model queue even when its API path is
-# healthy.
+# Keep probes on named, deliberately chosen free routes rather than YAML ordering: NVIDIA's
+# first listed Kimi K3 route has twice exceeded the contract's 60-second read timeout while the
+# Nemotron Super URL canary stayed responsive.
 PREFERRED_FREE_PROBE_ROUTE_IDS = {
     "nvidia": "nvidia_nemotron_3_super_120b_a12b_free",
-    "opencode": "opencode_nemotron_3_5_lightning_free",
 }
 
 

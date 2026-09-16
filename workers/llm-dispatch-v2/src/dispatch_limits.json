@@ -1,8 +1,8 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 76,
-    "providers_count": 13,
+    "routes_count": 73,
+    "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
   },
@@ -151,19 +151,6 @@
         {
           "id": "primary",
           "api_key_env": "KILO_API_KEY"
-        }
-      ]
-    },
-    "opencode": {
-      "api_base": "https://opencode.ai/zen/v1",
-      "ai_gateway_slug": "custom-opencode",
-      "ai_gateway_chat_path": "/chat/completions",
-      "chat_path": "/chat/completions",
-      "reset_timezone": "UTC",
-      "accounts": [
-        {
-          "id": "primary",
-          "api_key_env": "OPENCODE_API_KEY"
         }
       ]
     },
@@ -2027,87 +2014,6 @@
       "upstream_429_default": null,
       "structured_output_schema_strip_keys": []
     },
-    "opencode_mimo_v2_5_free": {
-      "route_id": "opencode_mimo_v2_5_free",
-      "provider": "opencode",
-      "upstream_model": "mimo-v2.5-free",
-      "input_context_limit": 200000,
-      "output_context_limit": 32000,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": 30,
-      "rpd": 500,
-      "tpm": 90000,
-      "concurrency": 1,
-      "request_start_margin_seconds": null,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": "2026-09-09",
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": "upstream_capacity",
-      "structured_output_schema_strip_keys": []
-    },
-    "opencode_nemotron_3_ultra_free": {
-      "route_id": "opencode_nemotron_3_ultra_free",
-      "provider": "opencode",
-      "upstream_model": "nemotron-3-ultra-free",
-      "input_context_limit": 1000000,
-      "output_context_limit": 128000,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": 20,
-      "rpd": 0,
-      "tpm": 90000,
-      "concurrency": 1,
-      "request_start_margin_seconds": null,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": "2026-09-09",
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": "upstream_capacity",
-      "structured_output_schema_strip_keys": []
-    },
-    "opencode_nemotron_3_5_lightning_free": {
-      "route_id": "opencode_nemotron_3_5_lightning_free",
-      "provider": "opencode",
-      "upstream_model": "nemotron-3.5-lightning-free",
-      "input_context_limit": 1000000,
-      "output_context_limit": 128000,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": 20,
-      "rpd": 200,
-      "tpm": 90000,
-      "concurrency": 1,
-      "request_start_margin_seconds": null,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": "2026-09-14",
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": "upstream_capacity",
-      "structured_output_schema_strip_keys": []
-    },
     "nvidia_kimi_k3_free": {
       "route_id": "nvidia_kimi_k3_free",
       "provider": "nvidia",
@@ -2550,7 +2456,6 @@
     "nvidia/nemotron-3-ultra-550b-a55b:free": [
       "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
       "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
-      "opencode_nemotron_3_ultra_free",
       "nvidia_nemotron_3_ultra_550b_a55b_free"
     ],
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free": [
@@ -2568,12 +2473,6 @@
     ],
     "kilo/stepfun/step-3.7-flash:free": [
       "kilo_stepfun_step_3_7_flash_free"
-    ],
-    "opencode/mimo-v2.5-free": [
-      "opencode_mimo_v2_5_free"
-    ],
-    "opencode/nemotron-3.5-lightning-free": [
-      "opencode_nemotron_3_5_lightning_free"
     ],
     "moonshotai/kimi-k3": [
       "nvidia_kimi_k3_free"
@@ -2598,7 +2497,6 @@
     "mistral/mistral-medium-2505": "mistral/mistral-medium-latest",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "opencode/nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
@@ -2682,11 +2580,6 @@
     "openrouter/openai/gpt-4o-mini": "openrouter/openai/gpt-4o-mini",
     "stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
     "kilo/stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
-    "mimo-v2.5-free": "opencode/mimo-v2.5-free",
-    "opencode/mimo-v2.5-free": "opencode/mimo-v2.5-free",
-    "nemotron-3-ultra-free": "nvidia/nemotron-3-ultra-550b-a55b:free",
-    "nemotron-3.5-lightning-free": "opencode/nemotron-3.5-lightning-free",
-    "opencode/nemotron-3.5-lightning-free": "opencode/nemotron-3.5-lightning-free",
     "moonshotai/kimi-k3": "moonshotai/kimi-k3",
     "nvidia/moonshotai/kimi-k3": "moonshotai/kimi-k3",
     "deepseek-ai/deepseek-v4-pro-0813": "deepseek/deepseek-v4-pro",
