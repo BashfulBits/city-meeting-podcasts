@@ -270,6 +270,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Relaxed `litellm` floor to stable `>=1.101.0` and refreshed constraint locks (`pyproject.toml`,
+  `constraints/prod.txt`, `constraints/dev.txt`, `review/45`).** An ephemeral development release pin
+  (`litellm==1.95.0.dev1`) in `constraints/prod.txt` broke CI runs (`chapter-agenda` run 471) after
+  upstream LiteLLM pruned `1.95.0.dev1` from PyPI upon releasing `1.103.0.dev1`. Relaxed the
+  pre-release lower bound (`>=1.94.0rc3`) in `pyproject.toml` to the current stable release
+  `>=1.101.0`, updated `constraints/prod.txt` and `dev.txt` to `litellm==1.101.0` and
+  `aiohttp==3.14.3`, and added `pydantic-settings==2.15.0`.
+
 - **Bounded research/review workflows now survive oversized and stale work (`tournament.py`, shared
   review resolver).** The tag tournament previously loaded chapter artifacts for the entire
   append-only catalog before taking its newest bounded sample, so the 46-sample weekly run hit its
