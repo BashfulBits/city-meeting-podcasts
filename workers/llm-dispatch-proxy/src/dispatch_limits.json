@@ -1,8 +1,8 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 72,
-    "providers_count": 11,
+    "routes_count": 74,
+    "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
   },
@@ -25,6 +25,22 @@
         {
           "id": "tertiary",
           "api_key_env": "MISTRAL_API_KEY_TERTIARY"
+        }
+      ]
+    },
+    "airforce": {
+      "api_base": "https://api.airforce/v1",
+      "ai_gateway_slug": "custom-airforce",
+      "ai_gateway_chat_path": "/v1/chat/completions",
+      "chat_path": "/v1/chat/completions",
+      "ai_gateway_max_attempts": 1,
+      "rpm": 1,
+      "concurrency": 1,
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "AIRFORCE_API_KEY"
         }
       ]
     },
@@ -2292,6 +2308,60 @@
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
       "structured_output_schema_strip_keys": []
+    },
+    "mistral_codestral_airforce_primary": {
+      "route_id": "mistral_codestral_airforce_primary",
+      "provider": "airforce",
+      "upstream_model": "codestral-latest",
+      "input_context_limit": 256000,
+      "output_context_limit": 8192,
+      "hard_input_ceiling": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": 1000,
+      "tpm": 180000,
+      "concurrency": 1,
+      "request_start_margin_seconds": 2,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-09-16",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": 111.0,
+      "retry_after_trustworthy": true,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
+    },
+    "airforce_kimi_k2_7_code_primary": {
+      "route_id": "airforce_kimi_k2_7_code_primary",
+      "provider": "airforce",
+      "upstream_model": "kimi-k2.7-code",
+      "input_context_limit": 131072,
+      "output_context_limit": 8192,
+      "hard_input_ceiling": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": 1000,
+      "tpm": 180000,
+      "concurrency": 1,
+      "request_start_margin_seconds": 2,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-09-16",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": 111.0,
+      "retry_after_trustworthy": true,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_schema_strip_keys": []
     }
   },
   "model_routes_map": {
@@ -2365,7 +2435,8 @@
     "mistral/codestral-2508": [
       "mistral_codestral_2508_primary",
       "mistral_codestral_2508_secondary",
-      "mistral_codestral_2508_tertiary"
+      "mistral_codestral_2508_tertiary",
+      "mistral_codestral_airforce_primary"
     ],
     "mistral/devstral-2512": [
       "mistral_devstral_2512_primary",
@@ -2440,6 +2511,9 @@
     ],
     "nvidia/riva-translate-4b-instruct-v2": [
       "nvidia_riva_translate_4b_instruct_v2_free"
+    ],
+    "moonshotai/kimi-k2.7-code": [
+      "airforce_kimi_k2_7_code_primary"
     ]
   },
   "model_aliases": {
@@ -2454,6 +2528,7 @@
     "nvidia/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+    "mistral/codestral-latest": "mistral/codestral-2508",
     "gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemini/gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite": "gemini/gemini-3.1-flash-lite",
@@ -2547,7 +2622,11 @@
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
-    "nvidia/nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2"
+    "nvidia/nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
+    "codestral-latest": "mistral/codestral-2508",
+    "airforce/codestral-latest": "mistral/codestral-2508",
+    "kimi-k2.7-code": "moonshotai/kimi-k2.7-code",
+    "airforce/kimi-k2.7-code": "moonshotai/kimi-k2.7-code"
   },
   "model_routing": {}
 }

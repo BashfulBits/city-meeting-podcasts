@@ -1962,6 +1962,7 @@ def test_sambanova_routes_use_a_single_gateway_attempt(gateway_env):
 CUSTOM_PROVIDER_GATEWAY_PATHS = {
     # Registered at api_base verbatim; the `/v1` in api_base is also the substituted segment, so
     # the chat path must carry it or the dispatch lands on the origin root and 404s.
+    "airforce": "/v1/chat/completions",
     "siliconflow": "/v1/chat/completions",
     "sambanova": "/v1/chat/completions",
     "nvidia": "/v1/chat/completions",

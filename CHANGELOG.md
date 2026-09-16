@@ -15,16 +15,25 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Added
+
+- **Airforce `codestral-latest` and `kimi-k2.7-code` free routes (`config/provider_limits.yml`,
+  `workers/llm-dispatch-proxy/src/dispatch_limits.json`,
+  `workers/llm-dispatch-v2/src/dispatch_limits.json`, `citypods/compute/llm_routes.json`).**
+  Retains the `airforce` provider with two operational models passing the Gemma-4 quality floor:
+  `mistral_codestral_airforce_primary` pooling with `mistral/codestral-2508` (providing an
+  additional free capacity leg alongside native Mistral accounts), and
+  `airforce_kimi_k2_7_code_primary` for `moonshotai/kimi-k2.7-code`.
+
 ### Removed
 
-- **Discontinued Airforce provider and `mistral-medium-3.5` route (`config/provider_limits.yml`,
+- **Discontinued Airforce `mistral-medium-3.5` route (`config/provider_limits.yml`,
   `workers/llm-dispatch-proxy/src/dispatch_limits.json`,
   `workers/llm-dispatch-v2/src/dispatch_limits.json`, `citypods/compute/llm_routes.json`).**
   Upstream `api.airforce` decommissioned `mistral-medium-3.5` across all channels (returning HTTP
-  503 `model_unavailable`), removing it from their catalog. Removes the custom `airforce` provider
-  and route `airforce_mistral_medium_3_5_primary`. Mistral Medium tasks (such as `chapter-agenda`)
-  now route strictly to native Mistral accounts (`mistral/mistral-medium-latest`) across primary,
-  secondary, and tertiary credentials.
+  503 `model_unavailable`), removing it from their catalog. Mistral Medium tasks
+  (such as `chapter-agenda`) now route strictly to native Mistral accounts
+  (`mistral/mistral-medium-latest`) across primary, secondary, and tertiary credentials.
 
 - **`ProviderTranscriptDiarizeStage` retired (`citypods/stages.py`, `citypods/records.py`,
   `citypods/report.py`, `citypods/assets/status.html`, `citypods/ops/workqueue.py`; review/31

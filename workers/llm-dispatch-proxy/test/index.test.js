@@ -173,6 +173,7 @@ const ENV = {
   KILO_API_KEY: "kilo-secret",
   OPENCODE_API_KEY: "opencode-secret",
   NVIDIA_API_KEY: "nvidia-secret",
+  AIRFORCE_API_KEY: "airforce-secret",
   RETRY_BASE_SECONDS: "60",
   RETRY_MAX_SECONDS: "3600",
   LLM_QUEUE: new FakeBucket(),

@@ -111,6 +111,19 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     assert compiled["model_aliases"]["mistral/mistral-medium-2508"] == mistral_medium_key
     assert compiled["model_aliases"]["mistral/mistral-medium-2505"] == mistral_medium_key
 
+    codestral_key = "mistral/codestral-2508"
+    codestral_routes = compiled["model_routes_map"][codestral_key]
+    # primary + secondary + tertiary Mistral accounts + airforce codestral-latest route.
+    assert len(codestral_routes) == 4
+    assert {compiled["routes_by_id"][route_id]["provider"] for route_id in codestral_routes} == {
+        "mistral",
+        "airforce",
+    }
+    assert compiled["model_aliases"]["mistral/codestral-latest"] == codestral_key
+    worker = compile_llm_limits._worker_catalog(compiled)
+    assert worker["model_aliases"]["codestral-latest"] == codestral_key
+    assert worker["model_aliases"]["airforce/codestral-latest"] == codestral_key
+
 
 def test_compiled_routes_materialize_route_specific_input_and_output_limits():
     compiled = compile_llm_limits.compile_limits()
