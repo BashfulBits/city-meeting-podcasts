@@ -53,14 +53,8 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert samba["rpd"] == 20
     assert worker["providers"]["sambanova"]["rpm"] == 20
     assert worker["providers"]["sambanova"]["ai_gateway_max_attempts"] == 1
-    assert worker["providers"]["airforce"]["ai_gateway_max_attempts"] == 1
-    assert worker["providers"]["airforce"]["concurrency"] == 1
-    assert (
-        worker["routes_by_id"]["airforce_mistral_medium_3_5_primary"][
-            "request_start_margin_seconds"
-        ]
-        == 2
-    )
+    assert worker["providers"]["nvidia"]["concurrency"] == 2
+    assert gemma["request_start_margin_seconds"] is None
     # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
     # integer positions an earlier revision used, which could silently misresolve to a different
     # route if compile-time route order ever shifted.
@@ -115,17 +109,26 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     mistral_medium_key = "mistral/mistral-medium-latest"
     medium_routes = compiled["model_routes_map"][mistral_medium_key]
-    # primary + secondary + tertiary Mistral accounts, plus the airforce overflow route.
-    assert len(medium_routes) == 4
+    # primary + secondary + tertiary Mistral accounts.
+    assert len(medium_routes) == 3
     assert {compiled["routes_by_id"][route_id]["provider"] for route_id in medium_routes} == {
-        "airforce",
         "mistral",
     }
     assert compiled["model_aliases"]["mistral/mistral-medium-2508"] == mistral_medium_key
     assert compiled["model_aliases"]["mistral/mistral-medium-2505"] == mistral_medium_key
-    assert compiled["model_aliases"]["mistral/mistral-medium-3-5"] == mistral_medium_key
-    assert compiled["providers"]["airforce"]["concurrency"] == 1
-    assert compiled["routes_by_id"]["airforce_mistral_medium_3_5_primary"]["concurrency"] == 1
+
+    codestral_key = "mistral/codestral-2508"
+    codestral_routes = compiled["model_routes_map"][codestral_key]
+    # primary + secondary + tertiary Mistral accounts + airforce codestral-latest route.
+    assert len(codestral_routes) == 4
+    assert {compiled["routes_by_id"][route_id]["provider"] for route_id in codestral_routes} == {
+        "mistral",
+        "airforce",
+    }
+    assert compiled["model_aliases"]["mistral/codestral-latest"] == codestral_key
+    worker = compile_llm_limits._worker_catalog(compiled)
+    assert worker["model_aliases"]["codestral-latest"] == codestral_key
+    assert worker["model_aliases"]["airforce/codestral-latest"] == codestral_key
 
 
 def test_compiled_routes_materialize_route_specific_input_and_output_limits():
@@ -147,9 +150,7 @@ def test_compiled_routes_materialize_route_specific_input_and_output_limits():
         for route in compiled["routes"]
     )
     medium = compiled["routes_by_id"]["mistral_medium_latest_primary"]
-    airforce = compiled["routes_by_id"]["airforce_mistral_medium_3_5_primary"]
     assert (medium["input_context_limit"], medium["output_context_limit"]) == (131072, 8192)
-    assert (airforce["input_context_limit"], airforce["output_context_limit"]) == (131072, 8192)
 
 
 def test_route_limits_cannot_fall_back_to_provider_defaults():
@@ -242,15 +243,11 @@ def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
     }
     assert compiled["model_routes_map"]["mistral/mistral-medium-latest"] == [
         "mistral_medium_latest_primary",
-        "airforce_mistral_medium_3_5_primary",
         "mistral_medium_latest_secondary",
         "mistral_medium_latest_tertiary",
     ]
     assert (
         compiled["model_aliases"]["mistral/mistral-medium-2508"] == "mistral/mistral-medium-latest"
-    )
-    assert (
-        compiled["model_aliases"]["mistral/mistral-medium-3-5"] == "mistral/mistral-medium-latest"
     )
     assert (
         compiled["model_aliases"]["mistral/mistral-medium-2505"] == "mistral/mistral-medium-latest"

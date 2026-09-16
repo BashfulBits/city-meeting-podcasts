@@ -108,10 +108,8 @@ def test_generated_catalog_includes_observed_characterization_fields() -> None:
     assert groq.observed_input_ceiling == 7125
     assert groq.hard_input_ceiling == 7125
 
-    airforce = next(
-        (r for r in routes if r.route_id == "airforce_mistral_medium_3_5_primary"), None
-    )
-    assert airforce is not None
-    assert airforce.observed_recovery_seconds == 111.0
-    assert airforce.retry_after_trustworthy is True
-    assert airforce.upstream_429_default == "upstream_capacity"
+    medium = next((r for r in routes if r.route_id == "mistral_medium_latest_primary"), None)
+    assert medium is not None
+    assert medium.observed_on == "2026-09-09"
+    assert medium.observed_burst == 0
+    assert medium.upstream_429_default == "upstream_capacity"
