@@ -481,11 +481,11 @@ dispatch has no equivalent persistent cross-run counter today and ignores these 
 (`_modelsOutsideLane`), but is never part of a job's indexed model set or per-job write-unit cost
 at enqueue time — it only ever activates on an already-queued job's later lease attempts.
 
-The pipeline routes LLM jobs across 13 independent providers via
+The pipeline routes LLM jobs across 12 independent providers via
 [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both
 `workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python
-`citypods/compute/llm_routes.json`). The generated catalog contains 76 physical provider/account
-routes representing 40 deduplicated logical models; every route supports direct LiteLLM and
+`citypods/compute/llm_routes.json`). The generated catalog contains 73 physical provider/account
+routes representing 38 deduplicated logical models; every route supports direct LiteLLM and
 asynchronous dispatch. Structured-output profiles in the same YAML declare each route's JSON mode,
 direct handler, schema relaxation, and prompt-schema behavior; runtime code consumes those
 materialized capabilities rather than inferring them from model or route names. Input/output
@@ -729,11 +729,10 @@ Three consequences shape the current configuration:
   256k input context limit.
 - `zai`'s Cloudflare AI Gateway Base URL is configured to `https://api.z.ai/api/paas` with
   caller path `/v4/chat/completions` (verified live: HTTP 200), allowing it to route directly through
-  AI Gateway without a shim. `opencode` routes through **`workers/llm-provider-shim`**, which restores
-  the real upstream prefix. OpenCode's `/zen/v1` prefix survives the gateway's `v1` substitution, yet
-  direct gateway calls 404'd for a cause never identified from outside. The shim keeps it inside AI
-  Gateway's logging rather than bypassing the gateway and accepts both the current literal `/x` path
-  from existing registrations and the former `/v1` rewrite. It forwards third-party API keys, so it
+  AI Gateway without a shim. OpenCode's free routes were retired after OpenCode permanently gated its
+  free tier behind proprietary IDE session tracking (`HTTP 400 MissingSessionID: OpenCode's free tier
+  can only be used in OpenCode`). Where a custom provider requires prefix restoration or token injection,
+  **`workers/llm-provider-shim`** remains available: it keeps traffic inside AI Gateway's logging,
   pins destinations to an allowlist, fails closed without its secret, refuses upstream redirects
   (`redirect: "manual"`), and returns one opaque 404 for every rejection. Its token lives in the
   registered Base URL path because the gateway strips `cf-aig-authorization` before the upstream sees it.

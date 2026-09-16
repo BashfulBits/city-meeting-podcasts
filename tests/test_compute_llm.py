@@ -1972,7 +1972,6 @@ CUSTOM_PROVIDER_GATEWAY_PATHS = {
     # custom-zai is registered at `https://api.z.ai/api/paas`, which serves at
     # `/v4/chat/completions`.
     "zai": "/v4/chat/completions",
-    "opencode": "/chat/completions",
 }
 
 

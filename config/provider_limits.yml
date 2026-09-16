@@ -218,22 +218,7 @@ providers:
     accounts:
       - id: primary
         api_key_env: KILO_API_KEY
-  opencode:
-    api_base: https://opencode.ai/zen/v1
-    ai_gateway_slug: custom-opencode
-    # Routed through `workers/llm-provider-shim` alongside z.ai. OpenCode's own prefix (`/zen/v1`)
-    # survives the gateway's `v1` substitution unchanged, yet direct gateway calls still 404'd for a
-    # cause never identified from outside -- replaying the gateway's full header set on a direct
-    # call would not reproduce it. Going through the shim resolves it, which also ruled out the
-    # leading theory that opencode.ai rejects Cloudflare-edge traffic (the shim is a Worker too).
-    # Registered Base URL remains `https://.../<SHIM_TOKEN>/opencode/x`; the shim accepts both the
-    # literal `/x` path now honored by the gateway and the `/v1` path from its former rewrite.
-    ai_gateway_chat_path: /chat/completions
-    chat_path: /chat/completions
-    reset_timezone: UTC
-    accounts:
-      - id: primary
-        api_key_env: OPENCODE_API_KEY
+
   # NVIDIA build.nvidia.com (API Catalog / NIM hosted endpoints). Unlike every other provider
   # above, NVIDIA publishes no rate-limit table at all -- the community-reported baseline is
   # ~40 RPM, account-wide, "dependent on model, use-case, and current overall traffic" per
@@ -1511,69 +1496,7 @@ routes:
     input_per_token: 0.0
     output_per_token: 0.0
 
-  # ==========================================
-  # OPENCODE ZEN ROUTES (OpenCode.ai)
-  # ==========================================
 
-
-  - route_id: opencode_mimo_v2_5_free
-    model: opencode/mimo-v2.5-free
-    provider: opencode
-    upstream_model: mimo-v2.5-free
-    input_context_limit: 200000
-    output_context_limit: 32000
-    account_id: primary
-    concurrency: 1
-    rpm: 30
-    rpd: 500
-    tpm: 100000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-09-09"
-    upstream_429_default: upstream_capacity
-
-  - route_id: opencode_nemotron_3_ultra_free
-    model: opencode/nemotron-3-ultra-free
-    # OpenCode's provider-local name for the same Nemotron 3 Ultra free family exposed by
-    # OpenRouter and Kilo under the explicit NVIDIA model identifier.
-    model_key: nvidia/nemotron-3-ultra-550b-a55b:free
-    provider: opencode
-    upstream_model: nemotron-3-ultra-free
-    input_context_limit: 1000000
-    output_context_limit: 128000
-    account_id: primary
-    concurrency: 1
-    rpm: 20
-    rpd: 0
-    tpm: 100000
-    free: true
-    observed_on: "2026-09-09"
-    upstream_429_default: upstream_capacity
-    input_per_token: 0.0
-    output_per_token: 0.0
-
-  - route_id: opencode_nemotron_3_5_lightning_free
-    model: opencode/nemotron-3.5-lightning-free
-    # NVIDIA documents this text-only MoE as 30B total / 3B active with up to 1M-token context.
-    # Keep its generous advertised context distinct from a proven per-request ceiling: no
-    # OpenCode-specific hard ceiling has been observed yet.
-    provider: opencode
-    upstream_model: nemotron-3.5-lightning-free
-    input_context_limit: 1000000
-    output_context_limit: 128000
-    account_id: primary
-    concurrency: 1
-    # OpenCode does not publish a quota table for its temporary free routes. Start with the
-    # existing free Nemotron pool's conservative pace until production observations refine it.
-    rpm: 20
-    rpd: 200
-    tpm: 100000
-    free: true
-    observed_on: "2026-09-14"
-    upstream_429_default: upstream_capacity
-    input_per_token: 0.0
-    output_per_token: 0.0
 
   # ==========================================
   # NVIDIA BUILD ROUTES (build.nvidia.com / NIM hosted API catalog)
