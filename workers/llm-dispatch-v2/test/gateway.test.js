@@ -183,13 +183,32 @@ test("upstreamCapacityFailure leaves genuine request defects terminal", () => {
   assert.equal(upstreamCapacityFailure(400, { error: "a bare string" }), false);
 });
 
-test("upstreamCapacityFailure applies to 400 only, never to other 4xx", () => {
+test("upstreamCapacityFailure recognizes NVIDIA's provider-side missing-function 404", () => {
+  const nvidia = {
+    status: 404,
+    title: "Not Found",
+    detail: "Function id 'abc' version 'null': Specified function is not found",
+  };
+  assert.equal(upstreamCapacityFailure(404, nvidia), true);
+  assert.equal(
+    upstreamCapacityFailure(404, {
+      error: {
+        message: "Provider returned error",
+        metadata: { raw: JSON.stringify(nvidia) },
+      },
+    }),
+    true,
+  );
+});
+
+test("upstreamCapacityFailure leaves ordinary 4xx terminal", () => {
   // 401/403/404/422 really do blame the request, and a provider echoing "server_error" in one of
   // them must not win the job an unbounded retry loop.
   const body = { error: { type: "server_error", message: "Upstream request failed" } };
-  for (const status of [401, 403, 404, 409, 422, 429]) {
+  for (const status of [401, 403, 409, 422, 429]) {
     assert.equal(upstreamCapacityFailure(status, body), false, `status ${status} must stay terminal`);
   }
+  assert.equal(upstreamCapacityFailure(404, { error: { message: "Model not found" } }), false);
 });
 
 test("parseRetryAfterSeconds parses integer and HTTP date headers", () => {
@@ -319,4 +338,3 @@ test("callAiGateway includes response.headers in its return value", async () => 
     globalThis.fetch = originalFetch;
   }
 });
-

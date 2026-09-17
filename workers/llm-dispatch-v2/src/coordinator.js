@@ -3081,14 +3081,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
               job.lease_route_id
             );
           } else if (isUpstreamClass) {
-            // isTransientRouteFailure above only covers upstream_capacity arriving as a 400
-            // (gateway.js's upstreamCapacityFailure). The other shape -- a 2xx carrying no usable
-            // completion (c7a1a6c: "a 2xx with no completion is not a success") -- reaches here
-            // instead, and without this branch got no cooldown at all: `last_provider_status`
-            // only, so the same saturated route could be reselected on the very next tick and
-            // burn through the whole upstream-capacity retry budget back to back instead of
-            // backing off between attempts (CodeRabbit, 2026-09-13). Same exponential cooldown
-            // authorizeRetry applies to a mid-lease 429 of this class.
+            // The 404 function-not-found shape is upstream capacity too, but uses this branch so
+            // it gets the upstream-capacity retry budget/cooldown rather than the shorter 5xx
+            // budget. The other shape -- a 2xx carrying no usable completion (c7a1a6c: "a 2xx
+            // with no completion is not a success") -- reaches here as well. Without this branch
+            // either saturated route could be reselected on the very next tick and burn through
+            // the retry budget back to back instead of backing off between attempts.
             const ledger = this._getOrCreateRouteLedger(job.lease_route_id, now, {});
             const streak = (ledger.upstream_capacity_streak || 0) + 1;
             sql.exec(

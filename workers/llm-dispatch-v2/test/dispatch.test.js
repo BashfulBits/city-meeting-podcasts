@@ -1326,6 +1326,48 @@ test("a capacity-400 requeues the job and stands the route down, like a final 5x
   assert.equal(second.jobs[0].id, "j-cap-400");
 });
 
+test("a provider missing-function 404 requeues and cools only the affected route", async () => {
+  // NVIDIA NIM reports a retired hosted function as HTTP 404. It is not a malformed job, so the
+  // classifier must preserve the upstream_capacity signal through completeBatch; otherwise this
+  // response is terminal and every large submission is lost before lane backups can activate.
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-cap-404")]);
+
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(first.jobs.length, 1);
+  const claimed = first.jobs[0];
+  const routeId = claimed.route_id;
+
+  const t = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-cap-404",
+      planned_at: claimed.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 500,
+      observed_input_tokens: 400,
+      observed_output_tokens: 0,
+      outcome: "retryable_error",
+      provider_status_code: 404,
+      failure_class: "upstream_capacity",
+    },
+  ]);
+
+  const route = [...sql.exec(
+    "SELECT blocked_until, upstream_capacity_streak FROM routes WHERE route_id=?",
+    routeId,
+  )][0];
+  assert.ok(route.blocked_until && route.blocked_until > t, "the missing function route is cooled");
+  assert.equal(route.upstream_capacity_streak, 1);
+
+  sql.exec("UPDATE routes SET blocked_until = 0 WHERE route_id = ?", routeId);
+  const second = await coordinator.claimDispatchWindow(Date.now() + 120_000, 25);
+  assert.equal(second.jobs.length, 1, "the job must be retried, not destroyed");
+  assert.equal(second.jobs[0].id, "j-cap-404");
+});
+
 test("a genuine 400 still fails the job terminally and leaves the route selectable", async () => {
   // The negative case that keeps the pairing narrow. A real request defect reaches the DO as
   // `terminal_error`, and must not block a healthy route just because it shares a status code.

@@ -248,6 +248,21 @@ def test_classify_generic_4xx():
     assert res.scope == "route"
 
 
+def test_classify_nvidia_missing_function_404_as_upstream_capacity():
+    res = classify_provider_failure(
+        status=404,
+        body={
+            "status": 404,
+            "title": "Not Found",
+            "detail": "Function id 'abc' version 'null': Specified function is not found",
+        },
+        route={"provider": "nvidia"},
+    )
+    assert res.failure_class == "upstream_capacity"
+    assert res.rule_id == "upstream-function-not-found"
+    assert res.scope == "route"
+
+
 def test_zero_provisioned_limit_is_billing_not_pacing():
     """Mistral reports an account with no provisioned allowance as a plain 429 whose message says
     nothing ("Rate limit exceeded", type rate_limited, code 1300) -- the only tell is
