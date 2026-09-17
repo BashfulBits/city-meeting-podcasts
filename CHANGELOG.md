@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Bounded endpoint-contract listing confirmation retry** (`citypods/contracts.py`). A provider
+  listing that fails with a transient transport error now receives one separate confirmation
+  attempt before the monitor files a contract issue. Persistent transport failures and semantic
+  endpoint/parse failures remain failing results.
+
 - **Retry provider-side NVIDIA missing-function 404s** (`citypods/compute/llm_failure_class.py`,
   `citypods/compute/llm.py`, and both dispatch Workers). NVIDIA NIM can return HTTP 404 with a
   `Function id ... is not found` body when a hosted deployment disappears; that response is now
