@@ -324,7 +324,15 @@ export function classifyProviderFailure({ status, body, headers, route }) {
     };
   }
 
-  // 3. HTTP 400 with upstream capacity error in body -> upstream_capacity
+  // 3. Provider-side capacity errors that are misreported as client errors -> upstream_capacity
+  if (status === 404 && upstreamCapacityFailure(status, body)) {
+    return {
+      failure_class: "upstream_capacity",
+      rule_id: "upstream-function-not-found",
+      retry_after_seconds: retryAfterSeconds,
+      scope: "route",
+    };
+  }
   if (status === 400 && upstreamCapacityFailure(status, body)) {
     return {
       failure_class: "upstream_capacity",

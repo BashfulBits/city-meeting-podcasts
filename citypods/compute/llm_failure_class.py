@@ -6,6 +6,7 @@ and direct transport.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -296,6 +297,15 @@ def _is_upstream_400(body: Any) -> bool:
     )
 
 
+def _is_upstream_404(body: Any) -> bool:
+    """Recognize NVIDIA's provider-side missing-function response, not ordinary unknown models."""
+    try:
+        serialized = json.dumps(body).lower()
+    except (TypeError, ValueError):
+        return False
+    return "function id" in serialized and "is not found" in serialized
+
+
 def _has_rate_limit_header(headers: Mapping[str, str]) -> bool:
     for k in headers:
         k_lower = k.lower()
@@ -344,7 +354,15 @@ def classify_provider_failure(
             scope="route",
         )
 
-    # 3. HTTP 400 with upstream capacity error
+    # 3. Provider-side capacity errors misreported as client errors
+    if status == 404 and _is_upstream_404(body):
+        return FailureClassification(
+            failure_class="upstream_capacity",
+            rule_id="upstream-function-not-found",
+            retry_after_seconds=retry_after_seconds,
+            scope="route",
+        )
+
     if status == 400 and _is_upstream_400(body):
         return FailureClassification(
             failure_class="upstream_capacity",

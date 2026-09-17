@@ -15,6 +15,14 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Fixed
+
+- **Retry provider-side NVIDIA missing-function 404s** (`citypods/compute/llm_failure_class.py`,
+  `citypods/compute/llm.py`, and both dispatch Workers). NVIDIA NIM can return HTTP 404 with a
+  `Function id ... is not found` body when a hosted deployment disappears; that response is now
+  classified as `upstream_capacity` so the route is cooled down and configured backup models can
+  take over. Ordinary unknown-model 404s remain terminal request defects.
+
 ### Added
 
 - **Airforce `codestral-latest` and `kimi-k2.7-code` free routes (`config/provider_limits.yml`,

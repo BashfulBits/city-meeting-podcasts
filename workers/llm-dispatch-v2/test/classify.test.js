@@ -45,6 +45,22 @@ test("classifyProviderFailure handles HTTP 400 upstream capacity as upstream_cap
   assert.equal(res.scope, "route");
 });
 
+test("classifyProviderFailure handles NVIDIA missing-function 404 as upstream_capacity", () => {
+  const res = classifyProviderFailure({
+    status: 404,
+    body: {
+      status: 404,
+      title: "Not Found",
+      detail: "Function id 'abc' version 'null': Specified function is not found",
+    },
+    headers: null,
+    route: { provider: "nvidia", route_id: "nvidia/nemotron" },
+  });
+  assert.equal(res.failure_class, "upstream_capacity");
+  assert.equal(res.rule_id, "upstream-function-not-found");
+  assert.equal(res.scope, "route");
+});
+
 test("classifyProviderFailure handles OpenCode MissingSessionID 400 as upstream_capacity", () => {
   const res = classifyProviderFailure({
     status: 400,

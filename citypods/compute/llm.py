@@ -46,7 +46,11 @@ from citypods.compute.llm_deferred import (
     terminal_failure_retry_allowed,
     write_deferred,
 )
-from citypods.compute.llm_failure_class import _is_upstream_400, classify_provider_failure
+from citypods.compute.llm_failure_class import (
+    _is_upstream_400,
+    _is_upstream_404,
+    classify_provider_failure,
+)
 from citypods.compute.llm_policy import (
     DEFAULT_OUTPUT_TOKEN_MARGIN,
     ROUTE_CANDIDATES,
@@ -633,7 +637,7 @@ def _extract_failure_details(source: Any) -> tuple[int, Any, Mapping[str, str]]:
 
 
 def _is_rate_limited_or_capacity(source: Any) -> bool:
-    """Detect HTTP 429 rate limit or HTTP 400 upstream capacity error."""
+    """Detect HTTP 429 or a provider-side capacity error misreported as HTTP 400/404."""
     status = getattr(source, "status_code", None)
     response = getattr(source, "response", None)
     if status is None and response is not None:
@@ -643,6 +647,9 @@ def _is_rate_limited_or_capacity(source: Any) -> bool:
     if status == 400:
         _, body, _ = _extract_failure_details(source)
         return _is_upstream_400(body)
+    if status == 404:
+        _, body, _ = _extract_failure_details(source)
+        return _is_upstream_404(body)
     return False
 
 
