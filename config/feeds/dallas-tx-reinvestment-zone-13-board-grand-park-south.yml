@@ -1,0 +1,15 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Reinvestment Zone 13 Board (Grand Park South) is a recurring distinct body with 4 observed meetings spanning multiple years.
+slug: dallas-tx-reinvestment-zone-13-board-grand-park-south
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Reinvestment Zone 13 Board (Grand Park South)
+lifecycle:
+  status: retired
+  reason: latest observed meeting was 2021-09-29 (1806 days ago)
+podcast_title: 'Dallas: Reinvestment Zone 13 Board (Grand Park South)'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Reinvestment Zone 13 Board (Grand Park South).

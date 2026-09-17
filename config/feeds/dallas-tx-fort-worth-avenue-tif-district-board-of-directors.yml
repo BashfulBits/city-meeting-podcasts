@@ -6,6 +6,25 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: Dallas Fort Worth Avenue TIF District Board of Directors Meeting
+  body_includes:
+    - provider_guid: "346867"
+      body: "Dallas Tax Increment Financing Reinvestment Zone Number Seven Board of Directors Meeting"
+    - provider_guid: "345078"
+      body: "Dallas Grand Park South TIF District Board of Directors Special Called Meeting"
+    - provider_guid: "232846"
+      body: "Dallas Grand Park South TIF District Board of Directors Special Called Meeting"
+    - provider_guid: "326885"
+      body: "Dallas City Center TIF District Downtown Connection Downtown Dallas Development Authority (DDDA) Board of Directors Special Called Joint Meeting"
+    - provider_guid: "325721"
+      body: "Dallas Vickery Meadow TIF District Board of Directors Special Called Meeting"
+    - provider_guid: "325482"
+      body: "Dallas Davis Garden TIF District Board of Directors Special Called Meeting"
+    - provider_guid: "204725"
+      body: "Reinvestment Zone 15 Board Fort Worth Avenue"
+    - provider_guid: "204653"
+      body: "Reinvestment Zone 15 Fort Worth Ave"
+  body_any:
+    - "Reinvestment Zone 15 Fort Worth Avenue"
 lifecycle:
   status: dormant
   reason: irregular series has a 441-day gap and latest meeting was 2026-02-26 (194
