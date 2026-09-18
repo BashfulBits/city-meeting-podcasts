@@ -133,13 +133,10 @@ test("a stale day key means the provider already reset, so the route is ready no
   assert.equal(result.notBeforeAt, NOW, "a rolled-over daily quota must not hold the route");
 });
 
-test("rpd <= 0 keeps its pre-existing pacing meaning (unconstrained here)", () => {
-  // Pins the behaviour rather than endorsing it: fixedWindowReadyAt treated `limit <= 0` as
-  // unlimited while _capacityFraction reads `rpd: 0` as paused. That disagreement predates the
-  // timezone work and is left as-is; a paused route is dropped from the ranking before pacing
-  // is reached, so the inconsistency is not reachable in practice.
+test("rpd:0 is terminally unavailable to the pacing primitive", () => {
   const route = freshRoute({ rpd: 0, rpd_count: 0 });
-  assert.equal(earliestSafeStart(route, job(), NOW, NOW).notBeforeAt, NOW);
+  assert.equal(earliestSafeStart(route, job(), NOW, NOW), null);
+  assert.equal(routeHasCapacityFor(route, job(), NOW, 25), false);
 });
 
 test("earliestSafeStart waits for token budget to refill for an oversized job", () => {

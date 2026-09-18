@@ -39,6 +39,46 @@ test("native Mistral Medium latest routes reject input plus output above context
   assert.deepEqual(eligibleMistralRoutes(131073, 1000), []);
 });
 
+test("paused rpd:0 routes are excluded before free/paid admission", () => {
+  const catalog = {
+    model_aliases: {},
+    model_routes_map: { "example/model": ["paused-free", "paid-fallback"] },
+    routes_by_id: {
+      "paused-free": {
+        route_id: "paused-free",
+        free: true,
+        rpd: 0,
+        input_context_limit: 10000,
+        output_context_limit: 1000,
+      },
+      "paid-fallback": {
+        route_id: "paid-fallback",
+        free: false,
+        input_context_limit: 10000,
+        output_context_limit: 1000,
+      },
+    },
+  };
+  const baseJob = {
+    input_token_estimate: 100,
+    max_output_token_estimate: 50,
+  };
+  const freeJob = {
+    ...baseJob,
+    policy_json: JSON.stringify({ allowed_models: ["example/model"], allow_paid: false }),
+  };
+  const paidJob = {
+    ...baseJob,
+    policy_json: JSON.stringify({ allowed_models: ["example/model"], allow_paid: true }),
+  };
+
+  assert.deepEqual(routesEligibleFor(freeJob, catalog), []);
+  assert.deepEqual(
+    routesEligibleFor(paidJob, catalog).map((route) => route.route_id),
+    ["paid-fallback"],
+  );
+});
+
 // --- backupModelsActive / modelsForJob -------------------------------------------------------
 
 const AGENDA_POLICY = {

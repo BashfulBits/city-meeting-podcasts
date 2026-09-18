@@ -28,6 +28,12 @@ Phase R (Research-Tool Surface)._
   classified as `upstream_capacity` so the route is cooled down and configured backup models can
   take over. Ordinary unknown-model 404s remain terminal request defects.
 
+- **Enforce paused `rpd: 0` routes in v2 admission** (`workers/llm-dispatch-v2/src/routes.js`,
+  `workers/llm-dispatch-v2/src/pacing.js`). A paused free route could remain in a logical model's
+  eligible list and pass the pacing check as immediately ready, causing free-only jobs to call a
+  disabled provider instead of deferring. Paused routes are now filtered before admission and fail
+  closed in the pacing primitive as well.
+
 ### Added
 
 - **Airforce `codestral-latest` and `kimi-k2.7-code` free routes (`config/provider_limits.yml`,
@@ -258,6 +264,11 @@ Phase R (Research-Tool Surface)._
   `mistral/mistral-medium-latest`'s.
 
 ### Removed
+
+- **All paid LLM routes from the production catalog** (`config/provider_limits.yml` and the three
+  generated catalogs). The catalog is now free-only; this removes the OpenRouter, SiliconFlow,
+  DeepSeek Direct, and paid Z.ai fallback legs while retaining their provider definitions for
+  future re-probing. No pipeline version or stored artifact format changes.
 
 - **Discontinued Airforce `mistral-medium-3.5` route (`config/provider_limits.yml`,
   `workers/llm-dispatch-proxy/src/dispatch_limits.json`,

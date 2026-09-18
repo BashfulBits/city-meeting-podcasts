@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 74,
+    "routes_count": 63,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -826,33 +826,6 @@
       "upstream_429_default": "upstream_capacity",
       "structured_output_schema_strip_keys": []
     },
-    "openrouter_meta_llama_llama_3_3_70b_instruct": {
-      "route_id": "openrouter_meta_llama_llama_3_3_70b_instruct",
-      "provider": "openrouter",
-      "upstream_model": "meta-llama/llama-3.3-70b-instruct",
-      "input_context_limit": 131072,
-      "output_context_limit": 16384,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": null,
-      "rpd": null,
-      "tpm": null,
-      "concurrency": 5,
-      "request_start_margin_seconds": null,
-      "free": false,
-      "input_per_token": 1e-07,
-      "output_per_token": 4e-07,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": null,
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_schema_strip_keys": []
-    },
     "sambanova_gemma_4_31b_it_primary": {
       "route_id": "sambanova_gemma_4_31b_it_primary",
       "provider": "sambanova",
@@ -956,168 +929,6 @@
       "observed_rpm": null,
       "observed_burst": 30,
       "observed_input_ceiling": 7000,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_schema_strip_keys": []
-    },
-    "siliconflow_qwen_2_5_72b_primary": {
-      "route_id": "siliconflow_qwen_2_5_72b_primary",
-      "provider": "siliconflow",
-      "upstream_model": "Qwen/Qwen2.5-72B-Instruct",
-      "input_context_limit": 33000,
-      "output_context_limit": 4000,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": null,
-      "rpd": null,
-      "tpm": null,
-      "concurrency": 5,
-      "request_start_margin_seconds": null,
-      "free": false,
-      "input_per_token": 7e-08,
-      "output_per_token": 2.8e-07,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": null,
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_schema_strip_keys": []
-    },
-    "siliconflow_deepseek_v4_flash_primary": {
-      "route_id": "siliconflow_deepseek_v4_flash_primary",
-      "provider": "siliconflow",
-      "upstream_model": "deepseek-ai/DeepSeek-V4-Flash-0731",
-      "input_context_limit": 1000000,
-      "output_context_limit": 384000,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": null,
-      "rpd": null,
-      "tpm": null,
-      "concurrency": 5,
-      "request_start_margin_seconds": null,
-      "free": false,
-      "input_per_token": 4.9e-08,
-      "output_per_token": 1.96e-07,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": null,
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_schema_strip_keys": []
-    },
-    "deepseek_v4_flash_primary": {
-      "route_id": "deepseek_v4_flash_primary",
-      "provider": "deepseek",
-      "upstream_model": "deepseek-v4-flash",
-      "input_context_limit": 1000000,
-      "output_context_limit": 384000,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": null,
-      "rpd": null,
-      "tpm": null,
-      "concurrency": 5,
-      "request_start_margin_seconds": null,
-      "free": false,
-      "input_per_token": 1.4e-07,
-      "output_per_token": 2.8e-07,
-      "pricing": {
-        "periods": [
-          {
-            "effective_at": "1970-01-01T00:00:00+00:00",
-            "input_per_token": 1.4e-07,
-            "output_per_token": 2.8e-07
-          },
-          {
-            "effective_at": "2026-08-16T16:00:00+00:00",
-            "input_per_token": 2.2e-07,
-            "output_per_token": 6.6e-07,
-            "windows": [
-              {
-                "tz": "UTC",
-                "start": "01:00",
-                "end": "04:00",
-                "multiplier": 2.0
-              },
-              {
-                "tz": "UTC",
-                "start": "06:00",
-                "end": "10:00",
-                "multiplier": 2.0
-              }
-            ]
-          }
-        ]
-      },
-      "reset_timezone": null,
-      "observed_on": null,
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_schema_strip_keys": []
-    },
-    "deepseek_v4_pro_primary": {
-      "route_id": "deepseek_v4_pro_primary",
-      "provider": "deepseek",
-      "upstream_model": "deepseek-v4-pro",
-      "input_context_limit": 1000000,
-      "output_context_limit": 384000,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": null,
-      "rpd": null,
-      "tpm": null,
-      "concurrency": 5,
-      "request_start_margin_seconds": null,
-      "free": false,
-      "input_per_token": 4.35e-07,
-      "output_per_token": 8.7e-07,
-      "pricing": {
-        "periods": [
-          {
-            "effective_at": "1970-01-01T00:00:00+00:00",
-            "input_per_token": 4.35e-07,
-            "output_per_token": 8.7e-07
-          },
-          {
-            "effective_at": "2026-08-16T16:00:00+00:00",
-            "input_per_token": 6.6e-07,
-            "output_per_token": 1.98e-06,
-            "windows": [
-              {
-                "tz": "UTC",
-                "start": "01:00",
-                "end": "04:00",
-                "multiplier": 2.0
-              },
-              {
-                "tz": "UTC",
-                "start": "06:00",
-                "end": "10:00",
-                "multiplier": 2.0
-              }
-            ]
-          }
-        ]
-      },
-      "reset_timezone": null,
-      "observed_on": null,
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
@@ -1663,87 +1474,6 @@
       "upstream_429_default": null,
       "structured_output_schema_strip_keys": []
     },
-    "zai_glm_4_7_flashx_primary": {
-      "route_id": "zai_glm_4_7_flashx_primary",
-      "provider": "zai",
-      "upstream_model": "glm-4.7-flashx",
-      "input_context_limit": 200000,
-      "output_context_limit": 131072,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": null,
-      "rpd": null,
-      "tpm": null,
-      "concurrency": 5,
-      "request_start_margin_seconds": null,
-      "free": false,
-      "input_per_token": 7e-08,
-      "output_per_token": 4e-07,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": null,
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_schema_strip_keys": []
-    },
-    "zai_glm_4_7_primary": {
-      "route_id": "zai_glm_4_7_primary",
-      "provider": "zai",
-      "upstream_model": "glm-4.7",
-      "input_context_limit": 200000,
-      "output_context_limit": 131072,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": null,
-      "rpd": null,
-      "tpm": null,
-      "concurrency": 5,
-      "request_start_margin_seconds": null,
-      "free": false,
-      "input_per_token": 6e-07,
-      "output_per_token": 2.2e-06,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": null,
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_schema_strip_keys": []
-    },
-    "zai_glm_5_primary": {
-      "route_id": "zai_glm_5_primary",
-      "provider": "zai",
-      "upstream_model": "glm-5",
-      "input_context_limit": 200000,
-      "output_context_limit": 131072,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": null,
-      "rpd": null,
-      "tpm": null,
-      "concurrency": 5,
-      "request_start_margin_seconds": null,
-      "free": false,
-      "input_per_token": 1e-06,
-      "output_per_token": 3.2e-06,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": null,
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_schema_strip_keys": []
-    },
     "openrouter_google_gemma_4_31b_it_free": {
       "route_id": "openrouter_google_gemma_4_31b_it_free",
       "provider": "openrouter",
@@ -1847,87 +1577,6 @@
       "observed_rpm": null,
       "observed_burst": null,
       "observed_input_ceiling": 249027,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_schema_strip_keys": []
-    },
-    "openrouter_qwen_qwen3_235b_a22b_2507": {
-      "route_id": "openrouter_qwen_qwen3_235b_a22b_2507",
-      "provider": "openrouter",
-      "upstream_model": "qwen/qwen3-235b-a22b-2507",
-      "input_context_limit": 262144,
-      "output_context_limit": 16384,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": null,
-      "rpd": null,
-      "tpm": null,
-      "concurrency": 5,
-      "request_start_margin_seconds": null,
-      "free": false,
-      "input_per_token": 9e-08,
-      "output_per_token": 3.6e-07,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": null,
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_schema_strip_keys": []
-    },
-    "openrouter_mistralai_mistral_small_3_2_24b_instruct": {
-      "route_id": "openrouter_mistralai_mistral_small_3_2_24b_instruct",
-      "provider": "openrouter",
-      "upstream_model": "mistralai/mistral-small-3.2-24b-instruct",
-      "input_context_limit": 256000,
-      "output_context_limit": 16384,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": null,
-      "rpd": null,
-      "tpm": null,
-      "concurrency": 5,
-      "request_start_margin_seconds": null,
-      "free": false,
-      "input_per_token": 9e-08,
-      "output_per_token": 2.7e-07,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": null,
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_schema_strip_keys": []
-    },
-    "openrouter_openai_gpt_4o_mini": {
-      "route_id": "openrouter_openai_gpt_4o_mini",
-      "provider": "openrouter",
-      "upstream_model": "openai/gpt-4o-mini",
-      "input_context_limit": 128000,
-      "output_context_limit": 16384,
-      "hard_input_ceiling": null,
-      "account_id": "primary",
-      "rpm": null,
-      "rpd": null,
-      "tpm": null,
-      "concurrency": 5,
-      "request_start_margin_seconds": null,
-      "free": false,
-      "input_per_token": 1.5e-07,
-      "output_per_token": 6e-07,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": null,
-      "observed_rpm": null,
-      "observed_burst": null,
-      "observed_input_ceiling": null,
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
@@ -2408,8 +2057,7 @@
       "gemini_3_5_flash_secondary"
     ],
     "meta-llama/llama-3.3-70b-instruct": [
-      "sambanova_llama_3_3_70b_instruct_primary",
-      "openrouter_meta_llama_llama_3_3_70b_instruct"
+      "sambanova_llama_3_3_70b_instruct_primary"
     ],
     "openai/gpt-oss-120b": [
       "groq_gpt_oss_120b_primary",
@@ -2420,19 +2068,6 @@
     ],
     "qwen/qwen3.8-27b": [
       "groq_qwen_3_8_27b_primary"
-    ],
-    "qwen/qwen-2.5-72b-instruct": [
-      "siliconflow_qwen_2_5_72b_primary"
-    ],
-    "deepseek/deepseek-v4-flash": [
-      "siliconflow_deepseek_v4_flash_primary",
-      "deepseek_v4_flash_primary",
-      "nvidia_deepseek_v4_flash_0731_free",
-      "orcarouter_deepseek_v4_flash_free"
-    ],
-    "deepseek/deepseek-v4-pro": [
-      "deepseek_v4_pro_primary",
-      "nvidia_deepseek_v4_pro_0813_free"
     ],
     "mistral/codestral-2508": [
       "mistral_codestral_2508_primary",
@@ -2471,15 +2106,6 @@
     "zai/glm-4.5-flash": [
       "zai_glm_4_5_flash_primary"
     ],
-    "zai/glm-4.7-flashx": [
-      "zai_glm_4_7_flashx_primary"
-    ],
-    "zai/glm-4.7": [
-      "zai_glm_4_7_primary"
-    ],
-    "zai/glm-5": [
-      "zai_glm_5_primary"
-    ],
     "nvidia/nemotron-3-ultra-550b-a55b:free": [
       "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
       "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -2489,20 +2115,18 @@
       "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
       "nvidia_nemotron_3_super_120b_a12b_free"
     ],
-    "openrouter/qwen/qwen3-235b-a22b-2507": [
-      "openrouter_qwen_qwen3_235b_a22b_2507"
-    ],
-    "openrouter/mistralai/mistral-small-3.2-24b-instruct": [
-      "openrouter_mistralai_mistral_small_3_2_24b_instruct"
-    ],
-    "openrouter/openai/gpt-4o-mini": [
-      "openrouter_openai_gpt_4o_mini"
-    ],
     "kilo/stepfun/step-3.7-flash:free": [
       "kilo_stepfun_step_3_7_flash_free"
     ],
     "moonshotai/kimi-k3": [
       "nvidia_kimi_k3_free"
+    ],
+    "deepseek/deepseek-v4-pro": [
+      "nvidia_deepseek_v4_pro_0813_free"
+    ],
+    "deepseek/deepseek-v4-flash": [
+      "nvidia_deepseek_v4_flash_0731_free",
+      "orcarouter_deepseek_v4_flash_free"
     ],
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": [
       "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free"
@@ -2521,7 +2145,6 @@
     ]
   },
   "model_aliases": {
-    "deepseek/deepseek-v4-flash-0731": "deepseek/deepseek-v4-flash",
     "mistral/mistral-medium-2508": "mistral/mistral-medium-latest",
     "mistral/mistral-medium-2505": "mistral/mistral-medium-latest",
     "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -2553,8 +2176,6 @@
     "gemini/gemini-3.5-flash": "gemini/gemini-3.5-flash",
     "Meta-Llama-3.3-70B-Instruct": "meta-llama/llama-3.3-70b-instruct",
     "sambanova/Meta-Llama-3.3-70B-Instruct": "meta-llama/llama-3.3-70b-instruct",
-    "meta-llama/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct",
-    "openrouter/meta-llama/llama-3.3-70b-instruct": "meta-llama/llama-3.3-70b-instruct",
     "gemma-4-31B-it": "google/gemma-4-31b-it",
     "sambanova/gemma-4-31B-it": "google/gemma-4-31b-it",
     "openai/gpt-oss-120b": "openai/gpt-oss-120b",
@@ -2563,14 +2184,6 @@
     "groq/qwen/qwen3.6-27b": "qwen/qwen3.6-27b",
     "qwen/qwen3.8-27b": "qwen/qwen3.8-27b",
     "groq/qwen/qwen3.8-27b": "qwen/qwen3.8-27b",
-    "Qwen/Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",
-    "siliconflow/Qwen/Qwen2.5-72B-Instruct": "qwen/qwen-2.5-72b-instruct",
-    "deepseek-ai/DeepSeek-V4-Flash-0731": "deepseek/deepseek-v4-flash",
-    "siliconflow/deepseek-ai/DeepSeek-V4-Flash-0731": "deepseek/deepseek-v4-flash",
-    "deepseek-v4-flash": "deepseek/deepseek-v4-flash",
-    "deepseek/deepseek-v4-flash": "deepseek/deepseek-v4-flash",
-    "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
-    "deepseek/deepseek-v4-pro": "deepseek/deepseek-v4-pro",
     "codestral-2508": "mistral/codestral-2508",
     "mistral/codestral-2508": "mistral/codestral-2508",
     "devstral-2512": "mistral/devstral-2512",
@@ -2587,12 +2200,6 @@
     "zai/glm-4.7-flash": "zai/glm-4.7-flash",
     "glm-4.5-flash": "zai/glm-4.5-flash",
     "zai/glm-4.5-flash": "zai/glm-4.5-flash",
-    "glm-4.7-flashx": "zai/glm-4.7-flashx",
-    "zai/glm-4.7-flashx": "zai/glm-4.7-flashx",
-    "glm-4.7": "zai/glm-4.7",
-    "zai/glm-4.7": "zai/glm-4.7",
-    "glm-5": "zai/glm-5",
-    "zai/glm-5": "zai/glm-5",
     "google/gemma-4-31b-it:free": "google/gemma-4-31b-it",
     "openrouter/google/gemma-4-31b-it:free": "google/gemma-4-31b-it",
     "google/gemma-4-26b-a4b-it:free": "google/gemma-4-26b-a4b-it",
@@ -2600,12 +2207,6 @@
     "nvidia/nemotron-3-ultra-550b-a55b:free": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nemotron-3-super-120b-a12b:free": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "openrouter/nvidia/nemotron-3-super-120b-a12b:free": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-    "qwen/qwen3-235b-a22b-2507": "openrouter/qwen/qwen3-235b-a22b-2507",
-    "openrouter/qwen/qwen3-235b-a22b-2507": "openrouter/qwen/qwen3-235b-a22b-2507",
-    "mistralai/mistral-small-3.2-24b-instruct": "openrouter/mistralai/mistral-small-3.2-24b-instruct",
-    "openrouter/mistralai/mistral-small-3.2-24b-instruct": "openrouter/mistralai/mistral-small-3.2-24b-instruct",
-    "openai/gpt-4o-mini": "openrouter/openai/gpt-4o-mini",
-    "openrouter/openai/gpt-4o-mini": "openrouter/openai/gpt-4o-mini",
     "stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
     "kilo/stepfun/step-3.7-flash:free": "kilo/stepfun/step-3.7-flash:free",
     "moonshotai/kimi-k3": "moonshotai/kimi-k3",

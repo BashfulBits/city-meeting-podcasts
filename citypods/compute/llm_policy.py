@@ -456,33 +456,6 @@ if not _GENERATED_ROUTES:
             quota=QuotaPolicy(rpm=15, rpd=500, tpm=250_000, reset_timezone="America/Los_Angeles"),
             pricing=PricingPolicy(),
         ),
-        "deepseek/deepseek-v4-flash": LLMRoute(
-            model="deepseek/deepseek-v4-flash",
-            transport="direct",
-            transports=("direct",),
-            free=False,
-            # Paid route: the maintainer confirmed there is no provider daily request allowance.
-            # Cost telemetry remains active, but a speculative calendar-day ceiling must not stall
-            # bounded research or later explicitly authorized paid work.
-            quota=QuotaPolicy(),
-            pricing=PricingPolicy(
-                input_per_token=0.14e-6,
-                output_per_token=0.28e-6,
-                windows=(_DEEPSEEK_WINDOW,),
-            ),
-        ),
-        "deepseek/deepseek-v4-pro": LLMRoute(
-            model="deepseek/deepseek-v4-pro",
-            transport="direct",
-            transports=("direct",),
-            free=False,
-            quota=QuotaPolicy(),
-            pricing=PricingPolicy(
-                input_per_token=0.435e-6,
-                output_per_token=0.87e-6,
-                windows=(_DEEPSEEK_WINDOW,),
-            ),
-        ),
         "mistral/mistral-large-2512": LLMRoute(
             model="mistral/mistral-large-2512",
             transport="llm-dispatch",

@@ -17,7 +17,6 @@ from citypods.compute.llm import (
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
     LLMUpstreamPassthroughError,
-    _messages,
     _pacing_wait_seconds,
     _priced_actual,
     _retry_after_seconds,
@@ -32,7 +31,6 @@ from citypods.compute.llm_policy import (
     ROUTE_REGISTRY,
     ROUTES,
     LLMRequestPolicy,
-    estimate_tokens,
 )
 from citypods.compute.structured import register_response_model
 from tests._cas_fake import MemStorage
@@ -873,41 +871,6 @@ def test_gemma_dispatch_payload_uses_the_same_compiled_schema_profile():
     assert "maximum" not in rendered
 
 
-def test_deepseek_structured_request_includes_schema_in_initial_prompt():
-    calls = []
-
-    def completion(**kwargs):
-        calls.append(kwargs)
-        return structured_response('{"value":"ok"}')
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(model="deepseek/deepseek-v4-flash"), completion=completion
-    )
-    backend.run_inference(job(content="meeting text", structured_output="test-output"))
-
-    sent = calls[0]
-    assert sent["response_format"] == {"type": "json_object"}
-    system = next(message for message in sent["messages"] if message["role"] == "system")
-    assert "JSON Schema" in system["content"]
-    assert json.dumps(ExampleOutput.model_json_schema(), sort_keys=True) in system["content"]
-
-
-def test_deepseek_queue_payload_counts_the_rendered_schema_message():
-    backend = LiteLLMBackend(LLMBackendConfig(model="deepseek/deepseek-v4-flash"))
-    policy = LLMRequestPolicy(allowed_models=("deepseek/deepseek-v4-flash",), queue_only=True)
-    inference_job = job(content="x", structured_output="test-output", max_tokens=1024)
-    payload = backend._payload(
-        inference_job,
-        ExampleOutput,
-        resolved_model="deepseek/deepseek-v4-flash",
-        policy=policy,
-        estimated_tokens=1,
-        input_tokens_estimate=1,
-        output_token_budget=1024,
-    )
-    assert estimate_tokens(payload["messages"]) > estimate_tokens(_messages(inference_job))
-
-
 def test_gemini_structured_request_relaxes_constraint_keywords_only():
     """Gemini's native schema mode 400s specifically on minLength/maxLength/minimum/maximum/
     minItems/maxItems (confirmed against the live API via citypods/llm_compat_probe.py's
@@ -1106,25 +1069,6 @@ def test_schema_variant_model_preserves_name_and_leaves_original_untouched():
     assert issubclass(Relaxed, ConstrainedOutput)
     assert "minLength" not in json.dumps(Relaxed.model_json_schema())
     assert ConstrainedOutput.model_json_schema()["properties"]["value"]["minLength"] == 1
-
-
-def test_deepseek_instructor_json_mode_retries_pydantic_validation_once():
-    calls = []
-
-    def completion(**kwargs):
-        calls.append(kwargs)
-        content = '{"value":42}' if len(calls) == 1 else '{"value":"ok"}'
-        return structured_response(content)
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(model="deepseek/deepseek-v4-flash"), completion=completion
-    )
-    result = backend.run_inference(job(content="meeting text", structured_output="test-output"))
-
-    assert result.output["choices"][0]["message"]["content"] == '{"value":"ok"}'
-    assert len(calls) == 2
-    assert calls[0]["response_format"] == {"type": "json_object"}
-    assert any("validation" in str(message["content"]).lower() for message in calls[1]["messages"])
 
 
 def test_deepseek_invalid_reply_fails_after_one_instructor_retry():
@@ -1982,8 +1926,8 @@ def test_every_custom_provider_records_how_it_is_registered():
         for route in ROUTE_REGISTRY.values()
         if (route.ai_gateway_slug or "").startswith("custom-")
     }
-    assert configured == set(CUSTOM_PROVIDER_GATEWAY_PATHS), (
-        "custom providers changed; record the new provider's Cloudflare-side registration in "
+    assert configured <= set(CUSTOM_PROVIDER_GATEWAY_PATHS), (
+        "an active custom provider is missing its Cloudflare-side registration in "
         "CUSTOM_PROVIDER_GATEWAY_PATHS (and see workers/llm-provider-shim/README.md for the "
         "gateway join compatibility contract)"
     )
@@ -2006,7 +1950,7 @@ def test_custom_provider_routes_use_their_recorded_gateway_path(route):
 
 
 # Only single-provider models belong here. A logical model served by several providers -- such as
-# `deepseek/deepseek-v4-flash`, which spans deepseek, custom-siliconflow, and custom-nvidia -- has
+# `deepseek/deepseek-v4-flash`, which spans OrcaRouter and custom-nvidia -- has
 # no fixed gateway slug: the scheduler picks whichever physical route has
 # capacity, so pinning one slug end-to-end would assert on scheduler choice rather than on URL
 # construction. The catalog test above covers those routes directly.
