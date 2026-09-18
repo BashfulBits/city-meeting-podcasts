@@ -50,7 +50,10 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert set(gemma) == set(compile_llm_limits._WORKER_ROUTE_FIELDS)
     assert gemma["route_id"] == "gemma_4_31b_primary"
     samba = worker["routes_by_id"]["sambanova_llama_3_3_70b_instruct_primary"]
-    assert samba["rpd"] == 20
+    assert samba["rpd"] == 0
+    samba_gemma = worker["routes_by_id"]["sambanova_gemma_4_31b_it_primary"]
+    assert samba_gemma["rpd"] == 20
+    assert "sambanova_gemma_4_31b_it_primary" in worker["model_routes_map"]["google/gemma-4-31b-it"]
     assert worker["providers"]["sambanova"]["rpm"] == 20
     assert worker["providers"]["sambanova"]["ai_gateway_max_attempts"] == 1
     assert worker["providers"]["nvidia"]["concurrency"] == 2

@@ -116,7 +116,7 @@ Phase R (Research-Tool Surface)._
   three-second remux and falsely reported an upstream CDN throttle. This restores a meaningful
   upstream/proxy contract check; it changes no production route, pipeline version, or stored
   artifact.
-  
+
 - **LLM tag tournament incrementally decodes its archival source records.** It retains only a
   bounded recent-candidate window while scanning each source, so one large JSON archive cannot
   monopolize Python or force the tournament to materialize every historical record before it can
@@ -128,7 +128,7 @@ Phase R (Research-Tool Surface)._
   evidence, then records its selected sample count. This keeps long restartable reads observable
   in hosted-runner logs and identifies the exact phase if the runner is interrupted. No pipeline
   version or stored artifact format changes.
-  
+
 - **AI Gateway custom-provider probes now retry a one-off timeout or 5xx once,** while preserving
   immediate failures for 404s and other semantic 4xx responses. z.ai's specific Alibaba WAF 405
   page is recorded as an upstream-availability warning rather than misclassified as a Custom
@@ -142,7 +142,7 @@ Phase R (Research-Tool Surface)._
   Scoped restores also skip a full state listing when a legacy deployment has no remote manifest.
   This is an operational reliability fix only; no pipeline version or stored artifact format
   changes.
-  
+
 - **OpenCode's catalog now includes NVIDIA Nemotron 3.5 Lightning as a free, text-only route,**
   and the live custom-provider contract probe uses it instead of Mimo V2.5, which repeatedly
   reached the probe's 60-second read timeout. Lightning's 30B-total/3B-active MoE is a candidate
@@ -178,7 +178,7 @@ Phase R (Research-Tool Surface)._
   sampling step before it could publish the champion ticket. The job now has a 180-minute
   backstop and the sampling step has a 165-minute limit, matching the other asynchronous LLM
   lanes while preserving time for state persistence and ticket publication.
-  
+
 - **Recovered AI Gateway custom-provider routing after Cloudflare changed its URL join.** The
   latest Endpoint contracts run on 2026-09-15 showed that the gateway now honors registered Base
   URL paths, so the old compensating `/v1` caller paths double-prefixed Airforce, SiliconFlow,
@@ -194,7 +194,7 @@ Phase R (Research-Tool Surface)._
   enrich steps** and grant the minimal `actions: read` permission. This re-enables graceful yield
   when a newer run is queued; without it, the jobs only stopped at their wall-clock budget and
   emitted `GITHUB_TOKEN unset — graceful yield disabled`.
-  
+
 - **City discovery auxiliary eligibility now restores only configured source records**
   (`scripts/city_discovery.py`, `citypods/state.py`). The weekly scan previously downloaded the
   entire durable state snapshot, including thousands of unrelated sidecars, before measuring recent
@@ -324,6 +324,11 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **SambaNova route health cleanup.** Removed the stale SambaNova Qwen2.5-72B route, paused the
+  SambaNova Llama 3.3 70B route after 820 retained AI Gateway attempts produced zero successes,
+  and added the live-probed SambaNova Gemma 4 31B route to the existing Gemma model pool. The
+  working OpenRouter Llama route remains available; no stored artifacts are invalidated and no
+  provider backfill is triggered by this routing-only change.
 
 - **Direct-transport failure classification parity & sibling-route capacity retry (PR-6 /
   Initiative 20; review/45 §20.9).**
@@ -1098,7 +1103,7 @@ Phase R (Research-Tool Surface)._
   from erasing settled spend and sibling reservations. Existing incorrect balances require an
   operator correction; the fix does not infer historical charges. No pipeline version changes or
   artifact backfill. The configured provider caps and reserves are unchanged.
-  
+
 - **Reproducible Worker deployments and documented shim-token rotation (GH#1328).** All five
   Wrangler action inputs now pin `4.129.0`, with a Renovate npm regex tracker on the weekly
   hygiene cadence and reviewed upgrades. Wrangler is excluded from the output-affecting custom
@@ -1230,7 +1235,7 @@ Phase R (Research-Tool Surface)._
   provisional `llm-pending` counts for replayed `JobResult` items or submission errors to eliminate
   double-counting while preserving accurate stage totals. No recipe, artifact, or pipeline
   version changes.
-  
+
 - **Granicus Worker fallback respects slice download caps on truncated probes.**
   `download_verified` in `citypods/granicus_chunked.py` previously treated `max_bytes` solely as a
   remote media cap (`total > max_bytes`), causing truncated media-fetch probes with an 8 MB cap
@@ -1762,7 +1767,7 @@ Phase R (Research-Tool Surface)._
   repair, leave migration incomplete until every canonical read succeeds, and continue reconciling
   independent records; downloads use unique per-call staging files; strict reads still surface
   authentication, configuration, and other non-transient errors.
-  
+
 - **LLM dispatch V2 deferred schema corrections and moments reconciliation.** The standalone
   deferred sweep now registers the `moment-extraction` response contract. It also stages one
   corrected v2 payload and submits it through a durable schema-retry endpoint that clones the
@@ -2125,7 +2130,7 @@ Phase R (Research-Tool Surface)._
   global lock, eliminating race conditions in multi-threaded worker pools where concurrent initial
   invocations caused `ValueError: duplicate or empty structured-output contract`. Incompatible
   schemas still fail closed, rather than silently reusing the wrong response contract.
-  
+
 - **ASR Quality Eval MMS_FA model caching and dependency cascade.** Added
   `scripts/prepare_mms_fa.py` to provide a robust local cache → B2 mirror → upstream Meta CDN
   download cascade for the L2 CTC aligner checkpoint (`model.pt`), eliminating CI failures on
@@ -2137,7 +2142,7 @@ Phase R (Research-Tool Surface)._
   dependency, and preserve its selected model matrix. Added aligner model caching to the `align`
   matrix lane in `.github/workflows/asr.yml`, and updated
   `review/22-dependency-and-reproducibility-policy.md`.
-  
+
 - **Separate per-lane chapter maintenance leases and key-by-key candidate merge.** Separated the
   shared chapter maintenance mutex into independent per-lane R2 CAS objects
   (`maintenance-leases/chapter-agenda.json` for `chapter-agenda.yml` and
@@ -2265,7 +2270,7 @@ Phase R (Research-Tool Surface)._
   `AgendaTextStage` now requires the artifact key for its accepted-document reuse fast path, so a
   missing pointer cannot permanently prevent chapter dispatch. This is a metadata repair only:
   it does not bump the agenda pipeline version or invalidate completed agenda documents globally.
-  
+
 - **`/remedy` command to re-run remediation on an issue that grew new rows.** `audit.yml`
   dispatches `remedy-unexpected-bodies.yml` automatically, but only on the run that *creates* a
   consolidated `unexpected-body` issue — not on a later run that adds or changes rows on one
@@ -2520,7 +2525,7 @@ Phase R (Research-Tool Surface)._
   while scheduled logs expose only request/route/status identifiers and never prompts, API keys, or
   raw provider bodies. This makes future Google/Gemma failures diagnosable without changing the
   asynchronous response contract.
-  
+
 - **LLM pricing is now effective-dated and YAML-driven.** `config/provider_limits.yml` can define
   input/output rates and UTC peak windows per physical route; the compiler carries those periods to
   both the Python scheduler and the dispatch Worker. DeepSeek V4 Flash and Pro include the August 16,
@@ -2709,7 +2714,7 @@ Phase R (Research-Tool Surface)._
   persisted even when selection finds no route, so quota state does not remain on an old day key.
   This changes only ephemeral coordination state (`state/llm_budget.json` and the dispatch Worker
   budget); no durable catalog artifact is invalidated or backfilled.
-  
+
 - **External GPU-worker memory and billing telemetry now match the deployed resource model.** Modal
   settlement uses `Workspace.from_context().billing.report()` instead of the deprecated billing
   helper, with an explicit fallback when the report cannot be queried or has no matching function
@@ -3745,7 +3750,7 @@ Phase R (Research-Tool Surface)._
   feed now composes with its official CivicEngage City Council agenda and minutes archives. The
   auxiliary adapter joins dated archive rows without creating document-only podcast episodes; links
   remain additive and existing CivicMedia media/audio identities are unchanged.
-  
+
 - **Swagit archive pagination and Austin aggregate coverage (R11).** Swagit view fetches now follow
   every advertised archive page instead of only the first 20 rows. Austin retains its dedicated body
   feeds and adds a city-wide all-boards-and-commissions projection; overlapping recordings reconcile

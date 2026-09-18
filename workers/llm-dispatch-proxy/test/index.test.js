@@ -2065,7 +2065,12 @@ test("dispatchOne applies a provider-specific AI Gateway retry override", async 
   const model = "meta-llama/llama-3.3-70b-instruct";
   const routeMap = DISPATCH_LIMITS.model_routes_map[model];
   const originalRouteMap = [...routeMap];
+  const sambaRoute = DISPATCH_LIMITS.routes_by_id.sambanova_llama_3_3_70b_instruct_primary;
+  const originalSambaRpd = sambaRoute.rpd;
   DISPATCH_LIMITS.model_routes_map[model] = ["sambanova_llama_3_3_70b_instruct_primary"];
+  // The production route is intentionally paused (rpd: 0); this test exercises credential/header
+  // construction independently of route admission, so temporarily give the fixture capacity.
+  sambaRoute.rpd = 20;
   try {
     await handleRequest(chatRequest(undefined, "samba-gw-retry", model), env);
     const calls = [];
@@ -2080,6 +2085,7 @@ test("dispatchOne applies a provider-specific AI Gateway retry override", async 
     assert.equal(calls[0].body.model, "Meta-Llama-3.3-70B-Instruct");
   } finally {
     DISPATCH_LIMITS.model_routes_map[model] = originalRouteMap;
+    sambaRoute.rpd = originalSambaRpd;
   }
 });
 
@@ -2456,24 +2462,25 @@ test("dispatchBatch admits multiple Gemma-4 requests in a single batch with stag
 
 test("dispatchBatch defers same-route candidates when TPM delay exceeds max stagger", async () => {
   const env = isolatedEnv();
-  // Request with 8000 tokens. google/gemma-4-31b-it maps to 4 routes: two Gemini accounts
+  // Request with 8000 tokens. google/gemma-4-31b-it maps to 5 routes: two Gemini accounts
   // (7200 compiled TPM each -> a 66.7s reuse interval, far past the 20s in-batch stagger ceiling),
   // OpenRouter's free leg (no TPM cap, paced only by its 5 RPM -> 12s reuse interval), and NVIDIA
   // build's leg. This scenario is intentionally exact-number-pinned against the real compiled
   // catalog rather than hand-derived, since the ranking that decides which route absorbs each
   // reuse is its own logic -- so it must be re-probed whenever those limits move.
   //
-  // Re-probed 2026-08-30 after NVIDIA's concurrency was raised 1 -> 4: 8 offered requests admit
-  // exactly 5 -- one per Gemini account, one on OpenRouter, and *two* on NVIDIA, the second via a
-  // single ~15s in-batch paced wait inside the 20s stagger ceiling.
+  // Re-probed 2026-09-18 after adding SambaNova's live-probed route: 8 offered requests admit
+  // exactly 6 -- one per Gemini account, one on OpenRouter, one on SambaNova, and *two* on NVIDIA,
+  // the second via a single ~15s in-batch paced wait inside the 20s stagger ceiling.
   //
   // NVIDIA's second slot is now bounded by TPM, not concurrency: at 18000 compiled TPM two
   // 8000-token requests fit (16000) and a third does not (24000). That is the intended shape of
   // the change -- concurrency should stop being the binding constraint and let the real rate
   // limits bind instead.
   //
-  // History, since this number has moved twice: it was 7 before 2026-08-29 (NVIDIA serving 4 via
-  // 3 paced waits at 100000 TPM), then 4 when concurrency was capped at 1 that day, now 5.
+  // History, since this number has moved three times: it was 7 before 2026-08-29 (NVIDIA serving 4
+  // via 3 paced waits at 100000 TPM), then 4 when concurrency was capped at 1 that day, then 5
+  // after NVIDIA's TPM correction, and now 6 with SambaNova's added route.
   for (let i = 0; i < 8; i += 1) {
     await handleRequest(
       chatRequest(
@@ -2515,9 +2522,9 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
   );
 
   assert.equal(batchResult.status, "completed");
-  assert.equal(batchResult.count, 5);
-  assert.equal(batchResult.completedCount, 5);
-  assert.equal(calls.length, 5);
+  assert.equal(batchResult.count, 6);
+  assert.equal(batchResult.completedCount, 6);
+  assert.equal(calls.length, 6);
   // Exactly one paced wait: NVIDIA's second request, spaced by its own rpm.
   assert.equal(slept.length, 1, "NVIDIA's second slot arrives via one in-batch paced wait");
   assert.ok(slept[0] <= 20_000, "and it stays inside the 20s max stagger");
@@ -2531,12 +2538,12 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
   const completedObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "completed",
   );
-  assert.equal(completedObjects.length, 5);
+  assert.equal(completedObjects.length, 6);
   const pendingObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "pending",
   );
-  // 8 offered, 5 admitted, so 3 stay pending for a later batch.
-  assert.equal(pendingObjects.length, 3);
+  // 8 offered, 6 admitted, so 2 stay pending for a later batch.
+  assert.equal(pendingObjects.length, 2);
 });
 
 test("dispatchBatch runs four independently paced routes concurrently", async () => {
@@ -2544,7 +2551,7 @@ test("dispatchBatch runs four independently paced routes concurrently", async ()
   const models = [
     "mistral/mistral-large-2512",
     "gemini/gemini-3-flash-preview",
-    "meta-llama/llama-3.3-70b-instruct",
+    "google/gemma-4-31b-it",
     "deepseek/deepseek-v4-flash",
   ];
   for (const [index, model] of models.entries()) {
