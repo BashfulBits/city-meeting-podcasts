@@ -887,6 +887,7 @@ def load_deferred_snapshot(
     should_stop: Callable[[], bool] | None = None,
     read_workers: int = SNAPSHOT_READ_WORKERS,
     reconcile_only: bool = False,
+    include_ineligible: bool = False,
 ) -> DeferredSnapshot:
     """Read canonical records once, using the advisory index after migration.
 
@@ -894,7 +895,21 @@ def load_deferred_snapshot(
     makes rollout safe for existing records and for a repair that is interrupted halfway through.
     A transiently unavailable canonical object is retained as an unavailable snapshot entry so
     independent records can still be reconciled; callers should inspect ``unavailable_reads``.
+
+    ``include_ineligible`` is an operator-maintenance escape hatch. The ordinary indexed path
+    lists only route partitions with current capacity, which is ideal for reconciliation but would
+    hide records pinned to a currently exhausted or paused route from a cleanup/classification
+    pass. It deliberately performs a full canonical-prefix listing and should not be used by the
+    recurring sweep.
     """
+    if include_ineligible:
+        return _load_snapshot_from_keys(
+            storage,
+            storage.list_objects(DEFERRED_PREFIX),
+            deadline_at=deadline_at,
+            should_stop=should_stop,
+            read_workers=read_workers,
+        )
     if reconcile_only:
         return load_reconcile_snapshot(
             storage,
