@@ -92,6 +92,16 @@ function configuredLimit(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseJsonObject(value, fallback = {}) {
+  if (typeof value !== "string" || value.trim() === "") return fallback;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export class LLMSchedulerDO extends DurableObjectBase {
   constructor(ctx, env) {
     super(ctx, env);
@@ -262,6 +272,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
         bundle_count_today                  INTEGER NOT NULL DEFAULT 0,
         jobs_ingested_today                 INTEGER NOT NULL DEFAULT 0,
         ingress_write_units_today           INTEGER NOT NULL DEFAULT 0,
+        claim_empty_count_today             INTEGER NOT NULL DEFAULT 0,
+        claim_reason_counts_json            TEXT NOT NULL DEFAULT '{}',
+        last_claim_at                       INTEGER,
+        last_claim_result                   TEXT NOT NULL DEFAULT '',
+        last_claim_reason                   TEXT NOT NULL DEFAULT '',
+        last_claim_diagnostics_json         TEXT NOT NULL DEFAULT '{}',
         cleanup_cursor                      TEXT,
         next_maintenance_alarm_at           INTEGER
       );
@@ -344,6 +360,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
       "CREATE INDEX IF NOT EXISTS idx_jobs_purpose_state_created ON jobs (purpose, state, created_at)"
     );
     this._ensureColumn("scheduler", "ingress_write_units_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "claim_reason_counts_json", "TEXT NOT NULL DEFAULT '{}'");
+    this._ensureColumn("scheduler", "last_claim_at", "INTEGER");
+    this._ensureColumn("scheduler", "last_claim_result", "TEXT NOT NULL DEFAULT ''");
+    this._ensureColumn("scheduler", "last_claim_reason", "TEXT NOT NULL DEFAULT ''");
+    this._ensureColumn("scheduler", "last_claim_diagnostics_json", "TEXT NOT NULL DEFAULT '{}'");
     // The job_models_backfill_*/legacy_retryable_recovery_*/migration_*_today columns that used to
     // be retrofitted here were the one-time compatibility migration's own bookkeeping (review/44's
     // "Durable Objects rows-read overage retrospective"). Both migrations completed in production
@@ -425,6 +447,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["token_reservation", "INTEGER NOT NULL DEFAULT 0"],
       ["purpose", "TEXT NOT NULL DEFAULT ''"],
       ["ingress_write_units_today", "INTEGER NOT NULL DEFAULT 0"],
+      ["claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0"],
+      ["claim_reason_counts_json", "TEXT NOT NULL DEFAULT '{}'"],
+      ["last_claim_at", "INTEGER"],
+      ["last_claim_result", "TEXT NOT NULL DEFAULT ''"],
+      ["last_claim_reason", "TEXT NOT NULL DEFAULT ''"],
+      ["last_claim_diagnostics_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["mistral_latest_migrated", "INTEGER NOT NULL DEFAULT 0"],
       ["reservation_rpm_window_start", "INTEGER NOT NULL DEFAULT 0"],
       ["reservation_rpd_day_key", "TEXT NOT NULL DEFAULT ''"],
@@ -763,14 +791,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const sql = this._getSql();
     const today = this._currentUtcDay(now);
     const rows = [...sql.exec(
-      `SELECT utc_day, bundle_count_today, jobs_ingested_today, ingress_write_units_today
+      `SELECT utc_day, bundle_count_today, jobs_ingested_today, ingress_write_units_today,
+              claim_empty_count_today, claim_reason_counts_json, last_claim_at,
+              last_claim_result, last_claim_reason, last_claim_diagnostics_json
        FROM scheduler WHERE id = 1`
     )];
     if (rows.length === 0) {
       sql.exec(
         `INSERT INTO scheduler (
-          id, utc_day, bundle_count_today, jobs_ingested_today, ingress_write_units_today
-        ) VALUES (1, ?, 0, 0, 0)`,
+          id, utc_day, bundle_count_today, jobs_ingested_today, ingress_write_units_today,
+          claim_empty_count_today, claim_reason_counts_json
+        ) VALUES (1, ?, 0, 0, 0, 0, '{}')`,
         today
       );
       return {
@@ -778,13 +809,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
         bundle_count_today: 0,
         jobs_ingested_today: 0,
         ingress_write_units_today: 0,
+        claim_empty_count_today: 0,
+        claim_reason_counts_json: "{}",
       };
     }
     const sched = rows[0];
     if (sched.utc_day !== today) {
       sql.exec(
         `UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0,
-         ingress_write_units_today = 0 WHERE id = 1`,
+         ingress_write_units_today = 0, claim_empty_count_today = 0,
+         claim_reason_counts_json = '{}' WHERE id = 1`,
         today
       );
       return {
@@ -793,6 +827,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         bundle_count_today: 0,
         jobs_ingested_today: 0,
         ingress_write_units_today: 0,
+        claim_empty_count_today: 0,
+        claim_reason_counts_json: "{}",
       };
     }
     return sched;
@@ -1331,12 +1367,35 @@ export class LLMSchedulerDO extends DurableObjectBase {
     )];
     const catalog = this._dispatchLimits();
     const windowSeconds = this._dispatchWindowSecondsForStats();
+    const leasedByRoute = new Map();
+    for (const row of sql.exec(
+      "SELECT lease_route_id, COUNT(*) AS n FROM jobs WHERE state = 'leased' GROUP BY lease_route_id"
+    )) {
+      if (row.lease_route_id) leasedByRoute.set(row.lease_route_id, row.n);
+    }
+    const leasedByProvider = new Map();
+    for (const [routeId, count] of leasedByRoute) {
+      const provider = catalog?.routes_by_id?.[routeId]?.provider;
+      if (provider) leasedByProvider.set(provider, (leasedByProvider.get(provider) || 0) + count);
+    }
     const routes = routeRows.map((row) => {
       const catalogRoute = catalog?.routes_by_id?.[row.route_id];
       const merged = catalogRoute ? { ...catalogRoute, ...row } : row;
+      const providerConfig = catalog?.providers?.[catalogRoute?.provider];
+      const routeConcurrency = Number(catalogRoute?.concurrency);
+      const providerConcurrency = Number(
+        providerConfig?.concurrency ?? catalogRoute?.provider_concurrency
+      );
       return {
         route_id: row.route_id,
         capacity: catalogRoute ? this._capacityFraction(merged, now, windowSeconds) : null,
+        provider: catalogRoute?.provider || null,
+        in_flight: leasedByRoute.get(row.route_id) || 0,
+        route_concurrency: Number.isFinite(routeConcurrency) ? routeConcurrency : null,
+        provider_in_flight: catalogRoute?.provider
+          ? leasedByProvider.get(catalogRoute.provider) || 0
+          : 0,
+        provider_concurrency: Number.isFinite(providerConcurrency) ? providerConcurrency : null,
         blocked_until: row.blocked_until,
         buffer_seconds: row.buffer_seconds,
         buffer_remaining_seconds: effectiveBufferSeconds(row, now),
@@ -1372,6 +1431,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
 
     const scheduler = one("SELECT * FROM scheduler WHERE id = 1");
+    const claimReasonCounts = parseJsonObject(scheduler.claim_reason_counts_json);
+    const lastClaimDiagnostics = parseJsonObject(scheduler.last_claim_diagnostics_json);
 
     const today = new Date(now).toISOString().slice(0, 10);
     const routeFailures = [...sql.exec(
@@ -1405,6 +1466,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       route_failures: routeFailures,
       bundles: {
         active: one("SELECT COUNT(*) AS n FROM bundles WHERE state = 'active'").n,
+        active_call_count: one(
+          "SELECT COALESCE(SUM(active_call_count), 0) AS n FROM bundles WHERE state = 'active'"
+        ).n,
         active_expired: one(
           "SELECT COUNT(*) AS n FROM bundles WHERE state = 'active' AND lease_expires_at <= ?",
           now
@@ -1415,6 +1479,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
         bundle_count_today: scheduler.bundle_count_today ?? 0,
         jobs_ingested_today: scheduler.jobs_ingested_today ?? 0,
         next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
+      },
+      claim: {
+        last_at: scheduler.last_claim_at ?? null,
+        last_result: scheduler.last_claim_result || null,
+        last_reason: scheduler.last_claim_reason || null,
+        empty_count_today: scheduler.claim_empty_count_today ?? 0,
+        reason_counts_today: claimReasonCounts,
+        last_diagnostics: lastClaimDiagnostics,
+      },
+      in_flight: {
+        by_route: Object.fromEntries(leasedByRoute),
+        by_provider: Object.fromEntries(leasedByProvider),
       },
     };
   }
@@ -2157,6 +2233,27 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return rows.length > 0 ? rows[0].margin_tokens : 0;
   }
 
+  _recordClaimOutcome(now, result, reason, diagnostics) {
+    const sql = this._getSql();
+    const row = [...sql.exec(
+      "SELECT claim_empty_count_today, claim_reason_counts_json FROM scheduler WHERE id = 1"
+    )][0] || {};
+    const reasonCounts = parseJsonObject(row.claim_reason_counts_json);
+    reasonCounts[reason] = (Number(reasonCounts[reason]) || 0) + 1;
+    const emptyCount = Number(row.claim_empty_count_today) || 0;
+    sql.exec(
+      `UPDATE scheduler SET last_claim_at=?, last_claim_result=?, last_claim_reason=?,
+       last_claim_diagnostics_json=?, claim_empty_count_today=?, claim_reason_counts_json=?
+       WHERE id=1`,
+      now,
+      result,
+      reason,
+      JSON.stringify(diagnostics),
+      result === "empty" ? emptyCount + 1 : emptyCount,
+      JSON.stringify(reasonCounts)
+    );
+  }
+
   static EMPTY_CLAIM_RESULT = { bundle_id: null, execution_token: null, jobs: [] };
 
   /** review/44 Unit 4: fenced, capacity-ranked admission and pacing in one SQLite transaction. */
@@ -2177,9 +2274,41 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const callDurationCeilingMs = this._callDurationCeilingMs();
       const leaseDurationMs = this._leaseDurationMs();
       const EMPTY = LLMSchedulerDO.EMPTY_CLAIM_RESULT;
+      const diagnostics = {
+        active_bundles: 0,
+        in_flight_calls: 0,
+        candidate_jobs: 0,
+        chosen_jobs: 0,
+        rejections: {
+          route_lane_limit: 0,
+          route_bundle_limit: 0,
+          route_concurrency: 0,
+          provider_concurrency: 0,
+          route_capacity: 0,
+          dispatch_window_capacity: 0,
+        },
+        routes: {
+          route_concurrency: {},
+          provider_concurrency: {},
+        },
+      };
+      const recordEmpty = (reason, extra = {}) => {
+        const snapshot = { ...diagnostics, ...extra };
+        this._recordClaimOutcome(now, "empty", reason, snapshot);
+        return { ...EMPTY, claim_result: "empty", claim_reason: reason, claim_diagnostics: snapshot };
+      };
+      const recordClaimed = (jobs) => {
+        diagnostics.chosen_jobs = jobs;
+        this._recordClaimOutcome(now, "claimed", "claimed", diagnostics);
+      };
 
       const sched = this._rollUtcDayIfNeeded(now);
-      if (sched.bundle_count_today >= maxBundlesPerDay) return EMPTY;
+      if (sched.bundle_count_today >= maxBundlesPerDay) {
+        return recordEmpty("daily_bundle_limit", {
+          bundles_today: sched.bundle_count_today,
+          max_bundles_per_day: maxBundlesPerDay,
+        });
+      }
 
       // Reap bundles whose lease expired without ever reaching completeBatch -- an executor
       // crash, a CPU/wall-clock eviction mid-tick, or an uncaught error before the final
@@ -2227,9 +2356,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._pruneTerminalRecords(now);
 
       const activeBundles = [...sql.exec("SELECT active_call_count FROM bundles WHERE state='active'")];
-      if (activeBundles.length >= maxActiveBundles) return EMPTY;
+      diagnostics.active_bundles = activeBundles.length;
+      if (activeBundles.length >= maxActiveBundles) {
+        return recordEmpty("active_bundle_limit", { max_active_bundles: maxActiveBundles });
+      }
       const inFlightCalls = activeBundles.reduce((sum, b) => sum + b.active_call_count, 0);
-      if (inFlightCalls >= maxInFlightCalls) return EMPTY;
+      diagnostics.in_flight_calls = inFlightCalls;
+      if (inFlightCalls >= maxInFlightCalls) {
+        return recordEmpty("in_flight_call_limit", { max_in_flight_calls: maxInFlightCalls });
+      }
 
       const inFlightByRoute = new Map();
       const inFlightByProvider = new Map();
@@ -2303,6 +2438,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         for (const job of candidates) {
           if (chosen.length >= maxBundleJobs) break;
           if (chosenJobIds.has(job.id)) continue;
+          diagnostics.candidate_jobs += 1;
           // The capacity-ranked model index is a bounded way to *find* work, not permission to
           // force that discovery model onto the job. A job is indexed under every explicit
           // alternate; once found, rank all of its eligible routes. Otherwise the first tied
@@ -2333,16 +2469,27 @@ export class LLMSchedulerDO extends DurableObjectBase {
           ];
           for (const route of routeOrder) {
             const isNewLane = !seenRoutes.has(route.route_id);
-            if (isNewLane && seenRoutes.size >= maxConcurrentLanes) continue;
+            if (isNewLane && seenRoutes.size >= maxConcurrentLanes) {
+              diagnostics.rejections.route_lane_limit += 1;
+              continue;
+            }
             const countInBundle = chosen.filter(
               (entry) => entry.route.route_id === route.route_id
             ).length;
-            if (countInBundle >= maxJobsPerRoutePerBundle) continue;
+            if (countInBundle >= maxJobsPerRoutePerBundle) {
+              diagnostics.rejections.route_bundle_limit += 1;
+              continue;
+            }
 
             const routeConcurrency = Number(route.concurrency);
             if (Number.isFinite(routeConcurrency) && routeConcurrency > 0) {
               const curInFlight = (inFlightByRoute.get(route.route_id) || 0) + countInBundle;
-              if (curInFlight >= routeConcurrency) continue;
+              if (curInFlight >= routeConcurrency) {
+                diagnostics.rejections.route_concurrency += 1;
+                diagnostics.routes.route_concurrency[route.route_id] =
+                  (diagnostics.routes.route_concurrency[route.route_id] || 0) + 1;
+                continue;
+              }
             }
 
             const providerCfg = dispatchLimits.providers?.[route.provider];
@@ -2353,13 +2500,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
               const curProviderInFlight =
                 (inFlightByProvider.get(route.provider) || 0) +
                 chosen.filter((entry) => entry.route.provider === route.provider).length;
-              if (curProviderInFlight >= providerConcurrency) continue;
+              if (curProviderInFlight >= providerConcurrency) {
+                diagnostics.rejections.provider_concurrency += 1;
+                diagnostics.routes.provider_concurrency[route.provider] =
+                  (diagnostics.routes.provider_concurrency[route.provider] || 0) + 1;
+                continue;
+              }
             }
 
             const merged = getMergedRoute(route);
             if (
               !routeHasCapacityFor(merged, job, now, windowSeconds, capacityOptions(route, job))
             ) {
+              diagnostics.rejections.route_capacity += 1;
               continue;
             }
             chosen.push({ job, route });
@@ -2370,7 +2523,30 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
       }
 
-      if (chosen.length === 0) return EMPTY;
+      if (chosen.length === 0) {
+        const queuedCount = [...sql.exec(
+          "SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'"
+        )][0]?.n || 0;
+        const concurrencyRejected =
+          diagnostics.rejections.route_concurrency + diagnostics.rejections.provider_concurrency;
+        const otherRejected =
+          diagnostics.rejections.route_lane_limit +
+          diagnostics.rejections.route_bundle_limit +
+          diagnostics.rejections.route_capacity;
+        const reason =
+          queuedCount === 0
+            ? "no_queued_work"
+            : diagnostics.candidate_jobs === 0
+              ? "no_ranked_candidates"
+              : concurrencyRejected > 0 && otherRejected === 0
+                ? "concurrency_limit"
+                : concurrencyRejected > 0
+                  ? "mixed_admission_limits"
+                  : diagnostics.rejections.route_capacity > 0
+                    ? "route_capacity"
+                    : "no_eligible_route";
+        return recordEmpty(reason, { queued_jobs: queuedCount });
+      }
 
       // Sequence each route lane independently, in selection order. A job chosen above can still
       // fall out here if an earlier job in the SAME lane pushed the lane's cumulative time past
@@ -2402,8 +2578,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
             providerConfig: providerCfg,
             providerLedger,
           });
-          if (waitResult === null) continue; // exceeds this route's burst capacity outright
-          if (waitResult.not_before_at + callDurationCeilingMs > dispatchWindowEnd) continue;
+          if (waitResult === null) {
+            diagnostics.rejections.dispatch_window_capacity += 1;
+            continue; // exceeds this route's burst capacity outright
+          }
+          if (waitResult.not_before_at + callDurationCeilingMs > dispatchWindowEnd) {
+            diagnostics.rejections.dispatch_window_capacity += 1;
+            continue;
+          }
 
           const leaseToken = crypto.randomUUID();
 
@@ -2468,7 +2650,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
       }
 
-      if (resultJobs.length === 0) return EMPTY;
+      if (resultJobs.length === 0) {
+        return recordEmpty("dispatch_window_capacity");
+      }
 
       const executionToken = crypto.randomUUID();
       sql.exec(
@@ -2483,8 +2667,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
         now
       );
       sql.exec("UPDATE scheduler SET bundle_count_today = bundle_count_today + 1 WHERE id = 1");
+      recordClaimed(resultJobs.length);
 
-      return { bundle_id: bundleId, execution_token: executionToken, jobs: resultJobs };
+      return {
+        bundle_id: bundleId,
+        execution_token: executionToken,
+        jobs: resultJobs,
+        claim_result: "claimed",
+        claim_reason: "claimed",
+        claim_diagnostics: diagnostics,
+      };
     });
   }
 

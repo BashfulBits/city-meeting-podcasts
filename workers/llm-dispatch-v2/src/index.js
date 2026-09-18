@@ -854,7 +854,16 @@ async function runScheduledDispatch(env) {
   const dispatchWindowSeconds = Number(env.DISPATCH_WINDOW_SECONDS || 25);
 
   const plan = await coordinator.claimDispatchWindow(Date.now(), dispatchWindowSeconds);
-  if (!plan.jobs || plan.jobs.length === 0) return; // no B2 access, no further DO calls
+  if (!plan.jobs || plan.jobs.length === 0) {
+    // Keep empty cron ticks explainable in Workers Logs. The DO also persists this snapshot for
+    // /v2/stats, but the log puts the reason next to the scheduled invocation that observed it.
+    console.log(JSON.stringify({
+      event: "scheduled_claim_empty",
+      reason: plan.claim_reason || "unknown",
+      diagnostics: plan.claim_diagnostics || {},
+    }));
+    return; // no B2 access, no further DO calls
+  }
 
   const receivedAt = Date.now(); // wait_ms is relative to THIS instant, not plan-build time
   const bundleDeadline = receivedAt + dispatchWindowSeconds * 1000;

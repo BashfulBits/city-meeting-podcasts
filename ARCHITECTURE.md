@@ -793,6 +793,12 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
   [`review/44`](review/44-bounded-bundled-llm-dispatch.md); Phase 1 only as of
   [PR #1253](https://github.com/BashfulBits/city-meeting-podcasts/pull/1253) — v1's Worker above
   remains the sole production dispatch transport until v2's later phases land),
+  and its authenticated `GET /v2/stats` probe records the last scheduled-claim outcome in the
+  coordinator's single `scheduler` row. The probe reports bounded daily reason counts, candidate
+  rejection counters, route/provider concurrency rejections, and current leased counts, while an
+  empty scheduled claim emits the same reason as a structured Worker log. This makes an idle cron
+  distinguish global lease ceilings from route capacity or provider concurrency without a live
+  provider call.
   `asr-worker-report.yml` (storage-only Modal/Beam/GitHub ASR completion, budget, and memory report; no GPU
   provider calls), `audit.yml` (daily feed-health → GitHub issues; on creating a new
   consolidated `unexpected-body` issue, dispatches `remedy-unexpected-bodies.yml` for it),
