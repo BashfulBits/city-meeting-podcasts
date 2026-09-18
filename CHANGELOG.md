@@ -47,6 +47,12 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **SambaNova route health cleanup.** Removed the stale SambaNova Qwen2.5-72B route, paused the
+  SambaNova Llama 3.3 70B route after 820 retained AI Gateway attempts produced zero successes,
+  and added the live-probed SambaNova Gemma 4 31B route to the existing Gemma model pool. The
+  working OpenRouter Llama route remains available; no stored artifacts are invalidated and no
+  provider backfill is triggered by this routing-only change.
+
 - **Direct-transport failure classification parity & sibling-route capacity retry (PR-6 /
   Initiative 20; review/45 §20.9).**
   - Added failure classification parity to the direct LLM transport in `citypods/compute/llm.py`

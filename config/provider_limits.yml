@@ -623,9 +623,11 @@ routes:
     account_id: primary
     concurrency: 1
     rpm: 20
-    # SambaNova Free tier: 20 requests/day for this model. The split-cap compiler emits 10 per
-    # dispatcher while v1/v2 coexist, preserving the 20-request provider budget in aggregate.
-    rpd: 20
+    # Disabled 2026-09-18 after 820 retained AI Gateway attempts produced zero successes:
+    # 786 upstream-capacity 429s, 29 timeouts, and 5 historical path 404s. Keep the route in the
+    # catalog for auditability, but rpd: 0 is the repository's paused-route convention and makes
+    # selection reject it until a new live probe justifies re-enabling it.
+    rpd: 0
     tpm: 100000
     free: true
     observed_on: "2026-09-09"
@@ -643,6 +645,28 @@ routes:
     free: false
     input_per_token: 0.00000010
     output_per_token: 0.00000040
+
+  # ==========================================
+  # SAMBANOVA GEMMA 4 ROUTE
+  # ==========================================
+  # Live probe 2026-09-18: gemma-4-31B-it returned HTTP 200 with a valid completion. Use the
+  # same conservative shared-key pacing envelope as the other SambaNova free routes until a
+  # model-specific quota measurement is available.
+  - route_id: sambanova_gemma_4_31b_it_primary
+    model: google/gemma-4-31b-it
+    provider: sambanova
+    upstream_model: gemma-4-31B-it
+    input_context_limit: 131072
+    output_context_limit: 32768
+    account_id: primary
+    concurrency: 1
+    rpm: 20
+    rpd: 20
+    tpm: 100000
+    free: true
+    observed_on: "2026-09-18"
+    observed_burst: 1
+    upstream_429_default: upstream_capacity
 
   # ==========================================
   # GROQ HIGH-CAPABILITY FREE ROUTES (Groq API)
@@ -709,25 +733,8 @@ routes:
     observed_input_ceiling: 7000
 
   # ==========================================
-  # QWEN 2.5 72B MULTI-PROVIDER POOL (SambaNova + SiliconFlow)
+  # QWEN 2.5 72B SILICONFLOW ROUTE
   # ==========================================
-  - route_id: sambanova_qwen_2_5_72b_instruct_primary
-    model: qwen/qwen-2.5-72b-instruct
-    provider: sambanova
-    upstream_model: Qwen2.5-72B-Instruct
-    input_context_limit: 131072
-    output_context_limit: 8192
-    account_id: primary
-    concurrency: 1
-    rpm: 20
-    # Keep the same conservative Free-tier daily ceiling for this shared-key fallback route.
-    rpd: 20
-    tpm: 100000
-    free: true
-    observed_on: "2026-09-09"
-    observed_burst: 0
-    upstream_429_default: upstream_capacity
-
   - route_id: siliconflow_qwen_2_5_72b_primary
     model: qwen/qwen-2.5-72b-instruct
     provider: siliconflow
@@ -1931,8 +1938,6 @@ routes:
     observed_on: "2026-09-12"
     observed_burst: 5
     observed_input_ceiling: 8192
-
-
 
 
 
