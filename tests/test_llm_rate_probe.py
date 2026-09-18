@@ -77,8 +77,8 @@ def test_skips_routes_with_missing_api_key_env(monkeypatch):
     assert runner.total_requests == 0
 
 
-def test_paid_routes_excluded_by_default(tmp_path):
-    """Only free routes are probed by default; --include-paid opts into paid routes."""
+def test_include_paid_has_no_effect_on_the_free_only_catalog(tmp_path):
+    """The catalog contains no paid routes, so --include-paid has nothing to add."""
     out_file = tmp_path / "report_free.json"
     main(["--phase", "0", "--out", str(out_file)])
     report_free = json.loads(out_file.read_text(encoding="utf-8"))
@@ -89,7 +89,7 @@ def test_paid_routes_excluded_by_default(tmp_path):
     report_paid = json.loads(out_file_paid.read_text(encoding="utf-8"))
     paid_count = report_paid["summary"]["routes_probed"]
 
-    assert paid_count > free_count, "Expected --include-paid to include additional paid routes"
+    assert paid_count == free_count
 
 
 def test_report_records_header_names_and_values_but_no_api_key(monkeypatch):

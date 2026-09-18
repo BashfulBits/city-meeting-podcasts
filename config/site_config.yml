@@ -201,7 +201,7 @@ llm_lanes:
     # Mirrors the legacy `moments.judges.models`.
     models:
       - "qwen/qwen3.8-27b"
-      - "zai/glm-4.7"
+      - "zai/glm-4.7-flash"
       - "gemini/gemini-3.6-flash"
       - "openai/gpt-oss-120b"
     max_dispatches_per_run: 40

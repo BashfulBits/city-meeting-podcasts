@@ -3631,20 +3631,16 @@ test("a route's concurrency ceiling still holds without a durable reservation", 
   //     one request per batch (reserveRouteCapacity pushes requests_available_at a full interval
   //     ahead on the first reservation), so the assertion held whether or not the ceiling worked.
   //
-  // deepseek_v4_flash_primary has `rpm: null` and `concurrency: 5`, so the ceiling is the only
-  // limit in play and a broken counter is observable.
-  const ceilingRoute = "deepseek_v4_flash_primary";
+  // OrcaRouter's DeepSeek Flash route has a distinct concurrency ceiling of 2; with its NVIDIA
+  // sibling blocked, the ceiling remains observable in one batch.
+  const ceilingRoute = "orcarouter_deepseek_v4_flash_free";
   const model = "deepseek/deepseek-v4-flash";
   const catalogRoutes = Object.keys(routeIdsForModel(model));
   assert.ok(catalogRoutes.includes(ceilingRoute), "the route under test must exist in the catalog");
 
   const env = { ...ENV, LLM_QUEUE: new FakeBucket() };
-  // deepseek_v4_flash_primary is a paid route, and selectRouteForModel only elevates past free
-  // routes when waiting for every free route would miss the caller's deadline. The free
-  // alternative is starved for an hour below, so a near-term deadline is what makes the paid
-  // route reachable at all.
   const policy = {
-    allow_paid: true,
+    allow_paid: false,
     deadline_at: new Date(Date.now() + 60_000).toISOString(),
   };
   for (let index = 0; index < 8; index += 1) {
@@ -3669,14 +3665,14 @@ test("a route's concurrency ceiling still holds without a durable reservation", 
     8,
   );
 
-  // Exactly the ceiling: eight requests were queued against a concurrency-5 route with no other
-  // limit, so a working counter admits precisely five. Asserting `<= 5` would also pass if the
+  // Exactly the ceiling: eight requests were queued against a concurrency-2 route, so a working
+  // counter admits precisely two. Asserting `<= 2` would also pass if the
   // route were never selected, which is how the earlier revisions hid their bugs.
   const onCeilingRoute = (result.results || []).filter((r) => r.routeId === ceilingRoute);
   assert.equal(
     onCeilingRoute.length,
-    5,
-    `concurrency-5 route admitted ${onCeilingRoute.length} candidates in one batch`,
+    2,
+    `concurrency-2 route admitted ${onCeilingRoute.length} candidates in one batch`,
   );
 });
 

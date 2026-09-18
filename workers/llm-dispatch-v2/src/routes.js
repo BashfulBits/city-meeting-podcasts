@@ -149,6 +149,10 @@ export function routesEligibleFor(job, dispatchLimits) {
       if (seenRouteIds.has(routeId)) continue;
       const route = routeFromCatalog(routeId, dispatchLimits, canonical);
       if (!route) continue;
+      // An explicit rpd: 0 is the catalog's paused-route convention. Filter it before the
+      // free/paid admission decision; otherwise a paused free route can outrank a paid sibling,
+      // and the final pacing check treats zero as immediately ready.
+      if (route.rpd != null && Number(route.rpd) === 0) continue;
       if (!allowPaid && !route.free) continue;
       if (!routeFitsContext(route, inputTokens, outputTokens)) continue;
       seenRouteIds.add(routeId);

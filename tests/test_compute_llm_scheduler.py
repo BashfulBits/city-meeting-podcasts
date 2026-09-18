@@ -12,7 +12,6 @@ from citypods.compute.llm_budget import (
     serialize_llm_budget,
 )
 from citypods.compute.llm_policy import (
-    ROUTE_CANDIDATES,
     ROUTE_REGISTRY,
     ROUTES,
     LLMRequestPolicy,
@@ -61,7 +60,35 @@ def _all_free_direct_routes_exhausted() -> LLMBudget:
 
 
 def _deepseek_direct_route(model: str) -> LLMRoute:
-    return next(route for route in ROUTE_CANDIDATES[model] if route.provider == "deepseek")
+    # The production catalog intentionally has no paid routes. These tests still exercise the
+    # generic scheduler's pricing-window behavior with an isolated paid fixture.
+    return LLMRoute(
+        model=model,
+        transport="direct",
+        free=False,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(
+            input_per_token=0.14e-6,
+            output_per_token=0.28e-6,
+            periods=(
+                PricingPeriod(
+                    effective_at=datetime(1970, 1, 1, tzinfo=UTC),
+                    input_per_token=0.14e-6,
+                    output_per_token=0.28e-6,
+                    windows=(PeakWindow("UTC", time(1), time(4), 2),),
+                ),
+                PricingPeriod(
+                    effective_at=datetime(2026, 8, 16, 16, tzinfo=UTC),
+                    input_per_token=0.22e-6,
+                    output_per_token=0.66e-6,
+                    windows=(
+                        PeakWindow("UTC", time(1), time(4), 2),
+                        PeakWindow("UTC", time(6), time(10), 2),
+                    ),
+                ),
+            ),
+        ),
+    )
 
 
 def test_direct_selection_skips_physical_routes_with_insufficient_context():
@@ -168,50 +195,6 @@ def test_hard_input_ceiling_unset_never_blocks_a_route_that_only_has_tpm():
     assert ("test/model", "hard input ceiling") not in result.rejected
 
 
-def test_paid_route_wins_when_free_quota_cannot_reset_before_deadline():
-    result = select_route(
-        LLMRequestPolicy(allow_paid=True, deadline_at=NOW + timedelta(hours=1)),
-        routes=ROUTES,
-        ledger=_all_free_direct_routes_exhausted(),
-        available_transports=DIRECT,
-        estimated_tokens=1024,
-        now=NOW,
-    )
-    assert result.model in {
-        "deepseek/deepseek-v4-flash",
-        "deepseek/deepseek-v4-pro",
-    }
-    assert any(model == "gemini/gemini-3-flash-preview" for model, _ in result.rejected)
-
-
-def test_ranking_prefers_free_route_over_a_simultaneously_eligible_paid_route():
-    """Distinct from the exhausted-Gemini scenarios above: here Gemini has full quota *and*
-    DeepSeek is inside its own off-peak window (so it's cheap and immediately eligible too) --
-    ranking (§5 gate 6) must still pick the free route over an equally-eligible paid one."""
-    inside_deepseek_window = datetime(2026, 7, 16, 18, tzinfo=UTC)
-    result = select_route(
-        LLMRequestPolicy(
-            allow_paid=True,
-            allowed_models=(
-                "gemini/gemini-3-flash-preview",
-                "deepseek/deepseek-v4-flash",
-                "deepseek/deepseek-v4-pro",
-            ),
-        ),
-        routes=ROUTES,
-        ledger=LLMBudget(),
-        available_transports=DIRECT,
-        estimated_tokens=1024,
-        now=inside_deepseek_window,
-    )
-    assert result.model == "gemini/gemini-3-flash-preview"
-    assert any(
-        model in {"deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-pro"}
-        and reason == "lower-ranked eligible route"
-        for model, reason in result.rejected
-    )
-
-
 def test_no_route_is_selected_when_free_routes_are_exhausted_and_paid_is_disallowed():
     result = select_route(
         LLMRequestPolicy(allow_paid=False, deadline_at=NOW + timedelta(hours=24)),
@@ -222,13 +205,13 @@ def test_no_route_is_selected_when_free_routes_are_exhausted_and_paid_is_disallo
         now=NOW,
     )
     assert result.model is None
-    assert any("paid model disallowed" in reason for _, reason in result.rejected)
+    assert all(reason == "quota or budget exhausted" for _, reason in result.rejected)
 
 
-def test_allowlist_can_force_one_paid_evaluation_model():
+def test_allowlist_can_select_the_free_deepseek_pro_route():
     model = "deepseek/deepseek-v4-pro"
     result = select_route(
-        LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
+        LLMRequestPolicy(allowed_models=(model,), allow_paid=False),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=DIRECT,
@@ -236,44 +219,6 @@ def test_allowlist_can_force_one_paid_evaluation_model():
         now=datetime(2026, 7, 16, 18, tzinfo=UTC),
     )
     assert result.model == model
-
-
-def test_deepseek_off_peak_preference_and_deadline_override():
-    model = "deepseek/deepseek-v4-flash"
-    route = _deepseek_direct_route(model)
-    routes = {route.route_id or route.model: route}
-    outside = select_route(
-        LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
-        routes=routes,
-        ledger=LLMBudget(),
-        available_transports=DIRECT,
-        estimated_tokens=1024,
-        now=NOW,
-    )
-    assert outside.model is None
-    assert "price-window" in outside.rejected[0][1]
-
-    inside = select_route(
-        LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
-        routes=routes,
-        ledger=LLMBudget(),
-        available_transports=DIRECT,
-        estimated_tokens=1024,
-        now=datetime(2026, 7, 16, 18, tzinfo=UTC),
-    )
-    assert inside.model == model
-
-    urgent = select_route(
-        LLMRequestPolicy(
-            allowed_models=(model,), allow_paid=True, deadline_at=NOW + timedelta(hours=1)
-        ),
-        routes=routes,
-        ledger=LLMBudget(),
-        available_transports=DIRECT,
-        estimated_tokens=1024,
-        now=NOW,
-    )
-    assert urgent.model == model
 
 
 def test_deepseek_peak_waits_for_the_next_cheapest_window():

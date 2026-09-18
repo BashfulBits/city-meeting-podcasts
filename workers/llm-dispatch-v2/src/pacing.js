@@ -208,6 +208,10 @@ export function reservationFor(job, { estimateFloor = 0, calibratedMargin = 0 } 
  * yet" -- see the module docstring).
  */
 export function earliestSafeStart(route, job, earliestCandidateTime, now, options = {}) {
+  // rpd: 0 is an explicit paused route, not an unlimited quota. Keep this guard here as well as
+  // in routesEligibleFor so any future caller of the pacing primitive fails closed.
+  if (route?.rpd != null && Number(route.rpd) === 0) return null;
+
   const reservation = reservationFor(job, options);
   const tpm = Number(route?.tpm);
   // ONE absolute admissibility gate (2026-09-13 redesign, see module docstring): does this

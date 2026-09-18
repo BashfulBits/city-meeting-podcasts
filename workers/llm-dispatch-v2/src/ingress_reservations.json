@@ -61,7 +61,7 @@
       "daily_write_units": 3000,
       "models": [
         "qwen/qwen3.8-27b",
-        "zai/glm-4.7",
+        "zai/glm-4.7-flash",
         "gemini/gemini-3.6-flash",
         "openai/gpt-oss-120b"
       ],

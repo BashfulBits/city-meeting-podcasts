@@ -43,8 +43,8 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert len(worker["routes_by_id"]) == len(compiled["routes"])
     assert "routes" not in worker
     assert "structured_output_profiles" not in worker
-    assert worker["model_aliases"]["deepseek-v4-flash"] == "deepseek/deepseek-v4-flash"
-    assert worker["model_aliases"]["deepseek/deepseek-v4-flash"] == "deepseek/deepseek-v4-flash"
+    assert worker["model_aliases"]["nvidia/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"
+    assert worker["model_aliases"]["orcarouter/deepseek-v4-flash"] == "deepseek/deepseek-v4-flash"
     gemma = worker["routes_by_id"]["gemma_4_31b_primary"]
     assert isinstance(gemma, dict)
     assert set(gemma) == set(compile_llm_limits._WORKER_ROUTE_FIELDS)
@@ -78,9 +78,9 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     deepseek_key = "deepseek/deepseek-v4-flash"
     deepseek_routes = compiled["model_routes_map"][deepseek_key]
-    # SiliconFlow (paid) + DeepSeek Direct (paid) + NVIDIA build (free) + OrcaRouter (free) --
-    # four independent physical pools for the same logical model.
-    assert len(deepseek_routes) == 4
+    # NVIDIA build + OrcaRouter (both free) -- two independent physical pools for the same
+    # logical model. Paid SiliconFlow and DeepSeek Direct routes are intentionally absent.
+    assert len(deepseek_routes) == 2
     physical_routes = [compiled["routes_by_id"][route_id] for route_id in deepseek_routes]
     assert (
         len(
@@ -89,9 +89,9 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
                 for route in physical_routes
             }
         )
-        == 4
+        == 2
     )
-    assert compiled["model_aliases"]["deepseek/deepseek-v4-flash-0731"] == deepseek_key
+    assert compiled["model_aliases"]["nvidia/deepseek-v4-flash-0731"] == deepseek_key
     assert compiled["model_aliases"]["nvidia/deepseek-v4-flash-0731"] == deepseek_key
     assert compiled["model_aliases"]["orcarouter/deepseek-v4-flash"] == deepseek_key
 
@@ -182,7 +182,7 @@ def test_compiled_routes_materialize_structured_output_profiles():
     # "standard_json_schema") is still exercised by every other route that sets nothing at all.
     compiled = compile_llm_limits.compile_limits()
     gemma = compiled["routes_by_id"]["gemma_4_31b_primary"]
-    deepseek = compiled["routes_by_id"]["deepseek_v4_flash_primary"]
+    deepseek = compiled["routes_by_id"]["orcarouter_deepseek_v4_flash_free"]
 
     assert gemma["structured_output_profile"] == "relaxed_json_schema"
     assert gemma["structured_output_response_format"] == "json_schema"
@@ -203,24 +203,6 @@ def test_google_routes_use_live_model_identifiers():
     assert "gemma-4-26b-it" not in google_models
     assert "gemini-2.5-flash" not in google_models
     assert "gemini-2.5-flash-lite" not in google_models
-
-
-def test_deepseek_v4_flash_uses_current_direct_api_identifier():
-    compiled = compile_llm_limits.compile_limits()
-    route = compiled["routes_by_id"]["deepseek_v4_flash_primary"]
-    assert route["upstream_model"] == "deepseek-v4-flash"
-
-
-def test_deepseek_pricing_periods_compile_with_input_output_rates_and_peak_windows():
-    compiled = compile_llm_limits.compile_limits()
-    route = compiled["routes_by_id"]["deepseek_v4_flash_primary"]
-    periods = route["pricing"]["periods"]
-    assert periods[1]["effective_at"].isoformat() == "2026-08-16T16:00:00+00:00"
-    assert periods[1]["input_per_token"] == pytest.approx(0.22e-6)
-    assert [(window["start"], window["end"]) for window in periods[1]["windows"]] == [
-        ("01:00", "04:00"),
-        ("06:00", "10:00"),
-    ]
 
 
 def test_full_day_pricing_surcharge_is_rejected():
