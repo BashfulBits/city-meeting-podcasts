@@ -83,6 +83,8 @@ test("claimDispatchWindow returns an empty plan when nothing is queued", async (
   const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
   assert.equal(plan.bundle_id, null);
   assert.deepEqual(plan.jobs, []);
+  assert.equal(plan.claim_reason, "no_queued_work");
+  assert.equal(plan.claim_diagnostics.queued_jobs, 0);
 });
 
 test("claimDispatchWindow claims a queued job and leases it", async () => {
@@ -203,6 +205,7 @@ test("claimDispatchWindow returns empty once MAX_ACTIVE_BUNDLES is reached", asy
   assert.equal(first.jobs.length, 1);
   const second = await coordinator.claimDispatchWindow(now, 25);
   assert.equal(second.bundle_id, null); // one active (uncompleted) bundle already outstanding
+  assert.equal(second.claim_reason, "active_bundle_limit");
 });
 
 test("claimDispatchWindow reaps a bundle whose lease expired without completeBatch, freeing its MAX_ACTIVE_BUNDLES slot", async () => {
@@ -1754,6 +1757,57 @@ test("claimDispatchWindow enforces route-level and provider-level concurrency", 
   // A second claim while j1 is still leased admits 0 jobs
   const secondPlan = await coordinator.claimDispatchWindow(now + 100, 25);
   assert.equal(secondPlan.jobs.length, 0);
+  assert.equal(secondPlan.claim_result, "empty");
+  assert.equal(secondPlan.claim_reason, "concurrency_limit");
+  assert.equal(secondPlan.claim_diagnostics.rejections.provider_concurrency, 1);
+  assert.deepEqual(secondPlan.claim_diagnostics.routes.provider_concurrency, { strict_prov: 1 });
+
+  const stats = await coordinator.stats(now + 100);
+  assert.equal(stats.claim.last_result, "empty");
+  assert.equal(stats.claim.last_reason, "concurrency_limit");
+  assert.equal(stats.claim.empty_count_today, 1);
+  assert.equal(stats.claim.reason_counts_today.concurrency_limit, 1);
+  assert.equal(stats.in_flight.by_provider.strict_prov, 1);
+});
+
+test("claimDispatchWindow identifies a route concurrency ceiling", async () => {
+  const limits = {
+    providers: {
+      route_only_prov: {
+        api_base: "https://example.com",
+        accounts: [{ id: "acc1" }],
+      },
+    },
+    routes_by_id: {
+      route_only: {
+        route_id: "route_only",
+        model: "route-model",
+        provider: "route_only_prov",
+        account_id: "acc1",
+        input_context_limit: 100000,
+        output_context_limit: 10000,
+        rpm: 30,
+        rpd: 1000,
+        free: true,
+        concurrency: 1,
+      },
+    },
+    model_routes_map: { "route-model": ["route_only"] },
+  };
+
+  const { coordinator } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: limits });
+  await coordinator.enqueueBatch([
+    makeJob("route-j1", { policy_json: JSON.stringify({ allowed_models: ["route-model"] }) }),
+    makeJob("route-j2", { policy_json: JSON.stringify({ allowed_models: ["route-model"] }) }),
+  ]);
+
+  const now = Date.now();
+  const first = await coordinator.claimDispatchWindow(now, 25);
+  assert.equal(first.jobs.length, 1);
+  const second = await coordinator.claimDispatchWindow(now + 100, 25);
+  assert.equal(second.claim_reason, "concurrency_limit");
+  assert.equal(second.claim_diagnostics.rejections.route_concurrency, 1);
+  assert.deepEqual(second.claim_diagnostics.routes.route_concurrency, { route_only: 1 });
 });
 
 test("claimDispatchWindow enforces provider-level TPM across routes sharing a provider", async () => {

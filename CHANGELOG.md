@@ -36,6 +36,14 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **V2 dispatcher admission diagnostics** (`workers/llm-dispatch-v2/src/coordinator.js` and
+  `src/index.js`). Every scheduled claim now records its outcome in the bounded `scheduler` row
+  and exposes the last reason, daily reason counts, candidate rejection counters, route/provider
+  concurrency rejections, and current leased counts through the authenticated `/v2/stats` probe.
+  Empty cron ticks also emit a structured `scheduled_claim_empty` log, distinguishing global
+  bundle/in-flight ceilings from route capacity and route/provider concurrency without requiring a
+  live provider probe.
+
 - **Airforce `codestral-latest` and `kimi-k2.7-code` free routes (`config/provider_limits.yml`,
   `workers/llm-dispatch-proxy/src/dispatch_limits.json`,
   `workers/llm-dispatch-v2/src/dispatch_limits.json`, `citypods/compute/llm_routes.json`).**
