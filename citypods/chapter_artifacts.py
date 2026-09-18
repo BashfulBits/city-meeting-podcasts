@@ -49,6 +49,12 @@ class AgendaCandidate:
     display_ref: str | None = None
     status: str = "accepted"
     evidence_quote: str | None = None
+    # Provenance: "strict" (validate_agenda_item_extractor_response's normal path) or "recovery"
+    # (rescued by chapter_titles.recover_agenda_item_extractor_response's GH#1078 shadow layer --
+    # its display_ref didn't literally validate but the source-only recovery search confirmed real
+    # evidence). Purely informational -- every existing status/kind-based filter treats both the
+    # same; this exists so QA can audit how many production items came from the recovery path.
+    source: str = "strict"
 
     def __post_init__(self) -> None:
         if self.index < 0:
@@ -73,6 +79,7 @@ class AgendaCandidate:
             "display_ref": self.display_ref,
             "status": self.status,
             "evidence_quote": self.evidence_quote,
+            "source": self.source,
         }
 
     @classmethod
@@ -88,6 +95,7 @@ class AgendaCandidate:
             display_ref=value.get("display_ref") or None,
             status=str(value.get("status") or "accepted"),
             evidence_quote=value.get("evidence_quote") or None,
+            source=str(value.get("source") or "strict"),
         )
 
 
@@ -102,6 +110,14 @@ class AgendaCandidatesArtifact:
     status: str = "completed"
     diagnostics: Mapping[str, Any] = field(default_factory=dict)
     version: str = AGENDA_ARTIFACT_VERSION
+    # Distinct from `version` (this dict's own schema version): folds in
+    # stages.CHAPTER_AGENDA_PIPELINE_VERSION at the time this artifact was produced, so
+    # AgendaChapterCandidatesStage.process() can tell a completed-under-an-old-pipeline-behavior
+    # artifact apart from a current one (e.g. before vs. after the recovery-shadow layer was wired
+    # into production) even when `model` itself didn't change. Empty default so an artifact stored
+    # before this field existed round-trips and compares unequal to any real current version --
+    # i.e. it is automatically treated as stale, not silently assumed current.
+    pipeline_version: str = ""
 
     def __post_init__(self) -> None:
         _non_empty(self.episode_uid, "episode_uid")
@@ -124,6 +140,7 @@ class AgendaCandidatesArtifact:
             "status": self.status,
             "items": [item.to_dict() for item in self.items],
             "diagnostics": dict(self.diagnostics),
+            "pipeline_version": self.pipeline_version,
         }
 
     @classmethod
@@ -140,6 +157,7 @@ class AgendaCandidatesArtifact:
                 value.get("diagnostics") if isinstance(value.get("diagnostics"), Mapping) else {}
             ),
             version=str(value.get("version") or AGENDA_ARTIFACT_VERSION),
+            pipeline_version=str(value.get("pipeline_version") or ""),
         )
 
 

@@ -1952,27 +1952,26 @@ def test_sambanova_routes_use_a_single_gateway_attempt(gateway_env):
 
 
 # How each custom provider is registered on the Cloudflare side, and therefore what
-# `ai_gateway_chat_path` has to be. This table exists because AI Gateway does NOT join a Custom
-# Provider's Base URL the way its documentation says: instead of `{base_url}/{provider-path}`, it
-# rewrites the base URL's LAST path segment to a hardcoded `v1` and appends the caller path
-# (established 2026-08-29 by registering a throwaway custom provider against an echo service).
+# `ai_gateway_chat_path` has to be. This table exists because the Cloudflare-side Base URL is not
+# represented in this repo, and the gateway's undocumented join changed on 2026-09-15: it now
+# honors the registered path instead of rewriting its last segment to `v1`.
 # Because the Cloudflare-side Base URL is not represented in this repo, the mapping cannot be
 # derived -- so it is written down here, and a new custom provider trips the completeness check
 # below until someone records how it is registered.
 CUSTOM_PROVIDER_GATEWAY_PATHS = {
-    # Registered at api_base verbatim; the `/v1` in api_base is also the substituted segment, so
-    # the chat path must carry it or the dispatch lands on the origin root and 404s.
-    "siliconflow": "/v1/chat/completions",
-    "sambanova": "/v1/chat/completions",
-    "nvidia": "/v1/chat/completions",
-    "airforce": "/v1/chat/completions",
+    # Registered at api_base verbatim; the `/v1` in each Base URL is preserved by the current
+    # gateway join, so the caller path stays root-relative.
+    "siliconflow": "/chat/completions",
+    "sambanova": "/chat/completions",
+    "nvidia": "/chat/completions",
+    "airforce": "/chat/completions",
+    "orcarouter": "/chat/completions",
     # Registered as `https://api.kilo.ai/api/gateway/v1` -- Kilo serves that path too, so the
-    # forced `v1` substitution lands correctly and the caller path stays bare.
+    # caller path stays bare under either gateway join behavior.
     "kilo": "/chat/completions",
-    # Routed through workers/llm-provider-shim, which restores the real upstream prefix, so the
-    # caller path is bare here as well.
-    "zai": "/chat/completions",
-    "opencode": "/chat/completions",
+    # custom-zai is registered at `https://api.z.ai/api/paas`, which serves at
+    # `/v4/chat/completions`.
+    "zai": "/v4/chat/completions",
 }
 
 
@@ -1985,8 +1984,8 @@ def test_every_custom_provider_records_how_it_is_registered():
     }
     assert configured == set(CUSTOM_PROVIDER_GATEWAY_PATHS), (
         "custom providers changed; record the new provider's Cloudflare-side registration in "
-        "CUSTOM_PROVIDER_GATEWAY_PATHS (and see workers/llm-provider-shim/README.md for why the "
-        "documented base-URL join does not apply)"
+        "CUSTOM_PROVIDER_GATEWAY_PATHS (and see workers/llm-provider-shim/README.md for the "
+        "gateway join compatibility contract)"
     )
 
 
@@ -2006,9 +2005,9 @@ def test_custom_provider_routes_use_their_recorded_gateway_path(route):
     )
 
 
-# Only single-provider models belong here. A logical model served by several providers (6 of 31 in
-# the catalog -- `deepseek/deepseek-v4-flash` spans deepseek, custom-siliconflow and
-# custom-opencode) has no fixed gateway slug: the scheduler picks whichever physical route has
+# Only single-provider models belong here. A logical model served by several providers -- such as
+# `deepseek/deepseek-v4-flash`, which spans deepseek, custom-siliconflow, and custom-nvidia -- has
+# no fixed gateway slug: the scheduler picks whichever physical route has
 # capacity, so pinning one slug end-to-end would assert on scheduler choice rather than on URL
 # construction. The catalog test above covers those routes directly.
 @pytest.mark.parametrize(
@@ -2019,7 +2018,7 @@ def test_custom_provider_routes_use_their_recorded_gateway_path(route):
             f"{_GW}/google-ai-studio/v1beta/models/gemini-3.6-flash:generateContent",
         ),
         ("mistral/mistral-large-2512", f"{_GW}/mistral/v1/chat/completions"),
-        ("zai/glm-4.7-flash", f"{_GW}/custom-zai/chat/completions"),
+        ("zai/glm-4.7-flash", f"{_GW}/custom-zai/v4/chat/completions"),
     ],
 )
 def test_direct_call_requests_the_gateway_url(model, expected_request_url, gateway_env):

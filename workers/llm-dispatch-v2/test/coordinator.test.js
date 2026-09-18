@@ -491,6 +491,40 @@ test("schemaRetry obeys the same ingress write budget as enqueueBatch", async ()
   assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM jobs")][0].n, 1);
 });
 
+test("schemaRetry charges ingress for the backup-model index rows its own clone activates", async () => {
+  // A schema-correction clone's schema_retry_count becomes 1, which backupModelsActive()
+  // (routes.js) treats as an immediate trigger -- so _indexQueuedJobModels indexes BOTH the
+  // primary and backup models for the new row. The write-unit charge computed for admission must
+  // reflect that same count, not the source's pre-correction schema_retry_count (0), which would
+  // only index the primary and undercount the charge.
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_BACKUP_THRESHOLD,
+  });
+  await coordinator.enqueueBatch([backupPolicyJob("source", 12)]);
+  sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'source'");
+  const before = [...sql.exec("SELECT ingress_write_units_today FROM scheduler WHERE id = 1")][0]
+    .ingress_write_units_today;
+
+  const result = await coordinator.schemaRetry("source", {
+    corrected_payload_key: "payloads/retry/request.json",
+    corrected_request_digest: "retry-digest",
+    corrected_input_token_estimate: 1,
+  });
+  assert.equal(result.status, "accepted");
+
+  const cloneModels = [...sql.exec(
+    "SELECT model FROM job_models WHERE job_id = ? ORDER BY model",
+    result.id
+  )].map((row) => row.model);
+  assert.deepEqual(cloneModels, ["backup/model", "primary/model"]);
+
+  const after = [...sql.exec("SELECT ingress_write_units_today FROM scheduler WHERE id = 1")][0]
+    .ingress_write_units_today;
+  // 3 (job row + purpose ledger + scheduler counter) + 2 model-index rows = 5, not 4.
+  assert.equal(after - before, 5);
+});
+
 test("enqueueBatch rolls the whole batch back if a mid-batch exception is thrown", async () => {
   const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
 
@@ -576,6 +610,42 @@ test("pollBatch returns statuses and omits absent IDs", async () => {
   assert.equal(pollRes.statuses[0].id, "j1");
   assert.equal(pollRes.statuses[0].state, "completed");
   assert.equal(pollRes.statuses[0].result_key, "results/j1/lt1.json");
+});
+
+test("pollBatch reports the model the completed route actually served, not just the primary", async () => {
+  // A completed job's lease_route_id names the PHYSICAL route it ran on -- which, once a backup
+  // model activates, need not be the job's own allowed_models[0]. Without pollBatch resolving and
+  // returning that route's model, the client would record every completion as the primary model
+  // (JobHandle.model, guessed at enqueue time), silently misattributing a backup's result.
+  const CATALOG = {
+    model_aliases: {},
+    model_routes_map: {
+      "primary/model": ["primary-route"],
+      "backup/model": ["backup-route"],
+    },
+    routes_by_id: {
+      "primary-route": { free: true, rpm: 20, rpd: 1000, tpm: 100000, input_context_limit: 10000, output_context_limit: 10000 },
+      "backup-route": { free: true, rpm: 20, rpd: 1000, tpm: 100000, input_context_limit: 10000, output_context_limit: 10000 },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    DISPATCH_LIMITS_OVERRIDE: CATALOG,
+  });
+  await coordinator.enqueueBatch([{
+    id: "j1", idempotency_key: "k1", request_digest: "d1",
+    policy_json: JSON.stringify({ allowed_models: ["primary/model"] }),
+    prompt_family: "tags", input_token_estimate: 100, max_output_token_estimate: 50,
+    payload_key: "payloads/j1/request.json",
+  }]);
+  // Simulate the job having completed on the backup route (as if it escalated there after
+  // enough failed attempts): lease_route_id names the backup, not the primary.
+  sql.exec(
+    "UPDATE jobs SET state = 'completed', result_key = 'results/j1/lt1.json', lease_route_id = 'backup-route' WHERE id = 'j1'"
+  );
+
+  const pollRes = await coordinator.pollBatch(["j1"]);
+  assert.equal(pollRes.statuses[0].model, "backup/model");
 });
 
 test("terminalFeed is keyset paginated and cancelBatch removes queued work from dispatch", async () => {
@@ -1151,6 +1221,106 @@ test("schemaRetry applies the lane route allowlist, not just the registration ga
   assert.equal(sched.jobs_ingested_today, 1);
 });
 
+// --- backup_after_attempts ingress enforcement -------------------------------------------------
+
+const LANE_WITH_BACKUP_THRESHOLD = JSON.stringify({
+  "chapter-agenda": {
+    reserved_write_units: 0,
+    daily_write_units: 10000,
+    models: ["primary/model"],
+    backup_models: ["backup/model"],
+    backup_after_attempts: 12,
+  },
+});
+
+function backupPolicyJob(id, backupAfterAttempts) {
+  return {
+    id,
+    idempotency_key: `k-${id}`,
+    request_digest: `d-${id}`,
+    policy_json: JSON.stringify({
+      purpose: "chapter-agenda",
+      allowed_models: ["primary/model"],
+      backup_models: ["backup/model"],
+      backup_after_attempts: backupAfterAttempts,
+    }),
+    prompt_family: "agenda",
+    input_token_estimate: 100,
+    max_output_token_estimate: 50,
+    payload_key: `payloads/${id}/request.json`,
+  };
+}
+
+test("enqueueBatch rejects a job whose backup_after_attempts undercuts its lane's minimum", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_BACKUP_THRESHOLD,
+  });
+
+  const res = await coordinator.enqueueBatch([
+    backupPolicyJob("j-at-minimum", 12),
+    backupPolicyJob("j-below-minimum", 1),
+  ]);
+
+  assert.deepEqual(
+    res.accepted.map((row) => row.id),
+    ["j-at-minimum"]
+  );
+  const rejected = res.rejected.find((entry) => entry.id === "j-below-minimum");
+  assert.ok(rejected, "a lower-than-declared threshold must be rejected, not silently honored");
+  assert.equal(rejected.reason, "backup_after_attempts_below_lane_minimum");
+  assert.deepEqual([...sql.exec("SELECT id FROM jobs ORDER BY id")].map((row) => row.id), [
+    "j-at-minimum",
+  ]);
+});
+
+test("enqueueBatch admits a job that omits backup_models even when its lane declares a minimum", async () => {
+  // The lane minimum only constrains a job that actually names backup models -- a job with none
+  // has nothing to widen.
+  const { coordinator } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_BACKUP_THRESHOLD,
+  });
+  const job = {
+    id: "j-no-backups", idempotency_key: "k1", request_digest: "d1",
+    policy_json: JSON.stringify({ purpose: "chapter-agenda", allowed_models: ["primary/model"] }),
+    prompt_family: "agenda", input_token_estimate: 100, max_output_token_estimate: 50,
+    payload_key: "payloads/j-no-backups/request.json",
+  };
+  const res = await coordinator.enqueueBatch([job]);
+  assert.deepEqual(res.rejected, []);
+});
+
+test("schemaRetry applies the same backup_after_attempts floor as enqueueBatch", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_BACKUP_THRESHOLD,
+  });
+  await coordinator.enqueueBatch([backupPolicyJob("retry-source", 12)]);
+  sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'retry-source'");
+
+  // The lane raises its minimum between the original admission and the retry.
+  coordinator.env.INGRESS_PURPOSE_RESERVATIONS = JSON.stringify({
+    "chapter-agenda": {
+      reserved_write_units: 0,
+      daily_write_units: 10000,
+      models: ["primary/model"],
+      backup_models: ["backup/model"],
+      backup_after_attempts: 20,
+    },
+  });
+
+  assert.deepEqual(
+    await coordinator.schemaRetry("retry-source", {
+      corrected_payload_key: "payloads/retry/request.json",
+      corrected_request_digest: "retry-digest",
+      corrected_input_token_estimate: 1,
+    }),
+    { status: "backup_after_attempts_below_lane_minimum" }
+  );
+  assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM jobs")][0].n, 1);
+});
+
 // --- Initiative 20 PR-3 (Failure-class aware backoff & terminal 429 requeue) ---
 
 test("authorizeRetry with own_rpd refuses in-window retry and sets midnight blocked_until", async () => {
@@ -1222,7 +1392,9 @@ test("authorizeRetry with payment_required sets the billing day cooldown, not a 
   // a short retry-friendly buffer instead of the day/week/month billing ladder a state that
   // "does not clear on a retry cadence" actually needs (CodeRabbit, 2026-09-13).
   const { coordinator, sql } = makeCoordinator();
-  const now = Date.now();
+  // Fix the clock away from midnight: the first billing rung is the next UTC midnight, which can
+  // legitimately be less than an hour away in production.
+  const now = Date.UTC(2026, 8, 14, 12, 0, 0);
   const bundleDeadline = now + 60_000;
   sql.exec(
     "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
@@ -1248,9 +1420,8 @@ test("authorizeRetry with payment_required sets the billing day cooldown, not a 
   assert.equal(row.throttle_streak, 0, "payment_required must not go through the own_rpm buffer path");
   assert.equal(row.buffer_seconds, 0);
   assert.equal(row.payment_required_streak, 1);
-  // paymentRequiredBackoffUntil's first rung is the start of the next UTC day -- always far more
-  // than the few-second own_rpm buffer the default branch would otherwise have applied.
-  assert.ok(row.blocked_until > now + 3_600_000, "must be a day-scale cooldown, not a short buffer");
+  // The first billing rung is exactly the next UTC midnight, not the short own_rpm buffer.
+  assert.equal(row.blocked_until, Date.UTC(2026, 8, 15));
   assert.equal(row.last_failure_class, "payment_required");
 });
 

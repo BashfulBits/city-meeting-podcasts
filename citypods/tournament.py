@@ -9,10 +9,14 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import heapq
 import json
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
@@ -27,7 +31,7 @@ from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model
 from citypods.config import load_city_configs, load_site_config
-from citypods.records import load_records, record_to_episode, source_key
+from citypods.records import iter_records, record_to_episode, source_key
 from citypods.review_issues import render_decision_block
 from citypods.statesync import pull_state, push_state
 from citypods.storage import make_storage
@@ -56,6 +60,34 @@ STATE = "llm_tournament.json"
 TICKET_STATE = "llm_tournament_tickets.json"
 JUDGE_CONTRACT = "tournament-tag-judge"
 R5_FLASH_MODEL = "litellm:gemini/gemini-3.1-flash-lite"
+
+
+@contextmanager
+def _progress_heartbeat(phase: str, *, interval_seconds: float = 60.0):
+    """Emit bounded liveness while a restartable tournament preparation phase is busy.
+
+    The hosted runner's cancellation log contains no Python stack.  Candidate preparation can
+    spend minutes reading archived records or evidence from object storage, so keep that work
+    observable rather than looking indistinguishable from a stuck or externally stopped runner.
+    """
+    started = monotonic()
+    stopped = threading.Event()
+
+    def _beat() -> None:
+        while not stopped.wait(interval_seconds):
+            elapsed = int(monotonic() - started)
+            print(f"llm-tournament: still {phase} ({elapsed}s elapsed)", flush=True)
+
+    print(f"llm-tournament: {phase}", flush=True)
+    worker = threading.Thread(target=_beat, daemon=True)
+    worker.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        worker.join()
+        elapsed = int(monotonic() - started)
+        print(f"llm-tournament: finished {phase} ({elapsed}s elapsed)", flush=True)
 
 
 def contest_plan() -> tuple[tuple[str, str, str], ...]:
@@ -478,13 +510,31 @@ def ticket_estimates(state_dir: Path, models: set[str]) -> dict[str, dict[str, f
     return estimates
 
 
-def package_ticket(*, site_config_path: str, output_dir: str, out_dir: str) -> int:
+def _tournament_state_paths(cities: list[Any]) -> set[str]:
+    """Return the durable files the tournament and its ticket renderer actually read."""
+    return {
+        STATE,
+        *(f"sources/{source_key(city)}/episodes.json" for city in cities),
+    }
+
+
+def _restore_tournament_state(storage, state_dir: Path, cities: list[Any]) -> int:
+    """Restore the tournament's small working set with visible progress."""
+    paths = _tournament_state_paths(cities)
+    print(f"llm-tournament: restoring {len(paths)} state file(s)", flush=True)
+    restored = pull_state(storage, state_dir, only_paths=paths)
+    print(f"llm-tournament: restored {restored} state file(s)", flush=True)
+    return restored
+
+
+def package_ticket(*, site_config_path: str, config_dir: str, output_dir: str, out_dir: str) -> int:
     site = load_site_config(site_config_path)
+    cities = load_city_configs(config_dir, site["defaults"])
     storage = make_storage(site, "", Path(output_dir))
     if storage is None:
         raise RuntimeError("tournament ticket requires configured storage")
     state_dir = Path(".citypods-state")
-    pull_state(storage, state_dir)
+    _restore_tournament_state(storage, state_dir, cities)
     state = _state(state_dir / STATE)
     config = site.get("tournament") or {}
     required = float(config.get("challenger_win_rate", 0.60))
@@ -523,11 +573,12 @@ def package_ticket(*, site_config_path: str, output_dir: str, out_dir: str) -> i
 
 def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int) -> int:
     site = load_site_config(site_config_path)
+    cities = load_city_configs(config_dir, site["defaults"])
     storage = make_storage(site, "", Path(output_dir))
     if storage is None or not getattr(storage, "cas_capable", False):
         raise RuntimeError("tournament requires configured CAS-capable storage")
     state_dir = Path(".citypods-state")
-    pull_state(storage, state_dir)
+    _restore_tournament_state(storage, state_dir, cities)
     state_path = state_dir / STATE
     state = _state(state_path)
     # Old episode-level records are intentionally not considered complete: R5 now compares one
@@ -539,29 +590,56 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
     }
     taxonomy_path = (site.get("tagging") or {}).get("taxonomy_path", "config/taxonomy.yml")
     taxonomy = load_taxonomy(taxonomy_path)
-    episode_records: list[tuple[Any, dict[str, Any]]] = []
-    for city in load_city_configs(config_dir, site["defaults"]):
-        for rec in load_records(state_dir, source_key(city)).values():
-            ep = record_to_episode(rec)
-            if not ep.uid:
-                continue
-            episode_records.append((ep, rec))
+    # Keep enough newest records to survive a few recent recordings without usable chapters while
+    # never retaining every historical record just to dispatch one bounded tournament batch.
+    candidate_limit = max(samples * 10, 200)
+    newest_records: list[tuple[datetime, str, int, Any, dict[str, Any]]] = []
+    scanned_records = 0
+    with _progress_heartbeat("loading configured source records"):
+        for city in cities:
+            for rec in iter_records(state_dir, source_key(city)):
+                scanned_records += 1
+                ep = record_to_episode(rec)
+                if not ep.uid:
+                    continue
+                candidate = (ep.published, ep.uid, scanned_records, ep, rec)
+                if len(newest_records) < candidate_limit:
+                    heapq.heappush(newest_records, candidate)
+                elif candidate[:3] > newest_records[0][:3]:
+                    heapq.heapreplace(newest_records, candidate)
+                if scanned_records % 1000 == 0:
+                    print(
+                        f"llm-tournament: scanned {scanned_records} records; retaining "
+                        f"{len(newest_records)} recent candidates",
+                        flush=True,
+                    )
+    episode_records = [
+        (candidate[3], candidate[4])
+        for candidate in sorted(newest_records, key=lambda candidate: candidate[:3], reverse=True)
+    ]
+    print(
+        f"llm-tournament: scanned {scanned_records} record(s); retained "
+        f"{len(episode_records)} recent candidate(s)",
+        flush=True,
+    )
 
     # Sort before loading chapter artifacts. `chapter_tag_inputs()` can read transcript and agenda
     # artifacts from object storage, so scanning every historical record before taking the newest
     # bounded sample made the weekly job spend its entire timeout on discarded candidates.
     episode_records.sort(key=lambda item: (item[0].published, item[0].uid or ""), reverse=True)
     episodes: list[tuple[Any, dict[str, Any], dict[str, Any]]] = []
-    for ep, rec in episode_records:
-        chapters = chapter_tag_inputs(ep, storage)
-        if not chapters:
-            print(f"llm-tournament: skipping {ep.uid!r} (no usable chapters)")
-            continue
-        for chapter in chapters:
-            if chapter.get("chapter_id") and (ep.uid, chapter["chapter_id"]) not in done:
-                episodes.append((ep, rec, chapter))
-        if len(episodes) >= samples:
-            break
+    with _progress_heartbeat("loading chapter evidence"):
+        for ep, rec in episode_records:
+            chapters = chapter_tag_inputs(ep, storage)
+            if not chapters:
+                print(f"llm-tournament: skipping {ep.uid!r} (no usable chapters)")
+                continue
+            for chapter in chapters:
+                if chapter.get("chapter_id") and (ep.uid, chapter["chapter_id"]) not in done:
+                    episodes.append((ep, rec, chapter))
+            if len(episodes) >= samples:
+                break
+    print(f"llm-tournament: selected {len(episodes)} chapter sample(s)", flush=True)
     deadline = datetime.now(UTC) + timedelta(minutes=20)
     completed = 0
     # Run-scoped, per-model backends. Every queue-only job this run creates -- candidate
@@ -812,7 +890,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "ticket":
         return package_ticket(
-            site_config_path=args.site_config, output_dir=args.output_dir, out_dir=args.out_dir
+            site_config_path=args.site_config,
+            config_dir=args.config_dir,
+            output_dir=args.output_dir,
+            out_dir=args.out_dir,
         )
     # The per-run sample budget comes from the lane registry, not a magic constant. It used to be
     # hard-clamped to 2 regardless of --samples, which meant the lane could never dispatch more

@@ -1,19 +1,20 @@
 // Thin URL-rewriting shim that sits between Cloudflare AI Gateway and providers whose API path
 // the gateway cannot express.
 //
-// AI Gateway rewrites the LAST path segment of a Custom Provider's registered Base URL to a
-// hardcoded `v1` before appending the caller's path (verified 2026-08-29 against a throwaway echo
-// provider; undocumented, and contrary to the documented `{base_url}/{provider-path}` join). A
-// provider whose API lives under a prefix that does not end in `v1` is therefore unreachable:
-// z.ai's `/api/paas/v4` becomes `/api/paas/v1`. Registering this Worker as the Custom Provider and
-// letting it restore the real prefix is what keeps those providers inside AI Gateway's logging
-// instead of bypassing the gateway entirely.
+// AI Gateway's Custom Provider Base URL join is undocumented and changed between 2026-08-29 and
+// 2026-09-15. It formerly rewrote the LAST path segment to a hardcoded `v1` before appending the
+// caller's path; it now honors the registered path. The shim accepts both resulting path markers
+// so a dashboard-side behavior change cannot turn z.ai/OpenCode into opaque 404s:
+// z.ai's `/api/paas/v4` still has to be restored here because no gateway Base URL can express it.
 //
-// Registered Base URL shape (the trailing segment is deliberately sacrificial -- the gateway eats
-// it and substitutes `v1`, which is what makes the rewrite predictable rather than accidental):
+// Registered Base URL shape. New registrations should use `v1`; existing registrations use `x`.
+// The parser accepts either because the gateway may either preserve that segment or replace it
+// with `v1` before appending the caller path:
 //
-//   https://<worker-host>/<SHIM_TOKEN>/<provider>/x
+//   https://<worker-host>/<SHIM_TOKEN>/<provider>/v1
 //     -> gateway calls: /<SHIM_TOKEN>/<provider>/v1/<caller path>
+//   https://<worker-host>/<SHIM_TOKEN>/<provider>/x
+//     -> gateway calls: /<SHIM_TOKEN>/<provider>/(x|v1)/<caller path>
 //
 // The token lives in the Base URL because the gateway strips `cf-aig-authorization` before it
 // reaches the upstream (confirmed by the same echo probe), so there is no gateway-supplied
@@ -57,19 +58,16 @@ function secretEquals(a, b) {
   return diff === 0;
 }
 
-/**
- * Split `/<token>/<provider>/v1/<rest>` into its parts, or return null if anything is off.
- *
- * The literal `v1` is required: it is the segment AI Gateway substitutes, so its absence means the
- * request did not arrive the way this Worker is meant to be reached and should not be proxied.
- */
+/** Split `/<token>/<provider>/(x|v1)/<rest>` into its parts, or return null if anything is off. */
 export function parseShimPath(requestUrl, env) {
   const url = new URL(requestUrl);
   if (url.hash) return null;
   if (url.pathname.includes("%") || url.pathname.includes("..")) return null;
   if (url.pathname.length > MAX_PATH_LENGTH || url.search.length > MAX_QUERY_LENGTH) return null;
 
-  const match = url.pathname.match(/^\/([A-Za-z0-9_-]+)\/([a-z0-9-]+)\/v1\/([A-Za-z0-9/._-]+)$/);
+  const match = url.pathname.match(
+    /^\/([A-Za-z0-9_-]+)\/([a-z0-9-]+)\/(?:x|v1)\/([A-Za-z0-9/._-]+)$/,
+  );
   if (!match) return null;
 
   const [, token, provider, rest] = match;

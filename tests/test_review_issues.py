@@ -42,6 +42,19 @@ def test_bounded_body_is_utf8_safe_and_leaves_a_visible_artifact_hint():
     assert "workflow run artifact" in body
 
 
+def test_bounded_body_links_the_workflow_artifact_when_provided():
+    body, truncated = bounded_body(
+        "x" * 400,
+        limit=250,
+        artifact_url="https://github.com/example/repo/actions/runs/123",
+    )
+
+    assert truncated is True
+    assert "[full body is in this workflow run artifact]" in body
+    assert "https://github.com/example/repo/actions/runs/123" in body
+    assert len(body.encode("utf-8")) <= 250
+
+
 def test_review_choice_requires_exactly_one_checkbox():
     body = render_decision_block(("Confirm empty", "Restore media")).replace(
         "- [ ] Confirm", "- [x] Confirm"

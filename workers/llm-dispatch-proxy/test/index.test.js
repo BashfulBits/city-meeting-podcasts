@@ -39,14 +39,7 @@ for (const route of Object.values(DISPATCH_LIMITS.routes_by_id)) {
     if (route.tpm) route.tpm = unscale(route.tpm);
   }
 }
-DISPATCH_LIMITS.model_routing = {
-  "mistral/mistral-medium-3-5": [
-    "deepseek/deepseek-v4-flash",
-    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-    "gemini/gemini-3.5-flash-lite",
-    "deepseek/deepseek-v4-pro",
-  ],
-};
+DISPATCH_LIMITS.model_routing = {};
 
 import {
   DISPATCH_COORDINATOR_KEY,
@@ -181,6 +174,7 @@ const ENV = {
   OPENCODE_API_KEY: "opencode-secret",
   NVIDIA_API_KEY: "nvidia-secret",
   AIRFORCE_API_KEY: "airforce-secret",
+  ORCAROUTER_API_KEY: "orcarouter-secret",
   RETRY_BASE_SECONDS: "60",
   RETRY_MAX_SECONDS: "3600",
   LLM_QUEUE: new FakeBucket(),
@@ -559,6 +553,7 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
     routes: {
       mistral_medium_latest_primary: { blocked_until: "2026-08-23T00:00:00Z" },
       mistral_medium_latest_secondary: { blocked_until: "2026-08-23T00:00:00Z" },
+      mistral_medium_latest_tertiary: { blocked_until: "2026-08-23T00:00:00Z" },
     },
     providers: {
       mistral: { requests_available_at: "2026-08-23T00:00:00Z" },
@@ -581,17 +576,25 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
     );
   };
 
-  const batchResult = await dispatchBatch(env, fetchImpl, now, 1);
-  assert.equal(batchResult.status, "completed");
-  assert.equal(batchResult.count, 1);
-  assert.equal(batchResult.results[0].status, "completed");
-  assert.equal(batchResult.results[0].routeId, "airforce_mistral_medium_3_5_primary");
-  assert.equal(dispatchedPayload.model, "mistral-medium-3.5");
+  const originalRouting = DISPATCH_LIMITS.model_routing;
+  DISPATCH_LIMITS.model_routing = {
+    "mistral/mistral-medium-latest": ["gemini/gemini-3.5-flash-lite"],
+  };
+  try {
+    const batchResult = await dispatchBatch(env, fetchImpl, now, 1);
+    assert.equal(batchResult.status, "completed");
+    assert.equal(batchResult.count, 1);
+    assert.equal(batchResult.results[0].status, "completed");
+    assert.equal(batchResult.results[0].routeId, "gemini_3_5_flash_lite_primary");
+    assert.equal(dispatchedPayload.model, "gemini-3.5-flash-lite");
 
-  // The finished request is saved as completed and ready marker removed:
-  const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();
-  assert.equal(saved.status, "completed");
-  assert.equal(await env.LLM_QUEUE.get(mKey), null);
+    // The finished request is saved as completed and ready marker removed:
+    const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();
+    assert.equal(saved.status, "completed");
+    assert.equal(await env.LLM_QUEUE.get(mKey), null);
+  } finally {
+    DISPATCH_LIMITS.model_routing = originalRouting;
+  }
 });
 
 test("accepts the configured default route but rejects an unrecognized model", async () => {
@@ -882,10 +885,12 @@ test("provider RPM paces different models through one shared schedule", async (t
   assert.deepEqual(calls, ["codestral-2508", "mistral-small-2603"]);
 });
 
-test("legacy DeepSeek aliases use the unified free candidate pool", async () => {
+
+
+test("an OrcaRouter free model uses its configured route", async () => {
   const env = isolatedEnv();
   const queued = await handleRequest(
-    chatRequest(undefined, "deepseek-alias", "opencode/deepseek-v4-flash-free"),
+    chatRequest(undefined, "orcarouter-free", "orcarouter/glm-5.3-flash"),
     env,
   );
   const body = await queued.json();
@@ -893,30 +898,18 @@ test("legacy DeepSeek aliases use the unified free candidate pool", async () => 
   const calls = [];
   const upstream = async (url, init) => {
     calls.push({ url, body: JSON.parse(init.body) });
-    return new Response(JSON.stringify({ id: "deepseek-free", choices: [] }), { status: 200 });
+    return new Response(JSON.stringify({ id: "orcarouter-free", choices: [] }), { status: 200 });
   };
 
   const result = await dispatchOne(env, upstream, new Date());
   assert.equal(result.status, "completed");
   assert.equal(calls.length, 1);
-  // The point of this test is that the alias resolves into the shared pool at all, not which
-  // specific free member ends up serving it -- so assert pool membership rather than pinning one
-  // leg, which would break on every change to the pool's composition or tie-break order. (It has:
-  // NVIDIA's leg was removed and restored on 2026-08-29 over a misdiagnosed 404, and pinning
-  // OpenCode's URL here made that a test failure rather than a no-op.)
-  const freePoolUpstreams = new Map([
-    ["https://opencode.ai/zen/v1/chat/completions", "deepseek-v4-flash-free"],
-    ["https://integrate.api.nvidia.com/v1/chat/completions", "deepseek-ai/deepseek-v4-flash-0731"],
-  ]);
-  assert.ok(
-    freePoolUpstreams.has(calls[0].url),
-    `dispatched to ${calls[0].url}, which is not a free leg of deepseek/deepseek-v4-flash`,
-  );
-  assert.equal(calls[0].body.model, freePoolUpstreams.get(calls[0].url));
+  assert.equal(calls[0].url, "https://api.orcarouter.ai/v1/chat/completions");
+  assert.equal(calls[0].body.model, "z-ai/glm-5.3-flash-free");
   const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
   const record = await stored.json();
   assert.equal(record.status, "completed");
-  assert.equal(record.model, "deepseek/deepseek-v4-flash");
+  assert.equal(record.model, "zai/glm-5.3-flash");
 });
 
 test("a request for a canonical model with no configured route fails permanently", async () => {
@@ -1068,9 +1061,9 @@ test("an aliased ready marker dispatches without an index-repair delay", async (
   const record = {
     id: "chatcmpl-aliased-ready",
     status: "pending",
-    model: "opencode/deepseek-v4-flash-free",
+    model: "nvidia/nemotron-3-ultra-550b-a55b",
     request: {
-      model: "opencode/deepseek-v4-flash-free",
+      model: "nvidia/nemotron-3-ultra-550b-a55b",
       messages: [{ role: "user", content: "x" }],
       stream: false,
     },
@@ -1994,12 +1987,11 @@ test("resolveProviderCredentials routes via AI_GATEWAY_BASE_URL when set across 
     account_id: "primary",
     upstream_model: "Qwen/Qwen2.5-72B-Instruct",
   });
-  // Custom providers carry their api_base path in ai_gateway_chat_path: AI Gateway discards the
-  // path component of a Custom Provider's registered Base URL and joins at the origin root, so
-  // dropping the `/v1` here would dispatch to https://api.siliconflow.com/chat/completions.
+  // The generated custom-provider path is root-relative because AI Gateway now honors the path
+  // component of the registered Base URL instead of rewriting it away.
   assert.equal(
     custom.url,
-    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/custom-siliconflow/v1/chat/completions",
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/custom-siliconflow/chat/completions",
   );
 });
 

@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import requests
+
 from citypods.contracts import _is_spa_seek_url, _media_fetch_detail, _safe_url, check_city
 from citypods.models import Episode
+from citypods.providers.base import ProviderError
 
 
 def test_spa_seek_url_true_for_path_timestamp():
@@ -86,6 +89,76 @@ def test_check_city_accepts_empty_view_counts_for_uncapped_provider(monkeypatch)
     view_counts = next(r for r in results if r.endpoint == "view_counts")
     assert view_counts.ok is True
     assert view_counts.detail == "[]"
+
+
+def test_check_city_confirms_a_transient_listing_failure(monkeypatch):
+    calls = []
+    pauses = []
+
+    class _FlakyProvider(_FakeProvider):
+        def fetch_episodes(self, source):
+            del source
+            calls.append(None)
+            if len(calls) == 1:
+                try:
+                    raise requests.ReadTimeout("CivicClerk read timed out")
+                except requests.ReadTimeout as exc:
+                    raise ProviderError("GET events failed") from exc
+            return super().fetch_episodes({})
+
+    monkeypatch.setattr("citypods.contracts.get_provider", lambda name: _FlakyProvider())
+    monkeypatch.setattr("citypods.contracts.time.sleep", pauses.append)
+    monkeypatch.setattr("shutil.which", lambda _name: None)
+
+    results = check_city("fake-city", "fake", {})
+
+    listing = next(r for r in results if r.endpoint == "list")
+    assert listing.ok is True
+    assert listing.detail == "1 episodes (after 1 transient retry)"
+    assert len(calls) == 2
+    assert pauses == [1.0]
+
+
+def test_check_city_does_not_retry_a_non_transient_listing_failure(monkeypatch):
+    calls = []
+
+    class _BrokenProvider(_FakeProvider):
+        def fetch_episodes(self, source):
+            del source
+            calls.append(None)
+            raise ProviderError("invalid CivicClerk JSON")
+
+    monkeypatch.setattr("citypods.contracts.get_provider", lambda name: _BrokenProvider())
+
+    results = check_city("fake-city", "fake", {})
+
+    listing = next(r for r in results if r.endpoint == "list")
+    assert listing.ok is False
+    assert len(calls) == 1
+
+
+def test_check_city_bounds_repeated_transient_listing_failures(monkeypatch):
+    calls = []
+    pauses = []
+
+    class _UnavailableProvider(_FakeProvider):
+        def fetch_episodes(self, source):
+            del source
+            calls.append(None)
+            try:
+                raise requests.ReadTimeout("CivicClerk read timed out")
+            except requests.ReadTimeout as exc:
+                raise ProviderError("GET events failed") from exc
+
+    monkeypatch.setattr("citypods.contracts.get_provider", lambda name: _UnavailableProvider())
+    monkeypatch.setattr("citypods.contracts.time.sleep", pauses.append)
+
+    results = check_city("fake-city", "fake", {})
+
+    listing = next(r for r in results if r.endpoint == "list")
+    assert listing.ok is False
+    assert len(calls) == 2
+    assert pauses == [1.0]
 
 
 def test_check_city_unregistered_provider_returns_a_result_not_raises():

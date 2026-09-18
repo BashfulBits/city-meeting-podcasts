@@ -2687,6 +2687,102 @@ def test_enrich_lane_threads_protected_blocks_into_push(tmp_path, fake_provider,
     assert isinstance(captured["owned_uids"], dict)
 
 
+def test_enrich_audio_lane_threads_agenda_link_baseline_into_push(
+    tmp_path, fake_provider, monkeypatch
+):
+    """Wiring test for the audio-lane vs agenda/chapter-reset TOCTOU fix (ARCHITECTURE.md's
+    maintenance-lease section; ``records.merge_preserving_foreign``'s ``agenda_link_baseline``): a
+    lane="audio" scoped push must receive each owned uid's own agenda-link values exactly as they
+    stood on disk BEFORE this run started (``SourcePipeline.fetch_merge``'s ``persisted``) — not
+    anything this run itself later wrote. Only the audio lane owns these keys, so only it gets a
+    baseline."""
+    from citypods.config import load_city_configs
+    from citypods.records import load_records, records_path, save_records, source_key
+
+    cities_dir = _setup_multi(tmp_path)
+    state_dir = tmp_path / "state"
+    sk = source_key(load_city_configs(cities_dir, {})[0])
+
+    # First pass: populate real on-disk records (uids), pushed via the real (unmocked) path.
+    # ``source=`` (rather than ``shard=``) keeps this deterministic: shard assignment is
+    # work-weighted and can move a source between shards once this pass gives it a backlog.
+    _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg(), source=sk, lane="audio")
+
+    records = load_records(state_dir, sk)
+    uid = next(iter(records))
+    records[uid].setdefault("links", {})["agenda_text_artifact_key"] = "pre-existing-key"
+    save_records(state_dir, sk, records)
+    # The second pass's own pull_state() restores from the LocalStorage "bucket" (not state_dir)
+    # before this run starts, so the injected value must land there too, or it's clobbered back.
+    bucket_copy = tmp_path / "docs" / "audio" / "state" / "sources" / sk / "episodes.json"
+    bucket_copy.write_text(records_path(state_dir, sk).read_text())
+
+    captured = {}
+
+    def _push_merged(
+        _storage,
+        _state_dir,
+        source_keys,
+        *,
+        protected_blocks,
+        lane=None,
+        owned_uids=None,
+        agenda_link_baseline=None,
+        log=None,
+    ):
+        captured["agenda_link_baseline"] = agenda_link_baseline
+        return len(set(source_keys))
+
+    monkeypatch.setattr(run, "push_records_merged", _push_merged)
+    monkeypatch.setattr(run, "push_state", lambda *a, **k: 0)
+    monkeypatch.setattr(run, "reconcile_state", lambda *a, **k: 0)
+
+    # Second pass: the run must NOT have re-derived the field (no agenda source is configured for
+    # the fake provider), so the baseline captured for the push equals what was on disk at start.
+    _build_phase(tmp_path, cities_dir, "enrich", _CountingFfmpeg(), source=sk, lane="audio")
+
+    assert captured["agenda_link_baseline"][sk][uid]["agenda_text_artifact_key"] == (
+        "pre-existing-key"
+    )
+
+
+def test_enrich_unsharded_audio_lane_still_uses_merged_persistence(
+    tmp_path, fake_provider, monkeypatch
+):
+    """CodeRabbit review on #1716: a valid ``--lane audio`` invocation with no ``--source``/
+    ``--shard`` (``scoped`` was False for "audio" alone) fell back to the plain whole-snapshot
+    ``push_state()`` push. That path has no ``agenda_link_baseline`` — or any other foreign-block
+    preservation — so this run could still resurrect a concurrent agenda/chapter maintenance
+    reset's tombstone despite this PR's fix. ``lane="audio"`` alone must now route through
+    ``push_records_merged`` exactly like the other single-lane-only workflows (tag/moments/
+    diarize/...) already do."""
+    cities = _setup(tmp_path)
+    captured = {}
+
+    def _push_merged(
+        _storage,
+        _state_dir,
+        source_keys,
+        *,
+        protected_blocks,
+        lane=None,
+        owned_uids=None,
+        agenda_link_baseline=None,
+        log=None,
+    ):
+        captured["called"] = True
+        captured["agenda_link_baseline"] = agenda_link_baseline
+        return len(set(source_keys))
+
+    monkeypatch.setattr(run, "push_records_merged", _push_merged)
+    monkeypatch.setattr(run, "reconcile_state", lambda *a, **k: 0)
+
+    _build_phase(tmp_path, cities, "enrich", _CountingFfmpeg(), lane="audio")
+
+    assert captured.get("called") is True  # merged persistence, not the plain whole-snapshot push
+    assert captured["agenda_link_baseline"] is not None
+
+
 def test_unsharded_enrich_pushes_everything_and_reconciles(tmp_path, fake_provider, monkeypatch):
     """The full (unsharded) run keeps the whole-snapshot push + the reconcile sweep."""
     cities_dir = _setup_multi(tmp_path)

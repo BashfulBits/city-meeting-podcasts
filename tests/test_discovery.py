@@ -6,6 +6,7 @@ import pytest
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
 from citypods.compute.llm import LLMStructuredOutputError
+from citypods.compute.llm_policy import ROUTE_CANDIDATES
 from citypods.discovery.classify import (
     STRUCTURED_OUTPUT,
     CivicPlatformClassificationResponse,
@@ -14,8 +15,8 @@ from citypods.discovery.classify import (
     classify,
     parse_classification,
 )
-from citypods.discovery.config import discovery_llm_config
-from citypods.discovery.eligibility import AgendaCoverage, auxiliary_eligibility
+from citypods.discovery.config import discovery_allowed_models, discovery_llm_config
+from citypods.discovery.eligibility import AgendaCoverage, auxiliary_eligibility, auxiliary_states
 from citypods.discovery.models import (
     KNOWN_PLATFORMS,
     Classification,
@@ -85,16 +86,59 @@ def test_discovery_llm_route_is_task_scoped_yaml_not_generic_environment(monkeyp
     assert config.mode == "direct"
 
 
+def test_discovery_allowed_models_are_vetted_and_keep_configured_model_first():
+    assert discovery_allowed_models("gemini/gemini-3-flash-preview") == (
+        "gemini/gemini-3-flash-preview",
+        "gemini/gemini-3.6-flash",
+        "gemini/gemini-3.8-flash",
+        "gemini/gemini-3.5-flash",
+    )
+    assert discovery_allowed_models("gemini/gemini-3.5-flash-lite")[0] == (
+        "gemini/gemini-3.5-flash-lite"
+    )
+    assert (
+        discovery_allowed_models("gemini/gemini-3.5-flash-lite").count(
+            "gemini/gemini-3.5-flash-lite"
+        )
+        == 1
+    )
+
+
+def test_discovery_models_are_free_direct_native_and_large_context():
+    for model in discovery_allowed_models("gemini/gemini-3.7-flash"):
+        routes = ROUTE_CANDIDATES[model]
+        assert routes
+        assert all(route.free for route in routes)
+        assert all("direct" in route.transports for route in routes)
+        assert all(route.structured_output_direct_handler == "native" for route in routes)
+        assert all(route.input_context_limit >= 1_000_000 for route in routes)
+        assert all(route.output_context_limit >= 65_536 for route in routes)
+
+
 def test_auxiliary_eligibility_keeps_state_restore_logs_off_json_stdout(
     monkeypatch, capsys, tmp_path
 ):
-    def fake_pull(_site, _output_dir, *, log):
+    pull_args = {}
+
+    def fake_pull(_site, _output_dir, *, only_paths, log):
+        pull_args["only_paths"] = only_paths
         log("state: restored 3 file(s) from durable storage")
         return tmp_path
 
     monkeypatch.setattr(city_discovery_script, "pull_canonical_state", fake_pull)
     monkeypatch.setattr(city_discovery_script, "load_site_config", lambda *_: {"defaults": {}})
-    monkeypatch.setattr(city_discovery_script, "load_city_configs", lambda *_: [])
+    monkeypatch.setattr(
+        city_discovery_script,
+        "load_city_configs",
+        lambda *_: [
+            SimpleNamespace(
+                slug="example-tx",
+                provider="swagit",
+                source_id="stable-source",
+                source={},
+            )
+        ],
+    )
     monkeypatch.setattr(city_discovery_script, "auxiliary_states", lambda *_: ([], {}))
 
     result = city_discovery_script._eligible_auxiliary(
@@ -111,6 +155,7 @@ def test_auxiliary_eligibility_keeps_state_restore_logs_off_json_stdout(
     assert result == {"eligible": [], "state": {}}
     assert captured.out == ""
     assert "state: restored 3 file(s) from durable storage" in captured.err
+    assert pull_args["only_paths"] == {"sources/stable-source/episodes.json"}
 
 
 def test_discovery_script_returns_tempfail_for_invalid_structured_output(monkeypatch, capsys):
@@ -203,6 +248,7 @@ def test_classifier_prompt_includes_provider_source_schemas():
             assert job.inputs["llm_policy"].allow_paid is False
             assert job.inputs["llm_policy"].purpose == "city-onboarding"
             assert job.inputs["llm_policy"].deadline_at is None
+            assert job.inputs["llm_policy"].allowed_models == ("gemini/gemini-3-flash-preview",)
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
@@ -396,3 +442,79 @@ def test_agenda_covered_city_reenters_after_two_low_coverage_checks():
     assert auxiliary_eligibility(city, coverage, prior_state="agenda-covered", low_checks=2) == (
         "eligible"
     )
+
+
+def test_auxiliary_states_deduplicates_shared_source_records():
+    shared_records = {
+        "episode-1": {
+            "published": "2026-07-14T00:00:00+00:00",
+            "links": {"agenda": "https://example.gov/agenda.pdf"},
+        }
+    }
+    cities = [
+        SimpleNamespace(
+            slug="example-council",
+            city_entity="example-tx",
+            provider="swagit",
+            aux_provider=None,
+        ),
+        SimpleNamespace(
+            slug="example-zoning",
+            city_entity="example-tx",
+            provider="swagit",
+            aux_provider=None,
+        ),
+    ]
+
+    eligible, state = auxiliary_states(
+        cities,
+        {city.slug: shared_records for city in cities},
+        {},
+    )
+
+    assert eligible == ["example-council", "example-zoning"]
+    assert state["example-tx"]["agenda_coverage"]["denominator"] == 1
+    assert state["example-tx"]["agenda_coverage"]["numerator"] == 1
+
+
+def test_eligible_auxiliary_loads_each_source_once(monkeypatch, tmp_path):
+    cities = [
+        SimpleNamespace(
+            slug="example-council",
+            city_entity="example-tx",
+            provider="swagit",
+            source_id="stable-source",
+            source={},
+        ),
+        SimpleNamespace(
+            slug="example-zoning",
+            city_entity="example-tx",
+            provider="swagit",
+            source_id="stable-source",
+            source={},
+        ),
+    ]
+    loaded = []
+
+    monkeypatch.setattr(city_discovery_script, "load_site_config", lambda *_: {"defaults": {}})
+    monkeypatch.setattr(city_discovery_script, "load_city_configs", lambda *_: cities)
+    monkeypatch.setattr(city_discovery_script, "resolve_state_dir", lambda *_: tmp_path)
+    monkeypatch.setattr(
+        city_discovery_script,
+        "load_records",
+        lambda _dir, key: loaded.append(key) or {},
+    )
+    monkeypatch.setattr(city_discovery_script, "auxiliary_states", lambda *_: ([], {}))
+
+    result = city_discovery_script._eligible_auxiliary(
+        SimpleNamespace(
+            site_config="config/site_config.yml",
+            output_dir=tmp_path,
+            pull_state=False,
+            config_dir="config",
+            prior_aux_state=None,
+        )
+    )
+
+    assert result == {"eligible": [], "state": {}}
+    assert loaded == ["stable-source"]

@@ -595,6 +595,45 @@ def test_push_records_merged_preserves_remote_decoded_plan_from_stale_audio_lane
     assert load_records(state_dir, sk)["u1"]["sources"][0]["duration_basis"] == "decoded"
 
 
+def test_push_records_merged_audio_lane_defers_to_reset_tombstone(tmp_path):
+    """End-to-end version of the TOCTOU regression (GH#1627 CodeRabbit review): a concurrent
+    agenda/chapter maintenance reset tombstones ``links.agenda_text_artifact_key`` in remote after
+    this audio run's local snapshot was taken. Without ``agenda_link_baseline`` the audio lane
+    "owns" `links` and would resurrect the stale key on push; with it, remote's tombstone wins."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+    sk = "src1"
+    _seed_remote(
+        bucket,
+        sk,
+        {"u1": {"uid": "u1", "links": {"agenda_text_artifact_key": None}}},
+    )
+    # This run's local copy still carries the pre-reset value: AgendaTextStage's reuse fast-path
+    # never touched it, since the field was still present when this run started.
+    save_records(
+        state_dir,
+        sk,
+        {"u1": {"uid": "u1", "links": {"agenda_text_artifact_key": "stale-key"}}},
+    )
+    baseline = {sk: {"u1": {"agenda_text_artifact_key": "stale-key"}}}
+
+    pushed = push_records_merged(
+        bucket,
+        state_dir,
+        [sk],
+        protected_blocks=protected_blocks_for_lane("audio"),
+        lane="audio",
+        agenda_link_baseline=baseline,
+    )
+
+    assert pushed == 1
+    restored = tmp_path / "restored"
+    pull_state(bucket, restored)
+    final = load_records(restored, sk)["u1"]
+    assert final["links"]["agenda_text_artifact_key"] is None
+    assert load_records(state_dir, sk)["u1"]["links"]["agenda_text_artifact_key"] is None
+
+
 def test_push_records_merged_owned_uids_no_sibling_shard_clobber(tmp_path):
     """Two transcribe shards split ONE source per-episode (review/18 §3.2). Each pulled the whole
     source, so each local carries a snapshot-stale transcript for the uid it does not own. Pushing
@@ -994,6 +1033,44 @@ def test_pull_state_downloads_in_parallel(tmp_path):
     for i in range(n):
         path = tmp_path / "state" / "sources" / f"src{i:02d}" / "episodes.json"
         assert json.loads(path.read_text())["episodes"]["u"]["uid"] == f"u{i}"
+
+
+def test_pull_state_only_paths_skips_unrequested_objects(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    _seed_remote(bucket, "wanted", {"u": {"uid": "wanted"}})
+    _seed_remote(bucket, "unwanted", {"u": {"uid": "unwanted"}})
+
+    restored = pull_state(
+        bucket,
+        tmp_path / "state",
+        only_paths=["sources/wanted/episodes.json"],
+    )
+
+    assert restored == 1
+    assert (tmp_path / "state" / "sources" / "wanted" / "episodes.json").exists()
+    assert not (tmp_path / "state" / "sources" / "unwanted" / "episodes.json").exists()
+
+
+def test_pull_state_only_paths_avoids_full_listing_without_a_manifest(tmp_path):
+    class NoListBucket(LocalStorage):
+        def list_objects(self, _prefix):
+            raise AssertionError("a scoped restore must not list the full state snapshot")
+
+    bucket = NoListBucket(root=tmp_path / "bucket", url_prefix="https://x")
+    bucket.put_file(
+        f"{STATE_PREFIX}/sources/wanted/episodes.json",
+        _tmpfile(tmp_path, '{"episodes": {}}'),
+        "application/json",
+    )
+
+    restored = pull_state(
+        bucket,
+        tmp_path / "state",
+        only_paths=["sources/wanted/episodes.json"],
+    )
+
+    assert restored == 1
+    assert (tmp_path / "state" / "sources" / "wanted" / "episodes.json").exists()
 
 
 def test_reconcile_state_skips_cas_managed_budget(tmp_path):
