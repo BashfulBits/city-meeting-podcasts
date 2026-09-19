@@ -1237,7 +1237,17 @@ def test_moments_workflow_is_bounded_and_uses_v2_dispatch():
         if item.get("name") == "Produce bounded R6 moment candidates and judge assessments"
     )
 
-    assert _on(wf)["schedule"] == [{"cron": "45 19 * * *"}]
+    assert [item["cron"] for item in _on(wf)["schedule"]] == [
+        "45 0 * * *",
+        "25 3 * * *",
+        "05 6 * * *",
+        "45 8 * * *",
+        "25 11 * * *",
+        "05 14 * * *",
+        "45 16 * * *",
+        "25 19 * * *",
+        "05 22 * * *",
+    ]
     assert wf["permissions"] == {"contents": "read", "actions": "read"}
     assert wf["concurrency"] == {
         "group": "r7-speaker-evaluation-state",
@@ -1534,3 +1544,49 @@ def test_llm_rate_probe_workflow_contract():
         uses = step.get("uses", "")
         if uses:
             assert _PINNED_SHA.search(uses), f"Unpinned action: {uses}"
+
+
+def test_deferred_llm_producers_run_at_least_three_times_daily():
+    """Producer cadence must give each production deferred lane repeated quota opportunities."""
+    expected_minimums = {
+        "chapter-agenda.yml": 3,
+        "chapter-locator.yml": 3,
+        "tag.yml": 3,
+        "moments.yml": 3,
+        "llm-deferred-sweep.yml": 3,
+    }
+
+    def daily_occurrences(cron: str) -> int:
+        hours = cron.split()[1]
+        if hours.startswith("*/"):
+            return 24 // int(hours[2:])
+        total = 0
+        for value in hours.split(","):
+            if "-" in value:
+                span, _, raw_step = value.partition("/")
+                start, end = (int(part) for part in span.split("-"))
+                total += ((end - start) // int(raw_step or "1")) + 1
+            else:
+                total += 1
+        return total
+
+    for workflow, minimum in expected_minimums.items():
+        schedules = _on(yaml.safe_load((WORKFLOWS / workflow).read_text())).get("schedule", [])
+        occurrences = sum(daily_occurrences(item["cron"]) for item in schedules)
+        assert occurrences >= minimum, f"{workflow} has only {occurrences} daily runs"
+
+
+def test_stuck_chapter_agenda_workflow_is_dry_run_by_default():
+    wf, job = _job("reconcile-stuck-chapter-agenda.yml", "reconcile")
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+    assert inputs["apply"]["type"] == "boolean"
+    assert inputs["apply"]["default"] is False
+    assert inputs["older_than_hours"]["default"] == 24
+    step = next(
+        item
+        for item in job["steps"]
+        if item.get("name") == "Classify and optionally supersede stale chapter-agenda handles"
+    )
+    assert "args=(--dry-run)" in step["run"]
+    assert "args=(--apply)" in step["run"]
+    assert step["env"]["LLM_DISPATCH_V2_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}"
