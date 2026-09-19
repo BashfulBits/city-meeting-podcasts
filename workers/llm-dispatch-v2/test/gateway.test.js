@@ -312,6 +312,25 @@ test("parseRetryAfterSeconds parses direct retry_after_seconds property", () => 
   );
 });
 
+test("parseRetryAfterSeconds parses Google's structured RetryInfo delay", () => {
+  assert.equal(
+    parseRetryAfterSeconds(
+      { headers: new Headers() },
+      {
+        error: {
+          details: [
+            {
+              "@type": "type.googleapis.com/google.rpc.RetryInfo",
+              retryDelay: "3.2s",
+            },
+          ],
+        },
+      }
+    ),
+    4
+  );
+});
+
 test("callAiGateway includes response.headers in its return value", async () => {
   const originalFetch = globalThis.fetch;
   try {

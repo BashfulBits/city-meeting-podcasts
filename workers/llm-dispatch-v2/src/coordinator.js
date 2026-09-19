@@ -66,6 +66,7 @@ const NON_CONSUMING_FAILURE_CLASSES = new Set([
   "upstream_capacity",
   "gateway_limit",
   "server_error",
+  "route_input_limit",
   "payment_required",
   "request_defect",
 ]);
@@ -3022,11 +3023,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const _retryCeiling = (base) =>
           backupAfterAttempts > 0 ? backupAfterAttempts + base : base;
 
+        const isUpstreamClass =
+          result.failure_class === "upstream_capacity" ||
+          result.failure_class === "gateway_limit";
         const isFinal5xx =
           result.outcome === "retryable_error" &&
           Number.isInteger(result.provider_status_code) &&
           result.provider_status_code >= 500 &&
-          result.provider_status_code <= 599;
+          result.provider_status_code <= 599 &&
+          !isUpstreamClass;
         // A 402 requeues rather than failing: the route is blocked below, so the job cannot
         // re-probe it, and it runs on an overflow route or once the cooldown clears. It shares
         // the 5xx retry budget so a route that stays 402 across every cooldown cannot requeue a
@@ -3045,7 +3050,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           result.outcome === "retryable_error" && result.provider_status_code === 400;
         const isTransientRouteFailure = isFinal5xx || isUpstreamCapacityFailure;
         const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
-        const blockedUntil = isTransientRouteFailure
+        const isRouteInputLimit = result.failure_class === "route_input_limit";
+        const blockedUntil = isTransientRouteFailure || isRouteInputLimit
           ? this._5xxBlockedUntil(nextTransientRetryCount, now)
           : null;
         // An upstream/gateway failure is by definition not this job's fault and recurs on its own
@@ -3053,9 +3059,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // With MAX_5XX_RETRIES=1 shared across every transient cause, two unrelated upstream
         // blips destroyed a job that had done nothing wrong -- 26 such events landed on just two
         // routes on 2026-09-09 alone.
-        const isUpstreamClass =
-          result.failure_class === "upstream_capacity" ||
-          result.failure_class === "gateway_limit";
         const isUpstreamRetryable =
           isUpstreamClass &&
           job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
@@ -3065,8 +3068,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const shouldRetry5xx =
           isTransientRouteFailure &&
           job.transient_retry_count < _retryCeiling(this._max5xxRetries());
+        const shouldRetryRouteInputLimit =
+          isRouteInputLimit &&
+          job.transient_retry_count < _retryCeiling(this._max5xxRetries());
         const shouldRequeue =
-          shouldRetry5xx || isPaymentRequired || isRateLimitTerminal || isUpstreamRetryable;
+          shouldRetry5xx ||
+          shouldRetryRouteInputLimit ||
+          isPaymentRequired ||
+          isRateLimitTerminal ||
+          isUpstreamRetryable;
 
         if (result.outcome === "retryable_error" || result.outcome === "terminal_error") {
           if (result.provider_status_code !== 429) {
@@ -3262,7 +3272,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
               result.provider_status_code ?? 429,
               job.lease_route_id
             );
-          } else if (isTransientRouteFailure) {
+          } else if (isRouteInputLimit) {
+            // Quarantine a route that cannot serve this input shape, letting the requeued job
+            // select a longer-context sibling without a durable per-job exclusion list.
+            sql.exec(
+              "UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?), " +
+                "last_provider_status = ?, last_failure_class = ? WHERE route_id = ?",
+              blockedUntil,
+              result.provider_status_code ?? null,
+              result.failure_class,
+              job.lease_route_id
+            );
+          } else if (isTransientRouteFailure && !isUpstreamClass) {
             // The Gateway has already retried this request. Temporarily remove only this route
             // from the capacity ranking so other models/accounts can drain while it recovers.
             sql.exec(
