@@ -41,6 +41,12 @@ from citypods.config import load_site_config
 from citypods.storage import make_storage
 
 CURRENT_MODELS = frozenset((*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS))
+DEFAULT_MAX_ROW_WRITES = 25_000
+# A queued cancellation deletes one or more job-model rows and updates the job row plus the
+# state/updated-at indexes. Cloudflare bills affected index rows too, so keep a safety margin over
+# the seven rows a one-model job currently touches. This is a conservative budget estimate, not a
+# replacement for the platform's eventual usage meter.
+ESTIMATED_CANCEL_ROW_WRITES_PER_JOB = 8
 
 
 def _created_at(data: Mapping[str, Any] | None) -> datetime | None:
@@ -119,17 +125,26 @@ def _apply(
     storage,
     backend: LiteLLMBackend,
     candidates: list[dict[str, Any]],
+    *,
+    max_row_writes: int = DEFAULT_MAX_ROW_WRITES,
 ) -> dict[str, Any]:
     """Cancel confirmed remote jobs and discard only handles safe to supersede."""
+    if max_row_writes < 0:
+        raise ValueError("max_row_writes must be non-negative")
+
     remote = [item for item in candidates if item["remote_v2"]]
+    max_remote = max_row_writes // ESTIMATED_CANCEL_ROW_WRITES_PER_JOB
+    selected_remote = remote[:max_remote]
+    budget_skipped = remote[max_remote:]
+    budget_skipped_refs = {item["ref"] for item in budget_skipped}
     synthetic = [item for item in candidates if item["synthetic"]]
     cancelled: set[str] = set()
     in_flight: set[str] = set()
     not_found: set[str] = set()
     errors: list[str] = []
 
-    for start in range(0, len(remote), _WORKER_BATCH_LIMIT):
-        refs = [item["ref"] for item in remote[start : start + _WORKER_BATCH_LIMIT]]
+    for start in range(0, len(selected_remote), _WORKER_BATCH_LIMIT):
+        refs = [item["ref"] for item in selected_remote[start : start + _WORKER_BATCH_LIMIT]]
         try:
             result = backend.cancel_batch(refs)
         except Exception as exc:  # noqa: BLE001 -- retain every record on cancellation failure
@@ -145,6 +160,10 @@ def _apply(
     for item in candidates:
         ref = item["ref"]
         if item["remote_v2"]:
+            if ref in budget_skipped_refs:
+                dispositions["write_budget_retained"] += 1
+                retained += 1
+                continue
             if ref in in_flight:
                 dispositions["in_flight_retained"] += 1
                 retained += 1
@@ -172,13 +191,25 @@ def _apply(
         "dispositions": dict(dispositions),
         "errors": errors,
         "synthetic_count": len(synthetic),
+        "max_row_writes": max_row_writes,
+        "estimated_row_writes": len(selected_remote) * ESTIMATED_CANCEL_ROW_WRITES_PER_JOB,
+        "write_budget_skipped_count": len(budget_skipped),
     }
 
 
-def run(*, apply: bool, site_config_path: str, output_dir: str, older_than_hours: float) -> int:
+def run(
+    *,
+    apply: bool,
+    site_config_path: str,
+    output_dir: str,
+    older_than_hours: float,
+    max_row_writes: int = DEFAULT_MAX_ROW_WRITES,
+) -> int:
     """Run the dry-run classification or guarded cancellation/supersession flow."""
     if older_than_hours <= 0:
         raise ValueError("--older-than-hours must be greater than zero")
+    if max_row_writes < 0:
+        raise ValueError("--max-row-writes must be non-negative")
 
     site_config = load_site_config(site_config_path)
     storage = make_storage(site_config, "", Path(output_dir))
@@ -219,7 +250,12 @@ def run(*, apply: bool, site_config_path: str, output_dir: str, older_than_hours
 
     if apply:
         backend = LiteLLMBackend(LLMBackendConfig.from_env(), storage=storage)
-        report["action"] = _apply(storage, backend, candidates)
+        report["action"] = _apply(
+            storage,
+            backend,
+            candidates,
+            max_row_writes=max_row_writes,
+        )
 
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if not report.get("action", {}).get("errors") else 1
@@ -239,6 +275,15 @@ def main(argv: list[str] | None = None) -> int:
         default=24.0,
         help="Treat a chapter-agenda handle this old as stuck (default: 24).",
     )
+    parser.add_argument(
+        "--max-row-writes",
+        type=int,
+        default=DEFAULT_MAX_ROW_WRITES,
+        help=(
+            "Conservative billed row-write budget for v2 cancellation (default: "
+            f"{DEFAULT_MAX_ROW_WRITES})."
+        ),
+    )
     args = parser.parse_args(argv)
     try:
         return run(
@@ -246,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
             site_config_path=args.site_config,
             output_dir=args.output_dir,
             older_than_hours=args.older_than_hours,
+            max_row_writes=args.max_row_writes,
         )
     except Exception as exc:  # noqa: BLE001 -- CLI emits one actionable failure and exits nonzero
         print(f"stuck chapter-agenda reconciliation failed: {exc}", file=sys.stderr)
