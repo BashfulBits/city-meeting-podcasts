@@ -43,6 +43,11 @@ Phase R (Research-Tool Surface)._
   normal completion; the next chapter-agenda run recreates superseded work under the current
   Nemotron/Gemini policy.
 
+- **Serialize deferred-record replacement and discard** (`citypods/compute/llm_deferred.py`).
+  Producer writes and explicit supersession now share a short-lived R2 coordination lease because
+  B2 has no conditional-delete primitive. Unsupported persisted remote handles are retained by
+  the stuck-agenda reconciler instead of being mistaken for synthetic client-side work.
+
 - **V2 dispatcher admission diagnostics** (`workers/llm-dispatch-v2/src/coordinator.js` and
   `src/index.js`). Every scheduled claim now records its outcome in the bounded `scheduler` row
   and exposes the last reason, daily reason counts, candidate rejection counters, route/provider

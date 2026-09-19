@@ -115,6 +115,30 @@ def test_apply_cancels_remote_jobs_and_discards_safe_synthetic_handles():
     assert storage.get_bytes("state/llm_deferred/synthetic.json") is None
 
 
+def test_apply_retains_unsupported_remote_handles_without_deleting_them():
+    storage = MemStorage()
+    handle = _handle(
+        "unsupported",
+        model="mistral/mistral-medium-latest",
+        ref="legacy-ref",
+        backend="litellm",
+    )
+    write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+    candidate = _classify_entry(_entry(handle, age_hours=25), now=NOW, older_than_hours=24)
+
+    class Backend:
+        def cancel_batch(self, refs):
+            assert refs == []
+            return {"cancelled": [], "in_flight": [], "not_found": []}
+
+    result = _apply(storage, Backend(), [candidate])
+
+    assert result["discarded_count"] == 0
+    assert result["retained_count"] == 1
+    assert result["dispositions"] == {"unsupported_remote_retained": 1}
+    assert storage.get_bytes("state/llm_deferred/unsupported.json") is not None
+
+
 def test_apply_retains_a_v2_job_that_is_still_in_flight():
     storage = MemStorage()
     handle = _handle("in-flight", model="mistral/mistral-medium-latest", ref="busy-ref")

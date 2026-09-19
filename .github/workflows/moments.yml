@@ -5,9 +5,11 @@ name: R6 meeting moments
 # extraction and judging from their durable records.
 on:
   schedule:
-    # Each pass admits at most 40 moment and 40 judge jobs. Nine passes are the minimum cadence
-    # that can spend the 3,000 write-unit daily allowance of either pooled R6 lane (333/428 jobs,
-    # respectively), while keeping the schedule comfortably above the requested three passes/day.
+    # Each pass shares one 40-dispatch budget between moment extraction and judging. Nine passes
+    # allow at most 360 combined R6 jobs; extraction consumes part of that budget, so judge jobs
+    # stay below 360 and this producer cannot reach the r6-judge lane's 428-job ceiling. The
+    # cadence intentionally provides more than the requested three passes/day without adding
+    # work solely to exhaust a daily allowance.
     - cron: "45 0 * * *"
     - cron: "25 3 * * *"
     - cron: "05 6 * * *"

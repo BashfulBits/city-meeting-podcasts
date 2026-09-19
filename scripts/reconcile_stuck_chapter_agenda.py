@@ -44,6 +44,7 @@ CURRENT_MODELS = frozenset((*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS))
 
 
 def _created_at(data: Mapping[str, Any] | None) -> datetime | None:
+    """Parse a persisted registry timestamp, returning ``None`` for malformed data."""
     value = data.get("created_at") if isinstance(data, Mapping) else None
     if not isinstance(value, str):
         return None
@@ -55,6 +56,7 @@ def _created_at(data: Mapping[str, Any] | None) -> datetime | None:
 
 
 def _purpose(handle: JobHandle) -> str | None:
+    """Return the deferred policy purpose, if this handle carries a synthetic request."""
     deferred = handle.deferred_request
     if not isinstance(deferred, DeferredLLMRequest):
         return None
@@ -62,6 +64,7 @@ def _purpose(handle: JobHandle) -> str | None:
 
 
 def _classify_entry(entry, *, now: datetime, older_than_hours: float) -> dict[str, Any] | None:
+    """Classify one snapshot entry when it is an old or legacy chapter-agenda handle."""
     handle = entry.decoded
     if not isinstance(handle, JobHandle) or handle.task != "agenda-item-extract":
         return None
@@ -86,6 +89,7 @@ def _classify_entry(entry, *, now: datetime, older_than_hours: float) -> dict[st
         and bool(handle.ref)
         and not handle.ref.startswith("deferred")
     )
+    synthetic = isinstance(handle.deferred_request, DeferredLLMRequest)
     return {
         "recipe_hash": handle.recipe_hash,
         "ref": handle.ref,
@@ -95,11 +99,13 @@ def _classify_entry(entry, *, now: datetime, older_than_hours: float) -> dict[st
         "created_at": created.isoformat() if created else None,
         "age_hours": round(age_hours, 2) if age_hours is not None else None,
         "reasons": reasons,
+        "synthetic": synthetic,
         "remote_v2": remote,
     }
 
 
 def _summary(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """Summarize candidate counts for the human- and machine-readable report."""
     return {
         "candidate_count": len(candidates),
         "by_reason": dict(Counter(reason for item in candidates for reason in item["reasons"])),
@@ -114,8 +120,9 @@ def _apply(
     backend: LiteLLMBackend,
     candidates: list[dict[str, Any]],
 ) -> dict[str, Any]:
+    """Cancel confirmed remote jobs and discard only handles safe to supersede."""
     remote = [item for item in candidates if item["remote_v2"]]
-    synthetic = [item for item in candidates if not item["remote_v2"]]
+    synthetic = [item for item in candidates if item["synthetic"]]
     cancelled: set[str] = set()
     in_flight: set[str] = set()
     not_found: set[str] = set()
@@ -146,6 +153,10 @@ def _apply(
                 dispositions["cancel_unknown_retained"] += 1
                 retained += 1
                 continue
+        elif not item["synthetic"]:
+            dispositions["unsupported_remote_retained"] += 1
+            retained += 1
+            continue
         if discard_deferred(storage, item["recipe_hash"], expected_ref=ref):
             discarded += 1
             dispositions["superseded"] += 1
@@ -165,6 +176,7 @@ def _apply(
 
 
 def run(*, apply: bool, site_config_path: str, output_dir: str, older_than_hours: float) -> int:
+    """Run the dry-run classification or guarded cancellation/supersession flow."""
     if older_than_hours <= 0:
         raise ValueError("--older-than-hours must be greater than zero")
 
@@ -214,6 +226,7 @@ def run(*, apply: bool, site_config_path: str, output_dir: str, older_than_hours
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Parse CLI arguments and convert operational failures into a nonzero exit code."""
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="Classify only; do not mutate state.")
