@@ -27,6 +27,15 @@ const COPY_FIELDS = [
   "frequency_penalty",
 ];
 
+// Provider error bodies are small in practice, but a malformed upstream response must not make
+// the executor retain an unbounded text body. This is only used for classification, not persisted.
+const MAX_PROVIDER_ERROR_BODY_CHARS = 4096;
+
+/** Gemini's OpenAI-compatible endpoint sometimes wraps one error object in a one-element array. */
+export function normalizeProviderBody(body) {
+  return Array.isArray(body) ? body[0] : body;
+}
+
 /** Builds the actual provider request from a stored payload: remaps the logical model (e.g.
  * "gemini/gemini-flash-lite") to the route's real upstream_model string, and forwards only
  * COPY_FIELDS plus `messages` -- never the raw payload via a blind spread.
@@ -162,12 +171,14 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
   const correlationId = response.headers.get("cf-aig-log-id") || response.headers.get("cf-ray") || null;
   let body = null;
   let parseError = null;
+  const rawBody = await response.text();
   try {
-    body = await response.json();
+    body = rawBody ? JSON.parse(rawBody) : null;
   } catch (err) {
     parseError = err;
+    body = rawBody.slice(0, MAX_PROVIDER_ERROR_BODY_CHARS);
   }
-  const retryAfterSeconds = parseRetryAfterSeconds(response, body);
+  const retryAfterSeconds = parseRetryAfterSeconds(response, normalizeProviderBody(body));
 
   return {
     status: response.status,
@@ -356,6 +367,15 @@ export function parseRetryAfterSeconds(response, body = null) {
     );
     if (Number.isFinite(directRetrySec) && directRetrySec > 0) {
       return Math.ceil(directRetrySec);
+    }
+    const retryInfo = Array.isArray(body?.error?.details)
+      ? body.error.details.find((detail) =>
+          String(detail?.["@type"] || "").endsWith("RetryInfo")
+        )
+      : null;
+    const retryInfoSeconds = parseDurationSeconds(retryInfo?.retryDelay);
+    if (retryInfoSeconds !== null && retryInfoSeconds > 0) {
+      return retryInfoSeconds;
     }
     const message =
       body?.error?.message ||

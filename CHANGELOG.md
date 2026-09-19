@@ -17,6 +17,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Classify actionable AI Gateway failures before generic retries** (`workers/llm-dispatch-v2`).
+  Gemini's structured `RetryInfo` delay and array-wrapped errors are now read from the single
+  response body. Provider overload 503s and 504 timeouts use the existing route-only upstream
+  capacity retry budget, while explicit provider input/context-limit errors get one bounded
+  requeue after a short route quarantine so a longer-context sibling can serve the job. Malformed
+  response text is retained only as a 4 KiB in-memory classification hint; no new diagnostic rows
+  or per-request writes are added.
+
 - **Bounded endpoint-contract listing confirmation retry** (`citypods/contracts.py`). A provider
   listing that fails with a transient transport error now receives one separate confirmation
   attempt before the monitor files a contract issue. Persistent transport failures and semantic

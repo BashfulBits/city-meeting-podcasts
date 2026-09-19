@@ -28,6 +28,42 @@ test("classifyProviderFailure handles HTTP 5xx as server_error", () => {
   assert.equal(res.scope, "route");
 });
 
+test("classifyProviderFailure recognizes provider overload details in 503/504 responses", () => {
+  const gemini = classifyProviderFailure({
+    status: 503,
+    body: {
+      error: {
+        status: "UNAVAILABLE",
+        message: "This model is currently experiencing high demand.",
+      },
+    },
+    headers: null,
+    route: { provider: "gemini", route_id: "gemini/gemma" },
+  });
+  assert.equal(gemini.failure_class, "upstream_capacity");
+  assert.equal(gemini.rule_id, "provider-5xx-capacity");
+
+  const timeout = classifyProviderFailure({
+    status: 504,
+    body: "error code: 504",
+    headers: null,
+    route: { provider: "sambanova", route_id: "sambanova/gemma" },
+  });
+  assert.equal(timeout.failure_class, "upstream_capacity");
+  assert.equal(timeout.rule_id, "http-504-timeout");
+});
+
+test("classifyProviderFailure recognizes an input limit in a provider 500", () => {
+  const result = classifyProviderFailure({
+    status: 500,
+    body: { error: { message: "The input token limit was exceeded for this model." } },
+    headers: null,
+    route: { provider: "gemini", route_id: "gemini/gemma" },
+  });
+  assert.equal(result.failure_class, "route_input_limit");
+  assert.equal(result.rule_id, "provider-input-limit");
+});
+
 test("classifyProviderFailure handles HTTP 400 upstream capacity as upstream_capacity", () => {
   const res = classifyProviderFailure({
     status: 400,
