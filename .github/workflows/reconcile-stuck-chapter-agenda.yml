@@ -16,6 +16,11 @@ on:
         required: true
         type: number
         default: 24
+      max_row_writes:
+        description: "Conservative billed row-write budget for v2 cancellation"
+        required: true
+        type: number
+        default: 25000
 
 permissions:
   contents: read
@@ -45,6 +50,7 @@ jobs:
         env:
           APPLY: ${{ inputs.apply }}
           OLDER_THAN_HOURS: ${{ inputs.older_than_hours }}
+          MAX_ROW_WRITES: ${{ inputs.max_row_writes }}
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
           LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
@@ -64,7 +70,8 @@ jobs:
             args=(--apply)
           fi
           PYTHONPATH=. python scripts/reconcile_stuck_chapter_agenda.py \
-            "${args[@]}" --older-than-hours "$OLDER_THAN_HOURS" | tee stuck-chapter-agenda.json
+            "${args[@]}" --older-than-hours "$OLDER_THAN_HOURS" \
+            --max-row-writes "$MAX_ROW_WRITES" | tee stuck-chapter-agenda.json
 
       - name: Upload classification report
         if: always()

@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Bound stuck chapter-agenda reconciliation's v2 cancellation writes**
+  (`reconcile-stuck-chapter-agenda.yml`, `scripts/reconcile_stuck_chapter_agenda.py`). Apply runs
+  now default to a conservative 25,000 billed row-write budget, retain candidates beyond the budget
+  for a later run, and report the estimated cancellation usage instead of exhausting the Durable
+  Objects Free allowance in one pass.
+
 - **Bounded endpoint-contract listing confirmation retry** (`citypods/contracts.py`). A provider
   listing that fails with a transient transport error now receives one separate confirmation
   attempt before the monitor files a contract issue. Persistent transport failures and semantic
