@@ -42,7 +42,9 @@
     "MAX_CONCURRENT_ROUTE_LANES": "5",
     "DISPATCH_WINDOW_SECONDS": "25",
     "CRON_TICK_SECONDS": "60",
-    "MAX_ACTIVE_BUNDLES": "2",
+    // Raised from 2 on 2026-09-20 to let one additional slow bundle overlap. This changes
+    // concurrency only; daily bundle/job/write caps remain unchanged.
+    "MAX_ACTIVE_BUNDLES": "3",
     "MAX_IN_FLIGHT_LLM_CALLS": "8",
     // 1,400 of the 1,440 daily cron ticks may claim a bundle (validateConfig requires it stay
     // under the tick count). Raised from 1,000 on 2026-09-03: at 4 jobs/bundle this lifts the

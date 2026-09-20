@@ -28,7 +28,7 @@ Phase R (Research-Tool Surface)._
   now default to a conservative 25,000 billed row-write budget, retain candidates beyond the budget
   for a later run, and report the estimated cancellation usage instead of exhausting the Durable
   Objects Free allowance in one pass.
-  
+
 - **Classify actionable AI Gateway failures before generic retries** (`workers/llm-dispatch-v2`).
   Gemini's structured `RetryInfo` delay and array-wrapped errors are now read from the single
   response body. Provider overload 503s and 504 timeouts use the existing route-only upstream
@@ -390,6 +390,13 @@ Phase R (Research-Tool Surface)._
     `/v4/chat/completions` matching Cloudflare AI Gateway's Base URL configuration.
 
 ### Added
+
+- **LLM dispatcher active-bundle concurrency increased from 2 to 3** (`workers/llm-dispatch-v2`;
+  review/44). This is a bounded throughput experiment for slow bundles: daily bundle, job, and
+  ingress-write caps are unchanged, so projected DO row-write usage does not increase unless the
+  additional slot actually drains more work. The nominal cost of one extra full bundle is about
+  32 writes at the four-job design baseline, or 39 with the current five-job bundle setting.
+  Roll back to 2 if provider failures, lease expiry, or measured DO row writes rise materially.
 
 - **SambaNova route health cleanup.** Removed the stale SambaNova Qwen2.5-72B route, paused the
   SambaNova Llama 3.3 70B route after 820 retained AI Gateway attempts produced zero successes,
