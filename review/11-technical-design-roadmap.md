@@ -1,6 +1,9 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-09-09 (Initiative 20 shipped in PRs #1617–#1622 — LLM endpoint rate-limit characterization & failure-class-aware backoff; review/45 reconciled against `main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling + `/remedy` deferral fix, §Rate-limited LLM dispatch Worker)**
+**Status: LIVING · last updated 2026-09-20 (Initiative 20 shipped in PRs #1617–#1622 — LLM
+endpoint rate-limit characterization & failure-class-aware backoff; review/45 reconciled against
+`main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling +
+`/remedy` deferral fix, §Rate-limited LLM dispatch Worker)**
 
 This is the canonical **forward design** reference for the project — the single map of every initiative
 needed to deliver [ROADMAP.md](../ROADMAP.md) and [VISION.md](../VISION.md), the maturity of each, and a
@@ -175,6 +178,14 @@ handles/results. `poll_batch` also chunks every v2 status request at that limit;
 treats a successful bulk pending observation as final for that sweep rather than re-polling every
 handle individually. The tag dispatch cap/no-quota short-circuit, direct/v1 behavior, and terminal
 recovery remain intact; no pipeline-version bump or backfill is required. See review/44 Phase 4.
+
+**LLM producer-throughput telemetry (2026-09-20; implementation in
+[PR #1760](https://github.com/BashfulBits/city-meeting-podcasts/pull/1760)).** Each LLM job-
+submission workflow records payload-free aggregate producer disposition, ingress admission,
+producer-stage gates, and bounded start/end v2 scheduler snapshots. The Actions summary and retained
+artifact make it possible to separate absent candidates, cached or already-pending work, local caps,
+ingress deferrals, stage-budget exits, and Worker-side scheduling limits. This is observability only:
+it changes no pipeline version, job policy, route, or backfill behavior.
 
 **`chapter-agenda` repinned to Nemotron Ultra + generic backup-model infra (2026-09-13).** The
 `chapter-agenda` lane's model moved from `mistral/mistral-medium-latest` (blocked by an

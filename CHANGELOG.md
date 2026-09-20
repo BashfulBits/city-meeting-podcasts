@@ -66,6 +66,14 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Per-workflow LLM submission throughput telemetry** (`citypods/compute/llm_submission_telemetry.py`,
+  `scripts/llm_submission_telemetry.py`, and the LLM producer workflows). Each run now records
+  payload-free candidate disposition, fresh v2 admissions versus idempotent replays, ingress
+  rejection reasons, batch staging/request/persistence timing, final LLM-stage defer reasons, and
+  start/end Worker scheduler snapshots. The workflow step summary renders these dimensions together
+  so producer, ingress, and Worker-execution bottlenecks can be distinguished without prompt or
+  result logging. No pipeline version or backfill change.
+
 - **Weekly full-registry cleanup for deferred LLM records** (`llm-deferred-full-prune.yml`,
   `scripts/llm_deferred_sweep.py`). The normal six-hour sweep uses pending indexes and therefore
   cannot rediscover completed records after they leave those indexes. A weekly, main-only

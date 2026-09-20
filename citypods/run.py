@@ -32,6 +32,7 @@ from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body, source_body_filter, source_body_inclusions
 from citypods.compute import DispatchCoordinator, make_compute
 from citypods.compute.llm_lanes import lane_for
+from citypods.compute.llm_submission_telemetry import record_stage_activity
 from citypods.config import (
     RESERVED_PUBLIC_DIRS as _RESERVED_DOC_NAMES,
 )
@@ -3510,6 +3511,17 @@ def _build_impl(
     for name, t in sorted(pipeline.stage_totals.items()):
         if not (t["ran"] or t["reused"] or t["backlog"] or t["errors"]):
             continue
+        if name in {"tags", "chapter_agenda", "chapter_locator", "moments", "moment-judge"}:
+            record_stage_activity(
+                lane=ctx.lane,
+                stage=name,
+                ran=t["ran"],
+                reused=t["reused"],
+                backlog=t["backlog"],
+                errors=t["errors"],
+                seconds=t["seconds"],
+                defer_reasons=t.get("defer_reasons") or {},
+            )
         # Break ``ran`` into expensive encodes vs near-free storage re-credits when the stage
         # reports it (audio), so the per-episode time estimate's blend is visible at a glance.
         ran = f"{t['ran']} ran"
