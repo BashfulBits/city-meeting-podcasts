@@ -154,3 +154,31 @@ def test_apply_retains_a_v2_job_that_is_still_in_flight():
     assert result["in_flight_count"] == 1
     assert result["retained_count"] == 1
     assert storage.get_bytes("state/llm_deferred/in-flight.json") is not None
+
+
+def test_apply_stops_before_the_row_write_budget_and_retains_the_remainder():
+    storage = MemStorage()
+    handles = [
+        _handle(f"remote-{index}", model="mistral/mistral-medium-latest", ref=f"ref-{index}")
+        for index in range(3)
+    ]
+    for handle in handles:
+        write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+    candidates = [
+        _classify_entry(_entry(handle, age_hours=25), now=NOW, older_than_hours=24)
+        for handle in handles
+    ]
+    calls = []
+
+    class Backend:
+        def cancel_batch(self, refs):
+            calls.append(refs)
+            return {"cancelled": refs, "in_flight": [], "not_found": []}
+
+    result = _apply(storage, Backend(), candidates, max_row_writes=16)
+
+    assert calls == [["ref-0", "ref-1"]]
+    assert result["estimated_row_writes"] == 16
+    assert result["write_budget_skipped_count"] == 1
+    assert result["dispositions"] == {"superseded": 2, "write_budget_retained": 1}
+    assert storage.get_bytes("state/llm_deferred/remote-2.json") is not None

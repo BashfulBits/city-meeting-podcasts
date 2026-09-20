@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Bound stuck chapter-agenda reconciliation's v2 cancellation writes**
+  (`reconcile-stuck-chapter-agenda.yml`, `scripts/reconcile_stuck_chapter_agenda.py`). Apply runs
+  now default to a conservative 25,000 billed row-write budget, retain candidates beyond the budget
+  for a later run, and report the estimated cancellation usage instead of exhausting the Durable
+  Objects Free allowance in one pass.
+  
 - **Classify actionable AI Gateway failures before generic retries** (`workers/llm-dispatch-v2`).
   Gemini's structured `RetryInfo` delay and array-wrapped errors are now read from the single
   response body. Provider overload 503s and 504 timeouts use the existing route-only upstream

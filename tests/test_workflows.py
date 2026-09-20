@@ -1583,6 +1583,7 @@ def test_stuck_chapter_agenda_workflow_is_dry_run_by_default():
     assert inputs["apply"]["type"] == "boolean"
     assert inputs["apply"]["default"] is False
     assert inputs["older_than_hours"]["default"] == 24
+    assert inputs["max_row_writes"]["default"] == 25000
     step = next(
         item
         for item in job["steps"]
@@ -1591,4 +1592,6 @@ def test_stuck_chapter_agenda_workflow_is_dry_run_by_default():
     assert step["timeout-minutes"] == 110
     assert "args=(--dry-run)" in step["run"]
     assert "args=(--apply)" in step["run"]
+    assert '--max-row-writes "$MAX_ROW_WRITES"' in step["run"]
+    assert step["env"]["MAX_ROW_WRITES"] == "${{ inputs.max_row_writes }}"
     assert step["env"]["LLM_DISPATCH_V2_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}"
