@@ -30,7 +30,12 @@ Phase R (Research-Tool Surface)._
   requeue after a short route quarantine so a longer-context sibling can serve the job. Malformed
   response text is retained only as a 4 KiB in-memory classification hint; no new diagnostic rows
   or per-request writes are added.
-  
+
+- **Continue stuck chapter-agenda reconciliation past transient record-read failures**
+  (`scripts/reconcile_stuck_chapter_agenda.py`). An unavailable canonical deferred record is now
+  retained and reported while the apply pass continues with other candidates; the run remains
+  non-successful so the retained record can be retried on the next run.
+
 - **Give stuck chapter-agenda reconciliation enough wall-clock budget** (`reconcile-stuck-chapter-agenda.yml`).
   The full deferred-registry maintenance pass now has a 120-minute job budget and a 110-minute
   classify-step limit, leaving time for its report artifact and making a future overrun fail
