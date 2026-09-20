@@ -798,6 +798,30 @@ def test_prune_expired_deferred_also_cleans_up_completed_records():
     assert look_up_deferred(storage, "recipe-1") is None
 
 
+def test_full_snapshot_pruning_reaches_completed_records_after_index_migration():
+    storage = MemStorage()
+    write_deferred(
+        storage,
+        "recipe-1",
+        JobResult(task="tag", recipe_hash="recipe-1", output={}, model="m"),
+        now=NOW,
+    )
+    _write_json(storage, DEFERRED_INDEX_MIGRATION_KEY, b'{"version": 2}\n')
+
+    # Completed records have no pending/reconcile pointer, so the ordinary indexed snapshot does
+    # not see this record. The maintenance full snapshot does, and the TTL pass removes it.
+    assert list(load_deferred_snapshot(storage, reconcile_only=True).entries) == []
+    full_snapshot = load_deferred_snapshot(storage, include_ineligible=True)
+    assert len(full_snapshot.entries) == 1
+    assert (
+        prune_expired_deferred_snapshot(
+            storage, full_snapshot, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1)
+        )
+        == 1
+    )
+    assert look_up_deferred(storage, "recipe-1") is None
+
+
 def test_prune_releases_the_ledger_reservation_of_an_abandoned_dispatch_handle():
     """A genuine Mistral dispatch handle (no `deferred_request`) that's still `pending` past its
     38-day TTL means the Worker never produced a terminal response -- its ledger reservation would

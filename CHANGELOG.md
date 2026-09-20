@@ -60,6 +60,12 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Weekly full-registry cleanup for deferred LLM records** (`llm-deferred-full-prune.yml`,
+  `scripts/llm_deferred_sweep.py`). The normal six-hour sweep uses pending indexes and therefore
+  cannot rediscover completed records after they leave those indexes. A weekly, main-only
+  maintenance run now lists the canonical registry and applies the existing 38-day TTL/deadline
+  policy with compare-before-delete checks, including dispatch-object and reservation cleanup.
+
 - **Stuck chapter-agenda reconciliation** (`scripts/reconcile_stuck_chapter_agenda.py` and
   `reconcile-stuck-chapter-agenda.yml`). A dry-run-first maintenance pass now reads the full
   deferred registry, classifies legacy-model or age-stuck agenda handles, batch-cancels queued v2
