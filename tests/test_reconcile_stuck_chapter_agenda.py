@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from citypods.compute.base import JobHandle
 from citypods.compute.llm_deferred import write_deferred
 from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
+from citypods.storage import StorageReadUnavailable
 from scripts.reconcile_stuck_chapter_agenda import _apply, _classify_entry
 from tests._cas_fake import MemStorage
 
@@ -182,3 +183,52 @@ def test_apply_stops_before_the_row_write_budget_and_retains_the_remainder():
     assert result["write_budget_skipped_count"] == 1
     assert result["dispositions"] == {"superseded": 2, "write_budget_retained": 1}
     assert storage.get_bytes("state/llm_deferred/remote-2.json") is not None
+
+
+def test_apply_retains_an_unavailable_record_and_continues():
+    class _UnavailableStorage(MemStorage):
+        unavailable_key = None
+
+        def get_file(self, key, local_path):
+            if key == self.unavailable_key:
+                raise StorageReadUnavailable(key, TimeoutError("connection reset"))
+            return super().get_file(key, local_path)
+
+    storage = _UnavailableStorage()
+    unavailable = _handle(
+        "unavailable",
+        model=None,
+        ref="deferred:unavailable",
+        deferred=True,
+    )
+    good = _handle(
+        "good-after-unavailable",
+        model=None,
+        ref="deferred:good-after-unavailable",
+        deferred=True,
+    )
+    write_deferred(storage, unavailable.recipe_hash, unavailable, now=NOW)
+    write_deferred(storage, good.recipe_hash, good, now=NOW)
+    storage.unavailable_key = "state/llm_deferred/unavailable.json"
+    candidates = [
+        _classify_entry(_entry(unavailable, age_hours=25), now=NOW, older_than_hours=24),
+        _classify_entry(_entry(good, age_hours=25), now=NOW, older_than_hours=24),
+    ]
+
+    class Backend:
+        def cancel_batch(self, refs):
+            assert refs == []
+            return {"cancelled": [], "in_flight": [], "not_found": []}
+
+    result = _apply(storage, Backend(), candidates)
+
+    assert result["discarded_count"] == 1
+    assert result["retained_count"] == 1
+    assert result["dispositions"] == {
+        "record_unavailable_retained": 1,
+        "superseded": 1,
+    }
+    assert len(result["errors"]) == 1
+    assert "unavailable" in result["errors"][0]
+    assert storage.get_bytes("state/llm_deferred/unavailable.json") is not None
+    assert storage.get_bytes("state/llm_deferred/good-after-unavailable.json") is None

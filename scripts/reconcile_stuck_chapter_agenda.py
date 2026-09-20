@@ -38,7 +38,7 @@ from citypods.compute.llm_deferred import (
 )
 from citypods.compute.llm_policy import DeferredLLMRequest
 from citypods.config import load_site_config
-from citypods.storage import make_storage
+from citypods.storage import StorageReadUnavailable, make_storage
 
 CURRENT_MODELS = frozenset((*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS))
 DEFAULT_MAX_ROW_WRITES = 25_000
@@ -176,7 +176,16 @@ def _apply(
             dispositions["unsupported_remote_retained"] += 1
             retained += 1
             continue
-        if discard_deferred(storage, item["recipe_hash"], expected_ref=ref):
+        try:
+            discarded_record = discard_deferred(storage, item["recipe_hash"], expected_ref=ref)
+        except StorageReadUnavailable as exc:
+            # A transiently unreadable record must remain available for the next maintenance run;
+            # one B2/R2 read failure must not abort the rest of an apply pass.
+            errors.append(f"discard failed for {item['recipe_hash']}: {type(exc).__name__}: {exc}")
+            dispositions["record_unavailable_retained"] += 1
+            retained += 1
+            continue
+        if discarded_record:
             discarded += 1
             dispositions["superseded"] += 1
         else:
