@@ -44,58 +44,36 @@ def test_policy_and_route_dataclasses_and_token_estimate():
 
 
 def test_generated_catalog_deduplicates_logical_models_across_direct_routes():
-    # groq_llama_3_3_70b_versatile_primary removed 2026-08-26 (config/provider_limits.yml):
-    # Groq stopped serving llama-3.3-70b-versatile, so this pool is down to two providers.
+    # Groq stopped serving llama-3.3-70b-versatile and the paid OpenRouter route was removed;
+    # the only remaining catalog entry is the paused SambaNova route.
     candidates = ROUTE_CANDIDATES["meta-llama/llama-3.3-70b-instruct"]
-    assert {candidate.provider for candidate in candidates} == {"sambanova", "openrouter"}
+    assert {candidate.provider for candidate in candidates} == {"sambanova"}
     assert all(set(candidate.transports) == {"direct", "llm-dispatch"} for candidate in candidates)
     assert all(candidate.route_id and candidate.direct_model for candidate in candidates)
 
 
 def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
     # NVIDIA build's leg for this model (added 2026-08-29) was briefly commented out the same day
-    # on a misdiagnosis -- the 404s were NOT NVIDIA-side model gating but a dropped `/v1` in the
-    # Cloudflare AI Gateway custom-provider path (see config/provider_limits.yml's `nvidia` block).
-    # Restored once the path fix was verified end-to-end against the live gateway.
+    # on a misdiagnosis -- the 404s were NOT NVIDIA-side model gating but a custom-provider path
+    # mismatch in Cloudflare AI Gateway (see config/provider_limits.yml's `nvidia` block). Restored
+    # once the path fix was verified end-to-end against the live gateway. Paid routes are absent.
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
-    assert {candidate.provider for candidate in deepseek} == {
-        "deepseek",
-        "siliconflow",
-        "opencode",
-        "nvidia",
-    }
-    assert canonical_model("opencode/deepseek-v4-flash-free") == "deepseek/deepseek-v4-flash"
-    assert MODEL_ALIASES["deepseek/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"
+    assert {candidate.provider for candidate in deepseek} == {"nvidia", "orcarouter"}
+    assert canonical_model("orcarouter/deepseek-v4-flash") == "deepseek/deepseek-v4-flash"
+    assert MODEL_ALIASES["nvidia/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"
 
-    # NVIDIA build's direct Nemotron 3 Ultra leg (added 2026-08-29) bypasses the OpenRouter/Kilo/
-    # OpenCode broker legs -- see nvidia_nemotron_3_ultra_550b_a55b_free.
+    # NVIDIA build's direct Nemotron 3 Ultra leg (added 2026-08-29) bypasses the OpenRouter/Kilo
+    # broker legs -- see nvidia_nemotron_3_ultra_550b_a55b_free.
     nemotron = ROUTE_CANDIDATES["nvidia/nemotron-3-ultra-550b-a55b:free"]
     assert {candidate.provider for candidate in nemotron} == {
         "openrouter",
         "kilo",
-        "opencode",
         "nvidia",
     }
-    assert (
-        canonical_model("opencode/nemotron-3-ultra-free")
-        == "nvidia/nemotron-3-ultra-550b-a55b:free"
-    )
 
 
-def test_deepseek_pricing_selects_the_effective_period_and_peak_windows():
-    route = next(
-        candidate
-        for candidate in ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
-        if candidate.provider == "deepseek"
-    )
-    before = route.pricing.rates_at(datetime(2026, 8, 16, 15, 59, tzinfo=UTC))
-    after = route.pricing.rates_at(datetime(2026, 8, 16, 16, 0, tzinfo=UTC))
-    assert before[:2] == (0.14e-6, 0.28e-6)
-    assert after[:2] == (0.22e-6, 0.66e-6)
-    assert [(window.start.isoformat(), window.end.isoformat()) for window in after[2]] == [
-        ("01:00:00", "04:00:00"),
-        ("06:00:00", "10:00:00"),
-    ]
+def test_generated_deepseek_routes_are_all_free_after_paid_catalog_removal():
+    assert all(route.free for route in ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"])
 
 
 def test_generated_catalog_includes_observed_characterization_fields() -> None:
@@ -113,10 +91,8 @@ def test_generated_catalog_includes_observed_characterization_fields() -> None:
     assert groq.observed_input_ceiling == 7125
     assert groq.hard_input_ceiling == 7125
 
-    airforce = next(
-        (r for r in routes if r.route_id == "airforce_mistral_medium_3_5_primary"), None
-    )
-    assert airforce is not None
-    assert airforce.observed_recovery_seconds == 111.0
-    assert airforce.retry_after_trustworthy is True
-    assert airforce.upstream_429_default == "upstream_capacity"
+    medium = next((r for r in routes if r.route_id == "mistral_medium_latest_primary"), None)
+    assert medium is not None
+    assert medium.observed_on == "2026-09-09"
+    assert medium.observed_burst == 0
+    assert medium.upstream_429_default == "upstream_capacity"

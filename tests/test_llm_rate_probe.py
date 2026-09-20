@@ -77,8 +77,8 @@ def test_skips_routes_with_missing_api_key_env(monkeypatch):
     assert runner.total_requests == 0
 
 
-def test_paid_routes_excluded_by_default(tmp_path):
-    """Only free routes are probed by default; --include-paid opts into paid routes."""
+def test_include_paid_has_no_effect_on_the_free_only_catalog(tmp_path):
+    """The catalog contains no paid routes, so --include-paid has nothing to add."""
     out_file = tmp_path / "report_free.json"
     main(["--phase", "0", "--out", str(out_file)])
     report_free = json.loads(out_file.read_text(encoding="utf-8"))
@@ -89,7 +89,7 @@ def test_paid_routes_excluded_by_default(tmp_path):
     report_paid = json.loads(out_file_paid.read_text(encoding="utf-8"))
     paid_count = report_paid["summary"]["routes_probed"]
 
-    assert paid_count > free_count, "Expected --include-paid to include additional paid routes"
+    assert paid_count == free_count
 
 
 def test_report_records_header_names_and_values_but_no_api_key(monkeypatch):
@@ -349,10 +349,11 @@ def test_phase_2_confirms_a_genuine_ceiling_without_flagging_contention():
 
 
 def test_direct_chat_url_collapses_a_duplicated_segment():
-    """`api_base` + `chat_path` are authored for AI Gateway's custom-provider path rewrite, so
-    some providers repeat a segment already present in api_base. Concatenating naively 404'd every
-    airforce request, making a reachable route look permanently dead in an endurance run whose
-    whole purpose is telling "dead" apart from "busy"."""
+    """Some provider chat paths repeat a segment already present in `api_base`.
+
+    Concatenating Airforce's paths naively 404'd every request, making a reachable route look
+    permanently dead in an endurance run whose whole purpose is telling "dead" apart from "busy".
+    """
     from citypods.llm_rate_probe import direct_chat_url
 
     airforce = {"api_base": "https://api.airforce/v1", "chat_path": "/v1/chat/completions"}

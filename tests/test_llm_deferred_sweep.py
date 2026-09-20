@@ -112,6 +112,40 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     assert isinstance(prune_kwargs["backend"], FakeBackend)
 
 
+def test_full_prune_mode_lists_canonical_registry_without_reconciling(monkeypatch, capsys):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+
+    snapshot_kwargs = {}
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda _storage, **kwargs: snapshot_kwargs.update(kwargs) or _snapshot([]),
+    )
+    prune_kwargs = {}
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda _storage, _snapshot, **kwargs: prune_kwargs.update(kwargs) or 3,
+    )
+
+    class FakeBackend:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", FakeBackend)
+
+    assert llm_deferred_sweep.main(["--full-prune-only"]) == 0
+    assert snapshot_kwargs["include_ineligible"] is True
+    assert "should_stop" in snapshot_kwargs
+    assert isinstance(prune_kwargs["backend"], FakeBackend)
+    out = capsys.readouterr().out
+    assert '"event": "llm_deferred_full_prune_started"' in out
+    assert '"event": "llm_deferred_full_prune_end"' in out
+    assert '"pruned": 3' in out
+
+
 def test_sweep_reports_unavailable_snapshot_records(monkeypatch, capsys):
     monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
     fake_storage = SimpleNamespace(cas_capable=True)

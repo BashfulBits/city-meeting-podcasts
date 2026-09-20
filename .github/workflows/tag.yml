@@ -6,7 +6,9 @@ name: LLM topic tags
 # dispatch Worker, so this workflow enqueues work and a later deferred sweep consumes the result.
 on:
   schedule:
-    - cron: "15 18 * * *" # after Gemini's Pacific daily reset, allowing for cron jitter
+    # Three producer passes give the tagger/pre-labeler lanes repeated chances to spend their
+    # daily ingress allowance while the Worker still owns provider pacing and quota admission.
+    - cron: "15 6,12,18 * * *"
   workflow_dispatch: {}
 
 permissions:

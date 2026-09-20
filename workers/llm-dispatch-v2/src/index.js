@@ -496,6 +496,29 @@ export async function handleRequest(request, env) {
       if (result.status === "daily_cap_exceeded") {
         return errorResponse(429, "daily_cap_exceeded", "Daily job admission cap exceeded");
       }
+      // These four were already returned by coordinator.schemaRetry() but fell through to a
+      // misleading 200 with id/idempotency_key both undefined (they share the same admission
+      // gates as enqueueBatch, which -- unlike this single-job endpoint -- reports rejections in
+      // a per-job array rather than the HTTP status, so there was no existing precedent to copy).
+      if (result.status === "purpose_not_registered") {
+        return errorResponse(422, "purpose_not_registered", "Source job's purpose has no llm_lanes entry");
+      }
+      if (result.status === "model_not_in_lane") {
+        return errorResponse(422, "model_not_in_lane", "Source job names a model outside its lane");
+      }
+      if (result.status === "backup_after_attempts_below_lane_minimum") {
+        return errorResponse(
+          422,
+          "backup_after_attempts_below_lane_minimum",
+          "Source job's backup_after_attempts is below its lane's configured minimum"
+        );
+      }
+      if (result.status === "purpose_write_budget_exceeded") {
+        return errorResponse(429, "purpose_write_budget_exceeded", "Purpose's daily write-unit budget exceeded");
+      }
+      if (result.status === "ingress_write_budget_reserved") {
+        return errorResponse(429, "ingress_write_budget_reserved", "Global ingress write-unit budget exceeded");
+      }
       return jsonResponse({ id: result.id, idempotency_key: result.idempotency_key }, 200);
     } catch (err) {
       const detail = describeError(err);
@@ -621,7 +644,7 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
       actualStartAt,
       actualEndAt,
       correlationId: response.correlationId,
-      retryAfterSeconds: response.retryAfterSeconds,
+      retryAfterSeconds: cls.retry_after_seconds ?? response.retryAfterSeconds,
       failureClass: cls.failure_class,
       ruleId: cls.rule_id,
     };
@@ -701,7 +724,7 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
         // This Worker is the only layer that sees response bodies -- the DO holds job rows and
         // never a payload -- so the sniffing happens here and completeBatch keys off the pair
         // (retryable_error, 400) alone.
-        response.status >= 500 ||
+        (response.status >= 500 && cls.failure_class !== "route_input_limit") ||
         response.status === 402 ||
         upstreamCapacityFailure(response.status, response.body)
           ? "retryable_error"
@@ -831,7 +854,16 @@ async function runScheduledDispatch(env) {
   const dispatchWindowSeconds = Number(env.DISPATCH_WINDOW_SECONDS || 25);
 
   const plan = await coordinator.claimDispatchWindow(Date.now(), dispatchWindowSeconds);
-  if (!plan.jobs || plan.jobs.length === 0) return; // no B2 access, no further DO calls
+  if (!plan.jobs || plan.jobs.length === 0) {
+    // Keep empty cron ticks explainable in Workers Logs. The DO also persists this snapshot for
+    // /v2/stats, but the log puts the reason next to the scheduled invocation that observed it.
+    console.log(JSON.stringify({
+      event: "scheduled_claim_empty",
+      reason: plan.claim_reason || "unknown",
+      diagnostics: plan.claim_diagnostics || {},
+    }));
+    return; // no B2 access, no further DO calls
+  }
 
   const receivedAt = Date.now(); // wait_ms is relative to THIS instant, not plan-build time
   const bundleDeadline = receivedAt + dispatchWindowSeconds * 1000;

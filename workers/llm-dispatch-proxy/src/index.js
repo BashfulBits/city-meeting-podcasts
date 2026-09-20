@@ -1012,10 +1012,11 @@ function retryableStatus(status) {
  * NVIDIA's empty-body 404s and OpenRouter's hung-body `invalid_upstream_json`. In each case we
  * never reached a working model, and nothing about the job caused it.
  *
- * Deliberately narrow. It applies only to 400 (other 4xx really are request defects: 401 bad
- * credentials, 404 unknown model, 422 schema), and only when the body self-identifies as a server
- * or upstream failure. A provider that returns a genuine 400 for a malformed request says nothing
- * of the sort, and still fails terminally as it should.
+ * Deliberately narrow. It applies to 400 only when the body self-identifies as a server or
+ * upstream failure, or to the specific 404 shape NVIDIA NIM uses for a missing serverless
+ * function. Other 4xx really are request defects: 401 bad credentials, ordinary 404 unknown
+ * model, and 422 schema. A provider that returns a genuine 400 for a malformed request says
+ * nothing of the sort, and still fails terminally as it should.
  *
  * Sniffing a body to decide retryability is fragile, so the alternative is worth naming: the
  * honest fix is providers using accurate status codes, which we do not control. The cost of a
@@ -1023,14 +1024,25 @@ function retryableStatus(status) {
  * is a permanently destroyed job needing an operator requeue.
  */
 function upstreamCapacityFailure(status, providerError) {
+  if (status === 404) {
+    let serialized = "";
+    try {
+      serialized = JSON.stringify(providerError).toLowerCase();
+    } catch {
+      // A non-serializable body cannot carry the known provider signature.
+    }
+    return serialized.includes("function id") && serialized.includes("is not found");
+  }
   if (status !== 400 || !providerError) return false;
-  if (String(providerError.provider_type || "").toLowerCase() === "server_error") return true;
+  const errType = String(providerError.provider_type || providerError.type || "").toLowerCase();
+  if (errType === "server_error") return true;
   const message = String(providerError.message || "").toLowerCase();
   return (
     message.includes("upstream request failed") ||
     message.includes("model is unavailable") ||
     message.includes("no capacity") ||
-    message.includes("temporarily unavailable")
+    message.includes("temporarily unavailable") ||
+    message.includes("free tier can only be used in opencode")
   );
 }
 

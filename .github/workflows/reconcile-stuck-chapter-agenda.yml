@@ -1,0 +1,88 @@
+name: Reconcile stuck chapter-agenda jobs
+
+# Manual, dry-run-first maintenance for legacy chapter-agenda handles. The command reads the B2
+# deferred registry and only cancels v2 refs that it can identify there; it never scans arbitrary
+# Durable Object rows or mutates a record whose coordinator lease is still in flight.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Cancel/supersede the classified handles (leave false for a report only)"
+        required: true
+        type: boolean
+        default: false
+      older_than_hours:
+        description: "Also classify current-model handles older than this many hours"
+        required: true
+        type: number
+        default: 24
+      max_row_writes:
+        description: "Conservative billed row-write budget for v2 cancellation"
+        required: true
+        type: number
+        default: 25000
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-deferred-maintenance
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    # The maintenance pass reads every canonical deferred record, including handles on currently
+    # exhausted routes. Thirty minutes was not enough for the production registry and caused the
+    # classify step to be reported as a grey cancellation at the job deadline.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+
+      - name: Classify and optionally supersede stale chapter-agenda handles
+        # Leave time for the always-run artifact upload and make a future overrun fail visibly
+        # instead of turning into another job-level "cancelled" result.
+        timeout-minutes: 110
+        env:
+          APPLY: ${{ inputs.apply }}
+          OLDER_THAN_HOURS: ${{ inputs.older_than_hours }}
+          MAX_ROW_WRITES: ${{ inputs.max_row_writes }}
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          set -euo pipefail
+          args=(--dry-run)
+          if [ "$APPLY" = "true" ]; then
+            args=(--apply)
+          fi
+          PYTHONPATH=. python scripts/reconcile_stuck_chapter_agenda.py \
+            "${args[@]}" --older-than-hours "$OLDER_THAN_HOURS" \
+            --max-row-writes "$MAX_ROW_WRITES" | tee stuck-chapter-agenda.json
+
+      - name: Upload classification report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: stuck-chapter-agenda-${{ github.run_id }}
+          path: stuck-chapter-agenda.json
+          if-no-files-found: ignore

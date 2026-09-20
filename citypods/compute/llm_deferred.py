@@ -17,8 +17,11 @@ from __future__ import annotations
 
 import json
 import tempfile
+import time
+import uuid
 from collections.abc import Callable, Mapping
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -36,6 +39,9 @@ DEFERRED_INDEX_V2_REF_PREFIX = f"{DEFERRED_INDEX_PREFIX}v2-ref/"
 DEFERRED_INDEX_V2_TERMINAL_CURSOR_KEY = f"{DEFERRED_INDEX_PREFIX}v2-terminal-cursor.json"
 DEFERRED_INDEX_MIGRATION_KEY = f"{DEFERRED_INDEX_PREFIX}migration-complete.json"
 DEFERRED_FAILURE_PREFIX = "state/llm_deferred_failures/"
+DEFERRED_RECORD_LOCK_PREFIX = "maintenance-leases/llm-deferred/"
+DEFERRED_RECORD_LOCK_TTL_SECONDS = 300
+DEFERRED_RECORD_LOCK_WAIT_SECONDS = 30
 
 # A malformed terminal response is worth retrying: providers occasionally produce a bad JSON
 # object or fail an individual request.  It must not, however, turn every future producer pass
@@ -223,6 +229,43 @@ def _write_pointer_keys(storage, keys, recipe_hash: str) -> None:
 
 def _best_effort_delete_index(storage, data: Mapping[str, Any], recipe_hash: str) -> None:
     _delete_pointer_keys(storage, _index_keys(data, recipe_hash=recipe_hash))
+
+
+@contextmanager
+def _deferred_record_lock(storage, recipe_hash: str):
+    """Serialize canonical-record writes and deletes through the R2 coordination plane.
+
+    B2 does not enforce conditional deletes, so a read-then-delete on the canonical registry can
+    remove a newer record written by a producer. Production's routing backend provides real CAS on
+    the ``maintenance-leases/`` prefix; local or B2-only test backends retain their old
+    single-process behavior when no coordination plane is available.
+    """
+    if not getattr(storage, "cas_capable", False):
+        yield
+        return
+
+    from citypods.ops.maintenance_leases import MaintenanceLeaseBusy, acquire
+
+    owner = f"llm-deferred:{uuid.uuid4().hex}"
+    key = f"{DEFERRED_RECORD_LOCK_PREFIX}{recipe_hash}.json"
+    deadline = time.monotonic() + DEFERRED_RECORD_LOCK_WAIT_SECONDS
+    while True:
+        try:
+            lease = acquire(
+                storage,
+                owner=owner,
+                key=key,
+                ttl_seconds=DEFERRED_RECORD_LOCK_TTL_SECONDS,
+            )
+            break
+        except MaintenanceLeaseBusy:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.1)
+    try:
+        yield
+    finally:
+        lease.release()
 
 
 def terminal_failure_retry_allowed(storage, recipe_hash: str) -> bool:
@@ -566,34 +609,35 @@ def write_deferred(
     request lineage, not just the most recent attempt.
     """
     now = now or datetime.now(UTC)
-    existing_raw = _read_json(storage, deferred_key(recipe_hash))
-    if (
-        isinstance(existing_raw, Mapping)
-        and existing_raw.get("status") == "completed"
-        and isinstance(result, JobHandle)
-    ):
-        return
-    record = _record_for(result)
-    created_at = existing_raw.get("created_at") if isinstance(existing_raw, Mapping) else None
-    record["created_at"] = (
-        created_at if isinstance(created_at, str) and created_at else now.isoformat()
-    )
-    body = (json.dumps(record, indent=2, sort_keys=True) + "\n").encode()
-    old_keys = (
-        set(_index_keys(existing_raw, recipe_hash=recipe_hash))
-        if isinstance(existing_raw, Mapping)
-        else set()
-    )
-    new_keys = set(_index_keys(record, recipe_hash=recipe_hash))
-    # New pointers first, then the canonical record, then only the now-stale old pointers --
-    # never the reverse. A crash between any two of these steps leaves either a pointer with
-    # nothing (yet) behind it (harmless: a canonical GET on a missing/stale-status key is just
-    # treated as absent) or a stale extra pointer (harmless: advisory, cleaned up by the next
-    # write or `repair_deferred_index`) -- but never a valid pending canonical record reachable
-    # by zero pointers, which the old delete-old/write-canonical/write-new order could produce.
-    _write_pointer_keys(storage, new_keys - old_keys, recipe_hash)
-    _write_json(storage, deferred_key(recipe_hash), body)
-    _delete_pointer_keys(storage, old_keys - new_keys)
+    with _deferred_record_lock(storage, recipe_hash):
+        existing_raw = _read_json(storage, deferred_key(recipe_hash))
+        if (
+            isinstance(existing_raw, Mapping)
+            and existing_raw.get("status") == "completed"
+            and isinstance(result, JobHandle)
+        ):
+            return
+        record = _record_for(result)
+        created_at = existing_raw.get("created_at") if isinstance(existing_raw, Mapping) else None
+        record["created_at"] = (
+            created_at if isinstance(created_at, str) and created_at else now.isoformat()
+        )
+        body = (json.dumps(record, indent=2, sort_keys=True) + "\n").encode()
+        old_keys = (
+            set(_index_keys(existing_raw, recipe_hash=recipe_hash))
+            if isinstance(existing_raw, Mapping)
+            else set()
+        )
+        new_keys = set(_index_keys(record, recipe_hash=recipe_hash))
+        # New pointers first, then the canonical record, then only the now-stale old pointers --
+        # never the reverse. A crash between any two of these steps leaves either a pointer with
+        # nothing (yet) behind it (harmless: a canonical GET on a missing/stale-status key is just
+        # treated as absent) or a stale extra pointer (harmless: advisory, cleaned up by the next
+        # write or `repair_deferred_index`) -- but never a valid pending canonical record reachable
+        # by zero pointers.
+        _write_pointer_keys(storage, new_keys - old_keys, recipe_hash)
+        _write_json(storage, deferred_key(recipe_hash), body)
+        _delete_pointer_keys(storage, old_keys - new_keys)
 
 
 def look_up_deferred(storage, recipe_hash: str) -> JobResult | JobHandle | None:
@@ -607,15 +651,16 @@ def discard_deferred(storage, recipe_hash: str, *, expected_ref: str | None = No
     The expected reference makes the operation safe against a producer that re-submitted the same
     recipe while cancellation was in flight: a newer handle remains authoritative and untouched.
     """
-    key = deferred_key(recipe_hash)
-    data = _read_json(storage, key)
-    if not isinstance(data, Mapping) or data.get("status") != "pending":
-        return False
-    if expected_ref is not None and data.get("ref") != expected_ref:
-        return False
-    storage.delete(key)
-    _best_effort_delete_index(storage, data, recipe_hash)
-    return True
+    with _deferred_record_lock(storage, recipe_hash):
+        key = deferred_key(recipe_hash)
+        data = _read_json(storage, key)
+        if not isinstance(data, Mapping) or data.get("status") != "pending":
+            return False
+        if expected_ref is not None and data.get("ref") != expected_ref:
+            return False
+        storage.delete(key)
+        _best_effort_delete_index(storage, data, recipe_hash)
+        return True
 
 
 def iter_pending_deferred(storage, *, unavailable: list[StorageReadUnavailable] | None = None):
@@ -887,6 +932,7 @@ def load_deferred_snapshot(
     should_stop: Callable[[], bool] | None = None,
     read_workers: int = SNAPSHOT_READ_WORKERS,
     reconcile_only: bool = False,
+    include_ineligible: bool = False,
 ) -> DeferredSnapshot:
     """Read canonical records once, using the advisory index after migration.
 
@@ -894,7 +940,21 @@ def load_deferred_snapshot(
     makes rollout safe for existing records and for a repair that is interrupted halfway through.
     A transiently unavailable canonical object is retained as an unavailable snapshot entry so
     independent records can still be reconciled; callers should inspect ``unavailable_reads``.
+
+    ``include_ineligible`` is an operator-maintenance escape hatch. The ordinary indexed path
+    lists only route partitions with current capacity, which is ideal for reconciliation but would
+    hide records pinned to a currently exhausted or paused route from a cleanup/classification
+    pass. It deliberately performs a full canonical-prefix listing and should not be used by the
+    recurring sweep.
     """
+    if include_ineligible:
+        return _load_snapshot_from_keys(
+            storage,
+            storage.list_objects(DEFERRED_PREFIX),
+            deadline_at=deadline_at,
+            should_stop=should_stop,
+            read_workers=read_workers,
+        )
     if reconcile_only:
         return load_reconcile_snapshot(
             storage,

@@ -1,4 +1,8 @@
-import { upstreamCapacityFailure, parseRetryAfterSeconds } from "./gateway.js";
+import {
+  normalizeProviderBody,
+  parseRetryAfterSeconds,
+  upstreamCapacityFailure,
+} from "./gateway.js";
 
 /**
  * Ordered rule table for HTTP 429 responses. First match wins.
@@ -68,7 +72,13 @@ export const FAILURE_SIGNATURES = [
     rule_id: "opencode-server-error",
     provider: "opencode",
     failure_class: "upstream_capacity",
-    match: ({ body }) => body?.error?.type === "server_error",
+    match: ({ body, msg }) => {
+      const errType = String(body?.error?.type || "").toLowerCase();
+      return (
+        errType === "server_error" ||
+        msg.includes("free tier can only be used in opencode")
+      );
+    },
   },
   {
     rule_id: "openrouter-upstream",
@@ -84,12 +94,38 @@ export const FAILURE_SIGNATURES = [
     },
   },
   {
-    rule_id: "openai-shaped-rate-limit",
-    provider: null,
+    // OrcaRouter free-tier prompt cap: 429 with error code free_rate_limited and no Retry-After.
+    // Time/waiting cannot clear a prompt size rejection; retrying unchanged fails identically.
+    rule_id: "orcarouter-prompt-cap",
+    provider: "orcarouter",
+    failure_class: "request_defect",
+    match: ({ body, headers, msg }) => {
+      const isFreeLimited =
+        body?.error?.code === "free_rate_limited" || msg.includes("free_rate_limited");
+      const hasRetryAfter = Boolean(headers?.get("retry-after"));
+      return isFreeLimited && !hasRetryAfter;
+    },
+  },
+  {
+    // OrcaRouter free-tier daily rate window: Retry-After seconds until 00:00 UTC (> 120s).
+    rule_id: "orcarouter-daily-window",
+    provider: "orcarouter",
+    failure_class: "own_rpd",
+    match: ({ body, headers, msg }) => {
+      const isFreeLimited =
+        body?.error?.code === "free_rate_limited" || msg.includes("free_rate_limited");
+      const raw = headers?.get("retry-after");
+      const retryAfter = raw ? Number(raw) : null;
+      return isFreeLimited && Number.isFinite(retryAfter) && retryAfter > 120;
+    },
+  },
+  {
+    // OrcaRouter free-tier minute rate window: Retry-After seconds in minute bucket (<= 120s).
+    rule_id: "orcarouter-minute-window",
+    provider: "orcarouter",
     failure_class: "own_rpm",
-    match: ({ body }) =>
-      body?.error?.type === "rate_limit_exceeded" ||
-      body?.error?.code === "rate_limit_exceeded",
+    match: ({ body, msg }) =>
+      body?.error?.code === "free_rate_limited" || msg.includes("free_rate_limited"),
   },
   {
     // A rate-limit header whose LIMIT (not "remaining") is literally 0 means the provider has
@@ -102,8 +138,8 @@ export const FAILURE_SIGNATURES = [
     //   x-ratelimit-limit-req-minute: 0
     //   x-ratelimit-remaining-req-minute: 0
     // Confirmed live 2026-09-09 while /v1/models still returned 200, so credentials were valid.
-    // Ordered before `remaining-zero-header`, which would otherwise read the same response as an
-    // ordinary exhausted minute and keep hammering a route that can never serve a request.
+    // Ordered before rate-limit rules, which would otherwise read the response as ordinary
+    // pacing exhaustion and keep hammering a route that has no provisioned quota.
     rule_id: "zero-provisioned-limit",
     provider: null,
     failure_class: "payment_required",
@@ -117,6 +153,16 @@ export const FAILURE_SIGNATURES = [
       }
       return false;
     },
+  },
+  {
+    rule_id: "openai-shaped-rate-limit",
+    provider: null,
+    failure_class: "own_rpm",
+    match: ({ body }) =>
+      body?.error?.type === "rate_limit_exceeded" ||
+      body?.error?.code === "rate_limit_exceeded" ||
+      body?.type === "rate_limited" ||
+      body?.code === "1300",
   },
   {
     rule_id: "remaining-zero-header",
@@ -237,8 +283,42 @@ function hasRateLimitHeader(normHeaders) {
   return false;
 }
 
+function providerFailureMessage(body) {
+  return String(
+    body?.error?.message ||
+      body?.error?.detail ||
+      body?.message ||
+      body?.detail ||
+      (typeof body === "string" ? body : "") ||
+      ""
+  ).toLowerCase();
+}
+
+function isInputLimitMessage(msg) {
+  return (
+    (msg.includes("input") &&
+      (msg.includes("token") || msg.includes("context") || msg.includes("length")) &&
+      (msg.includes("limit") || msg.includes("exceed") || msg.includes("too large"))) ||
+    msg.includes("context window") ||
+    msg.includes("maximum input")
+  );
+}
+
+function isProviderCapacityMessage(body, msg) {
+  const status = String(body?.error?.status || body?.status || "").toLowerCase();
+  return (
+    status === "unavailable" ||
+    msg.includes("high demand") ||
+    msg.includes("overloaded") ||
+    msg.includes("temporarily unavailable") ||
+    msg.includes("try again later") ||
+    msg.includes("service unavailable")
+  );
+}
+
 /**
- * Classify a provider failure response into the 9-class taxonomy.
+ * Classify a provider failure response into the shared taxonomy plus the v2-only
+ * route_input_limit class.
  * Pure function with zero caller side effects.
  *
  * @param {{status:number, body:any, headers:Headers|Object|null, route:{provider:string,route_id:string,
@@ -257,7 +337,7 @@ export function classifyProviderFailure({ status, body, headers, route }) {
   // production, incorrectly cools down every OTHER route on the same provider
   // (authorizeRetry's `gateway_limit` case fans out to every sibling route), not just the one
   // model whose own quota was actually exhausted.
-  const normalizedBody = Array.isArray(body) ? body[0] : body;
+  const normalizedBody = normalizeProviderBody(body);
   const normHeaders = normalizeHeaders(headers);
   const retryAfterSeconds = parseRetryAfterSeconds({ headers: normHeaders }, normalizedBody);
   body = normalizedBody;
@@ -272,8 +352,26 @@ export function classifyProviderFailure({ status, body, headers, route }) {
     };
   }
 
-  // 2. HTTP 5xx -> server_error
+  // 2. Use actionable provider details before the generic 5xx fallback. These classes let the
+  // coordinator try another route without adding a provider call or a durable diagnostic row.
   if (status >= 500 && status <= 599) {
+    const msg = providerFailureMessage(body);
+    if (isInputLimitMessage(msg)) {
+      return {
+        failure_class: "route_input_limit",
+        rule_id: "provider-input-limit",
+        retry_after_seconds: retryAfterSeconds,
+        scope: "route",
+      };
+    }
+    if (status === 504 || (status === 503 && isProviderCapacityMessage(body, msg))) {
+      return {
+        failure_class: "upstream_capacity",
+        rule_id: status === 504 ? "http-504-timeout" : "provider-5xx-capacity",
+        retry_after_seconds: retryAfterSeconds,
+        scope: "route",
+      };
+    }
     return {
       failure_class: "server_error",
       rule_id: "http-5xx",
@@ -282,7 +380,15 @@ export function classifyProviderFailure({ status, body, headers, route }) {
     };
   }
 
-  // 3. HTTP 400 with upstream capacity error in body -> upstream_capacity
+  // 3. Provider-side capacity errors that are misreported as client errors -> upstream_capacity
+  if (status === 404 && upstreamCapacityFailure(status, body)) {
+    return {
+      failure_class: "upstream_capacity",
+      rule_id: "upstream-function-not-found",
+      retry_after_seconds: retryAfterSeconds,
+      scope: "route",
+    };
+  }
   if (status === 400 && upstreamCapacityFailure(status, body)) {
     return {
       failure_class: "upstream_capacity",
@@ -294,10 +400,14 @@ export function classifyProviderFailure({ status, body, headers, route }) {
 
   // 4. Cloudflare AI Gateway rate limit or rejection
   const hasCfAigError = normHeaders.has("cf-aig-error");
+  const hasProviderPayload =
+    Boolean(body) &&
+    typeof body === "object" &&
+    ("error" in body || "message" in body || "detail" in body || "code" in body);
   const isAig429 =
     status === 429 &&
     !hasRateLimitHeader(normHeaders) &&
-    !(body && typeof body === "object" && body.error);
+    !hasProviderPayload;
 
   if (hasCfAigError || isAig429) {
     return {
@@ -310,12 +420,7 @@ export function classifyProviderFailure({ status, body, headers, route }) {
 
   // 5. HTTP 429 -> walk FAILURE_SIGNATURES
   if (status === 429) {
-    const rawMsg =
-      body?.error?.message ||
-      body?.message ||
-      body?.detail ||
-      (typeof body === "string" ? body : "");
-    const msg = String(rawMsg || "").toLowerCase();
+    const msg = providerFailureMessage(body);
     const routeProvider = route?.provider || "";
 
     const matchContext = { status, body, headers: normHeaders, msg };

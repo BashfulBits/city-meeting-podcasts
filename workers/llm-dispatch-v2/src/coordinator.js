@@ -8,7 +8,14 @@ import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 // the same block citypods/compute/llm_lanes.py reads, so client and Worker cannot disagree
 // about which purposes exist or what each may spend. Drift-checked in the deploy workflow.
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
-import { canonicalModelName, routeFitsContext, routesEligibleFor } from "./routes.js";
+import {
+  canonicalModelName,
+  jobPolicy,
+  modelForRouteId,
+  modelsForJob,
+  routeFitsContext,
+  routesEligibleFor,
+} from "./routes.js";
 import {
   availableTokenBudget,
   computeRouteLaneWait,
@@ -59,6 +66,7 @@ const NON_CONSUMING_FAILURE_CLASSES = new Set([
   "upstream_capacity",
   "gateway_limit",
   "server_error",
+  "route_input_limit",
   "payment_required",
   "request_defect",
 ]);
@@ -83,6 +91,38 @@ function configuredLimit(value) {
   if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseJsonObject(value, fallback = {}) {
+  if (typeof value !== "string" || value.trim() === "") return fallback;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Merge two independently indexed ascending result sets without asking SQLite to globally sort
+ * them.
+ */
+function mergeSortedRows(left, right, limit, compare) {
+  const merged = [];
+  let i = 0;
+  let j = 0;
+  while (merged.length < limit && (i < left.length || j < right.length)) {
+    if (i >= left.length) {
+      merged.push(right[j++]);
+    } else if (j >= right.length) {
+      merged.push(left[i++]);
+    } else if (compare(left[i], right[j]) <= 0) {
+      merged.push(left[i++]);
+    } else {
+      merged.push(right[j++]);
+    }
+  }
+  return merged;
 }
 
 export class LLMSchedulerDO extends DurableObjectBase {
@@ -128,6 +168,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         lease_expires_at            INTEGER,
         bundle_id                   TEXT,
         attempts                    INTEGER NOT NULL DEFAULT 0,
+        schema_retry_count          INTEGER NOT NULL DEFAULT 0,
         transient_retry_count       INTEGER NOT NULL DEFAULT 0,
         token_reservation           INTEGER NOT NULL DEFAULT 0,
         reservation_rpm_window_start INTEGER NOT NULL DEFAULT 0,
@@ -254,6 +295,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
         bundle_count_today                  INTEGER NOT NULL DEFAULT 0,
         jobs_ingested_today                 INTEGER NOT NULL DEFAULT 0,
         ingress_write_units_today           INTEGER NOT NULL DEFAULT 0,
+        claim_empty_count_today             INTEGER NOT NULL DEFAULT 0,
+        claim_reason_counts_json            TEXT NOT NULL DEFAULT '{}',
+        last_claim_at                       INTEGER,
+        last_claim_result                   TEXT NOT NULL DEFAULT '',
+        last_claim_reason                   TEXT NOT NULL DEFAULT '',
+        last_claim_diagnostics_json         TEXT NOT NULL DEFAULT '{}',
         cleanup_cursor                      TEXT,
         next_maintenance_alarm_at           INTEGER
       );
@@ -316,6 +363,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("routes", "buffer_updated_at", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "token_reservation", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "purpose", "TEXT NOT NULL DEFAULT ''");
+    // Backup-model gating (routes.js's backupModelsActive) reads this alongside `attempts`; an
+    // already-provisioned DO's existing rows get 0, same as a freshly-created job.
+    this._ensureColumn("jobs", "schema_retry_count", "INTEGER NOT NULL DEFAULT 0");
     // The route's own rpm/rpd/tpm window identity AT CLAIM TIME, so a non-consuming refund
     // (completeBatch) can tell whether the route's current window is still the one this
     // reservation actually counted against, or whether it has since rolled over (see
@@ -333,6 +383,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
       "CREATE INDEX IF NOT EXISTS idx_jobs_purpose_state_created ON jobs (purpose, state, created_at)"
     );
     this._ensureColumn("scheduler", "ingress_write_units_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "claim_reason_counts_json", "TEXT NOT NULL DEFAULT '{}'");
+    this._ensureColumn("scheduler", "last_claim_at", "INTEGER");
+    this._ensureColumn("scheduler", "last_claim_result", "TEXT NOT NULL DEFAULT ''");
+    this._ensureColumn("scheduler", "last_claim_reason", "TEXT NOT NULL DEFAULT ''");
+    this._ensureColumn("scheduler", "last_claim_diagnostics_json", "TEXT NOT NULL DEFAULT '{}'");
     // The job_models_backfill_*/legacy_retryable_recovery_*/migration_*_today columns that used to
     // be retrofitted here were the one-time compatibility migration's own bookkeeping (review/44's
     // "Durable Objects rows-read overage retrospective"). Both migrations completed in production
@@ -409,10 +465,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["upstream_capacity_streak", "INTEGER NOT NULL DEFAULT 0"],
       ["last_failure_class", "TEXT NOT NULL DEFAULT ''"],
       ["transient_retry_count", "INTEGER NOT NULL DEFAULT 0"],
+      ["schema_retry_count", "INTEGER NOT NULL DEFAULT 0"],
       ["buffer_updated_at", "INTEGER NOT NULL DEFAULT 0"],
       ["token_reservation", "INTEGER NOT NULL DEFAULT 0"],
       ["purpose", "TEXT NOT NULL DEFAULT ''"],
       ["ingress_write_units_today", "INTEGER NOT NULL DEFAULT 0"],
+      ["claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0"],
+      ["claim_reason_counts_json", "TEXT NOT NULL DEFAULT '{}'"],
+      ["last_claim_at", "INTEGER"],
+      ["last_claim_result", "TEXT NOT NULL DEFAULT ''"],
+      ["last_claim_reason", "TEXT NOT NULL DEFAULT ''"],
+      ["last_claim_diagnostics_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["mistral_latest_migrated", "INTEGER NOT NULL DEFAULT 0"],
       ["reservation_rpm_window_start", "INTEGER NOT NULL DEFAULT 0"],
       ["reservation_rpd_day_key", "TEXT NOT NULL DEFAULT ''"],
@@ -501,7 +564,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * absent list must never be read as "no route is allowed".
    */
   _modelsOutsideLane(job, reservation, dispatchLimits) {
-    const declared = Array.isArray(reservation?.models) ? reservation.models : [];
+    // backup_models is enforced identically to models -- otherwise a lane could smuggle an
+    // unbudgeted/unreviewed model into production via backup_models alone, which this ingress gate
+    // would otherwise never see.
+    const declared = [
+      ...(Array.isArray(reservation?.models) ? reservation.models : []),
+      ...(Array.isArray(reservation?.backup_models) ? reservation.backup_models : []),
+    ];
     if (declared.length === 0) return [];
     const allowed = new Set(
       declared
@@ -515,7 +584,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
     } catch {
       return [];
     }
-    const requested = Array.isArray(policy?.allowed_models) ? policy.allowed_models : [];
+    const requested = [
+      ...(Array.isArray(policy?.allowed_models) ? policy.allowed_models : []),
+      ...(Array.isArray(policy?.backup_models) ? policy.backup_models : []),
+    ];
     const offenders = [];
     for (const rawModel of requested) {
       if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
@@ -524,6 +596,34 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
     }
     return offenders;
+  }
+
+  /**
+   * A registered purpose whose lane declares `backup_models` still may not activate them earlier
+   * than the lane's own configured `backup_after_attempts` -- `_modelsOutsideLane` above only
+   * enforces WHICH models a job may name, never WHEN a caller's own `policy_json` says they
+   * activate. `validateEnqueueJob` never validates `policy_json` and the coordinator otherwise
+   * only checks purpose/model allowlists, so without this a producer could pass a lower threshold
+   * than the lane declares and unlock a reviewed/budgeted backup model far sooner than intended.
+   * `schema_retry_count`'s independent activation trigger (routes.js's `backupModelsActive`) is
+   * untouched -- this only floors the attempts-based threshold.
+   *
+   * Returns `false` (admit) when the job names no backup models, or when the lane itself declares
+   * no `backup_after_attempts` floor to enforce.
+   */
+  _backupThresholdBelowLaneMinimum(job, reservation) {
+    let policy;
+    try {
+      policy = typeof job.policy_json === "string" ? JSON.parse(job.policy_json) : job.policy_json;
+    } catch {
+      return false;
+    }
+    const requestedBackupModels = Array.isArray(policy?.backup_models) ? policy.backup_models : [];
+    if (requestedBackupModels.length === 0) return false;
+    const laneThreshold = reservation?.backup_after_attempts;
+    if (!Number.isInteger(laneThreshold) || laneThreshold <= 0) return false;
+    const requestedThreshold = policy?.backup_after_attempts;
+    return !Number.isInteger(requestedThreshold) || requestedThreshold < laneThreshold;
   }
 
   _purposeForJob(job) {
@@ -714,14 +814,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const sql = this._getSql();
     const today = this._currentUtcDay(now);
     const rows = [...sql.exec(
-      `SELECT utc_day, bundle_count_today, jobs_ingested_today, ingress_write_units_today
+      `SELECT utc_day, bundle_count_today, jobs_ingested_today, ingress_write_units_today,
+              claim_empty_count_today, claim_reason_counts_json, last_claim_at,
+              last_claim_result, last_claim_reason, last_claim_diagnostics_json
        FROM scheduler WHERE id = 1`
     )];
     if (rows.length === 0) {
       sql.exec(
         `INSERT INTO scheduler (
-          id, utc_day, bundle_count_today, jobs_ingested_today, ingress_write_units_today
-        ) VALUES (1, ?, 0, 0, 0)`,
+          id, utc_day, bundle_count_today, jobs_ingested_today, ingress_write_units_today,
+          claim_empty_count_today, claim_reason_counts_json
+        ) VALUES (1, ?, 0, 0, 0, 0, '{}')`,
         today
       );
       return {
@@ -729,13 +832,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
         bundle_count_today: 0,
         jobs_ingested_today: 0,
         ingress_write_units_today: 0,
+        claim_empty_count_today: 0,
+        claim_reason_counts_json: "{}",
       };
     }
     const sched = rows[0];
     if (sched.utc_day !== today) {
       sql.exec(
         `UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0,
-         ingress_write_units_today = 0 WHERE id = 1`,
+         ingress_write_units_today = 0, claim_empty_count_today = 0,
+         claim_reason_counts_json = '{}' WHERE id = 1`,
         today
       );
       return {
@@ -744,6 +850,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         bundle_count_today: 0,
         jobs_ingested_today: 0,
         ingress_write_units_today: 0,
+        claim_empty_count_today: 0,
+        claim_reason_counts_json: "{}",
       };
     }
     return sched;
@@ -861,6 +969,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
               });
               continue;
             }
+            if (
+              this._backupThresholdBelowLaneMinimum(
+                { ...job, policy_json: policyJson },
+                ingressReservations[purpose]
+              )
+            ) {
+              rejected.push({
+                id: job.id,
+                reason: "backup_after_attempts_below_lane_minimum",
+                purpose,
+              });
+              continue;
+            }
             sql.exec(
               `UPDATE jobs SET
                  request_digest = ?, provider_idempotency_key = ?, state = 'queued',
@@ -933,6 +1054,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
             reason: "model_not_in_lane",
             purpose,
             models: offendingModels,
+          });
+          continue;
+        }
+        if (this._backupThresholdBelowLaneMinimum({ ...job, policy_json: policyJson }, reservation)) {
+          rejected.push({
+            id: job.id,
+            reason: "backup_after_attempts_below_lane_minimum",
+            purpose,
           });
           continue;
         }
@@ -1088,15 +1217,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
       if (this._modelsOutsideLane(source, reservation, this._dispatchLimits()).length > 0) {
         return { status: "model_not_in_lane" };
       }
+      if (this._backupThresholdBelowLaneMinimum(source, reservation)) {
+        return { status: "backup_after_attempts_below_lane_minimum" };
+      }
       const purposeUsage = [...sql.exec(
         "SELECT write_units FROM ingress_purpose WHERE utc_day = ? AND purpose = ?",
         sched.utc_day,
         purpose
       )][0]?.write_units || 0;
+      // Computed before the write-unit charge (not alongside the INSERT below) so
+      // _ingressWriteUnitsFor -> _modelsToIndex -> backupModelsActive sees the SAME
+      // schema_retry_count the clone will actually be created with -- otherwise a correction that
+      // activates backup-model indexing (schema_retry_count >= 1) would be charged as if it only
+      // indexed the primary model, undercounting against the purpose/global write-unit budgets.
+      const nextSchemaRetryCount = (Number(source.schema_retry_count) || 0) + 1;
       const retryJob = {
         ...source,
         input_token_estimate: retry.corrected_input_token_estimate,
         max_output_token_estimate: source.max_output_token_estimate,
+        attempts: source.attempts,
+        schema_retry_count: nextSchemaRetryCount,
       };
       const writeUnits = this._ingressWriteUnitsFor(retryJob);
       const purposeWriteLimit = Number(reservation.daily_write_units);
@@ -1120,13 +1260,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
 
       const id = crypto.randomUUID();
+      // Carry `attempts` and `schema_retry_count` forward from `source` rather than resetting to
+      // 0: this is what lets a job that needed a JSON-schema correction (or a chain of them) cross
+      // the same backup_after_attempts threshold as a job that failed the same number of times on
+      // plain dispatch attempts (backupModelsActive, routes.js) -- otherwise a schema-correction
+      // clone would always start over at attempts=0 and could never surface a backup model.
+      // (nextSchemaRetryCount computed above, before the write-unit charge.)
       sql.exec(
         `INSERT INTO jobs (
           id, idempotency_key, request_digest, provider_idempotency_key,
           state, priority, purpose, policy_json, prompt_family,
           input_token_estimate, max_output_token_estimate,
-          payload_key, attempts, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+          payload_key, attempts, schema_retry_count, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         idempotencyKey,
         retry.corrected_request_digest,
@@ -1138,6 +1284,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         retry.corrected_input_token_estimate,
         source.max_output_token_estimate,
         retry.corrected_payload_key,
+        source.attempts,
+        nextSchemaRetryCount,
         now,
         now
       );
@@ -1148,6 +1296,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           priority: source.priority,
           input_token_estimate: retry.corrected_input_token_estimate,
           max_output_token_estimate: source.max_output_token_estimate,
+          attempts: source.attempts,
+          schema_retry_count: nextSchemaRetryCount,
           created_at: now,
         },
         source.priority,
@@ -1240,12 +1390,35 @@ export class LLMSchedulerDO extends DurableObjectBase {
     )];
     const catalog = this._dispatchLimits();
     const windowSeconds = this._dispatchWindowSecondsForStats();
+    const leasedByRoute = new Map();
+    for (const row of sql.exec(
+      "SELECT lease_route_id, COUNT(*) AS n FROM jobs WHERE state = 'leased' GROUP BY lease_route_id"
+    )) {
+      if (row.lease_route_id) leasedByRoute.set(row.lease_route_id, row.n);
+    }
+    const leasedByProvider = new Map();
+    for (const [routeId, count] of leasedByRoute) {
+      const provider = catalog?.routes_by_id?.[routeId]?.provider;
+      if (provider) leasedByProvider.set(provider, (leasedByProvider.get(provider) || 0) + count);
+    }
     const routes = routeRows.map((row) => {
       const catalogRoute = catalog?.routes_by_id?.[row.route_id];
       const merged = catalogRoute ? { ...catalogRoute, ...row } : row;
+      const providerConfig = catalog?.providers?.[catalogRoute?.provider];
+      const routeConcurrency = Number(catalogRoute?.concurrency);
+      const providerConcurrency = Number(
+        providerConfig?.concurrency ?? catalogRoute?.provider_concurrency
+      );
       return {
         route_id: row.route_id,
         capacity: catalogRoute ? this._capacityFraction(merged, now, windowSeconds) : null,
+        provider: catalogRoute?.provider || null,
+        in_flight: leasedByRoute.get(row.route_id) || 0,
+        route_concurrency: Number.isFinite(routeConcurrency) ? routeConcurrency : null,
+        provider_in_flight: catalogRoute?.provider
+          ? leasedByProvider.get(catalogRoute.provider) || 0
+          : 0,
+        provider_concurrency: Number.isFinite(providerConcurrency) ? providerConcurrency : null,
         blocked_until: row.blocked_until,
         buffer_seconds: row.buffer_seconds,
         buffer_remaining_seconds: effectiveBufferSeconds(row, now),
@@ -1281,6 +1454,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
 
     const scheduler = one("SELECT * FROM scheduler WHERE id = 1");
+    const claimReasonCounts = parseJsonObject(scheduler.claim_reason_counts_json);
+    const lastClaimDiagnostics = parseJsonObject(scheduler.last_claim_diagnostics_json);
 
     const today = new Date(now).toISOString().slice(0, 10);
     const routeFailures = [...sql.exec(
@@ -1314,6 +1489,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       route_failures: routeFailures,
       bundles: {
         active: one("SELECT COUNT(*) AS n FROM bundles WHERE state = 'active'").n,
+        active_call_count: one(
+          "SELECT COALESCE(SUM(active_call_count), 0) AS n FROM bundles WHERE state = 'active'"
+        ).n,
         active_expired: one(
           "SELECT COUNT(*) AS n FROM bundles WHERE state = 'active' AND lease_expires_at <= ?",
           now
@@ -1325,6 +1503,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
         jobs_ingested_today: scheduler.jobs_ingested_today ?? 0,
         next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
       },
+      claim: {
+        last_at: scheduler.last_claim_at ?? null,
+        last_result: scheduler.last_claim_result || null,
+        last_reason: scheduler.last_claim_reason || null,
+        empty_count_today: scheduler.claim_empty_count_today ?? 0,
+        reason_counts_today: claimReasonCounts,
+        last_diagnostics: lastClaimDiagnostics,
+      },
+      in_flight: {
+        by_route: Object.fromEntries(leasedByRoute),
+        by_provider: Object.fromEntries(leasedByProvider),
+      },
     };
   }
 
@@ -1335,11 +1525,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
 
     const sql = this._getSql();
+    // A completed job's `lease_route_id` is left untouched by completeBatch's success UPDATE (it
+    // only rewrites `state`/`result_key`/`updated_at`), so it still names the physical route the
+    // job actually completed on -- including a backup route a primary-pinned job escalated to.
+    // Without returning the model that route serves, the client falls back to whichever model it
+    // guessed at enqueue time (JobHandle.model, set from allowed_models[0]), which is always the
+    // PRIMARY model regardless of which one actually produced the response.
+    const dispatchLimits = this._dispatchLimits();
     const statuses = [];
     for (const chunk of this._chunks(ids)) {
       const placeholders = chunk.map(() => "?").join(",");
       const rows = [...sql.exec(
-        `SELECT id, state, result_key, attempts FROM jobs WHERE id IN (${placeholders})`,
+        `SELECT id, state, result_key, attempts, lease_route_id FROM jobs WHERE id IN (${placeholders})`,
         ...chunk
       )];
       for (const row of rows) {
@@ -1349,6 +1546,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           result_key: row.state === "completed" ? row.result_key : null,
           error: row.state === "failed" ? "job_failed" : null,
           attempts: row.attempts,
+          model:
+            row.state === "completed"
+              ? modelForRouteId(row.lease_route_id, dispatchLimits)
+              : null,
         });
       }
     }
@@ -1388,26 +1589,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
       afterId,
       limit
     )];
-    const merged = [];
-    let i = 0;
-    let j = 0;
-    while (merged.length < limit && (i < completedRows.length || j < failedRows.length)) {
-      if (i >= completedRows.length) {
-        merged.push(failedRows[j++]);
-      } else if (j >= failedRows.length) {
-        merged.push(completedRows[i++]);
-      } else {
-        const c = completedRows[i];
-        const f = failedRows[j];
-        if (c.updated_at < f.updated_at || (c.updated_at === f.updated_at && c.id < f.id)) {
-          merged.push(c);
-          i++;
-        } else {
-          merged.push(f);
-          j++;
-        }
-      }
-    }
+    const merged = mergeSortedRows(
+      completedRows,
+      failedRows,
+      limit,
+      (left, right) => left.updated_at - right.updated_at || left.id.localeCompare(right.id)
+    );
     const last = merged.at(-1);
     return {
       terminals: merged.map((row) => ({
@@ -1582,7 +1769,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /**
    * Canonical model groups a job may use. Persist every explicit allowed model, even when it has
    * no configured route yet, so a later catalog addition makes an already-queued job searchable
-   * without rewriting it. This follows aliases only: v2 does not expand config/model_routing.
+   * without rewriting it. This follows aliases only: v2 does not expand config/model_routing (that
+   * quota-exhaustion overflow map is Python-scheduler-only). It does expand a job's own
+   * `policy_json.backup_models` once `modelsForJob`/`backupModelsActive` (routes.js) say the job's
+   * `attempts`/`schema_retry_count` warrant it -- that's a per-job failure-count signal carried on
+   * the job itself, not a config-driven route substitution.
    *
    * Omits a model whose *every* currently configured route is structurally too small for this
    * job's own token estimates (routesEligibleFor's combined input/output context-limit check,
@@ -1604,7 +1795,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     } catch {
       return [];
     }
-    const allowedModels = Array.isArray(policy?.allowed_models) ? policy.allowed_models : [];
+    // modelsForJob folds in policy.backup_models once the job's attempts/schema_retry_count cross
+    // its configured threshold (backupModelsActive) -- see routes.js.
+    const allowedModels = modelsForJob(job, policy);
     const allowPaid = Boolean(policy?.allow_paid);
     const inputTokens = job.input_token_estimate || 0;
     const outputTokens = job.max_output_token_estimate || 0;
@@ -1676,15 +1869,31 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
     if (bundleLimit > 0) {
       const cutoff = now - this._bundleRetentionMs();
-      const ids = [...sql.exec(
-        `SELECT bundle_id FROM bundles
-         WHERE state IN ('completed','expired') AND created_at < ? AND lease_expires_at < ?
-         ORDER BY created_at ASC
-         LIMIT ?`,
+      // Query each terminal state independently so each statement can use the leading state and
+      // created_at columns of idx_bundles_state_created. A combined IN + ORDER BY would make
+      // SQLite read both state ranges into a temp B-tree before applying the LIMIT.
+      const completed = [...sql.exec(
+        `SELECT bundle_id, created_at FROM bundles
+         WHERE state = 'completed' AND created_at < ? AND lease_expires_at < ?
+         ORDER BY created_at ASC LIMIT ?`,
         cutoff,
         now,
         bundleLimit
-      )].map((row) => row.bundle_id);
+      )];
+      const expired = [...sql.exec(
+        `SELECT bundle_id, created_at FROM bundles
+         WHERE state = 'expired' AND created_at < ? AND lease_expires_at < ?
+         ORDER BY created_at ASC LIMIT ?`,
+        cutoff,
+        now,
+        bundleLimit
+      )];
+      const ids = mergeSortedRows(
+        completed,
+        expired,
+        bundleLimit,
+        (left, right) => left.created_at - right.created_at
+      ).map((row) => row.bundle_id);
       for (const chunk of this._chunks(ids)) {
         const placeholders = chunk.map(() => "?").join(",");
         sql.exec(`DELETE FROM bundles WHERE bundle_id IN (${placeholders})`, ...chunk);
@@ -2049,6 +2258,27 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return rows.length > 0 ? rows[0].margin_tokens : 0;
   }
 
+  _recordClaimOutcome(now, result, reason, diagnostics) {
+    const sql = this._getSql();
+    const row = [...sql.exec(
+      "SELECT claim_empty_count_today, claim_reason_counts_json FROM scheduler WHERE id = 1"
+    )][0] || {};
+    const reasonCounts = parseJsonObject(row.claim_reason_counts_json);
+    reasonCounts[reason] = (Number(reasonCounts[reason]) || 0) + 1;
+    const emptyCount = Number(row.claim_empty_count_today) || 0;
+    sql.exec(
+      `UPDATE scheduler SET last_claim_at=?, last_claim_result=?, last_claim_reason=?,
+       last_claim_diagnostics_json=?, claim_empty_count_today=?, claim_reason_counts_json=?
+       WHERE id=1`,
+      now,
+      result,
+      reason,
+      JSON.stringify(diagnostics),
+      result === "empty" ? emptyCount + 1 : emptyCount,
+      JSON.stringify(reasonCounts)
+    );
+  }
+
   static EMPTY_CLAIM_RESULT = { bundle_id: null, execution_token: null, jobs: [] };
 
   /** review/44 Unit 4: fenced, capacity-ranked admission and pacing in one SQLite transaction. */
@@ -2069,9 +2299,41 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const callDurationCeilingMs = this._callDurationCeilingMs();
       const leaseDurationMs = this._leaseDurationMs();
       const EMPTY = LLMSchedulerDO.EMPTY_CLAIM_RESULT;
+      const diagnostics = {
+        active_bundles: 0,
+        in_flight_calls: 0,
+        candidate_jobs: 0,
+        chosen_jobs: 0,
+        rejections: {
+          route_lane_limit: 0,
+          route_bundle_limit: 0,
+          route_concurrency: 0,
+          provider_concurrency: 0,
+          route_capacity: 0,
+          dispatch_window_capacity: 0,
+        },
+        routes: {
+          route_concurrency: {},
+          provider_concurrency: {},
+        },
+      };
+      const recordEmpty = (reason, extra = {}) => {
+        const snapshot = { ...diagnostics, ...extra };
+        this._recordClaimOutcome(now, "empty", reason, snapshot);
+        return { ...EMPTY, claim_result: "empty", claim_reason: reason, claim_diagnostics: snapshot };
+      };
+      const recordClaimed = (jobs) => {
+        diagnostics.chosen_jobs = jobs;
+        this._recordClaimOutcome(now, "claimed", "claimed", diagnostics);
+      };
 
       const sched = this._rollUtcDayIfNeeded(now);
-      if (sched.bundle_count_today >= maxBundlesPerDay) return EMPTY;
+      if (sched.bundle_count_today >= maxBundlesPerDay) {
+        return recordEmpty("daily_bundle_limit", {
+          bundles_today: sched.bundle_count_today,
+          max_bundles_per_day: maxBundlesPerDay,
+        });
+      }
 
       // Reap bundles whose lease expired without ever reaching completeBatch -- an executor
       // crash, a CPU/wall-clock eviction mid-tick, or an uncaught error before the final
@@ -2119,9 +2381,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._pruneTerminalRecords(now);
 
       const activeBundles = [...sql.exec("SELECT active_call_count FROM bundles WHERE state='active'")];
-      if (activeBundles.length >= maxActiveBundles) return EMPTY;
+      diagnostics.active_bundles = activeBundles.length;
+      if (activeBundles.length >= maxActiveBundles) {
+        return recordEmpty("active_bundle_limit", { max_active_bundles: maxActiveBundles });
+      }
       const inFlightCalls = activeBundles.reduce((sum, b) => sum + b.active_call_count, 0);
-      if (inFlightCalls >= maxInFlightCalls) return EMPTY;
+      diagnostics.in_flight_calls = inFlightCalls;
+      if (inFlightCalls >= maxInFlightCalls) {
+        return recordEmpty("in_flight_call_limit", { max_in_flight_calls: maxInFlightCalls });
+      }
 
       const inFlightByRoute = new Map();
       const inFlightByProvider = new Map();
@@ -2195,6 +2463,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         for (const job of candidates) {
           if (chosen.length >= maxBundleJobs) break;
           if (chosenJobIds.has(job.id)) continue;
+          diagnostics.candidate_jobs += 1;
           // The capacity-ranked model index is a bounded way to *find* work, not permission to
           // force that discovery model onto the job. A job is indexed under every explicit
           // alternate; once found, rank all of its eligible routes. Otherwise the first tied
@@ -2225,16 +2494,27 @@ export class LLMSchedulerDO extends DurableObjectBase {
           ];
           for (const route of routeOrder) {
             const isNewLane = !seenRoutes.has(route.route_id);
-            if (isNewLane && seenRoutes.size >= maxConcurrentLanes) continue;
+            if (isNewLane && seenRoutes.size >= maxConcurrentLanes) {
+              diagnostics.rejections.route_lane_limit += 1;
+              continue;
+            }
             const countInBundle = chosen.filter(
               (entry) => entry.route.route_id === route.route_id
             ).length;
-            if (countInBundle >= maxJobsPerRoutePerBundle) continue;
+            if (countInBundle >= maxJobsPerRoutePerBundle) {
+              diagnostics.rejections.route_bundle_limit += 1;
+              continue;
+            }
 
             const routeConcurrency = Number(route.concurrency);
             if (Number.isFinite(routeConcurrency) && routeConcurrency > 0) {
               const curInFlight = (inFlightByRoute.get(route.route_id) || 0) + countInBundle;
-              if (curInFlight >= routeConcurrency) continue;
+              if (curInFlight >= routeConcurrency) {
+                diagnostics.rejections.route_concurrency += 1;
+                diagnostics.routes.route_concurrency[route.route_id] =
+                  (diagnostics.routes.route_concurrency[route.route_id] || 0) + 1;
+                continue;
+              }
             }
 
             const providerCfg = dispatchLimits.providers?.[route.provider];
@@ -2245,13 +2525,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
               const curProviderInFlight =
                 (inFlightByProvider.get(route.provider) || 0) +
                 chosen.filter((entry) => entry.route.provider === route.provider).length;
-              if (curProviderInFlight >= providerConcurrency) continue;
+              if (curProviderInFlight >= providerConcurrency) {
+                diagnostics.rejections.provider_concurrency += 1;
+                diagnostics.routes.provider_concurrency[route.provider] =
+                  (diagnostics.routes.provider_concurrency[route.provider] || 0) + 1;
+                continue;
+              }
             }
 
             const merged = getMergedRoute(route);
             if (
               !routeHasCapacityFor(merged, job, now, windowSeconds, capacityOptions(route, job))
             ) {
+              diagnostics.rejections.route_capacity += 1;
               continue;
             }
             chosen.push({ job, route });
@@ -2262,7 +2548,30 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
       }
 
-      if (chosen.length === 0) return EMPTY;
+      if (chosen.length === 0) {
+        const queuedCount = [...sql.exec(
+          "SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'"
+        )][0]?.n || 0;
+        const concurrencyRejected =
+          diagnostics.rejections.route_concurrency + diagnostics.rejections.provider_concurrency;
+        const otherRejected =
+          diagnostics.rejections.route_lane_limit +
+          diagnostics.rejections.route_bundle_limit +
+          diagnostics.rejections.route_capacity;
+        const reason =
+          queuedCount === 0
+            ? "no_queued_work"
+            : diagnostics.candidate_jobs === 0
+              ? "no_ranked_candidates"
+              : concurrencyRejected > 0 && otherRejected === 0
+                ? "concurrency_limit"
+                : concurrencyRejected > 0
+                  ? "mixed_admission_limits"
+                  : diagnostics.rejections.route_capacity > 0
+                    ? "route_capacity"
+                    : "no_eligible_route";
+        return recordEmpty(reason, { queued_jobs: queuedCount });
+      }
 
       // Sequence each route lane independently, in selection order. A job chosen above can still
       // fall out here if an earlier job in the SAME lane pushed the lane's cumulative time past
@@ -2294,8 +2603,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
             providerConfig: providerCfg,
             providerLedger,
           });
-          if (waitResult === null) continue; // exceeds this route's burst capacity outright
-          if (waitResult.not_before_at + callDurationCeilingMs > dispatchWindowEnd) continue;
+          if (waitResult === null) {
+            diagnostics.rejections.dispatch_window_capacity += 1;
+            continue; // exceeds this route's burst capacity outright
+          }
+          if (waitResult.not_before_at + callDurationCeilingMs > dispatchWindowEnd) {
+            diagnostics.rejections.dispatch_window_capacity += 1;
+            continue;
+          }
 
           const leaseToken = crypto.randomUUID();
 
@@ -2360,7 +2675,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
       }
 
-      if (resultJobs.length === 0) return EMPTY;
+      if (resultJobs.length === 0) {
+        return recordEmpty("dispatch_window_capacity");
+      }
 
       const executionToken = crypto.randomUUID();
       sql.exec(
@@ -2375,8 +2692,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
         now
       );
       sql.exec("UPDATE scheduler SET bundle_count_today = bundle_count_today + 1 WHERE id = 1");
+      recordClaimed(resultJobs.length);
 
-      return { bundle_id: bundleId, execution_token: executionToken, jobs: resultJobs };
+      return {
+        bundle_id: bundleId,
+        execution_token: executionToken,
+        jobs: resultJobs,
+        claim_result: "claimed",
+        claim_reason: "claimed",
+        claim_diagnostics: diagnostics,
+      };
     });
   }
 
@@ -2562,6 +2887,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
           );
           return { authorized: false, retry_not_before: null };
         }
+        case "request_defect": {
+          // A request defect (e.g. OrcaRouter free-tier prompt cap exceeded with no Retry-After)
+          // cannot succeed by retrying unchanged. Refuse in-batch retry immediately.
+          sql.exec(
+            `UPDATE routes SET last_provider_status = 429, last_failure_class = ?
+             WHERE route_id = ?`,
+            failureClass,
+            routeId
+          );
+          return { authorized: false, retry_not_before: null };
+        }
         case "own_rpm":
         case "unknown_429":
         default: {
@@ -2688,11 +3024,38 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
         const job = jobRows[0];
 
+        // A job with configured backup_models must actually survive long enough to try them.
+        // Every class-specific retry ceiling below (MAX_5XX_RETRIES, MAX_UPSTREAM_CAPACITY_RETRIES)
+        // is tuned for a job with no fallback -- confirmed live: a raw 5xx (e.g. NVIDIA's own
+        // "Service temporarily overloaded" 503) classifies as `server_error` (classify.js's HTTP
+        // 5xx rule runs before any 429/400 check), gated by MAX_5XX_RETRIES=1, i.e. only 2 total
+        // attempts before terminal failure -- nowhere near a `backup_after_attempts` in the 5-20
+        // range backupModelsActive (routes.js) expects. Without this, backups configured for
+        // exactly this failure mode would almost never actually be reached. Once backups are
+        // configured, every ceiling below is raised to `backup_after_attempts + <its own normal
+        // budget>`: the job survives (at minimum) to backup eligibility on `attempts` alone, then
+        // gets its ordinary per-class retry allowance again while a backup model is in play,
+        // rather than an untested, unbounded extension.
+        const backupPolicy = jobPolicy(job);
+        const backupAfterAttempts =
+          Array.isArray(backupPolicy?.backup_models) &&
+          backupPolicy.backup_models.length > 0 &&
+          Number.isInteger(backupPolicy?.backup_after_attempts) &&
+          backupPolicy.backup_after_attempts > 0
+            ? backupPolicy.backup_after_attempts
+            : 0;
+        const _retryCeiling = (base) =>
+          backupAfterAttempts > 0 ? backupAfterAttempts + base : base;
+
+        const isUpstreamClass =
+          result.failure_class === "upstream_capacity" ||
+          result.failure_class === "gateway_limit";
         const isFinal5xx =
           result.outcome === "retryable_error" &&
           Number.isInteger(result.provider_status_code) &&
           result.provider_status_code >= 500 &&
-          result.provider_status_code <= 599;
+          result.provider_status_code <= 599 &&
+          !isUpstreamClass;
         // A 402 requeues rather than failing: the route is blocked below, so the job cannot
         // re-probe it, and it runs on an overflow route or once the cooldown clears. It shares
         // the 5xx retry budget so a route that stays 402 across every cooldown cannot requeue a
@@ -2700,7 +3063,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const isPaymentRequired =
           result.outcome === "retryable_error" &&
           result.provider_status_code === 402 &&
-          job.transient_retry_count < this._max5xxRetries();
+          job.transient_retry_count < _retryCeiling(this._max5xxRetries());
         // A 400 only ever arrives as `retryable_error` when the dispatcher read the body and found
         // the provider blaming its own upstream (see gateway.js's upstreamCapacityFailure). The DO
         // never sees payloads, so the pair (retryable_error, 400) is the whole signal here. The
@@ -2711,7 +3074,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           result.outcome === "retryable_error" && result.provider_status_code === 400;
         const isTransientRouteFailure = isFinal5xx || isUpstreamCapacityFailure;
         const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
-        const blockedUntil = isTransientRouteFailure
+        const isRouteInputLimit = result.failure_class === "route_input_limit";
+        const blockedUntil = isTransientRouteFailure || isRouteInputLimit
           ? this._5xxBlockedUntil(nextTransientRetryCount, now)
           : null;
         // An upstream/gateway failure is by definition not this job's fault and recurs on its own
@@ -2719,18 +3083,24 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // With MAX_5XX_RETRIES=1 shared across every transient cause, two unrelated upstream
         // blips destroyed a job that had done nothing wrong -- 26 such events landed on just two
         // routes on 2026-09-09 alone.
-        const isUpstreamClass =
-          result.failure_class === "upstream_capacity" ||
-          result.failure_class === "gateway_limit";
         const isUpstreamRetryable =
-          isUpstreamClass && job.transient_retry_count < this._maxUpstreamCapacityRetries();
+          isUpstreamClass &&
+          job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
         const isRateLimitTerminal =
           result.provider_status_code === 429 &&
-          job.transient_retry_count < this._max5xxRetries();
+          job.transient_retry_count < _retryCeiling(this._max5xxRetries());
         const shouldRetry5xx =
-          isTransientRouteFailure && job.transient_retry_count < this._max5xxRetries();
+          isTransientRouteFailure &&
+          job.transient_retry_count < _retryCeiling(this._max5xxRetries());
+        const shouldRetryRouteInputLimit =
+          isRouteInputLimit &&
+          job.transient_retry_count < _retryCeiling(this._max5xxRetries());
         const shouldRequeue =
-          shouldRetry5xx || isPaymentRequired || isRateLimitTerminal || isUpstreamRetryable;
+          shouldRetry5xx ||
+          shouldRetryRouteInputLimit ||
+          isPaymentRequired ||
+          isRateLimitTerminal ||
+          isUpstreamRetryable;
 
         if (result.outcome === "retryable_error" || result.outcome === "terminal_error") {
           if (result.provider_status_code !== 429) {
@@ -2926,7 +3296,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
               result.provider_status_code ?? 429,
               job.lease_route_id
             );
-          } else if (isTransientRouteFailure) {
+          } else if (isRouteInputLimit) {
+            // Quarantine a route that cannot serve this input shape, letting the requeued job
+            // select a longer-context sibling without a durable per-job exclusion list.
+            sql.exec(
+              "UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?), " +
+                "last_provider_status = ?, last_failure_class = ? WHERE route_id = ?",
+              blockedUntil,
+              result.provider_status_code ?? null,
+              result.failure_class,
+              job.lease_route_id
+            );
+          } else if (isTransientRouteFailure && !isUpstreamClass) {
             // The Gateway has already retried this request. Temporarily remove only this route
             // from the capacity ranking so other models/accounts can drain while it recovers.
             sql.exec(
@@ -2937,14 +3318,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
               job.lease_route_id
             );
           } else if (isUpstreamClass) {
-            // isTransientRouteFailure above only covers upstream_capacity arriving as a 400
-            // (gateway.js's upstreamCapacityFailure). The other shape -- a 2xx carrying no usable
-            // completion (c7a1a6c: "a 2xx with no completion is not a success") -- reaches here
-            // instead, and without this branch got no cooldown at all: `last_provider_status`
-            // only, so the same saturated route could be reselected on the very next tick and
-            // burn through the whole upstream-capacity retry budget back to back instead of
-            // backing off between attempts (CodeRabbit, 2026-09-13). Same exponential cooldown
-            // authorizeRetry applies to a mid-lease 429 of this class.
+            // The 404 function-not-found shape is upstream capacity too, but uses this branch so
+            // it gets the upstream-capacity retry budget/cooldown rather than the shorter 5xx
+            // budget. The other shape -- a 2xx carrying no usable completion (c7a1a6c: "a 2xx
+            // with no completion is not a success") -- reaches here as well. Without this branch
+            // either saturated route could be reselected on the very next tick and burn through
+            // the retry budget back to back instead of backing off between attempts.
             const ledger = this._getOrCreateRouteLedger(job.lease_route_id, now, {});
             const streak = (ledger.upstream_capacity_streak || 0) + 1;
             sql.exec(
@@ -3058,15 +3437,32 @@ export class LLMSchedulerDO extends DurableObjectBase {
       )];
 
       const remaining = limit - carriedOver.length;
-      const newlyEligible = remaining > 0
-        ? [...sql.exec(
-            `SELECT id, payload_key, result_key FROM jobs
-             WHERE state IN ('completed', 'failed') AND updated_at < ?
-             ORDER BY updated_at ASC LIMIT ?`,
-            cutoff,
-            remaining
-          )]
-        : [];
+      let newlyEligible = [];
+      if (remaining > 0) {
+        // Query each terminal state independently so idx_jobs_state_updated_id can satisfy both
+        // the age range and the per-state ordering. The old combined IN + ORDER BY query used a
+        // temp B-tree and read the entire terminal history before returning this small batch.
+        const completed = [...sql.exec(
+          `SELECT id, payload_key, result_key, updated_at FROM jobs
+           WHERE state = 'completed' AND updated_at < ?
+           ORDER BY updated_at ASC, id ASC LIMIT ?`,
+          cutoff,
+          remaining
+        )];
+        const failed = [...sql.exec(
+          `SELECT id, payload_key, result_key, updated_at FROM jobs
+           WHERE state = 'failed' AND updated_at < ?
+           ORDER BY updated_at ASC, id ASC LIMIT ?`,
+          cutoff,
+          remaining
+        )];
+        newlyEligible = mergeSortedRows(
+          completed,
+          failed,
+          remaining,
+          (left, right) => left.updated_at - right.updated_at || left.id.localeCompare(right.id)
+        );
+      }
 
       if (newlyEligible.length > 0) {
         const now = Date.now();

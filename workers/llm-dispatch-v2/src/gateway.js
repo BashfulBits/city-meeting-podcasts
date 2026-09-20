@@ -27,6 +27,15 @@ const COPY_FIELDS = [
   "frequency_penalty",
 ];
 
+// Provider error bodies are small in practice, but a malformed upstream response must not make
+// the executor retain an unbounded text body. This is only used for classification, not persisted.
+const MAX_PROVIDER_ERROR_BODY_CHARS = 4096;
+
+/** Gemini's OpenAI-compatible endpoint sometimes wraps one error object in a one-element array. */
+export function normalizeProviderBody(body) {
+  return Array.isArray(body) ? body[0] : body;
+}
+
 /** Builds the actual provider request from a stored payload: remaps the logical model (e.g.
  * "gemini/gemini-flash-lite") to the route's real upstream_model string, and forwards only
  * COPY_FIELDS plus `messages` -- never the raw payload via a blind spread.
@@ -162,17 +171,20 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
   const correlationId = response.headers.get("cf-aig-log-id") || response.headers.get("cf-ray") || null;
   let body = null;
   let parseError = null;
+  const rawBody = await response.text();
   try {
-    body = await response.json();
+    body = rawBody ? JSON.parse(rawBody) : null;
   } catch (err) {
     parseError = err;
+    body = rawBody.slice(0, MAX_PROVIDER_ERROR_BODY_CHARS);
   }
-  const retryAfterSeconds = parseRetryAfterSeconds(response, body);
+  const retryAfterSeconds = parseRetryAfterSeconds(response, normalizeProviderBody(body));
 
   return {
     status: response.status,
     ok: response.ok && parseError === null,
     body,
+    headers: response.headers,
     parseError,
     correlationId,
     retryAfterSeconds,
@@ -185,28 +197,46 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
  *
  * OpenCode Zen returns HTTP 400 with `{"error":{"type":"server_error","message":"Error from
  * provider (Console): Upstream request failed: Model is unavailable."}}` while still advertising
- * the model in its own /v1/models listing. Classified as terminal, every job that reached it was
- * destroyed rather than retried.
+ * the model in its own /v1/models listing. When free tier was restricted, it also started returning
+ * HTTP 400 with `{"error":{"type":"MissingSessionID","message":"Error from provider (Console):
+ * OpenCode's free tier can only be used in OpenCode"}}`. Classified as terminal, every job that
+ * reached it was destroyed rather than retried.
  *
- * Deliberately narrow. It applies only to 400 (other 4xx really are request defects: 401 bad
- * credentials, 404 unknown model, 422 schema), and only when the body self-identifies as a server
- * or upstream failure. A provider that returns a genuine 400 for a malformed request says nothing
- * of the sort, and still fails terminally as it should.
+ * Deliberately narrow. It applies to 400 only when the body self-identifies as a server or
+ * upstream failure, or to the specific 404 shape NVIDIA NIM uses for a missing serverless
+ * function. Other 4xx really are request defects: 401 bad credentials, ordinary 404 unknown
+ * model, and 422 schema. A provider that returns a genuine 400 for a malformed request says
+ * nothing of the sort, and still fails terminally as it should.
  *
  * Kept byte-identical in behaviour to v1's copy in workers/llm-dispatch-proxy: the two dispatchers
  * face the same providers, and a body that costs a job in one must not cost it in the other.
  */
 export function upstreamCapacityFailure(status, body) {
+  if (status === 404) {
+    // NVIDIA's hosted functions have returned this for a retired/unavailable deployment:
+    // `Function id '...' version 'null' ... is not found`. Brokers such as Kilo wrap the same
+    // provider response under error.metadata.raw. Keep this exact signature narrow so an ordinary
+    // unknown-model 404 remains a terminal request defect.
+    let serialized = "";
+    try {
+      serialized = JSON.stringify(body).toLowerCase();
+    } catch {
+      // A non-serializable body cannot carry the known provider signature.
+    }
+    return serialized.includes("function id") && serialized.includes("is not found");
+  }
   if (status !== 400) return false;
   const providerError = body?.error;
   if (!providerError || typeof providerError !== "object") return false;
-  if (String(providerError.type || "").toLowerCase() === "server_error") return true;
+  const errType = String(providerError.type || "").toLowerCase();
+  if (errType === "server_error") return true;
   const message = String(providerError.message || "").toLowerCase();
   return (
     message.includes("upstream request failed") ||
     message.includes("model is unavailable") ||
     message.includes("no capacity") ||
-    message.includes("temporarily unavailable")
+    message.includes("temporarily unavailable") ||
+    message.includes("free tier can only be used in opencode")
   );
 }
 
@@ -337,6 +367,15 @@ export function parseRetryAfterSeconds(response, body = null) {
     );
     if (Number.isFinite(directRetrySec) && directRetrySec > 0) {
       return Math.ceil(directRetrySec);
+    }
+    const retryInfo = Array.isArray(body?.error?.details)
+      ? body.error.details.find((detail) =>
+          String(detail?.["@type"] || "").endsWith("RetryInfo")
+        )
+      : null;
+    const retryInfoSeconds = parseDurationSeconds(retryInfo?.retryDelay);
+    if (retryInfoSeconds !== null && retryInfoSeconds > 0) {
+      return retryInfoSeconds;
     }
     const message =
       body?.error?.message ||

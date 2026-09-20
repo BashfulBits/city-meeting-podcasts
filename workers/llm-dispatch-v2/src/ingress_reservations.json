@@ -9,8 +9,13 @@
       "reserved_write_units": 2000,
       "daily_write_units": 4000,
       "models": [
-        "mistral/mistral-medium-latest"
+        "nvidia/nemotron-3-ultra-550b-a55b:free"
       ],
+      "backup_models": [
+        "gemini/gemini-3.1-flash-lite",
+        "gemini/gemini-3.5-flash-lite"
+      ],
+      "backup_after_attempts": 12,
       "dispatch_shape": "pooled",
       "write_units_per_job": 4
     },
@@ -22,6 +27,8 @@
         "deepseek/deepseek-v4-pro",
         "moonshotai/kimi-k3"
       ],
+      "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 6
     },
@@ -31,6 +38,8 @@
       "models": [
         "google/gemma-4-31b-it"
       ],
+      "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 4
     },
@@ -42,6 +51,8 @@
         "google/gemma-4-26b-a4b-it",
         "zai/glm-4.7-flash"
       ],
+      "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "per_model",
       "write_units_per_job": 4
     },
@@ -50,10 +61,12 @@
       "daily_write_units": 3000,
       "models": [
         "qwen/qwen3.8-27b",
-        "zai/glm-4.7",
+        "zai/glm-4.7-flash",
         "gemini/gemini-3.6-flash",
         "openai/gpt-oss-120b"
       ],
+      "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 7
     },
@@ -68,6 +81,8 @@
         "deepseek/deepseek-v4-pro",
         "moonshotai/kimi-k3"
       ],
+      "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 9
     },
@@ -77,6 +92,8 @@
       "models": [
         "google/gemma-4-31b-it"
       ],
+      "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 4
     },
@@ -86,6 +103,8 @@
       "models": [
         "gemini/gemini-3.1-flash-lite"
       ],
+      "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 4
     },
@@ -98,6 +117,8 @@
         "zai/glm-4.7-flash",
         "google/gemma-4-26b-a4b-it"
       ],
+      "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "per_model",
       "write_units_per_job": 4
     },
@@ -107,6 +128,8 @@
       "models": [
         "google/gemma-4-31b-it"
       ],
+      "backup_models": [],
+      "backup_after_attempts": null,
       "dispatch_shape": "pooled",
       "write_units_per_job": 4
     }

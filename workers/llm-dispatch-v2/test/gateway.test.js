@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  callAiGateway,
   parseErrorMessageRetryAfter,
   parseRetryAfterSeconds,
   resolveProviderCredentials,
@@ -141,7 +142,20 @@ test("upstreamCapacityFailure recognises a 400 whose body blames the provider's 
   assert.equal(upstreamCapacityFailure(400, observed), true);
 
   // type alone is enough...
-  assert.equal(upstreamCapacityFailure(400, { error: { type: "server_error", message: "" } }), true);
+  assert.equal(
+    upstreamCapacityFailure(400, { error: { type: "server_error", message: "" } }),
+    true
+  );
+  // ...and OpenCode's MissingSessionID type is recognized as upstream capacity failure
+  assert.equal(
+    upstreamCapacityFailure(400, {
+      error: {
+        type: "MissingSessionID",
+        message: "Error from provider (Console): OpenCode's free tier can only be used in OpenCode",
+      },
+    }),
+    true
+  );
   // ...and so is the message alone, for providers that do not set a machine-readable type.
   assert.equal(
     upstreamCapacityFailure(400, { error: { type: "", message: "Upstream request failed" } }),
@@ -156,19 +170,45 @@ test("upstreamCapacityFailure leaves genuine request defects terminal", () => {
     upstreamCapacityFailure(400, { error: { type: "invalid_request_error", message: "unknown field 'foo'" } }),
     false
   );
+  assert.equal(
+    upstreamCapacityFailure(400, {
+      error: { type: "MissingSessionID", message: "Missing session ID" },
+    }),
+    false,
+    "bare MissingSessionID validation error must stay terminal"
+  );
   assert.equal(upstreamCapacityFailure(400, { error: { message: "messages: field required" } }), false);
   assert.equal(upstreamCapacityFailure(400, {}), false, "no error object at all");
   assert.equal(upstreamCapacityFailure(400, null), false);
   assert.equal(upstreamCapacityFailure(400, { error: "a bare string" }), false);
 });
 
-test("upstreamCapacityFailure applies to 400 only, never to other 4xx", () => {
+test("upstreamCapacityFailure recognizes NVIDIA's provider-side missing-function 404", () => {
+  const nvidia = {
+    status: 404,
+    title: "Not Found",
+    detail: "Function id 'abc' version 'null': Specified function is not found",
+  };
+  assert.equal(upstreamCapacityFailure(404, nvidia), true);
+  assert.equal(
+    upstreamCapacityFailure(404, {
+      error: {
+        message: "Provider returned error",
+        metadata: { raw: JSON.stringify(nvidia) },
+      },
+    }),
+    true,
+  );
+});
+
+test("upstreamCapacityFailure leaves ordinary 4xx terminal", () => {
   // 401/403/404/422 really do blame the request, and a provider echoing "server_error" in one of
   // them must not win the job an unbounded retry loop.
   const body = { error: { type: "server_error", message: "Upstream request failed" } };
-  for (const status of [401, 403, 404, 409, 422, 429]) {
+  for (const status of [401, 403, 409, 422, 429]) {
     assert.equal(upstreamCapacityFailure(status, body), false, `status ${status} must stay terminal`);
   }
+  assert.equal(upstreamCapacityFailure(404, { error: { message: "Model not found" } }), false);
 });
 
 test("parseRetryAfterSeconds parses integer and HTTP date headers", () => {
@@ -270,4 +310,50 @@ test("parseRetryAfterSeconds parses direct retry_after_seconds property", () => 
     parseRetryAfterSeconds({ headers: new Headers() }, { retry_after_seconds: 30 }),
     30
   );
+});
+
+test("parseRetryAfterSeconds parses Google's structured RetryInfo delay", () => {
+  assert.equal(
+    parseRetryAfterSeconds(
+      { headers: new Headers() },
+      {
+        error: {
+          details: [
+            {
+              "@type": "type.googleapis.com/google.rpc.RetryInfo",
+              retryDelay: "3.2s",
+            },
+          ],
+        },
+      }
+    ),
+    4
+  );
+});
+
+test("callAiGateway includes response.headers in its return value", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: {
+          "x-ratelimit-limit-req-minute": "0",
+          "x-ratelimit-remaining-req-minute": "0",
+        },
+      });
+
+    const res = await callAiGateway({
+      env: { GEMINI_API_KEY: "test-key" },
+      route: ROUTE,
+      payload: { messages: [{ role: "user", content: "hi" }] },
+      dispatchLimits: DISPATCH_LIMITS,
+    });
+
+    assert.ok(res.headers);
+    assert.equal(res.headers.get("x-ratelimit-limit-req-minute"), "0");
+    assert.equal(res.headers.get("x-ratelimit-remaining-req-minute"), "0");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

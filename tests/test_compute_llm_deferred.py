@@ -21,6 +21,7 @@ from citypods.compute.llm_deferred import (
     _write_json,
     deferred_failure_key,
     deferred_key,
+    discard_deferred,
     discard_terminal_failure,
     iter_pending_deferred,
     list_pending_deferred,
@@ -74,6 +75,48 @@ def test_write_and_look_up_a_pending_handle_round_trips():
     assert found.deferred_request is not None
     assert found.deferred_request.messages == ({"role": "user", "content": "hi"},)
     assert found.deferred_request.policy == policy
+
+
+def test_discard_and_redefer_same_record_are_serialized_by_the_r2_lock():
+    class _BlockedCanonicalReadStorage(MemStorage):
+        read_started = Event()
+        allow_read = Event()
+        block_reads = False
+
+        def get_file(self, key, local_path):
+            if self.block_reads and key == deferred_key("recipe-1"):
+                self.read_started.set()
+                assert self.allow_read.wait(timeout=2)
+            return super().get_file(key, local_path)
+
+    storage = _BlockedCanonicalReadStorage()
+    write_deferred(storage, "recipe-1", _pending_handle("recipe-1"), now=NOW)
+    storage.block_reads = True
+    discard_result = []
+
+    def discard() -> None:
+        discard_result.append(
+            discard_deferred(storage, "recipe-1", expected_ref="deferred:recipe-1")
+        )
+
+    discard_thread = Thread(target=discard)
+    discard_thread.start()
+    assert storage.read_started.wait(timeout=2)
+
+    replacement = _pending_handle("recipe-1")
+    replacement = JobHandle(**{**replacement.__dict__, "ref": "deferred:replacement"})
+    write_thread = Thread(target=write_deferred, args=(storage, "recipe-1", replacement))
+    write_thread.start()
+
+    storage.allow_read.set()
+    discard_thread.join(timeout=2)
+    write_thread.join(timeout=2)
+    assert not discard_thread.is_alive()
+    assert not write_thread.is_alive()
+    assert discard_result == [True]
+    current = look_up_deferred(storage, "recipe-1")
+    assert isinstance(current, JobHandle)
+    assert current.ref == "deferred:replacement"
 
 
 def test_pending_records_index_both_live_route_consumers_without_shared_bucket_writes():
@@ -752,6 +795,30 @@ def test_prune_expired_deferred_also_cleans_up_completed_records():
     )
     deleted = prune_expired_deferred(storage, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1))
     assert deleted == 1
+    assert look_up_deferred(storage, "recipe-1") is None
+
+
+def test_full_snapshot_pruning_reaches_completed_records_after_index_migration():
+    storage = MemStorage()
+    write_deferred(
+        storage,
+        "recipe-1",
+        JobResult(task="tag", recipe_hash="recipe-1", output={}, model="m"),
+        now=NOW,
+    )
+    _write_json(storage, DEFERRED_INDEX_MIGRATION_KEY, b'{"version": 2}\n')
+
+    # Completed records have no pending/reconcile pointer, so the ordinary indexed snapshot does
+    # not see this record. The maintenance full snapshot does, and the TTL pass removes it.
+    assert list(load_deferred_snapshot(storage, reconcile_only=True).entries) == []
+    full_snapshot = load_deferred_snapshot(storage, include_ineligible=True)
+    assert len(full_snapshot.entries) == 1
+    assert (
+        prune_expired_deferred_snapshot(
+            storage, full_snapshot, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1)
+        )
+        == 1
+    )
     assert look_up_deferred(storage, "recipe-1") is None
 
 

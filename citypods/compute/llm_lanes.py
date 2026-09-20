@@ -77,6 +77,19 @@ class LaneConfig:
     # while a per-model job writes exactly one, so charging a four-model per_model lane as if each
     # job indexed four routes would over-reserve its budget by ~75%.
     dispatch_shape: str = "pooled"
+    # Models eligible only once a queued job has failed enough that ``models`` alone looks stuck --
+    # see LLMRequestPolicy.backup_models/backup_after_attempts and workers/llm-dispatch-v2/src/
+    # routes.js's backupModelsActive()/modelsForJob(). Worker (queue_only) dispatch only:
+    # direct-mode calls have no persistent cross-run attempt counter to gate on today. Never part
+    # of a job's indexed model set at enqueue time, so ingress_write_units_per_job stays keyed on
+    # ``models``.
+    backup_models: tuple[str, ...] = ()
+    # How many times a job must have been dispatched without a successful response (Worker
+    # ``jobs.attempts``) before backup_models become eligible -- or, independently, a job that has
+    # already needed one JSON-schema-validation correction (``jobs.schema_retry_count >= 1``) is
+    # eligible immediately, since that failure mode is a model-output problem, not a capacity one.
+    # Required (and only meaningful) together with backup_models.
+    backup_after_attempts: int | None = None
 
     @property
     def primary_model(self) -> str:
@@ -189,6 +202,52 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                 f"llm_lanes[{purpose!r}].dispatch_shape must be 'pooled' or 'per_model', "
                 f"got {shape!r}"
             )
+
+        raw_backup_models = entry.get("backup_models")
+        backup_after_attempts = entry.get("backup_after_attempts")
+        has_backup_models = raw_backup_models is not None
+        has_threshold = backup_after_attempts is not None
+        if not has_backup_models and not has_threshold:
+            backup_models: tuple[str, ...] = ()
+        else:
+            if has_backup_models != has_threshold or (
+                not isinstance(raw_backup_models, (list, tuple)) or not raw_backup_models
+            ):
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}].backup_models must be a non-empty list when "
+                    "backup_after_attempts is set (and vice versa)"
+                )
+            backup_models = ()
+            for index, model in enumerate(raw_backup_models):
+                if not isinstance(model, str) or not model.strip():
+                    raise ValueError(
+                        f"llm_lanes[{purpose!r}].backup_models[{index}] must be a non-empty "
+                        f"string, got {model!r}"
+                    )
+                backup_models += (model.strip(),)
+            if len(set(backup_models)) != len(backup_models):
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}].backup_models contains duplicates: {backup_models}"
+                )
+            if set(backup_models) & set(models):
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}].backup_models overlaps its own models: "
+                    f"{sorted(set(backup_models) & set(models))}"
+                )
+            if shape == "per_model":
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}] is dispatch_shape 'per_model' (a model comparison) "
+                    "and cannot also declare backup_models (a failure-based fallback)"
+                )
+            backup_after_attempts = _coerce_int(
+                backup_after_attempts, purpose=purpose, field="backup_after_attempts"
+            )
+            if backup_after_attempts <= 0:
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}].backup_after_attempts must be positive, got "
+                    f"{backup_after_attempts}"
+                )
+
         lane = LaneConfig(
             purpose=purpose,
             models=models,
@@ -200,6 +259,8 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
             reserved_write_units=reserved,
             daily_write_units=daily,
             dispatch_shape=shape,
+            backup_models=backup_models,
+            backup_after_attempts=backup_after_attempts,
         )
         if daily < lane.ingress_write_units_per_job:
             raise ValueError(

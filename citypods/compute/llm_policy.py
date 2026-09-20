@@ -53,6 +53,14 @@ class LLMRequestPolicy:
     # only at submission (LiteLLMBackend.enqueue_batch reads this field directly); there is
     # deliberately no API to edit priority on an already-queued job.
     priority: Literal[0, 1] = 1
+    # Models eligible only once a queued job looks stuck on `allowed_models` alone -- mirrors
+    # `LaneConfig.backup_models`/`backup_after_attempts` (citypods/compute/llm_lanes.py). Only takes
+    # effect for `queue_only=True` requests: the Worker's `jobs.attempts`/`schema_retry_count`
+    # columns are the durable, cross-lease counters this gates on (see
+    # workers/llm-dispatch-v2/src/routes.js's `backupModelsActive`/`modelsForJob`); direct-mode
+    # dispatch has no equivalent persistent counter today and ignores these fields.
+    backup_models: tuple[str, ...] = ()
+    backup_after_attempts: int | None = None
 
 
 @dataclass(frozen=True)
@@ -407,7 +415,7 @@ ROUTES: dict[str, LLMRoute] = {
 }
 
 # Source fallback for a checkout that has not run the compiler yet.  This is intentionally kept
-# below the generated catalog and only supplies 12 routes during local development;
+# below the generated catalog and only supplies 11 routes during local development;
 # CI and packaging always compile and commit ``llm_routes.json``.
 if not _GENERATED_ROUTES:
     ROUTES = {
@@ -448,33 +456,6 @@ if not _GENERATED_ROUTES:
             quota=QuotaPolicy(rpm=15, rpd=500, tpm=250_000, reset_timezone="America/Los_Angeles"),
             pricing=PricingPolicy(),
         ),
-        "deepseek/deepseek-v4-flash": LLMRoute(
-            model="deepseek/deepseek-v4-flash",
-            transport="direct",
-            transports=("direct",),
-            free=False,
-            # Paid route: the maintainer confirmed there is no provider daily request allowance.
-            # Cost telemetry remains active, but a speculative calendar-day ceiling must not stall
-            # bounded research or later explicitly authorized paid work.
-            quota=QuotaPolicy(),
-            pricing=PricingPolicy(
-                input_per_token=0.14e-6,
-                output_per_token=0.28e-6,
-                windows=(_DEEPSEEK_WINDOW,),
-            ),
-        ),
-        "deepseek/deepseek-v4-pro": LLMRoute(
-            model="deepseek/deepseek-v4-pro",
-            transport="direct",
-            transports=("direct",),
-            free=False,
-            quota=QuotaPolicy(),
-            pricing=PricingPolicy(
-                input_per_token=0.435e-6,
-                output_per_token=0.87e-6,
-                windows=(_DEEPSEEK_WINDOW,),
-            ),
-        ),
         "mistral/mistral-large-2512": LLMRoute(
             model="mistral/mistral-large-2512",
             transport="llm-dispatch",
@@ -511,15 +492,6 @@ if not _GENERATED_ROUTES:
             transports=("llm-dispatch",),
             free=True,
             quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
-            pricing=PricingPolicy(),
-            max_provider_attempts=1,
-        ),
-        "opencode/deepseek-v4-flash-free": LLMRoute(
-            model="opencode/deepseek-v4-flash-free",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
-            free=True,
-            quota=QuotaPolicy(rpm=30, rpd=500, tpm=250_000),
             pricing=PricingPolicy(),
             max_provider_attempts=1,
         ),

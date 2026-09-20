@@ -1,0 +1,57 @@
+name: Prune expired LLM deferred records
+
+# The normal six-hour deferred sweep uses pending indexes so it does not list the entire
+# canonical registry every time. Completed records intentionally leave those indexes; this
+# weekly maintenance pass performs the full TTL cleanup that the normal path cannot see.
+on:
+  schedule:
+    - cron: "30 4 * * 0" # weekly, one hour before the Sunday 05:30 UTC deferred sweep
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: llm-deferred-sweep
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    # workflow_dispatch can target arbitrary refs. Never expose production storage credentials to
+    # code outside the reviewed default branch.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+
+      - name: Prune expired deferred records
+        timeout-minutes: 165
+        env:
+          PYTHONUNBUFFERED: "1"
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          set -o pipefail
+          python scripts/llm_deferred_sweep.py --full-prune-only \
+            --run-time-budget-minutes 120 | tee -a "$GITHUB_STEP_SUMMARY"

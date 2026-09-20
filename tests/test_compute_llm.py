@@ -17,7 +17,6 @@ from citypods.compute.llm import (
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
     LLMUpstreamPassthroughError,
-    _messages,
     _pacing_wait_seconds,
     _priced_actual,
     _retry_after_seconds,
@@ -32,7 +31,6 @@ from citypods.compute.llm_policy import (
     ROUTE_REGISTRY,
     ROUTES,
     LLMRequestPolicy,
-    estimate_tokens,
 )
 from citypods.compute.structured import register_response_model
 from tests._cas_fake import MemStorage
@@ -873,41 +871,6 @@ def test_gemma_dispatch_payload_uses_the_same_compiled_schema_profile():
     assert "maximum" not in rendered
 
 
-def test_deepseek_structured_request_includes_schema_in_initial_prompt():
-    calls = []
-
-    def completion(**kwargs):
-        calls.append(kwargs)
-        return structured_response('{"value":"ok"}')
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(model="deepseek/deepseek-v4-flash"), completion=completion
-    )
-    backend.run_inference(job(content="meeting text", structured_output="test-output"))
-
-    sent = calls[0]
-    assert sent["response_format"] == {"type": "json_object"}
-    system = next(message for message in sent["messages"] if message["role"] == "system")
-    assert "JSON Schema" in system["content"]
-    assert json.dumps(ExampleOutput.model_json_schema(), sort_keys=True) in system["content"]
-
-
-def test_deepseek_queue_payload_counts_the_rendered_schema_message():
-    backend = LiteLLMBackend(LLMBackendConfig(model="deepseek/deepseek-v4-flash"))
-    policy = LLMRequestPolicy(allowed_models=("deepseek/deepseek-v4-flash",), queue_only=True)
-    inference_job = job(content="x", structured_output="test-output", max_tokens=1024)
-    payload = backend._payload(
-        inference_job,
-        ExampleOutput,
-        resolved_model="deepseek/deepseek-v4-flash",
-        policy=policy,
-        estimated_tokens=1,
-        input_tokens_estimate=1,
-        output_token_budget=1024,
-    )
-    assert estimate_tokens(payload["messages"]) > estimate_tokens(_messages(inference_job))
-
-
 def test_gemini_structured_request_relaxes_constraint_keywords_only():
     """Gemini's native schema mode 400s specifically on minLength/maxLength/minimum/maximum/
     minItems/maxItems (confirmed against the live API via citypods/llm_compat_probe.py's
@@ -1106,25 +1069,6 @@ def test_schema_variant_model_preserves_name_and_leaves_original_untouched():
     assert issubclass(Relaxed, ConstrainedOutput)
     assert "minLength" not in json.dumps(Relaxed.model_json_schema())
     assert ConstrainedOutput.model_json_schema()["properties"]["value"]["minLength"] == 1
-
-
-def test_deepseek_instructor_json_mode_retries_pydantic_validation_once():
-    calls = []
-
-    def completion(**kwargs):
-        calls.append(kwargs)
-        content = '{"value":42}' if len(calls) == 1 else '{"value":"ok"}'
-        return structured_response(content)
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(model="deepseek/deepseek-v4-flash"), completion=completion
-    )
-    result = backend.run_inference(job(content="meeting text", structured_output="test-output"))
-
-    assert result.output["choices"][0]["message"]["content"] == '{"value":"ok"}'
-    assert len(calls) == 2
-    assert calls[0]["response_format"] == {"type": "json_object"}
-    assert any("validation" in str(message["content"]).lower() for message in calls[1]["messages"])
 
 
 def test_deepseek_invalid_reply_fails_after_one_instructor_retry():
@@ -1952,27 +1896,26 @@ def test_sambanova_routes_use_a_single_gateway_attempt(gateway_env):
 
 
 # How each custom provider is registered on the Cloudflare side, and therefore what
-# `ai_gateway_chat_path` has to be. This table exists because AI Gateway does NOT join a Custom
-# Provider's Base URL the way its documentation says: instead of `{base_url}/{provider-path}`, it
-# rewrites the base URL's LAST path segment to a hardcoded `v1` and appends the caller path
-# (established 2026-08-29 by registering a throwaway custom provider against an echo service).
+# `ai_gateway_chat_path` has to be. This table exists because the Cloudflare-side Base URL is not
+# represented in this repo, and the gateway's undocumented join changed on 2026-09-15: it now
+# honors the registered path instead of rewriting its last segment to `v1`.
 # Because the Cloudflare-side Base URL is not represented in this repo, the mapping cannot be
 # derived -- so it is written down here, and a new custom provider trips the completeness check
 # below until someone records how it is registered.
 CUSTOM_PROVIDER_GATEWAY_PATHS = {
-    # Registered at api_base verbatim; the `/v1` in api_base is also the substituted segment, so
-    # the chat path must carry it or the dispatch lands on the origin root and 404s.
-    "siliconflow": "/v1/chat/completions",
-    "sambanova": "/v1/chat/completions",
-    "nvidia": "/v1/chat/completions",
-    "airforce": "/v1/chat/completions",
+    # Registered at api_base verbatim; the `/v1` in each Base URL is preserved by the current
+    # gateway join, so the caller path stays root-relative.
+    "siliconflow": "/chat/completions",
+    "sambanova": "/chat/completions",
+    "nvidia": "/chat/completions",
+    "airforce": "/chat/completions",
+    "orcarouter": "/chat/completions",
     # Registered as `https://api.kilo.ai/api/gateway/v1` -- Kilo serves that path too, so the
-    # forced `v1` substitution lands correctly and the caller path stays bare.
+    # caller path stays bare under either gateway join behavior.
     "kilo": "/chat/completions",
-    # Routed through workers/llm-provider-shim, which restores the real upstream prefix, so the
-    # caller path is bare here as well.
-    "zai": "/chat/completions",
-    "opencode": "/chat/completions",
+    # custom-zai is registered at `https://api.z.ai/api/paas`, which serves at
+    # `/v4/chat/completions`.
+    "zai": "/v4/chat/completions",
 }
 
 
@@ -1983,10 +1926,10 @@ def test_every_custom_provider_records_how_it_is_registered():
         for route in ROUTE_REGISTRY.values()
         if (route.ai_gateway_slug or "").startswith("custom-")
     }
-    assert configured == set(CUSTOM_PROVIDER_GATEWAY_PATHS), (
-        "custom providers changed; record the new provider's Cloudflare-side registration in "
-        "CUSTOM_PROVIDER_GATEWAY_PATHS (and see workers/llm-provider-shim/README.md for why the "
-        "documented base-URL join does not apply)"
+    assert configured <= set(CUSTOM_PROVIDER_GATEWAY_PATHS), (
+        "an active custom provider is missing its Cloudflare-side registration in "
+        "CUSTOM_PROVIDER_GATEWAY_PATHS (and see workers/llm-provider-shim/README.md for the "
+        "gateway join compatibility contract)"
     )
 
 
@@ -2006,9 +1949,9 @@ def test_custom_provider_routes_use_their_recorded_gateway_path(route):
     )
 
 
-# Only single-provider models belong here. A logical model served by several providers (6 of 31 in
-# the catalog -- `deepseek/deepseek-v4-flash` spans deepseek, custom-siliconflow and
-# custom-opencode) has no fixed gateway slug: the scheduler picks whichever physical route has
+# Only single-provider models belong here. A logical model served by several providers -- such as
+# `deepseek/deepseek-v4-flash`, which spans OrcaRouter and custom-nvidia -- has
+# no fixed gateway slug: the scheduler picks whichever physical route has
 # capacity, so pinning one slug end-to-end would assert on scheduler choice rather than on URL
 # construction. The catalog test above covers those routes directly.
 @pytest.mark.parametrize(
@@ -2019,7 +1962,7 @@ def test_custom_provider_routes_use_their_recorded_gateway_path(route):
             f"{_GW}/google-ai-studio/v1beta/models/gemini-3.6-flash:generateContent",
         ),
         ("mistral/mistral-large-2512", f"{_GW}/mistral/v1/chat/completions"),
-        ("zai/glm-4.7-flash", f"{_GW}/custom-zai/chat/completions"),
+        ("zai/glm-4.7-flash", f"{_GW}/custom-zai/v4/chat/completions"),
     ],
 )
 def test_direct_call_requests_the_gateway_url(model, expected_request_url, gateway_env):

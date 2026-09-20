@@ -99,6 +99,18 @@ def test_ticket_uses_the_configured_rolling_window_and_counts_chapters_once(tmp_
     assert estimates["new"]["retained_chapters"] == 1
 
 
+def test_tournament_state_paths_include_only_the_ticket_and_configured_sources():
+    cities = [SimpleNamespace(source_id="first"), SimpleNamespace(source_id="second")]
+
+    paths = tournament._tournament_state_paths(cities)
+
+    assert paths == {
+        tournament.STATE,
+        "sources/first/episodes.json",
+        "sources/second/episodes.json",
+    }
+
+
 def test_route_handoff_validates_the_immutable_ticket_challenger_metadata():
     ticket = {"version": 1, "task": "tag", "challengers": ["challenger"]}
     model = base64.urlsafe_b64encode(b"challenger").decode()
@@ -217,7 +229,7 @@ def test_run_skips_episode_on_llm_backend_error(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
     monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
     episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
-    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "iter_records", lambda *_a, **_k: iter(({},)))
     monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
     monkeypatch.setattr(
         tournament, "episode_tag_inputs", lambda *_a, **_k: ("titles", "agenda", "transcript")
@@ -238,6 +250,9 @@ def test_run_skips_episode_on_llm_backend_error(tmp_path, monkeypatch, capsys):
 
     assert exit_code == 0
     out = capsys.readouterr().out
+    assert "loading configured source records" in out
+    assert "loading chapter evidence" in out
+    assert "selected 0 chapter sample(s)" in out
     assert "skipping 'ep-1'" in out
     assert "completed 0 sample(s)" in out
 
@@ -260,7 +275,7 @@ def test_run_batches_all_judge_comparisons_into_one_enqueue_call(tmp_path, monke
     monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
     monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
     episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
-    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "iter_records", lambda *_a, **_k: iter(({},)))
     monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
     monkeypatch.setattr(
         tournament,
@@ -323,7 +338,7 @@ def test_run_handles_pending_job_handles_and_skips_sample_finalization(tmp_path,
     monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
     monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
     episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
-    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "iter_records", lambda *_a, **_k: iter(({},)))
     monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
     monkeypatch.setattr(
         tournament,
@@ -388,7 +403,7 @@ def test_run_reuses_prior_resolved_comparison_without_dispatch(tmp_path, monkeyp
     monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
     monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
     episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
-    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "iter_records", lambda *_a, **_k: iter(({},)))
     monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
     monkeypatch.setattr(
         tournament,

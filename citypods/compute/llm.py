@@ -46,7 +46,11 @@ from citypods.compute.llm_deferred import (
     terminal_failure_retry_allowed,
     write_deferred,
 )
-from citypods.compute.llm_failure_class import _is_upstream_400, classify_provider_failure
+from citypods.compute.llm_failure_class import (
+    _is_upstream_400,
+    _is_upstream_404,
+    classify_provider_failure,
+)
 from citypods.compute.llm_policy import (
     DEFAULT_OUTPUT_TOKEN_MARGIN,
     ROUTE_CANDIDATES,
@@ -633,7 +637,7 @@ def _extract_failure_details(source: Any) -> tuple[int, Any, Mapping[str, str]]:
 
 
 def _is_rate_limited_or_capacity(source: Any) -> bool:
-    """Detect HTTP 429 rate limit or HTTP 400 upstream capacity error."""
+    """Detect HTTP 429 or a provider-side capacity error misreported as HTTP 400/404."""
     status = getattr(source, "status_code", None)
     response = getattr(source, "response", None)
     if status is None and response is not None:
@@ -643,6 +647,9 @@ def _is_rate_limited_or_capacity(source: Any) -> bool:
     if status == 400:
         _, body, _ = _extract_failure_details(source)
         return _is_upstream_400(body)
+    if status == 404:
+        _, body, _ = _extract_failure_details(source)
+        return _is_upstream_404(body)
     return False
 
 
@@ -2203,6 +2210,19 @@ class LiteLLMBackend(Backend):
             out_tokens = self._output_token_budget(job)
             priority = policy.priority if policy else 1
 
+            policy_json_payload: dict[str, Any] = {
+                "allowed_models": allowed,
+                "allow_paid": getattr(policy, "allow_paid", False) if policy else False,
+                "purpose": getattr(policy, "purpose", "") if policy else "",
+            }
+            backup_models = getattr(policy, "backup_models", ()) if policy else ()
+            backup_after_attempts = (
+                getattr(policy, "backup_after_attempts", None) if policy else None
+            )
+            if backup_models and backup_after_attempts:
+                policy_json_payload["backup_models"] = list(backup_models)
+                policy_json_payload["backup_after_attempts"] = backup_after_attempts
+
             prepared_jobs.append(
                 {
                     "id": job_id,
@@ -2213,15 +2233,7 @@ class LiteLLMBackend(Backend):
                     "max_output_token_estimate": out_tokens,
                     "payload_key": payload_key,
                     "priority": priority,
-                    "policy_json": json.dumps(
-                        {
-                            "allowed_models": allowed,
-                            "allow_paid": (
-                                getattr(policy, "allow_paid", False) if policy else False
-                            ),
-                            "purpose": getattr(policy, "purpose", "") if policy else "",
-                        }
-                    ),
+                    "policy_json": json.dumps(policy_json_payload),
                 }
             )
             job_meta.append((idx, job, structured_name, logical_model, job_id))
@@ -2551,7 +2563,7 @@ class LiteLLMBackend(Backend):
         results: dict[str, JobResult | None | Exception] = {}
         storage = self._storage_client()
 
-        def _resolve_completed(h: JobHandle, result_key: str):
+        def _resolve_completed(h: JobHandle, result_key: str, completed_model: str | None = None):
             """Fetch, validate and persist one completed job's result.
 
             Runs on a worker thread. Each handle touches only keys derived from its own
@@ -2559,6 +2571,13 @@ class LiteLLMBackend(Backend):
             pointers), so concurrent handles never write the same key. Returns one of
             ``("pending", None)``, ``("error", exc)`` or ``("done", JobResult)`` rather than
             mutating shared state, so the caller merges everything on the main thread.
+
+            ``completed_model``, when the Worker's poll-batch response supplied one, is the model
+            actually served by the route the job completed on (resolved from its durable
+            ``lease_route_id``) -- not necessarily ``h.model``, which is only ever the PRIMARY
+            model guessed at enqueue time (``allowed_models[0]``) and never updated afterward. A
+            job that escalated to a backup model must be recorded as such; falling back to
+            ``h.model`` here would silently misattribute a backup's result to the primary model.
             """
             try:
                 raw = storage.get_bytes(result_key) if storage is not None else None
@@ -2576,7 +2595,7 @@ class LiteLLMBackend(Backend):
                     recipe_hash=h.recipe_hash,
                     output=output,
                     structured_output=h.structured_output,
-                    model=h.model,
+                    model=completed_model or h.model,
                 )
                 write_deferred(storage, h.recipe_hash, res)
             except LLMBackendError as exc:
@@ -2600,7 +2619,7 @@ class LiteLLMBackend(Backend):
 
         # Partition first, so the B2-bound work is a single parallel phase. Everything else here
         # is pure bookkeeping over the already-fetched statuses.
-        completed: list[tuple[JobHandle, str]] = []
+        completed: list[tuple[JobHandle, str, str | None]] = []
         for h in v2_handles:
             st = statuses.get(h.ref)
             if not st:
@@ -2613,7 +2632,7 @@ class LiteLLMBackend(Backend):
                 continue
             state = st.get("state")
             if state == "completed" and st.get("result_key"):
-                completed.append((h, st["result_key"]))
+                completed.append((h, st["result_key"], st.get("model")))
             elif state == "failed":
                 results[h.ref] = LLMDispatchTerminalError(
                     f"LLM dispatch v2 job {h.ref} failed permanently"
@@ -2634,7 +2653,7 @@ class LiteLLMBackend(Backend):
                     outcomes = list(pool.map(lambda item: _resolve_completed(*item), completed))
             else:
                 outcomes = [_resolve_completed(*item) for item in completed]
-            for (h, _key), (kind, value) in zip(completed, outcomes, strict=True):
+            for (h, _key, _model), (kind, value) in zip(completed, outcomes, strict=True):
                 resolved.append((h, kind, value))
 
         acked_refs: list[str] = []

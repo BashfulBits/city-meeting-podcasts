@@ -165,9 +165,9 @@ def test_vtt_parser_accepts_cue_settings_and_quote_padding():
 
 
 def test_judges_are_free_only_and_clips_are_recipe_addressed():
-    policy = judge_policy(["zai/glm-4.7"])
+    policy = judge_policy(["zai/glm-4.7-flash"])
     assert policy.allow_paid is False
-    assert policy.allowed_models == ("zai/glm-4.7",)
+    assert policy.allowed_models == ("zai/glm-4.7-flash",)
     source_a = video_clip_key("episode", 10, 20, "timeline", source_identity="source-a")
     assert source_a != video_clip_key(
         "episode", 10, 20, "changed-timeline", source_identity="source-a"
@@ -200,7 +200,7 @@ def test_late_independent_judge_can_qualify_from_the_human_gate(tmp_path: Path):
             path,
             _candidate(candidate_id=f"r6-{index}"),
             {
-                "provider_model": "zai/glm-4.7",
+                "provider_model": "zai/glm-4.7-flash",
                 "prompt_version": "1",
                 "schema_version": "1",
                 "admission_score": 0.95 if index < 26 else 0.05,
@@ -213,7 +213,7 @@ def test_late_independent_judge_can_qualify_from_the_human_gate(tmp_path: Path):
             quality_score=0.2,
             judge_assessments=[
                 {
-                    "provider_model": "zai/glm-4.7",
+                    "provider_model": "zai/glm-4.7-flash",
                     "prompt_version": "1",
                     "schema_version": "1",
                     "admission_score": 0.95,
@@ -225,7 +225,7 @@ def test_late_independent_judge_can_qualify_from_the_human_gate(tmp_path: Path):
         global_mode="auto",
     )
     assert judged["admission"] == "admitted"
-    assert judged["admission_reason"] == "judge-calibrated:zai/glm-4.7"
+    assert judged["admission_reason"] == "judge-calibrated:zai/glm-4.7-flash"
 
 
 def test_video_renderer_keeps_audio_and_uses_the_ffprobe_binary(monkeypatch):

@@ -28,6 +28,42 @@ test("classifyProviderFailure handles HTTP 5xx as server_error", () => {
   assert.equal(res.scope, "route");
 });
 
+test("classifyProviderFailure recognizes provider overload details in 503/504 responses", () => {
+  const gemini = classifyProviderFailure({
+    status: 503,
+    body: {
+      error: {
+        status: "UNAVAILABLE",
+        message: "This model is currently experiencing high demand.",
+      },
+    },
+    headers: null,
+    route: { provider: "gemini", route_id: "gemini/gemma" },
+  });
+  assert.equal(gemini.failure_class, "upstream_capacity");
+  assert.equal(gemini.rule_id, "provider-5xx-capacity");
+
+  const timeout = classifyProviderFailure({
+    status: 504,
+    body: "error code: 504",
+    headers: null,
+    route: { provider: "sambanova", route_id: "sambanova/gemma" },
+  });
+  assert.equal(timeout.failure_class, "upstream_capacity");
+  assert.equal(timeout.rule_id, "http-504-timeout");
+});
+
+test("classifyProviderFailure recognizes an input limit in a provider 500", () => {
+  const result = classifyProviderFailure({
+    status: 500,
+    body: { error: { message: "The input token limit was exceeded for this model." } },
+    headers: null,
+    route: { provider: "gemini", route_id: "gemini/gemma" },
+  });
+  assert.equal(result.failure_class, "route_input_limit");
+  assert.equal(result.rule_id, "provider-input-limit");
+});
+
 test("classifyProviderFailure handles HTTP 400 upstream capacity as upstream_capacity", () => {
   const res = classifyProviderFailure({
     status: 400,
@@ -42,6 +78,57 @@ test("classifyProviderFailure handles HTTP 400 upstream capacity as upstream_cap
   });
   assert.equal(res.failure_class, "upstream_capacity");
   assert.equal(res.rule_id, "upstream-400-body");
+  assert.equal(res.scope, "route");
+});
+
+test("classifyProviderFailure handles NVIDIA missing-function 404 as upstream_capacity", () => {
+  const res = classifyProviderFailure({
+    status: 404,
+    body: {
+      status: 404,
+      title: "Not Found",
+      detail: "Function id 'abc' version 'null': Specified function is not found",
+    },
+    headers: null,
+    route: { provider: "nvidia", route_id: "nvidia/nemotron" },
+  });
+  assert.equal(res.failure_class, "upstream_capacity");
+  assert.equal(res.rule_id, "upstream-function-not-found");
+  assert.equal(res.scope, "route");
+});
+
+test("classifyProviderFailure handles OpenCode MissingSessionID 400 as upstream_capacity", () => {
+  const res = classifyProviderFailure({
+    status: 400,
+    body: {
+      type: "error",
+      error: {
+        type: "MissingSessionID",
+        message: "Error from provider (Console): OpenCode's free tier can only be used in OpenCode",
+      },
+    },
+    headers: null,
+    route: { provider: "opencode", route_id: "opencode/deepseek-v4-flash-free" },
+  });
+  assert.equal(res.failure_class, "upstream_capacity");
+  assert.equal(res.rule_id, "upstream-400-body");
+  assert.equal(res.scope, "route");
+});
+
+test("classifyProviderFailure leaves bare OpenCode MissingSessionID 400 as request_defect", () => {
+  const res = classifyProviderFailure({
+    status: 400,
+    body: {
+      type: "error",
+      error: {
+        type: "MissingSessionID",
+        message: "Missing session ID in request headers",
+      },
+    },
+    headers: null,
+    route: { provider: "opencode", route_id: "opencode/deepseek-v4-flash-free" },
+  });
+  assert.equal(res.failure_class, "request_defect");
   assert.equal(res.scope, "route");
 });
 
@@ -66,6 +153,17 @@ test("classifyProviderFailure handles CF AI Gateway error as gateway_limit with 
   assert.equal(resBare429.failure_class, "gateway_limit");
   assert.equal(resBare429.rule_id, "cf-aig");
   assert.equal(resBare429.scope, "provider");
+
+  // 429 with empty provider payload field (e.g. { message: "" }) must not be classified as gateway_limit
+  const resEmptyPayload = classifyProviderFailure({
+    status: 429,
+    body: { message: "" },
+    headers: {},
+    route: { provider: "groq", route_id: "groq/llama" },
+  });
+  assert.notEqual(resEmptyPayload.failure_class, "gateway_limit");
+  assert.notEqual(resEmptyPayload.scope, "provider");
+  assert.equal(resEmptyPayload.scope, "route");
 });
 
 test("classifyProviderFailure matches gemini-rpd", () => {
@@ -500,4 +598,51 @@ test("gemini's input_token_count quota metric is own_tpm, not the generic resour
   });
   assert.equal(result.failure_class, "own_tpm");
   assert.equal(result.rule_id, "gemini-tpm");
+});
+
+test("orcarouter free-tier prompt cap is request_defect when Retry-After is absent", () => {
+  const result = classifyProviderFailure({
+    status: 429,
+    body: {
+      error: {
+        code: "free_rate_limited",
+        message: "Rate limit exceeded",
+      },
+    },
+    headers: new Map(),
+    route: { provider: "orcarouter" },
+  });
+  assert.equal(result.failure_class, "request_defect");
+  assert.equal(result.rule_id, "orcarouter-prompt-cap");
+});
+
+test("orcarouter free-tier rate limits with Retry-After map to own_rpm and own_rpd", () => {
+  const body = {
+    error: {
+      code: "free_rate_limited",
+      message: "Rate limit exceeded",
+    },
+  };
+
+  // Minute window (<= 120s)
+  const headersRpm = new Map([["retry-after", "45"]]);
+  const resRpm = classifyProviderFailure({
+    status: 429,
+    body,
+    headers: headersRpm,
+    route: { provider: "orcarouter" },
+  });
+  assert.equal(resRpm.failure_class, "own_rpm");
+  assert.equal(resRpm.rule_id, "orcarouter-minute-window");
+
+  // Daily window (> 120s)
+  const headersRpd = new Map([["retry-after", "3600"]]);
+  const resRpd = classifyProviderFailure({
+    status: 429,
+    body,
+    headers: headersRpd,
+    route: { provider: "orcarouter" },
+  });
+  assert.equal(resRpd.failure_class, "own_rpd");
+  assert.equal(resRpd.rule_id, "orcarouter-daily-window");
 });

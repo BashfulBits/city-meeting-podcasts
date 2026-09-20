@@ -23,17 +23,27 @@ AGENDA_ITEM_EXTRACTOR_CONTRACT = "agenda-chapter-item-extract"
 TITLE_EQUIVALENCE_CONTRACT = "agenda-chapter-title-equivalence"
 
 # Resolved from config/site_config.yml's `llm_lanes["chapter-agenda"]` rather than hard-coded, so
-# every dispatching lane's route choice is visible in one place (review/44 Phase 4). Pinned
-# strictly to Mistral Medium for high-fidelity agenda chapter extraction.
+# every dispatching lane's route choice is visible in one place (review/44 Phase 4). Preferred
+# model: NVIDIA Nemotron 3 Ultra (free); see the lane's own comment in site_config.yml for the
+# benchmark this is based on and why Mistral Medium was retired.
 #
-# THESE STRINGS ARE PART OF THE RECIPE HASH (see `stages.py`'s `chapter_agenda` recipe). Changing
-# the configured model therefore re-queues every agenda artifact in the catalog. That is a
-# deliberate backfill, not a config tweak: per AGENTS.md, a change here must state its backfill
-# story in the PR and CHANGELOG. `tests/test_llm_lanes.py` pins the current values so an
-# accidental edit fails there rather than quietly rebuilding weeks of work.
+# THESE STRINGS ARE PART OF THE RECIPE HASH (see `stages.py`'s `chapter_agenda` recipe), and
+# `AgendaChapterCandidatesStage.process()` also compares `AGENDA_PRODUCTION_MODEL` and
+# `CHAPTER_AGENDA_PIPELINE_VERSION` against each completed episode's stored artifact before
+# reusing it -- so changing either re-queues every agenda artifact in the catalog, gradually,
+# bounded by the lane's own `max_dispatches_per_run`/daily budget (not instantly). A `"pending"`
+# episode whose in-flight job names a model no longer in {`AGENDA_PRODUCTION_MODELS`,
+# `AGENDA_BACKUP_MODELS`} is separately retired and re-dispatched fresh (see `_cancel_chapter_
+# fallbacks`'s use in `AgendaChapterCandidatesStage.process()`), rather than left deferring to a
+# dead/blocked job forever. This is a deliberate backfill, not a config tweak: per AGENTS.md, a
+# change here must state its backfill story in the PR and CHANGELOG. `tests/test_llm_lanes.py`
+# pins the current values so an accidental edit fails there rather than quietly rebuilding weeks
+# of work.
 _AGENDA_LANE = lane_for("chapter-agenda")
 AGENDA_PRODUCTION_MODEL = _AGENDA_LANE.primary_model
 AGENDA_PRODUCTION_MODELS = _AGENDA_LANE.models
+AGENDA_BACKUP_MODELS = _AGENDA_LANE.backup_models
+AGENDA_BACKUP_AFTER_ATTEMPTS = _AGENDA_LANE.backup_after_attempts
 
 _PROMPT_VARIANT_INSTRUCTIONS = {
     "standard": "",
@@ -1005,6 +1015,8 @@ def match_title_candidates(
 __all__ = [
     "AGENDA_PRODUCTION_MODEL",
     "AGENDA_PRODUCTION_MODELS",
+    "AGENDA_BACKUP_MODELS",
+    "AGENDA_BACKUP_AFTER_ATTEMPTS",
     "AGENDA_ITEM_EXTRACTOR_CONTRACT",
     "AGENDA_EXTRACTION_PROMPT_VARIANTS",
     "TITLE_EQUIVALENCE_CONTRACT",

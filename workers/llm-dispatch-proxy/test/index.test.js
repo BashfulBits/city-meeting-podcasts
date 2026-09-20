@@ -39,14 +39,7 @@ for (const route of Object.values(DISPATCH_LIMITS.routes_by_id)) {
     if (route.tpm) route.tpm = unscale(route.tpm);
   }
 }
-DISPATCH_LIMITS.model_routing = {
-  "mistral/mistral-medium-3-5": [
-    "deepseek/deepseek-v4-flash",
-    "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
-    "gemini/gemini-3.5-flash-lite",
-    "deepseek/deepseek-v4-pro",
-  ],
-};
+DISPATCH_LIMITS.model_routing = {};
 
 import {
   DISPATCH_COORDINATOR_KEY,
@@ -181,6 +174,7 @@ const ENV = {
   OPENCODE_API_KEY: "opencode-secret",
   NVIDIA_API_KEY: "nvidia-secret",
   AIRFORCE_API_KEY: "airforce-secret",
+  ORCAROUTER_API_KEY: "orcarouter-secret",
   RETRY_BASE_SECONDS: "60",
   RETRY_MAX_SECONDS: "3600",
   LLM_QUEUE: new FakeBucket(),
@@ -559,6 +553,7 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
     routes: {
       mistral_medium_latest_primary: { blocked_until: "2026-08-23T00:00:00Z" },
       mistral_medium_latest_secondary: { blocked_until: "2026-08-23T00:00:00Z" },
+      mistral_medium_latest_tertiary: { blocked_until: "2026-08-23T00:00:00Z" },
     },
     providers: {
       mistral: { requests_available_at: "2026-08-23T00:00:00Z" },
@@ -581,17 +576,25 @@ test("dispatchBatch dispatches a resident job using dynamic model_routing overfl
     );
   };
 
-  const batchResult = await dispatchBatch(env, fetchImpl, now, 1);
-  assert.equal(batchResult.status, "completed");
-  assert.equal(batchResult.count, 1);
-  assert.equal(batchResult.results[0].status, "completed");
-  assert.equal(batchResult.results[0].routeId, "airforce_mistral_medium_3_5_primary");
-  assert.equal(dispatchedPayload.model, "mistral-medium-3.5");
+  const originalRouting = DISPATCH_LIMITS.model_routing;
+  DISPATCH_LIMITS.model_routing = {
+    "mistral/mistral-medium-latest": ["gemini/gemini-3.5-flash-lite"],
+  };
+  try {
+    const batchResult = await dispatchBatch(env, fetchImpl, now, 1);
+    assert.equal(batchResult.status, "completed");
+    assert.equal(batchResult.count, 1);
+    assert.equal(batchResult.results[0].status, "completed");
+    assert.equal(batchResult.results[0].routeId, "gemini_3_5_flash_lite_primary");
+    assert.equal(dispatchedPayload.model, "gemini-3.5-flash-lite");
 
-  // The finished request is saved as completed and ready marker removed:
-  const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();
-  assert.equal(saved.status, "completed");
-  assert.equal(await env.LLM_QUEUE.get(mKey), null);
+    // The finished request is saved as completed and ready marker removed:
+    const saved = await (await env.LLM_QUEUE.get(`requests/${requestId}.json`)).json();
+    assert.equal(saved.status, "completed");
+    assert.equal(await env.LLM_QUEUE.get(mKey), null);
+  } finally {
+    DISPATCH_LIMITS.model_routing = originalRouting;
+  }
 });
 
 test("accepts the configured default route but rejects an unrecognized model", async () => {
@@ -882,10 +885,12 @@ test("provider RPM paces different models through one shared schedule", async (t
   assert.deepEqual(calls, ["codestral-2508", "mistral-small-2603"]);
 });
 
-test("legacy DeepSeek aliases use the unified free candidate pool", async () => {
+
+
+test("an OrcaRouter free model uses its configured route", async () => {
   const env = isolatedEnv();
   const queued = await handleRequest(
-    chatRequest(undefined, "deepseek-alias", "opencode/deepseek-v4-flash-free"),
+    chatRequest(undefined, "orcarouter-free", "orcarouter/glm-5.3-flash"),
     env,
   );
   const body = await queued.json();
@@ -893,30 +898,18 @@ test("legacy DeepSeek aliases use the unified free candidate pool", async () => 
   const calls = [];
   const upstream = async (url, init) => {
     calls.push({ url, body: JSON.parse(init.body) });
-    return new Response(JSON.stringify({ id: "deepseek-free", choices: [] }), { status: 200 });
+    return new Response(JSON.stringify({ id: "orcarouter-free", choices: [] }), { status: 200 });
   };
 
   const result = await dispatchOne(env, upstream, new Date());
   assert.equal(result.status, "completed");
   assert.equal(calls.length, 1);
-  // The point of this test is that the alias resolves into the shared pool at all, not which
-  // specific free member ends up serving it -- so assert pool membership rather than pinning one
-  // leg, which would break on every change to the pool's composition or tie-break order. (It has:
-  // NVIDIA's leg was removed and restored on 2026-08-29 over a misdiagnosed 404, and pinning
-  // OpenCode's URL here made that a test failure rather than a no-op.)
-  const freePoolUpstreams = new Map([
-    ["https://opencode.ai/zen/v1/chat/completions", "deepseek-v4-flash-free"],
-    ["https://integrate.api.nvidia.com/v1/chat/completions", "deepseek-ai/deepseek-v4-flash-0731"],
-  ]);
-  assert.ok(
-    freePoolUpstreams.has(calls[0].url),
-    `dispatched to ${calls[0].url}, which is not a free leg of deepseek/deepseek-v4-flash`,
-  );
-  assert.equal(calls[0].body.model, freePoolUpstreams.get(calls[0].url));
+  assert.equal(calls[0].url, "https://api.orcarouter.ai/v1/chat/completions");
+  assert.equal(calls[0].body.model, "z-ai/glm-5.3-flash-free");
   const stored = await env.LLM_QUEUE.get(`requests/${body.id}.json`);
   const record = await stored.json();
   assert.equal(record.status, "completed");
-  assert.equal(record.model, "deepseek/deepseek-v4-flash");
+  assert.equal(record.model, "zai/glm-5.3-flash");
 });
 
 test("a request for a canonical model with no configured route fails permanently", async () => {
@@ -1068,9 +1061,9 @@ test("an aliased ready marker dispatches without an index-repair delay", async (
   const record = {
     id: "chatcmpl-aliased-ready",
     status: "pending",
-    model: "opencode/deepseek-v4-flash-free",
+    model: "nvidia/nemotron-3-ultra-550b-a55b",
     request: {
-      model: "opencode/deepseek-v4-flash-free",
+      model: "nvidia/nemotron-3-ultra-550b-a55b",
       messages: [{ role: "user", content: "x" }],
       stream: false,
     },
@@ -1994,12 +1987,11 @@ test("resolveProviderCredentials routes via AI_GATEWAY_BASE_URL when set across 
     account_id: "primary",
     upstream_model: "Qwen/Qwen2.5-72B-Instruct",
   });
-  // Custom providers carry their api_base path in ai_gateway_chat_path: AI Gateway discards the
-  // path component of a Custom Provider's registered Base URL and joins at the origin root, so
-  // dropping the `/v1` here would dispatch to https://api.siliconflow.com/chat/completions.
+  // The generated custom-provider path is root-relative because AI Gateway now honors the path
+  // component of the registered Base URL instead of rewriting it away.
   assert.equal(
     custom.url,
-    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/custom-siliconflow/v1/chat/completions",
+    "https://gateway.ai.cloudflare.com/v1/test-account/citypods-gw/custom-siliconflow/chat/completions",
   );
 });
 
@@ -2073,7 +2065,12 @@ test("dispatchOne applies a provider-specific AI Gateway retry override", async 
   const model = "meta-llama/llama-3.3-70b-instruct";
   const routeMap = DISPATCH_LIMITS.model_routes_map[model];
   const originalRouteMap = [...routeMap];
+  const sambaRoute = DISPATCH_LIMITS.routes_by_id.sambanova_llama_3_3_70b_instruct_primary;
+  const originalSambaRpd = sambaRoute.rpd;
   DISPATCH_LIMITS.model_routes_map[model] = ["sambanova_llama_3_3_70b_instruct_primary"];
+  // The production route is intentionally paused (rpd: 0); this test exercises credential/header
+  // construction independently of route admission, so temporarily give the fixture capacity.
+  sambaRoute.rpd = 20;
   try {
     await handleRequest(chatRequest(undefined, "samba-gw-retry", model), env);
     const calls = [];
@@ -2088,6 +2085,7 @@ test("dispatchOne applies a provider-specific AI Gateway retry override", async 
     assert.equal(calls[0].body.model, "Meta-Llama-3.3-70B-Instruct");
   } finally {
     DISPATCH_LIMITS.model_routes_map[model] = originalRouteMap;
+    sambaRoute.rpd = originalSambaRpd;
   }
 });
 
@@ -2464,24 +2462,25 @@ test("dispatchBatch admits multiple Gemma-4 requests in a single batch with stag
 
 test("dispatchBatch defers same-route candidates when TPM delay exceeds max stagger", async () => {
   const env = isolatedEnv();
-  // Request with 8000 tokens. google/gemma-4-31b-it maps to 4 routes: two Gemini accounts
+  // Request with 8000 tokens. google/gemma-4-31b-it maps to 5 routes: two Gemini accounts
   // (7200 compiled TPM each -> a 66.7s reuse interval, far past the 20s in-batch stagger ceiling),
   // OpenRouter's free leg (no TPM cap, paced only by its 5 RPM -> 12s reuse interval), and NVIDIA
   // build's leg. This scenario is intentionally exact-number-pinned against the real compiled
   // catalog rather than hand-derived, since the ranking that decides which route absorbs each
   // reuse is its own logic -- so it must be re-probed whenever those limits move.
   //
-  // Re-probed 2026-08-30 after NVIDIA's concurrency was raised 1 -> 4: 8 offered requests admit
-  // exactly 5 -- one per Gemini account, one on OpenRouter, and *two* on NVIDIA, the second via a
-  // single ~15s in-batch paced wait inside the 20s stagger ceiling.
+  // Re-probed 2026-09-18 after adding SambaNova's live-probed route: 8 offered requests admit
+  // exactly 6 -- one per Gemini account, one on OpenRouter, one on SambaNova, and *two* on NVIDIA,
+  // the second via a single ~15s in-batch paced wait inside the 20s stagger ceiling.
   //
   // NVIDIA's second slot is now bounded by TPM, not concurrency: at 18000 compiled TPM two
   // 8000-token requests fit (16000) and a third does not (24000). That is the intended shape of
   // the change -- concurrency should stop being the binding constraint and let the real rate
   // limits bind instead.
   //
-  // History, since this number has moved twice: it was 7 before 2026-08-29 (NVIDIA serving 4 via
-  // 3 paced waits at 100000 TPM), then 4 when concurrency was capped at 1 that day, now 5.
+  // History, since this number has moved three times: it was 7 before 2026-08-29 (NVIDIA serving 4
+  // via 3 paced waits at 100000 TPM), then 4 when concurrency was capped at 1 that day, then 5
+  // after NVIDIA's TPM correction, and now 6 with SambaNova's added route.
   for (let i = 0; i < 8; i += 1) {
     await handleRequest(
       chatRequest(
@@ -2523,9 +2522,9 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
   );
 
   assert.equal(batchResult.status, "completed");
-  assert.equal(batchResult.count, 5);
-  assert.equal(batchResult.completedCount, 5);
-  assert.equal(calls.length, 5);
+  assert.equal(batchResult.count, 6);
+  assert.equal(batchResult.completedCount, 6);
+  assert.equal(calls.length, 6);
   // Exactly one paced wait: NVIDIA's second request, spaced by its own rpm.
   assert.equal(slept.length, 1, "NVIDIA's second slot arrives via one in-batch paced wait");
   assert.ok(slept[0] <= 20_000, "and it stays inside the 20s max stagger");
@@ -2539,12 +2538,12 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
   const completedObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "completed",
   );
-  assert.equal(completedObjects.length, 5);
+  assert.equal(completedObjects.length, 6);
   const pendingObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "pending",
   );
-  // 8 offered, 5 admitted, so 3 stay pending for a later batch.
-  assert.equal(pendingObjects.length, 3);
+  // 8 offered, 6 admitted, so 2 stay pending for a later batch.
+  assert.equal(pendingObjects.length, 2);
 });
 
 test("dispatchBatch runs four independently paced routes concurrently", async () => {
@@ -2552,7 +2551,7 @@ test("dispatchBatch runs four independently paced routes concurrently", async ()
   const models = [
     "mistral/mistral-large-2512",
     "gemini/gemini-3-flash-preview",
-    "meta-llama/llama-3.3-70b-instruct",
+    "google/gemma-4-31b-it",
     "deepseek/deepseek-v4-flash",
   ];
   for (const [index, model] of models.entries()) {
@@ -3632,20 +3631,16 @@ test("a route's concurrency ceiling still holds without a durable reservation", 
   //     one request per batch (reserveRouteCapacity pushes requests_available_at a full interval
   //     ahead on the first reservation), so the assertion held whether or not the ceiling worked.
   //
-  // deepseek_v4_flash_primary has `rpm: null` and `concurrency: 5`, so the ceiling is the only
-  // limit in play and a broken counter is observable.
-  const ceilingRoute = "deepseek_v4_flash_primary";
+  // OrcaRouter's DeepSeek Flash route has a distinct concurrency ceiling of 2; with its NVIDIA
+  // sibling blocked, the ceiling remains observable in one batch.
+  const ceilingRoute = "orcarouter_deepseek_v4_flash_free";
   const model = "deepseek/deepseek-v4-flash";
   const catalogRoutes = Object.keys(routeIdsForModel(model));
   assert.ok(catalogRoutes.includes(ceilingRoute), "the route under test must exist in the catalog");
 
   const env = { ...ENV, LLM_QUEUE: new FakeBucket() };
-  // deepseek_v4_flash_primary is a paid route, and selectRouteForModel only elevates past free
-  // routes when waiting for every free route would miss the caller's deadline. The free
-  // alternative is starved for an hour below, so a near-term deadline is what makes the paid
-  // route reachable at all.
   const policy = {
-    allow_paid: true,
+    allow_paid: false,
     deadline_at: new Date(Date.now() + 60_000).toISOString(),
   };
   for (let index = 0; index < 8; index += 1) {
@@ -3670,14 +3665,14 @@ test("a route's concurrency ceiling still holds without a durable reservation", 
     8,
   );
 
-  // Exactly the ceiling: eight requests were queued against a concurrency-5 route with no other
-  // limit, so a working counter admits precisely five. Asserting `<= 5` would also pass if the
+  // Exactly the ceiling: eight requests were queued against a concurrency-2 route, so a working
+  // counter admits precisely two. Asserting `<= 2` would also pass if the
   // route were never selected, which is how the earlier revisions hid their bugs.
   const onCeilingRoute = (result.results || []).filter((r) => r.routeId === ceilingRoute);
   assert.equal(
     onCeilingRoute.length,
-    5,
-    `concurrency-5 route admitted ${onCeilingRoute.length} candidates in one batch`,
+    2,
+    `concurrency-2 route admitted ${onCeilingRoute.length} candidates in one batch`,
   );
 });
 

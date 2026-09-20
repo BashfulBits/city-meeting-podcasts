@@ -289,10 +289,8 @@ def is_usable_completion(resp: Mapping[str, Any]) -> bool:
 def direct_chat_url(route: Mapping[str, Any]) -> str:
     """The provider's real direct chat-completions URL for a route.
 
-    `api_base` + `chat_path` cannot simply be concatenated. Those two fields are authored for
-    Cloudflare AI Gateway's custom-provider path rewrite (see ARCHITECTURE on the undocumented
-    "last Base URL segment becomes /v1" behaviour), which requires some providers to repeat a
-    segment that is ALREADY part of `api_base`. Airforce is the live example:
+    `api_base` + `chat_path` cannot simply be concatenated when a provider's authored chat path
+    repeats a segment already present in `api_base`. Airforce is the live example:
 
         api_base  https://api.airforce/v1
         chat_path /v1/chat/completions
@@ -300,8 +298,8 @@ def direct_chat_url(route: Mapping[str, Any]) -> str:
         correct   https://api.airforce/v1/chat/completions     -> reaches the provider
 
     So a duplicated leading segment is collapsed. Production is unaffected either way -- it calls
-    these providers through the Gateway, which applies its own rewrite -- but the probe goes
-    direct, and with the naive join it silently 404'd every airforce request. That made a
+    these providers through the Gateway -- but the probe goes direct, and with the naive join it
+    silently 404'd every airforce request. That made a
     reachable route look permanently dead in an endurance run whose entire purpose is telling
     "dead" apart from "busy".
     """

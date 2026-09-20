@@ -83,6 +83,8 @@ test("claimDispatchWindow returns an empty plan when nothing is queued", async (
   const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
   assert.equal(plan.bundle_id, null);
   assert.deepEqual(plan.jobs, []);
+  assert.equal(plan.claim_reason, "no_queued_work");
+  assert.equal(plan.claim_diagnostics.queued_jobs, 0);
 });
 
 test("claimDispatchWindow claims a queued job and leases it", async () => {
@@ -203,6 +205,7 @@ test("claimDispatchWindow returns empty once MAX_ACTIVE_BUNDLES is reached", asy
   assert.equal(first.jobs.length, 1);
   const second = await coordinator.claimDispatchWindow(now, 25);
   assert.equal(second.bundle_id, null); // one active (uncompleted) bundle already outstanding
+  assert.equal(second.claim_reason, "active_bundle_limit");
 });
 
 test("claimDispatchWindow reaps a bundle whose lease expired without completeBatch, freeing its MAX_ACTIVE_BUNDLES slot", async () => {
@@ -380,6 +383,78 @@ test("completeBatch requeues one final 5xx after Gateway retries, then fails the
   ]);
   row = [...sql.exec("SELECT state FROM jobs WHERE id='j1'")][0];
   assert.equal(row.state, "failed");
+});
+
+test("a job with backup_models survives past the ordinary 5xx ceiling to reach backup eligibility", async () => {
+  // Without the retry-ceiling extension, this job would terminally fail on its SECOND attempt
+  // (MAX_5XX_RETRIES=1 allows exactly one retry) -- long before attempts could ever reach
+  // backup_after_attempts=3, which sits well inside the 5-20 range backupModelsActive (routes.js)
+  // expects callers to use. A raw 503 classifies as `server_error` (classify.js's HTTP-5xx rule
+  // runs before any 429/400 check), so this is the realistic dominant failure mode for a
+  // best-effort free route, not an edge case.
+  const { coordinator, sql } = makeCoordinator({ MAX_5XX_RETRIES: "1" });
+  await coordinator.enqueueBatch([
+    makeJob("j1", {
+      policy_json: JSON.stringify({
+        allowed_models: ["gemini/gemini-flash-lite"],
+        backup_models: ["mistral/mistral-small"],
+        backup_after_attempts: 3,
+        allow_paid: false,
+      }),
+    }),
+  ]);
+
+  let now = Date.now();
+  let attemptNumber = 0;
+  let state = "queued";
+  // Bounded loop: the extended ceiling is backup_after_attempts(3) + MAX_5XX_RETRIES(1) = 4, so
+  // this must terminally fail well before 10 iterations if the extension is bounded correctly.
+  while (state === "queued" && attemptNumber < 10) {
+    attemptNumber += 1;
+    const plan = await coordinator.claimDispatchWindow(now, 25);
+    assert.equal(plan.jobs.length, 1, `expected a claimable job on attempt ${attemptNumber}`);
+    const claimed = plan.jobs[0];
+
+    if (attemptNumber === 2) {
+      // The exact point the OLD (unextended) ceiling would have already failed the job: attempt 1
+      // failed and requeued (transient_retry_count=1), and the old code checked
+      // `1 < MAX_5XX_RETRIES(1)` -> false -> failed, on THIS attempt's own completion. Assert the
+      // job is claimable at all, which it could not be if it had already failed after attempt 1.
+      assert.ok(claimed, "job must still be claimable past the ordinary 5xx ceiling");
+    }
+
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: "j1",
+        lease_token: claimed.lease_token,
+        attempt_id: `attempt-${attemptNumber}`,
+        planned_at: claimed.not_before_at,
+        outcome: "retryable_error",
+        provider_status_code: 503,
+      },
+    ]);
+    const row = [...sql.exec("SELECT state, attempts FROM jobs WHERE id='j1'")][0];
+    state = row.state;
+    if (row.attempts >= 3) {
+      // Once attempts crosses backup_after_attempts, the backup model must be indexed alongside
+      // the primary -- confirming eligibility actually activated, not just that the job survived.
+      const models = [...sql.exec(
+        "SELECT model FROM job_models WHERE job_id='j1' ORDER BY model"
+      )].map((r) => r.model);
+      assert.deepEqual(models, ["gemini/gemini-flash-lite", "mistral/mistral-small"]);
+    }
+    // Comfortably above _max5xxBackoffMs()'s 300s cap so a route blocked by a prior 503 clears
+    // its cooldown before the next claim -- otherwise, with only 2 gemini routes and backups not
+    // yet eligible early on, both can be simultaneously blocked and nothing is claimable at all,
+    // independent of the fix under test.
+    now += 400_000;
+  }
+
+  assert.equal(state, "failed", "must still terminally fail eventually, not retry forever");
+  assert.ok(attemptNumber > 2, "must survive past the ordinary (unextended) 5xx ceiling");
+  // Whether route-c actually wins the ranking once eligible is a separate concern (capacity
+  // score, free-before-paid) from reachability, which is what this test and the fix are about --
+  // the job_models assertion above is the direct proof that eligibility itself activated.
 });
 
 test("completeBatch escalates blocked_until on consecutive 402s and clears it on the next success", async () => {
@@ -737,17 +812,44 @@ test("claimDispatchWindow's two per-tick bundles statements are index seeks, nev
   assert.equal(plan.jobs.length, 1);
 });
 
-test("purgePendingBatch's terminal-job lookup is an index seek, never a scan of every completed job", async () => {
+test("purgePendingBatch's terminal-job lookups are bounded per-state index seeks", async () => {
   const { sql } = makeCoordinator();
-  const plan = planOf(
-    sql,
-    "SELECT id, payload_key, result_key FROM jobs WHERE state IN ('completed','failed')" +
-      " AND updated_at < ? ORDER BY updated_at ASC LIMIT ?",
-    Date.now(),
-    10
+  for (const state of ["completed", "failed"]) {
+    const plan = planOf(
+      sql,
+      `SELECT id, payload_key, result_key, updated_at FROM jobs
+       WHERE state = '${state}' AND updated_at < ?
+       ORDER BY updated_at ASC, id ASC LIMIT ?`,
+      Date.now(),
+      10
+    );
+    assert.match(plan, /SEARCH jobs USING INDEX idx_jobs_state_updated_id/);
+    assert.doesNotMatch(plan, /SCAN|TEMP B-TREE/);
+  }
+});
+
+test("purgePendingBatch merges completed and failed rows by age without changing its limit", async () => {
+  const { coordinator, sql } = makeCoordinator({ COMPLETED_RETENTION_DAYS: "1" });
+  const ids = ["completed-old", "failed-old", "completed-mid", "failed-mid", "recent"];
+  await coordinator.enqueueBatch(ids.map((id) => makeJob(id)));
+  const now = Date.now();
+  const updates = [
+    ["completed-old", "completed", now - 5 * 86_400_000],
+    ["failed-old", "failed", now - 4 * 86_400_000],
+    ["completed-mid", "completed", now - 3 * 86_400_000],
+    ["failed-mid", "failed", now - 2 * 86_400_000],
+    ["recent", "completed", now - 12 * 60 * 60 * 1000],
+  ];
+  for (const [id, state, updatedAt] of updates) {
+    sql.exec("UPDATE jobs SET state=?, updated_at=? WHERE id=?", state, updatedAt, id);
+  }
+
+  const pending = await coordinator.purgePendingBatch(4);
+  assert.deepEqual(
+    pending.jobs.map((job) => job.id),
+    ["completed-old", "failed-old", "completed-mid", "failed-mid"]
   );
-  assert.match(plan, /SEARCH jobs USING INDEX idx_jobs_state_updated/);
-  assert.doesNotMatch(plan, /SCAN/);
+  assert.equal([...sql.exec("SELECT COUNT(*) n FROM jobs WHERE state='purge_pending'")][0].n, 4);
 });
 
 test("_pruneTerminalRecords deletes aged-out terminal bundles and attempts, bounded per tick", async () => {
@@ -960,11 +1062,11 @@ const FREE_VS_PAID_CATALOG = {
   // Paid listed first on purpose: the routes tie on capacity fraction (both unused), so without
   // an explicit free-before-paid term the tie falls through to catalog order and the paid route
   // wins. Listing free first would let this test pass with the bug still present.
-  model_routes_map: { "deepseek/deepseek-v4-flash": ["paid-large", "free-small"] },
+  model_routes_map: { "opencode/mimo-v2.5-free": ["paid-large", "free-small"] },
   routes_by_id: {
     "free-small": {
       provider: "opencode",
-      upstream_model: "deepseek-v4-flash-free",
+      upstream_model: "mimo-v2.5-free",
       rpm: 5,
       rpd: 50,
       tpm: 100000,
@@ -1008,7 +1110,7 @@ test("a job allowing paid still takes the free route when the paid one has more 
     idempotency_key: `key-${id}`,
     request_digest: `digest-${id}`,
     policy_json: JSON.stringify({
-      allowed_models: ["deepseek/deepseek-v4-flash"],
+      allowed_models: ["opencode/mimo-v2.5-free"],
       allow_paid: true,
     }),
     prompt_family: "tags",
@@ -1252,6 +1354,88 @@ test("a capacity-400 requeues the job and stands the route down, like a final 5x
   const second = await coordinator.claimDispatchWindow(Date.now() + 120_000, 25);
   assert.equal(second.jobs.length, 1, "the job must be retried, not destroyed");
   assert.equal(second.jobs[0].id, "j-cap-400");
+});
+
+test("a provider missing-function 404 requeues and cools only the affected route", async () => {
+  // NVIDIA NIM reports a retired hosted function as HTTP 404. It is not a malformed job, so the
+  // classifier must preserve the upstream_capacity signal through completeBatch; otherwise this
+  // response is terminal and every large submission is lost before lane backups can activate.
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-cap-404")]);
+
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(first.jobs.length, 1);
+  const claimed = first.jobs[0];
+  const routeId = claimed.route_id;
+
+  const t = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-cap-404",
+      planned_at: claimed.not_before_at,
+      actual_start_at: t,
+      actual_end_at: t + 500,
+      observed_input_tokens: 400,
+      observed_output_tokens: 0,
+      outcome: "retryable_error",
+      provider_status_code: 404,
+      failure_class: "upstream_capacity",
+    },
+  ]);
+
+  const route = [...sql.exec(
+    "SELECT blocked_until, upstream_capacity_streak FROM routes WHERE route_id=?",
+    routeId,
+  )][0];
+  assert.ok(route.blocked_until && route.blocked_until > t, "the missing function route is cooled");
+  assert.equal(route.upstream_capacity_streak, 1);
+
+  sql.exec("UPDATE routes SET blocked_until = 0 WHERE route_id = ?", routeId);
+  const second = await coordinator.claimDispatchWindow(Date.now() + 120_000, 25);
+  assert.equal(second.jobs.length, 1, "the job must be retried, not destroyed");
+  assert.equal(second.jobs[0].id, "j-cap-404");
+});
+
+test("a provider input-limit failure requeues for a sibling route", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-input-limit")]);
+
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(first.jobs.length, 1);
+  const claimed = first.jobs[0];
+  const now = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-input-limit",
+      planned_at: claimed.not_before_at,
+      actual_start_at: now,
+      actual_end_at: now + 100,
+      outcome: "terminal_error",
+      provider_status_code: 500,
+      failure_class: "route_input_limit",
+    },
+  ]);
+
+  const job = [...sql.exec(
+    "SELECT state, transient_retry_count FROM jobs WHERE id='j-input-limit'"
+  )][0];
+  assert.equal(job.state, "queued");
+  assert.equal(job.transient_retry_count, 1);
+  const route = [...sql.exec(
+    "SELECT blocked_until, last_failure_class FROM routes WHERE route_id=?",
+    claimed.route_id
+  )][0];
+  assert.ok(route.blocked_until > now);
+  assert.equal(route.last_failure_class, "route_input_limit");
+
+  const second = await coordinator.claimDispatchWindow(now + 1_000, 25);
+  assert.equal(second.jobs.length, 1);
+  assert.equal(second.jobs[0].id, "j-input-limit");
+  assert.notEqual(second.jobs[0].route_id, claimed.route_id);
 });
 
 test("a genuine 400 still fails the job terminally and leaves the route selectable", async () => {
@@ -1640,6 +1824,57 @@ test("claimDispatchWindow enforces route-level and provider-level concurrency", 
   // A second claim while j1 is still leased admits 0 jobs
   const secondPlan = await coordinator.claimDispatchWindow(now + 100, 25);
   assert.equal(secondPlan.jobs.length, 0);
+  assert.equal(secondPlan.claim_result, "empty");
+  assert.equal(secondPlan.claim_reason, "concurrency_limit");
+  assert.equal(secondPlan.claim_diagnostics.rejections.provider_concurrency, 1);
+  assert.deepEqual(secondPlan.claim_diagnostics.routes.provider_concurrency, { strict_prov: 1 });
+
+  const stats = await coordinator.stats(now + 100);
+  assert.equal(stats.claim.last_result, "empty");
+  assert.equal(stats.claim.last_reason, "concurrency_limit");
+  assert.equal(stats.claim.empty_count_today, 1);
+  assert.equal(stats.claim.reason_counts_today.concurrency_limit, 1);
+  assert.equal(stats.in_flight.by_provider.strict_prov, 1);
+});
+
+test("claimDispatchWindow identifies a route concurrency ceiling", async () => {
+  const limits = {
+    providers: {
+      route_only_prov: {
+        api_base: "https://example.com",
+        accounts: [{ id: "acc1" }],
+      },
+    },
+    routes_by_id: {
+      route_only: {
+        route_id: "route_only",
+        model: "route-model",
+        provider: "route_only_prov",
+        account_id: "acc1",
+        input_context_limit: 100000,
+        output_context_limit: 10000,
+        rpm: 30,
+        rpd: 1000,
+        free: true,
+        concurrency: 1,
+      },
+    },
+    model_routes_map: { "route-model": ["route_only"] },
+  };
+
+  const { coordinator } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: limits });
+  await coordinator.enqueueBatch([
+    makeJob("route-j1", { policy_json: JSON.stringify({ allowed_models: ["route-model"] }) }),
+    makeJob("route-j2", { policy_json: JSON.stringify({ allowed_models: ["route-model"] }) }),
+  ]);
+
+  const now = Date.now();
+  const first = await coordinator.claimDispatchWindow(now, 25);
+  assert.equal(first.jobs.length, 1);
+  const second = await coordinator.claimDispatchWindow(now + 100, 25);
+  assert.equal(second.claim_reason, "concurrency_limit");
+  assert.equal(second.claim_diagnostics.rejections.route_concurrency, 1);
+  assert.deepEqual(second.claim_diagnostics.routes.route_concurrency, { route_only: 1 });
 });
 
 test("claimDispatchWindow enforces provider-level TPM across routes sharing a provider", async () => {

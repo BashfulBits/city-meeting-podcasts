@@ -23,9 +23,33 @@ def test_agenda_job_is_pinned_and_idempotent():
     assert first.task == "agenda-item-extract"
     assert first.recipe_hash == second.recipe_hash
     assert first.inputs["structured_output"] == "agenda-chapter-item-extract"
-    assert first.inputs["llm_policy"].allowed_models == ("mistral/mistral-medium-latest",)
+    assert first.inputs["llm_policy"].allowed_models == ("nvidia/nemotron-3-ultra-550b-a55b:free",)
+    assert first.inputs["llm_policy"].backup_models == (
+        "gemini/gemini-3.1-flash-lite",
+        "gemini/gemini-3.5-flash-lite",
+    )
+    assert first.inputs["llm_policy"].backup_after_attempts == 12
     assert first.inputs["llm_policy"].queue_only is True
     assert first.inputs["llm_policy"].deadline_at is None
+
+
+def test_agenda_job_recipe_changes_with_pipeline_version():
+    # pipeline_version feeds the recipe hash so a pipeline-version bump (a validation/
+    # post-processing behavior change independent of the model) re-queues the catalog exactly
+    # like a model change does -- see AgendaChapterCandidatesStage.process()'s currency check.
+    first = build_agenda_job(
+        episode_uid="e1",
+        agenda_text="1. Approve the budget",
+        agenda_source_hash="sha",
+        pipeline_version="1",
+    )
+    second = build_agenda_job(
+        episode_uid="e1",
+        agenda_text="1. Approve the budget",
+        agenda_source_hash="sha",
+        pipeline_version="2",
+    )
+    assert first.recipe_hash != second.recipe_hash
 
 
 def test_finalize_agenda_job_records_the_actually_dispatched_model():
@@ -187,18 +211,21 @@ def test_finalize_agenda_job_valid_and_invalid_responses():
         episode_uid="ep-1",
         agenda_text=agenda_text,
         agenda_source_hash="agenda-sha-1",
+        pipeline_version="2",
     )
     assert artifact.episode_uid == "ep-1"
     assert artifact.recipe == "recipe-agenda-123"
     # No result.model set (e.g. a legacy/non-policy-driven backend) falls back to the label model.
-    assert artifact.model == "mistral/mistral-medium-latest"
+    assert artifact.model == "nvidia/nemotron-3-ultra-550b-a55b:free"
+    assert artifact.pipeline_version == "2"
     assert len(artifact.items) == 2
     assert artifact.items[0].display_ref == "Item 1"
     assert artifact.items[0].title == "Call to order"
     assert artifact.items[0].line_start == 1
     assert artifact.items[0].line_end == 1
     assert artifact.items[0].kind == "substantive_action"
-    assert artifact.diagnostics == {"source_line_count": 2}
+    assert artifact.items[0].source == "strict"
+    assert artifact.diagnostics == {"source_line_count": 2, "recovered_item_count": 0}
 
     # Malformed JSON raises ValueError
     invalid_json_result = JobResult(
@@ -242,6 +269,86 @@ def test_finalize_agenda_job_valid_and_invalid_responses():
     with pytest.raises(ValueError):
         finalize_agenda_job(
             out_of_range_result,
+            episode_uid="ep-1",
+            agenda_text=agenda_text,
+            agenda_source_hash="agenda-sha-1",
+        )
+
+
+def test_finalize_agenda_job_merges_recovered_items_with_valid_ones():
+    """The GH#1078 recovery-shadow layer (recover_agenda_item_extractor_response) is wired into
+    production finalize_agenda_job: a strictly-valid item and a recoverable one (a display_ref
+    that doesn't literally validate but whose evidence a source-only search confirms) must both
+    appear in the artifact, with the recovered one tagged source="recovery"."""
+    agenda_text = "Item 1. Call to order\nA.\nDiscussion of the annual report."
+    content = json.dumps(
+        {
+            "items": [
+                {
+                    "display_ref": "Item 1",
+                    "title": "Call to order",
+                    "evidence_quote": "Item 1. Call to order",
+                    "line_start": 1,
+                    "line_end": 1,
+                },
+                {
+                    "display_ref": "Friendly label",
+                    "title": "Annual report discussion",
+                    "evidence_quote": "Discussion of the annual report.",
+                    "line_start": 3,
+                    "line_end": 3,
+                },
+            ]
+        }
+    )
+    result = JobResult(
+        task="agenda-item-extract",
+        recipe_hash="recipe-agenda-recovery",
+        output={"choices": [{"message": {"content": content}}]},
+    )
+    artifact = finalize_agenda_job(
+        result,
+        episode_uid="ep-1",
+        agenda_text=agenda_text,
+        agenda_source_hash="agenda-sha-1",
+    )
+    assert len(artifact.items) == 2
+    assert artifact.diagnostics["recovered_item_count"] == 1
+    strict_item = next(item for item in artifact.items if item.source == "strict")
+    recovered_item = next(item for item in artifact.items if item.source == "recovery")
+    assert strict_item.title == "Call to order"
+    assert recovered_item.title == "Annual report discussion"
+    assert recovered_item.display_ref is None  # "Friendly label" doesn't survive recovery
+    # Indices stay unique and contiguous across both groups (AgendaCandidatesArtifact requires it).
+    assert {item.index for item in artifact.items} == {0, 1}
+
+
+def test_finalize_agenda_job_still_raises_on_a_genuinely_unrecoverable_item():
+    """An item whose evidence_quote is nowhere in the source text is not a recovery-layer miss --
+    it's fabricated, and finalize_agenda_job must still fail it (preserving today's
+    fail-and-retry-later behavior), not silently drop it."""
+    agenda_text = "ID 26-1000\nApprove the actual item."
+    content = json.dumps(
+        {
+            "items": [
+                {
+                    "display_ref": "ID 26-9999",
+                    "title": "Invented item",
+                    "evidence_quote": "This sentence is not in the agenda.",
+                    "line_start": 1,
+                    "line_end": 1,
+                }
+            ]
+        }
+    )
+    result = JobResult(
+        task="agenda-item-extract",
+        recipe_hash="recipe-agenda-unrecoverable",
+        output={"choices": [{"message": {"content": content}}]},
+    )
+    with pytest.raises(ValueError):
+        finalize_agenda_job(
+            result,
             episode_uid="ep-1",
             agenda_text=agenda_text,
             agenda_source_hash="agenda-sha-1",
