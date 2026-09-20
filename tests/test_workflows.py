@@ -1578,6 +1578,7 @@ def test_deferred_llm_producers_run_at_least_three_times_daily():
 
 def test_stuck_chapter_agenda_workflow_is_dry_run_by_default():
     wf, job = _job("reconcile-stuck-chapter-agenda.yml", "reconcile")
+    assert job["timeout-minutes"] == 120
     inputs = _on(wf)["workflow_dispatch"]["inputs"]
     assert inputs["apply"]["type"] == "boolean"
     assert inputs["apply"]["default"] is False
@@ -1587,6 +1588,7 @@ def test_stuck_chapter_agenda_workflow_is_dry_run_by_default():
         for item in job["steps"]
         if item.get("name") == "Classify and optionally supersede stale chapter-agenda handles"
     )
+    assert step["timeout-minutes"] == 110
     assert "args=(--dry-run)" in step["run"]
     assert "args=(--apply)" in step["run"]
     assert step["env"]["LLM_DISPATCH_V2_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}"

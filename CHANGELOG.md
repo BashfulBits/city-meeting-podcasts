@@ -24,6 +24,11 @@ Phase R (Research-Tool Surface)._
   requeue after a short route quarantine so a longer-context sibling can serve the job. Malformed
   response text is retained only as a 4 KiB in-memory classification hint; no new diagnostic rows
   or per-request writes are added.
+  
+- **Give stuck chapter-agenda reconciliation enough wall-clock budget** (`reconcile-stuck-chapter-agenda.yml`).
+  The full deferred-registry maintenance pass now has a 120-minute job budget and a 110-minute
+  classify-step limit, leaving time for its report artifact and making a future overrun fail
+  visibly instead of being reported as a grey job cancellation.
 
 - **Bounded endpoint-contract listing confirmation retry** (`citypods/contracts.py`). A provider
   listing that fails with a transient transport error now receives one separate confirmation
