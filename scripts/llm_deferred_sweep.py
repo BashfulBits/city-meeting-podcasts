@@ -6,7 +6,9 @@ cleared, or a genuine Mistral dispatch handle that finished at the Worker. Each 
 complete, idempotent sweep of whatever is currently pending; there is no per-item state to track
 between runs beyond what the registry itself already holds. Also prunes registry records past
 their TTL, so a caller whose own identity changes run to run (e.g. city discovery's recipe_hash,
-which depends on that run's search results) doesn't leave orphaned records behind forever.
+which depends on that run's search results) doesn't leave orphaned records behind forever. The
+``--full-prune-only`` maintenance mode performs a less-frequent full-registry TTL pass so terminal
+records that no longer have pending index pointers are eventually collected too.
 
 Scheduled every six hours, with one run inside DeepSeek's off-peak discount window (see the workflow
 this script backs). A normal run is an observation and bounded-retry pass, not a multi-hour drain:
@@ -239,7 +241,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Rebuild the B2 pointer index from canonical records and finish dual-read migration.",
     )
+    parser.add_argument(
+        "--full-prune-only",
+        action="store_true",
+        help="List the full canonical registry and prune expired records without reconciling jobs.",
+    )
     args = parser.parse_args(argv)
+    if args.repair_index and args.full_prune_only:
+        parser.error("--repair-index and --full-prune-only are mutually exclusive")
 
     site_config = load_site_config(args.site_config)
     storage = make_storage(site_config, "", Path(args.output_dir))
@@ -278,6 +287,47 @@ def main(argv: list[str] | None = None) -> int:
 
     stop_state = _install_signal_handlers()
     deadline_at = datetime.now(UTC) + timedelta(minutes=args.run_time_budget_minutes)
+    if args.full_prune_only:
+        snapshot_started_at = datetime.now(UTC)
+        print(
+            json.dumps(
+                {
+                    "event": "llm_deferred_full_prune_started",
+                    "deadline_at": deadline_at.isoformat(),
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        snapshot = load_deferred_snapshot(
+            storage,
+            deadline_at=deadline_at,
+            should_stop=lambda: stop_state.requested,
+            include_ineligible=True,
+        )
+        pruned = prune_expired_deferred_snapshot(storage, snapshot, backend=backend)
+        print(
+            json.dumps(
+                {
+                    "event": "llm_deferred_full_prune_end",
+                    "pruned": pruned,
+                    "snapshot": {
+                        "deadline_reached": snapshot.deadline_reached,
+                        "elapsed_seconds": round(
+                            (datetime.now(UTC) - snapshot_started_at).total_seconds(), 3
+                        ),
+                        "listed": snapshot.listed_count,
+                        "loaded": len(snapshot.entries),
+                        "omitted": snapshot.omitted_count,
+                    },
+                    "unavailable": len(snapshot.unavailable_reads),
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        return 0
+
     completed = 0
     still_pending = 0
     failed = 0

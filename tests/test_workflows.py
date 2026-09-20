@@ -1595,3 +1595,17 @@ def test_stuck_chapter_agenda_workflow_is_dry_run_by_default():
     assert '--max-row-writes "$MAX_ROW_WRITES"' in step["run"]
     assert step["env"]["MAX_ROW_WRITES"] == "${{ inputs.max_row_writes }}"
     assert step["env"]["LLM_DISPATCH_V2_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}"
+
+
+def test_deferred_full_prune_workflow_runs_weekly_and_is_main_only():
+    wf, job = _job("llm-deferred-full-prune.yml", "prune")
+    schedules = _on(wf)["schedule"]
+    assert schedules == [{"cron": "30 4 * * 0"}]
+    assert job["if"] == "github.ref == 'refs/heads/main'"
+    assert job["timeout-minutes"] == 180
+    step = next(
+        item for item in job["steps"] if item.get("name") == "Prune expired deferred records"
+    )
+    assert step["timeout-minutes"] == 165
+    assert "--full-prune-only" in step["run"]
+    assert "--run-time-budget-minutes 120" in step["run"]
