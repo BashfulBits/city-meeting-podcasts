@@ -69,6 +69,11 @@ from citypods.compute.llm_scheduler import (
     select_and_reserve,
     select_route,
 )
+from citypods.compute.llm_submission_telemetry import (
+    job_descriptor,
+    record_enqueue_outcomes,
+    record_producer_observations,
+)
 from citypods.compute.structured import ResponseModel, response_model
 from citypods.security import SecurityError, validate_source_url
 from citypods.storage.s3 import b2_from_env
@@ -2104,6 +2109,9 @@ class LiteLLMBackend(Backend):
         if not jobs:
             return []
 
+        enqueue_started = time.monotonic()
+        telemetry_outcomes: list[tuple[InferenceJob, str, str | None]] = []
+
         if self.storage is None or not getattr(self.storage, "cas_capable", False):
             # run_inference() raises the same error for the analogous direct-dispatch case;
             # enqueue_batch reaches the deferred registry (look_up_deferred/write_deferred)
@@ -2121,10 +2129,19 @@ class LiteLLMBackend(Backend):
             cached = look_up_deferred(self.storage, job.recipe_hash)
             if isinstance(cached, JobResult):
                 out[i] = cached
+                telemetry_outcomes.append((job, "cached_completed", None))
             else:
                 uncached_indices.append(i)
 
         if not uncached_indices:
+            record_enqueue_outcomes(
+                telemetry_outcomes,
+                elapsed_seconds=time.monotonic() - enqueue_started,
+                payload_stage_seconds=0.0,
+                request_seconds=0.0,
+                persist_seconds=0.0,
+                transport_retries=0,
+            )
             return [cast("JobResult | JobHandle", r) for r in out]
 
         if self._daily_ingest_exhausted or (
@@ -2147,6 +2164,15 @@ class LiteLLMBackend(Backend):
                         output_token_budget=self._output_token_budget(job),
                     ),
                 )
+                telemetry_outcomes.append((job, "client_daily_cap", "client_daily_ingest_cap"))
+            record_enqueue_outcomes(
+                telemetry_outcomes,
+                elapsed_seconds=time.monotonic() - enqueue_started,
+                payload_stage_seconds=0.0,
+                request_seconds=0.0,
+                persist_seconds=0.0,
+                transport_retries=0,
+            )
             return [cast("JobResult | JobHandle", r) for r in out]
 
         if not self.config.dispatch_v2_url:
@@ -2242,6 +2268,7 @@ class LiteLLMBackend(Backend):
             payload_key, payload_body = item
             storage.put_cas(payload_key, payload_body, "application/json")
 
+        payload_stage_started = time.monotonic()
         if payload_writes:
             workers = min(_BATCH_B2_IO_MAX_WORKERS, len(payload_writes))
             if workers > 1:
@@ -2250,6 +2277,7 @@ class LiteLLMBackend(Backend):
                         pass
             else:
                 _stage_payload(payload_writes[0])
+        payload_stage_seconds = time.monotonic() - payload_stage_started
 
         headers = {"content-type": "application/json"}
         if self.config.dispatch_v2_auth_token:
@@ -2257,6 +2285,7 @@ class LiteLLMBackend(Backend):
 
         url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", "v2/jobs:enqueue-batch")
         transport_retries = 0
+        request_started = time.monotonic()
         for attempt in range(2):
             try:
                 response = self._session.post(
@@ -2282,6 +2311,7 @@ class LiteLLMBackend(Backend):
                 )
                 raise LLMBackendError("LLM dispatch v2 enqueue-batch request failed") from exc
             break
+        request_seconds = time.monotonic() - request_started
 
         if response.status_code == 429:
             self._mark_daily_ingest_exhausted()
@@ -2306,6 +2336,15 @@ class LiteLLMBackend(Backend):
                         output_token_budget=self._output_token_budget(job),
                     ),
                 )
+                telemetry_outcomes.append((job, "deferred", "http_429"))
+            record_enqueue_outcomes(
+                telemetry_outcomes,
+                elapsed_seconds=time.monotonic() - enqueue_started,
+                payload_stage_seconds=payload_stage_seconds,
+                request_seconds=request_seconds,
+                persist_seconds=0.0,
+                transport_retries=transport_retries,
+            )
             return [cast("JobResult | JobHandle", r) for r in out]
 
         if response.status_code != 200:
@@ -2393,8 +2432,10 @@ class LiteLLMBackend(Backend):
                 accepted_count += 1
                 if canonical_id == job_id:
                     self._daily_ingest_admitted += 1
+                    telemetry_outcomes.append((job, "fresh_admitted", None))
                 else:
                     replayed_count += 1
+                    telemetry_outcomes.append((job, "replayed", None))
                 handle = JobHandle(
                     task=job.task,
                     recipe_hash=job.recipe_hash,
@@ -2410,6 +2451,7 @@ class LiteLLMBackend(Backend):
                 rejection_reasons[reason] = rejection_reasons.get(reason, 0) + 1
                 if reason in _DEFERRED_INGRESS_REASONS:
                     deferred_count += 1
+                    telemetry_outcomes.append((job, "deferred", reason))
                     if reason == "daily_cap_exceeded":
                         self._mark_daily_ingest_exhausted()
                     policy = (
@@ -2430,22 +2472,26 @@ class LiteLLMBackend(Backend):
                     out[idx] = handle
                 elif reason == "idempotency_conflict":
                     rejected_count += 1
+                    telemetry_outcomes.append((job, "rejected", reason))
                     out[idx] = LLMBackendError(
                         f"LLM dispatch v2 idempotency conflict for job {job_id}"
                     )
                 elif reason == "unknown":
                     unknown_count += 1
+                    telemetry_outcomes.append((job, "unknown", reason))
                     out[idx] = _LLMBatchItemError(
                         f"LLM dispatch v2 enqueue-batch omitted job {job_id}", retryable=True
                     )
                 else:
                     rejected_count += 1
+                    telemetry_outcomes.append((job, "rejected", reason))
                     out[idx] = LLMBackendError(f"LLM dispatch v2 rejected job {job_id}: {reason}")
 
         def _persist_deferred(item: tuple[str, JobHandle]) -> None:
             recipe_hash, handle = item
             write_deferred(storage, recipe_hash, handle)
 
+        persist_started = time.monotonic()
         if deferred_writes:
             workers = min(_BATCH_B2_IO_MAX_WORKERS, len(deferred_writes))
             if workers > 1:
@@ -2454,6 +2500,7 @@ class LiteLLMBackend(Backend):
                         pass
             else:
                 _persist_deferred(deferred_writes[0])
+        persist_seconds = time.monotonic() - persist_started
 
         _emit_v2_dispatch_event(
             "enqueue-batch",
@@ -2465,6 +2512,14 @@ class LiteLLMBackend(Backend):
             unknown=unknown_count,
             transport_retry=transport_retries,
             **{f"rejected_{reason}": count for reason, count in sorted(rejection_reasons.items())},
+        )
+        record_enqueue_outcomes(
+            telemetry_outcomes,
+            elapsed_seconds=time.monotonic() - enqueue_started,
+            payload_stage_seconds=payload_stage_seconds,
+            request_seconds=request_seconds,
+            persist_seconds=persist_seconds,
+            transport_retries=transport_retries,
         )
 
         return [cast("JobResult | JobHandle | Exception", r) for r in out]
@@ -3068,6 +3123,7 @@ class BatchingDispatchBackend:
     def __init__(self, backend: LiteLLMBackend):
         self._backend = backend
         self._queued: dict[str, tuple[InferenceJob, JobHandle]] = {}
+        self._producer_observations: dict[tuple[str, str, str], dict[str, int]] = {}
         self._lock = threading.Lock()
 
     @property
@@ -3102,8 +3158,26 @@ class BatchingDispatchBackend:
         if not self._can_batch(job):
             return self._backend.run_inference(job)
 
+        descriptor = job_descriptor(job)
+        telemetry_key = (
+            descriptor["purpose"],
+            descriptor["task"],
+            descriptor["primary_model"],
+        )
+
+        def _observe_locked(status: str) -> None:
+            observations = self._producer_observations.setdefault(telemetry_key, {})
+            observations[status] = observations.get(status, 0) + 1
+
         existing = look_up_deferred(self._backend.storage, job.recipe_hash)
         if existing is not None:
+            with self._lock:
+                if isinstance(existing, JobResult):
+                    _observe_locked("cached_completed")
+                elif existing.deferred_request is not None:
+                    _observe_locked("deferred_retry")
+                else:
+                    _observe_locked("prior_pending")
             return existing
         if not terminal_failure_retry_allowed(self._backend.storage, job.recipe_hash):
             # Preserve the wrapped backend's specific terminal-failure error message.
@@ -3112,6 +3186,7 @@ class BatchingDispatchBackend:
         with self._lock:
             queued = self._queued.get(job.recipe_hash)
             if queued is not None:
+                _observe_locked("duplicate_in_run")
                 return queued[1]
             handle = JobHandle(
                 task=job.task,
@@ -3121,6 +3196,7 @@ class BatchingDispatchBackend:
                 model=canonical_model(self._backend.config.model),
             )
             self._queued[job.recipe_hash] = (job, handle)
+            _observe_locked("candidate")
             return handle
 
     def enqueue_batch(
@@ -3152,6 +3228,9 @@ class BatchingDispatchBackend:
         with self._lock:
             jobs = [job for job, _handle in self._queued.values()]
             self._queued.clear()
+            observations = self._producer_observations
+            self._producer_observations = {}
+        record_producer_observations(observations)
         results: list[JobResult | JobHandle | Exception] = []
         for chunk_start in range(0, len(jobs), _WORKER_BATCH_LIMIT):
             results.extend(

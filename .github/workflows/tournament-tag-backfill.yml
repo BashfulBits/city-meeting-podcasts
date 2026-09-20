@@ -32,6 +32,14 @@ jobs:
           python-version: "3.14"
           cache: pip
       - run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+      - name: Capture starting LLM worker state
+        env:
+          CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE: ${{ runner.temp }}/llm-submission-telemetry.jsonl
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+        run: |
+          echo "CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE=$CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE" >> "$GITHUB_ENV"
+          python scripts/llm_submission_telemetry.py snapshot start
       - name: Choose the next bounded retained source
         id: next
         env:
@@ -77,3 +85,21 @@ jobs:
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
           SOURCE: ${{ steps.next.outputs.source }}
         run: python -m citypods.cli enrich --lane tag --source "$SOURCE"
+
+      - name: Summarize LLM submission telemetry
+        if: always()
+        env:
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+        run: |
+          python scripts/llm_submission_telemetry.py snapshot end
+          python scripts/llm_submission_telemetry.py report
+
+      - name: Upload LLM submission telemetry
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: llm-submission-telemetry-${{ github.run_id }}
+          path: ${{ runner.temp }}/llm-submission-telemetry.jsonl
+          if-no-files-found: ignore
+          retention-days: 30
