@@ -1371,6 +1371,46 @@ test("a provider missing-function 404 requeues and cools only the affected route
   assert.equal(second.jobs[0].id, "j-cap-404");
 });
 
+test("a provider input-limit failure requeues for a sibling route", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j-input-limit")]);
+
+  const first = await coordinator.claimDispatchWindow(Date.now(), 25);
+  assert.equal(first.jobs.length, 1);
+  const claimed = first.jobs[0];
+  const now = Date.now();
+  await coordinator.completeBatch(first.bundle_id, first.execution_token, [
+    {
+      job_id: claimed.id,
+      lease_token: claimed.lease_token,
+      attempt_id: "attempt-input-limit",
+      planned_at: claimed.not_before_at,
+      actual_start_at: now,
+      actual_end_at: now + 100,
+      outcome: "terminal_error",
+      provider_status_code: 500,
+      failure_class: "route_input_limit",
+    },
+  ]);
+
+  const job = [...sql.exec(
+    "SELECT state, transient_retry_count FROM jobs WHERE id='j-input-limit'"
+  )][0];
+  assert.equal(job.state, "queued");
+  assert.equal(job.transient_retry_count, 1);
+  const route = [...sql.exec(
+    "SELECT blocked_until, last_failure_class FROM routes WHERE route_id=?",
+    claimed.route_id
+  )][0];
+  assert.ok(route.blocked_until > now);
+  assert.equal(route.last_failure_class, "route_input_limit");
+
+  const second = await coordinator.claimDispatchWindow(now + 1_000, 25);
+  assert.equal(second.jobs.length, 1);
+  assert.equal(second.jobs[0].id, "j-input-limit");
+  assert.notEqual(second.jobs[0].route_id, claimed.route_id);
+});
+
 test("a genuine 400 still fails the job terminally and leaves the route selectable", async () => {
   // The negative case that keeps the pairing narrow. A real request defect reaches the DO as
   // `terminal_error`, and must not block a healthy route just because it shares a status code.

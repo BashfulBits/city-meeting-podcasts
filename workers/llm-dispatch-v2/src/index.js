@@ -644,7 +644,7 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
       actualStartAt,
       actualEndAt,
       correlationId: response.correlationId,
-      retryAfterSeconds: response.retryAfterSeconds,
+      retryAfterSeconds: cls.retry_after_seconds ?? response.retryAfterSeconds,
       failureClass: cls.failure_class,
       ruleId: cls.rule_id,
     };
@@ -724,7 +724,7 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
         // This Worker is the only layer that sees response bodies -- the DO holds job rows and
         // never a payload -- so the sniffing happens here and completeBatch keys off the pair
         // (retryable_error, 400) alone.
-        response.status >= 500 ||
+        (response.status >= 500 && cls.failure_class !== "route_input_limit") ||
         response.status === 402 ||
         upstreamCapacityFailure(response.status, response.body)
           ? "retryable_error"

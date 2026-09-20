@@ -32,7 +32,10 @@ concurrency:
 jobs:
   reconcile:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The maintenance pass reads every canonical deferred record, including handles on currently
+    # exhausted routes. Thirty minutes was not enough for the production registry and caused the
+    # classify step to be reported as a grey cancellation at the job deadline.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
@@ -47,6 +50,9 @@ jobs:
         run: pip install -e ".[storage,llm]" -c constraints/prod.txt
 
       - name: Classify and optionally supersede stale chapter-agenda handles
+        # Leave time for the always-run artifact upload and make a future overrun fail visibly
+        # instead of turning into another job-level "cancelled" result.
+        timeout-minutes: 110
         env:
           APPLY: ${{ inputs.apply }}
           OLDER_THAN_HOURS: ${{ inputs.older_than_hours }}

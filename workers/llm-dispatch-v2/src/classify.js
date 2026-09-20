@@ -1,4 +1,8 @@
-import { upstreamCapacityFailure, parseRetryAfterSeconds } from "./gateway.js";
+import {
+  normalizeProviderBody,
+  parseRetryAfterSeconds,
+  upstreamCapacityFailure,
+} from "./gateway.js";
 
 /**
  * Ordered rule table for HTTP 429 responses. First match wins.
@@ -279,8 +283,42 @@ function hasRateLimitHeader(normHeaders) {
   return false;
 }
 
+function providerFailureMessage(body) {
+  return String(
+    body?.error?.message ||
+      body?.error?.detail ||
+      body?.message ||
+      body?.detail ||
+      (typeof body === "string" ? body : "") ||
+      ""
+  ).toLowerCase();
+}
+
+function isInputLimitMessage(msg) {
+  return (
+    (msg.includes("input") &&
+      (msg.includes("token") || msg.includes("context") || msg.includes("length")) &&
+      (msg.includes("limit") || msg.includes("exceed") || msg.includes("too large"))) ||
+    msg.includes("context window") ||
+    msg.includes("maximum input")
+  );
+}
+
+function isProviderCapacityMessage(body, msg) {
+  const status = String(body?.error?.status || body?.status || "").toLowerCase();
+  return (
+    status === "unavailable" ||
+    msg.includes("high demand") ||
+    msg.includes("overloaded") ||
+    msg.includes("temporarily unavailable") ||
+    msg.includes("try again later") ||
+    msg.includes("service unavailable")
+  );
+}
+
 /**
- * Classify a provider failure response into the 9-class taxonomy.
+ * Classify a provider failure response into the shared taxonomy plus the v2-only
+ * route_input_limit class.
  * Pure function with zero caller side effects.
  *
  * @param {{status:number, body:any, headers:Headers|Object|null, route:{provider:string,route_id:string,
@@ -299,7 +337,7 @@ export function classifyProviderFailure({ status, body, headers, route }) {
   // production, incorrectly cools down every OTHER route on the same provider
   // (authorizeRetry's `gateway_limit` case fans out to every sibling route), not just the one
   // model whose own quota was actually exhausted.
-  const normalizedBody = Array.isArray(body) ? body[0] : body;
+  const normalizedBody = normalizeProviderBody(body);
   const normHeaders = normalizeHeaders(headers);
   const retryAfterSeconds = parseRetryAfterSeconds({ headers: normHeaders }, normalizedBody);
   body = normalizedBody;
@@ -314,8 +352,26 @@ export function classifyProviderFailure({ status, body, headers, route }) {
     };
   }
 
-  // 2. HTTP 5xx -> server_error
+  // 2. Use actionable provider details before the generic 5xx fallback. These classes let the
+  // coordinator try another route without adding a provider call or a durable diagnostic row.
   if (status >= 500 && status <= 599) {
+    const msg = providerFailureMessage(body);
+    if (isInputLimitMessage(msg)) {
+      return {
+        failure_class: "route_input_limit",
+        rule_id: "provider-input-limit",
+        retry_after_seconds: retryAfterSeconds,
+        scope: "route",
+      };
+    }
+    if (status === 504 || (status === 503 && isProviderCapacityMessage(body, msg))) {
+      return {
+        failure_class: "upstream_capacity",
+        rule_id: status === 504 ? "http-504-timeout" : "provider-5xx-capacity",
+        retry_after_seconds: retryAfterSeconds,
+        scope: "route",
+      };
+    }
     return {
       failure_class: "server_error",
       rule_id: "http-5xx",
@@ -364,12 +420,7 @@ export function classifyProviderFailure({ status, body, headers, route }) {
 
   // 5. HTTP 429 -> walk FAILURE_SIGNATURES
   if (status === 429) {
-    const rawMsg =
-      body?.error?.message ||
-      body?.message ||
-      body?.detail ||
-      (typeof body === "string" ? body : "");
-    const msg = String(rawMsg || "").toLowerCase();
+    const msg = providerFailureMessage(body);
     const routeProvider = route?.provider || "";
 
     const matchContext = { status, body, headers: normHeaders, msg };
