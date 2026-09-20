@@ -1992,6 +1992,15 @@ explicit that a knob sized against an assumed ceiling is the bug class to avoid,
 6 points of headroom under the threshold are deliberate and the next change here should be driven by
 a measured `rows written` figure from Workers Logs rather than this estimate.
 
+**2026-09-20 active-bundle concurrency experiment.** `MAX_ACTIVE_BUNDLES` increases from 2 to 3
+while `MAX_BUNDLES_PER_UTC_DAY`, `MAX_JOBS_PER_UTC_DAY`, `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`,
+`MAX_IN_FLIGHT_LLM_CALLS`, and bundle size remain unchanged. The change addresses observed queue
+stalling when two slow bundles occupy both admission slots; it does not increase the daily write
+budget or the number of bundles admitted by itself. Nominally, one additional full bundle costs
+about 32 dispatch-lifecycle row writes at the four-job design baseline, or 39 at the current
+five-job setting, before retry amplification. Roll back to 2 if provider failures, lease expiry,
+or measured DO row writes increase materially.
+
 **Not adopted.** Raising toward the ~66,620/day aggregate free-route provider capacity. That is a
 provider-side number; the Free-tier DO write budget is two orders of magnitude tighter and is what
 governs. Reaching it needs Workers Paid or a second DO to shard the write budget, which is

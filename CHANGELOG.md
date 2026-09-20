@@ -47,6 +47,13 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **LLM dispatcher active-bundle concurrency increased from 2 to 3** (`workers/llm-dispatch-v2`;
+  review/44). This is a bounded throughput experiment for slow bundles: daily bundle, job, and
+  ingress-write caps are unchanged, so projected DO row-write usage does not increase unless the
+  additional slot actually drains more work. The nominal cost of one extra full bundle is about
+  32 writes at the four-job design baseline, or 39 with the current five-job bundle setting.
+  Roll back to 2 if provider failures, lease expiry, or measured DO row writes rise materially.
+
 - **Direct-transport failure classification parity & sibling-route capacity retry (PR-6 /
   Initiative 20; review/45 §20.9).**
   - Added failure classification parity to the direct LLM transport in `citypods/compute/llm.py`
