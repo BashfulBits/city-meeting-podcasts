@@ -103,6 +103,28 @@ function parseJsonObject(value, fallback = {}) {
   }
 }
 
+/**
+ * Merge two independently indexed ascending result sets without asking SQLite to globally sort
+ * them.
+ */
+function mergeSortedRows(left, right, limit, compare) {
+  const merged = [];
+  let i = 0;
+  let j = 0;
+  while (merged.length < limit && (i < left.length || j < right.length)) {
+    if (i >= left.length) {
+      merged.push(right[j++]);
+    } else if (j >= right.length) {
+      merged.push(left[i++]);
+    } else if (compare(left[i], right[j]) <= 0) {
+      merged.push(left[i++]);
+    } else {
+      merged.push(right[j++]);
+    }
+  }
+  return merged;
+}
+
 export class LLMSchedulerDO extends DurableObjectBase {
   constructor(ctx, env) {
     super(ctx, env);
@@ -1567,26 +1589,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
       afterId,
       limit
     )];
-    const merged = [];
-    let i = 0;
-    let j = 0;
-    while (merged.length < limit && (i < completedRows.length || j < failedRows.length)) {
-      if (i >= completedRows.length) {
-        merged.push(failedRows[j++]);
-      } else if (j >= failedRows.length) {
-        merged.push(completedRows[i++]);
-      } else {
-        const c = completedRows[i];
-        const f = failedRows[j];
-        if (c.updated_at < f.updated_at || (c.updated_at === f.updated_at && c.id < f.id)) {
-          merged.push(c);
-          i++;
-        } else {
-          merged.push(f);
-          j++;
-        }
-      }
-    }
+    const merged = mergeSortedRows(
+      completedRows,
+      failedRows,
+      limit,
+      (left, right) => left.updated_at - right.updated_at || left.id.localeCompare(right.id)
+    );
     const last = merged.at(-1);
     return {
       terminals: merged.map((row) => ({
@@ -1861,15 +1869,31 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
     if (bundleLimit > 0) {
       const cutoff = now - this._bundleRetentionMs();
-      const ids = [...sql.exec(
-        `SELECT bundle_id FROM bundles
-         WHERE state IN ('completed','expired') AND created_at < ? AND lease_expires_at < ?
-         ORDER BY created_at ASC
-         LIMIT ?`,
+      // Query each terminal state independently so each statement can use the leading state and
+      // created_at columns of idx_bundles_state_created. A combined IN + ORDER BY would make
+      // SQLite read both state ranges into a temp B-tree before applying the LIMIT.
+      const completed = [...sql.exec(
+        `SELECT bundle_id, created_at FROM bundles
+         WHERE state = 'completed' AND created_at < ? AND lease_expires_at < ?
+         ORDER BY created_at ASC LIMIT ?`,
         cutoff,
         now,
         bundleLimit
-      )].map((row) => row.bundle_id);
+      )];
+      const expired = [...sql.exec(
+        `SELECT bundle_id, created_at FROM bundles
+         WHERE state = 'expired' AND created_at < ? AND lease_expires_at < ?
+         ORDER BY created_at ASC LIMIT ?`,
+        cutoff,
+        now,
+        bundleLimit
+      )];
+      const ids = mergeSortedRows(
+        completed,
+        expired,
+        bundleLimit,
+        (left, right) => left.created_at - right.created_at
+      ).map((row) => row.bundle_id);
       for (const chunk of this._chunks(ids)) {
         const placeholders = chunk.map(() => "?").join(",");
         sql.exec(`DELETE FROM bundles WHERE bundle_id IN (${placeholders})`, ...chunk);
@@ -3413,15 +3437,32 @@ export class LLMSchedulerDO extends DurableObjectBase {
       )];
 
       const remaining = limit - carriedOver.length;
-      const newlyEligible = remaining > 0
-        ? [...sql.exec(
-            `SELECT id, payload_key, result_key FROM jobs
-             WHERE state IN ('completed', 'failed') AND updated_at < ?
-             ORDER BY updated_at ASC LIMIT ?`,
-            cutoff,
-            remaining
-          )]
-        : [];
+      let newlyEligible = [];
+      if (remaining > 0) {
+        // Query each terminal state independently so idx_jobs_state_updated_id can satisfy both
+        // the age range and the per-state ordering. The old combined IN + ORDER BY query used a
+        // temp B-tree and read the entire terminal history before returning this small batch.
+        const completed = [...sql.exec(
+          `SELECT id, payload_key, result_key, updated_at FROM jobs
+           WHERE state = 'completed' AND updated_at < ?
+           ORDER BY updated_at ASC, id ASC LIMIT ?`,
+          cutoff,
+          remaining
+        )];
+        const failed = [...sql.exec(
+          `SELECT id, payload_key, result_key, updated_at FROM jobs
+           WHERE state = 'failed' AND updated_at < ?
+           ORDER BY updated_at ASC, id ASC LIMIT ?`,
+          cutoff,
+          remaining
+        )];
+        newlyEligible = mergeSortedRows(
+          completed,
+          failed,
+          remaining,
+          (left, right) => left.updated_at - right.updated_at || left.id.localeCompare(right.id)
+        );
+      }
 
       if (newlyEligible.length > 0) {
         const now = Date.now();

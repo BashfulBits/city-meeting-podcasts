@@ -155,6 +155,7 @@ test("no coordinator statement ever full-scans a table that grows with traffic",
   assert.ok(all.length > 30, "expected the RPC surface to issue a meaningful number of statements");
 
   const offenders = [];
+  const tempSorts = [];
   for (const statement of all) {
     let plan;
     try {
@@ -167,6 +168,12 @@ test("no coordinator statement ever full-scans a table that grows with traffic",
       if (scan && GROWABLE_TABLES.includes(scan[1])) {
         offenders.push(`${detail}  <-  ${statement.query.slice(0, 110)}`);
       }
+      if (
+        detail.includes("USE TEMP B-TREE FOR ORDER BY") &&
+        GROWABLE_TABLES.some((table) => statement.query.includes(` ${table}`))
+      ) {
+        tempSorts.push(`${detail}  <-  ${statement.query.slice(0, 110)}`);
+      }
     }
   }
   assert.deepEqual(
@@ -174,6 +181,12 @@ test("no coordinator statement ever full-scans a table that grows with traffic",
     [],
     "a statement full-scans a growable table; add an index or bound the predicate:\n" +
       offenders.join("\n")
+  );
+  assert.deepEqual(
+    tempSorts,
+    [],
+    "a statement temp-sorts a growable table; split multi-state queries or add an ordered index:\n" +
+      tempSorts.join("\n")
   );
 });
 
