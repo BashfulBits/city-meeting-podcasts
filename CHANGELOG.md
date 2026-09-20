@@ -17,6 +17,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Classify actionable AI Gateway failures before generic retries** (`workers/llm-dispatch-v2`).
+  Gemini's structured `RetryInfo` delay and array-wrapped errors are now read from the single
+  response body. Provider overload 503s and 504 timeouts use the existing route-only upstream
+  capacity retry budget, while explicit provider input/context-limit errors get one bounded
+  requeue after a short route quarantine so a longer-context sibling can serve the job. Malformed
+  response text is retained only as a 4 KiB in-memory classification hint; no new diagnostic rows
+  or per-request writes are added.
+  
 - **Give stuck chapter-agenda reconciliation enough wall-clock budget** (`reconcile-stuck-chapter-agenda.yml`).
   The full deferred-registry maintenance pass now has a 120-minute job budget and a 110-minute
   classify-step limit, leaving time for its report artifact and making a future overrun fail
