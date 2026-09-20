@@ -1224,6 +1224,21 @@ This is the subtle form of the bug class and the reason the guard below needs tw
 query plan says `SEARCH`, not `SCAN`, so it *reads* as correctly indexed while costing
 `O(history)`.
 
+### Follow-up: split terminal state ranges (2026-09-20)
+
+The ordered index removed the original state-only filter cost but did not remove every form of
+history-dependent work. SQLite still built a temp B-tree when `purgePendingBatch` combined
+`completed` and `failed` with one global `ORDER BY updated_at`, so an hourly cleanup could read
+roughly the full terminal history before returning its small batch (about 18,000 rows in the
+observed case).
+
+`purgePendingBatch` now performs separate `completed` and `failed` seeks, each ordered by
+`(updated_at, id)`, and merges at most `2 * limit` rows in memory. Bundle pruning applies the same
+pattern to `completed` and `expired` rows ordered by `created_at`. The whole-surface guard now
+rejects temp B-trees used for ordering on growable tables, and the functional tests verify that
+the two terminal states remain globally age-ordered without changing the batch limit. This is an
+implementation-only fix: no schema migration, pipeline-version bump, or backfill is required.
+
 ### Standing guard: `workers/llm-dispatch-v2/test/rows-read.test.js`
 
 Per-query plan assertions only protect the queries someone thought to assert on. The guard asserts

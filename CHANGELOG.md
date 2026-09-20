@@ -17,6 +17,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Bound v2 Durable Objects cleanup row reads** (`workers/llm-dispatch-v2`). Terminal job cleanup
+  and bundle pruning now query each terminal state separately and merge bounded per-state results
+  in memory, avoiding SQLite temp-B-tree global sorts that read terminal history before applying
+  `LIMIT`. The row-read regression guard now rejects those plans on growable tables; no schema,
+  pipeline, or backfill change is required.
+
 - **Bound stuck chapter-agenda reconciliation's v2 cancellation writes**
   (`reconcile-stuck-chapter-agenda.yml`, `scripts/reconcile_stuck_chapter_agenda.py`). Apply runs
   now default to a conservative 25,000 billed row-write budget, retain candidates beyond the budget

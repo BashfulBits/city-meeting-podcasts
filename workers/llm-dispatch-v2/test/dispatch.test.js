@@ -812,17 +812,44 @@ test("claimDispatchWindow's two per-tick bundles statements are index seeks, nev
   assert.equal(plan.jobs.length, 1);
 });
 
-test("purgePendingBatch's terminal-job lookup is an index seek, never a scan of every completed job", async () => {
+test("purgePendingBatch's terminal-job lookups are bounded per-state index seeks", async () => {
   const { sql } = makeCoordinator();
-  const plan = planOf(
-    sql,
-    "SELECT id, payload_key, result_key FROM jobs WHERE state IN ('completed','failed')" +
-      " AND updated_at < ? ORDER BY updated_at ASC LIMIT ?",
-    Date.now(),
-    10
+  for (const state of ["completed", "failed"]) {
+    const plan = planOf(
+      sql,
+      `SELECT id, payload_key, result_key, updated_at FROM jobs
+       WHERE state = '${state}' AND updated_at < ?
+       ORDER BY updated_at ASC, id ASC LIMIT ?`,
+      Date.now(),
+      10
+    );
+    assert.match(plan, /SEARCH jobs USING INDEX idx_jobs_state_updated_id/);
+    assert.doesNotMatch(plan, /SCAN|TEMP B-TREE/);
+  }
+});
+
+test("purgePendingBatch merges completed and failed rows by age without changing its limit", async () => {
+  const { coordinator, sql } = makeCoordinator({ COMPLETED_RETENTION_DAYS: "1" });
+  const ids = ["completed-old", "failed-old", "completed-mid", "failed-mid", "recent"];
+  await coordinator.enqueueBatch(ids.map((id) => makeJob(id)));
+  const now = Date.now();
+  const updates = [
+    ["completed-old", "completed", now - 5 * 86_400_000],
+    ["failed-old", "failed", now - 4 * 86_400_000],
+    ["completed-mid", "completed", now - 3 * 86_400_000],
+    ["failed-mid", "failed", now - 2 * 86_400_000],
+    ["recent", "completed", now - 12 * 60 * 60 * 1000],
+  ];
+  for (const [id, state, updatedAt] of updates) {
+    sql.exec("UPDATE jobs SET state=?, updated_at=? WHERE id=?", state, updatedAt, id);
+  }
+
+  const pending = await coordinator.purgePendingBatch(4);
+  assert.deepEqual(
+    pending.jobs.map((job) => job.id),
+    ["completed-old", "failed-old", "completed-mid", "failed-mid"]
   );
-  assert.match(plan, /SEARCH jobs USING INDEX idx_jobs_state_updated/);
-  assert.doesNotMatch(plan, /SCAN/);
+  assert.equal([...sql.exec("SELECT COUNT(*) n FROM jobs WHERE state='purge_pending'")][0].n, 4);
 });
 
 test("_pruneTerminalRecords deletes aged-out terminal bundles and attempts, bounded per tick", async () => {
