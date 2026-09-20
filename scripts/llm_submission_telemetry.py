@@ -49,6 +49,7 @@ def _scheduler_summary(body: Mapping[str, object]) -> dict[str, object]:
 
 
 def snapshot(phase: str) -> int:
+    """Record one best-effort, payload-free snapshot of the v2 scheduler."""
     url = os.environ.get("CITYPODS_LLM_DISPATCH_V2_URL") or os.environ.get("LLM_DISPATCH_V2_URL")
     token = os.environ.get("CITYPODS_LLM_DISPATCH_V2_AUTH_TOKEN") or os.environ.get(
         "LLM_DISPATCH_V2_AUTH_TOKEN"
@@ -73,6 +74,7 @@ def snapshot(phase: str) -> int:
 
 
 def report() -> int:
+    """Render recorded workflow telemetry to the Actions summary and standard output."""
     path = Path(os.environ.get(TELEMETRY_FILE_ENV, ""))
     events: list[Mapping[str, object]] = []
     if path.is_file():
@@ -96,6 +98,7 @@ def report() -> int:
 
 
 def main() -> int:
+    """Parse the telemetry command and run its selected subcommand."""
     parser = argparse.ArgumentParser(description=__doc__)
     subcommands = parser.add_subparsers(dest="command", required=True)
     snapshot_parser = subcommands.add_parser("snapshot")

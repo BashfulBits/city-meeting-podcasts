@@ -2179,6 +2179,14 @@ class LiteLLMBackend(Backend):
             for idx in uncached_indices:
                 job = jobs[idx]
                 out[idx] = self.run_inference(job)
+            record_enqueue_outcomes(
+                telemetry_outcomes,
+                elapsed_seconds=time.monotonic() - enqueue_started,
+                payload_stage_seconds=0.0,
+                request_seconds=0.0,
+                persist_seconds=0.0,
+                transport_retries=0,
+            )
             return [cast("JobResult | JobHandle", r) for r in out]
 
         prepared_jobs: list[dict[str, Any]] = []
@@ -3166,6 +3174,7 @@ class BatchingDispatchBackend:
         )
 
         def _observe_locked(status: str) -> None:
+            """Record one collector disposition while the collector lock is held."""
             observations = self._producer_observations.setdefault(telemetry_key, {})
             observations[status] = observations.get(status, 0) + 1
 
