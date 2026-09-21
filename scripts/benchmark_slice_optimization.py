@@ -1,5 +1,4 @@
-"""Benchmark script comparing slicing materialized lists vs `itertools.islice`.
-"""
+"""Benchmark script comparing slicing materialized lists vs `itertools.islice`."""
 
 import itertools
 import sys
