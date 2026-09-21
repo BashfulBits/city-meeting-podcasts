@@ -497,9 +497,9 @@ def validate_completed(candidate: OwnedRequest, response: Mapping[str, Any]) -> 
         return False
     try:
         _ensure_contract(candidate.structured_output)
-        from citypods.compute.structured import response_model
+        from citypods.compute.structured import parse_structured_json, response_model
 
-        response_model(candidate.structured_output).model_validate_json(content)
+        response_model(candidate.structured_output).model_validate(parse_structured_json(content))
     except (TypeError, ValueError):
         return False
     return True

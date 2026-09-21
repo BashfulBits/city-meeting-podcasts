@@ -11,6 +11,7 @@ from citypods.compute.llm_submission_telemetry import (
     record_stage_activity,
     render_markdown,
 )
+from scripts.llm_submission_telemetry import _scheduler_summary
 
 
 def _job(*, purpose: str = "topic-tags", model: str = "gemini/gemini-3.1-flash-lite"):
@@ -96,3 +97,30 @@ def test_submission_telemetry_is_quiet_without_a_destination(monkeypatch):
         persist_seconds=0.0,
         transport_retries=0,
     )
+
+
+def test_scheduler_summary_matches_worker_stats_shape():
+    summary = _scheduler_summary(
+        {
+            "jobs": {"by_state": {"queued": 12}},
+            "queued_by_model": {"gemini/gemini-3.6-flash": 8},
+            "bundles": {"active": 2, "active_call_count": 7},
+            "scheduler": {"bundle_count_today": 19, "jobs_ingested_today": 83},
+            "claim": {
+                "last_reason": "active_bundle_limit",
+                "empty_count_today": 4,
+                "reason_counts_today": {"active_bundle_limit": 11},
+            },
+        }
+    )
+    assert summary == {
+        "active_bundles": 2,
+        "active_calls": 7,
+        "queued": 12,
+        "claimed": 19,
+        "ingested": 83,
+        "last_reason": "active_bundle_limit",
+        "empty_claims": 4,
+        "reason_counts": {"active_bundle_limit": 11},
+        "queued_by_model": {"gemini/gemini-3.6-flash": 8},
+    }

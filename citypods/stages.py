@@ -1144,11 +1144,9 @@ class MomentsStage:
                 queue_only=True,
                 timeout_class="long",
             )
-            with ctx.moment_dispatch_lock:
-                if ctx.moment_dispatches >= ctx.moment_max_dispatches:
-                    stats.defer("rollout-dispatch-cap", sample=ep.uid or ep.guid)
-                    continue
-                ctx.moment_dispatches += 1
+            admission = _admit_r6_dispatch(ctx, stats, moments_recipe, ep.uid or ep.guid)
+            if admission in {"pending", "cap"}:
+                continue
             try:
                 outcome = ctx.moment_backend.run_inference(
                     InferenceJob(
@@ -1158,7 +1156,7 @@ class MomentsStage:
                     )
                 )
                 if isinstance(outcome, JobHandle):
-                    stats.defer("llm-capacity", sample=ep.uid or ep.guid)
+                    stats.defer("llm-pending", sample=ep.uid or ep.guid)
                     continue
                 if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):
                     raise ValueError("moment backend returned an invalid result")
@@ -1274,6 +1272,25 @@ def _moment_source(
     return resolved, f"{source_id}:{identity}"
 
 
+def _admit_r6_dispatch(ctx: StageContext, stats: StageStats, recipe_hash: str, sample: str) -> str:
+    """Reserve the shared R6 budget only for a genuinely new queue admission."""
+    from citypods.compute.base import JobHandle, JobResult
+    from citypods.compute.llm_deferred import look_up_deferred
+
+    existing = look_up_deferred(ctx.storage, recipe_hash)
+    if isinstance(existing, JobHandle):
+        stats.defer("llm-pending", sample=sample)
+        return "pending"
+    if isinstance(existing, JobResult):
+        return "cached"
+    with ctx.moment_dispatch_lock:
+        if ctx.moment_dispatches >= ctx.moment_max_dispatches:
+            stats.defer("rollout-dispatch-cap", sample=sample)
+            return "cap"
+        ctx.moment_dispatches += 1
+    return "admitted"
+
+
 class MomentJudgeStage:
     """Run independent, candidate-only judges in the background without candidate authority."""
 
@@ -1330,11 +1347,12 @@ class MomentJudgeStage:
                     if ctx.stop and ctx.stop():
                         stats.defer("stop")
                         break
-                    with ctx.moment_dispatch_lock:
-                        if ctx.moment_dispatches >= ctx.moment_max_dispatches:
-                            stats.defer("rollout-dispatch-cap", sample=ep.uid or ep.guid)
-                            return stats
-                        ctx.moment_dispatches += 1
+                    judge_recipe = f"{candidate.get('candidate_id')}:{model}:{JUDGE_PROMPT_VERSION}"
+                    admission = _admit_r6_dispatch(ctx, stats, judge_recipe, ep.uid or ep.guid)
+                    if admission == "pending":
+                        continue
+                    if admission == "cap":
+                        return stats
                     inputs: dict[str, Any] = {
                         "messages": [
                             {
@@ -1357,18 +1375,26 @@ class MomentJudgeStage:
                         InferenceJob(
                             task="moment-judge",
                             inputs=inputs,
-                            recipe_hash=f"{candidate.get('candidate_id')}:{model}:{JUDGE_PROMPT_VERSION}",
+                            recipe_hash=judge_recipe,
                         )
                     )
                     if isinstance(outcome, JobHandle):
-                        stats.defer("judge-capacity", sample=ep.uid or ep.guid)
+                        stats.defer("llm-pending", sample=ep.uid or ep.guid)
                         continue
                     if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):
                         stats.quality("judge-invalid-response")
                         continue
                     try:
                         content = outcome.output["choices"][0]["message"]["content"]
-                        payload = ensure_judge_contract().model_validate_json(content).model_dump()
+                        from citypods.compute.structured import parse_structured_json
+
+                        payload = (
+                            ensure_judge_contract()
+                            .model_validate(
+                                parse_structured_json(content, context="moment judge response")
+                            )
+                            .model_dump()
+                        )
                     except (KeyError, IndexError, TypeError, ValueError):
                         stats.quality("judge-invalid-response")
                         continue
@@ -2365,7 +2391,10 @@ class TagsStage:
                                 model=prelabeler_model,
                                 reason=str(exc)[:500],
                             )
-                            stats.errors.append(f"{ep.uid or ep.guid}: pre-labeler failed: {exc}")
+                            stats.errors.append(
+                                f"{ep.uid or ep.guid}: pre-labeler model={prelabeler_model} "
+                                f"failed: {exc}"
+                            )
 
             # Re-project after the evaluator attempt. This is intentionally cheap and makes the
             # overlay a pure function of the persisted ledger + calibration state; a deferred or
@@ -8621,7 +8650,9 @@ class AgendaChapterCandidatesStage:
                 stats.ran += 1
             except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort the
                 # finalize pass for every other episode
-                stats.errors.append(f"{uid}: agenda chapter extraction: {exc}")
+                stats.errors.append(
+                    f"{uid}: agenda chapter extraction model={result.model or 'unknown'}: {exc}"
+                )
         return stats
 
 
@@ -8836,7 +8867,9 @@ class ChapterBoundaryLocatorStage:
                 stats.ran += 1
             except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort the
                 # finalize pass for every other episode
-                stats.errors.append(f"{uid}: chapter locator: {exc}")
+                stats.errors.append(
+                    f"{uid}: chapter locator model={result.model or 'unknown'}: {exc}"
+                )
         return stats
 
 

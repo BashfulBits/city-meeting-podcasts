@@ -29,7 +29,7 @@ from citypods.compute.llm import (
 )
 from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import LLMRequestPolicy
-from citypods.compute.structured import register_response_model
+from citypods.compute.structured import parse_structured_json, register_response_model
 from citypods.config import load_city_configs, load_site_config
 from citypods.records import iter_records, record_to_episode, source_key
 from citypods.review_issues import render_decision_block
@@ -274,7 +274,9 @@ def _finalize_pairwise_judge(result: JobResult, spec: PairwiseEvaluatorSpec) -> 
     """Parse a resolved judge JobResult into a decision dict -- the other half of the old
     single-call `pairwise_judge`, split out so `run()`'s batched dispatch can build every
     comparison's job up front, submit them all in one call, and finalize each result separately."""
-    decision = _judge_model(spec.contract).model_validate_json(_content(result))
+    decision = _judge_model(spec.contract).model_validate(
+        parse_structured_json(_content(result), context="pairwise judge response")
+    )
     return {"winner": decision.winner, "rationale": decision.rationale}
 
 

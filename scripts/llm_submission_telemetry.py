@@ -27,24 +27,21 @@ def _scheduler_summary(body: Mapping[str, object]) -> dict[str, object]:
     jobs = jobs if isinstance(jobs, Mapping) else {}
     by_state = jobs.get("by_state")
     by_state = by_state if isinstance(by_state, Mapping) else {}
-    active = body.get("active")
-    active = active if isinstance(active, Mapping) else {}
+    bundles = body.get("bundles")
+    bundles = bundles if isinstance(bundles, Mapping) else {}
+    claim = body.get("claim")
+    claim = claim if isinstance(claim, Mapping) else {}
+    queued_by_model = body.get("queued_by_model")
     return {
-        "active_bundles": active.get("bundles"),
-        "active_calls": active.get("calls"),
+        "active_bundles": bundles.get("active"),
+        "active_calls": bundles.get("active_call_count"),
         "queued": by_state.get("queued"),
         "claimed": scheduler.get("bundle_count_today"),
         "ingested": scheduler.get("jobs_ingested_today"),
-        "last_reason": (scheduler.get("claim") or {}).get("last_reason")
-        if isinstance(scheduler.get("claim"), Mapping)
-        else None,
-        "empty_claims": (scheduler.get("claim") or {}).get("empty_count_today")
-        if isinstance(scheduler.get("claim"), Mapping)
-        else None,
-        "reason_counts": (scheduler.get("claim") or {}).get("reason_counts_today")
-        if isinstance(scheduler.get("claim"), Mapping)
-        else None,
-        "queued_by_model": jobs.get("queued_by_model"),
+        "last_reason": claim.get("last_reason"),
+        "empty_claims": claim.get("empty_count_today"),
+        "reason_counts": claim.get("reason_counts_today"),
+        "queued_by_model": queued_by_model if isinstance(queued_by_model, Mapping) else None,
     }
 
 
