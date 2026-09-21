@@ -695,7 +695,8 @@ def test_agenda_stage_failed_batch_job_does_not_consume_dispatch_quota(tmp_path:
 
 
 def test_episode_needs_chapter_agenda_evaluates_correctly():
-    from citypods.stages import episode_needs_chapter_agenda
+    from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL
+    from citypods.stages import CHAPTER_AGENDA_PIPELINE_VERSION, episode_needs_chapter_agenda
 
     ep = _make_episode("ep-eval")
     # Brand new with agenda link
@@ -710,11 +711,38 @@ def test_episode_needs_chapter_agenda_evaluates_correctly():
     ep.generated_agenda_candidates = {"status": "pending"}
     assert episode_needs_chapter_agenda(ep) is True
 
-    # Completed or accepted
-    ep.generated_agenda_candidates = {"status": "completed"}
+    # Completed or accepted under the CURRENT model/pipeline_version -- genuinely reusable.
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "model": AGENDA_PRODUCTION_MODEL,
+        "pipeline_version": CHAPTER_AGENDA_PIPELINE_VERSION,
+    }
     assert episode_needs_chapter_agenda(ep) is False
-    ep.generated_agenda_candidates = {"status": "accepted"}
+    ep.generated_agenda_candidates = {
+        "status": "accepted",
+        "model": AGENDA_PRODUCTION_MODEL,
+        "pipeline_version": CHAPTER_AGENDA_PIPELINE_VERSION,
+    }
     assert episode_needs_chapter_agenda(ep) is False
+
+    # Completed under a STALE pipeline_version -- this is the actual pre-filter `run.py` applies
+    # before AgendaChapterCandidatesStage.process() ever runs (--lane chapter-agenda/chapter);
+    # without this check a completed-but-stale episode would never reach that stage's own
+    # is_current_artifact check at all, silently defeating a CHAPTER_AGENDA_PIPELINE_VERSION bump.
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "model": AGENDA_PRODUCTION_MODEL,
+        "pipeline_version": "0-stale",
+    }
+    assert episode_needs_chapter_agenda(ep) is True
+
+    # Completed under a retired model.
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "model": "mistral/mistral-medium-2508",
+        "pipeline_version": CHAPTER_AGENDA_PIPELINE_VERSION,
+    }
+    assert episode_needs_chapter_agenda(ep) is True
 
     # Provider chapters present but not yet reconciled
     ep.source_chapters = [{"start": 0, "title": "Call to order"}]

@@ -50,13 +50,21 @@ Phase R (Research-Tool Surface)._
   `LOCATOR_PROMPT_VERSION` (locator-v1 -> locator-v2) both bumped -- these feed their job's own
   recipe hash, which is what actually lets a fresh dispatch bypass a pre-fix job's dead-end
   terminal record at the Worker rather than being handed the identical broken content again. For
-  chapter-agenda this also forces every previously-*completed* artifact to be re-extracted (not
-  just the ones that errored outright): a "successful" 1024-token-budget response may just have
-  closed valid-but-incomplete JSON before the cap, silently under-counting agenda items rather
-  than failing loudly. Chapter-locator's own reuse gate has no equivalent
-  `is_current_artifact`-style check on `locator_status == "completed"`, so its bump only unsticks
-  currently-pending work, not a full re-verification of historical results -- a known gap, left
-  for a follow-up (see the constant's own comment in `stages.py`). Both re-queues are gradual,
+  both lanes this also forces every previously-*completed* artifact to be re-extracted (not just
+  the ones that errored outright): a "successful" 1024-token-budget response may just have closed
+  valid-but-incomplete JSON before the cap, silently under-counting agenda items/locator anchors
+  rather than failing loudly. `ChapterBoundaryLocatorStage` previously had no
+  `is_current_artifact`-style check of its own on `locator_status == "completed"` reuse (a real
+  gap: a `LOCATOR_PROMPT_VERSION` bump alone would only have dirtied the outer `stage_is_dirty`
+  marker, which the stage would then have silently re-stamped as current without recomputing); it
+  now has one (`is_current_locator_artifact`, comparing each completed episode's stored
+  `locator_model`/`locator_prompt_version` against the current constants), mirroring
+  chapter-agenda's own check. The same gap existed one level higher: `episode_needs_chapter_agenda`
+  /`episode_needs_chapter_locator` -- the pre-filter `run.py` applies to candidate episodes
+  *before* either stage ever runs, for every `--lane chapter-agenda`/`chapter-locator`/`chapter`
+  workflow invocation -- had no staleness awareness at all, so a completed-but-stale episode would
+  never have reached either stage's own reuse check in the first place; both now apply the same
+  model/version check. Both re-queues are gradual,
   bounded by each lane's own `max_dispatches_per_run`/daily budget, not instant.
 
 - **Break StageStats.errors' 3-sample cap and add a reason breakdown** (`citypods/run.py`). A

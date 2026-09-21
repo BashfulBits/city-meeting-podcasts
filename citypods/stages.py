@@ -4419,16 +4419,13 @@ ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-awar
 # what unsticks the backlog that accumulated from the max_tokens bug.
 CHAPTER_AGENDA_PIPELINE_VERSION = "3"
 # NOTE: unlike CHAPTER_AGENDA_PIPELINE_VERSION, this constant is NOT wired into the locator job's
-# own recipe_hash (build_locator_job's recipe_parts never includes it) and
-# ChapterBoundaryLocatorStage has no `is_current_artifact`-equivalent check on
-# `locator_status == "completed"` reuse -- bumping
-# it alone would only dirty the stage_is_dirty() marker, which process() would then just silently
-# re-stamp as current without recomputing (the exact "laundering stale output as current" failure
-# stage_input_fingerprint's own docstring warns chapter_agenda's is_current_artifact check exists
-# to prevent). The real lever for forcing a fresh locator recipe is chapter_jobs.py's
-# LOCATOR_PROMPT_VERSION, which IS in the job recipe; see its own bump comment for the backfill
-# story. A future fix wiring a real pipeline_version/model check into ChapterBoundaryLocatorStage's
-# own reuse gate would make this constant meaningful too.
+# own recipe_hash (build_locator_job's recipe_parts never includes it) -- the real lever for
+# forcing a fresh locator recipe is chapter_jobs.py's LOCATOR_PROMPT_VERSION, which IS in the job
+# recipe; see its own bump comment for the backfill story. ChapterBoundaryLocatorStage.process()
+# now has its own is_current_locator_artifact check (mirroring chapter-agenda's is_current_artifact
+# against LOCATOR_MODEL/LOCATOR_PROMPT_VERSION, not this constant), so a LOCATOR_PROMPT_VERSION
+# bump does correctly force re-extraction of historical "completed" locator results, the same way
+# a CHAPTER_AGENDA_PIPELINE_VERSION bump does for chapter-agenda's own catalog.
 CHAPTER_LOCATOR_PIPELINE_VERSION = "1"
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
@@ -8696,7 +8693,12 @@ class ChapterBoundaryLocatorStage:
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
         from citypods.chapter_artifacts import AgendaCandidatesArtifact, artifact_key
-        from citypods.chapter_jobs import build_locator_job, finalize_locator_job
+        from citypods.chapter_jobs import (
+            LOCATOR_MODEL,
+            LOCATOR_PROMPT_VERSION,
+            build_locator_job,
+            finalize_locator_job,
+        )
         from citypods.chapter_locator import build_locator_units
         from citypods.compute.base import JobHandle, JobResult
         from citypods.compute.llm import dispatch_job_batch
@@ -8744,7 +8746,22 @@ class ChapterBoundaryLocatorStage:
                 continue
 
             locator_status = raw_agenda.get("locator_status")
-            if locator_status in {"completed", "accepted", "not_applicable"}:
+            # Mirrors AgendaChapterCandidatesStage's own is_current_artifact check (see its
+            # comment): a completed/accepted locator result is only safe to reuse if it was
+            # produced by the CURRENTLY configured model under the CURRENT prompt version.
+            # LOCATOR_PROMPT_VERSION feeds build_locator_job's own recipe hash directly (see that
+            # constant's bump comment), so without this check a version bump would only dirty
+            # stage_is_dirty's outer marker -- process() would reach this branch, "reuse" the
+            # stale result anyway, and _mark_stage_complete would re-stamp it under the fresh
+            # fingerprint, permanently laundering stale output as current.
+            is_current_locator_artifact = locator_status == "not_applicable" or (
+                raw_agenda.get("locator_model") == LOCATOR_MODEL
+                and raw_agenda.get("locator_prompt_version") == LOCATOR_PROMPT_VERSION
+            )
+            if (
+                locator_status in {"completed", "accepted", "not_applicable"}
+                and is_current_locator_artifact
+            ):
                 stats.reused += 1
                 continue
 
@@ -8890,6 +8907,10 @@ class ChapterBoundaryLocatorStage:
                 ep.generated_agenda_candidates = {
                     **dict(raw_agenda),
                     "locator_status": "completed",
+                    # Recorded so the reuse check above (is_current_locator_artifact) can tell a
+                    # stale completion from a current one on a later run.
+                    "locator_model": boundary.model,
+                    "locator_prompt_version": boundary.prompt_version,
                     "boundary_artifact_key": boundary_key,
                     "boundary_artifact_url": boundary_url,
                     "transcript_unit_source": unit_source,
@@ -8915,17 +8936,45 @@ class ChapterBoundaryLocatorStage:
 
 
 def episode_needs_chapter_agenda(ep: Episode) -> bool:
-    """Return True if episode requires agenda chapter extraction or status reconciliation."""
+    """Return True if episode requires agenda chapter extraction or status reconciliation.
+
+    This is the pre-filter `run.py` applies to `state["candidate_episodes"]` *before*
+    `AgendaChapterCandidatesStage.process()` ever sees an episode (`--lane chapter-agenda`/
+    `chapter` invocations, i.e. every production chapter-agenda workflow run). It must apply the
+    same staleness check that stage's own `is_current_artifact` does -- otherwise a completed
+    episode produced under a retired model or a since-bumped CHAPTER_AGENDA_PIPELINE_VERSION would
+    never reach the stage at all, silently defeating that stage's own reuse-eligibility check and
+    leaving the "current artifacts get re-extracted" backfill promise (see
+    CHAPTER_AGENDA_PIPELINE_VERSION's own bump comment) unfulfilled for this lane invocation.
+    """
     if ep.source_chapters:
         return (ep.generated_agenda_candidates or {}).get("status") != "not_applicable"
     if not (ep.links or {}).get("agenda_text_artifact_key"):
         return False
-    status = (ep.generated_agenda_candidates or {}).get("status")
-    return status not in {"completed", "accepted", "not_applicable"}
+    raw_agenda = ep.generated_agenda_candidates or {}
+    status = raw_agenda.get("status")
+    if status not in {"completed", "accepted", "not_applicable"}:
+        return True
+    if status == "not_applicable":
+        return False
+    from citypods.chapter_titles import AGENDA_BACKUP_MODELS, AGENDA_PRODUCTION_MODELS
+
+    is_current_artifact = (
+        raw_agenda.get("model") in {*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS}
+        and raw_agenda.get("pipeline_version") == CHAPTER_AGENDA_PIPELINE_VERSION
+    )
+    return not is_current_artifact
 
 
 def episode_needs_chapter_locator(ep: Episode) -> bool:
-    """Return True if episode requires chapter boundary location in its timed transcript."""
+    """Return True if episode requires chapter boundary location in its timed transcript.
+
+    Same reasoning as `episode_needs_chapter_agenda` above, mirrored against
+    `ChapterBoundaryLocatorStage.process()`'s own `is_current_locator_artifact` check: this
+    pre-filter must recognize a stale completed locator result (produced under a since-bumped
+    LOCATOR_PROMPT_VERSION or a retired LOCATOR_MODEL) as still needing work, or it never reaches
+    that stage's own check at all.
+    """
     if ep.source_chapters:
         return (ep.generated_agenda_candidates or {}).get("locator_status") != "not_applicable"
     raw_agenda = ep.generated_agenda_candidates or {}
@@ -8934,7 +8983,17 @@ def episode_needs_chapter_locator(ep: Episode) -> bool:
     if not ep.transcript_words_key and not ep.transcript_key:
         return False
     locator_status = raw_agenda.get("locator_status")
-    return locator_status not in {"completed", "accepted", "not_applicable"}
+    if locator_status not in {"completed", "accepted", "not_applicable"}:
+        return True
+    if locator_status == "not_applicable":
+        return False
+    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+
+    is_current_locator_artifact = (
+        raw_agenda.get("locator_model") == LOCATOR_MODEL
+        and raw_agenda.get("locator_prompt_version") == LOCATOR_PROMPT_VERSION
+    )
+    return not is_current_locator_artifact
 
 
 def default_stages() -> list[EnrichmentStage]:

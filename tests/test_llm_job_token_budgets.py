@@ -70,7 +70,6 @@ def _dict_literal_span(text: str, key_index: int) -> tuple[int, int] | None:
     return None
 
 
-
 # Only a `"structured_output":` dict-KEY occurrence is a candidate job-payload literal -- this
 # deliberately excludes reads like `job.inputs.get("structured_output")` and keyword arguments
 # like `structured_output=data.get(...)` (JobHandle/JobResult deserialization), neither of which

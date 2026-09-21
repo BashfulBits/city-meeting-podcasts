@@ -306,6 +306,95 @@ def test_locator_stage_finalizes_and_filters_non_accepted_items(tmp_path: Path):
     assert boundary_key.startswith("state/generated_chapters/boundary/ep-filter-")
     assert storage.exists(boundary_key)
 
+    # A completed result records the model/prompt_version it was produced under, so a later
+    # LOCATOR_PROMPT_VERSION/LOCATOR_MODEL bump can tell this artifact apart from a stale one
+    # (see test_locator_stage_reprocesses_a_completed_episode_under_a_stale_prompt_version below).
+    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+
+    assert ep.generated_agenda_candidates["locator_model"] == LOCATOR_MODEL
+    assert ep.generated_agenda_candidates["locator_prompt_version"] == LOCATOR_PROMPT_VERSION
+
+
+def test_locator_stage_reprocesses_a_completed_episode_under_a_stale_prompt_version(
+    tmp_path: Path,
+):
+    """Mirrors AgendaChapterCandidatesStage's own
+    test_stage_reprocesses_a_completed_episode_under_a_retired_model: a completed locator result
+    is only current -- and safe to reuse -- if it matches the CURRENT LOCATOR_MODEL/
+    LOCATOR_PROMPT_VERSION. Without this check, stage_is_dirty's fingerprint (which does bake in
+    LOCATOR_PROMPT_VERSION via stage_input_fingerprint's own "recipe" field) makes the episode
+    dirty, and this stage would otherwise "reuse" the stale artifact and re-stamp it as current,
+    permanently laundering it -- exactly the failure mode CHAPTER_LOCATOR_PIPELINE_VERSION's own
+    comment warns this class of bug produces."""
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-stale-locator-completed")
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    ep.generated_agenda_candidates.update(
+        {
+            "locator_status": "completed",
+            "locator_model": "gemini/gemini-3.5-flash-lite",
+            "locator_prompt_version": "locator-v1",
+            "boundary_artifact_key": "state/generated_chapters/boundary/stale-key",
+        }
+    )
+
+    model_output = json.dumps(
+        {
+            "anchors": [
+                {
+                    "agenda_item_index": 0,
+                    "unit_id": "u00001",
+                    "transition_quote": "Meeting is called to order",
+                    "confidence": 0.95,
+                    "rationale": "Chair calls to order",
+                }
+            ]
+        }
+    )
+    result = JobResult(
+        task="agenda-chapter-locate",
+        recipe_hash="recipe-locator-fresh-1",
+        output={"choices": [{"message": {"content": model_output}}]},
+    )
+    backend = FakeBackend(result)
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.ran == 1
+    assert stats.reused == 0
+
+    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+
+    assert ep.generated_agenda_candidates["locator_model"] == LOCATOR_MODEL
+    assert ep.generated_agenda_candidates["locator_prompt_version"] == LOCATOR_PROMPT_VERSION
+
+
+def test_locator_stage_reuses_a_completed_episode_that_is_already_current(tmp_path: Path):
+    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-current-locator-completed")
+    ep.generated_agenda_candidates.update(
+        {
+            "locator_status": "completed",
+            "locator_model": LOCATOR_MODEL,
+            "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+        }
+    )
+    backend = FakeBackend()  # must never be called
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.reused == 1
+    assert stats.ran == 0
+    assert backend.enqueue_calls == []
+
 
 def test_locator_stage_clears_pending_state_when_finalize_fails(tmp_path: Path):
     """A JobResult that fails finalize_locator_job (e.g. an out-of-range/hallucinated unit
@@ -522,6 +611,7 @@ def test_locator_stage_failed_batch_job_does_not_consume_dispatch_quota(tmp_path
 
 
 def test_episode_needs_chapter_locator_evaluates_correctly():
+    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
     from citypods.stages import episode_needs_chapter_locator
 
     ep = _make_episode("ep-loc-eval")
@@ -538,11 +628,39 @@ def test_episode_needs_chapter_locator_evaluates_correctly():
     ep.generated_agenda_candidates = {"status": "pending"}
     assert episode_needs_chapter_locator(ep) is False
 
-    # Locator already completed or accepted
+    # Locator already completed or accepted under the CURRENT model/prompt_version -- genuinely
+    # reusable.
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "locator_status": "completed",
+        "locator_model": LOCATOR_MODEL,
+        "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+    }
+    assert episode_needs_chapter_locator(ep) is False
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "locator_status": "accepted",
+        "locator_model": LOCATOR_MODEL,
+        "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+    }
+    assert episode_needs_chapter_locator(ep) is False
+
+    # Completed under a STALE locator_prompt_version -- this is the actual pre-filter `run.py`
+    # applies before ChapterBoundaryLocatorStage.process() ever runs (--lane chapter-locator/
+    # chapter); without this check a completed-but-stale episode would never reach that stage's
+    # own is_current_locator_artifact check, silently defeating a LOCATOR_PROMPT_VERSION bump.
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "locator_status": "completed",
+        "locator_model": LOCATOR_MODEL,
+        "locator_prompt_version": "locator-v0-stale",
+    }
+    assert episode_needs_chapter_locator(ep) is True
+
+    # Completed with no recorded model/version at all (legacy data predating this check) is
+    # treated the same as stale -- it cannot be confirmed current, so it is redone.
     ep.generated_agenda_candidates = {"status": "completed", "locator_status": "completed"}
-    assert episode_needs_chapter_locator(ep) is False
-    ep.generated_agenda_candidates = {"status": "completed", "locator_status": "accepted"}
-    assert episode_needs_chapter_locator(ep) is False
+    assert episode_needs_chapter_locator(ep) is True
 
     # Provider chapters present but not yet reconciled
     ep.source_chapters = [{"start": 0, "title": "Call to order"}]

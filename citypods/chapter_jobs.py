@@ -48,8 +48,12 @@ AGENDA_PROMPT_VERSION = "agenda-flow"
 # truncated mid-JSON. Bumping this is what changes the recipe hash so a fresh dispatch cannot be
 # served the same dead-end terminal result a pre-fix job left behind at the Worker -- combined
 # with ChapterBoundaryLocatorStage's finalize-failure state reset (which stops an episode wedged
-# in "pending" on that dead recipe from retrying it forever), this is what lets the backlog that
-# accumulated from the max_tokens bug actually drain with the fix applied.
+# in "pending" on that dead recipe from retrying it forever) and its is_current_locator_artifact
+# reuse check (which compares this value against each completed episode's stored
+# locator_prompt_version before reusing it, so this bump also forces re-extraction of every
+# already-completed locator result, not just currently-stuck work -- mirroring
+# stages.CHAPTER_AGENDA_PIPELINE_VERSION's own backfill story), this is what lets the backlog
+# that accumulated from the max_tokens bug actually drain with the fix applied.
 LOCATOR_PROMPT_VERSION = "locator-v2"
 
 
