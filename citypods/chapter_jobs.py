@@ -13,6 +13,7 @@ from citypods.chapter_artifacts import (
     recipe_hash,
 )
 from citypods.chapter_locator import (
+    LOCATOR_OUTPUT_TOKEN_RESERVE,
     PRODUCTION_LOCATOR_MODEL,
     LocatorAgendaItem,
     LocatorUnit,
@@ -23,6 +24,7 @@ from citypods.chapter_titles import (
     AGENDA_BACKUP_AFTER_ATTEMPTS,
     AGENDA_BACKUP_MODELS,
     AGENDA_ITEM_EXTRACTOR_CONTRACT,
+    AGENDA_OUTPUT_TOKEN_BUDGET,
     AGENDA_PRODUCTION_MODEL,
     AGENDA_PRODUCTION_MODELS,
     build_production_agenda_item_extraction_request,
@@ -37,7 +39,22 @@ from citypods.compute.llm_policy import LLMRequestPolicy
 LOCATOR_MODEL = PRODUCTION_LOCATOR_MODEL
 # Prompt variant used for all production agenda extraction jobs.
 AGENDA_PROMPT_VERSION = "agenda-flow"
-LOCATOR_PROMPT_VERSION = "locator-v1"
+# THIS STRING FEEDS build_locator_job()'s recipe_hash directly (unlike
+# stages.CHAPTER_LOCATOR_PIPELINE_VERSION, which does not -- see that constant's own comment).
+# Bumped v1 -> v2: every dispatched locator job was missing an explicit max_tokens, silently
+# falling back to LiteLLMBackend's generic 1024-token default instead of the 16384 tokens
+# select_locator_models() already assumes as LOCATOR_OUTPUT_TOKEN_RESERVE when fitting a request
+# into a route's context window (see build_locator_job's own comment). Responses were routinely
+# truncated mid-JSON. Bumping this is what changes the recipe hash so a fresh dispatch cannot be
+# served the same dead-end terminal result a pre-fix job left behind at the Worker -- combined
+# with ChapterBoundaryLocatorStage's finalize-failure state reset (which stops an episode wedged
+# in "pending" on that dead recipe from retrying it forever) and its is_current_locator_artifact
+# reuse check (which compares this value against each completed episode's stored
+# locator_prompt_version before reusing it, so this bump also forces re-extraction of every
+# already-completed locator result, not just currently-stuck work -- mirroring
+# stages.CHAPTER_AGENDA_PIPELINE_VERSION's own backfill story), this is what lets the backlog
+# that accumulated from the max_tokens bug actually drain with the fix applied.
+LOCATOR_PROMPT_VERSION = "locator-v2"
 
 
 def _locator_cues(display_ref: str | None, evidence_text: str) -> tuple[str, ...]:
@@ -101,6 +118,7 @@ def build_agenda_job(
         inputs={
             "messages": list(request.messages),
             "structured_output": AGENDA_ITEM_EXTRACTOR_CONTRACT,
+            "max_tokens": AGENDA_OUTPUT_TOKEN_BUDGET,
             "llm_policy": LLMRequestPolicy(
                 allowed_models=AGENDA_PRODUCTION_MODELS,
                 backup_models=AGENDA_BACKUP_MODELS,
@@ -240,6 +258,10 @@ def build_locator_job(
         inputs={
             "messages": list(request.messages),
             "structured_output": LOCATOR_CONTRACT,
+            # Match the output reserve select_locator_models() already assumes when it fits a
+            # request into a route's context window; the bare LiteLLMBackend default (1024) starved
+            # multi-anchor responses mid-JSON well before that reserve was ever exercised.
+            "max_tokens": LOCATOR_OUTPUT_TOKEN_RESERVE,
             "llm_policy": LLMRequestPolicy(
                 allowed_models=(LOCATOR_MODEL,),
                 purpose="chapter-locator",

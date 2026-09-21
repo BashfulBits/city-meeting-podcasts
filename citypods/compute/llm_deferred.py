@@ -663,6 +663,35 @@ def discard_deferred(storage, recipe_hash: str, *, expected_ref: str | None = No
         return True
 
 
+def discard_completed_result(storage, recipe_hash: str, expected_result: JobResult) -> bool:
+    """Remove a completed record whose content failed the caller's own local validation.
+
+    ``write_deferred`` never downgrades a completed record, and ``enqueue_batch`` short-circuits
+    on any ``look_up_deferred`` hit that is a ``JobResult`` -- so once a bad response is written
+    as "completed" for a recipe, every future submission under that *same* recipe (content-
+    addressed: same episode/source/model/prompt/pipeline version) replays the identical bad
+    content forever, with no new LLM call ever made, regardless of how many times the caller
+    retries or how it resets its own bookkeeping. A caller whose downstream validation (schema,
+    grounding, ...) rejects a completed result must discard the record itself, not just its own
+    pointer to it, or a retry can never actually happen.
+
+    Only deletes when the stored record still decodes to exactly ``expected_result`` -- if a
+    different completed record is present (e.g. a concurrent writer already replaced it, or a
+    caller reads a stale copy), this is a no-op: a caller's validation of an old read must never
+    clobber a newer write for the same recipe.
+    """
+    with _deferred_record_lock(storage, recipe_hash):
+        key = deferred_key(recipe_hash)
+        data = _read_json(storage, key)
+        if not isinstance(data, Mapping) or data.get("status") != "completed":
+            return False
+        if _decode_record(data) != expected_result:
+            return False
+        storage.delete(key)
+        _best_effort_delete_index(storage, data, recipe_hash)
+        return True
+
+
 def iter_pending_deferred(storage, *, unavailable: list[StorageReadUnavailable] | None = None):
     """Yield currently-pending records one at a time, oldest-first.
 
@@ -1185,6 +1214,7 @@ __all__ = [
     "MAX_TERMINAL_FAILURE_RETRIES",
     "discard_terminal_failure",
     "discard_deferred",
+    "discard_completed_result",
     "deferred_key",
     "deferred_failure_key",
     "load_deferred_snapshot",

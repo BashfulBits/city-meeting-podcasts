@@ -29,6 +29,7 @@ from citypods.compute.llm import (
 )
 from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import LLMRequestPolicy
+from citypods.compute.llm_submission_telemetry import record_stage_activity
 from citypods.compute.structured import parse_structured_json, register_response_model
 from citypods.config import load_city_configs, load_site_config
 from citypods.records import iter_records, record_to_episode, source_key
@@ -60,6 +61,13 @@ STATE = "llm_tournament.json"
 TICKET_STATE = "llm_tournament_tickets.json"
 JUDGE_CONTRACT = "tournament-tag-judge"
 R5_FLASH_MODEL = "litellm:gemini/gemini-3.1-flash-lite"
+# Decision's fields are small (a pattern-constrained winner literal + rationale up to 500 chars,
+# ~150 tokens) -- nowhere near chapter-agenda/locator's multi-item scale -- but this job was
+# dispatched with no max_tokens at all, silently relying on LiteLLMBackend's generic 1024-token
+# default (see the chapter-agenda/chapter-locator/prelabeler incident that constant exists to
+# cushion, not to be relied on). Made explicit so this job is no longer the one remaining
+# structured-output call in the codebase leaning on that silent fallback.
+JUDGE_OUTPUT_TOKEN_BUDGET = 512
 
 
 @contextmanager
@@ -258,6 +266,7 @@ def _build_pairwise_judge_job(
                 },
             ],
             "structured_output": spec.contract,
+            "max_tokens": JUDGE_OUTPUT_TOKEN_BUDGET,
             "llm_policy": LLMRequestPolicy(
                 allowed_models=(judge_model,),
                 allow_paid=allow_paid,
@@ -574,6 +583,13 @@ def package_ticket(*, site_config_path: str, config_dir: str, output_dir: str, o
 
 
 def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int) -> int:
+    # Unlike the enrichment stages in stages.py, this CLI never goes through
+    # citypods.run.Pipeline.accumulate_stats/record_stage_activity -- it has had no
+    # llm_submission_stage telemetry at all, a blind spot in the same CI dashboard used to
+    # diagnose exactly the kind of submission/validation issue this run() tracks.
+    run_started = monotonic()
+    reused_comparisons = 0
+    pending_comparisons = 0
     site = load_site_config(site_config_path)
     cities = load_city_configs(config_dir, site["defaults"])
     storage = make_storage(site, "", Path(output_dir))
@@ -750,6 +766,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                     prior_record = prior_comparison.get("decision_record")
                     if isinstance(prior_record, dict):
                         decisions[slot] = dict(prior_record)
+                        reused_comparisons += 1
                         continue
                     # A hand-repaired or partially-written state entry must not make a sample
                     # permanently incomplete. Re-run only this missing comparison and replace the
@@ -784,6 +801,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                         "subject_id": f"{ep.uid}:{chapter_id}",
                     }
                     judge_pending = True
+                    pending_comparisons += 1
                 elif isinstance(result, JobResult):
                     decision = _finalize_pairwise_judge(result, judge_spec)
                     decision_record = {
@@ -858,6 +876,16 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
         f"llm-tournament: LLM batch flush: jobs={len(outcomes)} queued={queued} "
         f"errors={len(flush_errors)} comparison_errors={len(comparison_submit_errors)}",
         flush=True,
+    )
+    record_stage_activity(
+        lane="tournament",
+        stage="tournament",
+        ran=completed,
+        reused=reused_comparisons,
+        backlog=queued + pending_comparisons,
+        errors=len(submit_errors),
+        seconds=monotonic() - run_started,
+        defer_reasons={"llm-pending": pending_comparisons} if pending_comparisons else {},
     )
 
     state_path.parent.mkdir(parents=True, exist_ok=True)

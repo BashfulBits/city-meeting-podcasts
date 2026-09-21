@@ -532,6 +532,122 @@ def test_stage_finalizes_and_writes_artifact_on_job_result(tmp_path: Path):
     assert storage.exists(artifact_key)
 
 
+def test_stage_keeps_completed_registry_record_when_only_the_storage_write_fails(
+    tmp_path: Path,
+):
+    """A transient artifact-storage failure AFTER finalize_agenda_job already validated the
+    response is a completely different failure mode from a bad response: the completed registry
+    record is genuinely good and must survive so a plain retry of the write (not a whole fresh
+    LLM dispatch) is all the next run needs -- discarding it here would be a regression, wasting
+    an otherwise-unnecessary real LLM call."""
+    from citypods.compute.llm_deferred import look_up_deferred, write_deferred
+    from citypods.storage.local import LocalStorage as _LocalStorage
+
+    class _WriteFailsStorage(_LocalStorage):
+        def put_file(self, key, local_path, content_type):
+            # Only the artifact write fails -- the deferred-registry write this test's own setup
+            # performs below (write_deferred, mirroring what a real Worker dispatch would have
+            # already durably recorded before this stage ever runs) must still succeed.
+            if key.startswith("state/generated_chapters/agenda/"):
+                raise OSError("simulated transient storage failure")
+            return super().put_file(key, local_path, content_type)
+
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = _WriteFailsStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-write-fails")
+    key = ep.links["agenda_text_artifact_key"]
+    _put_storage_bytes(storage, key, b"1. Call to order")
+    ep.generated_agenda_candidates = {
+        "status": "pending",
+        "recipe": "recipe-agenda-write-fail-1",
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "source_hash": "irrelevant",
+        "job_ref": "ref-write-fail-1",
+    }
+
+    model_output = json.dumps(
+        {
+            "items": [
+                {
+                    "display_ref": "1",
+                    "title": "Call to order",
+                    "evidence_quote": "1. Call to order",
+                    "line_start": 1,
+                    "line_end": 1,
+                }
+            ]
+        }
+    )
+    result = JobResult(
+        task="agenda-item-extract",
+        recipe_hash="recipe-agenda-write-fail-1",
+        output={"choices": [{"message": {"content": model_output}}]},
+    )
+    write_deferred(storage, "recipe-agenda-write-fail-1", result)
+    backend = FakeBackend(result)
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.ran == 0
+    assert len(stats.errors) == 1
+    # Unlike the finalize-failure case, the episode's pending pointer and the completed registry
+    # record both survive -- the response was good, only the write needs retrying.
+    assert ep.generated_agenda_candidates["status"] == "pending"
+    assert ep.generated_agenda_candidates["recipe"] == "recipe-agenda-write-fail-1"
+    assert look_up_deferred(storage, "recipe-agenda-write-fail-1") == result
+
+
+def test_stage_clears_pending_state_when_finalize_fails(tmp_path: Path):
+    """A JobResult that fails finalize_agenda_job (e.g. truncated/invalid JSON) must not leave the
+    episode wedged in "pending" pointing at the same dead recipe -- retrying it next run would
+    just refetch the identical broken content and fail identically forever. The episode's own
+    pointer must be cleared so the next run treats it as never-attempted and builds a fresh job.
+
+    It also must not leave the underlying "completed" registry record in place: write_deferred
+    never downgrades a completed record, and enqueue_batch serves any look_up_deferred hit that
+    is a JobResult straight back out (cached_completed) without ever calling the LLM again -- so
+    unless that record is *deleted*, a future submission under this exact (content-addressed)
+    recipe would just replay the identical bad content forever, no matter how many times the
+    episode itself is retried."""
+    from citypods.compute.llm_deferred import look_up_deferred, write_deferred
+
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-broken")
+    key = ep.links["agenda_text_artifact_key"]
+    _put_storage_bytes(storage, key, b"1. Call to order\n2. Public comment")
+    # An episode that was already "pending" on a prior (now-resolved) dispatch -- the realistic
+    # path into this branch, since a fresh dispatch resolving synchronously exercises the same
+    # except-clause too.
+    ep.generated_agenda_candidates = {
+        "status": "pending",
+        "recipe": "recipe-agenda-broken-1",
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "source_hash": "irrelevant",
+        "job_ref": "ref-broken-1",
+    }
+
+    result = JobResult(
+        task="agenda-item-extract",
+        recipe_hash="recipe-agenda-broken-1",
+        output={"choices": [{"message": {"content": "not json at all"}}]},
+    )
+    # Mirrors what a real Worker dispatch would have durably recorded once this job resolved.
+    write_deferred(storage, "recipe-agenda-broken-1", result)
+    backend = FakeBackend(result)
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.ran == 0
+    assert len(stats.errors) == 1
+    assert ep.generated_agenda_candidates == {}
+    assert look_up_deferred(storage, "recipe-agenda-broken-1") is None
+
+
 def test_stage_defers_on_stop_signal(tmp_path: Path):
     stage = AgendaChapterCandidatesStage()
     city = _make_city()
@@ -658,7 +774,8 @@ def test_agenda_stage_failed_batch_job_does_not_consume_dispatch_quota(tmp_path:
 
 
 def test_episode_needs_chapter_agenda_evaluates_correctly():
-    from citypods.stages import episode_needs_chapter_agenda
+    from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL
+    from citypods.stages import CHAPTER_AGENDA_PIPELINE_VERSION, episode_needs_chapter_agenda
 
     ep = _make_episode("ep-eval")
     # Brand new with agenda link
@@ -673,11 +790,38 @@ def test_episode_needs_chapter_agenda_evaluates_correctly():
     ep.generated_agenda_candidates = {"status": "pending"}
     assert episode_needs_chapter_agenda(ep) is True
 
-    # Completed or accepted
-    ep.generated_agenda_candidates = {"status": "completed"}
+    # Completed or accepted under the CURRENT model/pipeline_version -- genuinely reusable.
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "model": AGENDA_PRODUCTION_MODEL,
+        "pipeline_version": CHAPTER_AGENDA_PIPELINE_VERSION,
+    }
     assert episode_needs_chapter_agenda(ep) is False
-    ep.generated_agenda_candidates = {"status": "accepted"}
+    ep.generated_agenda_candidates = {
+        "status": "accepted",
+        "model": AGENDA_PRODUCTION_MODEL,
+        "pipeline_version": CHAPTER_AGENDA_PIPELINE_VERSION,
+    }
     assert episode_needs_chapter_agenda(ep) is False
+
+    # Completed under a STALE pipeline_version -- this is the actual pre-filter `run.py` applies
+    # before AgendaChapterCandidatesStage.process() ever runs (--lane chapter-agenda/chapter);
+    # without this check a completed-but-stale episode would never reach that stage's own
+    # is_current_artifact check at all, silently defeating a CHAPTER_AGENDA_PIPELINE_VERSION bump.
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "model": AGENDA_PRODUCTION_MODEL,
+        "pipeline_version": "0-stale",
+    }
+    assert episode_needs_chapter_agenda(ep) is True
+
+    # Completed under a retired model.
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "model": "mistral/mistral-medium-2508",
+        "pipeline_version": CHAPTER_AGENDA_PIPELINE_VERSION,
+    }
+    assert episode_needs_chapter_agenda(ep) is True
 
     # Provider chapters present but not yet reconciled
     ep.source_chapters = [{"start": 0, "title": "Call to order"}]

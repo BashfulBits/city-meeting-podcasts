@@ -4405,7 +4405,27 @@ ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-awar
 # before reusing it (see the stage's own `is_current_artifact` check), so this bump is what
 # actually re-queues the back catalog -- gradually, bounded by the lane's own
 # max_dispatches_per_run/daily budget, not instantly. See chapter_titles.py's block comment.
-CHAPTER_AGENDA_PIPELINE_VERSION = "2"
+#
+# Bumped 2 -> 3: every dispatched agenda job was missing an explicit max_tokens, silently falling
+# back to LiteLLMBackend's generic 1024-token default -- far below the 32768 the production model
+# was benchmarked at (see chapter_titles.py's AGENDA_OUTPUT_TOKEN_BUDGET). Most responses were
+# truncated mid-JSON; a "completed" artifact from before this fix may also just be silently
+# undercounting agenda items (the model closing valid-but-incomplete JSON before the token cap),
+# not only the ones that errored outright. This bump is what forces `is_current_artifact` to
+# treat every pre-fix artifact as stale so the whole catalog gets a fair re-extraction under the
+# real budget -- gradually, bounded by the lane's own max_dispatches_per_run/daily budget.
+# Combined with AgendaChapterCandidatesStage's finalize-failure state reset (which clears an
+# episode wedged in "pending" on a dead recipe instead of leaving it there forever), this is also
+# what unsticks the backlog that accumulated from the max_tokens bug.
+CHAPTER_AGENDA_PIPELINE_VERSION = "3"
+# NOTE: unlike CHAPTER_AGENDA_PIPELINE_VERSION, this constant is NOT wired into the locator job's
+# own recipe_hash (build_locator_job's recipe_parts never includes it) -- the real lever for
+# forcing a fresh locator recipe is chapter_jobs.py's LOCATOR_PROMPT_VERSION, which IS in the job
+# recipe; see its own bump comment for the backfill story. ChapterBoundaryLocatorStage.process()
+# now has its own is_current_locator_artifact check (mirroring chapter-agenda's is_current_artifact
+# against LOCATOR_MODEL/LOCATOR_PROMPT_VERSION, not this constant), so a LOCATOR_PROMPT_VERSION
+# bump does correctly force re-extraction of historical "completed" locator results, the same way
+# a CHAPTER_AGENDA_PIPELINE_VERSION bump does for chapter-agenda's own catalog.
 CHAPTER_LOCATOR_PIPELINE_VERSION = "1"
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
@@ -8450,7 +8470,7 @@ class AgendaChapterCandidatesStage:
         )
         from citypods.compute.base import JobHandle, JobResult
         from citypods.compute.llm import dispatch_job_batch
-        from citypods.compute.llm_deferred import look_up_deferred
+        from citypods.compute.llm_deferred import discard_completed_result, look_up_deferred
 
         stats = StageStats(self.name)
         if ctx.dry_run or ctx.storage is None:
@@ -8616,23 +8636,23 @@ class AgendaChapterCandidatesStage:
             if isinstance(result, Exception):
                 stats.errors.append(f"{uid}: agenda chapter extraction: {result}")
                 continue
+            if isinstance(result, JobHandle):
+                ep.generated_agenda_candidates = {
+                    "status": "pending",
+                    "recipe": job.recipe_hash,
+                    # AGENDA_PRODUCTION_MODELS (R13) now offers more than one same-priority
+                    # candidate; record the model the scheduler actually reserved for this
+                    # dispatch, not just the first/label candidate.
+                    "model": result.model or AGENDA_PRODUCTION_MODEL,
+                    "source_hash": source_hash,
+                    "job_ref": result.ref,
+                }
+                stats.defer("llm-pending")
+                continue
+            if not isinstance(result, JobResult):
+                stats.errors.append(f"{uid}: unexpected agenda job result")
+                continue
             try:
-                if isinstance(result, JobHandle):
-                    ep.generated_agenda_candidates = {
-                        "status": "pending",
-                        "recipe": job.recipe_hash,
-                        # AGENDA_PRODUCTION_MODELS (R13) now offers more than one same-priority
-                        # candidate; record the model the scheduler actually reserved for this
-                        # dispatch, not just the first/label candidate.
-                        "model": result.model or AGENDA_PRODUCTION_MODEL,
-                        "source_hash": source_hash,
-                        "job_ref": result.ref,
-                    }
-                    stats.defer("llm-pending")
-                    continue
-                if not isinstance(result, JobResult):
-                    stats.errors.append(f"{uid}: unexpected agenda job result")
-                    continue
                 artifact = finalize_agenda_job(
                     result,
                     episode_uid=uid,
@@ -8640,19 +8660,42 @@ class AgendaChapterCandidatesStage:
                     agenda_source_hash=source_hash,
                     pipeline_version=CHAPTER_AGENDA_PIPELINE_VERSION,
                 )
-                key = artifact_key("agenda", uid, artifact.recipe)
-                url = _write_chapter_json(ctx.storage, key, artifact.to_dict())
-                ep.generated_agenda_candidates = {
-                    **artifact.to_dict(),
-                    "artifact_key": key,
-                    "artifact_url": url,
-                }
-                stats.ran += 1
             except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort the
                 # finalize pass for every other episode
                 stats.errors.append(
                     f"{uid}: agenda chapter extraction model={result.model or 'unknown'}: {exc}"
                 )
+                # write_deferred never downgrades a completed record, and enqueue_batch serves any
+                # look_up_deferred hit that is a JobResult straight back out (`cached_completed`)
+                # without ever calling the LLM again -- so unless the stored "completed" record
+                # for this exact (content-addressed) recipe is deleted, EVERY future submission
+                # under it, no matter how many times this episode is retried or its own state
+                # reset, would just replay this identical bad content forever. Discard it first.
+                discard_completed_result(ctx.storage, result.recipe_hash, result)
+                # `result` is already a terminally-resolved JobResult -- re-fetching it next run
+                # (Pass 1's `agenda_status == "pending"` branch, keyed on this same stored recipe)
+                # would hand finalize_agenda_job the identical content and fail identically,
+                # forever. Clear the episode's own pointer so the next run treats it as
+                # never-attempted and builds a genuinely fresh job instead of wedging on a dead
+                # recipe that can never finalize.
+                ep.generated_agenda_candidates = {}
+                continue
+            try:
+                key = artifact_key("agenda", uid, artifact.recipe)
+                url = _write_chapter_json(ctx.storage, key, artifact.to_dict())
+            except Exception as exc:  # noqa: BLE001 -- a storage hiccup on an already-validated
+                # result must not discard a genuinely good completed record or the episode's
+                # still-valid pending pointer to it; simply retry the write next run.
+                stats.errors.append(
+                    f"{uid}: agenda chapter extraction model={result.model or 'unknown'}: {exc}"
+                )
+                continue
+            ep.generated_agenda_candidates = {
+                **artifact.to_dict(),
+                "artifact_key": key,
+                "artifact_url": url,
+            }
+            stats.ran += 1
         return stats
 
 
@@ -8666,11 +8709,16 @@ class ChapterBoundaryLocatorStage:
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
         from citypods.chapter_artifacts import AgendaCandidatesArtifact, artifact_key
-        from citypods.chapter_jobs import build_locator_job, finalize_locator_job
+        from citypods.chapter_jobs import (
+            LOCATOR_MODEL,
+            LOCATOR_PROMPT_VERSION,
+            build_locator_job,
+            finalize_locator_job,
+        )
         from citypods.chapter_locator import build_locator_units
         from citypods.compute.base import JobHandle, JobResult
         from citypods.compute.llm import dispatch_job_batch
-        from citypods.compute.llm_deferred import look_up_deferred
+        from citypods.compute.llm_deferred import discard_completed_result, look_up_deferred
 
         stats = StageStats(self.name)
         if ctx.dry_run or ctx.storage is None:
@@ -8714,7 +8762,22 @@ class ChapterBoundaryLocatorStage:
                 continue
 
             locator_status = raw_agenda.get("locator_status")
-            if locator_status in {"completed", "accepted", "not_applicable"}:
+            # Mirrors AgendaChapterCandidatesStage's own is_current_artifact check (see its
+            # comment): a completed/accepted locator result is only safe to reuse if it was
+            # produced by the CURRENTLY configured model under the CURRENT prompt version.
+            # LOCATOR_PROMPT_VERSION feeds build_locator_job's own recipe hash directly (see that
+            # constant's bump comment), so without this check a version bump would only dirty
+            # stage_is_dirty's outer marker -- process() would reach this branch, "reuse" the
+            # stale result anyway, and _mark_stage_complete would re-stamp it under the fresh
+            # fingerprint, permanently laundering stale output as current.
+            is_current_locator_artifact = locator_status == "not_applicable" or (
+                raw_agenda.get("locator_model") == LOCATOR_MODEL
+                and raw_agenda.get("locator_prompt_version") == LOCATOR_PROMPT_VERSION
+            )
+            if (
+                locator_status in {"completed", "accepted", "not_applicable"}
+                and is_current_locator_artifact
+            ):
                 stats.reused += 1
                 continue
 
@@ -8804,22 +8867,22 @@ class ChapterBoundaryLocatorStage:
             if isinstance(result, Exception):
                 stats.errors.append(f"{uid}: chapter locator: {result}")
                 continue
+            if isinstance(result, JobHandle):
+                raw_agenda = dict(raw_agenda)
+                raw_agenda.update(
+                    {
+                        "locator_status": "pending",
+                        "locator_recipe": job.recipe_hash,
+                        "locator_job_ref": result.ref,
+                    }
+                )
+                ep.generated_agenda_candidates = raw_agenda
+                stats.defer("llm-pending")
+                continue
+            if not isinstance(result, JobResult):
+                stats.errors.append(f"{uid}: unexpected locator job result")
+                continue
             try:
-                if isinstance(result, JobHandle):
-                    raw_agenda = dict(raw_agenda)
-                    raw_agenda.update(
-                        {
-                            "locator_status": "pending",
-                            "locator_recipe": job.recipe_hash,
-                            "locator_job_ref": result.ref,
-                        }
-                    )
-                    ep.generated_agenda_candidates = raw_agenda
-                    stats.defer("llm-pending")
-                    continue
-                if not isinstance(result, JobResult):
-                    stats.errors.append(f"{uid}: unexpected locator job result")
-                    continue
                 boundary = finalize_locator_job(
                     result,
                     episode_uid=uid,
@@ -8827,64 +8890,122 @@ class ChapterBoundaryLocatorStage:
                     transcript_hash=transcript_hash,
                     units=units,
                 )
-                boundary_key = artifact_key("boundary", uid, boundary.recipe)
-                boundary_url = _write_chapter_json(ctx.storage, boundary_key, boundary.to_dict())
-                items = {item.index: item for item in agenda.items}
-                generated = []
-                for anchor in boundary.anchors:
-                    item = items.get(anchor.get("agenda_item_index"))
-                    start = anchor.get("start")
-                    # BoundaryResultArtifact schema ensures start is always set, but guard
-                    # defensively so a malformed persisted anchor cannot cause a TypeError in
-                    # episode_public_chapters (which calls float(start) unconditionally).
-                    if item is None or item.status != "accepted" or start is None:
-                        continue
-                    generated.append(
-                        {
-                            "start": start,
-                            "title": item.title,
-                            "agenda_item_index": item.index,
-                            "display_ref": item.display_ref,
-                            "evidence_text": item.evidence_text,
-                            "unit_id": anchor.get("unit_id"),
-                            "transition_quote": anchor.get("transition_quote"),
-                            "basis": anchor.get("basis", "served"),
-                            "generated": True,
-                            "model": boundary.model,
-                            "prompt_version": boundary.prompt_version,
-                            "artifact_key": boundary_key,
-                        }
-                    )
-                ep.generated_chapters = generated
-                ep.generated_chapters_spec_hash = boundary.recipe
-                ep.generated_agenda_candidates = {
-                    **dict(raw_agenda),
-                    "locator_status": "completed",
-                    "boundary_artifact_key": boundary_key,
-                    "boundary_artifact_url": boundary_url,
-                    "transcript_unit_source": unit_source,
-                }
-                stats.ran += 1
             except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort the
                 # finalize pass for every other episode
                 stats.errors.append(
                     f"{uid}: chapter locator model={result.model or 'unknown'}: {exc}"
                 )
+                # write_deferred never downgrades a completed record, and enqueue_batch serves any
+                # look_up_deferred hit that is a JobResult straight back out (`cached_completed`)
+                # without ever calling the LLM again -- so unless the stored "completed" record
+                # for this exact (content-addressed) recipe is deleted, EVERY future submission
+                # under it would just replay this identical bad content forever. Discard it first.
+                discard_completed_result(ctx.storage, result.recipe_hash, result)
+                # Same reasoning as AgendaChapterCandidatesStage's own finalize except-clause:
+                # `result` is already terminal, so retrying next run against the same stored
+                # locator_recipe would just refetch the identical content and fail identically
+                # forever. Clear only the locator-owned fields -- the agenda fields in raw_agenda
+                # (chapter-agenda's own output) must survive so that stage's own reuse check is
+                # unaffected -- so the next run dispatches a genuinely fresh locator job.
+                stale = dict(raw_agenda)
+                stale.pop("locator_status", None)
+                stale.pop("locator_recipe", None)
+                stale.pop("locator_job_ref", None)
+                ep.generated_agenda_candidates = stale
+                continue
+            try:
+                boundary_key = artifact_key("boundary", uid, boundary.recipe)
+                boundary_url = _write_chapter_json(ctx.storage, boundary_key, boundary.to_dict())
+            except Exception as exc:  # noqa: BLE001 -- a storage hiccup on an already-validated
+                # result must not discard a genuinely good completed record or the episode's
+                # still-valid pending pointer to it; simply retry the write next run.
+                stats.errors.append(
+                    f"{uid}: chapter locator model={result.model or 'unknown'}: {exc}"
+                )
+                continue
+            items = {item.index: item for item in agenda.items}
+            generated = []
+            for anchor in boundary.anchors:
+                item = items.get(anchor.get("agenda_item_index"))
+                start = anchor.get("start")
+                # BoundaryResultArtifact schema ensures start is always set, but guard
+                # defensively so a malformed persisted anchor cannot cause a TypeError in
+                # episode_public_chapters (which calls float(start) unconditionally).
+                if item is None or item.status != "accepted" or start is None:
+                    continue
+                generated.append(
+                    {
+                        "start": start,
+                        "title": item.title,
+                        "agenda_item_index": item.index,
+                        "display_ref": item.display_ref,
+                        "evidence_text": item.evidence_text,
+                        "unit_id": anchor.get("unit_id"),
+                        "transition_quote": anchor.get("transition_quote"),
+                        "basis": anchor.get("basis", "served"),
+                        "generated": True,
+                        "model": boundary.model,
+                        "prompt_version": boundary.prompt_version,
+                        "artifact_key": boundary_key,
+                    }
+                )
+            ep.generated_chapters = generated
+            ep.generated_chapters_spec_hash = boundary.recipe
+            ep.generated_agenda_candidates = {
+                **dict(raw_agenda),
+                "locator_status": "completed",
+                # Recorded so the reuse check above (is_current_locator_artifact) can tell a
+                # stale completion from a current one on a later run.
+                "locator_model": boundary.model,
+                "locator_prompt_version": boundary.prompt_version,
+                "boundary_artifact_key": boundary_key,
+                "boundary_artifact_url": boundary_url,
+                "transcript_unit_source": unit_source,
+            }
+            stats.ran += 1
         return stats
 
 
 def episode_needs_chapter_agenda(ep: Episode) -> bool:
-    """Return True if episode requires agenda chapter extraction or status reconciliation."""
+    """Return True if episode requires agenda chapter extraction or status reconciliation.
+
+    This is the pre-filter `run.py` applies to `state["candidate_episodes"]` *before*
+    `AgendaChapterCandidatesStage.process()` ever sees an episode (`--lane chapter-agenda`/
+    `chapter` invocations, i.e. every production chapter-agenda workflow run). It must apply the
+    same staleness check that stage's own `is_current_artifact` does -- otherwise a completed
+    episode produced under a retired model or a since-bumped CHAPTER_AGENDA_PIPELINE_VERSION would
+    never reach the stage at all, silently defeating that stage's own reuse-eligibility check and
+    leaving the "current artifacts get re-extracted" backfill promise (see
+    CHAPTER_AGENDA_PIPELINE_VERSION's own bump comment) unfulfilled for this lane invocation.
+    """
     if ep.source_chapters:
         return (ep.generated_agenda_candidates or {}).get("status") != "not_applicable"
     if not (ep.links or {}).get("agenda_text_artifact_key"):
         return False
-    status = (ep.generated_agenda_candidates or {}).get("status")
-    return status not in {"completed", "accepted", "not_applicable"}
+    raw_agenda = ep.generated_agenda_candidates or {}
+    status = raw_agenda.get("status")
+    if status not in {"completed", "accepted", "not_applicable"}:
+        return True
+    if status == "not_applicable":
+        return False
+    from citypods.chapter_titles import AGENDA_BACKUP_MODELS, AGENDA_PRODUCTION_MODELS
+
+    is_current_artifact = (
+        raw_agenda.get("model") in {*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS}
+        and raw_agenda.get("pipeline_version") == CHAPTER_AGENDA_PIPELINE_VERSION
+    )
+    return not is_current_artifact
 
 
 def episode_needs_chapter_locator(ep: Episode) -> bool:
-    """Return True if episode requires chapter boundary location in its timed transcript."""
+    """Return True if episode requires chapter boundary location in its timed transcript.
+
+    Same reasoning as `episode_needs_chapter_agenda` above, mirrored against
+    `ChapterBoundaryLocatorStage.process()`'s own `is_current_locator_artifact` check: this
+    pre-filter must recognize a stale completed locator result (produced under a since-bumped
+    LOCATOR_PROMPT_VERSION or a retired LOCATOR_MODEL) as still needing work, or it never reaches
+    that stage's own check at all.
+    """
     if ep.source_chapters:
         return (ep.generated_agenda_candidates or {}).get("locator_status") != "not_applicable"
     raw_agenda = ep.generated_agenda_candidates or {}
@@ -8893,7 +9014,17 @@ def episode_needs_chapter_locator(ep: Episode) -> bool:
     if not ep.transcript_words_key and not ep.transcript_key:
         return False
     locator_status = raw_agenda.get("locator_status")
-    return locator_status not in {"completed", "accepted", "not_applicable"}
+    if locator_status not in {"completed", "accepted", "not_applicable"}:
+        return True
+    if locator_status == "not_applicable":
+        return False
+    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+
+    is_current_locator_artifact = (
+        raw_agenda.get("locator_model") == LOCATOR_MODEL
+        and raw_agenda.get("locator_prompt_version") == LOCATOR_PROMPT_VERSION
+    )
+    return not is_current_locator_artifact
 
 
 def default_stages() -> list[EnrichmentStage]:

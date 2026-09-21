@@ -17,6 +17,81 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Give chapter-agenda/chapter-locator/prelabeler/discovery/tournament LLM calls a real
+  output-token budget** (`citypods/chapter_jobs.py`, `citypods/chapter_titles.py`,
+  `citypods/tags.py`, `citypods/discovery/classify.py`, `citypods/tournament.py`). These jobs
+  never set `max_tokens`, so every dispatch silently fell back to `LiteLLMBackend`'s generic
+  1024-token default -- far below what `config/site_config.yml`'s own benchmark documented
+  (max_tokens=32768 for chapter-agenda's Nemotron route) or what `chapter_locator.py`'s
+  `LOCATOR_OUTPUT_TOKEN_RESERVE` (16384) already assumed when fitting a request into a route's
+  context window. Multi-item agenda extractions and locator anchor lists were routinely cut off
+  mid-JSON, producing "not valid JSON" and unrecoverable grounding failures on the large majority
+  of completions (observed: 1803/1813 chapter-agenda attempts and 72/72 chapter-locator attempts
+  erroring in one CI run). The topic-tags prelabeler had the same problem at the opposite end -- a
+  flat 1024-token budget regardless of batch size, when a batch can hold up to 100 assessments;
+  its budget now scales with the candidate count. City-discovery classification
+  (`classify-civic-platforms`) had no budget at all despite an unbounded response schema. The LLM
+  tag tournament's pairwise judge also had none, though its small schema meant 1024 was in
+  practice enough; it now states its budget explicitly instead of relying on the silent fallback.
+  A new static audit (`tests/test_llm_job_token_budgets.py`) scans every `citypods/*.py`
+  `structured_output` job-payload literal and fails if `max_tokens` is missing, so a future lane
+  can't reintroduce this class of bug silently.
+
+- **Stop a chapter-agenda/chapter-locator episode from retrying the same dead job forever**
+  (`citypods/stages.py`, `citypods/compute/llm_deferred.py`). When a completed LLM response
+  failed local validation (exactly the truncated-JSON failure mode above), the episode's own
+  `status: "pending"` pointer was never cleared, so every subsequent run re-fetched the identical
+  already-resolved response and failed identically -- permanently, since nothing ever gave it a
+  fresh recipe. Both stages now retire that pointer on a finalize failure (locator retiring only
+  its own `locator_status`/`locator_recipe`/`locator_job_ref` fields, leaving chapter-agenda's
+  fields on the same dict untouched) so the next run dispatches a genuinely new job. Clearing the
+  episode's own pointer is necessary but not sufficient, though: `write_deferred` never downgrades
+  an already-completed registry record, and `enqueue_batch` serves any `look_up_deferred` hit that
+  is a `JobResult` straight back out (`cached_completed`) with no new LLM call at all -- so a
+  *second* validation failure under an otherwise-unchanged (content-addressed) recipe would have
+  gone right back to being permanently stuck, just one bump-cycle later, since nothing deleted the
+  bad completed record itself. A new `discard_completed_result` (compare-and-delete, mirroring
+  `discard_deferred`'s/`discard_terminal_failure`'s existing safety pattern so a stale reader can
+  never clobber a newer write) now removes that record on a genuine finalize failure -- but not on
+  an artifact-storage write failure after a *good* response, which is a different, transient
+  failure mode that must not discard an otherwise-valid completed result.
+
+  **Backfill:** `CHAPTER_AGENDA_PIPELINE_VERSION` (2 -> 3) and `chapter_jobs.py`'s
+  `LOCATOR_PROMPT_VERSION` (locator-v1 -> locator-v2) both bumped -- these feed their job's own
+  recipe hash, which is what actually lets a fresh dispatch bypass a pre-fix job's dead-end
+  terminal record at the Worker rather than being handed the identical broken content again. For
+  both lanes this also forces every previously-*completed* artifact to be re-extracted (not just
+  the ones that errored outright): a "successful" 1024-token-budget response may just have closed
+  valid-but-incomplete JSON before the cap, silently under-counting agenda items/locator anchors
+  rather than failing loudly. `ChapterBoundaryLocatorStage` previously had no
+  `is_current_artifact`-style check of its own on `locator_status == "completed"` reuse (a real
+  gap: a `LOCATOR_PROMPT_VERSION` bump alone would only have dirtied the outer `stage_is_dirty`
+  marker, which the stage would then have silently re-stamped as current without recomputing); it
+  now has one (`is_current_locator_artifact`, comparing each completed episode's stored
+  `locator_model`/`locator_prompt_version` against the current constants), mirroring
+  chapter-agenda's own check. The same gap existed one level higher: `episode_needs_chapter_agenda`
+  /`episode_needs_chapter_locator` -- the pre-filter `run.py` applies to candidate episodes
+  *before* either stage ever runs, for every `--lane chapter-agenda`/`chapter-locator`/`chapter`
+  workflow invocation -- had no staleness awareness at all, so a completed-but-stale episode would
+  never have reached either stage's own reuse check in the first place; both now apply the same
+  model/version check. Both re-queues are gradual,
+  bounded by each lane's own `max_dispatches_per_run`/daily budget, not instant.
+
+- **Break StageStats.errors' 3-sample cap and add a reason breakdown** (`citypods/run.py`). A
+  stage reporting hundreds of errors showed only a raw count and 3 raw sample strings in the build
+  log -- exactly how the max_tokens bug above stayed invisible for so long: nothing surfaced
+  *which* failure mode dominated. The sample cap is now 10, and a new `_error_reason()` masks
+  variable substrings (episode uids, hex ids, item counts) so repeated failures of the same kind
+  collapse into one bucket with a count, mirroring how `StageStats.defer_reasons` already buckets
+  deferrals. Printed to the build log only, never added to the JSONL telemetry artifact (which
+  `llm_submission_telemetry.py`'s own module docstring says must never carry "results").
+
+- **Emit `llm_submission_stage` telemetry from the LLM tag tournament** (`citypods/tournament.py`).
+  Every other LLM-producing lane's per-run activity (ran/reused/backlog/errors) shows up in the
+  same CI telemetry dashboard used to diagnose the issues above; the tournament's `run()` never
+  called `record_stage_activity`, leaving it invisible in that dashboard even though its own
+  producer/ingress telemetry was already wired up.
+
 - **Stop pending R6 handles from consuming fresh-dispatch budget** (`citypods/stages.py`). The shared
   moment extraction/judge cap now counts only new queue admissions; already-pending and cached
   deferred jobs can be reconciled without starving the other R6 verb. No model or route change and

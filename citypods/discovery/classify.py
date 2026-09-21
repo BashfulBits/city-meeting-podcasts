@@ -297,6 +297,12 @@ def classify(
         inputs={
             "messages": _prompt(request, results),
             "structured_output": STRUCTURED_OUTPUT,
+            # CivicPlatformClassificationResponse's candidate_urls/bodies_mentioned lists and
+            # reasoning string are all unbounded -- this job had no explicit max_tokens at all,
+            # silently falling back to LiteLLMBackend's generic 1024-token default (see the
+            # chapter-agenda/chapter-locator/prelabeler incident that default exists to cushion,
+            # not to be relied on for an open-ended schema).
+            "max_tokens": 2048,
             "llm_policy": LLMRequestPolicy(
                 # The scheduler expands this primary through the compiled model_routing map,
                 # preserving primary-first ordering while still allowing vetted overflow routes.

@@ -33,6 +33,19 @@ def test_agenda_job_is_pinned_and_idempotent():
     assert first.inputs["llm_policy"].deadline_at is None
 
 
+def test_agenda_job_requests_the_benchmarked_output_token_budget():
+    """The 30-episode benchmark that qualified Nemotron ran at max_tokens=32768 (97% valid JSON);
+    without an explicit budget the job fell back to LiteLLMBackend's generic 1024-token default,
+    truncating most multi-item agenda extractions mid-JSON."""
+    from citypods.chapter_titles import AGENDA_OUTPUT_TOKEN_BUDGET
+
+    job = build_agenda_job(
+        episode_uid="e1", agenda_text="1. Approve the budget", agenda_source_hash="sha"
+    )
+    assert job.inputs["max_tokens"] == AGENDA_OUTPUT_TOKEN_BUDGET
+    assert job.inputs["max_tokens"] > 1024
+
+
 def test_agenda_job_recipe_changes_with_pipeline_version():
     # pipeline_version feeds the recipe hash so a pipeline-version bump (a validation/
     # post-processing behavior change independent of the model) re-queues the catalog exactly
@@ -135,6 +148,13 @@ def test_locator_job_keeps_all_units_and_uses_gemini_lite():
     assert job.inputs["llm_policy"].deadline_at is None
     material = json.loads(job.inputs["messages"][1]["content"])
     assert len(material["transcript_units"]) == 1
+    # select_locator_models() already reserves LOCATOR_OUTPUT_TOKEN_RESERVE tokens of output room
+    # when fitting a request into a route's context window; the dispatched request must actually
+    # request that much, not the bare 1024-token LiteLLMBackend default.
+    from citypods.chapter_locator import LOCATOR_OUTPUT_TOKEN_RESERVE
+
+    assert job.inputs["max_tokens"] == LOCATOR_OUTPUT_TOKEN_RESERVE
+    assert job.inputs["max_tokens"] > 1024
 
 
 def test_locator_job_recipe_changes_with_unit_annotations():

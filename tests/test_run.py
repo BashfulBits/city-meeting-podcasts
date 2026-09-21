@@ -20,6 +20,29 @@ from citypods.state import build_fingerprint
 from citypods.timeline import Segment, Timeline
 
 
+def test_error_reason_collapses_variable_substrings_into_stable_buckets():
+    """StageStats.errors previously had no breakdown by kind -- only a raw count and (until the
+    sample cap was raised) 3 raw samples, which is how the chapter-agenda/chapter-locator
+    max_tokens bug went unnoticed: nothing showed *which* failure mode dominated hundreds of
+    errors. _error_reason() masks episode uids/hex ids/counts so repeated failures of the same
+    kind collapse into one bucket, mirroring how StageStats.defer_reasons already buckets
+    deferrals."""
+    a = "55294e2c1e0c87bf: agenda chapter extraction model=nvidia/x: not valid JSON"
+    b = "0a33236a95ef03a3: agenda chapter extraction model=nvidia/x: not valid JSON"
+    assert run._error_reason(a) == run._error_reason(b)
+
+    unit1 = "ep-1: chapter locator model=gemini/x: unknown locator unit: u00251"
+    unit2 = "ep-2: chapter locator model=gemini/x: unknown locator unit: u00873"
+    assert run._error_reason(unit1) == run._error_reason(unit2)
+
+    count1 = "cand-1: pre-labeler model=gemma failed: 15 validation errors for Response"
+    count2 = "cand-2: pre-labeler model=gemma failed: 5 validation errors for Response"
+    assert run._error_reason(count1) == run._error_reason(count2)
+
+    # Genuinely different failure kinds must not collapse into the same bucket.
+    assert run._error_reason(a) != run._error_reason(unit1)
+
+
 def _ep(guid="g1", title="City Council", hosted=None):
     return Episode(
         guid=guid,

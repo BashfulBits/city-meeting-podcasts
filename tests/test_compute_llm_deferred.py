@@ -21,6 +21,7 @@ from citypods.compute.llm_deferred import (
     _write_json,
     deferred_failure_key,
     deferred_key,
+    discard_completed_result,
     discard_deferred,
     discard_terminal_failure,
     iter_pending_deferred,
@@ -117,6 +118,54 @@ def test_discard_and_redefer_same_record_are_serialized_by_the_r2_lock():
     current = look_up_deferred(storage, "recipe-1")
     assert isinstance(current, JobHandle)
     assert current.ref == "deferred:replacement"
+
+
+def test_discard_completed_result_removes_a_matching_completed_record():
+    """write_deferred never downgrades a completed record, and enqueue_batch serves any
+    look_up_deferred hit that is a JobResult straight back out without ever calling the LLM
+    again -- so a caller whose own downstream validation rejects a completed result must be able
+    to delete it, or a retry under the same (content-addressed) recipe can never actually
+    happen."""
+    storage = MemStorage()
+    result = JobResult(task="tag", recipe_hash="recipe-1", output={"bad": "truncated"}, model="m")
+    write_deferred(storage, "recipe-1", result)
+    assert look_up_deferred(storage, "recipe-1") == result
+
+    assert discard_completed_result(storage, "recipe-1", result) is True
+    assert look_up_deferred(storage, "recipe-1") is None
+
+
+def test_discard_completed_result_is_a_noop_for_pending_or_missing_records():
+    storage = MemStorage()
+
+    # No record at all.
+    result = JobResult(task="tag", recipe_hash="recipe-1", output={}, model="m")
+    assert discard_completed_result(storage, "recipe-1", result) is False
+
+    # A pending (not yet completed) record must never be discarded by this path -- that is
+    # discard_deferred's job, and requires the job to actually be cancelled first.
+    write_deferred(storage, "recipe-2", _pending_handle("recipe-2"))
+    pending_result = JobResult(task="tag", recipe_hash="recipe-2", output={}, model="m")
+    assert discard_completed_result(storage, "recipe-2", pending_result) is False
+    assert isinstance(look_up_deferred(storage, "recipe-2"), JobHandle)
+
+
+def test_discard_completed_result_leaves_a_newer_or_different_record_untouched():
+    """A caller's validation of a stale read must never clobber a newer write for the same
+    recipe -- the compare-and-delete guard other discard helpers in this module already use
+    (discard_deferred's expected_ref, discard_terminal_failure's snapshot equality check)."""
+    storage = MemStorage()
+    original = JobResult(task="tag", recipe_hash="recipe-1", output={"bad": "truncated"}, model="m")
+    write_deferred(storage, "recipe-1", original)
+
+    # A different completed result was written for the same recipe in the meantime (e.g. a
+    # concurrent producer, or a later good retry) -- the caller's stale `original` must not
+    # discard it.
+    replacement = JobResult(task="tag", recipe_hash="recipe-1", output={"good": True}, model="m")
+    write_deferred(storage, "recipe-1", replacement)
+
+    assert discard_completed_result(storage, "recipe-1", original) is False
+    assert look_up_deferred(storage, "recipe-1") == replacement
 
 
 def test_pending_records_index_both_live_route_consumers_without_shared_bucket_writes():
