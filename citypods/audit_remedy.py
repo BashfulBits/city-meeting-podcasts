@@ -26,6 +26,7 @@ import json
 import re
 import subprocess
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -275,10 +276,7 @@ def _compact_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
     findings = []
     for index, finding in enumerate(evidence.get("unexpected_findings", [])):
         episodes = finding.get("episodes", [])
-        months: dict[str, int] = {}
-        for ep in episodes:
-            month = ep.get("published", "")[:7]
-            months[month] = months.get(month, 0) + 1
+        months = dict(Counter([ep.get("published", "")[:7] for ep in episodes]))
         # Evenly spaced samples include both ends; original IDs still address the full local set.
         indices = sorted({i * (len(episodes) - 1) // 5 for i in range(6)}) if episodes else []
         findings.append(
