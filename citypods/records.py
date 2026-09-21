@@ -1557,6 +1557,107 @@ def _timeline_from_dict(d: dict) -> Timeline | None:
         return None
 
 
+def _audio_fields_from_rec(rec: dict) -> dict:
+    audio = rec.get("audio") or {}
+    if not isinstance(audio, dict):
+        audio = {}
+    return {
+        "hosted_audio_url": audio.get("url"),
+        "audio_key": audio.get("key"),
+        "audio_spec_hash": audio.get("spec_hash"),
+        "audio_verification": (
+            audio.get("verification") if isinstance(audio.get("verification"), dict) else {}
+        ),
+        "materialize_attempts": audio.get("attempts") or 0,
+        "materialize_last_attempt": audio.get("last_attempt"),
+        "materialize_error": audio.get("error"),
+        "materialize_error_spec_hash": audio.get("error_spec_hash"),
+        "audio_bytes": audio.get("bytes"),
+        "audio_rebuild": audio.get("rebuild") or "",
+        "audio_encode_time": audio.get("encode_time"),
+    }
+
+
+def _document_fields_from_rec(rec: dict) -> dict:
+    agenda = rec.get("agenda_text") or {}
+    if not isinstance(agenda, dict):
+        agenda = {}
+    backup = rec.get("agenda_backup") or {}
+    if not isinstance(backup, dict):
+        backup = {}
+    minutes = rec.get("minutes_text") or {}
+    if not isinstance(minutes, dict):
+        minutes = {}
+    votes = rec.get("minutes_votes") or {}
+    if not isinstance(votes, dict):
+        votes = {}
+    roster = rec.get("minutes_roster") or {}
+    if not isinstance(roster, dict):
+        roster = {}
+    return {
+        "agenda_text_url": agenda.get("url"),
+        "agenda_text_attempts": _coerce_non_negative_int(agenda.get("attempts")),
+        "agenda_text_last_attempt": agenda.get("last_attempt"),
+        "agenda_text_quality": (
+            agenda.get("quality") if isinstance(agenda.get("quality"), dict) else {}
+        ),
+        "agenda_backup_url": backup.get("url"),
+        "agenda_backup_attempts": _coerce_non_negative_int(backup.get("attempts")),
+        "agenda_backup_last_attempt": backup.get("last_attempt"),
+        "minutes_text_url": minutes.get("url"),
+        "minutes_text_attempts": _coerce_non_negative_int(minutes.get("attempts")),
+        "minutes_text_last_attempt": minutes.get("last_attempt"),
+        "minutes_votes_url": votes.get("url"),
+        "minutes_votes": votes.get("items") if isinstance(votes.get("items"), list) else [],
+        "minutes_roster_url": roster.get("url"),
+        "minutes_roster": roster.get("members") if isinstance(roster.get("members"), list) else [],
+        "minutes_roster_status": roster.get("status"),
+    }
+
+
+def _chapter_and_tag_fields_from_rec(rec: dict) -> dict:
+    return {
+        "source_chapters": rec.get("source_chapters") or [],
+        "chapters": rec.get("chapters") or [],
+        "chapters_basis": rec.get("chapters_basis", "source:s0"),
+        "generated_agenda_candidates": (
+            rec.get("generated_agenda_candidates")
+            if isinstance(rec.get("generated_agenda_candidates"), dict)
+            else {}
+        ),
+        "generated_chapters": (
+            rec.get("generated_chapters") if isinstance(rec.get("generated_chapters"), list) else []
+        ),
+        "generated_chapters_spec_hash": rec.get("generated_chapters_spec_hash"),
+        "tags": rec.get("tags") if isinstance(rec.get("tags"), list) else [],
+        "chapter_tags": rec.get("chapter_tags")
+        if isinstance(rec.get("chapter_tags"), list)
+        else [],
+        "llm_tag_candidates": (
+            rec.get("llm_tag_candidates") if isinstance(rec.get("llm_tag_candidates"), list) else []
+        ),
+        "tags_llm_call_attempts": (
+            rec.get("tags_llm_call_attempts")
+            if isinstance(rec.get("tags_llm_call_attempts"), list)
+            else []
+        ),
+        "tags_llm_recipe_hash": rec.get("tags_llm_recipe_hash"),
+        "tags_spec_hash": rec.get("tags_spec_hash"),
+        "tags_input_fingerprint": rec.get("tags_input_fingerprint"),
+    }
+
+
+def _timeline_and_sources_from_rec(rec: dict) -> dict:
+    sources_data = rec.get("sources") or []
+    sources = [_source_media_from_dict(s) for s in sources_data]
+    tl_data = rec.get("timeline")
+    timeline = _timeline_from_dict(tl_data) if tl_data else None
+    return {
+        "sources": sources,
+        "timeline": timeline,
+    }
+
+
 def record_to_episode(rec: dict) -> Episode:
     """Rebuild an :class:`Episode` from a stored record — the inverse of
     :func:`episode_to_record`. Used to render feeds from the *full* append-only archive,
@@ -1569,20 +1670,8 @@ def record_to_episode(rec: dict) -> Episode:
     """
     published = rec.get("published")
     when = datetime.fromisoformat(published) if published else datetime.now(UTC)
-    audio = rec.get("audio") or {}
-    agenda = rec.get("agenda_text") or {}
-    backup = rec.get("agenda_backup") or {}
-    minutes = rec.get("minutes_text") or {}
-    votes = rec.get("minutes_votes") or {}
-    roster = rec.get("minutes_roster") or {}
     source_duration = record_source_duration_seconds(rec)
     served_duration = record_served_duration_seconds(rec)
-
-    sources_data = rec.get("sources") or []
-    sources = [_source_media_from_dict(s) for s in sources_data]
-
-    tl_data = rec.get("timeline")
-    timeline = _timeline_from_dict(tl_data) if tl_data else None
 
     return Episode(
         guid=rec.get("provider_guid") or "",
@@ -1594,82 +1683,27 @@ def record_to_episode(rec: dict) -> Episode:
         media_kind=rec.get("media_kind") or "direct",
         body=rec.get("body"),
         uid=rec.get("uid"),
-        hosted_audio_url=audio.get("url"),
-        audio_key=audio.get("key"),
-        audio_spec_hash=audio.get("spec_hash"),
-        audio_verification=(
-            audio.get("verification") if isinstance(audio.get("verification"), dict) else {}
-        ),
-        materialize_attempts=audio.get("attempts") or 0,
-        materialize_last_attempt=audio.get("last_attempt"),
-        materialize_error=audio.get("error"),
-        materialize_error_spec_hash=audio.get("error_spec_hash"),
-        audio_bytes=audio.get("bytes"),
         links=rec.get("links") or {},
-        agenda_text_url=agenda.get("url"),
-        agenda_text_attempts=_coerce_non_negative_int(agenda.get("attempts")),
-        agenda_text_last_attempt=agenda.get("last_attempt"),
-        agenda_text_quality=(
-            agenda.get("quality") if isinstance(agenda.get("quality"), dict) else {}
-        ),
-        agenda_backup_url=backup.get("url"),
-        agenda_backup_attempts=_coerce_non_negative_int(backup.get("attempts")),
-        agenda_backup_last_attempt=backup.get("last_attempt"),
-        minutes_text_url=minutes.get("url"),
-        minutes_text_attempts=_coerce_non_negative_int(minutes.get("attempts")),
-        minutes_text_last_attempt=minutes.get("last_attempt"),
-        minutes_votes_url=votes.get("url"),
-        minutes_votes=votes.get("items") if isinstance(votes.get("items"), list) else [],
-        minutes_roster_url=roster.get("url"),
-        minutes_roster=roster.get("members") if isinstance(roster.get("members"), list) else [],
-        minutes_roster_status=roster.get("status"),
-        source_chapters=rec.get("source_chapters") or [],
-        chapters=rec.get("chapters") or [],
-        generated_agenda_candidates=(
-            rec.get("generated_agenda_candidates")
-            if isinstance(rec.get("generated_agenda_candidates"), dict)
-            else {}
-        ),
-        generated_chapters=(
-            rec.get("generated_chapters") if isinstance(rec.get("generated_chapters"), list) else []
-        ),
-        generated_chapters_spec_hash=rec.get("generated_chapters_spec_hash"),
         provider_transcript=(
             rec.get("provider_transcript")
             if isinstance(rec.get("provider_transcript"), dict)
             else {}
         ),
         summary=rec.get("summary") or "",
-        **_moments_fields_from_rec(rec),
-        tags=rec.get("tags") if isinstance(rec.get("tags"), list) else [],
-        chapter_tags=rec.get("chapter_tags") if isinstance(rec.get("chapter_tags"), list) else [],
-        llm_tag_candidates=(
-            rec.get("llm_tag_candidates") if isinstance(rec.get("llm_tag_candidates"), list) else []
-        ),
-        tags_llm_call_attempts=(
-            rec.get("tags_llm_call_attempts")
-            if isinstance(rec.get("tags_llm_call_attempts"), list)
-            else []
-        ),
-        tags_llm_recipe_hash=rec.get("tags_llm_recipe_hash"),
-        tags_spec_hash=rec.get("tags_spec_hash"),
-        tags_input_fingerprint=rec.get("tags_input_fingerprint"),
         stage_completion=(
             rec.get("stage_completion") if isinstance(rec.get("stage_completion"), dict) else {}
         ),
-        # v2 transcript block (INFRA-8); v1 records with old transcript_url silently dropped.
-        **_transcript_fields_from_rec(rec),
-        **_speakers_fields_from_rec(rec),
-        # v2 fields (default to identity/empty for v1 records — lazy upgrade)
-        sources=sources,
-        timeline=timeline,
-        chapters_basis=rec.get("chapters_basis", "source:s0"),
-        audio_rebuild=audio.get("rebuild") or "",
-        audio_encode_time=audio.get("encode_time"),
         audio_duration_served=served_duration,
         served_duration_seconds=served_duration,
         integrity=rec.get("integrity") if isinstance(rec.get("integrity"), dict) else {},
         media_availability=_availability_from_rec(rec),
+        **_audio_fields_from_rec(rec),
+        **_document_fields_from_rec(rec),
+        **_chapter_and_tag_fields_from_rec(rec),
+        **_moments_fields_from_rec(rec),
+        **_transcript_fields_from_rec(rec),
+        **_speakers_fields_from_rec(rec),
+        **_timeline_and_sources_from_rec(rec),
     )
 
 
