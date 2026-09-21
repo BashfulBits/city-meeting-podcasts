@@ -48,12 +48,8 @@ def run_bench(
         print("No models specified.")
         return 1
 
-    from citypods import asr as asr_mod
-    from citypods.config import load_city_configs, load_site_config
-    from citypods.records import load_records, record_to_episode, source_key
     from citypods.stages import download_hosted_audio
-    from citypods.state import resolve_state_dir
-    from citypods.text_metrics import require_jiwer, wer_cer
+    from citypods.text_metrics import require_jiwer
 
     try:
         require_jiwer()
@@ -61,35 +57,17 @@ def run_bench(
         print("jiwer is required for WER computation. Install: pip install 'citypods[asr-bench]'")
         return 1
 
-    site_config = load_site_config(site_config_path)
-    cities = load_city_configs(config_dir, site_config.get("defaults", {}))
-    city = next((c for c in cities if c.slug == city_slug), None)
-    if city is None:
-        print(f"City not found: {city_slug!r}")
+    target = _resolve_bench_target(
+        city_slug,
+        episode_uid,
+        site_config_path=site_config_path,
+        config_dir=config_dir,
+        output_dir=output_dir,
+    )
+    if target is None:
         return 1
 
-    state_dir = resolve_state_dir(site_config, Path(output_dir))
-    records = load_records(state_dir, source_key(city))
-    rec = records.get(episode_uid)
-    if rec is None:
-        print(f"Episode not found: {episode_uid!r}")
-        print(f"Available UIDs in this source: {', '.join(list(records)[:5])} ...")
-        return 1
-
-    ep = record_to_episode(rec)
-    if not ep.hosted_audio_url:
-        print("Episode has no hosted audio URL — run `citypods enrich` first.")
-        return 1
-
-    # Get reference transcript text
-    ref_text = _get_ref_text(ep)
-    if ref_text is None:
-        print(
-            "No reference transcript found for WER comparison.\n"
-            "Need either a stored plain-text transcript (ep.transcript_format == 'txt')\n"
-            "or a stored VTT (timestamps will be stripped)."
-        )
-        return 1
+    city, ep, ref_text = target
 
     duration_h, _duration_source = episode_duration_hours(ep)
     ref_words = len(ref_text.split())
@@ -114,42 +92,21 @@ def run_bench(
     with download_hosted_audio(ep.hosted_audio_url) as audio_path:
         for model in models:
             prompt = ". ".join(p for p in (city.podcast_title, ep.body, ep.title) if p)
-            t0 = time.perf_counter()
-            try:
-                result = asr_mod.transcribe(
-                    audio_path, model, language, compute_type, beam_size, prompt, cpu_threads
-                )
-            except ImportError as exc:
-                print(f"  {model}: {exc}")
-                continue
-
-            elapsed = time.perf_counter() - t0
-            hyp_text = asr_mod.vtt_to_text(result.vtt.decode("utf-8", errors="replace"))
-            hyp_words = len(hyp_text.split())
-
-            wer = wer_cer(ref_text, hyp_text)["wer"]
-
-            # CR2-CP-44: this can only ever be a running "so far" indicator, live-printed before
-            # later models are known — a subsequent better result cannot un-print an already-shown
-            # marker on a prior row (the old "retroactive clear" only mutated `results`, which is
-            # never re-printed, so it had no visible effect). The authoritative winner is the
-            # "Recommended:" line below, computed after every model has run.
-            note = " ← best so far" if wer < best_wer else ""
-            best_wer = min(best_wer, wer)
-
-            mins = int(elapsed // 60)
-            secs = int(elapsed % 60)
-            results.append(
-                {
-                    "model": model,
-                    "wer": wer,
-                    "mins": mins,
-                    "secs": secs,
-                    "words": hyp_words,
-                    "note": note,
-                }
+            res = _bench_model(
+                model,
+                audio_path,
+                prompt,
+                ref_text,
+                best_wer,
+                mw,
+                compute_type=compute_type,
+                beam_size=beam_size,
+                language=language,
+                cpu_threads=cpu_threads,
             )
-            print(f"{model:<{mw}}  {wer:>7.1%}  {mins:>3}m {secs:>02d}s  {hyp_words:>8}{note}")
+            if res is not None:
+                best_wer = min(best_wer, res["wer"])
+                results.append(res)
 
     if results:
         best = min(results, key=lambda r: r["wer"])
@@ -158,6 +115,99 @@ def run_bench(
             print("  Tip: consider running with --models large-v3-turbo for higher accuracy.")
 
     return 0
+
+
+def _resolve_bench_target(
+    city_slug: str,
+    episode_uid: str,
+    *,
+    site_config_path: str,
+    config_dir: str,
+    output_dir: str,
+):
+    """Resolve city config, episode record, and reference transcript text."""
+    from citypods.config import load_city_configs, load_site_config
+    from citypods.records import load_records, record_to_episode, source_key
+    from citypods.state import resolve_state_dir
+
+    site_config = load_site_config(site_config_path)
+    cities = load_city_configs(config_dir, site_config.get("defaults", {}))
+    city = next((c for c in cities if c.slug == city_slug), None)
+    if city is None:
+        print(f"City not found: {city_slug!r}")
+        return None
+
+    state_dir = resolve_state_dir(site_config, Path(output_dir))
+    records = load_records(state_dir, source_key(city))
+    rec = records.get(episode_uid)
+    if rec is None:
+        print(f"Episode not found: {episode_uid!r}")
+        print(f"Available UIDs in this source: {', '.join(list(records)[:5])} ...")
+        return None
+
+    ep = record_to_episode(rec)
+    if not ep.hosted_audio_url:
+        print("Episode has no hosted audio URL — run `citypods enrich` first.")
+        return None
+
+    ref_text = _get_ref_text(ep)
+    if ref_text is None:
+        print(
+            "No reference transcript found for WER comparison.\n"
+            "Need either a stored plain-text transcript (ep.transcript_format == 'txt')\n"
+            "or a stored VTT (timestamps will be stripped)."
+        )
+        return None
+
+    return city, ep, ref_text
+
+
+def _bench_model(
+    model: str,
+    audio_path,
+    prompt: str,
+    ref_text: str,
+    best_wer: float,
+    mw: int,
+    *,
+    compute_type: str,
+    beam_size: int,
+    language: str,
+    cpu_threads: int,
+) -> dict | None:
+    """Run transcription for a single model and compute WER metrics."""
+    from citypods import asr as asr_mod
+    from citypods.text_metrics import wer_cer
+
+    t0 = time.perf_counter()
+    try:
+        result = asr_mod.transcribe(
+            audio_path, model, language, compute_type, beam_size, prompt, cpu_threads
+        )
+    except ImportError as exc:
+        print(f"  {model}: {exc}")
+        return None
+
+    elapsed = time.perf_counter() - t0
+    hyp_text = asr_mod.vtt_to_text(result.vtt.decode("utf-8", errors="replace"))
+    hyp_words = len(hyp_text.split())
+
+    wer = wer_cer(ref_text, hyp_text)["wer"]
+
+    note = " ← best so far" if wer < best_wer else ""
+
+    mins = int(elapsed // 60)
+    secs = int(elapsed % 60)
+    print(f"{model:<{mw}}  {wer:>7.1%}  {mins:>3}m {secs:>02d}s  {hyp_words:>8}{note}")
+
+    return {
+        "model": model,
+        "wer": wer,
+        "mins": mins,
+        "secs": secs,
+        "words": hyp_words,
+        "note": note,
+    }
 
 
 def _get_ref_text(ep) -> str | None:

@@ -90,3 +90,50 @@ def test_download_hosted_audio_public_alias_matches_internal_helper():
     from citypods import stages
 
     assert stages.download_hosted_audio is stages._download_audio
+
+
+def test_run_bench_no_models(capsys):
+    from citypods.bench import run_bench
+
+    ret = run_bench("city-slug", "ep-uid", [])
+    assert ret == 1
+    captured = capsys.readouterr()
+    assert "No models specified." in captured.out
+
+
+def test_run_bench_missing_city(capsys, monkeypatch):
+    from citypods.bench import run_bench
+
+    monkeypatch.setattr("citypods.text_metrics.require_jiwer", lambda: None)
+    monkeypatch.setattr("citypods.config.load_site_config", lambda path: {})
+    monkeypatch.setattr("citypods.config.load_city_configs", lambda path, defaults: [])
+
+    ret = run_bench("city-slug", "ep-uid", ["base.en"])
+    assert ret == 1
+    captured = capsys.readouterr()
+    assert "City not found: 'city-slug'" in captured.out
+
+
+def test_bench_model_import_error(capsys, monkeypatch):
+    from citypods.bench import _bench_model
+
+    def mock_transcribe(*args, **kwargs):
+        raise ImportError("faster-whisper not installed")
+
+    monkeypatch.setattr("citypods.asr.transcribe", mock_transcribe)
+
+    res = _bench_model(
+        "base.en",
+        "/tmp/audio.mp3",
+        "prompt",
+        "hello world",
+        float("inf"),
+        10,
+        compute_type="int8",
+        beam_size=5,
+        language="en",
+        cpu_threads=4,
+    )
+    assert res is None
+    captured = capsys.readouterr()
+    assert "faster-whisper not installed" in captured.out
