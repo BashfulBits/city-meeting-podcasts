@@ -2,7 +2,7 @@ from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
 from citypods import cli
-from citypods.migration import compare_provider_migration
+from citypods.migration import MigrationItem, MigrationReport, compare_provider_migration
 from citypods.models import City, Episode
 from citypods.providers import ProviderError
 from citypods.records import assign_uids, save_records
@@ -83,6 +83,83 @@ def test_unmatched_pre_cutover_history_fails_closed_until_overridden():
     resolved = compare_provider_migration(city, [candidate], archive, cutover=date(2026, 7, 10))
     assert resolved.ready
     assert [item.guid for item in resolved.overrides_applied] == ["replacement-renamed"]
+
+
+def test_migration_report_to_dict_when_ready():
+    item = MigrationItem(
+        guid="guid-1",
+        uid="uid-1",
+        published="2026-07-01T18:00:00+00:00",
+        title="Meeting 1",
+    )
+    report = MigrationReport(
+        slug="example-tx-council",
+        source_id="legacy-source",
+        cutover="2026-07-10",
+        mode="copied-history",
+        archive_count=1,
+        candidate_count=1,
+        projected_count=1,
+        matched_history=[item],
+    )
+    data = report.to_dict()
+
+    assert data["ready"] is True
+    assert data["slug"] == "example-tx-council"
+    assert data["source_id"] == "legacy-source"
+    assert data["cutover"] == "2026-07-10"
+    assert data["mode"] == "copied-history"
+    assert data["archive_count"] == 1
+    assert data["candidate_count"] == 1
+    assert data["projected_count"] == 1
+    assert data["matched_history"] == [
+        {
+            "guid": "guid-1",
+            "uid": "uid-1",
+            "published": "2026-07-01T18:00:00+00:00",
+            "title": "Meeting 1",
+        }
+    ]
+    assert data["new_episodes"] == []
+    assert data["ambiguous_history"] == []
+    assert data["overrides_applied"] == []
+    assert data["duplicate_uids"] == {}
+    assert data["invalid_overrides"] == []
+
+
+def test_migration_report_to_dict_when_not_ready():
+    ambiguous_item = MigrationItem(
+        guid="guid-ambiguous",
+        uid="uid-2",
+        published="2026-07-05T18:00:00+00:00",
+        title="Ambiguous Meeting",
+    )
+    report = MigrationReport(
+        slug="example-tx-council",
+        source_id=None,
+        cutover="2026-07-10",
+        mode="forward-only",
+        archive_count=1,
+        candidate_count=1,
+        projected_count=2,
+        ambiguous_history=[ambiguous_item],
+        duplicate_uids={"dup-uid": ["guid-a", "guid-b"]},
+        invalid_overrides=["err1"],
+    )
+    data = report.to_dict()
+
+    assert data["ready"] is False
+    assert data["source_id"] is None
+    assert data["ambiguous_history"] == [
+        {
+            "guid": "guid-ambiguous",
+            "uid": "uid-2",
+            "published": "2026-07-05T18:00:00+00:00",
+            "title": "Ambiguous Meeting",
+        }
+    ]
+    assert data["duplicate_uids"] == {"dup-uid": ["guid-a", "guid-b"]}
+    assert data["invalid_overrides"] == ["err1"]
 
 
 def test_override_must_target_archive_and_present_candidate_guid():
