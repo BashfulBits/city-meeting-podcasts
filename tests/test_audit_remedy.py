@@ -13,7 +13,7 @@ import pytest
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from citypods.audit import collect_unexpected_bodies
+from citypods.audit import UnexpectedBodyEvidence, collect_unexpected_bodies
 from citypods.audit_remedy import (
     DECISION_CONTRACT,
     EVIDENCE_TOKEN_BUDGET,
@@ -38,6 +38,7 @@ from citypods.audit_remedy import (
     safe_classification_error,
     stable_body_selector,
     validate_proposals,
+    write_evidence_file,
 )
 from citypods.compute.base import JobResult
 from citypods.compute.llm_policy import estimate_tokens
@@ -812,3 +813,63 @@ def test_safe_diagnostics_mask_unknown_loc_parts():
     assert "leaked-value" not in diagnostic
     assert "<field>" in diagnostic
     assert "proposals" in diagnostic
+
+
+# --- write_evidence_file ------------------------------------------------------------------
+
+
+def test_write_evidence_file_writes_bundle_and_returns_count(repo):
+    council = make_city("test-city-council", "City Council", body_any=["Work Session"])
+    library = make_city("test-city-library-board", "Library Board")
+    episodes = [
+        make_episode("guid-101", "Special Meeting - Budget", "Council Special Meeting", 10),
+    ]
+    rows = collect_unexpected_bodies(episodes, {}, related_cities=[council, library])
+    item = UnexpectedBodyEvidence(
+        source_key="test-source",
+        city=council,
+        related_cities=[council, library],
+        rows=rows,
+        records={"guid-1": {"body": "City Council", "title": "Regular Meeting"}},
+    )
+    target_path = repo / "evidence" / "bundle.json"
+
+    count = write_evidence_file([item], target_path, repo_root=repo)
+
+    assert count == 1
+    assert target_path.exists()
+    payload = json.loads(target_path.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 1
+    assert len(payload["sources"]) == 1
+    assert payload["sources"][0]["source_key"] == "test-source"
+    assert len(payload["digest"]) == 64
+
+
+def test_write_evidence_file_creates_parent_directories(repo):
+    item = UnexpectedBodyEvidence(
+        source_key="test-source",
+        city=make_city("test-city-council", "City Council"),
+        related_cities=[],
+        rows={},
+        records={},
+    )
+    nested_path = repo / "deep" / "nested" / "dir" / "evidence.json"
+
+    count = write_evidence_file([item], nested_path, repo_root=repo)
+
+    assert count == 1
+    assert nested_path.exists()
+
+
+def test_write_evidence_file_empty_list(tmp_path):
+    target_path = tmp_path / "empty_evidence.json"
+
+    count = write_evidence_file([], target_path, repo_root=tmp_path)
+
+    assert count == 0
+    assert target_path.exists()
+    payload = json.loads(target_path.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 1
+    assert payload["sources"] == []
+    assert isinstance(payload["digest"], str)
+    assert len(payload["digest"]) == 64
