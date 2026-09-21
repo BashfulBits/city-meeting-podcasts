@@ -7205,7 +7205,6 @@ class NativeDiarizeStage:
         (review/31 §A.4), which a single fused loop consuming a generator cannot do.
         """
         from citypods.records import source_key
-        from citypods.speakers import pilot_selected
 
         src_key = source_key(city)
         candidates: list[_DiarizeCandidate] = []
@@ -7217,77 +7216,113 @@ class NativeDiarizeStage:
             city_slug=canonical_city_slug,
             work_class="transcript-diarize",
         ):
-            uid = ep.uid or ep.guid
-            if ep.speakers_source == "provider":
-                # ProviderTranscriptDiarizeStage (the "diarize" stage) is retired: a citywide
-                # survey (review/31 §A.5) found the caption-provider colon-prefix format it
-                # depended on (`NAME: text`) never once matched real data across every provider
-                # currently integrated -- captions come back either fully unmarked or with a bare
-                # `>>` speaker-change chevron, never a named label. Every one of its outputs is
-                # unvalidated guesswork by construction (any `Word:`-shaped line could match), so
-                # an episode still carrying its stale `speakers_source="provider"` artifact must
-                # not keep being treated as done -- clear it here, before the pilot_selected gate
-                # below, not after: a non-pilot body's episode hits that gate's own `continue` and
-                # would otherwise never reach this clearing at all, leaving a retired, unvalidated
-                # artifact exposed indefinitely for every body outside the R7 pilot (native
-                # diarization is never going to touch it either, so nothing else would ever clear
-                # it). Clearing here is unconditional; whether the episode goes on to become a
-                # real diarize candidate is still entirely up to the pilot_selected check below.
-                ep.speakers_key = None
-                ep.speakers_url = None
-                ep.speakers_spec_hash = None
-                ep.speakers_format = None
-                ep.speakers_synced = False
-                ep.speakers_confidence = None
-                ep.speakers_pipeline_version = None
-                ep.speakers_error = None
-                ep.speakers_source = None
-            if not pilot_selected(config, canonical_city_slug, ep.body):
-                # Clear stale no-output markers from the old exact-body matcher. A later pass will
-                # see newly selected bodies immediately, while valid selected artifacts reuse.
-                marker = ep.stage_completion.get(self.name)
-                if isinstance(marker, dict) and not marker.get("output"):
-                    ep.stage_completion.pop(self.name, None)
-                stats.quality("pilot-not-selected")
-                continue
-            if not (ep.hosted_audio_url and ep.transcript_synced and ep.transcript_words_key):
-                stats.defer("missing-timed-words", sample=uid)
-                continue
-            # Validate now, but let the bytes go: see _DiarizeCandidate on why they are re-read
-            # at admission rather than retained for every pending candidate.
-            words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
-            words_valid = words_raw is not None and has_valid_timed_words(words_raw)
-            del words_raw
-            if not words_valid:
-                stats.defer("invalid-timed-words", sample=uid)
-                continue
-            spec = _diarize_spec_hash(ep, model, embedding_model)
-            key = _diarize_object_key(src_key, uid, spec)
-            if ep.speakers_key == key and ep.speakers_synced and ctx.storage.exists(key):
-                ep.speakers_url = ctx.storage.public_url(key)
-                stats.reused += 1
-                continue
-            recording_seconds = max(0.0, episode_served_duration_seconds(ep) or 0.0)
-            if recording_seconds <= 0:
-                # An unknown-length episode estimates at 0s, so it "fits" any remaining budget and
-                # reserves only the base memory footprint -- and because best-fit-decreasing sorts
-                # longest first, it lands late, exactly when the budget is tightest. That is the
-                # run-51 failure mode (an unbounded item admitted because its cost was unknown)
-                # with the cost hidden behind a default instead of a slow model. Defer until the
-                # duration lands, the same way missing timed words are handled above.
-                stats.defer("unknown-duration", sample=uid)
-                continue
-            candidates.append(
-                _DiarizeCandidate(
-                    ep=ep,
-                    uid=str(uid),
-                    spec=spec,
-                    key=key,
-                    words_key=str(ep.transcript_words_key),
-                    recording_seconds=recording_seconds,
-                )
+            candidate = self._inspect_candidate(
+                ep,
+                src_key,
+                ctx,
+                stats,
+                config=config,
+                model=model,
+                embedding_model=embedding_model,
+                canonical_city_slug=canonical_city_slug,
             )
+            if candidate is not None:
+                candidates.append(candidate)
         return candidates
+
+    def _clear_stale_provider_speakers(self, ep: Episode) -> None:
+        """Clear stale provider-sourced speaker fields from retired stage outputs."""
+        if ep.speakers_source == "provider":
+            # ProviderTranscriptDiarizeStage (the "diarize" stage) is retired: a citywide
+            # survey (review/31 §A.5) found the caption-provider colon-prefix format it
+            # depended on (`NAME: text`) never once matched real data across every provider
+            # currently integrated -- captions come back either fully unmarked or with a bare
+            # `>>` speaker-change chevron, never a named label. Every one of its outputs is
+            # unvalidated guesswork by construction (any `Word:`-shaped line could match), so
+            # an episode still carrying its stale `speakers_source="provider"` artifact must
+            # not keep being treated as done -- clear it here, before the pilot_selected gate
+            # below, not after: a non-pilot body's episode hits that gate's own `continue` and
+            # would otherwise never reach this clearing at all, leaving a retired, unvalidated
+            # artifact exposed indefinitely for every body outside the R7 pilot (native
+            # diarization is never going to touch it either, so nothing else would ever clear
+            # it). Clearing here is unconditional; whether the episode goes on to become a
+            # real diarize candidate is still entirely up to the pilot_selected check below.
+            ep.speakers_key = None
+            ep.speakers_url = None
+            ep.speakers_spec_hash = None
+            ep.speakers_format = None
+            ep.speakers_synced = False
+            ep.speakers_confidence = None
+            ep.speakers_pipeline_version = None
+            ep.speakers_error = None
+            ep.speakers_source = None
+
+    def _inspect_candidate(
+        self,
+        ep: Episode,
+        src_key: str,
+        ctx: StageContext,
+        stats: StageStats,
+        *,
+        config: Mapping[str, Any],
+        model: str,
+        embedding_model: str,
+        canonical_city_slug: str,
+    ) -> _DiarizeCandidate | None:
+        """Check episode eligibility and return a `_DiarizeCandidate` if ready for diarization."""
+        from citypods.speakers import pilot_selected
+
+        uid = ep.uid or ep.guid
+        self._clear_stale_provider_speakers(ep)
+
+        if not pilot_selected(config, canonical_city_slug, ep.body):
+            # Clear stale no-output markers from the old exact-body matcher. A later pass will
+            # see newly selected bodies immediately, while valid selected artifacts reuse.
+            marker = ep.stage_completion.get(self.name)
+            if isinstance(marker, dict) and not marker.get("output"):
+                ep.stage_completion.pop(self.name, None)
+            stats.quality("pilot-not-selected")
+            return None
+
+        if not (ep.hosted_audio_url and ep.transcript_synced and ep.transcript_words_key):
+            stats.defer("missing-timed-words", sample=uid)
+            return None
+
+        # Validate now, but let the bytes go: see _DiarizeCandidate on why they are re-read
+        # at admission rather than retained for every pending candidate.
+        words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
+        words_valid = words_raw is not None and has_valid_timed_words(words_raw)
+        del words_raw
+        if not words_valid:
+            stats.defer("invalid-timed-words", sample=uid)
+            return None
+
+        spec = _diarize_spec_hash(ep, model, embedding_model)
+        key = _diarize_object_key(src_key, uid, spec)
+        if ep.speakers_key == key and ep.speakers_synced and ctx.storage.exists(key):
+            ep.speakers_url = ctx.storage.public_url(key)
+            stats.reused += 1
+            return None
+
+        recording_seconds = max(0.0, episode_served_duration_seconds(ep) or 0.0)
+        if recording_seconds <= 0:
+            # An unknown-length episode estimates at 0s, so it "fits" any remaining budget and
+            # reserves only the base memory footprint -- and because best-fit-decreasing sorts
+            # longest first, it lands late, exactly when the budget is tightest. That is the
+            # run-51 failure mode (an unbounded item admitted because its cost was unknown)
+            # with the cost hidden behind a default instead of a slow model. Defer until the
+            # duration lands, the same way missing timed words are handled above.
+            stats.defer("unknown-duration", sample=uid)
+            return None
+
+        return _DiarizeCandidate(
+            ep=ep,
+            uid=str(uid),
+            spec=spec,
+            key=key,
+            words_key=str(ep.transcript_words_key),
+            recording_seconds=recording_seconds,
+        )
 
     def _run_admitted(
         self,
