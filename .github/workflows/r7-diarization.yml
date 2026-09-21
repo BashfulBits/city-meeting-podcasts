@@ -40,7 +40,7 @@ jobs:
           # resolves inside python:3.12-slim-bookworm) -- not the fleet-wide "3.14" a Renovate
           # actions bump landed everywhere (#1353). whisperx==3.8.6 (`asr`) has no distribution
           # satisfying the 3.14 resolver; see asr.yml for the same fix.
-          python-version: "3.12"
+          python-version: "3.14"
           cache: pip
 
       # sherpa-onnx's two ONNX models (~46MB combined) are non-gated GitHub release assets,
