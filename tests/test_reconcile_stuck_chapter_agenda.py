@@ -1,8 +1,10 @@
+import threading
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
 
+import scripts.reconcile_stuck_chapter_agenda as reconcile_module
 from citypods.compute.base import JobHandle
 from citypods.compute.llm_deferred import write_deferred
 from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
@@ -274,20 +276,76 @@ def test_apply_stops_early_on_should_stop_and_reports_it():
         return calls["count"] >= 3
 
     # A single worker makes completion order deterministic (submission order): should_stop() is
-    # checked once per completed discard, so the 3rd candidate is discarded (it already completed
-    # by the time its check trips the stop) and the loop then breaks before submitting/consuming
-    # any more.
+    # checked once per completed discard, so the 3rd candidate is always discarded (it already
+    # completed by the time its check trips the stop) before the loop breaks. Whether a 4th
+    # candidate is *also* discarded is a genuine, expected race: the single worker thread may
+    # already have started (or even finished) it before the main thread's check-and-break runs --
+    # and per the fix this regression-tests, that in-flight discard's real, already-executed
+    # mutation must still be picked up and counted, not silently dropped. So the only guarantee is
+    # discarded_count in {3, 4}, not an exact value.
     result = _apply(storage, Backend(), candidates, discard_workers=1, should_stop=should_stop)
 
     assert result["deadline_reached"] is True
-    assert result["discarded_count"] == 3
+    assert result["discarded_count"] in (3, 4)
     assert result["discarded_count"] + result["retained_count"] < count
     remaining = [
         handle
         for handle in handles
         if storage.get_bytes(f"state/llm_deferred/{handle.recipe_hash}.json") is not None
     ]
-    assert len(remaining) == count - 3
+    assert len(remaining) == count - result["discarded_count"]
+
+
+def test_apply_incorporates_a_discard_still_in_flight_when_the_stop_fired():
+    """Regression for a CodeRabbit review finding on the fix above: a discard already running
+    (not merely queued) when should_stop() fires must still have its real, already-executed
+    mutation counted in the report -- executor.shutdown must wait for it and its outcome must be
+    folded into discarded_count/dispositions, not silently dropped just because the main loop
+    broke before observing its completion. Uses a controllable block/release instead of relying
+    on natural thread-scheduling timing, so this is deterministic rather than a timing race."""
+    storage = MemStorage()
+    handles = [
+        _handle(f"remote-{index}", model="mistral/mistral-medium-latest", ref=f"ref-{index}")
+        for index in range(3)
+    ]
+    for handle in handles:
+        write_deferred(storage, handle.recipe_hash, handle, now=NOW)
+    candidates = [
+        _classify_entry(_entry(handle, age_hours=25), now=NOW, older_than_hours=24)
+        for handle in handles
+    ]
+
+    class Backend:
+        def cancel_batch(self, refs):
+            return {"cancelled": refs, "in_flight": [], "not_found": []}
+
+    # 3 workers for 3 candidates means every discard_deferred call starts immediately, so
+    # "remote-2" is guaranteed to already be running (blocked here) by the time should_stop() is
+    # first checked -- exactly the "in flight, not yet consumed" scenario being regression-tested.
+    held_released = threading.Event()
+    real_discard_deferred = reconcile_module.discard_deferred
+
+    def blocking_discard_deferred(storage, recipe_hash, *, expected_ref=None):
+        if recipe_hash == "remote-2":
+            assert held_released.wait(timeout=5), "test did not release the held discard in time"
+        return real_discard_deferred(storage, recipe_hash, expected_ref=expected_ref)
+
+    def should_stop() -> bool:
+        # Let the deliberately-held discard proceed once the run has decided to stop, mirroring
+        # a real deadline: in-flight work is allowed to finish, only new admission stops.
+        held_released.set()
+        return True
+
+    reconcile_module.discard_deferred = blocking_discard_deferred
+    try:
+        result = _apply(storage, Backend(), candidates, discard_workers=3, should_stop=should_stop)
+    finally:
+        reconcile_module.discard_deferred = real_discard_deferred
+
+    assert result["deadline_reached"] is True
+    assert result["discarded_count"] == 3
+    for handle in handles:
+        assert storage.get_bytes(f"state/llm_deferred/{handle.recipe_hash}.json") is None
 
 
 def test_apply_retains_an_unavailable_record_and_continues():

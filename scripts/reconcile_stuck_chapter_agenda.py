@@ -247,23 +247,28 @@ def _apply(
             max_workers=min(discard_workers, len(to_discard)),
             thread_name_prefix="reconcile-discard",
         )
+        processed: set = set()
+
+        def _record_outcome(item: dict[str, Any], disposition: str, error: str | None) -> None:
+            nonlocal discarded, retained
+            dispositions[disposition] += 1
+            if disposition == "superseded":
+                discarded += 1
+            elif disposition == "record_unavailable_retained":
+                retained += 1
+            # "record_changed_or_missing" counts toward neither discarded nor retained, matching
+            # the pre-parallelization behavior: the record was already gone or superseded by
+            # something else under us, which is neither this run's doing nor something to retry.
+            if error is not None:
+                errors.append(f"discard failed for {item['recipe_hash']}: {error}")
+
         stopped = False
         try:
             futures = {executor.submit(_discard_one, item): item for item in to_discard}
             for idx, future in enumerate(as_completed(futures), 1):
                 item = futures[future]
-                disposition, error = future.result()
-                dispositions[disposition] += 1
-                if disposition == "superseded":
-                    discarded += 1
-                elif disposition == "record_unavailable_retained":
-                    retained += 1
-                # "record_changed_or_missing" counts toward neither discarded nor retained,
-                # matching the pre-parallelization behavior: the record was already gone or
-                # superseded by something else under us, which is neither this run's doing nor
-                # something for it to retry.
-                if error is not None:
-                    errors.append(f"discard failed for {item['recipe_hash']}: {error}")
+                processed.add(future)
+                _record_outcome(item, *future.result())
                 # Printed every DISCARD_PROGRESS_INTERVAL completions (mirroring
                 # llm_deferred.py's repair_deferred_index) so a long apply pass is observable
                 # while it runs -- not just from a final report a killed process never reaches.
@@ -292,10 +297,24 @@ def _apply(
                     break
         finally:
             # A stopped run must not wait for the remaining queued (not-yet-started) discards --
-            # they are safely left as-is for the next scheduled/manual run to pick up ("deferred,
-            # not failed"). Already-running discards (at most `discard_workers` of them) finish in
-            # the background; their outcome is simply not reflected in this run's report.
-            executor.shutdown(wait=not stopped, cancel_futures=stopped)
+            # `cancel_futures=True` cancels exactly those (a future that hasn't started running is
+            # cancelled outright; one already running is never cancelled, regardless of this flag)
+            # -- and they're safely left as-is for the next scheduled/manual run to pick up
+            # ("deferred, not failed"). `wait=True` then blocks for the at-most-`discard_workers`
+            # discards that were already running when the deadline hit: their discard_deferred
+            # call already executed a real mutation, so the report below must not silently omit
+            # them just because their completion wasn't observed before the stop check fired.
+            executor.shutdown(wait=True, cancel_futures=True)
+            if stopped:
+                for future, item in futures.items():
+                    if future in processed or future.cancelled():
+                        continue
+                    try:
+                        _record_outcome(item, *future.result())
+                    except Exception as exc:  # noqa: BLE001 -- one bad result must not lose the
+                        # rest of the already-completed-but-unconsumed futures' outcomes
+                        errors.append(f"discard failed for {item['recipe_hash']}: {exc}")
+                        retained += 1
 
     return {
         "cancelled_count": len(cancelled),
