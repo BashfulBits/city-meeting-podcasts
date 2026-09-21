@@ -55,6 +55,20 @@ def _issue_number(value: str) -> str:
     return value
 
 
+def _whole_int(value: str) -> int:
+    """Parse a CLI arg as an integer, tolerating a decimal-formatted whole number.
+
+    GitHub Actions renders a `workflow_dispatch` input declared `type: number` as a
+    decimal-formatted string (e.g. "12.0") even for a plain integer value or default -- a bare
+    `type=int` here rejects that shape outright (`int("12.0")` raises `ValueError`), failing
+    `--max-batches` (fed by this workflow's `max_batches` input) before it does anything.
+    """
+    parsed = float(value)
+    if not parsed.is_integer():
+        raise argparse.ArgumentTypeError(f"{value!r} is not a whole number")
+    return int(parsed)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -78,7 +92,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--max-batches",
-        type=int,
+        type=_whole_int,
         default=MAX_BATCHES_PER_RUN,
         help="Maximum number of bounded classification batches to process in one run",
     )

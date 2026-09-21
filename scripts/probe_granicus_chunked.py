@@ -67,11 +67,27 @@ def _download_full(
         return status, total
 
 
+def _whole_int(value: str) -> int:
+    """Parse a CLI arg as an integer, tolerating a decimal-formatted whole number.
+
+    GitHub Actions renders a `workflow_dispatch` input declared `type: number` as a
+    decimal-formatted string (e.g. "16.0") even for a plain integer value or default -- a bare
+    `type=int` here rejects that shape outright (`int("16.0")` raises `ValueError`), failing this
+    workflow's `--chunk-mib`/`--max-mib` before it does anything. `range_mib`/
+    `full_download_max_mib` feed both this and `probe_granicus_transport._mib_to_bytes`, which
+    already tolerates this shape via its own `float(value)` first -- this mirrors that.
+    """
+    parsed = float(value)
+    if not parsed.is_integer():
+        raise argparse.ArgumentTypeError(f"{value!r} is not a whole number")
+    return int(parsed)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default=DEFAULT_URL)
-    parser.add_argument("--chunk-mib", type=int, default=16)
-    parser.add_argument("--max-mib", type=int, default=512)
+    parser.add_argument("--chunk-mib", type=_whole_int, default=16)
+    parser.add_argument("--max-mib", type=_whole_int, default=512)
     parser.add_argument("--output", type=Path, default=Path("granicus-chunked-results.json"))
     args = parser.parse_args()
 

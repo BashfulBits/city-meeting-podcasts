@@ -172,6 +172,21 @@ def _parse_durations(raw: str) -> list[float]:
     return values
 
 
+def _whole_int(value: str) -> int:
+    """Parse a CLI arg as an integer, tolerating a decimal-formatted whole number.
+
+    GitHub Actions renders a `workflow_dispatch` input declared `type: number` as a
+    decimal-formatted string (e.g. "8.0") even for a plain integer value or default -- a bare
+    `type=int` here rejects that shape outright (`int("8.0")` raises `ValueError`), failing this
+    workflow's `--repeat-count` before it does anything. Mirrors
+    `probe_granicus_transport._nonnegative_integer`/`reconcile_stuck_chapter_agenda._whole_int`.
+    """
+    parsed = float(value)
+    if not parsed.is_integer():
+        raise argparse.ArgumentTypeError(f"{value!r} is not a whole number")
+    return int(parsed)
+
+
 def _emit(result: ProbeResult) -> None:
     print(
         f"{'PASS' if result.ok else 'FAIL'} sequence={result.sequence} phase={result.phase} "
@@ -186,7 +201,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ffmpeg", required=True)
     parser.add_argument("--clip", action="append", type=_parse_clip, dest="clips")
-    parser.add_argument("--repeat-count", type=int, default=8)
+    parser.add_argument("--repeat-count", type=_whole_int, default=8)
     parser.add_argument("--repeat-seconds", type=float, default=5.0)
     parser.add_argument("--durations", type=_parse_durations, default=[30.0, 120.0, 600.0])
     parser.add_argument("--cooldown-seconds", type=float, default=1800.0)

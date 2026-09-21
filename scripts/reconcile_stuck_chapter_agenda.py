@@ -270,6 +270,22 @@ def run(
     return 0 if not report.get("action", {}).get("errors") else 1
 
 
+def _whole_int(value: str) -> int:
+    """Parse a CLI arg as an integer, tolerating a decimal-formatted whole number.
+
+    GitHub Actions renders a `workflow_dispatch` input declared `type: number` as a
+    decimal-formatted string (e.g. "25000.0") even for a plain integer value or default --
+    confirmed live: the reconcile-stuck-chapter-agenda workflow passes `max_row_writes` straight
+    through as `env: MAX_ROW_WRITES: ${{ inputs.max_row_writes }}`, and a bare `type=int` here
+    rejects that shape outright (`int("25000.0")` raises `ValueError`), failing the workflow
+    before it does anything. `--older-than-hours` already used `type=float` and was unaffected.
+    """
+    parsed = float(value)
+    if not parsed.is_integer():
+        raise argparse.ArgumentTypeError(f"{value!r} is not a whole number")
+    return int(parsed)
+
+
 def main(argv: list[str] | None = None) -> int:
     """Parse CLI arguments and convert operational failures into a nonzero exit code."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -286,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--max-row-writes",
-        type=int,
+        type=_whole_int,
         default=DEFAULT_MAX_ROW_WRITES,
         help=(
             "Conservative billed row-write budget for v2 cancellation (default: "
