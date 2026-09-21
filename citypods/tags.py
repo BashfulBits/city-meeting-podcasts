@@ -20,6 +20,7 @@ import yaml
 
 from citypods.agenda_text import agenda_chapter_eligible, resolve_chapter_spans
 from citypods.chapters import episode_served_chapters
+from citypods.compute.structured import parse_structured_json
 
 TAGGER_VERSION = "2"
 CHAPTER_PIPELINE_VERSION = "1"
@@ -1294,7 +1295,7 @@ def llm_tag_suggestions(
     )
     if not isinstance(content, str):
         raise ValueError("LLM tag backend returned no structured content")
-    response = model.model_validate_json(content)
+    response = model.model_validate(parse_structured_json(content, context="LLM tag response"))
     chapter_by_id = {item["chapter_id"]: item for item in (chapter_inputs or [])}
     source_text = {"agenda": agenda_item_titles + "\n" + agenda_text, "transcript": transcript_text}
     transcript_segments = [
@@ -1564,7 +1565,13 @@ def llm_prelabel_candidates(
         )
         if not isinstance(content, str):
             raise ValueError("LLM pre-labeler backend returned no structured content")
-        response = response_model_type.model_validate_json(content)
+        parsed = parse_structured_json(content, context="LLM pre-labeler response")
+        # A few JSON-capable routes honor the item schema but omit the enclosing object and return
+        # the assessment list directly. This adapter is intentionally contract-specific: other
+        # verbs must not start accepting arbitrary list/object shape changes.
+        if isinstance(parsed, list):
+            parsed = {"assessments": parsed}
+        response = response_model_type.model_validate(parsed)
         known = {str(candidate.get("candidate_id")): candidate for candidate, _ in batch}
         for assessment in response.assessments:
             candidate_id_value = str(assessment.candidate_id)

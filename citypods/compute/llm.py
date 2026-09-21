@@ -74,7 +74,7 @@ from citypods.compute.llm_submission_telemetry import (
     record_enqueue_outcomes,
     record_producer_observations,
 )
-from citypods.compute.structured import ResponseModel, response_model
+from citypods.compute.structured import ResponseModel, parse_structured_json, response_model
 from citypods.security import SecurityError, validate_source_url
 from citypods.storage.s3 import b2_from_env
 
@@ -1151,9 +1151,9 @@ class LiteLLMBackend(Backend):
             raw = completion(messages=messages, response_format=response_format, **options)
             content = raw.choices[0].message.content
             try:
-                parsed = json.loads(content)
+                parsed = parse_structured_json(content, context="native structured response")
                 model.model_validate(parsed)
-            except (json.JSONDecodeError, ValidationError) as exc:
+            except (ValueError, ValidationError) as exc:
                 failed_attempts.append(_FailedAttempt(exception=exc))
                 if attempt == 0:
                     # A failed first attempt still reached the provider and consumed real
@@ -1249,7 +1249,11 @@ class LiteLLMBackend(Backend):
             return
         model = response_model(structured_output)
         try:
-            model.model_validate_json(self._structured_content(output))
+            model.model_validate(
+                parse_structured_json(
+                    self._structured_content(output), context="dispatched structured response"
+                )
+            )
         except (ValueError, TypeError):
             raise LLMStructuredOutputError(
                 "structured dispatched response failed Pydantic validation"

@@ -14,7 +14,11 @@ import re
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from citypods.compute.structured import register_response_model, response_model
+from citypods.compute.structured import (
+    parse_structured_json,
+    register_response_model,
+    response_model,
+)
 
 MOMENTS_CONTRACT = "moment-extraction"
 MOMENTS_PROMPT_VERSION = "1"
@@ -330,10 +334,7 @@ def response_payload(output: Mapping[str, Any]) -> dict[str, Any]:
     content = message.get("content") if isinstance(message, Mapping) else None
     if not isinstance(content, str):
         raise ValueError("moment response did not contain JSON content")
-    try:
-        parsed = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise ValueError("moment response was not valid JSON") from exc
+    parsed = parse_structured_json(content, context="moment response")
     model = ensure_moment_contract()
     return model.model_validate(parsed).model_dump()
 

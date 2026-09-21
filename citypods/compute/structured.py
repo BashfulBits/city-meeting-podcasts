@@ -7,6 +7,8 @@ the local Pydantic model needed for direct Instructor calls and reconciliation v
 
 from __future__ import annotations
 
+import json
+import re
 import threading
 from typing import Any
 
@@ -15,6 +17,48 @@ from typing import Any
 ResponseModel = type[Any]
 _LOCK = threading.Lock()
 _RESPONSE_MODELS: dict[str, ResponseModel] = {}
+_THOUGHT_BLOCK_RE = re.compile(
+    r"^\s*<(?P<tag>think|thought)>.*?</(?P=tag)>", re.IGNORECASE | re.DOTALL
+)
+
+
+def parse_structured_json(content: str | bytes, *, context: str = "structured response") -> Any:
+    """Parse JSON from common provider wrappers without weakening schema validation.
+
+    Some otherwise-valid structured-output routes occasionally add a Markdown JSON fence or a
+    closed reasoning block before the JSON document.  The caller still validates the returned
+    value against its Pydantic contract; this helper only removes those transport wrappers.  It
+    rejects trailing prose and never evaluates model-produced text as code.
+    """
+    if isinstance(content, bytes):
+        text = content.decode("utf-8-sig", errors="strict")
+    elif isinstance(content, str):
+        text = content.lstrip("\ufeff")
+    else:
+        raise ValueError(f"{context} was not text")
+
+    text = _THOUGHT_BLOCK_RE.sub("", text, count=1).strip()
+    fence_start = text.find("```")
+    if fence_start >= 0:
+        closing = text.find("```", fence_start + 3)
+        if closing < 0:
+            raise ValueError(f"{context} had an unterminated JSON fence")
+        fenced = text[fence_start + 3 : closing].lstrip()
+        if fenced.lower().startswith("json"):
+            fenced = fenced[4:].lstrip(" \t\r\n")
+        text = fenced.strip()
+
+    decoder = json.JSONDecoder()
+    starts = [index for index, char in enumerate(text) if char in "[{]"]
+    for start in starts:
+        try:
+            value, end = decoder.raw_decode(text[start:])
+        except json.JSONDecodeError:
+            continue
+        if text[start + end :].strip():
+            continue
+        return value
+    raise ValueError(f"{context} was not valid JSON")
 
 
 def _equivalent_response_models(left: ResponseModel, right: ResponseModel) -> bool:
@@ -59,4 +103,9 @@ def response_model(name: str) -> ResponseModel:
             raise ValueError(f"unknown structured-output contract: {name!r}") from exc
 
 
-__all__ = ["ResponseModel", "register_response_model", "response_model"]
+__all__ = [
+    "ResponseModel",
+    "parse_structured_json",
+    "register_response_model",
+    "response_model",
+]

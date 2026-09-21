@@ -203,33 +203,26 @@ def test_prelabeler_excerpt_centers_tail_evidence():
     transcript = "prefix " * 3000 + " target evidence " + "suffix " * 100
 
     class Backend:
+        def __init__(self, bare_list=False):
+            self.bare_list = bare_list
+
         def run_inference(self, job):
             captured["messages"] = job.inputs["messages"]
             captured["recipe_hash"] = job.recipe_hash
+            assessments = [
+                {
+                    "candidate_id": "subject-1",
+                    "decision": "likely_correct",
+                    "confidence": 0.9,
+                    "reason": "supported",
+                    "evidence_supported": True,
+                }
+            ]
+            content = assessments if self.bare_list else {"assessments": assessments}
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
-                output={
-                    "choices": [
-                        {
-                            "message": {
-                                "content": json.dumps(
-                                    {
-                                        "assessments": [
-                                            {
-                                                "candidate_id": "subject-1",
-                                                "decision": "likely_correct",
-                                                "confidence": 0.9,
-                                                "reason": "supported",
-                                                "evidence_supported": True,
-                                            }
-                                        ]
-                                    }
-                                )
-                            }
-                        }
-                    ]
-                },
+                output={"choices": [{"message": {"content": json.dumps(content)}}]},
             )
 
     result, pending, _ = llm_prelabel_candidates(
@@ -275,6 +268,25 @@ def test_prelabeler_excerpt_centers_tail_evidence():
     payload = json.loads(captured["messages"][1]["content"])
     excerpt = payload["candidates"][0]["source_excerpt"]
     assert "target evidence" in excerpt
+    bare_result, bare_pending, _ = llm_prelabel_candidates(
+        Backend(bare_list=True),
+        candidates=[candidate],
+        taxonomy=taxonomy,
+        chapters=[
+            {
+                "chapter_id": "ch-1",
+                "title": "Housing",
+                "agenda_text": "housing agenda",
+                "transcript_text": transcript,
+                "transcript_segments": [],
+            }
+        ],
+        recipe_hash="bare-recipe",
+        model="reviewer",
+        llm_schema_version="2",
+    )
+    assert not bare_pending
+    assert bare_result["subject-1"]["prelabeler_decision"] == "likely_correct"
 
 
 def test_exclude_terms_suppress_a_match_found_in_a_different_source():

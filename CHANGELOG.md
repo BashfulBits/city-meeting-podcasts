@@ -17,6 +17,20 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Stop pending R6 handles from consuming fresh-dispatch budget** (`citypods/stages.py`). The shared
+  moment extraction/judge cap now counts only new queue admissions; already-pending and cached
+  deferred jobs can be reconciled without starving the other R6 verb. No model or route change and
+  no pipeline-version/backfill change.
+
+- **Normalize common structured-output wrappers once at the LLM boundary**
+  (`citypods/compute/structured.py`). Fenced JSON, reasoning blocks, and the pre-labeler's
+  provider-specific bare assessment list are now parsed before the existing per-verb Pydantic
+  contracts validate them. Semantic grounding and locator unit checks remain strict.
+
+- **Decode v2 Worker scheduler stats from their actual schema** (`scripts/llm_submission_telemetry.py`).
+  Workflow summaries now expose active bundles/calls, claim reasons, and queued-by-model data
+  instead of silently reporting nulls. No pipeline-version/backfill change.
+
 - **Bound v2 Durable Objects cleanup row reads** (`workers/llm-dispatch-v2`). Terminal job cleanup
   and bundle pruning now query each terminal state separately and merge bounded per-state results
   in memory, avoiding SQLite temp-B-tree global sorts that read terminal history before applying

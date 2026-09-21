@@ -18,6 +18,11 @@ from citypods.agenda_text import AgendaTitleCandidate, agenda_title_similarity
 from citypods.chapter_locator import select_locator_models
 from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import estimate_tokens
+from citypods.compute.structured import (
+    parse_structured_json,
+    register_response_model,
+    response_model,
+)
 
 AGENDA_ITEM_EXTRACTOR_CONTRACT = "agenda-chapter-item-extract"
 TITLE_EQUIVALENCE_CONTRACT = "agenda-chapter-title-equivalence"
@@ -427,7 +432,7 @@ def build_production_agenda_item_extraction_request(
     """Build the pinned production agenda-flow request.
 
     Research callers retain the historical model selector and prompt variants; production uses
-    the approved Mistral Medium route and the recall-oriented agenda-flow instructions.
+    the configured Nemotron route and the recall-oriented agenda-flow instructions.
     """
 
     return build_agenda_item_extraction_request(
@@ -478,8 +483,6 @@ def build_title_equivalence_request(
 
 def ensure_agenda_item_extractor_contract():
     """Register the structured direct-extraction response contract."""
-    from citypods.compute.structured import register_response_model, response_model
-
     cached = getattr(ensure_agenda_item_extractor_contract, "model", None)
     if cached is not None:
         return cached
@@ -547,7 +550,9 @@ def assess_agenda_item_extractor_response(
 ) -> AgendaItemEvidenceAssessment:
     """Validate each structured item independently for shadow-only evidence coverage reporting."""
     model = ensure_agenda_item_extractor_contract()
-    response = model.model_validate_json(content)
+    response = model.model_validate(
+        parse_structured_json(content, context="agenda extractor response")
+    )
     lines = tuple(agenda_text.splitlines())
     seen_evidence: set[tuple[int, int, str]] = set()
     items: list[ExtractedAgendaItem] = []
@@ -823,7 +828,9 @@ def recover_agenda_item_extractor_response(
     rejected for a later retry/OCR decision.
     """
     model = ensure_agenda_item_extractor_contract()
-    response = model.model_validate_json(content)
+    response = model.model_validate(
+        parse_structured_json(content, context="agenda extractor response")
+    )
     strict = assess_agenda_item_extractor_response(content, agenda_text=agenda_text)
     lines = tuple(agenda_text.splitlines())
     rejected_by_index = {item.index: item for item in strict.rejected}
@@ -937,7 +944,9 @@ def validate_title_equivalence_response(
     if canonical_count <= 0 or generated_count <= 0:
         raise ValueError("title equivalence counts must be positive")
     model = ensure_title_equivalence_contract()
-    response = model.model_validate_json(content)
+    response = model.model_validate(
+        parse_structured_json(content, context="title equivalence response")
+    )
     raw_action_indices = tuple(response.canonical_action_indices)
     raw_matches = tuple(response.matches)
     raw_indices = [*raw_action_indices]

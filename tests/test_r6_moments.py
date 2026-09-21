@@ -1,6 +1,8 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from citypods.compute.base import JobHandle, JobResult
+from citypods.compute.llm_deferred import write_deferred
 from citypods.models import Episode
 from citypods.moment_evaluation import (
     append_judge_observation,
@@ -12,7 +14,9 @@ from citypods.moment_evaluation import (
 )
 from citypods.moment_judging import judge_policy
 from citypods.moments import normalize_quote_candidate, parse_transcript_segments, transcript_region
+from citypods.stages import StageContext, StageStats, _admit_r6_dispatch
 from citypods.video_clips import caption_text, render_video_clip, video_clip_key
+from tests._cas_fake import MemStorage
 
 
 def _candidate(**overrides):
@@ -30,6 +34,35 @@ def _candidate(**overrides):
     }
     value.update(overrides)
     return value
+
+
+def test_r6_admission_budget_ignores_pending_and_cached_jobs():
+    storage = MemStorage()
+    ctx = StageContext(
+        storage=storage,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        moment_max_dispatches=1,
+    )
+    stats = StageStats("moments")
+    write_deferred(
+        storage,
+        "pending",
+        JobHandle(task="moment-judge", recipe_hash="pending", backend="v2", ref="remote"),
+    )
+    write_deferred(
+        storage,
+        "cached",
+        JobResult(task="moment-extraction", recipe_hash="cached", output={}),
+    )
+
+    assert _admit_r6_dispatch(ctx, stats, "pending", "episode") == "pending"
+    assert _admit_r6_dispatch(ctx, stats, "cached", "episode") == "cached"
+    assert _admit_r6_dispatch(ctx, stats, "fresh", "episode") == "admitted"
+    assert _admit_r6_dispatch(ctx, stats, "another", "episode") == "cap"
+    assert ctx.moment_dispatches == 1
+    assert stats.defer_reasons == {"llm-pending": 1, "rollout-dispatch-cap": 1}
 
 
 def test_grounding_uses_contiguous_timed_transcript_text():

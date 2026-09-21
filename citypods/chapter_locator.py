@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from citypods.compute.llm_lanes import lane_for
+from citypods.compute.structured import parse_structured_json
 
 LOCATOR_CONTRACT = "agenda-chapter-locate"
 # Mistral's current API/dispatch alias for Mistral Large 3. The dated API ID
@@ -294,7 +295,9 @@ def validate_locator_response(
     if agenda_item_count < 1:
         raise ValueError("agenda_item_count must be positive")
     model = ensure_locator_contract()
-    response = model.model_validate_json(content)
+    response = model.model_validate(
+        parse_structured_json(content, context="chapter locator response")
+    )
     units_by_id = {unit.id: unit for unit in units}
     anchors: list[LocatorAnchor] = []
     seen_agenda: set[int] = set()
