@@ -1,11 +1,13 @@
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
+import pytest
+
 from citypods.compute.base import JobHandle
 from citypods.compute.llm_deferred import write_deferred
 from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
 from citypods.storage import StorageReadUnavailable
-from scripts.reconcile_stuck_chapter_agenda import _apply, _classify_entry
+from scripts.reconcile_stuck_chapter_agenda import _apply, _classify_entry, _whole_int
 from tests._cas_fake import MemStorage
 
 NOW = datetime(2026, 9, 18, 12, tzinfo=UTC)
@@ -232,3 +234,50 @@ def test_apply_retains_an_unavailable_record_and_continues():
     assert "unavailable" in result["errors"][0]
     assert storage.get_bytes("state/llm_deferred/unavailable.json") is not None
     assert storage.get_bytes("state/llm_deferred/good-after-unavailable.json") is None
+
+
+def test_whole_int_accepts_github_actions_decimal_formatted_number_inputs():
+    """A GitHub Actions `workflow_dispatch` input declared `type: number` renders as a decimal-
+    formatted string (e.g. "25000.0") even for a plain integer value or default -- confirmed live
+    when --max-row-writes used bare `type=int`: `int("25000.0")` raised ValueError and argparse
+    failed the whole workflow before it classified a single record."""
+    assert _whole_int("25000") == 25000
+    assert _whole_int("25000.0") == 25000
+    assert _whole_int("0.0") == 0
+
+
+def test_whole_int_rejects_a_genuine_fraction():
+    import argparse
+
+    with pytest.raises(argparse.ArgumentTypeError):
+        _whole_int("25000.5")
+
+
+def test_main_parses_decimal_formatted_number_inputs_end_to_end(monkeypatch):
+    """Integration-level guard: exercises the actual argparse wiring in main(), not just
+    _whole_int in isolation, so a future change to how --max-row-writes is declared can't
+    silently reintroduce the same failure."""
+    import scripts.reconcile_stuck_chapter_agenda as reconcile_module
+
+    captured = {}
+
+    def fake_run(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(reconcile_module, "run", fake_run)
+
+    exit_code = reconcile_module.main(
+        [
+            "--dry-run",
+            "--older-than-hours",
+            "0.0",
+            "--max-row-writes",
+            "25000.0",
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured["older_than_hours"] == 0.0
+    assert captured["max_row_writes"] == 25000
+    assert isinstance(captured["max_row_writes"], int)

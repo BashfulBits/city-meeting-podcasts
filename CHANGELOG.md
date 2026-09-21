@@ -17,6 +17,22 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Accept GitHub Actions' decimal-formatted `workflow_dispatch` number inputs in maintenance
+  scripts** (`scripts/reconcile_stuck_chapter_agenda.py`, `scripts/probe_granicus_sustained.py`,
+  `scripts/probe_granicus_chunked.py`, `scripts/remedy_unexpected_bodies.py`,
+  `scripts/spike_r2_cas.py`). A `workflow_dispatch` input declared `type: number` renders as a
+  decimal-formatted string (e.g. `"25000.0"`) even for a plain integer value or default, but each
+  of these scripts fed that value straight into an `argparse` argument declared `type=int` --
+  `int("25000.0")` raises `ValueError`, so any manual dispatch of `reconcile-stuck-chapter-agenda`
+  failed immediately with `argument --max-row-writes: invalid int value: '25000.0'` (and the same
+  shape for the other four). Each now uses a small `_whole_int` parser (`float(value)` then
+  validate `.is_integer()`) instead, mirroring the pattern `probe_granicus_transport.py`'s own
+  `_nonnegative_integer`/`_mib_to_bytes` already used successfully for this exact GitHub Actions
+  quirk. Found via an audit for the same shape after `reconcile-stuck-chapter-agenda` was reported
+  broken; no other instance exists in the workflow set (checked every `type: number`
+  `workflow_dispatch` input's downstream consumer, including bash integer comparisons and
+  `github-script` steps).
+
 - **Give chapter-agenda/chapter-locator/prelabeler/discovery/tournament LLM calls a real
   output-token budget** (`citypods/chapter_jobs.py`, `citypods/chapter_titles.py`,
   `citypods/tags.py`, `citypods/discovery/classify.py`, `citypods/tournament.py`). These jobs
