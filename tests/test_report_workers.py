@@ -188,3 +188,47 @@ def test_refresh_backend_cycles_skips_backend_with_no_ledger_entry():
     rw._refresh_backend_cycles(budget, {"modal": modal_policy}, now=now)
 
     assert "modal" not in budget.backends
+
+
+def test_recent_samples_returns_expected_keys_sorted_newest_first():
+    class StorageFake:
+        pass
+
+    storage = StorageFake()
+    samples = [
+        {
+            "backend": "github",
+            "source_key": "src1",
+            "episode_uid": "ep1",
+            "outcome": "success",
+            "duration_hours": 1.0,
+            "elapsed_seconds": 3600,
+            "finished_at": "2026-07-10T10:00:00Z",
+            "extra_field": "ignore_me",
+        },
+        {
+            "backend": "modal",
+            "source_key": "src2",
+            "episode_uid": "ep2",
+            "outcome": "failed",
+            "finished_at": "2026-07-10T12:00:00Z",
+        },
+    ]
+
+    # Patch load_worker_telemetry to return dummy samples
+    rw_load_orig = rw.load_worker_telemetry
+    try:
+        rw.load_worker_telemetry = lambda s: {"samples": samples}
+        res = rw._recent_samples(storage, 1)
+        assert len(res) == 1
+        assert res[0] == {
+            "backend": "modal",
+            "source_key": "src2",
+            "episode_uid": "ep2",
+            "outcome": "failed",
+            "duration_hours": None,
+            "elapsed_seconds": None,
+            "finished_at": "2026-07-10T12:00:00Z",
+        }
+    finally:
+        rw.load_worker_telemetry = rw_load_orig

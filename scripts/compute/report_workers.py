@@ -65,16 +65,18 @@ def _recent_samples(storage, n: int) -> list[dict]:
     per sample (external_worker.py's ``_append_telemetry_sample``); this just surfaces them."""
     samples = load_worker_telemetry(storage).get("samples") or []
     ordered = sorted(samples, key=_sample_sort_key, reverse=True)
-    keys = (
-        "backend",
-        "source_key",
-        "episode_uid",
-        "outcome",
-        "duration_hours",
-        "elapsed_seconds",
-        "finished_at",
-    )
-    return [{k: s.get(k) for k in keys} for s in ordered[:n]]
+    return [
+        {
+            "backend": s.get("backend"),
+            "source_key": s.get("source_key"),
+            "episode_uid": s.get("episode_uid"),
+            "outcome": s.get("outcome"),
+            "duration_hours": s.get("duration_hours"),
+            "elapsed_seconds": s.get("elapsed_seconds"),
+            "finished_at": s.get("finished_at"),
+        }
+        for s in ordered[:n]
+    ]
 
 
 def _sample_sort_key(sample: dict) -> str:
