@@ -22,6 +22,7 @@ file's comments and formatting untouched.
 
 from __future__ import annotations
 
+import itertools
 import json
 import re
 import subprocess
@@ -221,7 +222,9 @@ def gather_unexpected_body_evidence(
     ]
 
     archived_bodies = sorted({rec.get("body") for rec in records.values() if rec.get("body")})
-    sample_titles = [rec.get("title") for rec in list(records.values())[:MAX_SAMPLE_TITLES]]
+    sample_titles = [
+        rec.get("title") for rec in itertools.islice(records.values(), MAX_SAMPLE_TITLES)
+    ]
 
     unexpected_findings = []
     for row in unexpected_rows.values():

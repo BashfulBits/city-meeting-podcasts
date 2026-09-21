@@ -25,6 +25,7 @@ Output example::
 
 from __future__ import annotations
 
+import itertools
 import time
 from pathlib import Path
 
@@ -73,7 +74,7 @@ def run_bench(
     rec = records.get(episode_uid)
     if rec is None:
         print(f"Episode not found: {episode_uid!r}")
-        print(f"Available UIDs in this source: {', '.join(list(records)[:5])} ...")
+        print(f"Available UIDs in this source: {', '.join(itertools.islice(records, 5))} ...")
         return 1
 
     ep = record_to_episode(rec)
