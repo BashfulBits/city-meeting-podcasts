@@ -4405,7 +4405,30 @@ ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-awar
 # before reusing it (see the stage's own `is_current_artifact` check), so this bump is what
 # actually re-queues the back catalog -- gradually, bounded by the lane's own
 # max_dispatches_per_run/daily budget, not instantly. See chapter_titles.py's block comment.
-CHAPTER_AGENDA_PIPELINE_VERSION = "2"
+#
+# Bumped 2 -> 3: every dispatched agenda job was missing an explicit max_tokens, silently falling
+# back to LiteLLMBackend's generic 1024-token default -- far below the 32768 the production model
+# was benchmarked at (see chapter_titles.py's AGENDA_OUTPUT_TOKEN_BUDGET). Most responses were
+# truncated mid-JSON; a "completed" artifact from before this fix may also just be silently
+# undercounting agenda items (the model closing valid-but-incomplete JSON before the token cap),
+# not only the ones that errored outright. This bump is what forces `is_current_artifact` to
+# treat every pre-fix artifact as stale so the whole catalog gets a fair re-extraction under the
+# real budget -- gradually, bounded by the lane's own max_dispatches_per_run/daily budget.
+# Combined with AgendaChapterCandidatesStage's finalize-failure state reset (which clears an
+# episode wedged in "pending" on a dead recipe instead of leaving it there forever), this is also
+# what unsticks the backlog that accumulated from the max_tokens bug.
+CHAPTER_AGENDA_PIPELINE_VERSION = "3"
+# NOTE: unlike CHAPTER_AGENDA_PIPELINE_VERSION, this constant is NOT wired into the locator job's
+# own recipe_hash (build_locator_job's recipe_parts never includes it) and
+# ChapterBoundaryLocatorStage has no `is_current_artifact`-equivalent check on
+# `locator_status == "completed"` reuse -- bumping
+# it alone would only dirty the stage_is_dirty() marker, which process() would then just silently
+# re-stamp as current without recomputing (the exact "laundering stale output as current" failure
+# stage_input_fingerprint's own docstring warns chapter_agenda's is_current_artifact check exists
+# to prevent). The real lever for forcing a fresh locator recipe is chapter_jobs.py's
+# LOCATOR_PROMPT_VERSION, which IS in the job recipe; see its own bump comment for the backfill
+# story. A future fix wiring a real pipeline_version/model check into ChapterBoundaryLocatorStage's
+# own reuse gate would make this constant meaningful too.
 CHAPTER_LOCATOR_PIPELINE_VERSION = "1"
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
@@ -8653,6 +8676,13 @@ class AgendaChapterCandidatesStage:
                 stats.errors.append(
                     f"{uid}: agenda chapter extraction model={result.model or 'unknown'}: {exc}"
                 )
+                # `result` is already a terminally-resolved JobResult -- re-fetching it next run
+                # (Pass 1's `agenda_status == "pending"` branch, keyed on this same stored recipe)
+                # would hand finalize_agenda_job the identical content and fail identically,
+                # forever. Clear the episode's own pointer so the next run treats it as
+                # never-attempted and builds a genuinely fresh job instead of wedging on a dead
+                # recipe that can never finalize.
+                ep.generated_agenda_candidates = {}
         return stats
 
 
@@ -8870,6 +8900,17 @@ class ChapterBoundaryLocatorStage:
                 stats.errors.append(
                     f"{uid}: chapter locator model={result.model or 'unknown'}: {exc}"
                 )
+                # Same reasoning as AgendaChapterCandidatesStage's own finalize except-clause:
+                # `result` is already terminal, so retrying next run against the same stored
+                # locator_recipe would just refetch the identical content and fail identically
+                # forever. Clear only the locator-owned fields -- the agenda fields in raw_agenda
+                # (chapter-agenda's own output) must survive so that stage's own reuse check is
+                # unaffected -- so the next run dispatches a genuinely fresh locator job.
+                stale = dict(raw_agenda)
+                stale.pop("locator_status", None)
+                stale.pop("locator_recipe", None)
+                stale.pop("locator_job_ref", None)
+                ep.generated_agenda_candidates = stale
         return stats
 
 

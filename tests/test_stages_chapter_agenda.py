@@ -532,6 +532,43 @@ def test_stage_finalizes_and_writes_artifact_on_job_result(tmp_path: Path):
     assert storage.exists(artifact_key)
 
 
+def test_stage_clears_pending_state_when_finalize_fails(tmp_path: Path):
+    """A JobResult that fails finalize_agenda_job (e.g. truncated/invalid JSON) must not leave the
+    episode wedged in "pending" pointing at the same dead recipe -- retrying it next run would
+    just refetch the identical broken content and fail identically forever. The episode's own
+    pointer must be cleared so the next run treats it as never-attempted and builds a fresh job."""
+    stage = AgendaChapterCandidatesStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-broken")
+    key = ep.links["agenda_text_artifact_key"]
+    _put_storage_bytes(storage, key, b"1. Call to order\n2. Public comment")
+    # An episode that was already "pending" on a prior (now-resolved) dispatch -- the realistic
+    # path into this branch, since a fresh dispatch resolving synchronously exercises the same
+    # except-clause too.
+    ep.generated_agenda_candidates = {
+        "status": "pending",
+        "recipe": "recipe-agenda-broken-1",
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "source_hash": "irrelevant",
+        "job_ref": "ref-broken-1",
+    }
+
+    result = JobResult(
+        task="agenda-item-extract",
+        recipe_hash="recipe-agenda-broken-1",
+        output={"choices": [{"message": {"content": "not json at all"}}]},
+    )
+    backend = FakeBackend(result)
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.ran == 0
+    assert len(stats.errors) == 1
+    assert ep.generated_agenda_candidates == {}
+
+
 def test_stage_defers_on_stop_signal(tmp_path: Path):
     stage = AgendaChapterCandidatesStage()
     city = _make_city()

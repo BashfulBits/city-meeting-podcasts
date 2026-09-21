@@ -39,7 +39,18 @@ from citypods.compute.llm_policy import LLMRequestPolicy
 LOCATOR_MODEL = PRODUCTION_LOCATOR_MODEL
 # Prompt variant used for all production agenda extraction jobs.
 AGENDA_PROMPT_VERSION = "agenda-flow"
-LOCATOR_PROMPT_VERSION = "locator-v1"
+# THIS STRING FEEDS build_locator_job()'s recipe_hash directly (unlike
+# stages.CHAPTER_LOCATOR_PIPELINE_VERSION, which does not -- see that constant's own comment).
+# Bumped v1 -> v2: every dispatched locator job was missing an explicit max_tokens, silently
+# falling back to LiteLLMBackend's generic 1024-token default instead of the 16384 tokens
+# select_locator_models() already assumes as LOCATOR_OUTPUT_TOKEN_RESERVE when fitting a request
+# into a route's context window (see build_locator_job's own comment). Responses were routinely
+# truncated mid-JSON. Bumping this is what changes the recipe hash so a fresh dispatch cannot be
+# served the same dead-end terminal result a pre-fix job left behind at the Worker -- combined
+# with ChapterBoundaryLocatorStage's finalize-failure state reset (which stops an episode wedged
+# in "pending" on that dead recipe from retrying it forever), this is what lets the backlog that
+# accumulated from the max_tokens bug actually drain with the fix applied.
+LOCATOR_PROMPT_VERSION = "locator-v2"
 
 
 def _locator_cues(display_ref: str | None, evidence_text: str) -> tuple[str, ...]:

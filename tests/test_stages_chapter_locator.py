@@ -307,6 +307,61 @@ def test_locator_stage_finalizes_and_filters_non_accepted_items(tmp_path: Path):
     assert storage.exists(boundary_key)
 
 
+def test_locator_stage_clears_pending_state_when_finalize_fails(tmp_path: Path):
+    """A JobResult that fails finalize_locator_job (e.g. an out-of-range/hallucinated unit
+    reference) must not leave the episode wedged in "pending" pointing at the same dead
+    locator_recipe -- retrying it next run would just refetch the identical broken content and
+    fail identically forever. Only the locator-owned fields should be cleared: chapter-agenda's
+    own fields on the same dict must survive so that stage's own reuse check is unaffected."""
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-broken-locator")
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    agenda_recipe_before = ep.generated_agenda_candidates["recipe"]
+    ep.generated_agenda_candidates.update(
+        {
+            "locator_status": "pending",
+            "locator_recipe": "recipe-locator-broken-1",
+            "locator_job_ref": "ref-locator-broken-1",
+        }
+    )
+
+    # unit_id "u09999" does not exist among this episode's locator units -- a hallucinated
+    # reference finalize_locator_job's validate_locator_response rejects outright.
+    model_output = json.dumps(
+        {
+            "anchors": [
+                {
+                    "agenda_item_index": 0,
+                    "unit_id": "u09999",
+                    "transition_quote": "Meeting is called to order",
+                    "confidence": 0.95,
+                    "rationale": "Chair calls to order",
+                }
+            ]
+        }
+    )
+    result = JobResult(
+        task="agenda-chapter-locate",
+        recipe_hash="recipe-locator-broken-1",
+        output={"choices": [{"message": {"content": model_output}}]},
+    )
+    backend = FakeBackend(result)
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.ran == 0
+    assert len(stats.errors) == 1
+    assert "locator_status" not in ep.generated_agenda_candidates
+    assert "locator_recipe" not in ep.generated_agenda_candidates
+    assert "locator_job_ref" not in ep.generated_agenda_candidates
+    # chapter-agenda's own fields (produced by a different stage) must survive untouched.
+    assert ep.generated_agenda_candidates["status"] == "completed"
+    assert ep.generated_agenda_candidates["recipe"] == agenda_recipe_before
+
+
 def test_locator_stage_batches_multiple_episodes_into_one_enqueue_call(tmp_path: Path):
     """The actual point of this refactor (see review/44's 2026-08-18 incident retrospective):
     N episodes in one run must produce exactly one enqueue_batch call carrying all N jobs, not N

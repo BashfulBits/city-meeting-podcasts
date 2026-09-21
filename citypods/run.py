@@ -15,6 +15,7 @@ import faulthandler
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import threading
@@ -201,6 +202,24 @@ _RECORD_BACKED_LANES = frozenset(
     }
 )
 
+# Masks variable substrings (episode uids, hex ids, unit numbers, item counts) in a StageStats
+# error message so repeated failures of the same *kind* collapse into one bucket instead of
+# hundreds of visually-distinct strings -- mirrors how StageStats.defer_reasons already buckets
+# deferrals by a stable reason token. Errors previously had no equivalent breakdown: a stage
+# reporting hundreds of errors showed only a raw count and (until the cap below was raised) 3 raw
+# samples, which is how a real bug (chapter-agenda/chapter-locator dispatching with no usable
+# max_tokens) went unnoticed for a long time -- nothing surfaced *which* failure mode dominated.
+_ERROR_REASON_VARIABLE_RE = re.compile(r"[0-9a-fA-F]{6,}|\d+")
+# Stdout-only (this run's own build log), never fed into the JSONL telemetry artifact --
+# llm_submission_telemetry.py's own module docstring says that file must never carry "prompts,
+# results, ... or credentials", and a normalized error reason is still derived from model output.
+_ERROR_SAMPLE_CAP = 10
+
+
+def _error_reason(message: str) -> str:
+    """Collapse one error message to a stable, coarse-grained bucket key."""
+    return _ERROR_REASON_VARIABLE_RE.sub("#", message).strip()
+
 
 class SourcePipeline:
     """Fetch + enrich each distinct source once per build and share the result across all of
@@ -278,6 +297,7 @@ class SourcePipeline:
                 "bytes": 0,
                 "errors": 0,
                 "error_samples": [],
+                "error_reasons": {},
                 "rate_limited": 0,
                 "asr_migration_copied": 0,
                 "asr_migration_already_present": 0,
@@ -630,8 +650,12 @@ class SourcePipeline:
                 t["seconds"] += s.seconds
                 t["bytes"] += s.bytes_written
                 t["errors"] += len(s.errors)
-                if s.errors and len(t["error_samples"]) < 3:
-                    t["error_samples"].extend(s.errors[: 3 - len(t["error_samples"])])
+                if s.errors and len(t["error_samples"]) < _ERROR_SAMPLE_CAP:
+                    remaining = _ERROR_SAMPLE_CAP - len(t["error_samples"])
+                    t["error_samples"].extend(s.errors[:remaining])
+                for message in s.errors:
+                    reason = _error_reason(message)
+                    t["error_reasons"][reason] = t["error_reasons"].get(reason, 0) + 1
                 t["rate_limited"] += s.rate_limited
                 t["asr_migration_copied"] += s.asr_migration_copied
                 t["asr_migration_already_present"] += s.asr_migration_already_present
@@ -3547,6 +3571,14 @@ def _build_impl(
                 f"{t['asr_migration_regenerated']} regenerated",
                 flush=True,
             )
+        if t.get("error_reasons"):
+            reasons = ", ".join(
+                f"{reason}={count}"
+                for reason, count in sorted(
+                    t["error_reasons"].items(), key=lambda item: (-item[1], item[0])
+                )
+            )
+            print(f"    errors: {reasons}", flush=True)
         for msg in t["error_samples"]:
             print(f"    ! {msg}", flush=True)
         if t.get("defer_reasons"):

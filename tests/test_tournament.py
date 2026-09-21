@@ -190,6 +190,9 @@ def test_pairwise_judge_uses_durable_queue_policy():
     assert pending is True
     assert seen[0].inputs["llm_policy"].queue_only is True
     assert seen[0].inputs["llm_policy"].deadline_at is None
+    # This job previously had no explicit max_tokens at all, silently relying on
+    # LiteLLMBackend's generic 1024-token default.
+    assert seen[0].inputs["max_tokens"] == tournament.JUDGE_OUTPUT_TOKEN_BUDGET
 
 
 def test_backend_wires_dispatch_v2_url_from_env(monkeypatch):
@@ -312,6 +315,11 @@ def test_run_batches_all_judge_comparisons_into_one_enqueue_call(tmp_path, monke
     judge_backend = FakeJudgeBackend()
     monkeypatch.setattr(tournament, "_backend", lambda _model, _storage: judge_backend)
 
+    telemetry_calls = []
+    monkeypatch.setattr(
+        tournament, "record_stage_activity", lambda **kwargs: telemetry_calls.append(kwargs)
+    )
+
     exit_code = tournament.run(
         site_config_path="config/site_config.yml",
         config_dir="config",
@@ -322,6 +330,14 @@ def test_run_batches_all_judge_comparisons_into_one_enqueue_call(tmp_path, monke
     assert exit_code == 0
     assert len(judge_backend.enqueue_calls) == 1  # one call, not per-comparison calls
     assert len(judge_backend.enqueue_calls[0]) == len(tournament.CONTESTS) * 2
+    # Regression: run() previously never emitted llm_submission_stage telemetry at all -- a blind
+    # spot in the same CI dashboard used to diagnose chapter-agenda/chapter-locator's own
+    # validation-error rates.
+    assert len(telemetry_calls) == 1
+    assert telemetry_calls[0]["lane"] == "tournament"
+    assert telemetry_calls[0]["stage"] == "tournament"
+    assert telemetry_calls[0]["ran"] == 1
+    assert telemetry_calls[0]["errors"] == 0
 
 
 def test_run_handles_pending_job_handles_and_skips_sample_finalization(tmp_path, monkeypatch):
