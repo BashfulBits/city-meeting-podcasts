@@ -401,7 +401,14 @@ def test_locator_stage_clears_pending_state_when_finalize_fails(tmp_path: Path):
     reference) must not leave the episode wedged in "pending" pointing at the same dead
     locator_recipe -- retrying it next run would just refetch the identical broken content and
     fail identically forever. Only the locator-owned fields should be cleared: chapter-agenda's
-    own fields on the same dict must survive so that stage's own reuse check is unaffected."""
+    own fields on the same dict must survive so that stage's own reuse check is unaffected.
+
+    It also must not leave the underlying "completed" registry record in place -- see
+    AgendaChapterCandidatesStage's own test_stage_clears_pending_state_when_finalize_fails for
+    why: without deleting it, a future submission under this exact recipe would just replay the
+    identical bad content forever via enqueue_batch's cached_completed short-circuit."""
+    from citypods.compute.llm_deferred import look_up_deferred, write_deferred
+
     stage = ChapterBoundaryLocatorStage()
     city = _make_city()
     storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
@@ -436,6 +443,8 @@ def test_locator_stage_clears_pending_state_when_finalize_fails(tmp_path: Path):
         recipe_hash="recipe-locator-broken-1",
         output={"choices": [{"message": {"content": model_output}}]},
     )
+    # Mirrors what a real Worker dispatch would have durably recorded once this job resolved.
+    write_deferred(storage, "recipe-locator-broken-1", result)
     backend = FakeBackend(result)
     ctx = _ctx(storage=storage, dry_run=False)
     ctx.chapter_llm_backend = backend
@@ -449,6 +458,7 @@ def test_locator_stage_clears_pending_state_when_finalize_fails(tmp_path: Path):
     # chapter-agenda's own fields (produced by a different stage) must survive untouched.
     assert ep.generated_agenda_candidates["status"] == "completed"
     assert ep.generated_agenda_candidates["recipe"] == agenda_recipe_before
+    assert look_up_deferred(storage, "recipe-locator-broken-1") is None
 
 
 def test_locator_stage_batches_multiple_episodes_into_one_enqueue_call(tmp_path: Path):

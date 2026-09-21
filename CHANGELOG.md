@@ -38,13 +38,23 @@ Phase R (Research-Tool Surface)._
   can't reintroduce this class of bug silently.
 
 - **Stop a chapter-agenda/chapter-locator episode from retrying the same dead job forever**
-  (`citypods/stages.py`). When a completed LLM response failed local validation (exactly the
-  truncated-JSON failure mode above), the episode's own `status: "pending"` pointer was never
-  cleared, so every subsequent run re-fetched the identical already-resolved response and failed
-  identically -- permanently, since nothing ever gave it a fresh recipe. Both stages now retire
-  that pointer on a finalize failure (locator retiring only its own `locator_status`/
-  `locator_recipe`/`locator_job_ref` fields, leaving chapter-agenda's fields on the same dict
-  untouched) so the next run dispatches a genuinely new job.
+  (`citypods/stages.py`, `citypods/compute/llm_deferred.py`). When a completed LLM response
+  failed local validation (exactly the truncated-JSON failure mode above), the episode's own
+  `status: "pending"` pointer was never cleared, so every subsequent run re-fetched the identical
+  already-resolved response and failed identically -- permanently, since nothing ever gave it a
+  fresh recipe. Both stages now retire that pointer on a finalize failure (locator retiring only
+  its own `locator_status`/`locator_recipe`/`locator_job_ref` fields, leaving chapter-agenda's
+  fields on the same dict untouched) so the next run dispatches a genuinely new job. Clearing the
+  episode's own pointer is necessary but not sufficient, though: `write_deferred` never downgrades
+  an already-completed registry record, and `enqueue_batch` serves any `look_up_deferred` hit that
+  is a `JobResult` straight back out (`cached_completed`) with no new LLM call at all -- so a
+  *second* validation failure under an otherwise-unchanged (content-addressed) recipe would have
+  gone right back to being permanently stuck, just one bump-cycle later, since nothing deleted the
+  bad completed record itself. A new `discard_completed_result` (compare-and-delete, mirroring
+  `discard_deferred`'s/`discard_terminal_failure`'s existing safety pattern so a stale reader can
+  never clobber a newer write) now removes that record on a genuine finalize failure -- but not on
+  an artifact-storage write failure after a *good* response, which is a different, transient
+  failure mode that must not discard an otherwise-valid completed result.
 
   **Backfill:** `CHAPTER_AGENDA_PIPELINE_VERSION` (2 -> 3) and `chapter_jobs.py`'s
   `LOCATOR_PROMPT_VERSION` (locator-v1 -> locator-v2) both bumped -- these feed their job's own
