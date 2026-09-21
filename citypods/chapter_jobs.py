@@ -13,6 +13,7 @@ from citypods.chapter_artifacts import (
     recipe_hash,
 )
 from citypods.chapter_locator import (
+    LOCATOR_OUTPUT_TOKEN_RESERVE,
     PRODUCTION_LOCATOR_MODEL,
     LocatorAgendaItem,
     LocatorUnit,
@@ -23,6 +24,7 @@ from citypods.chapter_titles import (
     AGENDA_BACKUP_AFTER_ATTEMPTS,
     AGENDA_BACKUP_MODELS,
     AGENDA_ITEM_EXTRACTOR_CONTRACT,
+    AGENDA_OUTPUT_TOKEN_BUDGET,
     AGENDA_PRODUCTION_MODEL,
     AGENDA_PRODUCTION_MODELS,
     build_production_agenda_item_extraction_request,
@@ -101,6 +103,7 @@ def build_agenda_job(
         inputs={
             "messages": list(request.messages),
             "structured_output": AGENDA_ITEM_EXTRACTOR_CONTRACT,
+            "max_tokens": AGENDA_OUTPUT_TOKEN_BUDGET,
             "llm_policy": LLMRequestPolicy(
                 allowed_models=AGENDA_PRODUCTION_MODELS,
                 backup_models=AGENDA_BACKUP_MODELS,
@@ -240,6 +243,10 @@ def build_locator_job(
         inputs={
             "messages": list(request.messages),
             "structured_output": LOCATOR_CONTRACT,
+            # Match the output reserve select_locator_models() already assumes when it fits a
+            # request into a route's context window; the bare LiteLLMBackend default (1024) starved
+            # multi-anchor responses mid-JSON well before that reserve was ever exercised.
+            "max_tokens": LOCATOR_OUTPUT_TOKEN_RESERVE,
             "llm_policy": LLMRequestPolicy(
                 allowed_models=(LOCATOR_MODEL,),
                 purpose="chapter-locator",

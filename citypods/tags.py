@@ -36,6 +36,16 @@ TAG_FEATURE = "topic-tags"
 TAGGER_PURPOSE = "topic-tags:tagger"
 PRELABELER_PURPOSE = "topic-tags:prelabeler"
 PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrect")
+# Assessment.reason alone allows up to 500 chars (~150 tokens); candidate_id/decision/confidence/
+# evidence_supported plus JSON punctuation add a modest fixed cost per item. A flat 1024-token
+# output budget was previously used for every batch regardless of size, even though a batch may
+# hold up to 100 assessments (Response.assessments' max_length) -- any batch past roughly six
+# items could no longer fit its own response and was silently cut off mid-JSON, which is exactly
+# the "not valid JSON"/multi-field Pydantic validation failures seen in production. Sized so a
+# full 100-item batch (100 * 200 + 200 = 20,200) comfortably fits under every prelabeler route's
+# configured output_context_limit.
+PRELABELER_OUTPUT_TOKENS_PER_ITEM = 200
+PRELABELER_OUTPUT_TOKEN_OVERHEAD = 200
 # Keep a full megabyte beneath the Worker's 8 MiB JSON-body ceiling for the structured-output
 # schema and future envelope fields. This is a transport guard, separate from model context.
 TAGGER_MAX_REQUEST_BYTES = 7 * 1024 * 1024
@@ -1504,12 +1514,17 @@ def llm_prelabel_candidates(
         input_digest = hashlib.sha1(
             json.dumps(messages, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
         ).hexdigest()[:16]
+        required_output_tokens = (
+            PRELABELER_OUTPUT_TOKEN_OVERHEAD
+            + PRELABELER_OUTPUT_TOKENS_PER_ITEM * len(batch_context)
+        )
+        output_token_budget = min(required_output_tokens, output_context_limit)
         call_metadata = {
             "prelabeler_model": model,
             "prelabeler_prompt_version": prompt_version,
             "prelabeler_llm_schema_version": llm_schema_version,
             "prelabeler_input_tokens_estimate": input_tokens_estimate,
-            "prelabeler_output_token_budget": 1024,
+            "prelabeler_output_token_budget": output_token_budget,
             "prelabeler_route_input_context_limit": input_context_limit,
             "prelabeler_route_output_context_limit": output_context_limit,
             "prelabeler_truncation_occurred": batch_truncated,
@@ -1518,14 +1533,17 @@ def llm_prelabel_candidates(
             "prelabeler_batch_index": batch_index,
         }
         batch_metadata.append(dict(call_metadata))
-        if input_tokens_estimate > input_context_limit or 1024 > output_context_limit:
+        if (
+            input_tokens_estimate > input_context_limit
+            or output_token_budget < required_output_tokens
+        ):
             pending = True
             payload_too_large = True
             continue
         inputs: dict[str, Any] = {
             "messages": messages,
             "structured_output": PRELABELER_CONTRACT,
-            "max_tokens": 1024,
+            "max_tokens": output_token_budget,
         }
         if getattr(backend_storage, "cas_capable", False):
             inputs["llm_policy"] = LLMRequestPolicy(

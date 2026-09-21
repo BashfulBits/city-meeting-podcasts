@@ -17,6 +17,20 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Give chapter-agenda/chapter-locator/prelabeler LLM calls a real output-token budget**
+  (`citypods/chapter_jobs.py`, `citypods/chapter_titles.py`, `citypods/tags.py`). These jobs never
+  set `max_tokens`, so every dispatch silently fell back to `LiteLLMBackend`'s generic 1024-token
+  default -- far below what `config/site_config.yml`'s own benchmark documented (max_tokens=32768
+  for chapter-agenda's Nemotron route) or what `chapter_locator.py`'s `LOCATOR_OUTPUT_TOKEN_RESERVE`
+  (16384) already assumed when fitting a request into a route's context window. Multi-item agenda
+  extractions and locator anchor lists were routinely cut off mid-JSON, producing "not valid JSON"
+  and unrecoverable grounding failures on the large majority of completions (observed: 1803/1813
+  chapter-agenda attempts and 72/72 chapter-locator attempts erroring in one CI run). The
+  topic-tags prelabeler had the same problem at the opposite end -- a flat 1024-token budget
+  regardless of batch size, when a batch can hold up to 100 assessments; its budget now scales
+  with the candidate count. No recipe-hash/pipeline-version change, so no backfill: only newly
+  dispatched jobs pick up the larger budget.
+
 - **Stop pending R6 handles from consuming fresh-dispatch budget** (`citypods/stages.py`). The shared
   moment extraction/judge cap now counts only new queue admissions; already-pending and cached
   deferred jobs can be reconciled without starving the other R6 verb. No model or route change and

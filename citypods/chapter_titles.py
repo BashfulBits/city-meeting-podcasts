@@ -50,6 +50,15 @@ AGENDA_PRODUCTION_MODELS = _AGENDA_LANE.models
 AGENDA_BACKUP_MODELS = _AGENDA_LANE.backup_models
 AGENDA_BACKUP_AFTER_ATTEMPTS = _AGENDA_LANE.backup_after_attempts
 
+# The 30-episode benchmark that qualified Nemotron as AGENDA_PRODUCTION_MODEL (see the lane's own
+# comment in site_config.yml) ran at max_tokens=32768 to get 97% valid JSON; every primary/backup
+# route in AGENDA_PRODUCTION_MODELS/AGENDA_BACKUP_MODELS has an output_context_limit well above
+# this. Without an explicit budget here, build_agenda_job() fell through to LiteLLMBackend's
+# generic DEFAULT_OUTPUT_TOKEN_MARGIN (1024) -- fine for a short classification call, but nowhere
+# near enough for a multi-item agenda extraction, so most responses were cut off mid-JSON and
+# failed structured-output parsing (see the recovery-shadow layer this feeds in chapter_jobs.py).
+AGENDA_OUTPUT_TOKEN_BUDGET = 32768
+
 _PROMPT_VARIANT_INSTRUCTIONS = {
     "standard": "",
     "coverage-audit": (
@@ -1026,6 +1035,7 @@ __all__ = [
     "AGENDA_PRODUCTION_MODELS",
     "AGENDA_BACKUP_MODELS",
     "AGENDA_BACKUP_AFTER_ATTEMPTS",
+    "AGENDA_OUTPUT_TOKEN_BUDGET",
     "AGENDA_ITEM_EXTRACTOR_CONTRACT",
     "AGENDA_EXTRACTION_PROMPT_VARIANTS",
     "TITLE_EQUIVALENCE_CONTRACT",

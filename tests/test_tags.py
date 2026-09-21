@@ -289,6 +289,96 @@ def test_prelabeler_excerpt_centers_tail_evidence():
     assert bare_result["subject-1"]["prelabeler_decision"] == "likely_correct"
 
 
+def test_prelabeler_output_token_budget_scales_with_batch_size():
+    """A batch can hold up to Response.assessments' max_length (100) items, each with a reason
+    field up to 500 chars. A flat 1024-token output budget regardless of batch size silently cut
+    off any batch past roughly six items mid-JSON -- exactly the "not valid JSON"/multi-field
+    Pydantic validation failures seen in production. The dispatched request must scale with the
+    number of candidates actually being assessed."""
+    import json
+
+    from citypods.compute.base import JobResult
+    from citypods.tags import (
+        PRELABELER_OUTPUT_TOKEN_OVERHEAD,
+        PRELABELER_OUTPUT_TOKENS_PER_ITEM,
+        llm_prelabel_candidates,
+    )
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [
+                {
+                    "id": "housing",
+                    "source_refs": ["example"],
+                    "rules": {"include": ["housing"]},
+                }
+            ],
+        }
+    )
+    candidate_count = 10
+    candidates = [
+        {
+            "candidate_id": f"subject-{i}",
+            "id": "housing",
+            "source_kind": "llm",
+            "scope": "chapter",
+            "chapter_id": "ch-1",
+            "evidence": [{"where": "transcript", "quote": "target evidence"}],
+            "explanation": "The chapter discusses housing.",
+        }
+        for i in range(candidate_count)
+    ]
+
+    captured = {}
+
+    class Backend:
+        def run_inference(self, job):
+            captured["max_tokens"] = job.inputs["max_tokens"]
+            assessments = [
+                {
+                    "candidate_id": c["candidate_id"],
+                    "decision": "likely_correct",
+                    "confidence": 0.9,
+                    "reason": "supported",
+                    "evidence_supported": True,
+                }
+                for c in candidates
+            ]
+            content = json.dumps({"assessments": assessments})
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": content}}]},
+            )
+
+    llm_prelabel_candidates(
+        Backend(),
+        candidates=candidates,
+        taxonomy=taxonomy,
+        chapters=[
+            {
+                "chapter_id": "ch-1",
+                "title": "Housing",
+                "agenda_text": "housing agenda",
+                "transcript_text": "some transcript text",
+                "transcript_segments": [],
+            }
+        ],
+        recipe_hash="recipe",
+        # A real production route with a large output_context_limit so the scaled budget below
+        # isn't clamped back down by the route ceiling itself.
+        model="google/gemma-4-31b-it",
+        llm_schema_version="2",
+    )
+    expected = (
+        PRELABELER_OUTPUT_TOKEN_OVERHEAD + PRELABELER_OUTPUT_TOKENS_PER_ITEM * candidate_count
+    )
+    assert captured["max_tokens"] == expected
+    assert captured["max_tokens"] > 1024
+
+
 def test_exclude_terms_suppress_a_match_found_in_a_different_source():
     """The exclude check must run against the combined agenda+transcript text, not each source
     independently -- otherwise an exclude term present only in the agenda (e.g. "school zoning")
