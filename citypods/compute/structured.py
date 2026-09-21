@@ -17,7 +17,9 @@ from typing import Any
 ResponseModel = type[Any]
 _LOCK = threading.Lock()
 _RESPONSE_MODELS: dict[str, ResponseModel] = {}
-_THOUGHT_BLOCK_RE = re.compile(r"<(?P<tag>think|thought)>.*?</(?P=tag)>", re.IGNORECASE | re.DOTALL)
+_THOUGHT_BLOCK_RE = re.compile(
+    r"^\s*<(?P<tag>think|thought)>.*?</(?P=tag)>", re.IGNORECASE | re.DOTALL
+)
 
 
 def parse_structured_json(content: str | bytes, *, context: str = "structured response") -> Any:
@@ -35,7 +37,7 @@ def parse_structured_json(content: str | bytes, *, context: str = "structured re
     else:
         raise ValueError(f"{context} was not text")
 
-    text = _THOUGHT_BLOCK_RE.sub("", text).strip()
+    text = _THOUGHT_BLOCK_RE.sub("", text, count=1).strip()
     fence_start = text.find("```")
     if fence_start >= 0:
         closing = text.find("```", fence_start + 3)
