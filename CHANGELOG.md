@@ -17,6 +17,38 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Parallelize `reconcile_stuck_chapter_agenda.py`'s discard pass and give it a self-bounded
+  wall-clock budget** (`scripts/reconcile_stuck_chapter_agenda.py`,
+  `.github/workflows/reconcile-stuck-chapter-agenda.yml`). A production `--apply` run classified
+  34,477 registry records in ~11 minutes but then ran for another 1.5+ hours and still didn't
+  finish before the workflow's 110-minute step timeout killed it -- with nothing captured in the
+  uploaded report, despite real B2/R2 mutations having already happened. Root cause: `_apply()`'s
+  discard loop called `discard_deferred()` (a CAS lease-acquire + read + delete + index-cleanup)
+  once per candidate, fully sequentially, even though each candidate's operations target an
+  entirely independent `recipe_hash`-keyed object with no shared lock (confirmed safe to
+  parallelize). With `--older-than-hours` set aggressively low, thousands of chapter-agenda
+  candidates each cost several sequential network round trips. The discard loop now runs on a
+  bounded thread pool (`DISCARD_WORKERS = 16`, mirroring `SNAPSHOT_READ_WORKERS`/
+  `_STATE_SYNC_MAX_WORKERS`'s existing convention for this exact class of independent B2/R2
+  operation). The script also now self-bounds to a wall-clock deadline
+  (`--run-time-budget-minutes`, default 100, mirroring `scripts/llm_deferred_sweep.py`'s own
+  `_StopState`/`--run-time-budget-minutes` convention and installing the same SIGINT/SIGTERM
+  handlers) across both the registry load and the apply/discard phase, so an unexpectedly large
+  registry now stops the run cleanly with a complete, honest report -- what happened, and
+  `deadline_reached`/`omitted` counts for what's left -- instead of being killed by the external
+  step timeout with an empty report. `run_time_budget_minutes` is also now a configurable
+  `workflow_dispatch` input, mirroring `older_than_hours`/`max_row_writes`. The discard loop also
+  now prints periodic progress to stderr (`DISCARD_PROGRESS_INTERVAL`, mirroring
+  `repair_deferred_index`'s own `progress_interval` convention) -- the timed-out run's own
+  workflow log had zero output for its entire ~1h39m apply phase, so there was no way to tell
+  afterward how much of it actually happened; a live run is now observable as it goes, not only
+  from a final report a killed process might never reach.
+
+  A structurally identical unparallelized-discard-loop pattern exists in
+  `citypods/compute/llm_deferred.py`'s `prune_expired_deferred_snapshot` (used by the
+  `--full-prune-only` sweep mode) -- not yet observed timing out in production at the same scale,
+  left as a known follow-up rather than fixed here.
+
 - **Accept GitHub Actions' decimal-formatted `workflow_dispatch` number inputs in maintenance
   scripts** (`scripts/reconcile_stuck_chapter_agenda.py`, `scripts/probe_granicus_sustained.py`,
   `scripts/probe_granicus_chunked.py`, `scripts/remedy_unexpected_bodies.py`,

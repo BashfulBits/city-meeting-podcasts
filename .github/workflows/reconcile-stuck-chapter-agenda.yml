@@ -21,6 +21,11 @@ on:
         required: true
         type: number
         default: 25000
+      run_time_budget_minutes:
+        description: "Internal graceful wall-clock budget (must stay under the 110m step timeout)"
+        required: true
+        type: number
+        default: 100
 
 permissions:
   contents: read
@@ -57,6 +62,7 @@ jobs:
           APPLY: ${{ inputs.apply }}
           OLDER_THAN_HOURS: ${{ inputs.older_than_hours }}
           MAX_ROW_WRITES: ${{ inputs.max_row_writes }}
+          RUN_TIME_BUDGET_MINUTES: ${{ inputs.run_time_budget_minutes }}
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
           LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
@@ -77,7 +83,8 @@ jobs:
           fi
           PYTHONPATH=. python scripts/reconcile_stuck_chapter_agenda.py \
             "${args[@]}" --older-than-hours "$OLDER_THAN_HOURS" \
-            --max-row-writes "$MAX_ROW_WRITES" | tee stuck-chapter-agenda.json
+            --max-row-writes "$MAX_ROW_WRITES" \
+            --run-time-budget-minutes "$RUN_TIME_BUDGET_MINUTES" | tee stuck-chapter-agenda.json
 
       - name: Upload classification report
         if: always()
