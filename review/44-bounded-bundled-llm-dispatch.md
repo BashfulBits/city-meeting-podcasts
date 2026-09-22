@@ -2016,6 +2016,22 @@ about 32 dispatch-lifecycle row writes at the four-job design baseline, or 39 at
 five-job setting, before retry amplification. Roll back to 2 if provider failures, lease expiry,
 or measured DO row writes increase materially.
 
+**2026-09-21 in-flight and chapter-agenda tuning — maintainer-authorized.** Live deferred-sweep
+telemetry recorded `in_flight_call_limit` 706 times while two of the three configured bundle slots
+were active; the active-bundle limit appeared only three times. Raising
+`MAX_IN_FLIGHT_LLM_CALLS` from 8 to 12 therefore removes the primary observed global gate without
+raising `MAX_ACTIVE_BUNDLES`, bundle size, or the daily bundle and job ceilings. Per-provider and
+per-route limits stay in force; a later sweep also showed NVIDIA's provider concurrency and route
+capacity correctly regulating the work that the global gate no longer blocks.
+
+The same telemetry showed chapter-agenda's 1,000-job daily budget (4,000 write units at four units
+per job) deferring 2,589 candidates for `purpose_write_budget_exceeded`. Its daily budget and
+matching per-run cap increase to 6,000 units and 1,500 jobs. The lane's 2,000-unit reservation and
+the dispatcher's 24,000-unit global ingress budget do not change, so this reallocates no reserved
+capacity and does not raise the global daily admission ceiling. There is no recipe, pipeline-version,
+or artifact-backfill effect. Roll back to 8 in-flight calls and the prior 4,000-unit/1,000-job
+chapter-agenda budget if provider failures, lease expiry, or measured DO row writes worsen.
+
 **Not adopted.** Raising toward the ~66,620/day aggregate free-route provider capacity. That is a
 provider-side number; the Free-tier DO write budget is two orders of magnitude tighter and is what
 governs. Reaching it needs Workers Paid or a second DO to shard the write budget, which is

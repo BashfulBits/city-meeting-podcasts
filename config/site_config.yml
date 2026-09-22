@@ -141,13 +141,13 @@ llm_lanes:
     # `server_error`, gated by MAX_5XX_RETRIES=1 (only 2 attempts) without that extension. Given
     # Nemotron's benchmarked ~97% success rate, a job needing 12 attempts is a genuine outlier.
     backup_after_attempts: 12
-    # Equal to what daily_write_units funds (4000 / 4 units per job). A higher run cap is not a
+    # Equal to what daily_write_units funds (6000 / 4 units per job). A higher run cap is not a
     # harmless ceiling: the producer submits to it and the Worker rejects the surplus.
     # backup_models are not part of this per-job unit cost (see LaneConfig.ingress_write_units_per_job)
     # -- they're only ever indexed once a job's own attempts/schema_retry_count activate them.
-    max_dispatches_per_run: 1000
+    max_dispatches_per_run: 1500
     reserved_write_units: 2000
-    daily_write_units: 4000
+    daily_write_units: 6000
   chapter-locator:
     # Replaces citypods/chapter_locator.py:PRODUCTION_LOCATOR_MODEL. Gemini 3.5 Flash Lite is
     # reserved for this long-context workload and deliberately not shared with tagging; it stays
