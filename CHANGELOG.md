@@ -27,6 +27,17 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Bound the LLM dispatcher's empty-tick backlog probe instead of counting the whole queue**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). `claimDispatchWindow`'s empty-claim branch —
+  taken on nearly every cron tick — read `COUNT(*)` over the entire `queued` population to decide
+  the empty-claim reason and diagnostic. That count is index-covered but still re-reads the whole
+  queued backlog every empty tick, reproducing the unbounded-growth shape of the 2026-08-27
+  rows-read incident (review/44) behind an index seek instead of a table scan; review/44 also
+  records a 21,287-job backlog that would have driven this to the same cost every tick for weeks.
+  The probe is now capped at 1,000 rows, so its cost no longer scales with backlog size while
+  still reporting an exact `queued_jobs` diagnostic for any backlog at or under the cap. Dispatch
+  behavior and throughput are unchanged; this only reduces Durable Object rows-read cost.
+
 - **Defer only the affected R7 episode when its timed-word sidecar is temporarily unreadable**
   (`citypods/stages.py`). The diarization lane now catches an exhausted transient object-storage
   read both while collecting candidates and immediately before running a claimed candidate. It

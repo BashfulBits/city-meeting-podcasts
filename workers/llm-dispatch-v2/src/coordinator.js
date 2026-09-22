@@ -2549,8 +2549,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
 
       if (chosen.length === 0) {
+        // Bounded backlog probe, not an unconditional COUNT(*): this branch is taken on
+        // nearly every tick (review/44 records only 16 of 721 ticks doing substantive work),
+        // so an unbounded COUNT(*) here re-reads the entire queued population every single
+        // empty tick -- the same unbounded-growth shape as the 2026-08-27 rows-read incident,
+        // just hidden behind an index seek instead of a table scan. The LIMIT caps the read at
+        // a fixed cost regardless of backlog size (review/44 recorded a 21,287-job backlog);
+        // reason-selection below only needs to know queued vs. not, and the diagnostic value
+        // stays exact for any backlog at or under the cap.
         const queuedCount = [...sql.exec(
-          "SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'"
+          "SELECT COUNT(*) AS n FROM (SELECT 1 FROM jobs WHERE state = 'queued' LIMIT 1000)"
         )][0]?.n || 0;
         const concurrencyRejected =
           diagnostics.rejections.route_concurrency + diagnostics.rejections.provider_concurrency;
