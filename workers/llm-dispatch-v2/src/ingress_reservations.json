@@ -7,7 +7,7 @@
   "reservations": {
     "chapter-agenda": {
       "reserved_write_units": 2000,
-      "daily_write_units": 4000,
+      "daily_write_units": 6000,
       "models": [
         "nvidia/nemotron-3-ultra-550b-a55b:free"
       ],

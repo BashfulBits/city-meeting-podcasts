@@ -15,6 +15,16 @@ Once 1.0 ships, entries move under semver tags.
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Changed
+
+- **Raised the validated LLM dispatcher and chapter-agenda intake limits**
+  (`workers/llm-dispatch-v2/wrangler.jsonc`, `config/site_config.yml`).
+  `MAX_IN_FLIGHT_LLM_CALLS` rises from 8 to 12 after production telemetry repeatedly exhausted
+  that gate while a bundle slot remained free. The chapter-agenda lane now funds 1,500 daily jobs
+  (6,000 daily write units) rather than 1,000 (4,000 units), with its per-run cap kept equal to
+  its daily budget. The global 24,000-unit ingress budget, chapter-agenda's 2,000-unit reservation,
+  per-provider and per-route limits, recipe schema, and backfill behavior are unchanged.
+
 ### Fixed
 
 - **Defer only the affected R7 episode when its timed-word sidecar is temporarily unreadable**
