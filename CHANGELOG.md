@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Defer only the affected R7 episode when its timed-word sidecar is temporarily unreadable**
+  (`citypods/stages.py`). The diarization lane now catches an exhausted transient object-storage
+  read both while collecting candidates and immediately before running a claimed candidate. It
+  records the stable `timed-words-unavailable` deferral and continues the remaining pilot queue,
+  rather than failing the whole workflow. The worker-time path also avoids persisting a
+  `speakers_error` for a transient prerequisite outage, so the next scheduled run retries it
+  cleanly. This is error handling only: it does not change the diarization recipe or invalidate
+  existing speaker artifacts.
+
 - **Parallelize `reconcile_stuck_chapter_agenda.py`'s discard pass and give it a self-bounded
   wall-clock budget** (`scripts/reconcile_stuck_chapter_agenda.py`,
   `.github/workflows/reconcile-stuck-chapter-agenda.yml`). A production `--apply` run classified

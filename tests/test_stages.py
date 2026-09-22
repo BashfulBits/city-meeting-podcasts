@@ -32,6 +32,7 @@ from citypods.stages import (
     stage_is_dirty,
     stage_output_pointer,
 )
+from citypods.storage import StorageReadUnavailable
 from citypods.storage.local import LocalStorage
 
 
@@ -830,6 +831,71 @@ def test_diarize_candidates_do_not_retain_timed_words_for_the_whole_backlog(tmp_
     assert not any(isinstance(value, bytes) for value in vars(candidates[0]).values())
     assert candidates[0].words_key == "words/ep0.json"
     assert stages_mod._DiarizeCandidate.__doc__  # documents why, so it is not "simplified" back
+
+
+def test_diarize_collect_candidates_defers_an_unavailable_timed_words_object(tmp_path, monkeypatch):
+    """One transient sidecar failure must not abort the entire pilot backlog."""
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    unavailable = _diarize_episode(ctx, tmp_path, "unavailable", seconds=60.0)
+    available = _diarize_episode(ctx, tmp_path, "available", seconds=60.0)
+    real_get_file = ctx.storage.get_file
+
+    def _get_file(key, local_path):
+        if key == unavailable.transcript_words_key:
+            raise StorageReadUnavailable(key, TimeoutError("connection reset"))
+        return real_get_file(key, local_path)
+
+    monkeypatch.setattr(ctx.storage, "get_file", _get_file)
+    stats = StageStats(NativeDiarizeStage.name)
+    candidates = NativeDiarizeStage()._collect_candidates(
+        city,
+        [unavailable, available],
+        ctx,
+        stats,
+        config=ctx.speaker_config,
+        model="m",
+        embedding_model="e",
+        canonical_city_slug="denton-tx",
+    )
+
+    assert [candidate.uid for candidate in candidates] == [available.uid]
+    assert stats.defer_reasons == {"timed-words-unavailable": 1}
+    assert stats.errors == []
+
+
+def test_diarize_worker_defers_an_unavailable_timed_words_object(tmp_path, monkeypatch):
+    """A later storage blip remains a deferral, never a persisted diarize error."""
+    import citypods.diarize as diarize_mod
+    import citypods.stages as stages_mod
+
+    city = _pilot_city()
+    ctx = _ctx(tmp_path)
+    ctx.speaker_config = _pilot_speaker_config(workers=1)
+    ep = _diarize_episode(ctx, tmp_path, "unavailable-at-admission", seconds=60.0)
+    real_get_file = ctx.storage.get_file
+    reads = 0
+
+    def _get_file(key, local_path):
+        nonlocal reads
+        reads += 1
+        if reads == 2:
+            raise StorageReadUnavailable(key, TimeoutError("connection reset"))
+        return real_get_file(key, local_path)
+
+    monkeypatch.setattr(ctx.storage, "get_file", _get_file)
+    monkeypatch.setattr(diarize_mod, "prepare_models", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        stages_mod, "_diarize_executor", lambda _workers: stages_mod._InlineExecutor()
+    )
+
+    stats = NativeDiarizeStage().process(FakeProvider(), city, [ep], ctx)
+
+    assert reads == 2
+    assert stats.defer_reasons == {"timed-words-unavailable": 1}
+    assert stats.errors == []
+    assert ep.speakers_error is None
 
 
 def test_diarize_collect_candidates_reclaims_a_stale_provider_sourced_episode(tmp_path):

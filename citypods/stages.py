@@ -142,6 +142,7 @@ from citypods.records import (
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
 from citypods.security import MAX_REDIRECTS, validate_source_url
 from citypods.speakers import IDENTITY_PIPELINE_VERSION, TITLE_CUE_KINDS
+from citypods.storage import StorageReadUnavailable
 from citypods.timeline import Timeline, edl_duration, remap, timeline_digest
 from citypods.transcript_quality import (
     TranscriptQualityRoute,
@@ -7275,7 +7276,19 @@ class NativeDiarizeStage:
                 continue
             # Validate now, but let the bytes go: see _DiarizeCandidate on why they are re-read
             # at admission rather than retained for every pending candidate.
-            words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
+            try:
+                words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
+            except StorageReadUnavailable as exc:
+                # The words object passed its HEAD check, but its data transfer exhausted the
+                # storage adapter's retry budget. This is a transient prerequisite outage, not
+                # a bad transcript or a reason to abort the rest of the pilot queue.
+                stats.defer("timed-words-unavailable", sample=uid)
+                print(
+                    f"[enrich] diarize defer uid={uid} timed-words-unavailable "
+                    f"key={ep.transcript_words_key!r} error={exc}",
+                    flush=True,
+                )
+                continue
             words_valid = words_raw is not None and has_valid_timed_words(words_raw)
             del words_raw
             if not words_valid:
@@ -7534,6 +7547,17 @@ class NativeDiarizeStage:
                     embedding_model=embedding_model,
                     elapsed=time.monotonic() - started_at,
                 )
+        except StorageReadUnavailable as exc:
+            # Like the collection-time validation read, an intermittent B2/R2 download must
+            # remain retryable. Do not turn it into a persisted speakers_error: that would
+            # describe a healthy episode as a diarization failure until another run repairs it.
+            with finalize_lock:
+                stats.defer("timed-words-unavailable", sample=uid)
+            print(
+                f"[enrich] diarize defer uid={uid} timed-words-unavailable "
+                f"key={candidate.words_key!r} error={exc}",
+                flush=True,
+            )
         except FuturesTimeoutError:
             # The backstop fired for this item. The subprocess is abandoned rather than killed
             # (portably terminating a pool worker needs 3.14's terminate_workers); it dies with
