@@ -15,8 +15,10 @@ import {
  * in every cron tick full-scanned it, and nothing ever deleted from it -- 6,400 of a tick's
  * 6,424 rows read at 3,200 accumulated bundles.
  *
- * Two invariants, both applied to every RPC entry point rather than to a hand-picked query list,
- * so a NEW method with the same defect is caught without anyone remembering to add a case here:
+ * Two invariants apply to every recurring coordinator RPC rather than to a hand-picked query
+ * list, so a NEW automated method with the same defect is caught without anyone remembering to
+ * add a case here. The explicitly manual `detailedStats` path is excluded: it is never a
+ * workflow dependency and intentionally trades reads for an operator's one-off diagnosis.
  *
  *   1. No statement may SCAN a growable table (jobs/job_models/bundles/attempts).
  *      `routes` and `scheduler` are exempt: both are bounded by static config, not by traffic.
@@ -97,6 +99,12 @@ function seed(history, { liveQueued = 6 } = {}) {
     insJobModel.run(`bk${i}`, "gemini/gemini-flash-lite", 1, old + i);
   }
   db.exec("COMMIT");
+  // Seed uses raw SQL to create historical rows, so it deliberately bypasses the production
+  // queued-count triggers. Mirror the completed one-time migration before measuring recurring
+  // operations; an O(history) migration must never be confused with per-RPC telemetry cost.
+  db.prepare(
+    "UPDATE scheduler SET queued_job_count = ?, queued_job_count_initialized = 1 WHERE id = 1"
+  ).run(history);
 
   // Live working set, identical at every scale.
   const jobs = Array.from({ length: liveQueued }, (_, i) => ({
@@ -124,6 +132,7 @@ async function exerciseAll(fixture) {
 
   recorder.start();
   await run("enqueueBatch", () => coordinator.enqueueBatch(jobs));
+  await run("stats", () => coordinator.stats(now));
   const plan = await run("claimDispatchWindow", () => coordinator.claimDispatchWindow(now, 25));
   const claimed = plan.jobs[0];
   await run("pollBatch", () => coordinator.pollBatch(jobs.map((j) => j.id)));
@@ -215,6 +224,17 @@ test("rows read per operation does not grow with accumulated history", async () 
     large.total <= small.total + 40,
     `total rows read scaled with history: ${small.total} -> ${large.total}`
   );
+});
+
+test("bounded stats preserves the trigger-maintained queue count through a claim", async () => {
+  const { coordinator, now, jobs } = seed(200);
+  await coordinator.enqueueBatch(jobs);
+  const beforeClaim = await coordinator.stats(now);
+  assert.equal(beforeClaim.jobs.by_state.queued, 206);
+
+  const plan = await coordinator.claimDispatchWindow(now, 25);
+  const afterClaim = await coordinator.stats(now);
+  assert.equal(afterClaim.jobs.by_state.queued, 206 - plan.jobs.length);
 });
 
 test("route_failures queries use index and catch unindexed scan regression", async () => {

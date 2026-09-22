@@ -294,6 +294,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         utc_day                             TEXT NOT NULL,
         bundle_count_today                  INTEGER NOT NULL DEFAULT 0,
         jobs_ingested_today                 INTEGER NOT NULL DEFAULT 0,
+        queued_job_count                    INTEGER NOT NULL DEFAULT 0,
+        queued_job_count_initialized        INTEGER NOT NULL DEFAULT 0,
         ingress_write_units_today           INTEGER NOT NULL DEFAULT 0,
         claim_empty_count_today             INTEGER NOT NULL DEFAULT 0,
         claim_reason_counts_json            TEXT NOT NULL DEFAULT '{}',
@@ -383,12 +385,56 @@ export class LLMSchedulerDO extends DurableObjectBase {
       "CREATE INDEX IF NOT EXISTS idx_jobs_purpose_state_created ON jobs (purpose, state, created_at)"
     );
     this._ensureColumn("scheduler", "ingress_write_units_today", "INTEGER NOT NULL DEFAULT 0");
+    // A recurring producer snapshot needs the queue depth, but COUNT(*) over a retained queue
+    // makes that diagnostic proportional to backlog. These two columns turn it into a singleton
+    // scheduler-row read. Existing DOs initialize exactly once on their next mutating RPC or
+    // snapshot; fresh DOs start at zero and the triggers below maintain the value thereafter.
+    this._ensureColumn("scheduler", "queued_job_count", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "queued_job_count_initialized", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "claim_reason_counts_json", "TEXT NOT NULL DEFAULT '{}'");
     this._ensureColumn("scheduler", "last_claim_at", "INTEGER");
     this._ensureColumn("scheduler", "last_claim_result", "TEXT NOT NULL DEFAULT ''");
     this._ensureColumn("scheduler", "last_claim_reason", "TEXT NOT NULL DEFAULT ''");
     this._ensureColumn("scheduler", "last_claim_diagnostics_json", "TEXT NOT NULL DEFAULT '{}'");
+    // Maintain the exact queued-job count in the singleton scheduler row. State transitions may
+    // happen in several RPCs (including lease expiry and retries), so database triggers are less
+    // error-prone than duplicating delta arithmetic at every call site. The initialization guard
+    // lets a deployed DO take one accurate COUNT(*) backfill before any trigger starts applying
+    // deltas; it also keeps direct Data Studio state edits correct after that migration.
+    sql.exec(`
+      CREATE TRIGGER IF NOT EXISTS trg_jobs_queued_count_insert
+      AFTER INSERT ON jobs
+      WHEN NEW.state = 'queued'
+       AND (SELECT queued_job_count_initialized FROM scheduler WHERE id = 1) = 1
+      BEGIN
+        UPDATE scheduler SET queued_job_count = queued_job_count + 1 WHERE id = 1;
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_jobs_queued_count_delete
+      AFTER DELETE ON jobs
+      WHEN OLD.state = 'queued'
+       AND (SELECT queued_job_count_initialized FROM scheduler WHERE id = 1) = 1
+      BEGIN
+        UPDATE scheduler SET queued_job_count = MAX(0, queued_job_count - 1) WHERE id = 1;
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_jobs_queued_count_state
+      AFTER UPDATE OF state ON jobs
+      WHEN OLD.state IS NOT NEW.state
+       AND (OLD.state = 'queued' OR NEW.state = 'queued')
+       AND (SELECT queued_job_count_initialized FROM scheduler WHERE id = 1) = 1
+      BEGIN
+        UPDATE scheduler
+           SET queued_job_count = MAX(
+             0,
+             queued_job_count +
+             CASE WHEN NEW.state = 'queued' THEN 1 ELSE 0 END -
+             CASE WHEN OLD.state = 'queued' THEN 1 ELSE 0 END
+           )
+         WHERE id = 1;
+      END;
+    `);
     // The job_models_backfill_*/legacy_retryable_recovery_*/migration_*_today columns that used to
     // be retrofitted here were the one-time compatibility migration's own bookkeeping (review/44's
     // "Durable Objects rows-read overage retrospective"). Both migrations completed in production
@@ -470,6 +516,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["token_reservation", "INTEGER NOT NULL DEFAULT 0"],
       ["purpose", "TEXT NOT NULL DEFAULT ''"],
       ["ingress_write_units_today", "INTEGER NOT NULL DEFAULT 0"],
+      ["queued_job_count", "INTEGER NOT NULL DEFAULT 0"],
+      ["queued_job_count_initialized", "INTEGER NOT NULL DEFAULT 0"],
       ["claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0"],
       ["claim_reason_counts_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["last_claim_at", "INTEGER"],
@@ -857,6 +905,28 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return sched;
   }
 
+  /**
+   * Backfill the queue counter once for an already-deployed scheduler, then leave all ordinary
+   * mutations to the bounded SQLite triggers installed by _initSchema. The one COUNT(*) is an
+   * intentional migration cost, not an RPC-path diagnostic: subsequent snapshots read only the
+   * scheduler singleton. Must run before a transaction changes any queued-job state.
+   */
+  _ensureQueuedJobCounter() {
+    const sql = this._getSql();
+    const scheduler = [...sql.exec(
+      "SELECT queued_job_count_initialized FROM scheduler WHERE id = 1"
+    )][0];
+    if (scheduler?.queued_job_count_initialized === 1) return;
+    const queued = [...sql.exec(
+      "SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'"
+    )][0]?.n || 0;
+    sql.exec(
+      `UPDATE scheduler SET queued_job_count = ?, queued_job_count_initialized = 1
+       WHERE id = 1`,
+      queued
+    );
+  }
+
   async enqueueBatch(jobs) {
     const sql = this._getSql();
     const now = Date.now();
@@ -868,6 +938,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // run fully synchronously (no await inside), which this loop already does.
     return this.ctx.storage.transactionSync(() => {
       this._ensureMigratedJobModels();
+      this._ensureQueuedJobCounter();
       const accepted = [];
       const rejected = [];
 
@@ -1197,6 +1268,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
 
       const sched = this._rollUtcDayIfNeeded(now);
+      this._ensureQueuedJobCounter();
       if (sched.jobs_ingested_today >= maxJobsToday) {
         return { status: "daily_cap_exceeded" };
       }
@@ -1323,23 +1395,59 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   /**
-   * A read-only snapshot of everything needed to answer "why is nothing dispatching?" without
-   * shipping a new Worker build to find out.
-   *
-   * This exists because on 2026-08-29 v2 ran 721 cron ticks and did substantive work on 16 of
-   * them -- 13 of which were the fixed hourly maintenance pass. Every other tick returned in
-   * ~200ms because claimDispatchWindow found nothing. There was no way to tell from outside
-   * whether the queue was genuinely empty, whether job_models had lost its index rows (jobs
-   * queued but unclaimable -- a real bug we hit once already), or whether every route was
-   * blocked. Those three look identical from the outside and have completely different fixes.
-   *
-   * Deliberately cheap. This DO exhausted the free tier's 5M daily rows-read budget on
-   * 2026-08-27 via two unindexed statements, so every query below is either an indexed COUNT or
-   * a bounded LIMIT: counts ride idx_jobs_state_updated and the job_models model index, and the
-   * routes table is small and fixed-size (one row per configured route). `limit` bounds only the
-   * two listings; the counts are always complete.
+   * Return the recurring, payload-free scheduler snapshot used by producer workflows. Its SQL
+   * reads only bounded singleton/configuration state; it must remain safe to call before and
+   * after every LLM producer run, even when queued or retained job history is large.
    */
-  async stats(now, limit = 20) {
+  async stats(now) {
+    const sql = this._getSql();
+    return this.ctx.storage.transactionSync(() => {
+      this._ensureQueuedJobCounter();
+      const one = (query, ...args) => [...sql.exec(query, ...args)][0] || {};
+      const scheduler = one(
+        `SELECT utc_day, bundle_count_today, jobs_ingested_today, queued_job_count,
+                next_maintenance_alarm_at, last_claim_at, last_claim_result,
+                last_claim_reason, claim_empty_count_today, claim_reason_counts_json
+           FROM scheduler WHERE id = 1`
+      );
+      const claimReasonCounts = parseJsonObject(scheduler.claim_reason_counts_json);
+      const activeBundles = [...sql.exec(
+        "SELECT active_call_count, lease_expires_at FROM bundles WHERE state = 'active'"
+      )];
+      const activeCalls = activeBundles.reduce((sum, row) => sum + (row.active_call_count || 0), 0);
+
+      return {
+        now,
+        jobs: { by_state: { queued: scheduler.queued_job_count || 0 } },
+        bundles: {
+          active: activeBundles.length,
+          active_call_count: activeCalls,
+          active_expired: activeBundles.filter((row) => row.lease_expires_at <= now).length,
+        },
+        scheduler: {
+          utc_day: scheduler.utc_day ?? null,
+          bundle_count_today: scheduler.bundle_count_today ?? 0,
+          jobs_ingested_today: scheduler.jobs_ingested_today ?? 0,
+          next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
+        },
+        claim: {
+          last_at: scheduler.last_claim_at ?? null,
+          last_result: scheduler.last_claim_result || null,
+          last_reason: scheduler.last_claim_reason || null,
+          empty_count_today: scheduler.claim_empty_count_today ?? 0,
+          reason_counts_today: claimReasonCounts,
+        },
+      };
+    });
+  }
+
+  /**
+   * On-demand historical diagnostics for a human operator. This can inspect retained queue
+   * history and is intentionally never called by scheduled producer telemetry; use stats()
+   * for recurring observation. The HTTP route requires `?detail=1` to reach this method.
+   */
+  async detailedStats(now, limit = 20) {
+    this._ensureQueuedJobCounter();
     const sql = this._getSql();
     const one = (query, ...args) => [...sql.exec(query, ...args)][0] || {};
 
@@ -1615,6 +1723,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     if (!jobIds || jobIds.length === 0) return { cancelled: [], in_flight: [], not_found: [] };
     const sql = this._getSql();
     return this.ctx.storage.transactionSync(() => {
+      this._ensureQueuedJobCounter();
       const cancelled = [];
       const inFlight = [];
       const found = new Set();
@@ -2288,6 +2397,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
     return this.ctx.storage.transactionSync(() => {
       this._ensureMigratedJobModels();
+      this._ensureQueuedJobCounter();
       const maxBundlesPerDay = this._maxBundlesPerUtcDay();
       const maxActiveBundles = this._maxActiveBundles();
       const maxInFlightCalls = this._maxInFlightLlmCalls();
@@ -2549,17 +2659,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
 
       if (chosen.length === 0) {
-        // Bounded backlog probe, not an unconditional COUNT(*): this branch is taken on
-        // nearly every tick (review/44 records only 16 of 721 ticks doing substantive work),
-        // so an unbounded COUNT(*) here re-reads the entire queued population every single
-        // empty tick -- the same unbounded-growth shape as the 2026-08-27 rows-read incident,
-        // just hidden behind an index seek instead of a table scan. The LIMIT caps the read at
-        // a fixed cost regardless of backlog size (review/44 recorded a 21,287-job backlog);
-        // reason-selection below only needs to know queued vs. not, and the diagnostic value
-        // stays exact for any backlog at or under the cap.
+        // This branch is taken on nearly every tick. Read the trigger-maintained singleton rather
+        // than probing queued jobs: the exact classification remains constant-cost even when the
+        // backlog is much larger than the 1,000-row cap that previously bounded this query.
         const queuedCount = [...sql.exec(
-          "SELECT COUNT(*) AS n FROM (SELECT 1 FROM jobs WHERE state = 'queued' LIMIT 1000)"
-        )][0]?.n || 0;
+          "SELECT queued_job_count FROM scheduler WHERE id = 1"
+        )][0]?.queued_job_count || 0;
         const concurrencyRejected =
           diagnostics.rejections.route_concurrency + diagnostics.rejections.provider_concurrency;
         const otherRejected =
@@ -2979,6 +3084,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         return; // stale completion; no-op
       }
 
+      this._ensureQueuedJobCounter();
       const now = Date.now();
       let settledCount = 0;
 

@@ -338,7 +338,7 @@ test("POST /v2/jobs/{id}:schema-retry rejects a non-completed source", async () 
   assert.equal((await res.json()).error, "not_found");
 });
 
-test("GET /v2/stats requires auth and returns a snapshot", async () => {
+test("GET /v2/stats requires auth and returns the bounded snapshot by default", async () => {
   const env = createMockEnv();
 
   // Queue depths and route health are operational detail, not public.
@@ -355,25 +355,21 @@ test("GET /v2/stats requires auth and returns a snapshot", async () => {
   const body = await res.json();
   assert.ok(Number.isFinite(body.now));
   assert.ok(body.jobs && typeof body.jobs.by_state === "object");
-  assert.equal(body.jobs.queued_without_model_index, 0);
-  assert.ok(Array.isArray(body.queued_by_model));
-  assert.ok(Array.isArray(body.routes.blocked));
   assert.ok(body.bundles && body.scheduler);
+  assert.equal(body.queued_by_model, undefined);
 });
 
-test("GET /v2/stats clamps limit to a sane range", async () => {
-  // The listings are bounded so an operator cannot turn a debug probe into the rows-read
-  // overage it exists to help diagnose.
+test("GET /v2/stats makes historical diagnostics explicit and clamps their limit", async () => {
   const env = createMockEnv();
   const call = async (qs) =>
     (await worker.fetch(
-      new Request(`http://localhost/v2/stats${qs}`, {
+      new Request(`http://localhost/v2/stats?detail=1&${qs}`, {
         headers: { authorization: "Bearer secret-token" },
       }),
       env
     )).status;
 
-  assert.equal(await call("?limit=99999"), 200);
-  assert.equal(await call("?limit=0"), 200);
-  assert.equal(await call("?limit=notanumber"), 200);
+  assert.equal(await call("limit=99999"), 200);
+  assert.equal(await call("limit=0"), 200);
+  assert.equal(await call("limit=notanumber"), 200);
 });

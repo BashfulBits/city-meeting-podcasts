@@ -904,10 +904,13 @@ Existing accepted designs take precedence where they overlap; several entries be
   binds only `durable_objects` and Workers Logs `observability`; there is no Analytics Engine
   binding and no API-token secret for Cloudflare's GraphQL Analytics API). The L3 issue must pick
   exactly one design and state which in the PR description — they are not equivalent:
-  - **(a) External cron against the real meter.** A scheduled step queries Cloudflare's GraphQL
-    Analytics API (`durableObjectsInvocationsAdaptiveGroups`/storage-metrics) with a scoped
-    read-only API token stored as a repo secret, at a cadence no tighter than the metric's own
-    empirically-verified refresh lag. Only this path alarms on the actual billed number.
+  - **(a) External cron against the real meter.** This must use a supported Cloudflare billing
+    source, not GraphQL analytics. The L3 verification recorded in review/47 (2026-09-22) found
+    that GraphQL's `AccountDurableObjectsSqlStorageGroups` exposes `storedBytes`, not rows read,
+    and Cloudflare documents analytics as distinct from billing. Its Alpha/Restricted account
+    billing-usage endpoint rejected the available token with HTTP 403. Do not schedule a proxy as
+    an actual-meter alarm; resume this option only with an accepted billing credential or native
+    dashboard usage notification, at a cadence no tighter than the meter refresh lag.
   - **(b) In-process proxy alarm.** Reuse the DO's existing bounded `stats(now, limit=20)` RPC
     (`coordinator.js:1090-1189`, already the precedent for a cheap indexed diagnostic query) to
     expose row counts of the tables the 2026-08-27 incident implicated (`bundles`, `attempts`) and
