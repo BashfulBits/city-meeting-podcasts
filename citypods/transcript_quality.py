@@ -957,39 +957,23 @@ def _read_ref_bytes(ref: str | None, *, storage=None) -> bytes:
 def _parse_words_payload(data: bytes) -> list[dict]:
     if not data:
         return []
-    try:
-        payload = json.loads(data)
-    except Exception:
-        return []
-    if not isinstance(payload, dict):
-        return []
-    segments = payload.get("segments")
-    if not isinstance(segments, list):
-        return []
+    payload = json.loads(data)
+    segments = payload.get("segments") or []
     out: list[dict] = []
-    out_append = out.append
     for segment in segments:
-        if not isinstance(segment, dict):
-            continue
-        words = segment.get("words")
-        if not isinstance(words, list):
-            continue
+        words = segment.get("words") or []
         for word in words:
-            if not isinstance(word, dict):
-                continue
             w = word.get("w")
             if not w:
                 continue
-            token = w.strip() if type(w) is str else str(w).strip()
+            token = str(w).strip()
             if not token:
                 continue
-            s = word.get("s")
-            e = word.get("e")
-            out_append(
+            out.append(
                 {
                     "text": token,
-                    "start": float(s) if s else 0.0,
-                    "end": float(e) if e else 0.0,
+                    "start": float(word.get("s") or 0),
+                    "end": float(word.get("e") or 0),
                 }
             )
     return out
