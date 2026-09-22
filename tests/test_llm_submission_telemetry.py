@@ -103,7 +103,6 @@ def test_scheduler_summary_matches_worker_stats_shape():
     summary = _scheduler_summary(
         {
             "jobs": {"by_state": {"queued": 12}},
-            "queued_by_model": {"gemini/gemini-3.6-flash": 8},
             "bundles": {"active": 2, "active_call_count": 7},
             "scheduler": {"bundle_count_today": 19, "jobs_ingested_today": 83},
             "claim": {
@@ -122,5 +121,4 @@ def test_scheduler_summary_matches_worker_stats_shape():
         "last_reason": "active_bundle_limit",
         "empty_claims": 4,
         "reason_counts": {"active_bundle_limit": 11},
-        "queued_by_model": {"gemini/gemini-3.6-flash": 8},
     }

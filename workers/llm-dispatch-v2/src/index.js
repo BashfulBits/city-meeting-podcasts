@@ -304,12 +304,17 @@ export async function handleRequest(request, env) {
 
   const coordinator = getCoordinator(env);
 
-  // Operator probe. Authenticated like every other /v2 route -- queue depths and route health are
-  // operational detail, not public -- and read-only: it takes no parameters that change state.
+  // The default probe is the bounded recurring snapshot used by producer workflows. Historical
+  // queue diagnosis is deliberate opt-in: it can inspect retained work and must never become a
+  // scheduled telemetry dependency again.
   if (request.method === "GET" && path === "/v2/stats") {
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
+    const detailed = url.searchParams.get("detail") === "1";
     try {
-      return jsonResponse(await coordinator.stats(Date.now(), limit), 200);
+      const snapshot = detailed
+        ? await coordinator.detailedStats(Date.now(), limit)
+        : await coordinator.stats(Date.now());
+      return jsonResponse(snapshot, 200);
     } catch (err) {
       const detail = describeError(err);
       console.error(`stats failed: ${detail}`);

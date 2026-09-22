@@ -20,7 +20,7 @@ from citypods.compute.llm_submission_telemetry import (
 
 
 def _scheduler_summary(body: Mapping[str, object]) -> dict[str, object]:
-    """Keep the useful scheduler constraints without copying unbounded queue diagnostics."""
+    """Keep the bounded scheduler fields needed to explain producer throughput."""
     scheduler = body.get("scheduler")
     scheduler = scheduler if isinstance(scheduler, Mapping) else {}
     jobs = body.get("jobs")
@@ -31,7 +31,6 @@ def _scheduler_summary(body: Mapping[str, object]) -> dict[str, object]:
     bundles = bundles if isinstance(bundles, Mapping) else {}
     claim = body.get("claim")
     claim = claim if isinstance(claim, Mapping) else {}
-    queued_by_model = body.get("queued_by_model")
     return {
         "active_bundles": bundles.get("active"),
         "active_calls": bundles.get("active_call_count"),
@@ -41,7 +40,6 @@ def _scheduler_summary(body: Mapping[str, object]) -> dict[str, object]:
         "last_reason": claim.get("last_reason"),
         "empty_claims": claim.get("empty_count_today"),
         "reason_counts": claim.get("reason_counts_today"),
-        "queued_by_model": queued_by_model if isinstance(queued_by_model, Mapping) else None,
     }
 
 
@@ -57,7 +55,7 @@ def snapshot(phase: str) -> int:
     headers = {"authorization": f"Bearer {token}"} if token else {}
     try:
         response = requests.get(
-            urljoin(url.rstrip("/") + "/", "v2/stats?limit=20"), headers=headers, timeout=20
+            urljoin(url.rstrip("/") + "/", "v2/stats"), headers=headers, timeout=20
         )
         if response.status_code != 200:
             raise RuntimeError(f"http_{response.status_code}")

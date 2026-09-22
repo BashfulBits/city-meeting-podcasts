@@ -74,6 +74,30 @@ test("enqueueBatch admits new jobs and updates scheduler counter", async () => {
   assert.equal(rows[1].priority, 0);
 });
 
+test("queued counter follows direct SQLite state edits after initialization", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([
+    {
+      id: "direct-state",
+      idempotency_key: "direct-state-key",
+      request_digest: "direct-state-digest",
+      policy_json: "{}",
+      prompt_family: "tags",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/direct-state/request.json",
+    },
+  ]);
+
+  assert.equal((await coordinator.stats(Date.now())).jobs.by_state.queued, 1);
+  sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'direct-state'");
+  assert.equal((await coordinator.stats(Date.now())).jobs.by_state.queued, 0);
+  sql.exec("UPDATE jobs SET state = 'queued' WHERE id = 'direct-state'");
+  assert.equal((await coordinator.stats(Date.now())).jobs.by_state.queued, 1);
+  sql.exec("DELETE FROM jobs WHERE id = 'direct-state'");
+  assert.equal((await coordinator.stats(Date.now())).jobs.by_state.queued, 0);
+});
+
 test("enqueueBatch indexes every canonical allowed model without model_routing", async () => {
   const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
   await coordinator.enqueueBatch([
@@ -1834,7 +1858,7 @@ test("stats exposes today's route_failures ordered by count DESC capped at limit
     now - 86_400_000
   );
 
-  const s = await coordinator.stats(now, 2);
+  const s = await coordinator.detailedStats(now, 2);
   assert.ok(Array.isArray(s.route_failures), "stats must include route_failures");
   assert.equal(s.route_failures.length, 2, "must be capped at limit=2");
   assert.equal(s.route_failures[0].route_id, "r-2");
@@ -2025,6 +2049,6 @@ test("stats() names accounts whose secret is not set in this deployment", async 
       model_routes_map: {},
     },
   });
-  const stats = await coordinator.stats(Date.now(), 20);
+  const stats = await coordinator.detailedStats(Date.now(), 20);
   assert.deepEqual(stats.unconfigured_accounts, ["p:tertiary (ABSENT_KEY)"]);
 });

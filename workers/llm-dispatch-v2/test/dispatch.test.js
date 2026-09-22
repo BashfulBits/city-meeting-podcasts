@@ -1478,14 +1478,14 @@ test("stats distinguishes an empty queue from a stranded one", async () => {
   // look identical and have nothing in common.
   const { coordinator, sql } = makeCoordinator();
 
-  const empty = await coordinator.stats(Date.now());
+  const empty = await coordinator.detailedStats(Date.now());
   assert.equal(empty.jobs.by_state.queued ?? 0, 0);
   assert.equal(empty.jobs.queued_without_model_index, 0);
   assert.equal(empty.jobs.oldest_queued_age_ms, null);
   assert.deepEqual(empty.queued_by_model, []);
 
   await coordinator.enqueueBatch([makeJob("j-a"), makeJob("j-b")]);
-  const queued = await coordinator.stats(Date.now());
+  const queued = await coordinator.detailedStats(Date.now());
   assert.equal(queued.jobs.by_state.queued, 2);
   assert.equal(queued.jobs.queued_without_model_index, 0, "healthy jobs are indexed");
   assert.ok(queued.queued_by_model.length > 0, "queued work is visible per model");
@@ -1496,7 +1496,7 @@ test("stats distinguishes an empty queue from a stranded one", async () => {
 
   // Now reproduce the stranding shape: rows present, index gone. by_state still says "queued".
   sql.exec("DELETE FROM job_models");
-  const stranded = await coordinator.stats(Date.now());
+  const stranded = await coordinator.detailedStats(Date.now());
   assert.equal(stranded.jobs.by_state.queued, 2, "still queued as far as the jobs table knows");
   assert.deepEqual(stranded.queued_by_model, [], "but invisible to the scheduler");
   assert.equal(stranded.jobs.queued_without_model_index, 2, "which is exactly what this reports");
@@ -1519,7 +1519,7 @@ test("stats reports a standing-down route and its reason", async () => {
   ]);
 
   const now = Date.now();
-  const s = await coordinator.stats(now);
+  const s = await coordinator.detailedStats(now);
   const blocked = s.routes.blocked.find((r) => r.route_id === job.route_id);
   assert.ok(blocked, "a 402-blocked route must be listed");
   assert.ok(blocked.blocked_until > now);
@@ -1529,7 +1529,7 @@ test("stats reports a standing-down route and its reason", async () => {
   // A route whose block has lapsed is healthy again and must drop off the list, or every route
   // ever throttled would accumulate here and bury the ones actually standing down.
   sql.exec("UPDATE routes SET blocked_until = ? WHERE route_id = ?", now - 1000, job.route_id);
-  const after = await coordinator.stats(now);
+  const after = await coordinator.detailedStats(now);
   assert.equal(after.routes.blocked.find((r) => r.route_id === job.route_id), undefined);
 });
 
@@ -1653,7 +1653,7 @@ test("stats surfaces a route zeroed by its 429 buffer, not just by blocked_until
     routeId
   );
 
-  const s = await coordinator.stats(t + 1000);
+  const s = await coordinator.detailedStats(t + 1000);
   const row = s.routes.all.find((r) => r.route_id === routeId);
   assert.ok(row, "the route must appear even though nothing blocked it");
   assert.equal(row.blocked_until, null, "no block is set on this path -- that was the trap");
@@ -1829,7 +1829,7 @@ test("claimDispatchWindow enforces route-level and provider-level concurrency", 
   assert.equal(secondPlan.claim_diagnostics.rejections.provider_concurrency, 1);
   assert.deepEqual(secondPlan.claim_diagnostics.routes.provider_concurrency, { strict_prov: 1 });
 
-  const stats = await coordinator.stats(now + 100);
+  const stats = await coordinator.detailedStats(now + 100);
   assert.equal(stats.claim.last_result, "empty");
   assert.equal(stats.claim.last_reason, "concurrency_limit");
   assert.equal(stats.claim.empty_count_today, 1);
