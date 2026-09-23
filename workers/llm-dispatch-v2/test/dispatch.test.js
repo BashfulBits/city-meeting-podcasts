@@ -2271,3 +2271,26 @@ test("pollBatch reports the payload_key of a completed job for consumption-based
   assert.equal(byId.p1.payload_key, "payloads/p1/request.json");
   assert.equal(byId.p2.payload_key, null, "only completed jobs expose their payload_key");
 });
+
+test("an empty claim counts jobs its own lease sweep just requeued", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_ACTIVE_BUNDLES: "1",
+    MAX_BUNDLE_JOBS: "1",
+    LEASE_DURATION_SECONDS: "1",
+  });
+  // A single-route model, so blocking that route leaves the reaped job nowhere to go.
+  await coordinator.enqueueBatch([
+    makeJob("j1", {
+      policy_json: JSON.stringify({ allowed_models: ["mistral/mistral-small"], allow_paid: false }),
+    }),
+  ]);
+  const start = Date.now();
+  const stuck = await coordinator.claimDispatchWindow(start, 25);
+  assert.equal(stuck.jobs.length, 1);
+  // Nothing can take the job once it is reaped, so the reaping tick itself comes back empty.
+  sql.exec("UPDATE routes SET blocked_until = ?", start + 3_600_000);
+  const after = await coordinator.claimDispatchWindow(start + 2000, 25);
+  assert.equal(after.bundle_id, null);
+  assert.notEqual(after.claim_reason, "no_queued_work");
+  assert.equal(after.claim_diagnostics.queued_jobs, 1);
+});

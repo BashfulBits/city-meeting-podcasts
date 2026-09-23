@@ -2842,12 +2842,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
 
       if (chosen.length === 0) {
-        // This branch is taken on nearly every tick. Read the trigger-maintained singleton rather
+        // This branch is taken on nearly every tick. Read the delta-maintained singleton rather
         // than probing queued jobs: the exact classification remains constant-cost even when the
-        // backlog is much larger than the 1,000-row cap that previously bounded this query.
-        const queuedCount = [...sql.exec(
+        // backlog is much larger than the 1,000-row cap that previously bounded this query. Leases
+        // this tick's sweep just requeued are not in the stored count yet (recordEmpty applies
+        // them), so add them here or the tick would report no_queued_work with work queued.
+        const storedQueued = [...sql.exec(
           "SELECT queued_job_count FROM scheduler WHERE id = 1"
         )][0]?.queued_job_count || 0;
+        const queuedCount = Math.max(0, storedQueued + reapedToQueued);
         const concurrencyRejected =
           diagnostics.rejections.route_concurrency + diagnostics.rejections.provider_concurrency;
         const otherRejected =

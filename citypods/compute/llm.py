@@ -2825,9 +2825,16 @@ class LiteLLMBackend(Backend):
                 )
                 if response.status_code != 200:
                     continue
-                retired.update(str(ref) for ref in (response.json() or {}).get("retired") or ())
+                body = response.json()
             except (requests.RequestException, ValueError):
                 continue
+            # Untrusted shape: a malformed body must not raise out of the poll (the results are
+            # already persisted), and only refs this chunk actually sent may count as retired.
+            reported = body.get("retired") if isinstance(body, dict) else None
+            if not isinstance(reported, list):
+                continue
+            sent = {ref for ref, _key in chunk}
+            retired.update(ref for ref in reported if isinstance(ref, str) and ref in sent)
         _emit_v2_dispatch_event(
             "retire-batch", batch_size=len(consumed), deleted=len(deleted), retired=len(retired)
         )

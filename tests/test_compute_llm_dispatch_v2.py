@@ -1876,3 +1876,27 @@ def test_client_retire_can_be_disabled():
     )
     backend = LiteLLMBackend(config, http_session=MagicMock(), storage=MockStorage())
     assert backend._retire_consumed(MockStorage(), [("a", "results/a.json", None)]) == set()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [["a"], "a", None, {"retired": "a"}, {"retired": ["a", "not-sent", 7]}],
+)
+def test_retire_tolerates_malformed_responses(body):
+    """A malformed retire-batch body never raises out of the poll, and only refs this call sent
+    can count as retired; anything else falls back to the plain ack."""
+    storage = MockStorage()
+    storage.put_cas("results/a.json", b"{}", "application/json")
+    session = MagicMock()
+    session.post.return_value = _mock_response(status_code=200, json_data=body)
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    retired = backend._retire_consumed(storage, [("a", "results/a.json", None)])
+    well_formed = isinstance(body, dict) and isinstance(body["retired"], list)
+    assert retired == ({"a"} if well_formed else set())
