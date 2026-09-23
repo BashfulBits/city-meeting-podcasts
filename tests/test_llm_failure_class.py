@@ -118,6 +118,50 @@ def test_classify_gemini_signatures():
     assert both.rule_id == "gemini-rpd"
 
 
+def test_classify_gemini_structured_quota_failure_as_rpd():
+    """Google's machine quota identifiers override its short RetryInfo delay."""
+    body = [
+        {
+            "error": {
+                "code": 429,
+                "message": (
+                    "You exceeded your current quota. Quota exceeded for metric: "
+                    "generativelanguage.googleapis.com/generate_content_free_tier_requests, "
+                    "limit: 20, model: gemini-3.5-flash. Please retry in 30.36s."
+                ),
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                    {
+                        "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                        "violations": [
+                            {
+                                "quotaMetric": (
+                                    "generativelanguage.googleapis.com/"
+                                    "generate_content_free_tier_requests"
+                                ),
+                                "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                            }
+                        ],
+                    },
+                    {
+                        "@type": "type.googleapis.com/google.rpc.RetryInfo",
+                        "retryDelay": "30s",
+                    },
+                ],
+            }
+        }
+    ]
+    result = classify_provider_failure(
+        status=429,
+        body=body,
+        route={"provider": "gemini"},
+        retry_after_seconds=30,
+    )
+    assert result.failure_class == "own_rpd"
+    assert result.rule_id == "gemini-rpd"
+    assert result.retry_after_seconds == 30
+
+
 def test_classify_groq_signatures():
     tpd = classify_provider_failure(
         status=429,

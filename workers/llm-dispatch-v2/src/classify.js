@@ -14,10 +14,12 @@ export const FAILURE_SIGNATURES = [
     rule_id: "gemini-rpd",
     provider: "gemini",
     failure_class: "own_rpd",
-    match: ({ msg }) =>
+    match: ({ msg, quotaText }) =>
       msg.includes("perday") ||
       msg.includes("requests per day") ||
-      msg.includes("generaterequestsperdayper"),
+      msg.includes("generaterequestsperdayper") ||
+      quotaText.includes("generaterequestsperdayper") ||
+      quotaText.includes("generate_content_free_tier_requests"),
   },
   {
     rule_id: "gemini-tpm",
@@ -294,6 +296,26 @@ function providerFailureMessage(body) {
   ).toLowerCase();
 }
 
+function providerQuotaText(body) {
+  const details = body?.error?.details;
+  if (!Array.isArray(details)) return "";
+  const values = [];
+  for (const detail of details) {
+    if (!detail || typeof detail !== "object") continue;
+    for (const key of ["@type", "quotaMetric", "quotaId"]) {
+      if (detail[key]) values.push(String(detail[key]));
+    }
+    if (!Array.isArray(detail.violations)) continue;
+    for (const violation of detail.violations) {
+      if (!violation || typeof violation !== "object") continue;
+      for (const key of ["quotaMetric", "quotaId"]) {
+        if (violation[key]) values.push(String(violation[key]));
+      }
+    }
+  }
+  return values.join(" ").toLowerCase();
+}
+
 function isInputLimitMessage(msg) {
   return (
     (msg.includes("input") &&
@@ -423,7 +445,13 @@ export function classifyProviderFailure({ status, body, headers, route }) {
     const msg = providerFailureMessage(body);
     const routeProvider = route?.provider || "";
 
-    const matchContext = { status, body, headers: normHeaders, msg };
+    const matchContext = {
+      status,
+      body,
+      headers: normHeaders,
+      msg,
+      quotaText: providerQuotaText(body),
+    };
 
     for (const rule of FAILURE_SIGNATURES) {
       if (rule.provider !== null && rule.provider !== routeProvider) {
