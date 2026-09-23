@@ -517,18 +517,30 @@ export function classifyProviderFailure({ status, body, headers, route }) {
     }
   }
 
-  // 8. The route's model is gone or unreachable, not this request -> route_unavailable.
+  // 8. HTTP 410 Gone -> route_unavailable: the provider has retired this upstream model (NVIDIA's
+  //    deepseek-v4-pro-0813 and gpt-oss-120b, 2026-09-21/22). The coordinator requeues the job
+  //    and stands the whole route down for hours.
   //
-  // A chat-completions 404/410 is never about one job's payload: it means the provider no longer
-  // serves this upstream model (NVIDIA's 410 Gone for deepseek-v4-pro-0813 and gpt-oss-120b,
-  // 2026-09-21/22) or the route's path is wrong (the 2026-08-29 gateway `/v1` 404s). Classified as
-  // request_defect, each attempt failed its job terminally while the route kept a full capacity
-  // score and kept being chosen -- 22-28 jobs a day on one retired model. The coordinator requeues
-  // the job and stands the whole route down instead. The capacity-shaped 404 is matched above.
-  if (status === 404 || status === 410) {
+  //    A 404 is deliberately NOT treated the same way. On 2026-09-23 NVIDIA's Nemotron 3 Ultra
+  //    backend went down and answered 404 after 17-600s waits -- directly and through OpenRouter
+  //    and Kilo ("Provider returned error", provider_name "Nvidia") -- and reading that as "model
+  //    retired" blocked all three routes for six hours while the model came back within the hour.
+  //    A 404 from a chat-completions endpoint is far more often a transient upstream fault than a
+  //    retirement, so it takes the upstream-capacity path below: requeue on the upstream budget
+  //    and an escalating 15s-5min route cooldown. A truly retired model that answers 404 costs one
+  //    attempt per cooldown until the jobs exhaust that budget, rather than a false six-hour stall.
+  if (status === 410) {
     return {
       failure_class: "route_unavailable",
-      rule_id: "http-404-410-model-unavailable",
+      rule_id: "http-410-model-retired",
+      retry_after_seconds: retryAfterSeconds,
+      scope: "route",
+    };
+  }
+  if (status === 404) {
+    return {
+      failure_class: "upstream_capacity",
+      rule_id: "http-404-upstream",
       retry_after_seconds: retryAfterSeconds,
       scope: "route",
     };

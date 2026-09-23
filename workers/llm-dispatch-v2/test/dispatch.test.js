@@ -925,7 +925,36 @@ test("lookahead uses the calibrated ratio, not the static prior, to skip unserva
   assert.deepEqual(plan.jobs.map((job) => job.id), ["fits"]);
 });
 
-test("a 404/410 requeues the job and stands the whole route down", async () => {
+test("a 404 requeues the job with a short escalating cooldown, not the retirement block", async () => {
+  const { coordinator, sql } = makeCoordinator({ ROUTE_UNAVAILABLE_BLOCK_SECONDS: "21600" });
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  const job = plan.jobs[0];
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: job.id,
+      lease_token: job.lease_token,
+      attempt_id: "a1",
+      planned_at: job.not_before_at,
+      actual_start_at: now,
+      actual_end_at: now + 100,
+      outcome: "retryable_error",
+      provider_status_code: 404,
+      failure_class: "upstream_capacity",
+    },
+  ]);
+  const jobRow = [...sql.exec("SELECT state FROM jobs WHERE id = 'j1'")][0];
+  assert.equal(jobRow.state, "queued");
+  const route = [...sql.exec(
+    "SELECT blocked_until, upstream_capacity_streak FROM routes WHERE route_id = ?",
+    job.route_id
+  )][0];
+  assert.equal(route.upstream_capacity_streak, 1);
+  assert.ok(route.blocked_until > now && route.blocked_until <= now + 300_000);
+});
+
+test("a 410 requeues the job and stands the whole route down", async () => {
   const { coordinator, sql } = makeCoordinator({ ROUTE_UNAVAILABLE_BLOCK_SECONDS: "3600" });
   await coordinator.enqueueBatch([makeJob("j1")]);
   const now = Date.now();

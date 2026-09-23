@@ -527,9 +527,11 @@ provider's zoned midnight, and Mistral zero-provisioned limits (`x-ratelimit-lim
 a `payment_required` day-to-month backoff ladder. V2 also unwraps Gemini's one-element error arrays
 and structured retry delays in memory; actionable provider 503 overloads and 504 timeouts use the
 upstream-capacity budget, while explicit input/context-limit failures briefly quarantine the route
-and requeue once for sibling-route selection. A 404/410 (retired model or broken route path) is
-`route_unavailable`: the job requeues on the upstream-capacity budget and the route is stood down for
-`ROUTE_UNAVAILABLE_BLOCK_SECONDS`. The response text fallback is bounded and not stored.
+and requeue once for sibling-route selection. A 410 Gone (retired model) is `route_unavailable`: the
+job requeues on the upstream-capacity budget and the route is stood down for
+`ROUTE_UNAVAILABLE_BLOCK_SECONDS`. A 404 is treated as a transient upstream fault (requeue plus the
+escalating 15s-5min upstream cooldown), because providers and aggregators return 404 while a model's
+backend is down. The response text fallback is bounded and not stored.
 
 | Canonical Model Name (`model`) | Quality Tier & Architecture | Providers in Pool | Representative Context Window* | Combined Free Capacity (RPM / Daily Quota) | Current Wired Task in Citypods | Recommended Civic Tasks & Future Verbs |
 |---|---|---|---|---|---|---|

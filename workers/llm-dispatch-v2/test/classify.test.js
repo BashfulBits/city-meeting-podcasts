@@ -444,20 +444,30 @@ test("classifyProviderFailure handles generic 4xx as request_defect", () => {
   assert.equal(res.scope, "route");
 });
 
-test("a 404/410 for a retired model is route_unavailable, not a defect in the job", () => {
-  for (const [status, message] of [
-    [404, "Model not found"],
-    [410, "The model deepseek-ai/deepseek-v4-pro-0813 has reached its end of life"],
+test("a 410 for a retired model is route_unavailable", () => {
+  const res = classifyProviderFailure({
+    status: 410,
+    body: { error: { message: "The model deepseek-ai/deepseek-v4-pro-0813 has reached its end of life" } },
+    headers: null,
+    route: { provider: "nvidia", route_id: "nvidia_retired" },
+  });
+  assert.equal(res.failure_class, "route_unavailable");
+  assert.equal(res.rule_id, "http-410-model-retired");
+});
+
+test("a 404 is a transient upstream fault, never a six-hour retirement block", () => {
+  // 2026-09-23: NVIDIA's Nemotron 3 Ultra backend answered 404 directly and through OpenRouter and
+  // Kilo while it was down, then served normally within the hour.
+  for (const [provider, body] of [
+    ["nvidia", ""],
+    [
+      "openrouter",
+      { error: { message: "Provider returned error", code: 404, metadata: { raw: "", provider_name: "Nvidia" } } },
+    ],
+    ["gemini", { error: { message: "Model not found" } }],
   ]) {
-    const res = classifyProviderFailure({
-      status,
-      body: { error: { message } },
-      headers: null,
-      route: { provider: "nvidia", route_id: "nvidia_retired" },
-    });
-    assert.equal(res.failure_class, "route_unavailable", `status ${status}`);
-    assert.equal(res.rule_id, "http-404-410-model-unavailable");
-    assert.equal(res.scope, "route");
+    const res = classifyProviderFailure({ status: 404, body, headers: null, route: { provider } });
+    assert.equal(res.failure_class, "upstream_capacity", provider);
   }
 });
 

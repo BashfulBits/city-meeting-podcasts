@@ -74,7 +74,7 @@ const NON_CONSUMING_FAILURE_CLASSES = new Set([
   "route_input_limit",
   "payment_required",
   "request_defect",
-  // A 404/410 for a retired model or a broken route path: nothing was served.
+  // A 410 for a retired model: nothing was served.
   "route_unavailable",
 ]);
 
@@ -855,7 +855,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return now + Math.round(baseDelayMs * (1.0 + jitter));
   }
 
-  /** How long a route answering 404/410 (model retired or path broken) stays stood down. */
+  /** How long a route answering 410 Gone (model retired) stays stood down. */
   _routeUnavailableBlockMs() {
     return this._envInt("ROUTE_UNAVAILABLE_BLOCK_SECONDS", 21600) * 1000;
   }
@@ -3257,7 +3257,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const isTransientRouteFailure = isFinal5xx || isUpstreamCapacityFailure;
         const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
         const isRouteInputLimit = result.failure_class === "route_input_limit";
-        // The route's model is gone (404/410 -- classify.js rule 8). Not this job's fault, so it
+        // The route's model is retired (410 -- classify.js rule 8). Not this job's fault, so it
         // draws on the larger upstream budget and the route itself is stood down for hours.
         const isRouteUnavailable = result.failure_class === "route_unavailable";
         const blockedUntil = isTransientRouteFailure || isRouteInputLimit

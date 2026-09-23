@@ -744,9 +744,10 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
         // (retryable_error, 400) alone.
         (response.status >= 500 && cls.failure_class !== "route_input_limit") ||
         response.status === 402 ||
-        // A 404/410 means the route's model is gone, not that this job is defective; the
-        // coordinator requeues it and stands the route down (classify.js rule 8).
+        // A 410 (model retired) or 404 (upstream fault) is the route's problem, not this job's;
+        // the coordinator requeues it (classify.js rule 8).
         cls.failure_class === "route_unavailable" ||
+        (response.status === 404 && cls.failure_class === "upstream_capacity") ||
         upstreamCapacityFailure(response.status, response.body)
           ? "retryable_error"
           : "terminal_error"
