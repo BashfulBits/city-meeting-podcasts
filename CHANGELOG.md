@@ -17,6 +17,18 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **DO row writes per LLM job cut 32% (tier 1): three redundant `jobs` indexes dropped**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). Cloudflare bills every index entry a write
+  touches, and a job is inserted once and changes state ~4 times, so each index on `jobs` cost ~4-5
+  billed rows per job. `idx_jobs_state_updated` (an exact prefix of `idx_jobs_state_updated_id`),
+  `idx_jobs_state_priority_created` (obsolete since `job_models` took over admission ordering), and
+  `idx_jobs_purpose_state_created` (no query used it) are dropped on startup; every state-filtered
+  query still seeks on `idx_jobs_state_updated_id` (planner-verified, rows-read guards pass).
+  `attemptStarted` no longer bumps the indexed `updated_at`, which nothing reads for a
+  non-terminal job. Measured under workerd: 44.3 -> 30.3 billed rows per completed job (enqueue
+  12 -> 9, claim 9.9 -> 6.9, attempt start 6 -> 4, complete 10.3 -> 7.3, ack 5 -> 2); a retried
+  attempt 40 -> 32. No data or behavior change; dropping an index writes no rows.
+
 - **Pre-labeler batches sized to Google AI Studio's Gemma ceiling; gemma-4-26b shadow evaluator**
   (`citypods/tags.py`, `citypods/stages.py`, `citypods/llm_evaluation.py`, `config/site_config.yml`,
   `scripts/reconcile_stuck_chapter_agenda.py`).

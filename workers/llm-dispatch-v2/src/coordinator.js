@@ -184,16 +184,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
         created_at                  INTEGER NOT NULL,
         updated_at                  INTEGER NOT NULL
       );
-      CREATE INDEX IF NOT EXISTS idx_jobs_state_priority_created
-        ON jobs (state, priority, created_at);
-
-      -- purgePendingBatch selects terminal jobs by age. The index above is keyed
-      -- (state, priority, created_at), so that query could only seek on state and then had to
-      -- read EVERY completed/failed row to filter and sort on updated_at -- 60k+ rows once the
-      -- terminal backlog is large, the same unbounded-scan shape that caused the 2026-08-27
-      -- rows-read overage. Measured: 60,189 -> 367 VDBE ops at 6,000 terminal jobs.
-      CREATE INDEX IF NOT EXISTS idx_jobs_state_updated
-        ON jobs (state, updated_at);
+      -- The ONE state index on jobs. Every state-filtered query seeks on it: purgePendingBatch
+      -- and terminalFeed by (state, updated_at[, id]) -- an (state, priority, created_at) index
+      -- forced them to read EVERY completed/failed row (60,189 -> 367 VDBE ops at 6,000 terminal
+      -- jobs, the 2026-08-27 rows-read overage) -- and the queued/leased lookups by state alone.
+      --
+      -- Each index on jobs is a billed row written on every insert and every state change, and a
+      -- job changes state ~4 times, so jobs deliberately carries no other secondary index beyond
+      -- its id/idempotency_key uniqueness. Three were dropped on 2026-09-23 (see _initSchema):
+      -- (state, updated_at), an exact prefix of this one; (state, priority, created_at), obsolete
+      -- since job_models took over admission ordering; and (purpose, state, created_at), which no
+      -- query used. Measured under workerd: 44.3 -> 30.3 billed rows per completed job.
       CREATE INDEX IF NOT EXISTS idx_jobs_state_updated_id
         ON jobs (state, updated_at, id);
 
@@ -385,12 +386,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("jobs", "reservation_rpm_window_start", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "reservation_rpd_day_key", "TEXT NOT NULL DEFAULT ''");
     this._ensureColumn("jobs", "reservation_tpm_window_start", "INTEGER NOT NULL DEFAULT 0");
-    // This index references a column introduced after the first production schema. It must be
-    // created only after _ensureColumn: CREATE INDEX inside the bootstrap script would otherwise
-    // make an existing coordinator fail to start before its migration can add `purpose`.
-    sql.exec(
-      "CREATE INDEX IF NOT EXISTS idx_jobs_purpose_state_created ON jobs (purpose, state, created_at)"
-    );
+    // Retired secondary indexes on jobs (2026-09-23): each cost a billed row on every insert and
+    // state change, and no query needs them -- see the idx_jobs_state_updated_id comment. Dropping
+    // an index is a schema change, not a row write.
+    for (const index of [
+      "idx_jobs_state_updated",
+      "idx_jobs_state_priority_created",
+      "idx_jobs_purpose_state_created",
+    ]) {
+      sql.exec(`DROP INDEX IF EXISTS ${index}`);
+    }
     this._ensureColumn("scheduler", "ingress_write_units_today", "INTEGER NOT NULL DEFAULT 0");
     // A recurring producer snapshot needs the queue depth, but COUNT(*) over a retained queue
     // makes that diagnostic proportional to backlog. These two columns turn it into a singleton
@@ -2912,7 +2917,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         now,
         now
       );
-      sql.exec("UPDATE jobs SET attempts = attempts + 1, updated_at = ? WHERE id = ?", now, jobId);
+      // No updated_at bump: it is indexed (idx_jobs_state_updated_id), so bumping it cost two
+      // billed rows per attempt, and nothing reads updated_at for a non-terminal job.
+      sql.exec("UPDATE jobs SET attempts = attempts + 1 WHERE id = ?", jobId);
       return { fenced: true };
     });
   }
