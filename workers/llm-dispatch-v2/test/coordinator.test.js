@@ -2052,3 +2052,21 @@ test("stats() names accounts whose secret is not set in this deployment", async 
   const stats = await coordinator.detailedStats(Date.now(), 20);
   assert.deepEqual(stats.unconfigured_accounts, ["p:tertiary (ABSENT_KEY)"]);
 });
+
+test("jobs carries exactly one secondary state index; retired indexes are dropped on startup", () => {
+  // Every index on jobs is a billed DO row on each insert and state change (write_budget.js /
+  // bench/rows-written). Adding one back must be a deliberate, re-measured decision.
+  const { storage, sql } = createMockSqlStorage();
+  // An already-deployed coordinator still carries the retired indexes.
+  new LLMSchedulerDO({ storage }, withTestReservations({}));
+  sql.exec("CREATE INDEX IF NOT EXISTS idx_jobs_state_updated ON jobs (state, updated_at)");
+  sql.exec("CREATE INDEX IF NOT EXISTS idx_jobs_state_priority_created ON jobs (state, priority, created_at)");
+  sql.exec("CREATE INDEX IF NOT EXISTS idx_jobs_purpose_state_created ON jobs (purpose, state, created_at)");
+  new LLMSchedulerDO({ storage }, withTestReservations({}));
+  const names = sql
+    .exec("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'jobs'")
+    .map((row) => row.name)
+    .filter((name) => !name.startsWith("sqlite_autoindex_"))
+    .sort();
+  assert.deepEqual(names, ["idx_jobs_state_updated_id"]);
+});
