@@ -470,7 +470,17 @@ retirement 6), and `validateConfig` refuses a deploy whose worst case
 `DO_ROWS_WRITTEN_DAILY_BUDGET` (90,000). That caps sustained throughput at roughly 1,300 LLM
 jobs/day end to end; the lane budgets above divide it. Terminal-job cleanup
 (`CLEANUP_INTERVAL_MINUTES` x `PURGE_BATCH_LIMIT`, 1,800/day) must retire at least as many jobs per
-day as the lease cap allows and is counted in the same projection. A job may only name routes its own lane declares — ingress
+day as the lease cap allows and is counted in the same projection. Because every index entry is billed, the
+coordinator's schema is kept minimal on purpose (2026-09-23 row-write tiers; see CHANGELOG): `jobs`
+carries only the indexes a query uses (`idx_jobs_state_updated_id`), and nothing bumps its indexed
+`updated_at` for a non-terminal job; `job_models` is a `WITHOUT ROWID` table clustered on its
+admission scan key `(model, priority, created_at, job_id)` plus a unique `(job_id, model)` index
+(2 rows per entry, rebuilt once from the older rowid shape); `attempts` has no `created_at` index
+and is pruned oldest-first by rowid; token calibration writes every completion until a
+route/model/prompt-family window holds 32 samples, then a deterministic 1-in-4 sample by job id;
+and same-row bookkeeping in one transaction (per-purpose ingress counters, a success's route
+settlement, the claim-outcome scheduler row with its bundle/lease counters) is folded into one
+statement. A job may only name routes its own lane declares — ingress
 rejects `model_not_in_lane` — so the block describes what actually runs, not merely what was
 intended. The registry is repository-level policy read from the committed file and has no per-run
 override: a `--site-config` chooses site content and may *narrow* a lane

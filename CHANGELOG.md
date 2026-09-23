@@ -28,6 +28,42 @@ Phase R (Research-Tool Surface)._
   (3 x 5,800 + 34 x 1,750 + 6 x 1,800 + 1,440 = 89,140 <= 90,000), so a faster cadence cannot
   quietly turn a terminal backlog into a row-write burst.
 
+- **DO row writes per LLM job cut a further ~16% (tier 3): consumption-based retirement and
+  trigger-free queue counter** (`workers/llm-dispatch-v2/src/`, `citypods/compute/llm.py`).
+  Measured under workerd: 25.3 -> 21.3 billed rows per completed job (44.3 -> 21.3 across tiers
+  1-3, ~2.1x the jobs per day under the same row budget).
+  - *Consumption-based retirement, never age-based.* After `poll_batch` durably persists a
+    completed result (`write_deferred`), the client deletes that job's B2 payload and result
+    objects -- using the keys the coordinator reports for that row -- and calls the new
+    `/v2/jobs:retire-batch`, which deletes the row only if it is still `completed` with the same
+    `result_key` (1 billed row, versus ack 2 + cleanup 1 plus two Worker-side B2 deletes). Nothing
+    is ever deleted by upload age, so a long-queued job's payload is never at risk; queued,
+    leased, failed, superseded and validation-failed jobs are untouched and keep the ack/cleanup
+    path, which is also the fallback for any delete or retire failure. A concurrent consumer that
+    polled before the delete sees the missing result as pending and finds the persisted record on
+    its next lookup. Opt out with `CITYPODS_LLM_DISPATCH_V2_CLIENT_RETIRE=0`.
+  - *Queued-job counter without per-row triggers.* The three `trg_jobs_queued_count_*` triggers
+    (a billed row per insert, lease and requeue) are dropped; the count is maintained by explicit
+    deltas folded into scheduler UPDATEs the hot paths already make, and recounted exactly once an
+    hour by the scheduled cleanup (`recountQueuedJobs`), which also heals direct Data Studio edits.
+    The count is diagnostic only (stats, empty-claim reason), never an admission input.
+
+- **DO row writes per LLM job cut a further ~17% (tier 2): batched and folded bookkeeping writes**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). Measured under workerd: 30.3 -> 25.3 billed rows
+  per completed job (~24.6 once calibration windows are full); a retried attempt 32 -> 29.
+  - The per-purpose ingress ledger is upserted once per purpose per `enqueueBatch`, not per job.
+  - A successful completion releases its reservation, settles to actual usage, and clears route
+    backoff in ONE `routes` UPDATE instead of three.
+  - `job_models` is rebuilt (once, bounded by the queued backlog) as a `WITHOUT ROWID` table
+    clustered on the admission scan order, with a `UNIQUE (job_id, model)` index: 2 billed rows per
+    indexed model instead of 3, same uniqueness, no sort in the claim scan.
+  - `attempts` drops its `created_at` index; retention pruning reads oldest-first by rowid.
+  - Token calibration persists every completion until a key's 32-sample window is full, then a
+    deterministic 1-in-4 sample by job id (the learned p95 refreshes ~4x slower).
+  - A claimed tick writes the scheduler row once (bundle counter folded into the claim snapshot).
+  No data loss or behavior change beyond calibration refresh rate. The one-time `job_models`
+  rebuild writes ~2 billed rows per queued job-model row on first start after deploy.
+
 - **DO row writes per LLM job cut 32% (tier 1): three redundant `jobs` indexes dropped**
   (`workers/llm-dispatch-v2/src/coordinator.js`). Cloudflare bills every index entry a write
   touches, and a job is inserted once and changes state ~4 times, so each index on `jobs` cost ~4-5

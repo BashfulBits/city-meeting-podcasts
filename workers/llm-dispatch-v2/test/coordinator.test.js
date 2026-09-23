@@ -74,7 +74,10 @@ test("enqueueBatch admits new jobs and updates scheduler counter", async () => {
   assert.equal(rows[1].priority, 0);
 });
 
-test("queued counter follows direct SQLite state edits after initialization", async () => {
+test("queued counter heals direct SQLite state edits at the hourly recount", async () => {
+  // The counter is maintained by explicit deltas on the RPC paths, not per-row triggers (each
+  // trigger write was a billed DO row). A direct Data Studio edit bypasses those deltas, so the
+  // hourly exact recount (recountQueuedJobs, called by the scheduled cleanup) corrects it.
   const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
   await coordinator.enqueueBatch([
     {
@@ -89,13 +92,56 @@ test("queued counter follows direct SQLite state edits after initialization", as
     },
   ]);
 
-  assert.equal((await coordinator.stats(Date.now())).jobs.by_state.queued, 1);
+  const queued = async () => (await coordinator.stats(Date.now())).jobs.by_state.queued;
+  assert.equal(await queued(), 1);
   sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'direct-state'");
-  assert.equal((await coordinator.stats(Date.now())).jobs.by_state.queued, 0);
+  await coordinator.recountQueuedJobs();
+  assert.equal(await queued(), 0);
   sql.exec("UPDATE jobs SET state = 'queued' WHERE id = 'direct-state'");
-  assert.equal((await coordinator.stats(Date.now())).jobs.by_state.queued, 1);
+  await coordinator.recountQueuedJobs();
+  assert.equal(await queued(), 1);
   sql.exec("DELETE FROM jobs WHERE id = 'direct-state'");
-  assert.equal((await coordinator.stats(Date.now())).jobs.by_state.queued, 0);
+  await coordinator.recountQueuedJobs();
+  assert.equal(await queued(), 0);
+});
+
+test("queued counter tracks enqueue, claim, requeue and cancel without triggers", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const truth = () => sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'")[0].n;
+  const stored = async () => (await coordinator.stats(Date.now())).jobs.by_state.queued;
+  const job = (id) => ({
+    id,
+    idempotency_key: `${id}-key`,
+    request_digest: `${id}-digest`,
+    policy_json: JSON.stringify({ allowed_models: ["gemini/gemini-3.1-flash-lite"], purpose: "topic-tags:tagger" }),
+    prompt_family: "tags",
+    input_token_estimate: 100,
+    max_output_token_estimate: 50,
+    payload_key: `payloads/${id}/request.json`,
+  });
+  await coordinator.enqueueBatch([job("a"), job("b"), job("c")]);
+  assert.equal(await stored(), truth());
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.ok(plan.jobs.length > 0);
+  assert.equal(await stored(), truth());
+  // Requeue one leased job through completeBatch.
+  const leased = plan.jobs[0];
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: leased.id,
+      lease_token: leased.lease_token,
+      attempt_id: "att-1",
+      planned_at: leased.not_before_at,
+      outcome: "deferred_late",
+    },
+  ]);
+  assert.equal(await stored(), truth());
+  await coordinator.cancelBatch(["c"]);
+  assert.equal(await stored(), truth());
+  assert.equal(
+    sql.exec("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'trg_jobs_queued_count_%'")[0].n,
+    0
+  );
 });
 
 test("enqueueBatch indexes every canonical allowed model without model_routing", async () => {
@@ -2069,4 +2115,76 @@ test("jobs carries exactly one secondary state index; retired indexes are droppe
     .filter((name) => !name.startsWith("sqlite_autoindex_"))
     .sort();
   assert.deepEqual(names, ["idx_jobs_state_updated_id"]);
+});
+
+test("an existing rowid job_models is rebuilt clustered, keeping rows, uniqueness and the priority trigger", async () => {
+  const { storage, sql } = createMockSqlStorage();
+  // A pre-2026-09-23 coordinator: rowid job_models + separate scan index.
+  sql.exec(`
+    CREATE TABLE job_models (
+      job_id TEXT NOT NULL, model TEXT NOT NULL, priority INTEGER NOT NULL,
+      created_at INTEGER NOT NULL, PRIMARY KEY (job_id, model)
+    );
+    CREATE INDEX idx_job_models_model_priority_created
+      ON job_models (model, priority, created_at, job_id);
+    INSERT INTO job_models (job_id, model, priority, created_at)
+      VALUES ('queued-before-deploy', 'gemini/gemini-flash-lite', 1, 42);
+  `);
+  const { coordinator } = makeCoordinator({}, { storage, sql });
+  // The copy is the one migration step that could lose queued work: every column must survive.
+  assert.deepEqual(
+    sql
+      .exec(
+        "SELECT job_id, model, priority, created_at FROM job_models WHERE job_id = 'queued-before-deploy'"
+      )
+      .map((row) => ({ ...row })),
+    [{ job_id: "queued-before-deploy", model: "gemini/gemini-flash-lite", priority: 1, created_at: 42 }]
+  );
+  await coordinator.enqueueBatch([
+    {
+      id: "legacy-1",
+      idempotency_key: "k1",
+      request_digest: "d1",
+      policy_json: JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"] }),
+      prompt_family: "tags",
+      input_token_estimate: 10,
+      max_output_token_estimate: 10,
+      payload_key: "p1",
+    },
+  ].map((job) => ({ ...job })));
+  // Rebuild happens at construction; a second construction must be a no-op.
+  const rowsBefore = sql.exec("SELECT * FROM job_models ORDER BY job_id").map((row) => ({ ...row }));
+  makeCoordinator({}, { storage, sql });
+  assert.deepEqual(
+    sql.exec("SELECT * FROM job_models ORDER BY job_id").map((row) => ({ ...row })),
+    rowsBefore
+  );
+  const ddl = sql.exec("SELECT sql FROM sqlite_master WHERE name = 'job_models'")[0].sql;
+  assert.match(ddl, /WITHOUT ROWID/i);
+  const indexes = sql
+    .exec("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'job_models'")
+    .map((row) => row.name)
+    .filter((name) => !name.startsWith("sqlite_autoindex_"));
+  assert.deepEqual(indexes, ["idx_job_models_job_model"]);
+  // Uniqueness per job/model survives: a duplicate insert is ignored.
+  const before = sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n;
+  sql.exec(
+    "INSERT OR IGNORE INTO job_models (job_id, model, priority, created_at) SELECT job_id, model, priority + 0, created_at + 1 FROM job_models"
+  );
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n, before);
+  // The priority-sync trigger still reaches the rebuilt table.
+  sql.exec("UPDATE jobs SET priority = 0 WHERE id IN (SELECT job_id FROM job_models)");
+  assert.ok(
+    sql
+      .exec("SELECT priority FROM job_models WHERE job_id = 'legacy-1'")
+      .every((row) => row.priority === 0)
+  );
+  // The admission scan reads the clustered key in order: no temp sort.
+  const plan = sql
+    .exec(
+      "EXPLAIN QUERY PLAN SELECT jobs.* FROM job_models JOIN jobs ON jobs.id = job_models.job_id WHERE job_models.model = 'm' AND jobs.state = 'queued' ORDER BY job_models.priority, job_models.created_at, job_models.job_id LIMIT 4"
+    )
+    .map((row) => row.detail)
+    .join(" | ");
+  assert.ok(!plan.includes("TEMP B-TREE"), plan);
 });
