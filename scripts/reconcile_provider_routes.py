@@ -1,6 +1,6 @@
 """Reconcile free LLM routes against authenticated provider catalogs.
 
-The default is a read-only, redacted report.  ``--apply`` permits a narrowly-targeted edit of
+The default is a read-only plan summary.  ``--apply`` permits a narrowly-targeted edit of
 ``config/provider_limits.yml``; ``--sync-issues`` maintains one rolling GitHub issue; and
 ``--open-pr`` pushes the resulting reviewed change to a content-addressed branch.  None of those
 flags merges or deploys the change.
@@ -48,7 +48,13 @@ ISSUE_LABELS = (
     "needs:human-verification",
 )
 PROMPT = "Reply exactly: ok"
-MODEL_NOT_FOUND = re.compile(r"invalid model|model[_ -]?not[_ -]?found|does not exist", re.I)
+MODEL_NOT_FOUND = re.compile(
+    r"invalid model|model[_ -]?not[_ -]?found|model\b[^.]{0,80}\bdoes not exist", re.I
+)
+ACCESS_RESTRICTED = re.compile(
+    r"do(?:es)? not have access|not authori[sz]ed|permission denied|forbidden|not accessible",
+    re.I,
+)
 PAYMENT_REQUIRED = re.compile(
     r"insufficient (balance|budget|credit)|no resource package|payment|required|subscription tier",
     re.I,
@@ -203,18 +209,18 @@ class Plan:
 
     def digest(self) -> str:
         payload = {
-            "additions": self.additions,
-            "findings": self.findings,
+            "additions": [
+                {key: value for key, value in route.items() if key != "_quality_comment"}
+                for route in self.additions
+            ],
             "removals": sorted(self.removals),
         }
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
-def _redact(value: Any, limit: int = 220) -> str:
-    """Keep provider evidence concise and ensure errors cannot leak a credential."""
-    text = str(value or "").replace("\n", " ").replace("\r", " ")
-    text = re.sub(r"Bearer\s+[^\s,]+", "Bearer [redacted]", text, flags=re.I)
-    return text[:limit]
+def _http_evidence(status: int) -> str:
+    """Return report-safe failure evidence without retaining a provider response body."""
+    return f"HTTP {status}"
 
 
 def _request_headers(provider: str, api_key: str) -> dict[str, str]:
@@ -268,9 +274,7 @@ def fetch_catalog(
     except requests.RequestException as exc:
         return Catalog(provider, error=f"catalog request failed: {type(exc).__name__}")
     if not response.ok:
-        return Catalog(
-            provider, error=f"catalog HTTP {response.status_code}: {_redact(response.text)}"
-        )
+        return Catalog(provider, error=f"catalog {_http_evidence(response.status_code)}")
     try:
         payload = response.json()
     except ValueError:
@@ -330,13 +334,14 @@ def canary(
         if callable(close):
             close()
         return Probe(response.status_code, "success", f"completion HTTP {response.status_code}")
-    summary = _redact(response.text)
-    if MODEL_NOT_FOUND.search(summary) or (
-        response.status_code == 410 and "end of life" in summary.lower()
-    ):
-        return Probe(response.status_code, "missing", f"HTTP {response.status_code}: {summary}")
-    if PAYMENT_REQUIRED.search(summary):
-        return Probe(response.status_code, "entitlement", f"HTTP {response.status_code}: {summary}")
+    response_text = response.text
+    evidence = _http_evidence(response.status_code)
+    if ACCESS_RESTRICTED.search(response_text) or PAYMENT_REQUIRED.search(response_text):
+        return Probe(response.status_code, "entitlement", evidence)
+    if response.status_code in {400, 404} and MODEL_NOT_FOUND.search(response_text):
+        return Probe(response.status_code, "missing", evidence)
+    if response.status_code == 410 and "end of life" in response_text.lower():
+        return Probe(response.status_code, "missing", evidence)
     try:
         body = response.json()
     except ValueError:
@@ -355,9 +360,9 @@ def canary(
         return Probe(
             response.status_code,
             "entitlement",
-            f"HTTP {response.status_code}: {summary} ({failure.rule_id})",
+            f"{evidence} ({failure.rule_id})",
         )
-    return Probe(response.status_code, "inconclusive", f"HTTP {response.status_code}: {summary}")
+    return Probe(response.status_code, "inconclusive", evidence)
 
 
 def _airforce_free(record: dict[str, Any]) -> bool:
@@ -431,7 +436,7 @@ def fetch_nvidia_build_catalog(
     except requests.RequestException as exc:
         return NvidiaBuildCatalog(error=f"request failed: {type(exc).__name__}")
     if not response.ok:
-        return NvidiaBuildCatalog(error=f"HTTP {response.status_code}: {_redact(response.text)}")
+        return NvidiaBuildCatalog(error=_http_evidence(response.status_code))
     try:
         payload = response.json()
     except ValueError:
@@ -761,9 +766,7 @@ def fetch_artificial_analysis_catalog(
     except requests.RequestException as exc:
         return ArtificialAnalysisCatalog(error=f"request failed: {type(exc).__name__}")
     if not response.ok:
-        return ArtificialAnalysisCatalog(
-            error=f"HTTP {response.status_code}: {_redact(response.text)}"
-        )
+        return ArtificialAnalysisCatalog(error=_http_evidence(response.status_code))
     try:
         payload = response.json()
     except ValueError:
@@ -1336,6 +1339,17 @@ def _ensure_issue_labels() -> None:
 def sync_issue(plan: Plan, *, apply: bool) -> str | None:
     """Maintain exactly one issue for unsafely-automatable catalog evidence."""
     if not plan.findings:
+        if apply and (existing := _existing_issue()):
+            _run(
+                [
+                    "gh",
+                    "issue",
+                    "close",
+                    existing,
+                    "--comment",
+                    "No inconclusive provider-catalog evidence remains.",
+                ]
+            )
         return None
     body = f"{ISSUE_MARKER}\n\n{render_report(plan)}"
     if not apply:
@@ -1376,24 +1390,23 @@ def _existing_pr(branch: str) -> str | None:
     return output or None
 
 
-def checkout_pr_branch(plan: Plan) -> str | None:
-    """Move a clean Actions checkout to a digest branch before applying any mutations."""
+def checkout_pr_branch(plan: Plan) -> tuple[str | None, bool]:
+    """Move to a digest branch and state whether it already contains this exact mutation."""
     if not os.environ.get("GH_TOKEN"):
         print("GH_TOKEN is unset; leaving applied changes in the working tree.", file=sys.stderr)
-        return None
+        return None, False
     branch = f"chore/provider-catalog-{plan.digest()[:12]}"
     _run(["gh", "auth", "setup-git"], check=False)
     fetched = _run(["git", "fetch", "origin", f"{branch}:{branch}"], check=False)
-    exists = _run(["git", "rev-parse", "--verify", branch], check=False)
-    _run(
-        ["git", "checkout", branch]
-        if fetched.returncode == 0 or exists.returncode == 0
-        else ["git", "checkout", "-b", branch]
+    existing = (
+        fetched.returncode == 0
+        or _run(["git", "rev-parse", "--verify", branch], check=False).returncode == 0
     )
-    return branch
+    _run(["git", "checkout", branch] if existing else ["git", "checkout", "-b", branch])
+    return branch, existing
 
 
-def open_pr(plan: Plan, report_path: Path, issue: str | None) -> str | None:
+def open_pr(plan: Plan, issue: str | None) -> str | None:
     """Commit the exact plan to its prepared branch and open/reuse a non-draft review PR."""
     if not os.environ.get("GH_TOKEN"):
         return None
@@ -1403,7 +1416,6 @@ def open_pr(plan: Plan, report_path: Path, issue: str | None) -> str | None:
         "citypods/compute/llm_routes.json",
         "workers/llm-dispatch-proxy/src/dispatch_limits.json",
         "workers/llm-dispatch-v2/src/dispatch_limits.json",
-        str(report_path.relative_to(REPO_ROOT)),
     ]
     _run(["git", "add", *files])
     if _run(["git", "diff", "--cached", "--quiet"], check=False).returncode == 0:
@@ -1426,8 +1438,6 @@ def open_pr(plan: Plan, report_path: Path, issue: str | None) -> str | None:
     body = render_report(plan)
     if issue:
         body = f"Related to #{issue}.\n\n{body}"
-    body_path = REPO_ROOT / "provider-catalog-pr.md"
-    body_path.write_text(body, encoding="utf-8")
     return (
         _run(
             [
@@ -1436,8 +1446,8 @@ def open_pr(plan: Plan, report_path: Path, issue: str | None) -> str | None:
                 "create",
                 "--title",
                 "chore(config): reconcile provider model catalog",
-                "--body-file",
-                str(body_path),
+                "--body",
+                body,
             ]
         ).stdout.strip()
         or None
@@ -1454,7 +1464,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--open-pr", action="store_true", help="commit, push, and open/reuse a review PR"
     )
-    parser.add_argument("--report", type=Path, default=REPO_ROOT / "provider-catalog-report.md")
     return parser.parse_args(argv)
 
 
@@ -1464,19 +1473,27 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--open-pr requires --apply")
     raw = yaml.safe_load(LIMITS_PATH.read_text(encoding="utf-8")) or {}
     plan = plan_reconciliation(raw, set(args.provider))
-    report = render_report(plan)
-    args.report.write_text(report, encoding="utf-8")
-    print(report, end="")
+    print(
+        "reconciliation plan: "
+        f"{len(plan.additions)} additions, {len(plan.removals)} removals, "
+        f"{len(plan.findings)} inconclusives"
+    )
+    existing_digest_branch = False
     if args.apply and plan.changed():
         if args.open_pr:
-            checkout_pr_branch(plan)
-        apply_route_changes(LIMITS_PATH, plan)
-        _run([sys.executable, "scripts/compile_llm_limits.py"])
+            _, existing_digest_branch = checkout_pr_branch(plan)
+        if not existing_digest_branch:
+            apply_route_changes(LIMITS_PATH, plan)
+            _run([sys.executable, "scripts/compile_llm_limits.py"])
     elif plan.changed():
         print("dry-run: no files changed; re-run with --apply to amend the route catalog.")
     issue = sync_issue(plan, apply=args.apply) if args.sync_issues else None
     if args.open_pr and plan.changed():
-        pr_url = open_pr(plan, args.report, issue)
+        pr_url = (
+            _existing_pr(f"chore/provider-catalog-{plan.digest()[:12]}")
+            if existing_digest_branch
+            else open_pr(plan, issue)
+        )
         if pr_url:
             print(f"pull request: {pr_url}")
     return 0

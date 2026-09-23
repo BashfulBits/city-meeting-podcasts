@@ -204,8 +204,9 @@ Audio and every other workflow that fetches these providers without adding stora
 
 `scripts/reconcile_provider_routes.py` and `provider-catalog-reconcile.yml` inspect authenticated
 provider catalogues weekly but never deploy a change. A new route needs provider-specific free
-evidence, an exact independent Artificial Analysis comparison against Gemma-4 (or a verified
-Hugging Face evaluation fallback), and a non-sensitive completion canary. Missing/incomparable
+evidence, an exact independent Artificial Analysis comparison against the GPT-OSS-120B / Nemotron-3
+Super floor (or a verified Hugging Face evaluation fallback against Gemma-4), and a non-sensitive
+completion canary. Missing/incomparable
 quality evidence and entitlement or scraper ambiguity go to one deduplicated issue; only catalog
 absence plus explicit model-not-found evidence can remove a route. See
 [review/48](review/48-provider-catalog-reconciliation.md).

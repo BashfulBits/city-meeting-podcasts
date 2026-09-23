@@ -32,9 +32,9 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          # The reconciler's explicit --open-pr path creates a digest-named branch and pushes it.
-          # Keep the scoped Actions token available to git; contents: write above is deliberate.
-          persist-credentials: true
+          # The reconciler explicitly configures git authentication immediately before its
+          # constrained fetch/push path, so checkout never leaves a credential for repo code.
+          persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.14"
@@ -62,7 +62,7 @@ jobs:
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
         run: |
-          args=(--report provider-catalog-report.md)
+          args=()
           if [ -n "$INPUT_PROVIDER" ]; then
             args+=(--provider "$INPUT_PROVIDER")
           fi
@@ -70,10 +70,3 @@ jobs:
             args+=(--apply --sync-issues --open-pr)
           fi
           python scripts/reconcile_provider_routes.py "${args[@]}"
-      - name: Upload reconciliation report
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: provider-catalog-report
-          path: provider-catalog-report.md
-          if-no-files-found: ignore

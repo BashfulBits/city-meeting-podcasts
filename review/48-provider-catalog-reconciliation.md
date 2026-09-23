@@ -16,7 +16,8 @@ operational GitHub issue, but it never merges, deploys, or invents a substitute 
 
 ## Evidence and decision rules
 
-The reconciler records a compact, redacted report for every provider. A model-list response only
+The reconciler sends its compact evidence summary directly to the rolling issue or review PR; it
+never writes provider response bodies to a local report artifact or stdout. A model-list response only
 establishes availability. It does not establish either pricing or the active account's entitlement.
 Every automatic addition therefore needs provider-specific free evidence, an exact independent
 Artificial Analysis comparison at least equal to the lower score of GPT-OSS-120B and Nemotron-3
@@ -77,7 +78,7 @@ completion is evidence of availability, not model retirement.
 The script changes `config/provider_limits.yml` only in `--apply` mode. It makes a targeted YAML
 route-block edit rather than round-tripping the whole document through PyYAML, preserving the
 curated explanatory comments. It then runs the existing compiler, so the PR contains all three
-generated dispatch artifacts as well as a Markdown evidence report.
+generated dispatch artifacts and carries its evidence summary in the PR body.
 
 The successful catalog plan is content-addressed. A digest-named branch is reused only for the
 same planned changes; a new plan gets a new branch and never force-pushes an unrelated review.
@@ -104,9 +105,10 @@ GitHub.
 `pull-requests: write`, and `issues: write`, checks out without persisted credentials, and passes
 provider keys plus `ARTIFICIAL_ANALYSIS_API_KEY` only as step environment variables. The latter is
 the free API key, subject to its 1,000-request-per-day limit and attribution requirement; the script
-makes one request per run and attributes the source in its report. The report excludes Authorization
-headers, keys, and response bodies longer than a short sanitized error summary. A manual provider
-filter allows focused recovery without widening the scheduled scope.
+makes one request per run and attributes the source in its PR or issue body. That body contains only
+route identifiers, HTTP status or classifier evidence, and reviewed quality/free-route summaries;
+it excludes Authorization headers, keys, and provider response bodies. A manual provider filter allows
+focused recovery without widening the scheduled scope.
 
 ## Tests and acceptance criteria
 
@@ -121,5 +123,5 @@ Offline tests fake catalog and canary clients and cover:
 4. targeted source edits preserve unrelated comments and compile generated catalogs;
 5. issue/PR commands are skipped in dry-run mode and digest branches reuse only matching work.
 
-The workflow is accepted when a manual dry run publishes a redacted report; an apply run with a
-safe fixture plan opens a review PR and updates the rolling issue without merge/deploy authority.
+The workflow is accepted when a manual dry run emits only plan counts; an apply run with a safe fixture
+plan opens a review PR and updates the rolling issue without merge/deploy authority.

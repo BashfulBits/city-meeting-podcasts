@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from scripts import reconcile_provider_routes as reconcile
@@ -181,6 +182,45 @@ def test_nvidia_canary_uses_a_longer_bounded_timeout(monkeypatch):
     assert reconcile.canary("nvidia", _provider(), "model", post=post).classification == "success"
     assert timeout == 90
     assert stream is True
+
+
+def test_canary_never_treats_an_access_ambiguous_response_as_model_removal(monkeypatch):
+    monkeypatch.setenv("EXAMPLE_KEY", "not-a-real-key")
+
+    probe = reconcile.canary(
+        "airforce",
+        _provider(),
+        "model",
+        post=lambda *_args, **_kwargs: _Response(
+            404, {}, "The model does not exist or you do not have access to it"
+        ),
+    )
+
+    assert probe.classification == "entitlement"
+    assert probe.summary == "HTTP 404"
+
+
+def test_canary_requires_a_model_specific_400_or_404_for_removal(monkeypatch):
+    monkeypatch.setenv("EXAMPLE_KEY", "not-a-real-key")
+
+    assert (
+        reconcile.canary(
+            "airforce",
+            _provider(),
+            "model",
+            post=lambda *_args, **_kwargs: _Response(403, {}, "model does not exist"),
+        ).classification
+        == "inconclusive"
+    )
+    assert (
+        reconcile.canary(
+            "airforce",
+            _provider(),
+            "model",
+            post=lambda *_args, **_kwargs: _Response(404, {}, "model does not exist"),
+        ).classification
+        == "missing"
+    )
 
 
 def test_missing_hugging_face_mapping_is_inconclusive_not_an_addition(monkeypatch):
@@ -648,6 +688,76 @@ def test_exact_logical_sibling_avoids_cross_model_backfill_request(monkeypatch):
 
     assert plan.removals == {"missing"}
     assert not any("logical/model" in finding for finding in plan.findings)
+
+
+def test_plan_digest_is_stable_when_only_diagnostics_or_quality_timestamp_change():
+    baseline = reconcile.Plan(
+        additions=[{"route_id": "add", "_quality_comment": "dated quality snapshot"}],
+        findings=["temporary upstream failure"],
+        removals={"remove"},
+    )
+    repeat = reconcile.Plan(
+        additions=[{"route_id": "add", "_quality_comment": "newer quality snapshot"}],
+        findings=["different temporary upstream failure"],
+        removals={"remove"},
+    )
+
+    assert baseline.digest() == repeat.digest()
+
+
+def test_sync_issue_closes_the_rolling_issue_only_after_an_apply_run(monkeypatch):
+    calls: list[list[str]] = []
+    monkeypatch.setattr(reconcile, "_existing_issue", lambda: "42")
+    monkeypatch.setattr(
+        reconcile,
+        "_run",
+        lambda args, **_kwargs: calls.append(args) or SimpleNamespace(returncode=0, stdout=""),
+    )
+
+    assert reconcile.sync_issue(reconcile.Plan(), apply=False) is None
+    assert not calls
+    assert reconcile.sync_issue(reconcile.Plan(), apply=True) is None
+    assert calls == [
+        [
+            "gh",
+            "issue",
+            "close",
+            "42",
+            "--comment",
+            "No inconclusive provider-catalog evidence remains.",
+        ]
+    ]
+
+
+def test_reused_digest_branch_skips_duplicate_route_edits_and_compilation(
+    monkeypatch, tmp_path: Path, capsys
+):
+    limits = tmp_path / "provider_limits.yml"
+    limits.write_text("routes:\n", encoding="utf-8")
+    args = SimpleNamespace(
+        apply=True,
+        open_pr=True,
+        provider=[],
+        sync_issues=False,
+    )
+    plan = reconcile.Plan(additions=[{"route_id": "catalog-route"}])
+    monkeypatch.setattr(reconcile, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(reconcile, "LIMITS_PATH", limits)
+    monkeypatch.setattr(reconcile, "parse_args", lambda _argv: args)
+    monkeypatch.setattr(reconcile, "plan_reconciliation", lambda *_args: plan)
+    monkeypatch.setattr(reconcile, "checkout_pr_branch", lambda _plan: ("existing-branch", True))
+    monkeypatch.setattr(
+        reconcile,
+        "apply_route_changes",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("must not reapply existing changes")),
+    )
+    monkeypatch.setattr(reconcile, "_existing_pr", lambda branch: f"https://example.test/{branch}")
+
+    assert reconcile.main([]) == 0
+    assert limits.read_text(encoding="utf-8") == "routes:\n"
+    output = capsys.readouterr().out
+    assert "reconciliation plan: 1 additions, 0 removals, 0 inconclusives" in output
+    assert "catalog-route" not in output
 
 
 def test_targeted_route_edit_preserves_unrelated_comments(tmp_path: Path):
