@@ -98,6 +98,15 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Gemini daily request-quota 429s now use the provider reset window** (`citypods/compute/
+  llm_failure_class.py`, `workers/llm-dispatch-v2/src/classify.js`). Google AI Studio's
+  array-wrapped error identifies this condition in `QuotaFailure.violations[].quotaId` as
+  `GenerateRequestsPerDayPerProjectPerModel-FreeTier` (and in the quota metric), while its
+  `RetryInfo` may still advertise a short delay such as 30 seconds. Both classifiers now inspect
+  those structured identifiers, classify the response as `own_rpd`, and let the existing daily
+  reset handling ignore the short retry hint. No pipeline, recipe, or stored-artifact backfill is
+  required.
+
 - **A 404 no longer blocks a route for six hours** (`workers/llm-dispatch-v2/src/classify.js`).
   #1831's `route_unavailable` rule treated every 404/410 as "model retired" and stood the route
   down for `ROUTE_UNAVAILABLE_BLOCK_SECONDS` (6h). At ~06:00 UTC on 2026-09-23 NVIDIA's Nemotron 3

@@ -20,6 +20,28 @@ def _error_dict(body: Any) -> dict[str, Any]:
     return {}
 
 
+def _quota_failure_text(body: Any) -> str:
+    """Return machine-readable identifiers in Google's ``QuotaFailure`` details."""
+    error = _error_dict(body)
+    details = error.get("details")
+    if not isinstance(details, list):
+        return ""
+
+    values: list[str] = []
+    for detail in details:
+        if not isinstance(detail, dict):
+            continue
+        values.extend(str(detail.get(key) or "") for key in ("@type", "quotaMetric", "quotaId"))
+        violations = detail.get("violations")
+        if not isinstance(violations, list):
+            continue
+        for violation in violations:
+            if not isinstance(violation, dict):
+                continue
+            values.extend(str(violation.get(key) or "") for key in ("quotaMetric", "quotaId"))
+    return " ".join(values).lower()
+
+
 # Ordered rule table for HTTP 429 responses. First match wins.
 # Each rule is a dict: rule_id, provider, failure_class, match.
 # provider: None applies to all providers.
@@ -32,6 +54,8 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
             "perday" in ctx["msg"]
             or "requests per day" in ctx["msg"]
             or "generaterequestsperdayper" in ctx["msg"]
+            or "generaterequestsperdayper" in ctx["quota"]
+            or "generate_content_free_tier_requests" in ctx["quota"]
         ),
     },
     {
@@ -410,7 +434,13 @@ def classify_provider_failure(
         elif hasattr(route, "provider"):
             provider = getattr(route, "provider", "")
 
-        match_ctx = {"status": status, "body": body, "headers": norm_headers, "msg": msg}
+        match_ctx = {
+            "status": status,
+            "body": body,
+            "headers": norm_headers,
+            "msg": msg,
+            "quota": _quota_failure_text(body),
+        }
 
         for rule in FAILURE_SIGNATURES:
             rule_provider = rule["provider"]

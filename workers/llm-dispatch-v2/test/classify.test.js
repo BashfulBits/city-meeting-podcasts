@@ -183,6 +183,45 @@ test("classifyProviderFailure matches gemini-rpd", () => {
   assert.equal(res.scope, "route");
 });
 
+test("classifyProviderFailure reads Gemini QuotaFailure RPD details", () => {
+  const res = classifyProviderFailure({
+    status: 429,
+    body: [
+      {
+        error: {
+          code: 429,
+          message:
+            "Quota exceeded for metric: " +
+            "generativelanguage.googleapis.com/generate_content_free_tier_requests, " +
+            "limit: 20, model: gemini-3.5-flash. Please retry in 30.36s.",
+          status: "RESOURCE_EXHAUSTED",
+          details: [
+            {
+              "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+              violations: [
+                {
+                  quotaMetric:
+                    "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+                  quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                },
+              ],
+            },
+            {
+              "@type": "type.googleapis.com/google.rpc.RetryInfo",
+              retryDelay: "30s",
+            },
+          ],
+        },
+      },
+    ],
+    headers: null,
+    route: { provider: "gemini", route_id: "gemini/flash" },
+  });
+  assert.equal(res.failure_class, "own_rpd");
+  assert.equal(res.rule_id, "gemini-rpd");
+  assert.equal(res.retry_after_seconds, 30);
+});
+
 test("classifyProviderFailure matches gemini-tpm", () => {
   const res = classifyProviderFailure({
     status: 429,
