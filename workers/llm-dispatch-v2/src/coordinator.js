@@ -279,7 +279,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         active_call_count    INTEGER NOT NULL DEFAULT 0,
         dispatch_window_end  INTEGER NOT NULL,
         created_at           INTEGER NOT NULL
-      );
+      ) WITHOUT ROWID;
+      -- WITHOUT ROWID (2026-09-23): a rowid table stores the TEXT primary key in a separate
+      -- autoindex, so every bundle insert/delete cost one extra billed row. Bundles created
+      -- before then are rebuilt by _migrateBundlesClustered.
 
       -- Without this, the bundles table has only its bundle_id primary key, so BOTH of
       -- claimDispatchWindow's per-tick bundle statements (the expire-sweep UPDATE and the
@@ -382,6 +385,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // rpd_count, added alongside Phase 2's claimDispatchWindow) to a `routes` table an earlier
     // deploy already created. Defensive, cheap, and a no-op on a fresh instance.
     this._migrateJobModelsClustered();
+    this._migrateBundlesClustered();
     sql.exec(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_job_models_job_model ON job_models (job_id, model)"
     );
@@ -440,8 +444,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // The queued-job counter used to be maintained by three per-row triggers, which cost a billed
     // row on every insert, lease and requeue (~2 per job). It is now maintained explicitly inside
     // scheduler UPDATEs the hot paths already make (enqueue, claim, completion requeues, cancels,
-    // schema retries), and recounted exactly on every cleanup tick (purgePendingBatch), which
-    // also heals rare paths and direct Data Studio edits. The count is diagnostic only (stats and
+    // schema retries), and recounted exactly once an hour by scheduled cleanup
+    // (recountQueuedJobs), which also heals rare paths and direct Data Studio edits. The count is diagnostic only (stats and
     // the empty-claim reason), never an admission input.
     for (const trigger of [
       "trg_jobs_queued_count_insert",
@@ -501,6 +505,43 @@ export class LLMSchedulerDO extends DurableObjectBase {
         DROP TABLE job_models;
         ALTER TABLE job_models_clustered RENAME TO job_models;
         ${JOB_PRIORITY_SYNC_TRIGGER}
+      `);
+    });
+  }
+
+  /**
+   * One-time rebuild of a pre-2026-09-23 rowid `bundles` table into the WITHOUT ROWID shape.
+   * Copies only active and expired bundles: a completed bundle is now deleted at completion
+   * (completeBatch), and the completed rows still on the old table were retained solely so
+   * _pruneTerminalRecords could delete them after BUNDLE_RETENTION_DAYS -- nothing reads them.
+   * Dropping them with the old table is cheaper than copying (~2 billed rows each) and then
+   * pruning (~3 each) up to seven days of history. The copy is bounded by MAX_ACTIVE_BUNDLES plus
+   * the few leases that expired inside the retention window.
+   */
+  _migrateBundlesClustered() {
+    const sql = this._getSql();
+    const [row] = [...sql.exec(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'bundles'"
+    )];
+    if (!row || /WITHOUT\s+ROWID/i.test(String(row.sql))) return;
+    this.ctx.storage.transactionSync(() => {
+      sql.exec(`
+        CREATE TABLE bundles_clustered (
+          bundle_id            TEXT PRIMARY KEY,
+          execution_token      TEXT NOT NULL,
+          state                TEXT NOT NULL CHECK (state IN ('active','completed','expired')),
+          lease_expires_at     INTEGER NOT NULL,
+          active_call_count    INTEGER NOT NULL DEFAULT 0,
+          dispatch_window_end  INTEGER NOT NULL,
+          created_at           INTEGER NOT NULL
+        ) WITHOUT ROWID;
+        INSERT INTO bundles_clustered
+          SELECT bundle_id, execution_token, state, lease_expires_at, active_call_count,
+                 dispatch_window_end, created_at
+          FROM bundles WHERE state IN ('active', 'expired');
+        DROP TABLE bundles;
+        ALTER TABLE bundles_clustered RENAME TO bundles;
+        CREATE INDEX IF NOT EXISTS idx_bundles_state_created ON bundles (state, created_at);
       `);
     });
   }
@@ -873,6 +914,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * unlike `jobs` (whose row must outlive the client's result fetch, see purgePendingBatch)
    * they can be aged out entirely inside the DO with no coordination. Kept long enough to stay
    * useful for incident diagnosis, short enough that neither table grows without bound.
+   * Since 2026-09-23 a bundle is deleted when its last job settles (completeBatch), so bundle
+   * retention now applies only to bundles whose lease expired unreported.
    */
   _bundleRetentionMs() {
     return this._envInt("BUNDLE_RETENTION_DAYS", 7) * 86_400_000;
@@ -989,7 +1032,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   /**
    * Backfill the queue counter once for an already-deployed scheduler, then leave all ordinary
-   * mutations to the bounded SQLite triggers installed by _initSchema. The one COUNT(*) is an
+   * mutations to the explicit deltas folded into scheduler UPDATEs (see _initSchema) and the
+   * hourly recountQueuedJobs. The one COUNT(*) is an
    * intentional migration cost, not an RPC-path diagnostic: subsequent snapshots read only the
    * scheduler singleton. Must run before a transaction changes any queued-job state.
    */
@@ -2341,12 +2385,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /**
    * Advance a route's ledger forward to account for one newly-admitted reservation taking effect
    * at `notBeforeAt`, mirroring pacing.js's earliestSafeStart read-side logic on the write side.
-   * Persists to SQLite and returns the updated merged route object so the caller's in-memory
-   * lane-sequencing state (and its ledger cache) stays consistent with what was just written,
-   * without a redundant read back from SQL.
+   * Returns the updated merged route object so the caller's in-memory lane-sequencing state (and
+   * its ledger cache) stays consistent. Pure: the caller persists the final ledger once per claim
+   * with _writeRouteLedger -- a bundle that admits several jobs on one route used to rewrite the
+   * same routes row once per job (one billed row each).
    */
   _applyProvisionalReservation(mergedRoute, reservation, notBeforeAt) {
-    const sql = this._getSql();
     const tpm = Number(mergedRoute.tpm) || 0;
 
     let rpmWindowStart = mergedRoute.rpm_window_start;
@@ -2403,25 +2447,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
     const provisionalReservation = (mergedRoute.provisional_reservation || 0) + reservation;
 
-    sql.exec(
-      `UPDATE routes SET
-        rpm_window_start=?, rpm_count=?, rpd_window_start=?, rpd_count=?, rpd_day_key=?,
-        tpm_window_start=?, tpm_reserved=?, full_token_budget=?, token_budget_updated_at=?,
-        provisional_reservation=?
-       WHERE route_id=?`,
-      rpmWindowStart,
-      rpmCount,
-      rpdWindowStart,
-      rpdCount,
-      rpdDayKey,
-      tpmWindowStart,
-      tpmReserved,
-      fullTokenBudget,
-      tokenBudgetUpdatedAt,
-      provisionalReservation,
-      mergedRoute.route_id
-    );
-
     return {
       ...mergedRoute,
       rpm_window_start: rpmWindowStart,
@@ -2437,9 +2462,46 @@ export class LLMSchedulerDO extends DurableObjectBase {
     };
   }
 
-  /** Advance a provider's shared token ledger forward to account for an admitted reservation. */
+  /** Persist a route's claim-side ledger (the fields _applyProvisionalReservation advances). */
+  _writeRouteLedger(route) {
+    this._getSql().exec(
+      `UPDATE routes SET
+        rpm_window_start=?, rpm_count=?, rpd_window_start=?, rpd_count=?, rpd_day_key=?,
+        tpm_window_start=?, tpm_reserved=?, full_token_budget=?, token_budget_updated_at=?,
+        provisional_reservation=?
+       WHERE route_id=?`,
+      route.rpm_window_start,
+      route.rpm_count,
+      route.rpd_window_start,
+      route.rpd_count,
+      route.rpd_day_key,
+      route.tpm_window_start,
+      route.tpm_reserved,
+      route.full_token_budget,
+      route.token_budget_updated_at,
+      route.provisional_reservation,
+      route.route_id
+    );
+  }
+
+  /** Persist a provider's shared token ledger (the fields _applyProviderProvisionalReservation
+   * advances). */
+  _writeProviderLedger(providerLedger) {
+    this._getSql().exec(
+      `UPDATE providers SET
+        tpm_window_start=?, tpm_reserved=?, full_token_budget=?, token_budget_updated_at=?
+       WHERE provider=?`,
+      providerLedger.tpm_window_start,
+      providerLedger.tpm_reserved,
+      providerLedger.full_token_budget,
+      providerLedger.token_budget_updated_at,
+      providerLedger.provider
+    );
+  }
+
+  /** Advance a provider's shared token ledger forward to account for an admitted reservation.
+   * Pure, like _applyProvisionalReservation: persisted once per claim by _writeProviderLedger. */
   _applyProviderProvisionalReservation(providerLedger, providerCfg, reservation, notBeforeAt) {
-    const sql = this._getSql();
     const tpm = Number(providerCfg?.tpm) || 0;
     if (tpm <= 0) return providerLedger;
 
@@ -2463,17 +2525,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
     );
     fullTokenBudget = Math.max(0, refilled - reservation);
     tokenBudgetUpdatedAt = notBeforeAt;
-
-    sql.exec(
-      `UPDATE providers SET
-        tpm_window_start=?, tpm_reserved=?, full_token_budget=?, token_budget_updated_at=?
-       WHERE provider=?`,
-      tpmWindowStart,
-      tpmReserved,
-      fullTokenBudget,
-      tokenBudgetUpdatedAt,
-      providerLedger.provider
-    );
 
     return {
       ...providerLedger,
@@ -2694,6 +2745,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       };
 
       const providerLedgerCache = new Map();
+      // Ledgers advanced by this claim, written once each just before the bundle row (P1).
+      const dirtyRoutes = new Set();
+      const dirtyProviders = new Set();
       const getMergedProvider = (providerName, providerCfg) => {
         if (!providerLedgerCache.has(providerName)) {
           const pLedger = this._getOrCreateProviderLedger(providerName, now, providerCfg);
@@ -2924,6 +2978,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             waitResult.not_before_at
           );
           ledgerCache.set(route.route_id, workingRoute);
+          dirtyRoutes.add(route.route_id);
 
           sql.exec(
             `UPDATE jobs SET state='leased', lease_token=?, lease_route_id=?, lease_expires_at=?,
@@ -2963,6 +3018,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
               waitResult.not_before_at
             );
             providerLedgerCache.set(route.provider, pWorking);
+            dirtyProviders.add(route.provider);
           }
 
           resultJobs.push({
@@ -2981,6 +3037,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
       if (resultJobs.length === 0) {
         return recordEmpty("dispatch_window_capacity");
+      }
+
+      for (const routeId of dirtyRoutes) this._writeRouteLedger(ledgerCache.get(routeId));
+      for (const provider of dirtyProviders) {
+        this._writeProviderLedger(providerLedgerCache.get(provider));
       }
 
       const executionToken = crypto.randomUUID();
@@ -3281,6 +3342,42 @@ export class LLMSchedulerDO extends DurableObjectBase {
       let settledCount = 0;
       let requeuedCount = 0;
 
+      // Success settlements, folded per route and written once (P1): a bundle whose jobs share a
+      // route used to rewrite that routes row once per success. Any non-success write to a route
+      // flushes its pending successes first, so statement order -- and therefore the final
+      // backoff state (a later failure's blocked_until must survive an earlier success's reset)
+      // -- is exactly what per-job writes produced.
+      const pendingSuccess = new Map();
+      const flushSuccess = (routeId) => {
+        const pending = pendingSuccess.get(routeId);
+        if (!pending) return;
+        pendingSuccess.delete(routeId);
+        // tpm_reserved is adjusted only by settlements whose claim-time window is still the
+        // route's current one; each settlement recorded its window, so pick that window's sum.
+        const current = [...sql.exec(
+          "SELECT tpm_window_start FROM routes WHERE route_id = ?",
+          routeId
+        )][0];
+        const windowDelta = current ? (pending.windowDeltas.get(current.tpm_window_start) ?? 0) : 0;
+        sql.exec(
+          `UPDATE routes SET
+             provisional_reservation = MAX(0, provisional_reservation - ?),
+             settled_usage = settled_usage + ?,
+             tpm_reserved = MAX(0, tpm_reserved - ?),
+             full_token_budget = full_token_budget + ?,
+             throttle_streak = 0, buffer_seconds = 0, buffer_updated_at = 0,
+             payment_required_streak = 0, upstream_capacity_streak = 0,
+             last_failure_class = '', blocked_until = NULL, last_provider_status = ?
+           WHERE route_id = ?`,
+          pending.reservation,
+          pending.settledUsage,
+          windowDelta,
+          pending.budgetDelta,
+          pending.lastStatus,
+          routeId
+        );
+      };
+
       for (const result of results || []) {
         // Look up the job first (a plain read, no side effects) so the attempts insert below can
         // use its already-fetched lease_route_id directly -- a route_id derived from a
@@ -3530,8 +3627,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const nonConsuming = NON_CONSUMING_FAILURE_CLASSES.has(result.failure_class || "");
           const settledUsage = nonConsuming ? 0 : (observedTotal ?? reservation);
           // A success folds release, settle-to-actual and the backoff reset into ONE routes
-          // UPDATE below (each statement on the same row is a separate billed row).
+          // UPDATE per route per batch (flushSuccess; each statement on the same row is a
+          // separate billed row).
           if (result.outcome !== "success") {
+            flushSuccess(job.lease_route_id);
             sql.exec(
               `UPDATE routes SET
                  provisional_reservation = MAX(0, provisional_reservation - ?),
@@ -3583,7 +3682,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           }
 
           if (result.outcome === "success") {
-            // One statement for the whole success settlement, in this order of meaning:
+            // The whole success settlement, accumulated for flushSuccess, in order of meaning:
             //  1. release the claim-time provisional reservation and record settled usage;
             //  2. settle the reservation to what the provider actually counted. The reservation
             //     is a forecast (calibration.js); without this a job that reserved 15k and used 5k
@@ -3596,28 +3695,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
             const routeTpm = Number(catalogRoute?.tpm);
             const delta =
               routeTpm > 0 && observedTotal != null ? reservation - observedTotal : 0;
-            const countedInWindow = routeTpm > 0 && reservation <= routeTpm ? 1 : 0;
-            sql.exec(
-              `UPDATE routes SET
-                 provisional_reservation = MAX(0, provisional_reservation - ?),
-                 settled_usage = settled_usage + ?,
-                 tpm_reserved = CASE WHEN ? = 1 AND ? <> 0 AND tpm_window_start = ?
-                                     THEN MAX(0, tpm_reserved - ?) ELSE tpm_reserved END,
-                 full_token_budget = full_token_budget + ?,
-                 throttle_streak = 0, buffer_seconds = 0, buffer_updated_at = 0,
-                 payment_required_streak = 0, upstream_capacity_streak = 0,
-                 last_failure_class = '', blocked_until = NULL, last_provider_status = ?
-               WHERE route_id = ?`,
-              reservation,
-              settledUsage,
-              countedInWindow,
-              delta,
-              job.reservation_tpm_window_start,
-              delta,
-              delta,
-              result.provider_status_code ?? 200,
-              job.lease_route_id
-            );
+            let pending = pendingSuccess.get(job.lease_route_id);
+            if (!pending) {
+              pending = { reservation: 0, settledUsage: 0, budgetDelta: 0, windowDeltas: new Map() };
+              pendingSuccess.set(job.lease_route_id, pending);
+            }
+            pending.reservation += reservation;
+            pending.settledUsage += settledUsage;
+            pending.budgetDelta += delta;
+            pending.lastStatus = result.provider_status_code ?? 200;
+            if (routeTpm > 0 && reservation <= routeTpm && delta !== 0) {
+              const w = job.reservation_tpm_window_start;
+              pending.windowDeltas.set(w, (pending.windowDeltas.get(w) ?? 0) + delta);
+            }
           } else if (
             result.provider_status_code === 402 ||
             result.failure_class === "payment_required"
@@ -3713,6 +3803,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
       }
 
+      for (const routeId of [...pendingSuccess.keys()]) flushSuccess(routeId);
+
       if (requeuedCount > 0) {
         // One scheduler write per completeBatch, not per requeued job (see the queued-counter
         // note in _initSchema).
@@ -3728,7 +3820,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           bundleId
         )];
         if ((remainingLeased[0]?.n || 0) === 0) {
-          sql.exec("UPDATE bundles SET state = 'completed' WHERE bundle_id = ?", bundleId);
+          // Deleted, not marked 'completed' (P3): nothing reads a finished bundle, and marking
+          // then pruning it later cost ~5 billed rows against the delete's 2. A late duplicate
+          // completeBatch for it now fails the execution-token check and no-ops, which is what
+          // it did in effect before -- every job's lease was already settled.
+          sql.exec("DELETE FROM bundles WHERE bundle_id = ?", bundleId);
         }
       }
     });

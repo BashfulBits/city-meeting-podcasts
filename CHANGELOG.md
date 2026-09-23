@@ -17,6 +17,27 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **DO row writes per LLM job cut further (tier 4): per-route ledger batching and a leaner
+  bundle table** (`workers/llm-dispatch-v2/src/coordinator.js`). Measured under workerd: 21.3 ->
+  20.05 billed rows per completed job with the benchmark's 3-routes-per-bundle spread, plus ~0.25
+  more from the retention prune no longer needed; bundles that put several jobs on one route save
+  up to ~1.5 per job.
+  - *Route/provider ledger writes batched per claim and per completion (P1).* A claim now
+    advances each route's and provider's pacing ledger in memory and writes it once, rather than
+    once per admitted job. `completeBatch` folds same-route success settlements (release,
+    settle-to-actual, backoff reset) into one routes UPDATE per route; any non-success write to a
+    route first flushes that route's pending successes, so statement order -- and the final
+    backoff state -- is exactly what per-job writes produced. The TPM-window adjustment is summed
+    per claim-time window and applied only for the window still current.
+  - *Leaner bundle table (P3).* `bundles` is `WITHOUT ROWID` (no separate primary-key autoindex:
+    insert 3 -> 2 rows), and a bundle is deleted when its last job settles instead of being marked
+    `completed` and pruned seven days later (2 + 1 rows -> 1). The one-time rebuild copies only
+    active/expired bundles; retained completed rows, which nothing reads, drop with the old table.
+    Expired bundles keep the existing retention prune.
+  - *Bundle size (P2) deliberately unchanged:* `MAX_BUNDLE_JOBS` is bounded by the 50-subrequest
+    per-invocation ceiling it shares with cleanup (2 B2 calls + 1 gateway call per job), not by
+    rows; with P3 each bundle now costs ~4 rows, so larger bundles would save at most ~0.3 per job.
+
 - **DO row writes per LLM job cut a further ~16% (tier 3): consumption-based retirement and
   trigger-free queue counter** (`workers/llm-dispatch-v2/src/`, `citypods/compute/llm.py`).
   Measured under workerd: 25.3 -> 21.3 billed rows per completed job (44.3 -> 21.3 across tiers

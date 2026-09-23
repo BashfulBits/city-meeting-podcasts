@@ -318,8 +318,9 @@ test("completeBatch settles a successful job and is a no-op for a stale executio
   assert.equal(rows[0].state, "completed");
   assert.equal(rows[0].result_key, "results/j1/lt1.json");
 
+  // Every leased job in the bundle settled, so the bundle row is deleted rather than kept.
   const bundleRows = [...sql.exec("SELECT state FROM bundles WHERE bundle_id=?", plan.bundle_id)];
-  assert.equal(bundleRows[0].state, "completed"); // every leased job in the bundle settled
+  assert.equal(bundleRows.length, 0);
 });
 
 test("completeBatch requeues a deferred_late job without touching its attempt count", async () => {
@@ -2293,4 +2294,121 @@ test("an empty claim counts jobs its own lease sweep just requeued", async () =>
   assert.equal(after.bundle_id, null);
   assert.notEqual(after.claim_reason, "no_queued_work");
   assert.equal(after.claim_diagnostics.queued_jobs, 1);
+});
+
+test("a claim writes each route's ledger once however many jobs it admits there", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2"), makeJob("j3")]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.jobs.length, 3);
+  const byRoute = new Map();
+  for (const job of plan.jobs) byRoute.set(job.route_id, (byRoute.get(job.route_id) || 0) + 1);
+  for (const [routeId, count] of byRoute) {
+    const [route] = [...sql.exec(
+      "SELECT rpm_count, provisional_reservation FROM routes WHERE route_id = ?",
+      routeId
+    )];
+    const reserved = plan.jobs
+      .filter((job) => job.route_id === routeId)
+      .reduce((sum, job) => sum + job.token_reservation, 0);
+    // The single flushed write carries every admitted job's reservation.
+    assert.equal(route.rpm_count, count);
+    assert.equal(route.provisional_reservation, reserved);
+  }
+});
+
+test("completeBatch folds same-route successes into one settlement", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_CONCURRENT_ROUTE_LANES: "1" });
+  await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.jobs.length, 2);
+  const routeId = plan.jobs[0].route_id;
+  assert.equal(plan.jobs[1].route_id, routeId);
+  sql.exec("UPDATE routes SET throttle_streak = 3 WHERE route_id = ?", routeId);
+  await coordinator.completeBatch(
+    plan.bundle_id,
+    plan.execution_token,
+    plan.jobs.map((job, i) => ({
+      job_id: job.id,
+      lease_token: job.lease_token,
+      attempt_id: `a${i}`,
+      planned_at: Date.now(),
+      outcome: "success",
+      provider_status_code: 200,
+      observed_input_tokens: 400,
+      observed_output_tokens: 100,
+      result_key: `results/${job.id}.json`,
+    }))
+  );
+  const [route] = [...sql.exec(
+    "SELECT provisional_reservation, settled_usage, throttle_streak FROM routes WHERE route_id = ?",
+    routeId
+  )];
+  assert.equal(route.provisional_reservation, 0);
+  assert.equal(route.settled_usage, 1000);
+  assert.equal(route.throttle_streak, 0);
+});
+
+test("a failure after a same-route success in one batch keeps its block", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_CONCURRENT_ROUTE_LANES: "1" });
+  await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  const [first, second] = plan.jobs;
+  assert.equal(first.route_id, second.route_id);
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: first.id,
+      lease_token: first.lease_token,
+      attempt_id: "a1",
+      planned_at: Date.now(),
+      outcome: "success",
+      provider_status_code: 200,
+      observed_input_tokens: 400,
+      observed_output_tokens: 100,
+      result_key: "results/j1.json",
+    },
+    {
+      job_id: second.id,
+      lease_token: second.lease_token,
+      attempt_id: "a2",
+      planned_at: Date.now(),
+      outcome: "retryable_error",
+      provider_status_code: 503,
+    },
+  ]);
+  const [route] = [...sql.exec(
+    "SELECT blocked_until, last_provider_status FROM routes WHERE route_id = ?",
+    first.route_id
+  )];
+  // Per-job statement order: the success's backoff reset must not land after the 503's block.
+  assert.ok(route.blocked_until > Date.now());
+  assert.equal(route.last_provider_status, 503);
+});
+
+test("a legacy rowid bundles table is rebuilt WITHOUT ROWID, keeping only open bundles", () => {
+  const { sql, storage } = createMockSqlStorage();
+  sql.exec(`
+    CREATE TABLE bundles (
+      bundle_id TEXT PRIMARY KEY, execution_token TEXT NOT NULL,
+      state TEXT NOT NULL CHECK (state IN ('active','completed','expired')),
+      lease_expires_at INTEGER NOT NULL, active_call_count INTEGER NOT NULL DEFAULT 0,
+      dispatch_window_end INTEGER NOT NULL, created_at INTEGER NOT NULL
+    );
+    INSERT INTO bundles VALUES ('b-active','t','active',9,1,9,1);
+    INSERT INTO bundles VALUES ('b-expired','t','expired',9,0,9,2);
+    INSERT INTO bundles VALUES ('b-done','t','completed',9,0,9,3);
+  `);
+  const coordinator = new LLMSchedulerDO(
+    { storage },
+    withTestReservations({ DISPATCH_LIMITS_OVERRIDE: TEST_CATALOG })
+  );
+  coordinator._getSql();
+  const [table] = [...sql.exec("SELECT sql FROM sqlite_master WHERE name = 'bundles'")];
+  assert.match(table.sql, /WITHOUT ROWID/i);
+  const ids = [...sql.exec("SELECT bundle_id FROM bundles ORDER BY bundle_id")].map((r) => r.bundle_id);
+  assert.deepEqual(ids, ["b-active", "b-expired"]);
+  const [index] = [...sql.exec(
+    "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_bundles_state_created'"
+  )];
+  assert.ok(index);
 });
