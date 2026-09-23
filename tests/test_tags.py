@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 
 from citypods.models import Episode
@@ -1339,3 +1340,86 @@ def test_episode_needs_tagging_evaluates_correctly():
         )
         is True
     )
+
+
+def test_prelabeler_sizes_gemma_batches_to_the_ai_studio_ceiling():
+    """Gemma prelabeler batches must fit the 10k-token ceiling of the 14,400-RPD AI Studio
+    routes in Gemma's own tokenizer units, with the reserved input+output inside one minute of
+    that route's TPM -- not `tpm - 1024` of whichever route happened to be listed first."""
+    from citypods.tags import prelabeler_batch_limits, prelabeler_sizing_route
+
+    route = prelabeler_sizing_route("google/gemma-4-31b-it")
+    assert route.provider == "gemini"
+    assert route.quota.rpd == 14400
+    limits = prelabeler_batch_limits(route)
+    assert limits.input_token_ratio == route.input_token_ratio
+    assert (
+        math.ceil(limits.max_raw_input_tokens * route.input_token_ratio) <= route.hard_input_ceiling
+    )
+    assert limits.max_reserved_tokens == route.quota.tpm
+    assert limits.fits_reservation(limits.max_raw_input_tokens, 1)
+    assert not limits.fits_reservation(limits.max_raw_input_tokens, 60)
+
+
+def test_prelabeler_sizing_ignores_paused_routes():
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES
+    from citypods.tags import prelabeler_sizing_route
+
+    route = prelabeler_sizing_route("google/gemma-4-31b-it")
+    paused = {r.route_id for r in ROUTE_CANDIDATES["google/gemma-4-31b-it"] if r.quota.rpd == 0}
+    assert "nvidia_gemma_4_31b_it_free" in paused
+    assert route.route_id not in paused
+
+
+def test_prelabeler_batches_split_to_fit_the_sizing_route(monkeypatch):
+    import json
+
+    from citypods.compute.base import JobHandle
+    from citypods.tags import llm_prelabel_candidates, prelabeler_batch_limits
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["example"], "rules": {"include": ["x"]}}],
+        }
+    )
+    candidates = [
+        {
+            "candidate_id": f"subject-{i}",
+            "id": "housing",
+            "source_kind": "llm",
+            "scope": "chapter",
+            "chapter_id": "ch-1",
+            "evidence": [{"where": "transcript", "quote": "housing " * 400}],
+            "explanation": "The chapter discusses housing.",
+        }
+        for i in range(40)
+    ]
+    jobs = []
+
+    class _Backend:
+        storage = None
+
+        def run_inference(self, job):
+            jobs.append(job)
+            return JobHandle(task=job.task, recipe_hash=job.recipe_hash, backend="x", ref="r")
+
+    _, pending, _ = llm_prelabel_candidates(
+        _Backend(),
+        candidates=candidates,
+        taxonomy=taxonomy,
+        chapters=[{"chapter_id": "ch-1", "title": "Housing", "transcript_text": "housing " * 5000}],
+        recipe_hash="r",
+        model="google/gemma-4-31b-it",
+    )
+    assert pending and len(jobs) > 1
+    from citypods.compute.llm_policy import estimate_tokens
+    from citypods.tags import prelabeler_sizing_route
+
+    limits = prelabeler_batch_limits(prelabeler_sizing_route("google/gemma-4-31b-it"))
+    for job in jobs:
+        raw = estimate_tokens(job.inputs["messages"])
+        count = len(json.loads(job.inputs["messages"][-1]["content"])["candidates"])
+        assert raw <= limits.max_raw_input_tokens
+        assert limits.fits_reservation(raw, count)

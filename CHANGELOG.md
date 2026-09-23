@@ -17,6 +17,30 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Pre-labeler batches sized to Google AI Studio's Gemma ceiling; gemma-4-26b shadow evaluator**
+  (`citypods/tags.py`, `citypods/stages.py`, `citypods/llm_evaluation.py`, `config/site_config.yml`,
+  `scripts/reconcile_stuck_chapter_agenda.py`).
+  - *Sizing*: batches were sized to `tpm - 1024` of the model's first route and ignored its
+    `hard_input_ceiling`, so ~85% of `google/gemma-4-31b-it` jobs (10-14k tokens) could not use the
+    two 14,400-RPD AI Studio routes. Batches are now sized to the model's highest-daily-quota live
+    route: raw input <= ceiling / `input_token_ratio` (8,333 for Gemma), and scaled input plus the
+    batch's output budget within one minute of that route's TPM. The `topic-tags:prelabeler` lane's
+    daily budget rises 5,000 -> 8,000 write units (2,000 jobs/day); its reservation is unchanged.
+  - *Shadow evaluator*: a new audit-only `topic-tags:prelabeler-shadow` lane runs the identical
+    prompt with `google/gemma-4-26b-a4b-it` (its own free Gemini quota) on subjects whose
+    production assessment is current, storing `prelabeler_shadow_*` fields that never affect
+    admission or display (`tagging.prelabeler.shadow_enabled`). Human reviews of those subjects are
+    mirrored into the shadow's own calibration row, translated through the tag's truth (a shadow
+    `needs_human_review` is not scored), and the weekly digest gains an "Evaluator comparison"
+    section with per-evaluator precision and decision agreement. No reviewer load is added.
+  - *Superseding old oversized batches*: `reconcile-stuck-chapter-agenda.yml` /
+    `reconcile_stuck_chapter_agenda.py` accept `--lane topic-tags:prelabeler`, which cancels and
+    discards aged Gemma pre-labeler batch handles (`<16hex>-<16hex>` recipes only) so the next tag
+    run re-batches the still-pending candidates.
+  Backfill: no recipe or schema version changes. Candidates with a current production assessment
+  are never re-evaluated; only still-pending candidates are re-batched (new batch keys, new jobs).
+  The shadow evaluator backfills gradually under its per-run cap (1,000 episodes).
+
 - **LLM dispatch throughput: route cleanup, a usable dispatch window, token calibration, and
   head-of-line admission** (`config/provider_limits.yml`, `workers/llm-dispatch-v2/`,
   `scripts/compile_llm_limits.py`, `citypods/compute/llm_policy.py`, `citypods/compute/llm_scheduler.py`,

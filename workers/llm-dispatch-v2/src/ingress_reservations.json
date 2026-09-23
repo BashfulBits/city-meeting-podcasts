@@ -88,9 +88,20 @@
     },
     "topic-tags:prelabeler": {
       "reserved_write_units": 2000,
-      "daily_write_units": 5000,
+      "daily_write_units": 8000,
       "models": [
         "google/gemma-4-31b-it"
+      ],
+      "backup_models": [],
+      "backup_after_attempts": null,
+      "dispatch_shape": "pooled",
+      "write_units_per_job": 4
+    },
+    "topic-tags:prelabeler-shadow": {
+      "reserved_write_units": 0,
+      "daily_write_units": 4000,
+      "models": [
+        "google/gemma-4-26b-a4b-it"
       ],
       "backup_models": [],
       "backup_after_attempts": null,

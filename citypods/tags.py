@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import tempfile
 from dataclasses import dataclass
@@ -35,6 +36,8 @@ PRELABELER_PROMPT_VERSION = "1"
 TAG_FEATURE = "topic-tags"
 TAGGER_PURPOSE = "topic-tags:tagger"
 PRELABELER_PURPOSE = "topic-tags:prelabeler"
+# Shadow evaluator lane: same prompt, second model, audit-only (see site_config.yml llm_lanes).
+PRELABELER_SHADOW_PURPOSE = "topic-tags:prelabeler-shadow"
 PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrect")
 # Assessment.reason alone allows up to 500 chars (~150 tokens); candidate_id/decision/confidence/
 # evidence_supported plus JSON punctuation add a modest fixed cost per item. A flat 1024-token
@@ -1377,6 +1380,75 @@ def llm_tag_suggestions(
     return suggestions, chapter_suggestions, False, outcome.model
 
 
+PRELABELER_MAX_CANDIDATES_PER_BATCH = 100
+
+
+def prelabeler_sizing_route(model: str, *, allow_paid: bool = False) -> Any:
+    """The route prelabeler batches are sized to fit: the model's highest-daily-quota live route.
+
+    Batches used to be sized to ``tpm - 1024`` of the model's first catalog route, ignoring that
+    route's ``hard_input_ceiling``. For ``google/gemma-4-31b-it`` that produced 10-14k-token jobs
+    just over the 10,000-token ceiling of the two 14,400-RPD Google AI Studio routes, so ~85% of
+    prelabeler work could only reach small or slow legs (2026-09-23 review). Sizing to the largest
+    live pool instead keeps every batch admissible there. Paused (``rpd: 0``) and, unless
+    ``allow_paid``, paid routes are ignored.
+    """
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES, canonical_model
+
+    live = [
+        route
+        for route in ROUTE_CANDIDATES.get(canonical_model(model), ())
+        if route.quota.rpd != 0 and (allow_paid or route.free)
+    ]
+    if not live:
+        return None
+    return max(live, key=lambda route: (route.quota.rpd or 0, route.route_id))
+
+
+@dataclass(frozen=True)
+class PrelabelerBatchLimits:
+    """Per-batch size limits for one sizing route.
+
+    ``max_raw_input_tokens`` is in ``estimate_tokens`` (chars/4) units: the route's real
+    ceiling divided by its measured ``input_token_ratio``. ``max_reserved_tokens`` bounds the
+    Worker's pessimistic claim-time reservation (scaled input + the batch's full output budget)
+    to one minute of the route's TPM, so a batch is always admissible without waiting on a
+    multi-minute token-bucket refill.
+    """
+
+    max_raw_input_tokens: int
+    max_reserved_tokens: int | None
+    input_token_ratio: float
+
+    def fits_reservation(self, raw_input_tokens: int, candidate_count: int) -> bool:
+        if self.max_reserved_tokens is None:
+            return True
+        scaled = math.ceil(raw_input_tokens * self.input_token_ratio)
+        output = (
+            PRELABELER_OUTPUT_TOKEN_OVERHEAD + PRELABELER_OUTPUT_TOKENS_PER_ITEM * candidate_count
+        )
+        return scaled + output <= self.max_reserved_tokens
+
+
+def prelabeler_batch_limits(route: Any) -> PrelabelerBatchLimits:
+    ratio = float(getattr(route, "input_token_ratio", 1.0) or 1.0)
+    context = int(getattr(route, "input_context_limit", 32768))
+    ceiling = getattr(route, "hard_input_ceiling", None)
+    provider_cap = min(context, int(ceiling)) if ceiling else context
+    quota = getattr(route, "quota", None)
+    tpm = int(quota.tpm) if quota is not None and quota.tpm else None
+    if tpm is not None:
+        # The single-candidate output budget must still fit beside the input.
+        provider_cap = min(
+            provider_cap, tpm - PRELABELER_OUTPUT_TOKEN_OVERHEAD - PRELABELER_OUTPUT_TOKENS_PER_ITEM
+        )
+    return PrelabelerBatchLimits(
+        max_raw_input_tokens=max(1, math.floor(provider_cap / ratio)),
+        max_reserved_tokens=tpm,
+        input_token_ratio=ratio,
+    )
+
+
 def llm_prelabel_candidates(
     backend: Any,
     *,
@@ -1444,14 +1516,10 @@ def llm_prelabel_candidates(
             )
         )
     backend_storage = getattr(backend, "storage", None)
-    route = ROUTES.get(model)
-    input_context_limit = int(getattr(route, "input_context_limit", 32768))
+    route = prelabeler_sizing_route(model, allow_paid=allow_paid) or ROUTES.get(model)
+    limits = prelabeler_batch_limits(route)
+    input_context_limit = limits.max_raw_input_tokens
     output_context_limit = int(getattr(route, "output_context_limit", 1024))
-    if getattr(route, "quota", None) is not None and route.quota.tpm is not None:
-        input_context_limit = min(
-            input_context_limit,
-            max(0, int(route.quota.tpm) - 1024),
-        )
     # Keep a response/output reserve. The evaluator may receive many candidates, but it must
     # never silently drop the tail or rely on a provider-specific implicit truncation.
     max_input_tokens = max(1, input_context_limit)
@@ -1483,7 +1551,11 @@ def llm_prelabel_candidates(
     for pair in context:
         proposed = current + [pair]
         estimate = estimate_tokens(make_messages([item for _, item in proposed]))
-        if current and (estimate > max_input_tokens or len(current) >= 100):
+        if current and (
+            estimate > max_input_tokens
+            or len(current) >= PRELABELER_MAX_CANDIDATES_PER_BATCH
+            or not limits.fits_reservation(estimate, len(proposed))
+        ):
             batches.append(current)
             current = [pair]
         else:
@@ -1520,6 +1592,7 @@ def llm_prelabel_candidates(
         )
         output_token_budget = min(required_output_tokens, output_context_limit)
         call_metadata = {
+            "prelabeler_sizing_route": getattr(route, "route_id", "") or "",
             "prelabeler_model": model,
             "prelabeler_prompt_version": prompt_version,
             "prelabeler_llm_schema_version": llm_schema_version,
@@ -1807,6 +1880,7 @@ __all__ = [
     "TAG_FEATURE",
     "TAGGER_PURPOSE",
     "PRELABELER_PURPOSE",
+    "PRELABELER_SHADOW_PURPOSE",
     "TAG_PROMPT_VERSION",
     "TAGGER_VERSION",
     "CHAPTER_PIPELINE_VERSION",

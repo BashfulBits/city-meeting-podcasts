@@ -2744,6 +2744,9 @@ def _build_impl(
     # files that can disagree.
     tag_max_dispatches = lane_for("topic-tags:tagger").max_dispatches_per_run
     tag_prelabeler_max_dispatches = lane_for("topic-tags:prelabeler").max_dispatches_per_run
+    tag_prelabeler_shadow_max_dispatches = lane_for(
+        "topic-tags:prelabeler-shadow"
+    ).max_dispatches_per_run
     chapter_agenda_max_dispatches = lane_for("chapter-agenda").max_dispatches_per_run
     chapter_locator_max_dispatches = lane_for("chapter-locator").max_dispatches_per_run
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
@@ -3146,6 +3149,7 @@ def _build_impl(
             "prelabeler": {
                 **(tagging_config.get("prelabeler") or {}),
                 "model": lane_for("topic-tags:prelabeler").primary_model,
+                "shadow_model": lane_for("topic-tags:prelabeler-shadow").primary_model,
             },
         },
         moment_evaluation_state_path=state_dir
@@ -3239,6 +3243,7 @@ def _build_impl(
         tag_llm_deadline=tag_llm_deadline,
         tag_max_dispatches=tag_max_dispatches,
         tag_prelabeler_max_dispatches=tag_prelabeler_max_dispatches,
+        tag_prelabeler_shadow_max_dispatches=tag_prelabeler_shadow_max_dispatches,
         chapter_agenda_max_dispatches=chapter_agenda_max_dispatches,
         chapter_locator_max_dispatches=chapter_locator_max_dispatches,
     )

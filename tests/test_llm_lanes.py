@@ -45,6 +45,7 @@ DISPATCHING_PURPOSES = frozenset(
         "chapter-locator",
         "topic-tags:tagger",
         "topic-tags:prelabeler",
+        "topic-tags:prelabeler-shadow",
         "r6-moments",
         "r6-judge",
         "tournament:tag",

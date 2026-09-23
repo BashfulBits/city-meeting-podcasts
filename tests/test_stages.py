@@ -2444,3 +2444,118 @@ def test_single_worker_still_gets_a_real_process_pool():
             assert executor._max_tasks_per_child == 1
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
+
+
+class _EvaluatorBackend:
+    """Answers every pre-labeler job synchronously, recording which model each call named."""
+
+    name = "litellm"
+
+    class config:  # noqa: N801 — mirrors the real backend's `.config.model` attribute shape
+        model = "gemini/gemini-3.1-flash-lite"
+
+    storage = None
+
+    def __init__(self, decisions):
+        self.decisions = decisions  # model -> decision
+        self.models: list[str] = []
+
+    def run_inference(self, job):
+        import json as _json
+
+        from citypods.compute.base import JobResult
+
+        messages = job.inputs["messages"]
+        payload = _json.loads(messages[-1]["content"])
+        model = self._model_for(job)
+        self.models.append(model)
+        content = _json.dumps(
+            {
+                "assessments": [
+                    {
+                        "candidate_id": item["candidate_id"],
+                        "decision": self.decisions[model],
+                        "confidence": 0.9,
+                        "reason": "checked",
+                        "evidence_supported": True,
+                    }
+                    for item in payload["candidates"]
+                ]
+            }
+        )
+        return JobResult(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            output={"choices": [{"message": {"content": content}}]},
+            model=model,
+        )
+
+    def _model_for(self, job):
+        # The evaluator model is llm_prelabel_candidates' `model` argument; the job itself carries
+        # it only inside an llm_policy, which this non-CAS fake backend does not receive.
+        import inspect
+
+        return inspect.currentframe().f_back.f_back.f_locals["model"]
+
+
+def test_tag_shadow_prelabeler_records_beside_production_without_changing_display(tmp_path):
+    """The shadow evaluator runs after production on the same subjects, is stored only under
+    `prelabeler_shadow_*`, and never changes what is displayed."""
+    from citypods.stages import TagsStage
+    from citypods.tags import load_taxonomy
+
+    taxonomy_path = tmp_path / "taxonomy.yml"
+    taxonomy_path.write_text(
+        "version: 1\n"
+        "source_refs: {x: 'https://example.test'}\n"
+        "tags:\n"
+        "  - id: housing\n"
+        "    label: Housing\n"
+        "    description: Housing\n"
+        "    group: land-use\n"
+        "    source_refs: [x]\n"
+        "    rules: {include: [housing]}\n"
+    )
+    ep = _ep("shadow")
+    ep.source_chapters = [{"start": 0, "title": "Housing"}]
+    ep.links = {"agenda_text_artifact_key": "agenda-shadow"}
+    ctx = _ctx(tmp_path)
+    ctx.taxonomy_path = taxonomy_path
+    backend = _EvaluatorBackend(
+        {"prod-evaluator": "likely_correct", "shadow-evaluator": "likely_incorrect"}
+    )
+    ctx.tag_backend = backend
+    ctx.tag_llm_dispatch_exhausted.set()  # no new LLM tagging; rule candidates only
+    ctx.llm_evaluation_config = {
+        "prelabeler": {
+            "enabled": True,
+            "model": "prod-evaluator",
+            "shadow_model": "shadow-evaluator",
+            "shadow_enabled": True,
+            "prompt_version": "1",
+            "llm_schema_version": "2",
+        }
+    }
+    ctx.tag_prelabeler_shadow_max_dispatches = 5
+    ctx.storage.put_file(
+        "agenda-shadow",
+        _write_temp(tmp_path, "agenda-shadow.txt", b"Housing plan"),
+        "text/plain",
+    )
+    _mark_pending(ep, ctx, load_taxonomy(taxonomy_path))
+
+    TagsStage().process(None, _city(), [ep], ctx)
+
+    assert backend.models == ["prod-evaluator", "shadow-evaluator"]
+    rule = next(c for c in ep.llm_tag_candidates if c.get("source_kind") == "rule")
+    assert rule["prelabeler_decision"] == "likely_correct"
+    assert rule["prelabeler_model"] == "prod-evaluator"
+    assert rule["prelabeler_shadow_decision"] == "likely_incorrect"
+    assert rule["prelabeler_shadow_model"] == "shadow-evaluator"
+    # A shadow `likely_incorrect` must not suppress the production-admitted rule tag.
+    assert any(tag.get("id") == "housing" for tag in ep.tags)
+    assert ctx.tag_prelabeler_shadow_dispatches_count == 1
+
+    # Second run: both assessments current, so the in-memory triage skips the episode entirely.
+    TagsStage().process(None, _city(), [ep], ctx)
+    assert backend.models == ["prod-evaluator", "shadow-evaluator"]

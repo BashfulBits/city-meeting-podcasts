@@ -7,6 +7,13 @@ exhausted or paused model. This maintenance command reads the canonical deferred
 chapter-agenda handles that use a retired model or have waited past the supplied age threshold,
 and, with ``--apply``, batch-cancels submitted v2 jobs before discarding their client records.
 
+``--lane topic-tags:prelabeler`` applies the same supersede flow to Gemma pre-labeler batch
+handles older than the threshold. Pre-labeler batches used to be sized past Google AI Studio's
+10k-token Gemma ceiling, so after those routes became the only live Gemma legs (2026-09-23) old
+oversized batches could never be claimed; superseding them lets the next tag run re-batch the
+still-pending candidates under the ceiling-aware sizing. Only handles whose recipe has the
+pre-labeler's ``<16 hex>-<16 hex>`` batch shape are touched, never tournament judge jobs.
+
 It never scans or mutates arbitrary Durable Object rows. The deferred registry is the client-owned
 set of jobs that can be safely superseded: the next chapter-agenda run sees the missing handle and
 builds a fresh recipe under the current Nemotron/Gemini policy. A v2 handle reported as in-flight
@@ -22,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import signal
 import sys
 from collections import Counter
@@ -43,6 +51,9 @@ from citypods.config import load_site_config
 from citypods.storage import StorageReadUnavailable, make_storage
 
 CURRENT_MODELS = frozenset((*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS))
+LANES = ("chapter-agenda", "topic-tags:prelabeler")
+# `llm_prelabel_candidates` recipes are f"{episode prelabel recipe}-{batch recipe}", both 16 hex.
+_PRELABELER_RECIPE_RE = re.compile(r"^[0-9a-f]{16}-[0-9a-f]{16}$")
 DEFAULT_MAX_ROW_WRITES = 25_000
 # A queued cancellation deletes one or more job-model rows and updates the job row plus the
 # state/updated-at indexes. Cloudflare bills affected index rows too, so keep a safety margin over
@@ -100,20 +111,39 @@ def _purpose(handle: JobHandle) -> str | None:
     return deferred.policy.purpose
 
 
-def _classify_entry(entry, *, now: datetime, older_than_hours: float) -> dict[str, Any] | None:
-    """Classify one snapshot entry when it is an old or legacy chapter-agenda handle."""
+def _is_prelabeler_handle(handle: JobHandle) -> bool:
+    from citypods.compute.llm_lanes import lane_for
+    from citypods.compute.llm_policy import canonical_model
+
+    if handle.task != "tag" or _purpose(handle) not in {None, "topic-tags:prelabeler"}:
+        return False
+    if not _PRELABELER_RECIPE_RE.match(str(handle.recipe_hash or "")):
+        return False
+    production = canonical_model(lane_for("topic-tags:prelabeler").primary_model)
+    return bool(handle.model) and canonical_model(handle.model) == production
+
+
+def _classify_entry(
+    entry, *, now: datetime, older_than_hours: float, lane: str = "chapter-agenda"
+) -> dict[str, Any] | None:
+    """Classify one snapshot entry when it is an old or legacy handle of ``lane``."""
     handle = entry.decoded
-    if not isinstance(handle, JobHandle) or handle.task != "agenda-item-extract":
+    if not isinstance(handle, JobHandle):
+        return None
+    if lane == "topic-tags:prelabeler":
+        if not _is_prelabeler_handle(handle):
+            return None
+    elif handle.task != "agenda-item-extract":
         return None
 
     purpose = _purpose(handle)
-    if purpose not in {None, "chapter-agenda"}:
+    if lane == "chapter-agenda" and purpose not in {None, "chapter-agenda"}:
         return None
 
     created = _created_at(entry.data)
     age_hours = ((now - created).total_seconds() / 3600) if created else None
     reasons: list[str] = []
-    if handle.model and handle.model not in CURRENT_MODELS:
+    if lane == "chapter-agenda" and handle.model and handle.model not in CURRENT_MODELS:
         reasons.append("legacy-model")
     if age_hours is not None and age_hours >= older_than_hours:
         reasons.append("age")
@@ -341,6 +371,7 @@ def run(
     max_row_writes: int = DEFAULT_MAX_ROW_WRITES,
     run_time_budget_minutes: float = DEFAULT_RUN_TIME_BUDGET_MINUTES,
     stop_state: _StopState | None = None,
+    lane: str = "chapter-agenda",
 ) -> int:
     """Run the dry-run classification or guarded cancellation/supersession flow.
 
@@ -388,11 +419,16 @@ def run(
     candidates = [
         classified
         for entry in snapshot.entries
-        if (classified := _classify_entry(entry, now=now, older_than_hours=older_than_hours))
+        if (
+            classified := _classify_entry(
+                entry, now=now, older_than_hours=older_than_hours, lane=lane
+            )
+        )
     ]
     report: dict[str, Any] = {
         "event": "stuck_chapter_agenda_classification",
         "mode": "apply" if apply else "dry-run",
+        "lane": lane,
         "observed_at": now.isoformat(),
         "older_than_hours": older_than_hours,
         "run_time_budget_minutes": run_time_budget_minutes,
@@ -445,6 +481,12 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--dry-run", action="store_true", help="Classify only; do not mutate state.")
     mode.add_argument("--apply", action="store_true", help="Cancel and supersede stale jobs.")
     parser.add_argument("--site-config", default="config/site_config.yml")
+    parser.add_argument(
+        "--lane",
+        choices=LANES,
+        default="chapter-agenda",
+        help="Which lane's handles to classify (default: chapter-agenda).",
+    )
     parser.add_argument("--output-dir", default="output")
     parser.add_argument(
         "--older-than-hours",
@@ -482,6 +524,7 @@ def main(argv: list[str] | None = None) -> int:
             max_row_writes=args.max_row_writes,
             run_time_budget_minutes=args.run_time_budget_minutes,
             stop_state=stop_state,
+            lane=args.lane,
         )
     except Exception as exc:  # noqa: BLE001 -- CLI emits one actionable failure and exits nonzero
         print(f"stuck chapter-agenda reconciliation failed: {exc}", file=sys.stderr)
