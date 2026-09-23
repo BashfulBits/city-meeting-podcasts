@@ -2081,8 +2081,19 @@ test("an existing rowid job_models is rebuilt clustered, keeping rows, uniquenes
     );
     CREATE INDEX idx_job_models_model_priority_created
       ON job_models (model, priority, created_at, job_id);
+    INSERT INTO job_models (job_id, model, priority, created_at)
+      VALUES ('queued-before-deploy', 'gemini/gemini-flash-lite', 1, 42);
   `);
   const { coordinator } = makeCoordinator({}, { storage, sql });
+  // The copy is the one migration step that could lose queued work: every column must survive.
+  assert.deepEqual(
+    sql
+      .exec(
+        "SELECT job_id, model, priority, created_at FROM job_models WHERE job_id = 'queued-before-deploy'"
+      )
+      .map((row) => ({ ...row })),
+    [{ job_id: "queued-before-deploy", model: "gemini/gemini-flash-lite", priority: 1, created_at: 42 }]
+  );
   await coordinator.enqueueBatch([
     {
       id: "legacy-1",
@@ -2096,7 +2107,12 @@ test("an existing rowid job_models is rebuilt clustered, keeping rows, uniquenes
     },
   ].map((job) => ({ ...job })));
   // Rebuild happens at construction; a second construction must be a no-op.
+  const rowsBefore = sql.exec("SELECT * FROM job_models ORDER BY job_id").map((row) => ({ ...row }));
   makeCoordinator({}, { storage, sql });
+  assert.deepEqual(
+    sql.exec("SELECT * FROM job_models ORDER BY job_id").map((row) => ({ ...row })),
+    rowsBefore
+  );
   const ddl = sql.exec("SELECT sql FROM sqlite_master WHERE name = 'job_models'")[0].sql;
   assert.match(ddl, /WITHOUT ROWID/i);
   const indexes = sql
@@ -2112,7 +2128,11 @@ test("an existing rowid job_models is rebuilt clustered, keeping rows, uniquenes
   assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n, before);
   // The priority-sync trigger still reaches the rebuilt table.
   sql.exec("UPDATE jobs SET priority = 0 WHERE id IN (SELECT job_id FROM job_models)");
-  assert.ok(sql.exec("SELECT priority FROM job_models").every((row) => row.priority === 0));
+  assert.ok(
+    sql
+      .exec("SELECT priority FROM job_models WHERE job_id = 'legacy-1'")
+      .every((row) => row.priority === 0)
+  );
   // The admission scan reads the clustered key in order: no temp sort.
   const plan = sql
     .exec(
