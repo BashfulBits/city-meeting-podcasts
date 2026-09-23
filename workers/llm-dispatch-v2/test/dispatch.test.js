@@ -2214,3 +2214,29 @@ test("claimDispatchWindow enforces provider-level TPM across routes sharing a pr
   const plan = await coordinator.claimDispatchWindow(now, 25);
   assert.equal(plan.jobs.length, 1);
 });
+
+test("calibration persists every completion until its window is full, then a 1-in-4 sample", () => {
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
+  const key = "gemma-ai-studio:google/gemma-4-31b-it:tags";
+  const summary = () => {
+    const row = [...sql.exec("SELECT recent_observed_summary FROM estimates WHERE key = ?", key)][0];
+    return row ? JSON.parse(row.recent_observed_summary) : { r: [], o: [] };
+  };
+  const writes = [];
+  const record = (i) => {
+    const before = JSON.stringify(summary());
+    coordinator._calibrateEstimate("gemma-ai-studio", "tags", 1300, Date.now(), {
+      jobId: `job-${i}`,
+      inputEstimate: 1000,
+      observedInput: 1100,
+      observedOutput: 200 + i,
+    });
+    writes.push(JSON.stringify(summary()) !== before);
+  };
+  for (let i = 0; i < 32; i += 1) record(i);
+  assert.ok(writes.every(Boolean), "every completion is recorded while the window fills");
+  writes.length = 0;
+  for (let i = 32; i < 432; i += 1) record(i);
+  const rate = writes.filter(Boolean).length / writes.length;
+  assert.ok(rate > 0.15 && rate < 0.35, `sampled write rate ${rate}`);
+});
