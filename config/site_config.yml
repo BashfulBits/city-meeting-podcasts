@@ -59,6 +59,9 @@ tagging:
     # Version the serialized response contract independently of task instructions. Bumping this
     # schedules fresh work for every active candidate whose stored assessment predates it.
     llm_schema_version: "2"
+    # Run the `topic-tags:prelabeler-shadow` lane's evaluator (gemma-4-26b) on candidates that
+    # already carry a current production assessment. Shadow-only: never changes display.
+    shadow_enabled: true
 # Tournament routing is deliberately human-approved. A weekly ticket may propose a challenger only
 # above this strict rolling win-rate gate; a checked switch opens a configuration PR.
 tournament:
@@ -179,7 +182,23 @@ llm_lanes:
     models: ["google/gemma-4-31b-it"]
     max_dispatches_per_run: 1250
     reserved_write_units: 2000
-    daily_write_units: 5000
+    # Raised 5000 -> 8000 (2,000 jobs/day) on 2026-09-23. Batches are now sized to fit Google AI
+    # Studio's 10k-token Gemma ceiling (tags.py prelabeler_batch_limits), so one episode yields
+    # roughly twice as many, smaller jobs, and the two AI Studio keys can serve ~2,000-2,800/day.
+    # max_dispatches_per_run counts episodes, not jobs, so it is unchanged. Reservation unchanged.
+    daily_write_units: 8000
+  topic-tags:prelabeler-shadow:
+    # SHADOW evaluator (2026-09-23): gemma-4-26b-a4b-it runs the identical prelabeler prompt on the
+    # same candidates as production, on its own free Gemini quota (a separate per-model pool from
+    # 31b on both AI Studio projects). Its decisions are stored as `prelabeler_shadow_*` fields and
+    # never affect display; human review decisions on the same subjects are mirrored into its own
+    # calibration row (llm_evaluation.mirror_shadow_prelabeler_review), so its precision is
+    # measured against 31b at no extra reviewer cost before anyone considers it as a backup.
+    # No reservation: it only draws on shared headroom and can never displace a production lane.
+    models: ["google/gemma-4-26b-a4b-it"]
+    max_dispatches_per_run: 1000
+    reserved_write_units: 0
+    daily_write_units: 4000
   r6-moments:
     # Mirrors the legacy `moments.llm_models`; the stage still filters this allowlist by
     # meeting family before dispatching. The two NVIDIA free routes at the end mirror

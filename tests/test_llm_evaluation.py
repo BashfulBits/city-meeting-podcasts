@@ -479,3 +479,156 @@ def test_llm_tag_review_ingest_cli_skips_multiple_checked_boxes(tmp_path, capsys
     )
     assert rc == 0
     assert json.loads(capsys.readouterr().out)["reason"] == "invalid_decision_checked"
+
+
+def _shadowed_subject(production: str, shadow: str) -> dict:
+    return {
+        "source_kind": "rule",
+        "feature": "topic-tags",
+        "provider_model": "rule:2",
+        "prompt_version": "rule-2",
+        "taxonomy_version": 1,
+        "id": "housing",
+        "scope": "chapter",
+        "chapter_id": "ch-1",
+        "recipe_hash": "rules",
+        "confidence": 1.0,
+        "episode_uid": f"ep-{production}-{shadow}",
+        "candidate_id": f"rule-{production}-{shadow}",
+        "prelabeler_model": "google/gemma-4-31b-it",
+        "prelabeler_prompt_version": "1",
+        "prelabeler_decision": production,
+        "prelabeler_confidence": 0.9,
+        "prelabeler_shadow_model": "google/gemma-4-26b-a4b-it",
+        "prelabeler_shadow_prompt_version": "1",
+        "prelabeler_shadow_decision": shadow,
+        "prelabeler_shadow_confidence": 0.8,
+    }
+
+
+def _shadow_reviews(state: dict) -> list[dict]:
+    return [
+        review
+        for review in state["reviews"].values()
+        if review.get("evaluator_model") == "google/gemma-4-26b-a4b-it"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("production", "shadow", "audit_verdict", "shadow_verdict"),
+    [
+        # The tag is correct (production likely_correct confirmed) ...
+        ("likely_correct", "likely_correct", "correct", "correct"),
+        ("likely_correct", "likely_incorrect", "correct", "incorrect"),
+        # ... or incorrect (production likely_correct rejected / likely_incorrect confirmed).
+        ("likely_correct", "likely_incorrect", "incorrect", "correct"),
+        ("likely_incorrect", "likely_correct", "correct", "incorrect"),
+        ("likely_incorrect", "likely_incorrect", "correct", "correct"),
+        # An ambiguous verdict stays ambiguous for the shadow row.
+        ("likely_correct", "likely_correct", "ambiguous", "ambiguous"),
+    ],
+)
+def test_audit_review_is_translated_through_the_tags_truth_for_the_shadow(
+    production, shadow, audit_verdict, shadow_verdict
+):
+    """An audit review says whether the PRODUCTION evaluator was right. The shadow row must be
+    scored on whether the SHADOW's own call was right about the same tag."""
+    config = EvaluationConfig()
+    state = load_state("/path/that/does/not/exist")
+    subject = _shadowed_subject(production, shadow)
+    audit = prelabeler_review_candidate(subject)
+    body = render_review_body(audit, config=config, state=state)
+    label = audit_verdict.capitalize()
+    ingest_review_body(state, body.replace(f"- [ ] {label}", f"- [x] {label}"), config=config)
+    mirrored = _shadow_reviews(state)
+    assert len(mirrored) == 1
+    assert mirrored[0]["decision"] == shadow_verdict
+    assert mirrored[0]["prelabeler_decision"] == shadow
+    assert mirrored[0]["matrix_key"]["evaluator_model"] == "google/gemma-4-26b-a4b-it"
+    # The production audit row is recorded exactly as the human answered.
+    production_rows = [
+        review
+        for review in state["reviews"].values()
+        if review.get("evaluator_model") == "google/gemma-4-31b-it"
+    ]
+    assert [row["decision"] for row in production_rows] == [audit_verdict]
+
+
+def test_subject_review_scores_the_shadow_directly_from_the_tags_truth():
+    config = EvaluationConfig()
+    state = load_state("/path/that/does/not/exist")
+    subject = _shadowed_subject("likely_correct", "likely_incorrect")
+    body = render_review_body(subject, config=config, state=state)
+    ingest_review_body(state, body.replace("- [ ] Incorrect", "- [x] Incorrect"), config=config)
+    # The tag is incorrect, so the shadow's likely_incorrect was right.
+    assert [review["decision"] for review in _shadow_reviews(state)] == ["correct"]
+
+
+def test_unscoreable_shadow_calls_are_not_mirrored():
+    config = EvaluationConfig()
+    state = load_state("/path/that/does/not/exist")
+    # A shadow needs_human_review cannot be judged from the tag's truth ...
+    escalated = _shadowed_subject("likely_correct", "needs_human_review")
+    ingest_review_body(
+        state,
+        render_review_body(
+            prelabeler_review_candidate(escalated), config=config, state=state
+        ).replace("- [ ] Correct", "- [x] Correct"),
+        config=config,
+    )
+    # ... and an audited production needs_human_review says nothing about the tag.
+    unknown = _shadowed_subject("needs_human_review", "likely_correct")
+    ingest_review_body(
+        state,
+        render_review_body(
+            prelabeler_review_candidate(unknown), config=config, state=state
+        ).replace("- [ ] Correct", "- [x] Correct"),
+        config=config,
+    )
+    assert _shadow_reviews(state) == []
+
+
+def test_shadow_rows_never_change_display():
+    config = EvaluationConfig(
+        prelabeler_minimum_reviews=1,
+        prelabeler_minimum_decision_reviews=1,
+        prelabeler_required_precision=0.5,
+    )
+    state = load_state("/path/that/does/not/exist")
+    subject = _shadowed_subject("likely_correct", "likely_incorrect")
+    ingest_review_body(
+        state,
+        render_review_body(subject, config=config, state=state).replace(
+            "- [ ] Incorrect", "- [x] Incorrect"
+        ),
+        config=config,
+    )
+    # The shadow row now holds a perfect likely_incorrect record, but admission reads only the
+    # production evaluator's fields.
+    projected = apply_admission(subject, config=config, state=state)
+    assert projected["prelabeler_decision"] == "likely_correct"
+    assert projected["prelabeler_basis"] != "calibrated" or projected["display"] is True
+
+
+def test_digest_compares_production_and_shadow_evaluators():
+    from citypods.llm_evaluation import evaluator_comparison_lines
+
+    config = EvaluationConfig()
+    state = load_state("/path/that/does/not/exist")
+    subjects = [
+        _shadowed_subject("likely_correct", "likely_correct"),
+        _shadowed_subject("likely_incorrect", "likely_correct"),
+    ]
+    for subject in subjects:
+        ingest_review_body(
+            state,
+            render_review_body(
+                prelabeler_review_candidate(subject), config=config, state=state
+            ).replace("- [ ] Correct", "- [x] Correct"),
+            config=config,
+        )
+    text = "\n".join(evaluator_comparison_lines(state, subjects))
+    assert "`google/gemma-4-31b-it` | 2 | 100.0% (1) | 100.0% (1) |" in text
+    assert "`google/gemma-4-26b-a4b-it` | 2 | 50.0% (2) | — |" in text
+    assert "Decision agreement with production on 2 jointly assessed subjects: 50.0%." in text
+    assert evaluator_comparison_lines({"reviews": {}}, []) == []

@@ -2444,3 +2444,135 @@ def test_single_worker_still_gets_a_real_process_pool():
             assert executor._max_tasks_per_child == 1
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
+
+
+class _EvaluatorBackend:
+    """Answers pre-labeler jobs like the queue-only dispatch backend: each request is deferred
+    (a JobHandle) on first submission and returns its result when resubmitted on a later run.
+    The CAS-capable storage makes `llm_prelabel_candidates` attach its real LLMRequestPolicy, so
+    the fake reads the evaluator model and ingress purpose from it."""
+
+    name = "litellm"
+
+    class config:  # noqa: N801 — mirrors the real backend's `.config.model` attribute shape
+        model = "gemini/gemini-3.1-flash-lite"
+
+    def __init__(self, decisions):
+        from tests._cas_fake import MemStorage
+
+        self.storage = MemStorage()
+        self.decisions = decisions  # model -> decision
+        self.submitted: set[str] = set()
+        self.calls: list[tuple[str, str, str]] = []  # (model, purpose, "deferred"|"result")
+
+    def run_inference(self, job):
+        import json as _json
+
+        from citypods.compute.base import JobHandle, JobResult
+
+        policy = job.inputs["llm_policy"]
+        model = policy.allowed_models[0]
+        if job.recipe_hash not in self.submitted:
+            self.submitted.add(job.recipe_hash)
+            self.calls.append((model, policy.purpose, "deferred"))
+            return JobHandle(
+                task=job.task, recipe_hash=job.recipe_hash, backend="llm-dispatch-v2", ref="r"
+            )
+        self.calls.append((model, policy.purpose, "result"))
+        payload = _json.loads(job.inputs["messages"][-1]["content"])
+        content = _json.dumps(
+            {
+                "assessments": [
+                    {
+                        "candidate_id": item["candidate_id"],
+                        "decision": self.decisions[model],
+                        "confidence": 0.9,
+                        "reason": "checked",
+                        "evidence_supported": True,
+                    }
+                    for item in payload["candidates"]
+                ]
+            }
+        )
+        return JobResult(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            output={"choices": [{"message": {"content": content}}]},
+            model=model,
+        )
+
+
+def test_tag_shadow_prelabeler_records_beside_production_without_changing_display(tmp_path):
+    """The shadow evaluator runs after production on the same subjects, is stored only under
+    `prelabeler_shadow_*`, and never changes what is displayed."""
+    from citypods.stages import TagsStage
+    from citypods.tags import load_taxonomy
+
+    taxonomy_path = tmp_path / "taxonomy.yml"
+    taxonomy_path.write_text(
+        "version: 1\n"
+        "source_refs: {x: 'https://example.test'}\n"
+        "tags:\n"
+        "  - id: housing\n"
+        "    label: Housing\n"
+        "    description: Housing\n"
+        "    group: land-use\n"
+        "    source_refs: [x]\n"
+        "    rules: {include: [housing]}\n"
+    )
+    ep = _ep("shadow")
+    ep.source_chapters = [{"start": 0, "title": "Housing"}]
+    ep.links = {"agenda_text_artifact_key": "agenda-shadow"}
+    ctx = _ctx(tmp_path)
+    ctx.taxonomy_path = taxonomy_path
+    backend = _EvaluatorBackend(
+        {"prod-evaluator": "likely_correct", "shadow-evaluator": "likely_incorrect"}
+    )
+    ctx.tag_backend = backend
+    ctx.tag_llm_dispatch_exhausted.set()  # no new LLM tagging; rule candidates only
+    ctx.llm_evaluation_config = {
+        "prelabeler": {
+            "enabled": True,
+            "model": "prod-evaluator",
+            "shadow_model": "shadow-evaluator",
+            "shadow_enabled": True,
+            "prompt_version": "1",
+            "llm_schema_version": "2",
+        }
+    }
+    ctx.tag_prelabeler_shadow_max_dispatches = 5
+    ctx.storage.put_file(
+        "agenda-shadow",
+        _write_temp(tmp_path, "agenda-shadow.txt", b"Housing plan"),
+        "text/plain",
+    )
+    _mark_pending(ep, ctx, load_taxonomy(taxonomy_path))
+
+    def run():
+        TagsStage().process(None, _city(), [ep], ctx)
+        return next(c for c in ep.llm_tag_candidates if c.get("source_kind") == "rule")
+
+    # Run 1: production is queued (deferred), so there is nothing for the shadow to follow yet.
+    rule = run()
+    assert backend.calls == [("prod-evaluator", "topic-tags:prelabeler", "deferred")]
+    assert "prelabeler_shadow_model" not in rule
+    # Run 2: production result collected; shadow queued under its own ingress purpose.
+    rule = run()
+    assert backend.calls[1:] == [
+        ("prod-evaluator", "topic-tags:prelabeler", "result"),
+        ("shadow-evaluator", "topic-tags:prelabeler-shadow", "deferred"),
+    ]
+    assert rule["prelabeler_decision"] == "likely_correct"
+    # Run 3: the deferred shadow result is read back beside production.
+    rule = run()
+    assert backend.calls[3:] == [("shadow-evaluator", "topic-tags:prelabeler-shadow", "result")]
+    assert rule["prelabeler_model"] == "prod-evaluator"
+    assert rule["prelabeler_decision"] == "likely_correct"
+    assert rule["prelabeler_shadow_model"] == "shadow-evaluator"
+    assert rule["prelabeler_shadow_decision"] == "likely_incorrect"
+    # A shadow `likely_incorrect` must not suppress the production-admitted rule tag.
+    assert any(tag.get("id") == "housing" for tag in ep.tags)
+
+    # Run 4: both assessments current -- no further evaluator call.
+    run()
+    assert len(backend.calls) == 4

@@ -6,6 +6,14 @@ name: Reconcile stuck chapter-agenda jobs
 on:
   workflow_dispatch:
     inputs:
+      lane:
+        description: "Lane whose deferred handles to classify"
+        required: true
+        type: choice
+        options:
+          - chapter-agenda
+          - topic-tags:prelabeler
+        default: chapter-agenda
       apply:
         description: "Cancel/supersede the classified handles (leave false for a report only)"
         required: true
@@ -60,6 +68,7 @@ jobs:
         timeout-minutes: 110
         env:
           APPLY: ${{ inputs.apply }}
+          LANE: ${{ inputs.lane }}
           OLDER_THAN_HOURS: ${{ inputs.older_than_hours }}
           MAX_ROW_WRITES: ${{ inputs.max_row_writes }}
           RUN_TIME_BUDGET_MINUTES: ${{ inputs.run_time_budget_minutes }}
@@ -82,7 +91,7 @@ jobs:
             args=(--apply)
           fi
           PYTHONPATH=. python scripts/reconcile_stuck_chapter_agenda.py \
-            "${args[@]}" --older-than-hours "$OLDER_THAN_HOURS" \
+            "${args[@]}" --lane "$LANE" --older-than-hours "$OLDER_THAN_HOURS" \
             --max-row-writes "$MAX_ROW_WRITES" \
             --run-time-budget-minutes "$RUN_TIME_BUDGET_MINUTES" | tee stuck-chapter-agenda.json
 
