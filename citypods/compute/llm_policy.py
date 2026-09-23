@@ -204,6 +204,13 @@ class LLMRoute:
     # automatically -- only set it where a provider's hard-reject behavior has actually been
     # verified. `None` (the default) means "no extra ceiling beyond `input_context_limit`."
     hard_input_ceiling: int | None = None
+    # Provider tokens per `estimate_tokens` unit (chars/4) for this route's model family, measured
+    # from real payload/result pairs. Multiply a raw estimate by this before comparing it with
+    # `hard_input_ceiling`, `input_context_limit`, or `quota.tpm` (see `route_input_tokens`).
+    input_token_ratio: float = 1.0
+    # Additional logical model pools this one physical route serves (`also_serves` in
+    # config/provider_limits.yml). The route keeps one ledger; it is simply a candidate in each.
+    also_serves: tuple[str, ...] = ()
     # Characterization measurements (PR-5 / Initiative 20). All optional, defaulting to None.
     observed_on: str | None = None
     observed_rpm: float | None = None
@@ -341,6 +348,8 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                     if item.get("hard_input_ceiling") is not None
                     else None
                 ),
+                input_token_ratio=float(item.get("input_token_ratio") or 1.0),
+                also_serves=tuple(str(model) for model in item.get("also_serves") or ()),
                 observed_on=(
                     str(item["observed_on"]) if item.get("observed_on") is not None else None
                 ),
@@ -409,6 +418,12 @@ ROUTE_CANDIDATES: dict[str, tuple[LLMRoute, ...]] = {}
 for _route in _GENERATED_ROUTES:
     ROUTE_CANDIDATES.setdefault(_route.model, tuple())
     ROUTE_CANDIDATES[_route.model] += (_route,)
+# Secondary pools after every primary one, matching the compiler's model_routes_map order: a pool's
+# own routes stay first, and ``ROUTES``' primary-route view below prefers them.
+for _route in _GENERATED_ROUTES:
+    for _pool in _route.also_serves:
+        ROUTE_CANDIDATES.setdefault(_pool, tuple())
+        ROUTE_CANDIDATES[_pool] += (_route,)
 
 ROUTES: dict[str, LLMRoute] = {
     model: candidates[0] for model, candidates in ROUTE_CANDIDATES.items()
@@ -519,9 +534,20 @@ if not _GENERATED_ROUTES:
 
 
 def estimate_tokens(messages: list[Mapping[str, Any]]) -> int:
-    """Estimate input tokens conservatively from message content."""
+    """Estimate input tokens from message content with the shared chars/4 heuristic.
+
+    This raw, model-agnostic figure is what jobs carry as ``input_token_estimate``; the dispatch
+    Worker scales it per route. Use ``route_input_tokens`` wherever a producer compares an
+    estimate against one route's real limits.
+    """
     characters = sum(len(str(message.get("content", ""))) for message in messages)
     return math.ceil(characters / 4)
+
+
+def route_input_tokens(raw_estimate: int, route: LLMRoute | None) -> int:
+    """Scale a raw ``estimate_tokens`` figure into ``route``'s own tokenizer units."""
+    ratio = float(getattr(route, "input_token_ratio", 1.0) or 1.0)
+    return math.ceil(max(0, raw_estimate) * ratio)
 
 
 __all__ = [
@@ -540,4 +566,5 @@ __all__ = [
     "ROUTE_REGISTRY",
     "canonical_model",
     "estimate_tokens",
+    "route_input_tokens",
 ]

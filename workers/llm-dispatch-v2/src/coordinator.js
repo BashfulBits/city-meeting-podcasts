@@ -30,6 +30,12 @@ import {
   nextZonedMidnightMs,
   effectiveBufferSeconds,
 } from "./pacing.js";
+import {
+  calibrationFor,
+  parseCalibrationSummary,
+  recordCalibrationSample,
+  routeInputTokenRatio,
+} from "./calibration.js";
 
 /**
  * index.js's getCoordinator() reaches this class through env.LLM_SCHEDULER.getByName(), the
@@ -69,6 +75,8 @@ const NON_CONSUMING_FAILURE_CLASSES = new Set([
   "route_input_limit",
   "payment_required",
   "request_defect",
+  // A 404/410 for a retired model or a broken route path: nothing was served.
+  "route_unavailable",
 ]);
 
 /**
@@ -714,6 +722,31 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return Number.isInteger(configured) && configured > 0 ? configured : this._maxBundleJobs();
   }
 
+  /** How far down one model's queue the claim may look past jobs no available route can take. */
+  _candidateLookahead() {
+    return this._envInt("MAX_CANDIDATE_LOOKAHEAD", 32);
+  }
+
+  /**
+   * The largest raw (chars/4) input estimate any of this model's currently-scored routes could
+   * accept, or Infinity when at least one such route has no size ceiling beyond a context window
+   * large enough not to matter for queue ordering. Uses each route's static input_token_ratio
+   * prior: this only decides which queue entries are worth reading; the exact calibrated check
+   * still runs per job in routeHasCapacityFor.
+   */
+  _maxServableRawInput(modelPlan, dispatchLimits) {
+    let best = 0;
+    for (const [routeId, score] of modelPlan.routeScores || []) {
+      if (!(score > 0)) continue;
+      const route = dispatchLimits?.routes_by_id?.[routeId];
+      if (!route) continue;
+      const ceiling = Number(route.hard_input_ceiling);
+      if (!(Number.isFinite(ceiling) && ceiling > 0)) return Number.POSITIVE_INFINITY;
+      best = Math.max(best, Math.floor(ceiling / routeInputTokenRatio(route)));
+    }
+    return best > 0 ? best : Number.POSITIVE_INFINITY;
+  }
+
   _maxJobsPerRoutePerBundle() {
     return this._envInt("MAX_JOBS_PER_ROUTE_PER_BUNDLE", 4);
   }
@@ -825,6 +858,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const baseDelayMs = Math.min(baseMs * 2 ** Math.max(0, retryCount - 1), this._max5xxBackoffMs());
     const jitter = Math.random() * 0.5;
     return now + Math.round(baseDelayMs * (1.0 + jitter));
+  }
+
+  /** How long a route answering 404/410 (model retired or path broken) stays stood down. */
+  _routeUnavailableBlockMs() {
+    return this._envInt("ROUTE_UNAVAILABLE_BLOCK_SECONDS", 21600) * 1000;
   }
 
   _maxRouteBufferSeconds() {
@@ -2360,11 +2398,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
     };
   }
 
-  _calibratedMargin(routeId, model, promptFamily) {
+  /** Calibrated input ratio and output forecast for one route/model/prompt family (see
+   * calibration.js). `cache` is an optional per-claim Map so a claim that weighs the same route
+   * for several jobs of one family reads its estimates row once. */
+  _calibration(route, promptFamily, cache = null) {
+    // Keyed by the route's PRIMARY model, exactly as _calibrateEstimate writes it: a route
+    // serving several pools (also_serves) is one tokenizer and one set of observations, whichever
+    // pool a given job reached it through.
+    const key = `${route.route_id}:${this._modelForRoute(route.route_id)}:${promptFamily}`;
+    if (cache?.has(key)) return cache.get(key);
     const sql = this._getSql();
-    const key = `${routeId}:${model}:${promptFamily}`;
-    const rows = [...sql.exec("SELECT margin_tokens FROM estimates WHERE key = ?", key)];
-    return rows.length > 0 ? rows[0].margin_tokens : 0;
+    const rows = [...sql.exec("SELECT recent_observed_summary FROM estimates WHERE key = ?", key)];
+    const result = calibrationFor(route, parseCalibrationSummary(rows[0]?.recent_observed_summary));
+    cache?.set(key, result);
+    return result;
   }
 
   _recordClaimOutcome(now, result, reason, diagnostics) {
@@ -2403,6 +2450,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const maxInFlightCalls = this._maxInFlightLlmCalls();
       const maxBundleJobs = this._maxBundleJobs();
       const maxJobsPerModelClaim = this._maxJobsPerModelClaim();
+      const candidateLookahead = Math.max(maxJobsPerModelClaim, this._candidateLookahead());
       const maxConcurrentLanes = this._maxConcurrentRouteLanes();
       const maxJobsPerRoutePerBundle = this._maxJobsPerRoutePerBundle();
       const estimateFloor = this._estimateFloor();
@@ -2539,14 +2587,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
         return providerLedgerCache.get(providerName);
       };
 
+      const calibrationCache = new Map();
       const capacityOptions = (route, job) => {
         const providerCfg = dispatchLimits.providers?.[route.provider];
         const providerLedger = route.provider
           ? getMergedProvider(route.provider, providerCfg)
           : null;
+        const { inputRatio, outputForecast } = this._calibration(
+          route,
+          job.prompt_family,
+          calibrationCache
+        );
         return {
           estimateFloor,
-          calibratedMargin: this._calibratedMargin(route.route_id, route.model, job.prompt_family),
+          inputRatio,
+          outputForecast,
           callDurationCeilingMs,
           providerConfig: providerCfg,
           providerLedger,
@@ -2560,15 +2615,41 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const modelPlansByModel = new Map(modelPlans.map((plan) => [plan.model, plan]));
       for (const modelPlan of modelPlans) {
         if (chosen.length >= maxBundleJobs) break;
-        const candidates = [...sql.exec(
-          `SELECT jobs.* FROM job_models
-           JOIN jobs ON jobs.id = job_models.job_id
-           WHERE job_models.model = ? AND jobs.state = 'queued'
-           ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
-           LIMIT ?`,
-          modelPlan.model,
-          maxJobsPerModelClaim
-        )];
+        // Head-of-line guard. Reading only the oldest maxJobsPerModelClaim entries let a few jobs
+        // too large for every route that currently has capacity (e.g. 10-14k-token Gemma batches
+        // while the 10k-ceiling AI Studio routes were the only Gemma legs with headroom) block
+        // the whole model every tick, with hundreds of servable jobs queued behind them. When the
+        // model's available routes all carry a size ceiling, look a bounded distance further down
+        // the same index for jobs that fit one of them; otherwise keep the plain oldest-first read.
+        const maxServableInput = this._maxServableRawInput(modelPlan, dispatchLimits);
+        const candidates = Number.isFinite(maxServableInput)
+          ? [...sql.exec(
+              `SELECT * FROM (
+                 SELECT jobs.*, job_models.priority AS jm_priority,
+                        job_models.created_at AS jm_created_at, job_models.job_id AS jm_job_id
+                 FROM job_models
+                 JOIN jobs ON jobs.id = job_models.job_id
+                 WHERE job_models.model = ? AND jobs.state = 'queued'
+                 ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
+                 LIMIT ?
+               )
+               WHERE input_token_estimate <= ?
+               ORDER BY jm_priority ASC, jm_created_at ASC, jm_job_id ASC
+               LIMIT ?`,
+              modelPlan.model,
+              candidateLookahead,
+              maxServableInput,
+              maxJobsPerModelClaim
+            )]
+          : [...sql.exec(
+              `SELECT jobs.* FROM job_models
+               JOIN jobs ON jobs.id = job_models.job_id
+               WHERE job_models.model = ? AND jobs.state = 'queued'
+               ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
+               LIMIT ?`,
+              modelPlan.model,
+              maxJobsPerModelClaim
+            )];
 
         for (const job of candidates) {
           if (chosen.length >= maxBundleJobs) break;
@@ -2706,13 +2787,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
         let workingRoute = getMergedRoute(route);
         const providerCfg = dispatchLimits.providers?.[route.provider];
         for (const job of routeJobs) {
-          const margin = this._calibratedMargin(route.route_id, route.model, job.prompt_family);
+          const { inputRatio, outputForecast } = this._calibration(
+            route,
+            job.prompt_family,
+            calibrationCache
+          );
           const providerLedger = route.provider
             ? getMergedProvider(route.provider, providerCfg)
             : null;
           const waitResult = computeRouteLaneWait(workingRoute, job, laneTime, now, {
             estimateFloor,
-            calibratedMargin: margin,
+            inputRatio,
+            outputForecast,
             providerConfig: providerCfg,
             providerLedger,
           });
@@ -3189,6 +3275,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const isTransientRouteFailure = isFinal5xx || isUpstreamCapacityFailure;
         const nextTransientRetryCount = (job.transient_retry_count || 0) + 1;
         const isRouteInputLimit = result.failure_class === "route_input_limit";
+        // The route's model is gone (404/410 -- classify.js rule 8). Not this job's fault, so it
+        // draws on the larger upstream budget and the route itself is stood down for hours.
+        const isRouteUnavailable = result.failure_class === "route_unavailable";
         const blockedUntil = isTransientRouteFailure || isRouteInputLimit
           ? this._5xxBlockedUntil(nextTransientRetryCount, now)
           : null;
@@ -3209,7 +3298,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const shouldRetryRouteInputLimit =
           isRouteInputLimit &&
           job.transient_retry_count < _retryCeiling(this._max5xxRetries());
+        const shouldRetryRouteUnavailable =
+          isRouteUnavailable &&
+          job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
         const shouldRequeue =
+          shouldRetryRouteUnavailable ||
           shouldRetry5xx ||
           shouldRetryRouteInputLimit ||
           isPaymentRequired ||
@@ -3376,6 +3469,30 @@ export class LLMSchedulerDO extends DurableObjectBase {
             }
           }
 
+          if (result.outcome === "success" && observedTotal != null) {
+            // Settle the claim-time reservation to what the provider actually counted. The
+            // reservation is a forecast (calibration.js); without this a job that reserved 15k and
+            // used 5k kept the route's token bucket 10k short, delaying the next admission by
+            // however long 10k takes to refill -- and an under-forecast was never charged at all.
+            // A positive delta refunds, a negative one debits; the rolling per-minute window is
+            // only adjusted while it is still the window this reservation counted against.
+            const catalogRoute = this._dispatchLimits()?.routes_by_id?.[job.lease_route_id];
+            const delta = reservation - observedTotal;
+            if (Number(catalogRoute?.tpm) > 0 && delta !== 0) {
+              sql.exec(
+                `UPDATE routes SET
+                   tpm_reserved = CASE WHEN tpm_window_start = ?
+                                       THEN MAX(0, tpm_reserved - ?) ELSE tpm_reserved END,
+                   full_token_budget = full_token_budget + ?
+                 WHERE route_id = ?`,
+                job.reservation_tpm_window_start,
+                delta,
+                delta,
+                job.lease_route_id
+              );
+            }
+          }
+
           if (result.outcome === "success") {
             // A successful call proves the route is healthy again -- clear every backoff signal,
             // 402's included, not just the 429 ones already cleared here.
@@ -3408,6 +3525,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
               newStreak,
               paymentRequiredBackoffUntil(newStreak, now),
               result.provider_status_code ?? 429,
+              job.lease_route_id
+            );
+          } else if (isRouteUnavailable) {
+            // A retired model does not come back on a 5xx-style minute scale. Block the route for
+            // ROUTE_UNAVAILABLE_BLOCK_SECONDS so every sibling job stops being admitted onto it;
+            // once the block lapses a single attempt re-probes it.
+            sql.exec(
+              "UPDATE routes SET blocked_until = MAX(COALESCE(blocked_until, 0), ?), " +
+                "last_provider_status = ?, last_failure_class = ? WHERE route_id = ?",
+              now + this._routeUnavailableBlockMs(),
+              result.provider_status_code ?? null,
+              result.failure_class,
               job.lease_route_id
             );
           } else if (isRouteInputLimit) {
@@ -3457,9 +3586,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
             );
           }
 
-          // Unit 7 calibration: only ever raises the recorded margin, never lowers it.
+          // Unit 7 calibration, now a bounded recent window of input ratios and output sizes
+          // (calibration.js) rather than a never-decreasing total.
           if (observedTotal != null) {
-            this._calibrateEstimate(job.lease_route_id, job.prompt_family, observedTotal, now);
+            this._calibrateEstimate(job.lease_route_id, job.prompt_family, observedTotal, now, {
+              inputEstimate: job.input_token_estimate,
+              observedInput: result.observed_input_tokens,
+              observedOutput: result.observed_output_tokens,
+            });
           }
         }
       }
@@ -3479,41 +3613,43 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /** Unit 7: never decrease an existing margin; insert the configured floor as the first
    * observation for a route:model:prompt_family key. `model` is looked up from the route's own
    * lease, since jobs does not itself store the resolved model name. */
-  _calibrateEstimate(routeId, promptFamily, observedTotal, now) {
+  _calibrateEstimate(routeId, promptFamily, observedTotal, now, sample = {}) {
     const sql = this._getSql();
     const model = this._modelForRoute(routeId);
     const key = `${routeId}:${model}:${promptFamily}`;
-    const existing = [...sql.exec("SELECT margin_tokens, sample_count FROM estimates WHERE key = ?", key)];
+    const existing = [...sql.exec(
+      "SELECT margin_tokens, recent_observed_summary FROM estimates WHERE key = ?",
+      key
+    )];
+    const summary = JSON.stringify(
+      recordCalibrationSample(parseCalibrationSummary(existing[0]?.recent_observed_summary), sample)
+    );
+    // margin_tokens stays a high-water mark for diagnostics only; admission no longer reads it.
     if (existing.length === 0) {
       sql.exec(
         `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
          VALUES (?, ?, 1, ?, ?)`,
         key,
         Math.max(observedTotal, this._estimateFloor()),
-        JSON.stringify([observedTotal]),
+        summary,
         now
       );
       return;
     }
-    const current = existing[0];
-    if (observedTotal > current.margin_tokens) {
-      sql.exec(
-        "UPDATE estimates SET margin_tokens = ?, sample_count = sample_count + 1, updated_at = ? WHERE key = ?",
-        observedTotal,
-        now,
-        key
-      );
-    } else {
-      sql.exec(
-        "UPDATE estimates SET sample_count = sample_count + 1, updated_at = ? WHERE key = ?",
-        now,
-        key
-      );
-    }
+    sql.exec(
+      `UPDATE estimates SET margin_tokens = MAX(margin_tokens, ?), sample_count = sample_count + 1,
+                            recent_observed_summary = ?, updated_at = ? WHERE key = ?`,
+      observedTotal,
+      summary,
+      now,
+      key
+    );
   }
 
   _modelForRoute(routeId) {
     const catalog = this._dispatchLimits();
+    const primary = modelForRouteId(routeId, catalog);
+    if (primary) return primary;
     const modelRoutesMap = catalog?.model_routes_map || {};
     for (const [model, routeIds] of Object.entries(modelRoutesMap)) {
       if (Array.isArray(routeIds) && routeIds.includes(routeId)) {

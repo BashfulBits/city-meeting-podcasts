@@ -43,7 +43,12 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert len(worker["routes_by_id"]) == len(compiled["routes"])
     assert "routes" not in worker
     assert "structured_output_profiles" not in worker
-    assert worker["model_aliases"]["nvidia/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"
+    assert worker["model_aliases"]["nvidia/deepseek-v4.1-flash"] == "deepseek/deepseek-v4.1-flash"
+    # One NVIDIA route serves three pools via also_serves -- never by aliasing the pools together.
+    assert "deepseek/deepseek-v4-pro" not in worker["model_aliases"]
+    assert worker["routes_by_id"]["nvidia_deepseek_v4_1_flash_free"]["model"] == (
+        "deepseek/deepseek-v4.1-flash"
+    )
     assert worker["model_aliases"]["orcarouter/deepseek-v4-flash"] == "deepseek/deepseek-v4-flash"
     gemma = worker["routes_by_id"]["gemma_4_31b_primary"]
     assert isinstance(gemma, dict)
@@ -56,7 +61,8 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert "sambanova_gemma_4_31b_it_primary" in worker["model_routes_map"]["google/gemma-4-31b-it"]
     assert worker["providers"]["sambanova"]["rpm"] == 20
     assert worker["providers"]["sambanova"]["ai_gateway_max_attempts"] == 1
-    assert worker["providers"]["nvidia"]["concurrency"] == 2
+    # Raised 2 -> 3 (2026-09-23) so Nemotron 3 Ultra always keeps an NVIDIA slot.
+    assert worker["providers"]["nvidia"]["concurrency"] == 3
     assert gemma["request_start_margin_seconds"] is None
     # model_routes_map holds route-ID strings that key directly into routes_by_id -- not the
     # integer positions an earlier revision used, which could silently misresolve to a different
@@ -91,8 +97,13 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
         )
         == 2
     )
-    assert compiled["model_aliases"]["nvidia/deepseek-v4-flash-0731"] == deepseek_key
-    assert compiled["model_aliases"]["nvidia/deepseek-v4-flash-0731"] == deepseek_key
+    # NVIDIA's deepseek-v4.1-flash is ONE route (one ledger) listed in three pools via
+    # `also_serves`: its own exact-model pool, the pooled v4-flash name, and v4-pro.
+    nvidia_v41 = "nvidia_deepseek_v4_1_flash_free"
+    assert compiled["model_routes_map"]["deepseek/deepseek-v4.1-flash"] == [nvidia_v41]
+    assert compiled["model_routes_map"]["deepseek/deepseek-v4-pro"] == [nvidia_v41]
+    assert nvidia_v41 in deepseek_routes
+    assert "deepseek/deepseek-v4-pro" not in compiled["model_aliases"]
     assert compiled["model_aliases"]["orcarouter/deepseek-v4-flash"] == deepseek_key
 
     nemotron_key = "nvidia/nemotron-3-ultra-550b-a55b:free"
@@ -833,3 +844,70 @@ def test_mistral_medium_legacy_aliases_match_latest_account_coverage():
     assert latest_accounts == {"primary", "secondary", "tertiary"}
     for alias in ("mistral/mistral-medium-2505", "mistral/mistral-medium-2508"):
         assert accounts_by_model[alias] == latest_accounts, alias
+
+
+def _also_serves_route(**overrides):
+    route = {
+        "route_id": "nv_v41",
+        "model": "nvidia/v41",
+        "model_key": "ds/v4.1",
+        "provider": "nvidia",
+        "account_id": "primary",
+        "upstream_model": "deepseek-ai/deepseek-v4.1-flash",
+        "input_context_limit": 1000,
+        "output_context_limit": 100,
+        "also_serves": ["ds/v4-flash", "ds/v4-pro"],
+    }
+    route.update(overrides)
+    return route
+
+
+def test_also_serves_lists_one_route_in_several_pools_without_aliasing_them():
+    orca = {
+        "route_id": "orca",
+        "model": "ds/v4-flash",
+        "provider": "orcarouter",
+        "account_id": "primary",
+        "upstream_model": "deepseek-v4-flash",
+        "input_context_limit": 1000,
+        "output_context_limit": 100,
+    }
+    _routes, by_id, model_map, aliases = compile_llm_limits._validated_routes(
+        [orca, _also_serves_route()]
+    )
+    assert model_map["ds/v4.1"] == ["nv_v41"]
+    assert model_map["ds/v4-flash"] == ["orca", "nv_v41"]
+    assert model_map["ds/v4-pro"] == ["nv_v41"]
+    assert by_id["nv_v41"]["model"] == "ds/v4.1"
+    assert "ds/v4-pro" not in aliases and "ds/v4-flash" not in aliases
+
+
+@pytest.mark.parametrize(
+    "also_serves",
+    [
+        "ds/v4-pro",  # not a list
+        ["ds/v4-pro", "ds/v4-pro"],  # duplicate
+        ["ds/v4.1"],  # its own primary pool
+        [""],  # blank
+    ],
+)
+def test_also_serves_rejects_malformed_lists(also_serves):
+    with pytest.raises(ValueError, match="also_serves"):
+        compile_llm_limits._validated_routes([_also_serves_route(also_serves=also_serves)])
+
+
+def test_also_serves_rejects_an_alias_instead_of_a_canonical_pool():
+    aliased = {
+        "route_id": "orca",
+        "model": "orcarouter/ds-v4-flash",
+        "model_key": "ds/v4-flash",
+        "provider": "orcarouter",
+        "account_id": "primary",
+        "upstream_model": "deepseek-v4-flash",
+        "input_context_limit": 1000,
+        "output_context_limit": 100,
+    }
+    with pytest.raises(ValueError, match="alias"):
+        compile_llm_limits._validated_routes(
+            [aliased, _also_serves_route(also_serves=["orcarouter/ds-v4-flash"])]
+        )

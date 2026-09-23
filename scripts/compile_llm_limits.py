@@ -297,11 +297,16 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
 
 _WORKER_ROUTE_FIELDS = (
     "route_id",
+    # The route's PRIMARY logical model. A route listed in several pools via `also_serves`
+    # appears in several model_routes_map entries, so the Worker must not infer its identity from
+    # whichever pool it happens to find first (routes.js modelForRouteId).
+    "model",
     "provider",
     "upstream_model",
     "input_context_limit",
     "output_context_limit",
     "hard_input_ceiling",
+    "input_token_ratio",
     "account_id",
     "rpm",
     "rpd",
@@ -623,6 +628,38 @@ def _validated_routes(
         model_routes_map.setdefault(c_model, []).append(r_id)
         register_alias(source_model, c_model, index)
 
+    # `also_serves`: one physical route may belong to more than one logical model pool. The route
+    # keeps a single route_id -- so a single set of rpm/rpd/tpm counters, matching the single
+    # upstream quota -- and is appended to each listed pool after its primary `model` pool. Used
+    # when a provider serves one upstream model under several logical names (NVIDIA's
+    # deepseek-v4.1-flash replacing both retired v4-flash-0731 and v4-pro-0813) without making
+    # those names aliases of each other, which would also pull every other route of the primary
+    # pool into them.
+    for route in normalized_routes:
+        extra = route.get("also_serves")
+        if extra is None:
+            continue
+        if not isinstance(extra, list) or not all(
+            isinstance(model, str) and model.strip() for model in extra
+        ):
+            raise ValueError(
+                f"route {route['route_id']!r} has an invalid also_serves: {extra!r} "
+                "(expected a list of model names)"
+            )
+        if len(set(extra)) != len(extra) or route["model"] in extra:
+            raise ValueError(
+                f"route {route['route_id']!r} also_serves must list distinct models other than "
+                f"its own model {route['model']!r}"
+            )
+        for model in extra:
+            if model in model_aliases:
+                raise ValueError(
+                    f"route {route['route_id']!r} also_serves {model!r}, which is an alias of "
+                    f"{model_aliases[model]!r}; name the canonical pool instead"
+                )
+            model_routes_map.setdefault(model, []).append(route["route_id"])
+        route["also_serves"] = list(extra)
+
     canonical_models = set(model_routes_map)
     conflicts = sorted(alias for alias in model_aliases if alias in canonical_models)
     if conflicts:
@@ -828,6 +865,25 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"({route['input_context_limit']}); it can never bind and should be removed"
                 )
             route["hard_input_ceiling"] = int(hard_ceiling)
+        # Provider tokens per estimate unit (`estimate_tokens`' chars/4). Our estimate is one
+        # tokenizer-agnostic heuristic; each model family's real tokenizer diverges from it by a
+        # measured, model-specific ratio (2026-09-23, 1,727 paired B2 payload/result samples:
+        # Gemma p95 1.16, Gemini 3.5 Flash Lite p95 2.15). Every size and pacing comparison
+        # against this route's real limits multiplies the raw estimate by this ratio first, in
+        # both the Python producers and the Worker. Absent means 1.0, today's behavior.
+        ratio = route.get("input_token_ratio")
+        if ratio is not None:
+            if (
+                isinstance(ratio, bool)
+                or not isinstance(ratio, (int, float))
+                or not math.isfinite(ratio)
+                or not 0.25 <= ratio <= 8.0
+            ):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"input_token_ratio: {ratio!r} (expected a number from 0.25 to 8.0)"
+                )
+            route["input_token_ratio"] = float(ratio)
         # Rate probe characterization measurements (PR-5 / Initiative 20).
         obs_ceil = route.get("observed_input_ceiling")
         if obs_ceil is not None:

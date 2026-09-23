@@ -434,14 +434,31 @@ test("classifyProviderFailure handles unmatched-429 and route-default-upstream",
 
 test("classifyProviderFailure handles generic 4xx as request_defect", () => {
   const res = classifyProviderFailure({
-    status: 404,
-    body: { error: { message: "Model not found" } },
+    status: 422,
+    body: { error: { message: "Invalid parameter: temperature" } },
     headers: null,
     route: { provider: "gemini", route_id: "gemini/unknown" },
   });
   assert.equal(res.failure_class, "request_defect");
   assert.equal(res.rule_id, "http-4xx");
   assert.equal(res.scope, "route");
+});
+
+test("a 404/410 for a retired model is route_unavailable, not a defect in the job", () => {
+  for (const [status, message] of [
+    [404, "Model not found"],
+    [410, "The model deepseek-ai/deepseek-v4-pro-0813 has reached its end of life"],
+  ]) {
+    const res = classifyProviderFailure({
+      status,
+      body: { error: { message } },
+      headers: null,
+      route: { provider: "nvidia", route_id: "nvidia_retired" },
+    });
+    assert.equal(res.failure_class, "route_unavailable", `status ${status}`);
+    assert.equal(res.rule_id, "http-404-410-model-unavailable");
+    assert.equal(res.scope, "route");
+  }
 });
 
 test("FAILURE_SIGNATURES has at least 13 rules", () => {

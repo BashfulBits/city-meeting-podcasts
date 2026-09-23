@@ -735,6 +735,148 @@ test("completeBatch calibration only ever raises margin_tokens, never lowers it"
   }
 });
 
+const CEILING_CATALOG = {
+  model_aliases: {},
+  model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio"] },
+  routes_by_id: {
+    "gemma-ai-studio": {
+      provider: "gemini",
+      upstream_model: "gemma-4-31b-it",
+      rpm: 30,
+      rpd: 14400,
+      tpm: 14400,
+      hard_input_ceiling: 10000,
+      input_token_ratio: 1.2,
+      free: true,
+      input_context_limit: 262144,
+      output_context_limit: 32768,
+    },
+  },
+};
+
+function gemmaJob(id, input, overrides = {}) {
+  return makeJob(id, {
+    policy_json: JSON.stringify({ allowed_models: ["google/gemma-4-31b-it"], allow_paid: false }),
+    input_token_estimate: input,
+    max_output_token_estimate: 1000,
+    ...overrides,
+  });
+}
+
+async function succeed(coordinator, plan, job, observedInput, observedOutput, attemptId) {
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: job.id,
+      lease_token: job.lease_token,
+      attempt_id: attemptId,
+      planned_at: job.not_before_at,
+      observed_input_tokens: observedInput,
+      observed_output_tokens: observedOutput,
+      outcome: "success",
+      result_key: `results/${job.id}/${job.lease_token}.json`,
+    },
+  ]);
+}
+
+test("claim reserves input in the route's tokenizer units via its input_token_ratio prior", async () => {
+  const { coordinator } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
+  await coordinator.enqueueBatch([gemmaJob("g1", 5000)]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.jobs.length, 1);
+  // ceil(5000 * 1.2) input + the full 1000 max_tokens before any calibration samples exist.
+  assert.equal(plan.jobs[0].token_reservation, 7000);
+});
+
+test("calibration follows recent output sizes instead of ratcheting on one large job", async () => {
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
+  const key = "gemma-ai-studio:google/gemma-4-31b-it:tags";
+  // A window of 16 recent completions: ratio 1.0, outputs of 200 tokens -- plus a stale
+  // high-water margin that the old calibration would have reserved for every later job.
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 15000, 16, ?, 0)`,
+    key,
+    JSON.stringify({ r: Array(16).fill(1.0), o: Array(16).fill(200) })
+  );
+  await coordinator.enqueueBatch([gemmaJob("g1", 5000)]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  // 5000 * 1.0 learned ratio + ceil(200 * 1.25) forecast; the 15000 margin no longer applies.
+  assert.equal(plan.jobs[0].token_reservation, 5250);
+
+  await succeed(coordinator, plan, plan.jobs[0], 5100, 180, "a1");
+  const row = [...sql.exec("SELECT margin_tokens, recent_observed_summary FROM estimates WHERE key = ?", key)][0];
+  assert.equal(row.margin_tokens, 15000); // diagnostic high-water only
+  const summary = JSON.parse(row.recent_observed_summary);
+  assert.equal(summary.r.at(-1), 1.02);
+  assert.equal(summary.o.at(-1), 180);
+});
+
+test("a successful completion settles the token bucket to actual usage", async () => {
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
+  await coordinator.enqueueBatch([gemmaJob("g1", 5000)]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  const reservation = plan.jobs[0].token_reservation;
+  const read = () =>
+    [...sql.exec(
+      "SELECT full_token_budget, tpm_reserved FROM routes WHERE route_id = 'gemma-ai-studio'"
+    )][0];
+  const before = read();
+  await succeed(coordinator, plan, plan.jobs[0], 4000, 300, "a1");
+  const after = read();
+  const refund = reservation - 4300;
+  assert.ok(refund > 0);
+  assert.equal(after.full_token_budget, before.full_token_budget + refund);
+  assert.equal(after.tpm_reserved, Math.max(0, before.tpm_reserved - refund));
+});
+
+test("claim looks past queue-head jobs too large for every route with capacity", async () => {
+  const { coordinator } = makeCoordinator({
+    DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG,
+    MAX_BUNDLE_JOBS: "2",
+    MAX_JOBS_PER_MODEL_CLAIM: "2",
+  });
+  // Six oversized jobs first (13k raw = 15.6k Gemma tokens > 10k ceiling). enqueueBatch still
+  // indexes them under the model because the coarse context check passes; the ceiling is the
+  // per-route admission fact. Then one job that fits.
+  const big = Array.from({ length: 6 }, (_, i) => gemmaJob(`big-${i}`, 13000));
+  await coordinator.enqueueBatch(big);
+  await coordinator.enqueueBatch([gemmaJob("small", 6000)]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.deepEqual(plan.jobs.map((job) => job.id), ["small"]);
+});
+
+test("a 404/410 requeues the job and stands the whole route down", async () => {
+  const { coordinator, sql } = makeCoordinator({ ROUTE_UNAVAILABLE_BLOCK_SECONDS: "3600" });
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  const job = plan.jobs[0];
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: job.id,
+      lease_token: job.lease_token,
+      attempt_id: "a1",
+      planned_at: job.not_before_at,
+      actual_start_at: now,
+      actual_end_at: now + 100,
+      outcome: "retryable_error",
+      provider_status_code: 410,
+      failure_class: "route_unavailable",
+    },
+  ]);
+  const jobRow = [...sql.exec("SELECT state, transient_retry_count FROM jobs WHERE id = 'j1'")][0];
+  assert.equal(jobRow.state, "queued");
+  assert.equal(jobRow.transient_retry_count, 1);
+  const route = [...sql.exec(
+    "SELECT blocked_until, last_failure_class FROM routes WHERE route_id = ?",
+    job.route_id
+  )][0];
+  assert.ok(route.blocked_until >= now + 3_600_000 - 1000);
+  assert.equal(route.last_failure_class, "route_unavailable");
+  const indexed = [...sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id = 'j1'")][0];
+  assert.ok(indexed.n > 0, "a requeued job must be re-indexed so a sibling route can take it");
+});
+
 test("purgePendingBatch and confirmPurge clean up old terminal jobs idempotently", async () => {
   const { coordinator, sql } = makeCoordinator({ COMPLETED_RETENTION_DAYS: "1" });
   await coordinator.enqueueBatch([makeJob("j1")]);

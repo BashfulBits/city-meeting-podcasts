@@ -17,6 +17,41 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM dispatch throughput: route cleanup, a usable dispatch window, token calibration, and
+  head-of-line admission** (`config/provider_limits.yml`, `workers/llm-dispatch-v2/`,
+  `scripts/compile_llm_limits.py`, `citypods/compute/llm_policy.py`, `citypods/compute/llm_scheduler.py`,
+  `config/site_config.yml`). A 2026-09-23 throughput review found the Worker dispatching ~1,000-2,000
+  calls/day against a ~5,600/day write-bounded ceiling while Gemma, Flash Lite, and Nemotron capacity
+  sat idle.
+  - *NVIDIA prioritizes Nemotron 3 Ultra*: NVIDIA's Gemma route (172s median) and OpenRouter's two
+    Gemma legs (~99% upstream 429s) are paused with `rpd: 0`; kimi-k3 and the DeepSeek route drop to
+    concurrency 1; NVIDIA provider concurrency rises 2 → 3.
+  - *DeepSeek v4.1*: NVIDIA retired `deepseek-v4-pro-0813`, `deepseek-v4-flash-0731`, and
+    `gpt-oss-120b` (410 Gone). The new `nvidia_deepseek_v4_1_flash_free` route serves three pools
+    through the new `also_serves` route field (one ledger): exact `deepseek/deepseek-v4.1-flash`,
+    pooled `deepseek/deepseek-v4-flash` (with OrcaRouter), and `deepseek/deepseek-v4-pro`.
+    `gpt-oss-120b`'s NVIDIA leg is paused. The `tournament:tag` contestant becomes the exact
+    `deepseek/deepseek-v4.1-flash` pool so one contestant is always one model; its tournament
+    win-rate history restarts under the new name.
+  - *Dispatch window*: `ESTIMATED_CALL_DURATION_CEILING_SECONDS` 20 → 2 and `DISPATCH_WINDOW_SECONDS`
+    25 → 30. The old pair admitted only jobs startable in the first 5s of each window although the
+    window only bounds call *starts* (a started call is bounded by `MAX_RESPONSE_SECONDS`).
+  - *404/410 → `route_unavailable`*: requeues the job and stands the route down
+    (`ROUTE_UNAVAILABLE_BLOCK_SECONDS`, 6h) instead of failing the job terminally while the route
+    kept full capacity (22-28 locator/moments jobs a day).
+  - *Token calibration*: new route field `input_token_ratio` (measured from 1,727 paired B2
+    payload/result samples) scales the chars/4 estimate before ceiling/context/TPM checks in both
+    Python and the Worker. The Worker's never-decreasing `margin_tokens` reservation floor (one 15k
+    Gemma batch made every later Gemma job reserve >14.4k/min) is replaced by a bounded window of
+    recent input ratios and output sizes, and successful completions settle the token bucket to
+    actual usage.
+  - *Head-of-line*: when every route of a model that has capacity carries a size ceiling, the claim
+    looks up to `MAX_CANDIDATE_LOOKAHEAD` (32) queue entries deep for jobs that fit, instead of
+    stalling behind oversized queue-head jobs.
+  No recipe, lane-string, or pipeline-version change; nothing is re-queued. Stored artifacts are
+  unaffected. The Worker's existing `estimates` rows start a fresh calibration window (the old
+  single-total summaries carry no input/output split).
+
 - **Raised the validated LLM dispatcher and chapter-agenda intake limits**
   (`workers/llm-dispatch-v2/wrangler.jsonc`, `config/site_config.yml`).
   `MAX_IN_FLIGHT_LLM_CALLS` rises from 8 to 12 after production telemetry repeatedly exhausted

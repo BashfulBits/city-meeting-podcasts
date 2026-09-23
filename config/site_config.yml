@@ -215,7 +215,10 @@ llm_lanes:
     dispatch_shape: per_model
     models:
       - "gemini/gemini-3.1-flash-lite"
-      - "deepseek/deepseek-v4-flash"
+      # Exact-model pool (NVIDIA's deepseek-v4.1-flash only). `deepseek/deepseek-v4-flash` now
+      # pools v4.1 with OrcaRouter's older v4, so a contestant named that way would be answered by
+      # two different models and void the comparison (2026-09-23).
+      - "deepseek/deepseek-v4.1-flash"
       - "zai/glm-4.7-flash"
       - "google/gemma-4-26b-a4b-it"
     # One sample costs 4 candidate jobs here and 12 comparisons in `tournament:tag-judge`, so

@@ -76,12 +76,27 @@ test("availableTokenBudget refills linearly with no upper cap (2026-09-13 redesi
   assert.ok(availableTokenBudget(route, NOW + 999_000_000) > farBeyondTheOldFiveWindowCap);
 });
 
-test("reservationFor takes the max of client estimate, floor, and calibrated margin", () => {
-  const j = job({ input_token_estimate: 500, max_output_token_estimate: 200 }); // 700
+test("reservationFor scales input by the route ratio and reserves the output forecast", () => {
+  const j = { input_token_estimate: 500, max_output_token_estimate: 200 };
+  // No ratio, no forecast: the raw estimate plus the full max_tokens (the pre-calibration shape).
   assert.equal(reservationFor(j), 700);
   assert.equal(reservationFor(j, { estimateFloor: 1000 }), 1000);
-  assert.equal(reservationFor(j, { calibratedMargin: 1500 }), 1500);
-  assert.equal(reservationFor(j, { estimateFloor: 800, calibratedMargin: 600 }), 800);
+  // A route's static prior scales only the input side.
+  assert.equal(reservationFor(j, { route: { input_token_ratio: 2 } }), 1200);
+  // An explicit calibrated ratio wins over the route prior.
+  assert.equal(reservationFor(j, { route: { input_token_ratio: 2 }, inputRatio: 1.5 }), 950);
+  // A learned output forecast replaces max_tokens, but never exceeds it.
+  assert.equal(reservationFor(j, { outputForecast: 80 }), 580);
+  assert.equal(reservationFor(j, { outputForecast: 5000 }), 700);
+});
+
+test("earliestSafeStart compares hard_input_ceiling in the provider's token units", () => {
+  const now = Date.now();
+  const route = { rpm: 30, tpm: 14400, hard_input_ceiling: 10000, input_token_ratio: 1.2 };
+  // 8,000 raw chars/4 tokens is 9,600 Gemma tokens: admissible.
+  assert.notEqual(earliestSafeStart(route, { input_token_estimate: 8000 }, now, now), null);
+  // 9,000 raw is 10,800 Gemma tokens: over the measured ceiling, although the raw figure is not.
+  assert.equal(earliestSafeStart(route, { input_token_estimate: 9000 }, now, now), null);
 });
 
 test("earliestSafeStart admits immediately when a fresh route has full headroom", () => {

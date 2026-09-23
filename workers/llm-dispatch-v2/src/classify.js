@@ -517,7 +517,24 @@ export function classifyProviderFailure({ status, body, headers, route }) {
     }
   }
 
-  // 8. Any other status -> request_defect
+  // 8. The route's model is gone or unreachable, not this request -> route_unavailable.
+  //
+  // A chat-completions 404/410 is never about one job's payload: it means the provider no longer
+  // serves this upstream model (NVIDIA's 410 Gone for deepseek-v4-pro-0813 and gpt-oss-120b,
+  // 2026-09-21/22) or the route's path is wrong (the 2026-08-29 gateway `/v1` 404s). Classified as
+  // request_defect, each attempt failed its job terminally while the route kept a full capacity
+  // score and kept being chosen -- 22-28 jobs a day on one retired model. The coordinator requeues
+  // the job and stands the whole route down instead. The capacity-shaped 404 is matched above.
+  if (status === 404 || status === 410) {
+    return {
+      failure_class: "route_unavailable",
+      rule_id: "http-404-410-model-unavailable",
+      retry_after_seconds: retryAfterSeconds,
+      scope: "route",
+    };
+  }
+
+  // 9. Any other status -> request_defect
   return {
     failure_class: "request_defect",
     rule_id: "http-4xx",

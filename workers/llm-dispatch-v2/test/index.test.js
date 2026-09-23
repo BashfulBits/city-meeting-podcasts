@@ -84,6 +84,9 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
     )
   );
 
+  assert.throws(() => validateConfig(createMockEnv({ MAX_CANDIDATE_LOOKAHEAD: "2" })));
+  assert.throws(() => validateConfig(createMockEnv({ MAX_CANDIDATE_LOOKAHEAD: "1000" })));
+
   // BEARER_TOKEN unset must fail closed at startup, not silently disable auth per-request.
   const noTokenEnv = createMockEnv();
   delete noTokenEnv.BEARER_TOKEN;
@@ -372,4 +375,18 @@ test("GET /v2/stats makes historical diagnostics explicit and clamps their limit
   assert.equal(await call("limit=99999"), 200);
   assert.equal(await call("limit=0"), 200);
   assert.equal(await call("limit=notanumber"), 200);
+});
+
+test("the committed wrangler.jsonc vars pass validateConfig", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const raw = await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8");
+  // Strip // line comments that are not inside a string, then parse as JSON.
+  const stripped = raw
+    .split("\n")
+    .map((line) => line.replace(/^(\s*)\/\/.*$/, "$1").replace(/("(?:[^"\\]|\\.)*"\s*[,:]?\s*)\/\/.*$/, "$1"))
+    .join("\n");
+  const { vars } = JSON.parse(stripped);
+  assert.equal(vars.DISPATCH_WINDOW_SECONDS, "30");
+  assert.equal(vars.ESTIMATED_CALL_DURATION_CEILING_SECONDS, "2");
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ ...vars })));
 });

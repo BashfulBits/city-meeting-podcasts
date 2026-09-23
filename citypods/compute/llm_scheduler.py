@@ -7,7 +7,7 @@ import random
 import time
 import uuid
 from collections.abc import Mapping, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -408,8 +408,22 @@ def select_route(
             rejected.append((model, "transport gate"))
             continue
         if allowed is not None and model not in allowed:
-            rejected.append((model, "allowlist gate"))
-            continue
+            # One physical route may serve several logical pools (`also_serves`). Admit it through
+            # the pool the caller named, and evaluate it as that pool's candidate so the result
+            # reports the requested model. The ledger stays keyed by route_id: one set of counters.
+            pool = next(
+                (
+                    extra
+                    for extra in route.also_serves
+                    if extra in (requested or set()) or extra in allowed
+                ),
+                None,
+            )
+            if pool is None:
+                rejected.append((model, "allowlist gate"))
+                continue
+            route = replace(route, model=pool)
+            model = pool
         if input_tokens > route.input_context_limit:
             rejected.append((model, "input context limit"))
             continue

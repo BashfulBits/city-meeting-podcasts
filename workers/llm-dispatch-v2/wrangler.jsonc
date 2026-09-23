@@ -38,9 +38,21 @@
     // Read at most this many indexed queue entries for one capacity-ranked model before moving
     // to the next model. Exact token/lane checks still run only on these small candidate sets.
     "MAX_JOBS_PER_MODEL_CLAIM": "4",
+    // When every route of a model that currently has capacity carries a hard_input_ceiling, the
+    // claim reads up to this many queue entries (oldest first) to find jobs small enough for one
+    // of them, instead of stopping at the first MAX_JOBS_PER_MODEL_CLAIM. Without it a handful of
+    // oversized queue-head jobs blocked every smaller job behind them. Bounded, covering-index
+    // read: at most ~2 x 32 rows per model per tick, and only for ceiling-bound models.
+    "MAX_CANDIDATE_LOOKAHEAD": "32",
+    // A route answering 404/410 (retired model, broken path) is stood down this long.
+    "ROUTE_UNAVAILABLE_BLOCK_SECONDS": "21600",
     "MAX_JOBS_PER_ROUTE_PER_BUNDLE": "3",
     "MAX_CONCURRENT_ROUTE_LANES": "5",
-    "DISPATCH_WINDOW_SECONDS": "25",
+    // Raised 25 -> 30 on 2026-09-23: the largest value validateConfig's lease identity allows
+    // (DISPATCH_WINDOW + MAX_RESPONSE 720 + FINALIZATION_RESERVE 90 <= LEASE_DURATION 840). The
+    // window bounds only when a call may START; a started call is bounded separately by
+    // MAX_RESPONSE_SECONDS, and waiting on a provider costs no Worker CPU time.
+    "DISPATCH_WINDOW_SECONDS": "30",
     "CRON_TICK_SECONDS": "60",
     // Raised from 2 on 2026-09-20 to let one additional slow bundle overlap. This changes
     // concurrency only; daily bundle/job/write caps remain unchanged.
@@ -109,12 +121,14 @@
     // the same invocation -- validateConfig enforces this bound against both knobs together.
     "CLEANUP_INTERVAL_MINUTES": "60",
     "PURGE_BATCH_LIMIT": "15",
-    // Conservative upper bound on one provider call's duration, used only to keep the DO from
-    // admitting a job whose planned start technically fits before the dispatch window's end but
-    // would still plausibly still be running past it -- see pacing.js and Unit 4's
-    // routeHasCapacityFor. Deliberately well under MAX_RESPONSE_SECONDS, which is the executor's
-    // actual per-call abort deadline, not an admission-time estimate.
-    "ESTIMATED_CALL_DURATION_CEILING_SECONDS": "20",
+    // Admission-time allowance subtracted from the dispatch window: a job is admitted only if its
+    // planned start + this value <= the window's end. Lowered 20 -> 2 on 2026-09-23. At 20 it
+    // left only the first 5s of a 25s window usable, although nothing downstream needs the CALL to
+    // finish inside the window -- the executor defers a job only when its START would fall past
+    // the window (index.js dispatchOneJob), and a started call is already bounded by
+    // MAX_RESPONSE_SECONDS inside the lease. The remaining 2s absorbs claim-to-receipt skew so a
+    // job planned at the window's very edge is not routinely deferred_late.
+    "ESTIMATED_CALL_DURATION_CEILING_SECONDS": "2",
     // Not secret -- a gateway slug, not a credential. Matches workers/llm-dispatch-proxy's own
     // wrangler.jsonc exactly. gateway.js's resolveProviderCredentials() only routes a call through
     // AI Gateway when both this and the CLOUDFLARE_ACCOUNT_ID secret are present; omitted, it

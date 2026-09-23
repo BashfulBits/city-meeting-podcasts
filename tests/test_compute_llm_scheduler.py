@@ -219,6 +219,10 @@ def test_allowlist_can_select_the_free_deepseek_pro_route():
         now=datetime(2026, 7, 16, 18, tzinfo=UTC),
     )
     assert result.model == model
+    # Served by NVIDIA's deepseek-v4.1-flash through `also_serves`: the same physical route (and
+    # so the same route_id-keyed ledger) as the exact v4.1 pool, reported under the pool asked for.
+    assert result.route.route_id == "nvidia_deepseek_v4_1_flash_free"
+    assert result.route.model == model
 
 
 def test_deepseek_peak_waits_for_the_next_cheapest_window():

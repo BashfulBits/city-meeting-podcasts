@@ -484,8 +484,8 @@ at enqueue time — it only ever activates on an already-queued job's later leas
 The pipeline routes LLM jobs across 12 independent providers via
 [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both
 `workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python
-`citypods/compute/llm_routes.json`). The generated catalog contains 73 physical provider/account
-routes representing 38 deduplicated logical models; every route supports direct LiteLLM and
+`citypods/compute/llm_routes.json`). The generated catalog contains 62 physical provider/account
+routes representing 33 logical model pools; every route supports direct LiteLLM and
 asynchronous dispatch. Structured-output profiles in the same YAML declare each route's JSON mode,
 direct handler, schema relaxation, and prompt-schema behavior; runtime code consumes those
 materialized capabilities rather than inferring them from model or route names. Input/output
@@ -502,7 +502,20 @@ AI Studio Gemini/Gemma route, capped at 10,000 tokens for Gemma 26B/31B — the 
 OpenRouter's or NVIDIA's free gateways remain `null` pending their own verification), and is enforced
 both in `select_route` (`citypods/compute/llm_scheduler.py`) and in the Cloudflare dispatch Worker's
 admission filtering (`routeFitsContext` in `workers/llm-dispatch-v2/src/routes.js` and
-`workers/llm-dispatch-v2/src/pacing.js`). Static catalog quotas are candidate capacity:
+`workers/llm-dispatch-v2/src/pacing.js`). Ceilings, context windows, and `tpm` are in the provider's
+own tokenizer units, while every job carries one tokenizer-agnostic `chars/4` estimate
+(`estimate_tokens`); a route's optional `input_token_ratio` (measured from paired B2 payload/result
+samples — Gemma 1.2, Nemotron 3 Ultra 1.75, Gemini 3.1/3.5 Flash Lite 1.6/2.15) scales that estimate
+before every such comparison (`route_input_tokens` in Python, `workers/llm-dispatch-v2/src/calibration.js`
+in the Worker). The v2 Worker additionally learns, per route × model × prompt family, the p95 input
+ratio and p95 output size of the last 32 completions (after 16 samples) and reserves
+`scaled input + min(max_tokens, 1.25 × p95 output)` rather than the full `max_tokens`; each successful
+completion then settles the route's token bucket to the provider's reported usage. One physical route
+may serve several logical pools via `also_serves` (one `route_id`, one ledger — e.g. NVIDIA's
+`deepseek-v4.1-flash` is the only route in `deepseek/deepseek-v4.1-flash` and `deepseek/deepseek-v4-pro`
+and pools with OrcaRouter in `deepseek/deepseek-v4-flash`); the compiled Worker catalog records each
+route's primary `model` so labels and calibration keys never depend on which pool lists it first.
+Static catalog quotas are candidate capacity:
 production routing records observed RPM, burst tolerance, input ceilings, and recovery timing
 via automated probes (`citypods/llm_rate_probe.py`). Rate-limit and capacity errors are classified
 across a 9-class failure taxonomy (`citypods/compute/llm_failure_class.py` and
@@ -514,7 +527,9 @@ provider's zoned midnight, and Mistral zero-provisioned limits (`x-ratelimit-lim
 a `payment_required` day-to-month backoff ladder. V2 also unwraps Gemini's one-element error arrays
 and structured retry delays in memory; actionable provider 503 overloads and 504 timeouts use the
 upstream-capacity budget, while explicit input/context-limit failures briefly quarantine the route
-and requeue once for sibling-route selection. The response text fallback is bounded and not stored.
+and requeue once for sibling-route selection. A 404/410 (retired model or broken route path) is
+`route_unavailable`: the job requeues on the upstream-capacity budget and the route is stood down for
+`ROUTE_UNAVAILABLE_BLOCK_SECONDS`. The response text fallback is bounded and not stored.
 
 | Canonical Model Name (`model`) | Quality Tier & Architecture | Providers in Pool | Representative Context Window* | Combined Free Capacity (RPM / Daily Quota) | Current Wired Task in Citypods | Recommended Civic Tasks & Future Verbs |
 |---|---|---|---|---|---|---|

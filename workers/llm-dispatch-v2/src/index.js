@@ -103,6 +103,19 @@ export function validateConfig(env) {
     );
   }
 
+  const candidateLookahead = Number(env.MAX_CANDIDATE_LOOKAHEAD || 32);
+  if (
+    !Number.isInteger(candidateLookahead) ||
+    candidateLookahead < maxJobsPerModelClaim ||
+    candidateLookahead > 256
+  ) {
+    throw new Error(
+      `Invalid config: MAX_CANDIDATE_LOOKAHEAD (${candidateLookahead}) must be an integer from ` +
+      `MAX_JOBS_PER_MODEL_CLAIM (${maxJobsPerModelClaim}) to 256 -- it bounds the rows one ` +
+      "claim may read per model when looking past queue-head jobs no available route can take"
+    );
+  }
+
   if (maxConcurrentLanes > 5) {
     throw new Error(
       `Invalid config: MAX_CONCURRENT_ROUTE_LANES (${maxConcurrentLanes}) must leave headroom under Cloudflare's ` +
@@ -731,6 +744,9 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
         // (retryable_error, 400) alone.
         (response.status >= 500 && cls.failure_class !== "route_input_limit") ||
         response.status === 402 ||
+        // A 404/410 means the route's model is gone, not that this job is defective; the
+        // coordinator requeues it and stands the route down (classify.js rule 8).
+        cls.failure_class === "route_unavailable" ||
         upstreamCapacityFailure(response.status, response.body)
           ? "retryable_error"
           : "terminal_error"
