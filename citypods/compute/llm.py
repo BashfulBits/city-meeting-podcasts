@@ -429,6 +429,10 @@ class LLMBackendConfig:
     dispatch_auth_token: str | None = None
     dispatch_v2_url: str | None = None
     dispatch_v2_auth_token: str | None = None
+    # Consumption-based retirement (review/44 tier 3): after a completed v2 result is durably
+    # persisted, delete its B2 payload/result objects client-side and retire the coordinator row
+    # outright. Off -> the plain ack path (the Worker's scheduled cleanup deletes them later).
+    dispatch_v2_client_retire: bool = True
     daily_ingest_cap: int | None = None
     timeout_seconds: float = 30.0
     # Extra routes a policy-bearing call may spill onto once ``model``'s own per-minute/daily quota
@@ -465,6 +469,10 @@ class LLMBackendConfig:
             or os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
             daily_ingest_cap=daily_cap,
             timeout_seconds=float(os.environ.get("LLM_TIMEOUT_SECONDS", cls.timeout_seconds)),
+            dispatch_v2_client_retire=os.environ.get("CITYPODS_LLM_DISPATCH_V2_CLIENT_RETIRE", "1")
+            .strip()
+            .lower()
+            not in {"0", "false", "no", "off"},
         )
 
 
@@ -2687,6 +2695,7 @@ class LiteLLMBackend(Backend):
         # Partition first, so the B2-bound work is a single parallel phase. Everything else here
         # is pure bookkeeping over the already-fetched statuses.
         completed: list[tuple[JobHandle, str, str | None]] = []
+        payload_keys: dict[str, str | None] = {}
         for h in v2_handles:
             st = statuses.get(h.ref)
             if not st:
@@ -2700,6 +2709,7 @@ class LiteLLMBackend(Backend):
             state = st.get("state")
             if state == "completed" and st.get("result_key"):
                 completed.append((h, st["result_key"], st.get("model")))
+                payload_keys[h.ref] = st.get("payload_key")
             elif state == "failed":
                 results[h.ref] = LLMDispatchTerminalError(
                     f"LLM dispatch v2 job {h.ref} failed permanently"
@@ -2724,10 +2734,13 @@ class LiteLLMBackend(Backend):
                 resolved.append((h, kind, value))
 
         acked_refs: list[str] = []
+        consumed: list[tuple[str, str, str | None]] = []
+        result_keys = {h.ref: key for h, key, _model in completed}
         for h, kind, value in resolved:
             if kind == "done":
                 results[h.ref] = value
                 acked_refs.append(h.ref)
+                consumed.append((h.ref, result_keys[h.ref], payload_keys.get(h.ref)))
             elif kind == "error":
                 results[h.ref] = value
             else:
@@ -2737,7 +2750,8 @@ class LiteLLMBackend(Backend):
         # retire those jobs and their B2 objects. Deliberately excludes the "error" handles: a
         # result that failed structured-output validation is exactly what the sweep's
         # schema-correction path re-reads, so its row must survive.
-        self._ack_batch(acked_refs)
+        retired = self._retire_consumed(storage, consumed) if consumed else set()
+        self._ack_batch([ref for ref in acked_refs if ref not in retired])
 
         _emit_v2_dispatch_event(
             "poll-batch",
@@ -2752,6 +2766,72 @@ class LiteLLMBackend(Backend):
         )
 
         return results
+
+    def _retire_consumed(
+        self, storage, consumed: Sequence[tuple[str, str, str | None]]
+    ) -> set[str]:
+        """Delete consumed jobs' B2 objects, then retire their rows. Returns the retired refs.
+
+        Safety is by consumption, not age: ``consumed`` holds only jobs the coordinator reported
+        ``completed`` whose result this call has already persisted with ``write_deferred``, and
+        the keys are the ones the coordinator reported for THAT row. The Worker deletes a row only
+        if it is still ``completed`` with the same ``result_key`` (a job superseded after our
+        poll is left alone). Anything not retired -- a delete failure, an older Worker, a
+        superseded row -- falls back to the plain ack and the Worker's scheduled cleanup. A
+        concurrent consumer that polled before the delete sees the missing result as pending, not
+        an error (see ``_resolve_completed``), and finds the persisted record on its next lookup.
+        Best-effort: never turns a successful poll into an error.
+        """
+        if (
+            not self.config.dispatch_v2_client_retire
+            or not self.config.dispatch_v2_url
+            or storage is None
+            or not hasattr(storage, "delete")
+        ):
+            return set()
+
+        def _delete(item: tuple[str, str, str | None]) -> tuple[str, str] | None:
+            ref, result_key, payload_key = item
+            try:
+                for key in (payload_key, result_key):
+                    if key:
+                        storage.delete(key)
+            except Exception:  # noqa: BLE001 -- leave this job to the ack/cleanup path
+                return None
+            return ref, result_key
+
+        workers = min(_POLL_RESULT_MAX_WORKERS, len(consumed))
+        if workers > 1:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                deleted = [item for item in pool.map(_delete, consumed) if item]
+        else:
+            deleted = [item for item in map(_delete, consumed) if item]
+        if not deleted:
+            return set()
+
+        headers = {"content-type": "application/json"}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", "v2/jobs:retire-batch")
+        retired: set[str] = set()
+        for start in range(0, len(deleted), _WORKER_BATCH_LIMIT):
+            chunk = deleted[start : start + _WORKER_BATCH_LIMIT]
+            try:
+                response = self._session.post(
+                    url,
+                    json={"items": [{"id": ref, "result_key": key} for ref, key in chunk]},
+                    headers=headers,
+                    timeout=self.config.timeout_seconds,
+                )
+                if response.status_code != 200:
+                    continue
+                retired.update(str(ref) for ref in (response.json() or {}).get("retired") or ())
+            except (requests.RequestException, ValueError):
+                continue
+        _emit_v2_dispatch_event(
+            "retire-batch", batch_size=len(consumed), deleted=len(deleted), retired=len(retired)
+        )
+        return retired
 
     def _ack_batch(self, refs: Sequence[str]) -> None:
         """Tell the v2 coordinator these jobs' results are durably persisted client-side.

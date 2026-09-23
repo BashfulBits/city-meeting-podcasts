@@ -2240,3 +2240,34 @@ test("calibration persists every completion until its window is full, then a 1-i
   const rate = writes.filter(Boolean).length / writes.length;
   assert.ok(rate > 0.15 && rate < 0.35, `sampled write rate ${rate}`);
 });
+
+test("retireConsumed deletes only completed jobs whose consumed result_key still matches", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch(["done", "stale", "queued", "failed"].map((id) => makeJob(id)));
+  sql.exec("UPDATE jobs SET state = 'completed', result_key = 'results/' || id || '/r1.json' WHERE id IN ('done', 'stale')");
+  sql.exec("UPDATE jobs SET state = 'failed' WHERE id = 'failed'");
+  sql.exec("DELETE FROM job_models WHERE job_id IN ('done', 'stale', 'failed')");
+  // 'stale' was superseded and re-completed after the consumer polled it: new result_key.
+  sql.exec("UPDATE jobs SET result_key = 'results/stale/r2.json' WHERE id = 'stale'");
+  const result = await coordinator.retireConsumed([
+    { id: "done", result_key: "results/done/r1.json" },
+    { id: "stale", result_key: "results/stale/r1.json" },
+    { id: "queued", result_key: "results/queued/x.json" },
+    { id: "failed", result_key: "results/failed/x.json" },
+    { id: "unknown", result_key: "results/unknown/x.json" },
+  ]);
+  assert.deepEqual(result.retired, ["done"]);
+  assert.deepEqual(result.ignored.sort(), ["failed", "queued", "stale", "unknown"]);
+  const remaining = sql.exec("SELECT id, state FROM jobs ORDER BY id").map((row) => `${row.id}:${row.state}`);
+  assert.deepEqual(remaining, ["failed:failed", "queued:queued", "stale:completed"]);
+});
+
+test("pollBatch reports the payload_key of a completed job for consumption-based retirement", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("p1"), makeJob("p2")]);
+  sql.exec("UPDATE jobs SET state = 'completed', result_key = 'results/p1/r.json' WHERE id = 'p1'");
+  const { statuses } = await coordinator.pollBatch(["p1", "p2"]);
+  const byId = Object.fromEntries(statuses.map((s) => [s.id, s]));
+  assert.equal(byId.p1.payload_key, "payloads/p1/request.json");
+  assert.equal(byId.p2.payload_key, null, "only completed jobs expose their payload_key");
+});

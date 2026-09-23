@@ -9,6 +9,7 @@ import { LLMSchedulerDO } from "./coordinator.js";
 import {
   validateEnqueueBatchRequest,
   validatePollBatchRequest,
+  validateRetireBatchRequest,
   validateResolveUnknownBatchRequest,
   validateSchemaRetryRequest,
 } from "./protocol.js";
@@ -456,6 +457,30 @@ export async function handleRequest(request, env) {
     } catch (err) {
       const detail = describeError(err);
       console.error(`ackResults failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
+  if (request.method === "POST" && path === "/v2/jobs:retire-batch") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+    }
+    const maxBatch = Number(env.POLL_BATCH_MAX || 1000);
+    const validation = validateRetireBatchRequest(body, maxBatch);
+    if (!validation.valid) {
+      return errorResponse(400, validation.error, validation.detail);
+    }
+    try {
+      const result = await coordinator.retireConsumed(
+        body.items.map((item) => ({ id: item.id, result_key: item.result_key }))
+      );
+      return jsonResponse(result, 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`retireConsumed failed: ${detail}`);
       return errorResponse(500, "coordinator_error", detail);
     }
   }
@@ -991,9 +1016,17 @@ async function runScheduledCleanup(env, scheduledTime) {
   if (!Number.isFinite(scheduledTime)) return;
   if (new Date(scheduledTime).getUTCMinutes() % intervalMinutes !== 0) return;
 
+  const coordinator = getCoordinator(env);
+  // Hourly exact recount of the queued-job counter (maintained by explicit deltas, not triggers).
+  if (new Date(scheduledTime).getUTCMinutes() === 0) {
+    try {
+      await coordinator.recountQueuedJobs();
+    } catch (err) {
+      console.error(`scheduled: recountQueuedJobs failed: ${describeError(err)}`);
+    }
+  }
   const b2 = b2ClientFromEnv(env);
   if (!b2) return;
-  const coordinator = getCoordinator(env);
   // Matches validateConfig's default and its subrequest-budget bound (2 B2 deletes per job).
   const limit = Number(env.PURGE_BATCH_LIMIT || 15);
 
