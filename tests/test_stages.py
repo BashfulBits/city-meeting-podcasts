@@ -2447,28 +2447,39 @@ def test_single_worker_still_gets_a_real_process_pool():
 
 
 class _EvaluatorBackend:
-    """Answers every pre-labeler job synchronously, recording which model each call named."""
+    """Answers pre-labeler jobs like the queue-only dispatch backend: each request is deferred
+    (a JobHandle) on first submission and returns its result when resubmitted on a later run.
+    The CAS-capable storage makes `llm_prelabel_candidates` attach its real LLMRequestPolicy, so
+    the fake reads the evaluator model and ingress purpose from it."""
 
     name = "litellm"
 
     class config:  # noqa: N801 — mirrors the real backend's `.config.model` attribute shape
         model = "gemini/gemini-3.1-flash-lite"
 
-    storage = None
-
     def __init__(self, decisions):
+        from tests._cas_fake import MemStorage
+
+        self.storage = MemStorage()
         self.decisions = decisions  # model -> decision
-        self.models: list[str] = []
+        self.submitted: set[str] = set()
+        self.calls: list[tuple[str, str, str]] = []  # (model, purpose, "deferred"|"result")
 
     def run_inference(self, job):
         import json as _json
 
-        from citypods.compute.base import JobResult
+        from citypods.compute.base import JobHandle, JobResult
 
-        messages = job.inputs["messages"]
-        payload = _json.loads(messages[-1]["content"])
-        model = self._model_for(job)
-        self.models.append(model)
+        policy = job.inputs["llm_policy"]
+        model = policy.allowed_models[0]
+        if job.recipe_hash not in self.submitted:
+            self.submitted.add(job.recipe_hash)
+            self.calls.append((model, policy.purpose, "deferred"))
+            return JobHandle(
+                task=job.task, recipe_hash=job.recipe_hash, backend="llm-dispatch-v2", ref="r"
+            )
+        self.calls.append((model, policy.purpose, "result"))
+        payload = _json.loads(job.inputs["messages"][-1]["content"])
         content = _json.dumps(
             {
                 "assessments": [
@@ -2489,13 +2500,6 @@ class _EvaluatorBackend:
             output={"choices": [{"message": {"content": content}}]},
             model=model,
         )
-
-    def _model_for(self, job):
-        # The evaluator model is llm_prelabel_candidates' `model` argument; the job itself carries
-        # it only inside an llm_policy, which this non-CAS fake backend does not receive.
-        import inspect
-
-        return inspect.currentframe().f_back.f_back.f_locals["model"]
 
 
 def test_tag_shadow_prelabeler_records_beside_production_without_changing_display(tmp_path):
@@ -2544,18 +2548,31 @@ def test_tag_shadow_prelabeler_records_beside_production_without_changing_displa
     )
     _mark_pending(ep, ctx, load_taxonomy(taxonomy_path))
 
-    TagsStage().process(None, _city(), [ep], ctx)
+    def run():
+        TagsStage().process(None, _city(), [ep], ctx)
+        return next(c for c in ep.llm_tag_candidates if c.get("source_kind") == "rule")
 
-    assert backend.models == ["prod-evaluator", "shadow-evaluator"]
-    rule = next(c for c in ep.llm_tag_candidates if c.get("source_kind") == "rule")
+    # Run 1: production is queued (deferred), so there is nothing for the shadow to follow yet.
+    rule = run()
+    assert backend.calls == [("prod-evaluator", "topic-tags:prelabeler", "deferred")]
+    assert "prelabeler_shadow_model" not in rule
+    # Run 2: production result collected; shadow queued under its own ingress purpose.
+    rule = run()
+    assert backend.calls[1:] == [
+        ("prod-evaluator", "topic-tags:prelabeler", "result"),
+        ("shadow-evaluator", "topic-tags:prelabeler-shadow", "deferred"),
+    ]
     assert rule["prelabeler_decision"] == "likely_correct"
+    # Run 3: the deferred shadow result is read back beside production.
+    rule = run()
+    assert backend.calls[3:] == [("shadow-evaluator", "topic-tags:prelabeler-shadow", "result")]
     assert rule["prelabeler_model"] == "prod-evaluator"
-    assert rule["prelabeler_shadow_decision"] == "likely_incorrect"
+    assert rule["prelabeler_decision"] == "likely_correct"
     assert rule["prelabeler_shadow_model"] == "shadow-evaluator"
+    assert rule["prelabeler_shadow_decision"] == "likely_incorrect"
     # A shadow `likely_incorrect` must not suppress the production-admitted rule tag.
     assert any(tag.get("id") == "housing" for tag in ep.tags)
-    assert ctx.tag_prelabeler_shadow_dispatches_count == 1
 
-    # Second run: both assessments current, so the in-memory triage skips the episode entirely.
-    TagsStage().process(None, _city(), [ep], ctx)
-    assert backend.models == ["prod-evaluator", "shadow-evaluator"]
+    # Run 4: both assessments current -- no further evaluator call.
+    run()
+    assert len(backend.calls) == 4

@@ -111,27 +111,44 @@ def _purpose(handle: JobHandle) -> str | None:
     return deferred.policy.purpose
 
 
-def _is_prelabeler_handle(handle: JobHandle) -> bool:
+def prelabeler_model_for(site_config_path: str) -> str:
+    """The canonical production pre-labeler model from the lane registry in ``site_config_path``."""
     from citypods.compute.llm_lanes import lane_for
+    from citypods.compute.llm_policy import canonical_model
+
+    return canonical_model(lane_for("topic-tags:prelabeler", path=site_config_path).primary_model)
+
+
+def _is_prelabeler_handle(handle: JobHandle, prelabeler_model: str) -> bool:
     from citypods.compute.llm_policy import canonical_model
 
     if handle.task != "tag" or _purpose(handle) not in {None, "topic-tags:prelabeler"}:
         return False
     if not _PRELABELER_RECIPE_RE.match(str(handle.recipe_hash or "")):
         return False
-    production = canonical_model(lane_for("topic-tags:prelabeler").primary_model)
-    return bool(handle.model) and canonical_model(handle.model) == production
+    return bool(handle.model) and canonical_model(handle.model) == prelabeler_model
 
 
 def _classify_entry(
-    entry, *, now: datetime, older_than_hours: float, lane: str = "chapter-agenda"
+    entry,
+    *,
+    now: datetime,
+    older_than_hours: float,
+    lane: str = "chapter-agenda",
+    prelabeler_model: str = "",
 ) -> dict[str, Any] | None:
-    """Classify one snapshot entry when it is an old or legacy handle of ``lane``."""
+    """Classify one snapshot entry when it is an old or legacy handle of ``lane``.
+
+    ``prelabeler_model`` is the canonical production pre-labeler model resolved from the same
+    ``--site-config`` the run loaded (``prelabeler_model_for``); required for that lane.
+    """
     handle = entry.decoded
     if not isinstance(handle, JobHandle):
         return None
     if lane == "topic-tags:prelabeler":
-        if not _is_prelabeler_handle(handle):
+        if not prelabeler_model:
+            raise ValueError("the topic-tags:prelabeler lane needs its production model")
+        if not _is_prelabeler_handle(handle, prelabeler_model):
             return None
     elif handle.task != "agenda-item-extract":
         return None
@@ -416,12 +433,19 @@ def run(
         file=sys.stderr,
         flush=True,
     )
+    prelabeler_model = (
+        prelabeler_model_for(site_config_path) if lane == "topic-tags:prelabeler" else ""
+    )
     candidates = [
         classified
         for entry in snapshot.entries
         if (
             classified := _classify_entry(
-                entry, now=now, older_than_hours=older_than_hours, lane=lane
+                entry,
+                now=now,
+                older_than_hours=older_than_hours,
+                lane=lane,
+                prelabeler_model=prelabeler_model,
             )
         )
     ]

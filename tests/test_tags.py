@@ -1423,3 +1423,22 @@ def test_prelabeler_batches_split_to_fit_the_sizing_route(monkeypatch):
         count = len(json.loads(job.inputs["messages"][-1]["content"])["candidates"])
         assert raw <= limits.max_raw_input_tokens
         assert limits.fits_reservation(raw, count)
+
+
+def test_prelabeler_batch_limits_reject_a_route_with_no_input_budget():
+    from types import SimpleNamespace
+
+    import pytest
+
+    from citypods.compute.llm_policy import QuotaPolicy
+    from citypods.tags import prelabeler_batch_limits
+
+    starved = SimpleNamespace(
+        route_id="tiny",
+        input_token_ratio=1.0,
+        input_context_limit=32768,
+        hard_input_ceiling=None,
+        quota=QuotaPolicy(tpm=300),  # less than the 400-token minimum output reserve
+    )
+    with pytest.raises(ValueError, match="no input budget"):
+        prelabeler_batch_limits(starved)

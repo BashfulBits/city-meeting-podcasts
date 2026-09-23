@@ -408,7 +408,15 @@ class SourcePipeline:
             if ep.integrity:
                 result.append((uid, "repair_requested"))
             for stage in stages:
-                if stage_is_dirty(stage, ep, city, speaker_config=self.ctx.speaker_config):
+                if stage_is_dirty(
+                    stage,
+                    ep,
+                    city,
+                    speaker_config=self.ctx.speaker_config,
+                    evaluation_config=(
+                        self.ctx.llm_evaluation_config if self.ctx.tag_backend is not None else None
+                    ),
+                ):
                     result.append((uid, f"{stage.name}_incomplete"))
         return result
 
@@ -1897,6 +1905,16 @@ def _run_enrich_global_queue(
             prelabeler_model = str(prelabeler_config.get("model") or "")
             prelabeler_prompt_version = str(prelabeler_config.get("prompt_version") or "1")
             prelabeler_llm_schema_version = str(prelabeler_config.get("llm_schema_version") or "1")
+            # Keep episodes whose only outstanding work is the shadow evaluator, or its deferred
+            # results would never be read back (TagsStage shares `needs_shadow_prelabel`). Once
+            # the run's shadow allowance is spent, shadow-only episodes are not worth queueing.
+            shadow_model = str(prelabeler_config.get("shadow_model") or "")
+            if (
+                not prelabeler_config.get("shadow_enabled", False)
+                or shadow_model == prelabeler_model
+                or ctx.tag_prelabeler_shadow_exhausted()
+            ):
+                shadow_model = ""
             for state in prepared.values():
                 state["candidate_episodes"] = [
                     ep
@@ -1912,6 +1930,7 @@ def _run_enrich_global_queue(
                         prelabeler_model=prelabeler_model,
                         prelabeler_prompt_version=prelabeler_prompt_version,
                         prelabeler_llm_schema_version=prelabeler_llm_schema_version,
+                        prelabeler_shadow_model=shadow_model,
                     )
                 ]
     elif ctx.lane == "chapter-agenda":
@@ -1971,7 +1990,11 @@ def _run_enrich_global_queue(
     if ctx.lane == "tag" and ctx.tag_backend is not None:
         tag_caps = [
             cap
-            for cap in (ctx.tag_max_dispatches, ctx.tag_prelabeler_max_dispatches)
+            for cap in (
+                ctx.tag_max_dispatches,
+                ctx.tag_prelabeler_max_dispatches,
+                ctx.tag_prelabeler_shadow_max_dispatches,
+            )
             if cap is not None
         ]
         if tag_caps and max(tag_caps) > 0:

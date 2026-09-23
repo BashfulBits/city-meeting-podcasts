@@ -389,6 +389,81 @@ def tag_input_fingerprint(
     ).hexdigest()[:16]
 
 
+_PRELABELER_DECISION_SET = frozenset(PRELABELER_DECISIONS)
+
+
+def needs_shadow_prelabel(
+    candidate: dict[str, Any],
+    *,
+    model: str,
+    shadow_model: str,
+    prompt_version: str,
+    llm_schema_version: str,
+) -> bool:
+    """A projectable subject with a current production assessment but no current shadow one.
+
+    Shared by the tag lane's run-level pre-filter (``episode_needs_tagging``) and ``TagsStage``:
+    if the two disagreed, the pre-filter would drop an episode whose shadow job is still in flight
+    and its deferred result would never be read back.
+    """
+    if candidate.get("candidate_state") == "historical":
+        return False
+    if not (candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")):
+        return False
+    production_current = (
+        candidate.get("prelabeler_model") == model
+        and candidate.get("prelabeler_prompt_version") == prompt_version
+        and candidate.get("prelabeler_llm_schema_version") == llm_schema_version
+        and candidate.get("prelabeler_decision") in _PRELABELER_DECISION_SET
+    )
+    shadow_current = (
+        candidate.get("prelabeler_shadow_model") == shadow_model
+        and candidate.get("prelabeler_shadow_prompt_version") == prompt_version
+        and candidate.get("prelabeler_shadow_llm_schema_version") == llm_schema_version
+        and candidate.get("prelabeler_shadow_decision") in _PRELABELER_DECISION_SET
+    )
+    return production_current and not shadow_current
+
+
+def episode_evaluator_work_pending(ep: Any, prelabeler_config: dict[str, Any] | None) -> bool:
+    """Whether the production or shadow pre-labeler still owes this episode an assessment.
+
+    The tags stage's completion marker fingerprints tag INPUTS only, so without this an episode
+    marked complete before an evaluator change (a new prelabeler model/schema, or a shadow
+    evaluator being enabled) would be skipped by the completion cache forever.
+    """
+    config = prelabeler_config or {}
+    model = str(config.get("model") or "")
+    if not config.get("enabled", False) or not model:
+        return False
+    prompt_version = str(config.get("prompt_version") or "1")
+    schema_version = str(config.get("llm_schema_version") or "1")
+    shadow_model = str(config.get("shadow_model") or "")
+    if not config.get("shadow_enabled", False) or shadow_model == model:
+        shadow_model = ""
+    for candidate in ep.llm_tag_candidates or []:
+        if not isinstance(candidate, dict) or candidate.get("candidate_state") == "historical":
+            continue
+        if not (candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")):
+            continue
+        if (
+            candidate.get("prelabeler_model") != model
+            or candidate.get("prelabeler_prompt_version") != prompt_version
+            or candidate.get("prelabeler_llm_schema_version") != schema_version
+            or candidate.get("prelabeler_decision") not in _PRELABELER_DECISION_SET
+        ):
+            return True
+        if shadow_model and needs_shadow_prelabel(
+            candidate,
+            model=model,
+            shadow_model=shadow_model,
+            prompt_version=prompt_version,
+            llm_schema_version=schema_version,
+        ):
+            return True
+    return False
+
+
 def episode_needs_tagging(
     ep: Any,
     taxonomy: Taxonomy,
@@ -401,6 +476,7 @@ def episode_needs_tagging(
     prelabeler_model: str = "",
     prelabeler_prompt_version: str = "1",
     prelabeler_llm_schema_version: str = "1",
+    prelabeler_shadow_model: str = "",
 ) -> bool:
     """Return whether this episode requires rule-tag derivation, LLM suggestion dispatch,
     or chapter tagging.
@@ -408,7 +484,8 @@ def episode_needs_tagging(
     An episode is fully current (returns False) when its cached tags_input_fingerprint matches
     the current inputs, its tags_spec_hash is populated, chapter tags exist if chapters are present,
     and (if LLM is enabled) its tags_llm_recipe_hash is populated. When the pre-labeler is
-    enabled, active rule/chapter candidates must also carry the current pre-labeler metadata.
+    enabled, active rule/chapter candidates must also carry the current pre-labeler metadata,
+    and -- when ``prelabeler_shadow_model`` is passed -- the current shadow assessment too.
     """
     has_chapters = bool(episode_served_chapters(ep))
     cheap_fingerprint = tag_input_fingerprint(
@@ -439,7 +516,24 @@ def episode_needs_tagging(
         for candidate in (ep.llm_tag_candidates or [])
         if isinstance(candidate, dict)
     )
-    return not (inputs_unchanged and not llm_pending and not prelabeler_pending)
+    shadow_pending = (
+        prelabeler_enabled
+        and bool(prelabeler_shadow_model)
+        and any(
+            needs_shadow_prelabel(
+                candidate,
+                model=prelabeler_model,
+                shadow_model=prelabeler_shadow_model,
+                prompt_version=prelabeler_prompt_version,
+                llm_schema_version=prelabeler_llm_schema_version,
+            )
+            for candidate in (ep.llm_tag_candidates or [])
+            if isinstance(candidate, dict)
+        )
+    )
+    return not (
+        inputs_unchanged and not llm_pending and not prelabeler_pending and not shadow_pending
+    )
 
 
 def _read_storage_bytes(storage: Any, key: str | None) -> bytes | None:
@@ -1442,8 +1536,17 @@ def prelabeler_batch_limits(route: Any) -> PrelabelerBatchLimits:
         provider_cap = min(
             provider_cap, tpm - PRELABELER_OUTPUT_TOKEN_OVERHEAD - PRELABELER_OUTPUT_TOKENS_PER_ITEM
         )
+    max_raw_input_tokens = math.floor(provider_cap / ratio)
+    if max_raw_input_tokens < 1:
+        # A clamp to 1 would make every batch "payload-too-large" and read as ordinary backlog
+        # forever; a route this small is a catalog error and must surface as one.
+        raise ValueError(
+            f"pre-labeler route {getattr(route, 'route_id', '') or '<unknown>'!r} leaves no "
+            f"input budget (context/ceiling/tpm allow {provider_cap} provider tokens after the "
+            "output reserve); fix its limits in config/provider_limits.yml"
+        )
     return PrelabelerBatchLimits(
-        max_raw_input_tokens=max(1, math.floor(provider_cap / ratio)),
+        max_raw_input_tokens=max_raw_input_tokens,
         max_reserved_tokens=tpm,
         input_token_ratio=ratio,
     )
@@ -1881,6 +1984,8 @@ __all__ = [
     "TAGGER_PURPOSE",
     "PRELABELER_PURPOSE",
     "PRELABELER_SHADOW_PURPOSE",
+    "episode_evaluator_work_pending",
+    "needs_shadow_prelabel",
     "TAG_PROMPT_VERSION",
     "TAGGER_VERSION",
     "CHAPTER_PIPELINE_VERSION",

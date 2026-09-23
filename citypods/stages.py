@@ -284,35 +284,6 @@ class AsrArtifactCache:
             self._condition.notify_all()
 
 
-_PRELABELER_DECISIONS = frozenset({"likely_correct", "needs_human_review", "likely_incorrect"})
-
-
-def _needs_shadow_prelabel(
-    candidate: dict[str, Any],
-    *,
-    model: str,
-    shadow_model: str,
-    prompt_version: str,
-    llm_schema_version: str,
-) -> bool:
-    """A projectable subject with a current production assessment but no current shadow one."""
-    if not (candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")):
-        return False
-    production_current = (
-        candidate.get("prelabeler_model") == model
-        and candidate.get("prelabeler_prompt_version") == prompt_version
-        and candidate.get("prelabeler_llm_schema_version") == llm_schema_version
-        and candidate.get("prelabeler_decision") in _PRELABELER_DECISIONS
-    )
-    shadow_current = (
-        candidate.get("prelabeler_shadow_model") == shadow_model
-        and candidate.get("prelabeler_shadow_prompt_version") == prompt_version
-        and candidate.get("prelabeler_shadow_llm_schema_version") == llm_schema_version
-        and candidate.get("prelabeler_shadow_decision") in _PRELABELER_DECISIONS
-    )
-    return production_current and not shadow_current
-
-
 @dataclass
 class StageContext:
     """Shared resources passed to every stage for one build.
@@ -1006,6 +977,7 @@ def stage_is_dirty(
     city: City,
     *,
     speaker_config: Mapping[str, Any] | None = None,
+    evaluation_config: Mapping[str, Any] | None = None,
 ) -> bool:
     # Admission state and asynchronous judge results are external to episode inputs. Both stages
     # are cheap projections, so always revisit them rather than making a human decision wait for a
@@ -1019,6 +991,13 @@ def stage_is_dirty(
         return (ep.generated_agenda_candidates or {}).get("status") != "not_applicable"
     if stage.name in {"chapter_locator", "generated_chapters"} and ep.source_chapters:
         return (ep.generated_agenda_candidates or {}).get("locator_status") != "not_applicable"
+    # The tags marker fingerprints tag inputs only. Evaluator work (a production pre-labeler
+    # model/schema change, or an enabled shadow evaluator) keeps the episode dirty until done.
+    if stage.name == "tags" and evaluation_config is not None:
+        from citypods.tags import episode_evaluator_work_pending
+
+        if episode_evaluator_work_pending(ep, dict(evaluation_config.get("prelabeler") or {})):
+            return True
     marker = ep.stage_completion.get(stage.name) if isinstance(ep.stage_completion, dict) else None
     if stage.name == "native_diarize" and isinstance(marker, dict):
         # A prior R7 run could have marked an unselected or prerequisite-missing episode complete
@@ -1670,6 +1649,7 @@ class TagsStage:
             llm_tag_suggestions,
             load_taxonomy,
             merge_tag_sources,
+            needs_shadow_prelabel,
             rollup_tags,
             rule_phrase_audit,
             tag_episode,
@@ -1865,7 +1845,7 @@ class TagsStage:
                 and not ctx.tag_prelabeler_shadow_exhausted()
                 and any(
                     candidate.get("candidate_state") != "historical"
-                    and _needs_shadow_prelabel(
+                    and needs_shadow_prelabel(
                         candidate,
                         model=prelabeler_model,
                         shadow_model=prelabeler_shadow_model,
@@ -2499,7 +2479,7 @@ class TagsStage:
                 pending_shadow = [
                     candidate
                     for candidate in candidate_tags
-                    if _needs_shadow_prelabel(
+                    if needs_shadow_prelabel(
                         candidate,
                         model=prelabeler_model,
                         shadow_model=prelabeler_shadow_model,
@@ -9363,7 +9343,16 @@ def run_stages(
         dirty = [
             ep
             for ep in episodes
-            if stage_is_dirty(stage, ep, city, speaker_config=ctx.speaker_config)
+            if stage_is_dirty(
+                stage,
+                ep,
+                city,
+                speaker_config=ctx.speaker_config,
+                # Evaluator work only counts when a tag backend could actually perform it.
+                evaluation_config=(
+                    ctx.llm_evaluation_config if ctx.tag_backend is not None else None
+                ),
+            )
         ]
         clean = len(episodes) - len(dirty)
         if not dirty:

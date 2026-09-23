@@ -39,7 +39,18 @@ Phase R (Research-Tool Surface)._
     run re-batches the still-pending candidates.
   Backfill: no recipe or schema version changes. Candidates with a current production assessment
   are never re-evaluated; only still-pending candidates are re-batched (new batch keys, new jobs).
-  The shadow evaluator backfills gradually under its per-run cap (1,000 episodes).
+  The shadow evaluator backfills gradually under its per-run cap (1,000 episodes): the tag lane's
+  run-level pre-filter (`episode_needs_tagging`) and `TagsStage` share one shadow-pending
+  predicate (`tags.needs_shadow_prelabel`), and the candidate window counts the shadow cap.
+  - *Fixed with it*: the tags stage's completion marker fingerprints tag inputs only, so an
+    episode marked complete was skipped by the completion cache even when evaluator work was
+    owed -- which would have blocked the shadow backfill, and equally any production
+    re-evaluation after a pre-labeler model or `llm_schema_version` change. `stage_is_dirty` now
+    treats such episodes as dirty (`tags.episode_evaluator_work_pending`) whenever a tag backend
+    is configured.
+  - A route whose limits leave no pre-labeler input budget now raises instead of silently
+    producing `payload-too-large` forever, and the reconcile `--lane topic-tags:prelabeler`
+    resolves the production model from the `--site-config` it was given.
 
 - **LLM dispatch throughput: route cleanup, a usable dispatch window, token calibration, and
   head-of-line admission** (`config/provider_limits.yml`, `workers/llm-dispatch-v2/`,
