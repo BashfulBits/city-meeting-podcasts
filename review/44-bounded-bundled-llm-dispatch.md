@@ -983,7 +983,10 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   singleton Worker read. Legacy queue-only capsules are rebuilt into `InferenceJob`s and sent via
   bounded `enqueue_batch()` calls before their first poll. Start/end JSON summaries split the
   client-owned deferred registry into v1-dispatched, v2-dispatched, v2-deferred, and direct-deferred
-  work; one authenticated `/v2/stats` snapshot adds the coordinator's independent queue state.
+  work; the four-times-daily sweep requests one authenticated `GET /v2/stats?detail=1` snapshot
+  to add the coordinator's independent queue, route, and failure diagnostics. Frequent producer
+  telemetry retains the default constant-cost `/v2/stats` snapshot, rather than repeating those
+  historical reads for every worker invocation.
   V1 intentionally gains no R2 ledger, endpoint, or scan: it remains on its existing temporary
   singleton reaping path while its backlog drains. **Deviation, maintainer-approved 2026-08-30:**
   the scheduled pass is raised from 30 minutes within a 40-minute Actions timeout to 90 minutes

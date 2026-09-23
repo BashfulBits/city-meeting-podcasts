@@ -382,7 +382,9 @@ def main(argv: list[str] | None = None) -> int:
     has_v2_dispatch = getattr(getattr(backend, "config", None), "dispatch_v2_url", None)
     if callable(stats_method) and has_v2_dispatch:
         try:
-            start_summary["v2_scheduler"] = stats_method()
+            # This scheduled, six-hour pass is the deliberate low-rate owner of detailed queue
+            # diagnostics. Producer telemetry keeps dispatch_v2_stats()'s constant-cost default.
+            start_summary["v2_scheduler"] = stats_method(detail=True)
         except Exception as exc:  # noqa: BLE001 -- observability must not block reaping
             start_summary["v2_scheduler_error"] = type(exc).__name__
     print(json.dumps(start_summary, sort_keys=True), flush=True)

@@ -27,6 +27,14 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Restore detailed Durable Object scheduler diagnostics to the deferred sweep**
+  (`citypods/compute/llm.py`, `scripts/llm_deferred_sweep.py`). The four-times-daily sweep now
+  explicitly requests authenticated `GET /v2/stats?detail=1` once at startup, preserving route,
+  queue-history, and failure diagnostics in its summary. Routine producer telemetry retains the
+  constant-cost `/v2/stats` request, so this does not restore the former per-worker read load.
+  No LLM throughput guard, model route, recipe, stored artifact, pipeline version, or catalog
+  backfill changes.
+
 - **Bound automatic v2 Durable Object scheduler snapshots by queue history**
   (`workers/llm-dispatch-v2`, `scripts/llm_submission_telemetry.py`). Producer workflows now use
   a constant-cost scheduler summary instead of the historical queue diagnostic; the exact queued
