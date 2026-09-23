@@ -63,6 +63,16 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **A 404 no longer blocks a route for six hours** (`workers/llm-dispatch-v2/src/classify.js`).
+  #1831's `route_unavailable` rule treated every 404/410 as "model retired" and stood the route
+  down for `ROUTE_UNAVAILABLE_BLOCK_SECONDS` (6h). At ~06:00 UTC on 2026-09-23 NVIDIA's Nemotron 3
+  Ultra backend went down and answered 404 -- directly and through OpenRouter and Kilo, which both
+  front the same NVIDIA backend -- so all three chapter-agenda routes were blocked until ~12:00 UTC
+  and dispatch stopped, although the model was serving again within the hour. Only 410 Gone now
+  means retired; a 404 takes the upstream-capacity path (job requeued on the upstream budget,
+  escalating 15s-5min route cooldown). Routes already blocked by the old rule stay blocked until
+  their stored `blocked_until` passes or it is cleared by hand.
+
 - **Restore detailed Durable Object scheduler diagnostics to the deferred sweep**
   (`citypods/compute/llm.py`, `scripts/llm_deferred_sweep.py`). The four-times-daily sweep now
   explicitly requests authenticated `GET /v2/stats?detail=1` once at startup, preserving route,

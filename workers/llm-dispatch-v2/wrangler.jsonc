@@ -44,7 +44,8 @@
     // oversized queue-head jobs blocked every smaller job behind them. Bounded, covering-index
     // read: at most ~2 x 32 rows per model per tick, and only for ceiling-bound models.
     "MAX_CANDIDATE_LOOKAHEAD": "32",
-    // A route answering 404/410 (retired model, broken path) is stood down this long.
+    // A route answering 410 Gone (retired model) is stood down this long. A 404 is treated as a
+    // transient upstream fault (escalating 15s-5min cooldown) -- see classify.js rule 8.
     "ROUTE_UNAVAILABLE_BLOCK_SECONDS": "21600",
     "MAX_JOBS_PER_ROUTE_PER_BUNDLE": "3",
     "MAX_CONCURRENT_ROUTE_LANES": "5",
