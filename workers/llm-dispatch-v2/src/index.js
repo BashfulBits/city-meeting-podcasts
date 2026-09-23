@@ -15,6 +15,7 @@ import {
 import { B2Client } from "./b2.js";
 import { callAiGateway, observedTokens, upstreamCapacityFailure, upstreamEmptyCompletion } from "./gateway.js";
 import { classifyProviderFailure } from "./classify.js";
+import { projectedDailyRowsWritten } from "./write_budget.js";
 
 export { LLMSchedulerDO };
 
@@ -68,7 +69,9 @@ export function validateConfig(env) {
   const maxJobsPerModelClaim = Number(env.MAX_JOBS_PER_MODEL_CLAIM || maxBundleJobs);
   const maxConcurrentLanes = Number(env.MAX_CONCURRENT_ROUTE_LANES || 5);
   const maxJobsPerDay = Number(env.MAX_JOBS_PER_UTC_DAY || 5000);
-  const maxIngressWriteUnits = Number(env.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY || maxJobsPerDay * 3);
+  // Same fallback as the coordinator's _maxIngressWriteUnitsPerUtcDay, so an unset budget is judged
+  // exactly as it would be enforced (and fails the row-budget check below).
+  const maxIngressWriteUnits = Number(env.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY || maxJobsPerDay * 4);
   const max5xxRetries = Number(env.MAX_5XX_RETRIES || 1);
   const max5xxBackoffSeconds = Number(env.MAX_5XX_BACKOFF_SECONDS || 300);
 
@@ -100,6 +103,34 @@ export function validateConfig(env) {
     throw new Error(
       `Invalid config: MAX_JOBS_PER_MODEL_CLAIM (${maxJobsPerModelClaim}) must be an integer ` +
       `from 1 to MAX_BUNDLE_JOBS (${maxBundleJobs})`
+    );
+  }
+
+  // The account-wide DO row-write budget (Free plan: 100,000 billed rows/day). The worst case the
+  // configured caps permit must fit under it with room left for maintenance writes -- see
+  // write_budget.js for the measured per-phase costs behind projectedDailyRowsWritten.
+  const maxLeasesPerDay = Number(env.MAX_LEASES_PER_UTC_DAY || 1750);
+  if (
+    !Number.isInteger(maxLeasesPerDay) ||
+    maxLeasesPerDay < 1 ||
+    maxLeasesPerDay > maxBundlesPerDay * maxBundleJobs
+  ) {
+    throw new Error(
+      `Invalid config: MAX_LEASES_PER_UTC_DAY (${maxLeasesPerDay}) must be an integer from 1 to ` +
+      `MAX_BUNDLES_PER_UTC_DAY x MAX_BUNDLE_JOBS (${maxBundlesPerDay * maxBundleJobs})`
+    );
+  }
+  const rowsWrittenBudget = Number(env.DO_ROWS_WRITTEN_DAILY_BUDGET || 90000);
+  const projectedRows = projectedDailyRowsWritten({
+    maxIngressWriteUnits,
+    maxLeases: maxLeasesPerDay,
+  });
+  if (!Number.isFinite(rowsWrittenBudget) || projectedRows > rowsWrittenBudget) {
+    throw new Error(
+      `Invalid config: the worst-case daily DO rows written these caps allow (${projectedRows}: ` +
+      `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY ${maxIngressWriteUnits} and MAX_LEASES_PER_UTC_DAY ` +
+      `${maxLeasesPerDay}) exceeds DO_ROWS_WRITTEN_DAILY_BUDGET (${rowsWrittenBudget}); ` +
+      "see write_budget.js"
     );
   }
 

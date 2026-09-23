@@ -23,6 +23,7 @@ function createMockEnv(overrides = {}) {
     MAX_BUNDLES_PER_UTC_DAY: "1000",
     MAX_CONCURRENT_ROUTE_LANES: "5",
     MAX_JOBS_PER_UTC_DAY: "5000",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "5800",
     ENQUEUE_BATCH_MAX: "1000",
     POLL_BATCH_MAX: "1000",
     ...overrides,
@@ -387,6 +388,33 @@ test("the committed wrangler.jsonc vars pass validateConfig", async () => {
     .join("\n");
   const { vars } = JSON.parse(stripped);
   assert.equal(vars.DISPATCH_WINDOW_SECONDS, "30");
+  // The committed caps' worst case must fit the DO row-write budget with maintenance headroom.
+  const { projectedDailyRowsWritten } = await import("../src/write_budget.js");
+  const projected = projectedDailyRowsWritten({
+    maxIngressWriteUnits: Number(vars.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY),
+    maxLeases: Number(vars.MAX_LEASES_PER_UTC_DAY),
+  });
+  assert.equal(projected, 88840);
+  assert.ok(projected <= Number(vars.DO_ROWS_WRITTEN_DAILY_BUDGET));
+  assert.ok(Number(vars.DO_ROWS_WRITTEN_DAILY_BUDGET) < 100000, "leave platform headroom");
   assert.equal(vars.ESTIMATED_CALL_DURATION_CEILING_SECONDS, "2");
   assert.doesNotThrow(() => validateConfig(createMockEnv({ ...vars })));
+});
+
+
+test("validateConfig refuses caps whose worst case exceeds the DO row-write budget", () => {
+  // 1,750 leases already use 70,000 of the 90,000 rows; 8,000 more ingress units (24,000 rows)
+  // push the worst case to 95,440.
+  assert.throws(
+    () => validateConfig(createMockEnv({ MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "8000" })),
+    /exceeds DO_ROWS_WRITTEN_DAILY_BUDGET/
+  );
+  assert.throws(
+    () => validateConfig(createMockEnv({ MAX_LEASES_PER_UTC_DAY: "2500" })),
+    /exceeds DO_ROWS_WRITTEN_DAILY_BUDGET/
+  );
+  assert.throws(() => validateConfig(createMockEnv({ MAX_LEASES_PER_UTC_DAY: "0" })));
+  assert.doesNotThrow(() =>
+    validateConfig(createMockEnv({ MAX_LEASES_PER_UTC_DAY: "1000", MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "5800" }))
+  );
 });
