@@ -98,8 +98,12 @@ test("validateConfig rejects a CLEANUP_INTERVAL_MINUTES that does not evenly div
   // 7 fires at :00, :07, ..., :56, then wraps to :00 -- a 4-minute gap, not the claimed 7-minute
   // cadence. Only divisors of 60 repeat an identical, evenly-spaced pattern every hour.
   assert.throws(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "7" })));
-  assert.doesNotThrow(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "20" })));
-  assert.doesNotThrow(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "1" })));
+  // Divisors are accepted when their cleanup capacity still keeps up with the lease cap (and fits
+  // the row budget): 20 -> 1,080 jobs/day, 12 -> 1,800.
+  assert.doesNotThrow(() =>
+    validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "20", MAX_LEASES_PER_UTC_DAY: "1000" }))
+  );
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "12" })));
 });
 
 test("validateConfig rejects a PURGE_BATCH_LIMIT that would exceed the 50-subrequest Free ceiling", () => {
@@ -390,11 +394,19 @@ test("the committed wrangler.jsonc vars pass validateConfig", async () => {
   assert.equal(vars.DISPATCH_WINDOW_SECONDS, "30");
   // The committed caps' worst case must fit the DO row-write budget with maintenance headroom.
   const { projectedDailyRowsWritten } = await import("../src/write_budget.js");
+  const { cleanupCapacityPerDay } = await import("../src/write_budget.js");
+  const purges = cleanupCapacityPerDay({
+    cleanupIntervalMinutes: Number(vars.CLEANUP_INTERVAL_MINUTES),
+    purgeBatchLimit: Number(vars.PURGE_BATCH_LIMIT),
+  });
+  assert.equal(purges, 1800);
+  assert.ok(purges >= Number(vars.MAX_LEASES_PER_UTC_DAY), "cleanup keeps up with dispatch");
   const projected = projectedDailyRowsWritten({
     maxIngressWriteUnits: Number(vars.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY),
     maxLeases: Number(vars.MAX_LEASES_PER_UTC_DAY),
+    maxPurgesPerDay: purges,
   });
-  assert.equal(projected, 88840);
+  assert.equal(projected, 89140);
   assert.ok(projected <= Number(vars.DO_ROWS_WRITTEN_DAILY_BUDGET));
   assert.ok(Number(vars.DO_ROWS_WRITTEN_DAILY_BUDGET) < 100000, "leave platform headroom");
   assert.equal(vars.ESTIMATED_CALL_DURATION_CEILING_SECONDS, "2");
@@ -410,11 +422,32 @@ test("validateConfig refuses caps whose worst case exceeds the DO row-write budg
     /exceeds DO_ROWS_WRITTEN_DAILY_BUDGET/
   );
   assert.throws(
-    () => validateConfig(createMockEnv({ MAX_LEASES_PER_UTC_DAY: "2500" })),
+    () =>
+      validateConfig(
+        createMockEnv({ MAX_LEASES_PER_UTC_DAY: "2500", CLEANUP_INTERVAL_MINUTES: "6" })
+      ),
+    /exceeds DO_ROWS_WRITTEN_DAILY_BUDGET/
+  );
+  // A cleanup cadence far faster than dispatch needs is itself a write-budget risk: a backlog of
+  // terminal jobs drains at that rate (every 6 min x 15 = 3,600 jobs/day x 6 rows).
+  assert.throws(
+    () => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "6" })),
     /exceeds DO_ROWS_WRITTEN_DAILY_BUDGET/
   );
   assert.throws(() => validateConfig(createMockEnv({ MAX_LEASES_PER_UTC_DAY: "0" })));
   assert.doesNotThrow(() =>
     validateConfig(createMockEnv({ MAX_LEASES_PER_UTC_DAY: "1000", MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "5800" }))
+  );
+});
+
+
+test("validateConfig refuses a cleanup cadence that cannot keep up with the lease cap", () => {
+  // Hourly x 15 = 360/day, far below 1,750 leases/day.
+  assert.throws(
+    () => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "60", PURGE_BATCH_LIMIT: "15" })),
+    /cleanup retires at most 360 jobs\/day/
+  );
+  assert.doesNotThrow(() =>
+    validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "12", PURGE_BATCH_LIMIT: "15" }))
   );
 });

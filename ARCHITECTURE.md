@@ -468,7 +468,9 @@ workerd by `bench/rows-written/` (ingress 3 rows per write unit; each dispatch l
 retirement 6), and `validateConfig` refuses a deploy whose worst case
 (`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` + `MAX_LEASES_PER_UTC_DAY`) could exceed
 `DO_ROWS_WRITTEN_DAILY_BUDGET` (90,000). That caps sustained throughput at roughly 1,300 LLM
-jobs/day end to end; the lane budgets above divide it. Because every index entry is billed, the
+jobs/day end to end; the lane budgets above divide it. Terminal-job cleanup
+(`CLEANUP_INTERVAL_MINUTES` x `PURGE_BATCH_LIMIT`, 1,800/day) must retire at least as many jobs per
+day as the lease cap allows and is counted in the same projection. Because every index entry is billed, the
 coordinator's schema is kept minimal on purpose (2026-09-23 row-write tiers; see CHANGELOG): `jobs`
 carries only the indexes a query uses (`idx_jobs_state_updated_id`), and nothing bumps its indexed
 `updated_at` for a non-terminal job; `job_models` is a `WITHOUT ROWID` table clustered on its

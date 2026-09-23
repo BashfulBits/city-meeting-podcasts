@@ -17,6 +17,17 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Terminal-job cleanup drains as fast as dispatch can finish jobs**
+  (`workers/llm-dispatch-v2/wrangler.jsonc`, `src/index.js`, `src/write_budget.js`).
+  `CLEANUP_INTERVAL_MINUTES` 60 -> 12: 5 runs/hour x `PURGE_BATCH_LIMIT` 15 = 1,800 jobs/day, just
+  above `MAX_LEASES_PER_UTC_DAY` (1,750), the most the Worker can finish. At 15/hour, 18,500 acked
+  jobs were waiting for their rows and B2 objects to be released. The per-run limit is bounded by
+  the 50-subrequest Free ceiling (2 B2 deletes per job), so the cadence rises instead.
+  `validateConfig` now refuses a cleanup capacity below the lease cap, and the DO row-write
+  projection counts retirement at the larger of the lease cap and the cleanup capacity
+  (3 x 5,800 + 34 x 1,750 + 6 x 1,800 + 1,440 = 89,140 <= 90,000), so a faster cadence cannot
+  quietly turn a terminal backlog into a row-write burst.
+
 - **DO row writes per LLM job cut further (tier 4): per-route ledger batching and a leaner
   bundle table** (`workers/llm-dispatch-v2/src/coordinator.js`). Measured under workerd: 21.3 ->
   20.05 billed rows per completed job with the benchmark's 3-routes-per-bundle spread, plus ~0.25
