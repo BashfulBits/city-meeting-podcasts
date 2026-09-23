@@ -2520,12 +2520,12 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
   assert.equal(calls.length, 3);
   assert.deepEqual(slept, [], "no route can absorb a second request inside the stagger ceiling");
   assert.equal(
-    calls.filter((c) => c.url.includes("generativelanguage.googleapis.com")).length,
+    calls.filter((c) => new URL(c.url).hostname === "generativelanguage.googleapis.com").length,
     2,
     "one request per AI Studio account"
   );
   assert.equal(
-    calls.filter((c) => c.url.includes("integrate.api.nvidia.com")).length,
+    calls.filter((c) => new URL(c.url).hostname === "integrate.api.nvidia.com").length,
     0,
     "NVIDIA's paused Gemma leg is never used"
   );
