@@ -112,6 +112,38 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     assert isinstance(prune_kwargs["backend"], FakeBackend)
 
 
+def test_sweep_requests_detailed_v2_scheduler_diagnostics(monkeypatch, capsys):
+    monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
+    fake_storage = SimpleNamespace(cas_capable=True)
+    monkeypatch.setattr(llm_deferred_sweep, "make_storage", lambda *_args, **_kwargs: fake_storage)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "load_deferred_snapshot",
+        lambda _storage, **_kwargs: _snapshot([]),
+    )
+    monkeypatch.setattr(llm_deferred_sweep, "prune_expired_failure_markers", lambda *_: None)
+    monkeypatch.setattr(
+        llm_deferred_sweep,
+        "prune_expired_deferred_snapshot",
+        lambda *_args, **_kwargs: 0,
+    )
+    detail_requests = []
+
+    class FakeBackend:
+        name = "litellm"
+        config = SimpleNamespace(dispatch_v2_url="https://dispatch.example")
+
+        def dispatch_v2_stats(self, *, detail=False):
+            detail_requests.append(detail)
+            return {"diagnostics": detail}
+
+    monkeypatch.setattr(llm_deferred_sweep, "LiteLLMBackend", lambda *_, **__: FakeBackend())
+
+    assert llm_deferred_sweep.main([]) == 0
+    assert detail_requests == [True]
+    assert '"v2_scheduler": {"diagnostics": true}' in capsys.readouterr().out
+
+
 def test_full_prune_mode_lists_canonical_registry_without_reconciling(monkeypatch, capsys):
     monkeypatch.setattr(llm_deferred_sweep, "load_site_config", lambda *_: {"defaults": {}})
     fake_storage = SimpleNamespace(cas_capable=True)

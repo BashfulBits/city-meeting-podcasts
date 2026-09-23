@@ -2115,6 +2115,33 @@ def test_dispatch_v2_stats_returns_the_bounded_scheduler_snapshot():
     assert calls[0][1]["headers"] == {"authorization": "Bearer v2-secret"}
 
 
+def test_dispatch_v2_stats_requests_diagnostics_only_when_explicitly_requested():
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"jobs": {"by_state": {"queued": 3}}, "bundles": {"active": 1}}
+
+    class Session:
+        def get(self, url, **kwargs):
+            calls.append((url, kwargs))
+            return Response()
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3.6-flash",
+            dispatch_v2_url="https://dispatch.example/",
+        ),
+        http_session=Session(),
+    )
+
+    backend.dispatch_v2_stats(detail=True)
+
+    assert calls[0][0] == "https://dispatch.example/v2/stats?detail=1&limit=20"
+
+
 @pytest.mark.parametrize("config_name", ["dispatch_url", "dispatch_v2_url"])
 def test_backend_rejects_cleartext_dispatch_urls_before_any_request(config_name):
     calls = []

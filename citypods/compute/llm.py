@@ -2853,20 +2853,23 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("LLM dispatch v2 terminal-feed returned malformed data")
         return data
 
-    def dispatch_v2_stats(self, *, limit: int = 20) -> Mapping[str, Any]:
+    def dispatch_v2_stats(self, *, limit: int = 20, detail: bool = False) -> Mapping[str, Any]:
         """Return the v2 scheduler's bounded, authenticated operational snapshot.
 
         This is deliberately separate from :meth:`poll_batch`: the snapshot describes the
         scheduler's whole queue, while polling observes only the client's deferred handles. It
         carries no prompt or completion content and lets the deferred sweep distinguish an empty
-        client registry from a coordinator that is still carrying work.
+        client registry from a coordinator that is still carrying work. ``detail`` remains opt-in
+        because detailed scheduler diagnostics read historical queue state; routine producer
+        telemetry must retain the constant-cost default snapshot.
         """
         if not self.config.dispatch_v2_url:
             raise LLMBackendError("LLM dispatch v2 stats requires LLM_DISPATCH_V2_URL")
         headers = {}
         if self.config.dispatch_v2_auth_token:
             headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
-        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", f"v2/stats?limit={limit}")
+        query = f"detail=1&limit={limit}" if detail else f"limit={limit}"
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", f"v2/stats?{query}")
         try:
             response = self._session.get(url, headers=headers, timeout=self.config.timeout_seconds)
         except requests.RequestException as exc:
