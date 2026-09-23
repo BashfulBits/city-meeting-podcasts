@@ -74,7 +74,10 @@ test("enqueueBatch admits new jobs and updates scheduler counter", async () => {
   assert.equal(rows[1].priority, 0);
 });
 
-test("queued counter follows direct SQLite state edits after initialization", async () => {
+test("queued counter heals direct SQLite state edits at the hourly recount", async () => {
+  // The counter is maintained by explicit deltas on the RPC paths, not per-row triggers (each
+  // trigger write was a billed DO row). A direct Data Studio edit bypasses those deltas, so the
+  // hourly exact recount (recountQueuedJobs, called by the scheduled cleanup) corrects it.
   const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
   await coordinator.enqueueBatch([
     {
@@ -89,13 +92,56 @@ test("queued counter follows direct SQLite state edits after initialization", as
     },
   ]);
 
-  assert.equal((await coordinator.stats(Date.now())).jobs.by_state.queued, 1);
+  const queued = async () => (await coordinator.stats(Date.now())).jobs.by_state.queued;
+  assert.equal(await queued(), 1);
   sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'direct-state'");
-  assert.equal((await coordinator.stats(Date.now())).jobs.by_state.queued, 0);
+  await coordinator.recountQueuedJobs();
+  assert.equal(await queued(), 0);
   sql.exec("UPDATE jobs SET state = 'queued' WHERE id = 'direct-state'");
-  assert.equal((await coordinator.stats(Date.now())).jobs.by_state.queued, 1);
+  await coordinator.recountQueuedJobs();
+  assert.equal(await queued(), 1);
   sql.exec("DELETE FROM jobs WHERE id = 'direct-state'");
-  assert.equal((await coordinator.stats(Date.now())).jobs.by_state.queued, 0);
+  await coordinator.recountQueuedJobs();
+  assert.equal(await queued(), 0);
+});
+
+test("queued counter tracks enqueue, claim, requeue and cancel without triggers", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const truth = () => sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'")[0].n;
+  const stored = async () => (await coordinator.stats(Date.now())).jobs.by_state.queued;
+  const job = (id) => ({
+    id,
+    idempotency_key: `${id}-key`,
+    request_digest: `${id}-digest`,
+    policy_json: JSON.stringify({ allowed_models: ["gemini/gemini-3.1-flash-lite"], purpose: "topic-tags:tagger" }),
+    prompt_family: "tags",
+    input_token_estimate: 100,
+    max_output_token_estimate: 50,
+    payload_key: `payloads/${id}/request.json`,
+  });
+  await coordinator.enqueueBatch([job("a"), job("b"), job("c")]);
+  assert.equal(await stored(), truth());
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.ok(plan.jobs.length > 0);
+  assert.equal(await stored(), truth());
+  // Requeue one leased job through completeBatch.
+  const leased = plan.jobs[0];
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: leased.id,
+      lease_token: leased.lease_token,
+      attempt_id: "att-1",
+      planned_at: leased.not_before_at,
+      outcome: "deferred_late",
+    },
+  ]);
+  assert.equal(await stored(), truth());
+  await coordinator.cancelBatch(["c"]);
+  assert.equal(await stored(), truth());
+  assert.equal(
+    sql.exec("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'trg_jobs_queued_count_%'")[0].n,
+    0
+  );
 });
 
 test("enqueueBatch indexes every canonical allowed model without model_routing", async () => {

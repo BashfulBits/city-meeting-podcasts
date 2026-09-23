@@ -1005,7 +1005,16 @@ def _router(routes: dict):
             status_code=200, json_data={"acked": (json or {}).get("ids", []), "ignored": []}
         )
 
-    resolved = {":ack-batch": _ack_default, **routes}
+    def _retire_default(url, json=None, **_kw):
+        # Consumption-based retirement (tier 3). Default: the Worker retires nothing, which is
+        # exactly an older Worker's behaviour -- every consumed job falls back to the plain ack,
+        # so tests about acking keep their expectations. A retire test supplies its own handler.
+        items = (json or {}).get("items", [])
+        return _mock_response(
+            status_code=200, json_data={"retired": [], "ignored": [i["id"] for i in items]}
+        )
+
+    resolved = {":ack-batch": _ack_default, ":retire-batch": _retire_default, **routes}
 
     def _post(url, json=None, headers=None, timeout=None):
         for suffix, handler in resolved.items():
@@ -1771,3 +1780,123 @@ def test_poll_batch_one_malformed_result_does_not_lose_a_valid_sibling():
 
     stored = look_up_deferred(storage, "r-good")
     assert isinstance(stored, JobResult)
+
+
+def test_poll_batch_retires_consumed_jobs_after_deleting_their_b2_objects():
+    """Tier 3: a completed result that is durably persisted has its payload/result objects deleted
+    client-side and its row retired; retired jobs are not also acked, a job the Worker declines
+    (e.g. superseded after our poll) falls back to the plain ack, and nothing is deleted for a
+    result that failed validation or a job that is not completed."""
+    storage = MockStorage()
+    for ref in ("a", "b", "bad"):
+        content = '{"pong": true}' if ref != "bad" else "not json"
+        storage.put_cas(
+            f"results/{ref}.json",
+            json.dumps({"choices": [{"message": {"content": content}}]}).encode("utf-8"),
+            "application/json",
+        )
+        storage.put_cas(f"payloads/{ref}/request.json", b"{}", "application/json")
+    storage.put_cas("payloads/pending/request.json", b"{}", "application/json")
+
+    def _poll(_url, json=None, **_kw):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {
+                        "id": ref,
+                        "state": "completed",
+                        "result_key": f"results/{ref}.json",
+                        "payload_key": f"payloads/{ref}/request.json",
+                    }
+                    for ref in ("a", "b", "bad")
+                ]
+                + [{"id": "pending", "state": "queued", "payload_key": None}]
+            },
+        )
+
+    retire_calls, ack_calls = [], []
+
+    def _retire(_url, json=None, **_kw):
+        retire_calls.append(json["items"])
+        # "b" was superseded after our poll: the Worker declines it.
+        return _mock_response(status_code=200, json_data={"retired": ["a"], "ignored": ["b"]})
+
+    def _ack(_url, json=None, **_kw):
+        ack_calls.append(json["ids"])
+        return _mock_response(status_code=200, json_data={"acked": json["ids"], "ignored": []})
+
+    session = MagicMock()
+    session.post.side_effect = _router(
+        {":poll-batch": _poll, ":retire-batch": _retire, ":ack-batch": _ack}
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    handles = [
+        JobHandle(task="tag", recipe_hash=f"r-{ref}", backend="llm-dispatch-v2", ref=ref)
+        for ref in ("a", "b")
+    ] + [
+        JobHandle(
+            task="tag",
+            recipe_hash="r-bad",
+            backend="llm-dispatch-v2",
+            ref="bad",
+            structured_output="dispatch-v2-test-pong",
+        ),
+        JobHandle(task="tag", recipe_hash="r-pending", backend="llm-dispatch-v2", ref="pending"),
+    ]
+
+    results = backend.poll_batch(handles)
+
+    assert isinstance(results["a"], JobResult) and isinstance(results["b"], JobResult)
+    assert sorted(item["id"] for item in retire_calls[0]) == ["a", "b"]
+    assert {item["id"]: item["result_key"] for item in retire_calls[0]}["a"] == "results/a.json"
+    assert ack_calls == [["b"]], "only the declined job falls back to the plain ack"
+    for ref in ("a", "b"):
+        assert storage.get_bytes(f"results/{ref}.json") is None
+        assert storage.get_bytes(f"payloads/{ref}/request.json") is None
+    # Never deleted: a result that failed validation (schema correction re-reads it) and a job
+    # that is not completed.
+    assert storage.get_bytes("results/bad.json") is not None
+    assert storage.get_bytes("payloads/bad/request.json") is not None
+    assert storage.get_bytes("payloads/pending/request.json") is not None
+
+
+def test_client_retire_can_be_disabled():
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+        dispatch_v2_client_retire=False,
+    )
+    backend = LiteLLMBackend(config, http_session=MagicMock(), storage=MockStorage())
+    assert backend._retire_consumed(MockStorage(), [("a", "results/a.json", None)]) == set()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [["a"], "a", None, {"retired": "a"}, {"retired": ["a", "not-sent", 7]}],
+)
+def test_retire_tolerates_malformed_responses(body):
+    """A malformed retire-batch body never raises out of the poll, and only refs this call sent
+    can count as retired; anything else falls back to the plain ack."""
+    storage = MockStorage()
+    storage.put_cas("results/a.json", b"{}", "application/json")
+    session = MagicMock()
+    session.post.return_value = _mock_response(status_code=200, json_data=body)
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    retired = backend._retire_consumed(storage, [("a", "results/a.json", None)])
+    well_formed = isinstance(body, dict) and isinstance(body["retired"], list)
+    assert retired == ({"a"} if well_formed else set())

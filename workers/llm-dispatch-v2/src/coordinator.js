@@ -427,7 +427,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // A recurring producer snapshot needs the queue depth, but COUNT(*) over a retained queue
     // makes that diagnostic proportional to backlog. These two columns turn it into a singleton
     // scheduler-row read. Existing DOs initialize exactly once on their next mutating RPC or
-    // snapshot; fresh DOs start at zero and the triggers below maintain the value thereafter.
+    // snapshot; fresh DOs start at zero and explicit deltas (see the note below) maintain it.
     this._ensureColumn("scheduler", "queued_job_count", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "queued_job_count_initialized", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0");
@@ -437,44 +437,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("scheduler", "last_claim_result", "TEXT NOT NULL DEFAULT ''");
     this._ensureColumn("scheduler", "last_claim_reason", "TEXT NOT NULL DEFAULT ''");
     this._ensureColumn("scheduler", "last_claim_diagnostics_json", "TEXT NOT NULL DEFAULT '{}'");
-    // Maintain the exact queued-job count in the singleton scheduler row. State transitions may
-    // happen in several RPCs (including lease expiry and retries), so database triggers are less
-    // error-prone than duplicating delta arithmetic at every call site. The initialization guard
-    // lets a deployed DO take one accurate COUNT(*) backfill before any trigger starts applying
-    // deltas; it also keeps direct Data Studio state edits correct after that migration.
-    sql.exec(`
-      CREATE TRIGGER IF NOT EXISTS trg_jobs_queued_count_insert
-      AFTER INSERT ON jobs
-      WHEN NEW.state = 'queued'
-       AND (SELECT queued_job_count_initialized FROM scheduler WHERE id = 1) = 1
-      BEGIN
-        UPDATE scheduler SET queued_job_count = queued_job_count + 1 WHERE id = 1;
-      END;
-
-      CREATE TRIGGER IF NOT EXISTS trg_jobs_queued_count_delete
-      AFTER DELETE ON jobs
-      WHEN OLD.state = 'queued'
-       AND (SELECT queued_job_count_initialized FROM scheduler WHERE id = 1) = 1
-      BEGIN
-        UPDATE scheduler SET queued_job_count = MAX(0, queued_job_count - 1) WHERE id = 1;
-      END;
-
-      CREATE TRIGGER IF NOT EXISTS trg_jobs_queued_count_state
-      AFTER UPDATE OF state ON jobs
-      WHEN OLD.state IS NOT NEW.state
-       AND (OLD.state = 'queued' OR NEW.state = 'queued')
-       AND (SELECT queued_job_count_initialized FROM scheduler WHERE id = 1) = 1
-      BEGIN
-        UPDATE scheduler
-           SET queued_job_count = MAX(
-             0,
-             queued_job_count +
-             CASE WHEN NEW.state = 'queued' THEN 1 ELSE 0 END -
-             CASE WHEN OLD.state = 'queued' THEN 1 ELSE 0 END
-           )
-         WHERE id = 1;
-      END;
-    `);
+    // The queued-job counter used to be maintained by three per-row triggers, which cost a billed
+    // row on every insert, lease and requeue (~2 per job). It is now maintained explicitly inside
+    // scheduler UPDATEs the hot paths already make (enqueue, claim, completion requeues, cancels,
+    // schema retries), and recounted exactly on every cleanup tick (purgePendingBatch), which
+    // also heals rare paths and direct Data Studio edits. The count is diagnostic only (stats and
+    // the empty-claim reason), never an admission input.
+    for (const trigger of [
+      "trg_jobs_queued_count_insert",
+      "trg_jobs_queued_count_delete",
+      "trg_jobs_queued_count_state",
+    ]) {
+      sql.exec(`DROP TRIGGER IF EXISTS ${trigger}`);
+    }
     // The job_models_backfill_*/legacy_retryable_recovery_*/migration_*_today columns that used to
     // be retrofitted here were the one-time compatibility migration's own bookkeeping (review/44's
     // "Durable Objects rows-read overage retrospective"). Both migrations completed in production
@@ -1057,6 +1032,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // canonicalize against it, and it is a static catalog for the life of the call.
       const dispatchLimits = this._dispatchLimits();
       const purposeDeltas = new Map();
+      let queuedAdded = 0;
       const purposeUsage = new Map(
         [...sql.exec(
           "SELECT purpose, jobs_ingested, write_units FROM ingress_purpose WHERE utc_day = ?",
@@ -1161,6 +1137,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
               });
               continue;
             }
+            if (row.state !== "queued") queuedAdded += 1;
             sql.exec(
               `UPDATE jobs SET
                  request_digest = ?, provider_idempotency_key = ?, state = 'queued',
@@ -1302,6 +1279,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         );
 
         newlyInsertedCount++;
+        queuedAdded += 1;
         newlyAdmittedWriteUnits += writeUnits;
         purposeUsage.set(purpose, {
           jobs_ingested: purposeUsageRow.jobs_ingested + 1,
@@ -1331,12 +1309,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
         );
       }
 
-      if (newlyInsertedCount > 0) {
+      if (newlyInsertedCount > 0 || queuedAdded > 0) {
         sql.exec(
           `UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + ?,
-           ingress_write_units_today = ingress_write_units_today + ? WHERE id = 1`,
+           ingress_write_units_today = ingress_write_units_today + ?,
+           queued_job_count = queued_job_count + ? WHERE id = 1`,
           newlyInsertedCount,
-          newlyAdmittedWriteUnits
+          newlyAdmittedWriteUnits,
+          queuedAdded
         );
       }
 
@@ -1496,7 +1476,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       );
       sql.exec(
         `UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + 1,
-         ingress_write_units_today = ingress_write_units_today + ? WHERE id = 1`,
+         ingress_write_units_today = ingress_write_units_today + ?,
+         queued_job_count = queued_job_count + 1 WHERE id = 1`,
         writeUnits
       );
       sql.exec(
@@ -1768,7 +1749,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     for (const chunk of this._chunks(ids)) {
       const placeholders = chunk.map(() => "?").join(",");
       const rows = [...sql.exec(
-        `SELECT id, state, result_key, attempts, lease_route_id FROM jobs WHERE id IN (${placeholders})`,
+        `SELECT id, state, result_key, payload_key, attempts, lease_route_id FROM jobs
+         WHERE id IN (${placeholders})`,
         ...chunk
       )];
       for (const row of rows) {
@@ -1776,6 +1758,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           id: row.id,
           state: row.state,
           result_key: row.state === "completed" ? row.result_key : null,
+          // Returned for completed jobs so a consumer that has durably persisted the result can
+          // delete exactly the B2 objects THIS row references before retireConsumed.
+          payload_key: row.state === "completed" ? row.payload_key : null,
           error: row.state === "failed" ? "job_failed" : null,
           attempts: row.attempts,
           model:
@@ -1851,6 +1836,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const cancelled = [];
       const inFlight = [];
       const found = new Set();
+      let cancelledQueued = 0;
       for (const chunk of this._chunks(jobIds)) {
         const placeholders = chunk.map(() => "?").join(",");
         const rows = [...sql.exec(
@@ -1873,8 +1859,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
             Date.now(),
             row.id
           );
+          if (row.state === "queued") cancelledQueued += 1;
           cancelled.push(row.id);
         }
+      }
+      if (cancelledQueued > 0) {
+        sql.exec(
+          "UPDATE scheduler SET queued_job_count = MAX(0, queued_job_count - ?) WHERE id = 1",
+          cancelledQueued
+        );
       }
       return { cancelled, in_flight: inFlight, not_found: jobIds.filter((id) => !found.has(id)) };
     });
@@ -2507,7 +2500,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return result;
   }
 
-  _recordClaimOutcome(now, result, reason, diagnostics, bundlesClaimed = 0, leasesClaimed = 0) {
+  _recordClaimOutcome(
+    now, result, reason, diagnostics, bundlesClaimed = 0, leasesClaimed = 0, queuedDelta = 0
+  ) {
     const sql = this._getSql();
     const row = [...sql.exec(
       "SELECT claim_empty_count_today, claim_reason_counts_json FROM scheduler WHERE id = 1"
@@ -2519,7 +2514,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       `UPDATE scheduler SET last_claim_at=?, last_claim_result=?, last_claim_reason=?,
        last_claim_diagnostics_json=?, claim_empty_count_today=?, claim_reason_counts_json=?,
        bundle_count_today = bundle_count_today + ?,
-       lease_count_today = lease_count_today + ?
+       lease_count_today = lease_count_today + ?,
+       queued_job_count = MAX(0, queued_job_count + ?)
        WHERE id=1`,
       now,
       result,
@@ -2528,7 +2524,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       result === "empty" ? emptyCount + 1 : emptyCount,
       JSON.stringify(reasonCounts),
       bundlesClaimed,
-      leasesClaimed
+      leasesClaimed,
+      queuedDelta
     );
   }
 
@@ -2572,16 +2569,22 @@ export class LLMSchedulerDO extends DurableObjectBase {
           provider_concurrency: {},
         },
       };
+      // Expired leases this tick returns to queued (set below); folded into the claim snapshot's
+      // queued_job_count delta so the counter costs no extra billed row.
+      let reapedToQueued = 0;
       const recordEmpty = (reason, extra = {}) => {
         const snapshot = { ...diagnostics, ...extra };
-        this._recordClaimOutcome(now, "empty", reason, snapshot);
+        // Leases reaped this tick went back to queued; no new leases.
+        this._recordClaimOutcome(now, "empty", reason, snapshot, 0, 0, reapedToQueued);
         return { ...EMPTY, claim_result: "empty", claim_reason: reason, claim_diagnostics: snapshot };
       };
       const recordClaimed = (jobs) => {
         diagnostics.chosen_jobs = jobs;
-        // The bundle and lease counters ride on the same scheduler UPDATE: one billed row per
-        // claim.
-        this._recordClaimOutcome(now, "claimed", "claimed", diagnostics, 1, jobs);
+        // The bundle, lease and queued counters ride on the same scheduler UPDATE: one billed
+        // row per claim.
+        this._recordClaimOutcome(
+          now, "claimed", "claimed", diagnostics, 1, jobs, reapedToQueued - jobs
+        );
       };
 
       const sched = this._rollUtcDayIfNeeded(now);
@@ -2619,6 +2622,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         "SELECT * FROM jobs WHERE state='leased' AND lease_expires_at < ?",
         now
       )];
+      reapedToQueued = expiredJobs.length;
       if (expiredJobs.length > 0) {
         // Give the route back what these dead leases were holding. completeBatch is the only
         // other place provisional_reservation is ever decremented, and by definition it never
@@ -2838,12 +2842,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
 
       if (chosen.length === 0) {
-        // This branch is taken on nearly every tick. Read the trigger-maintained singleton rather
+        // This branch is taken on nearly every tick. Read the delta-maintained singleton rather
         // than probing queued jobs: the exact classification remains constant-cost even when the
-        // backlog is much larger than the 1,000-row cap that previously bounded this query.
-        const queuedCount = [...sql.exec(
+        // backlog is much larger than the 1,000-row cap that previously bounded this query. Leases
+        // this tick's sweep just requeued are not in the stored count yet (recordEmpty applies
+        // them), so add them here or the tick would report no_queued_work with work queued.
+        const storedQueued = [...sql.exec(
           "SELECT queued_job_count FROM scheduler WHERE id = 1"
         )][0]?.queued_job_count || 0;
+        const queuedCount = Math.max(0, storedQueued + reapedToQueued);
         const concurrencyRejected =
           diagnostics.rejections.route_concurrency + diagnostics.rejections.provider_concurrency;
         const otherRejected =
@@ -3272,6 +3279,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._ensureQueuedJobCounter();
       const now = Date.now();
       let settledCount = 0;
+      let requeuedCount = 0;
 
       for (const result of results || []) {
         // Look up the job first (a plain read, no side effects) so the attempts insert below can
@@ -3464,6 +3472,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             result.job_id
           );
           this._indexQueuedJobModels(job);
+          requeuedCount += 1;
         } else if (shouldRequeue) {
           // Must go through this branch, not the generic UPDATE below: claiming a job deletes its
           // job_models index rows, so a requeue that only rewrites `state` leaves the job queued
@@ -3478,6 +3487,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             result.job_id
           );
           this._indexQueuedJobModels(job);
+          requeuedCount += 1;
         } else if (result.outcome === "success") {
           sql.exec(
             "UPDATE jobs SET state=?, result_key=?, updated_at=? WHERE id=?",
@@ -3703,6 +3713,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
       }
 
+      if (requeuedCount > 0) {
+        // One scheduler write per completeBatch, not per requeued job (see the queued-counter
+        // note in _initSchema).
+        sql.exec(
+          "UPDATE scheduler SET queued_job_count = queued_job_count + ? WHERE id = 1",
+          requeuedCount
+        );
+      }
+
       if (settledCount > 0) {
         const remainingLeased = [...sql.exec(
           "SELECT COUNT(*) as n FROM jobs WHERE bundle_id = ? AND state = 'leased'",
@@ -3783,6 +3802,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * transitioned to purge_pending so the caller (executor Worker, which already holds B2
    * credentials) can delete their B2 payload/result keys and then confirm via confirmPurge. Never
    * performs an unbounded scan -- bounded by `limit`, same discipline as pollBatch's chunking. */
+  /**
+   * Exact queued-count recount, called hourly by the scheduled cleanup (index.js): heals any
+   * transition the explicit deltas miss and direct Data Studio edits. Deliberately NOT on a
+   * per-tick path -- it reads one index entry per queued job, so it scales with queue depth.
+   * Writes one row, and only when the stored count has drifted.
+   */
+  async recountQueuedJobs() {
+    const sql = this._getSql();
+    return this.ctx.storage.transactionSync(() => {
+      this._ensureQueuedJobCounter();
+      const actual = [...sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'")][0]?.n || 0;
+      sql.exec(
+        "UPDATE scheduler SET queued_job_count = ? WHERE id = 1 AND queued_job_count <> ?",
+        actual,
+        actual
+      );
+      return { queued: actual };
+    });
+  }
+
   async purgePendingBatch(limit) {
     const sql = this._getSql();
     const retentionDays = this._envInt("COMPLETED_RETENTION_DAYS", 38);
@@ -3890,6 +3929,49 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
       const ackedSet = new Set(acked);
       return { acked, ignored: jobIds.filter((id) => !ackedSet.has(id)) };
+    });
+  }
+
+  /**
+   * Consumption-based retirement (tier 3): delete the rows of COMPLETED jobs whose result the
+   * caller has durably persisted AND whose B2 payload/result objects it has already deleted.
+   * One billed row per job, versus ack (state change, 2) + cleanup's confirmPurge (1) plus two
+   * Worker-side B2 delete subrequests on the plain-ack path.
+   *
+   * Safety is by consumption, never by age: a row is removed only when it is still `completed`
+   * AND its result_key equals the one the caller consumed. A job superseded by an idempotent
+   * replay after the caller's poll (queued again, or re-completed with a new result_key) is left
+   * untouched, so a late retire can never delete work nobody has read. Jobs that are queued,
+   * leased, failed, or unknown are ignored.
+   */
+  async retireConsumed(items) {
+    if (!Array.isArray(items) || items.length === 0) return { retired: [], ignored: [] };
+    const sql = this._getSql();
+    return this.ctx.storage.transactionSync(() => {
+      const retired = [];
+      const ignored = [];
+      const wanted = new Map(items.map((item) => [item.id, item.result_key]));
+      for (const chunk of this._chunks([...wanted.keys()])) {
+        const placeholders = chunk.map(() => "?").join(",");
+        const rows = [...sql.exec(
+          `SELECT id, result_key FROM jobs WHERE id IN (${placeholders}) AND state = 'completed'`,
+          ...chunk
+        )];
+        const matched = rows
+          .filter((row) => row.result_key && row.result_key === wanted.get(row.id))
+          .map((row) => row.id);
+        for (const deleteChunk of this._chunks(matched)) {
+          const marks = deleteChunk.map(() => "?").join(",");
+          sql.exec(
+            `DELETE FROM jobs WHERE id IN (${marks}) AND state = 'completed'`,
+            ...deleteChunk
+          );
+          retired.push(...deleteChunk);
+        }
+      }
+      const retiredSet = new Set(retired);
+      for (const id of wanted.keys()) if (!retiredSet.has(id)) ignored.push(id);
+      return { retired, ignored };
     });
   }
 

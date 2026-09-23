@@ -164,3 +164,41 @@ export function validateResolveUnknownBatchRequest(body) {
   }
   return { valid: true };
 }
+
+/**
+ * `POST /v2/jobs:retire-batch` -- `{items: [{id, result_key}]}`: completed jobs the caller has
+ * durably consumed and whose B2 objects it has already deleted (see retireConsumed).
+ */
+export function validateRetireBatchRequest(body, maxBatchSize = 1000) {
+  if (!body || typeof body !== "object" || !Array.isArray(body.items)) {
+    return { valid: false, error: "invalid_request", detail: "Request body must contain 'items' array" };
+  }
+  if (body.items.length === 0) {
+    return { valid: false, error: "invalid_request", detail: "Items array must not be empty" };
+  }
+  if (body.items.length > maxBatchSize) {
+    return {
+      valid: false,
+      error: "batch_too_large",
+      detail: `Batch size ${body.items.length} exceeds maximum limit of ${maxBatchSize}`,
+    };
+  }
+  for (let i = 0; i < body.items.length; i++) {
+    const item = body.items[i];
+    if (
+      !item ||
+      typeof item !== "object" ||
+      typeof item.id !== "string" ||
+      !item.id.trim() ||
+      typeof item.result_key !== "string" ||
+      !item.result_key.trim()
+    ) {
+      return {
+        valid: false,
+        error: "invalid_request",
+        detail: `items[${i}] must have non-empty string 'id' and 'result_key'`,
+      };
+    }
+  }
+  return { valid: true };
+}
