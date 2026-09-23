@@ -925,6 +925,31 @@ test("lookahead uses the calibrated ratio, not the static prior, to skip unserva
   assert.deepEqual(plan.jobs.map((job) => job.id), ["fits"]);
 });
 
+test("claims stop at MAX_LEASES_PER_UTC_DAY and resume on the next UTC day", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_LEASES_PER_UTC_DAY: "3", MAX_BUNDLE_JOBS: "4" });
+  await coordinator.enqueueBatch(Array.from({ length: 6 }, (_, i) => makeJob(`lease-${i}`)));
+  const day = Date.UTC(2026, 8, 23, 12);
+  const first = await coordinator.claimDispatchWindow(day, 30);
+  assert.ok(first.jobs.length <= 3 && first.jobs.length > 0);
+  let leased = first.jobs.length;
+  // Settle the first bundle so concurrency never masks the lease cap.
+  sql.exec("UPDATE bundles SET state = 'completed'");
+  sql.exec("UPDATE jobs SET state = 'completed' WHERE state = 'leased'");
+  for (let t = 1; t < 5 && leased < 3; t += 1) {
+    const plan = await coordinator.claimDispatchWindow(day + t * 61_000, 30);
+    leased += plan.jobs.length;
+    sql.exec("UPDATE bundles SET state = 'completed'");
+    sql.exec("UPDATE jobs SET state = 'completed' WHERE state = 'leased'");
+  }
+  assert.equal(leased, 3, "never more leases than the daily cap");
+  const capped = await coordinator.claimDispatchWindow(day + 10 * 61_000, 30);
+  assert.equal(capped.claim_reason, "daily_lease_limit");
+  const scheduler = [...sql.exec("SELECT lease_count_today FROM scheduler WHERE id = 1")][0];
+  assert.equal(scheduler.lease_count_today, 3);
+  const nextDay = await coordinator.claimDispatchWindow(Date.UTC(2026, 8, 24, 0, 1), 30);
+  assert.ok(nextDay.jobs.length > 0, "the counter resets with the UTC day");
+});
+
 test("a 404 requeues the job with a short escalating cooldown, not the retirement block", async () => {
   const { coordinator, sql } = makeCoordinator({ ROUTE_UNAVAILABLE_BLOCK_SECONDS: "21600" });
   await coordinator.enqueueBatch([makeJob("j1")]);
