@@ -9,7 +9,7 @@ import pytest
 import requests
 
 from citypods.bench import _get_ref_text
-from citypods.models import Episode
+from citypods.models import City, Episode
 
 
 def _ep(**overrides):
@@ -90,3 +90,31 @@ def test_download_hosted_audio_public_alias_matches_internal_helper():
     from citypods import stages
 
     assert stages.download_hosted_audio is stages._download_audio
+
+
+def test_missing_episode_preview_is_limited_to_first_five_uids(capsys, monkeypatch, tmp_path):
+    """The diagnostic preview needs only a bounded prefix of a large record mapping."""
+    from citypods.bench import run_bench
+
+    city = City(
+        slug="test-city",
+        city_entity="test-city",
+        provider="granicus",
+        source={"feed_url": "https://test.example/feed", "body": "City Council"},
+        podcast_title="Test City: Council",
+        podcast_description="Meetings.",
+        podcast_author="City of Test, TX",
+        podcast_email="",
+    )
+    records = {f"uid-{index}": {} for index in range(6)}
+    monkeypatch.setattr("citypods.text_metrics.require_jiwer", lambda: None)
+    monkeypatch.setattr("citypods.config.load_site_config", lambda _path: {})
+    monkeypatch.setattr("citypods.config.load_city_configs", lambda _path, _defaults: [city])
+    monkeypatch.setattr("citypods.state.resolve_state_dir", lambda _config, _output: tmp_path)
+    monkeypatch.setattr("citypods.records.load_records", lambda _path, _source: records)
+
+    assert run_bench("test-city", "missing", ["base.en"]) == 1
+
+    output = capsys.readouterr().out
+    assert "Available UIDs in this source: uid-0, uid-1, uid-2, uid-3, uid-4 ..." in output
+    assert "uid-5" not in output
