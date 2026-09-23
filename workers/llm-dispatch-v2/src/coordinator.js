@@ -404,6 +404,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("scheduler", "queued_job_count", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "queued_job_count_initialized", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "lease_count_today", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "claim_reason_counts_json", "TEXT NOT NULL DEFAULT '{}'");
     this._ensureColumn("scheduler", "last_claim_at", "INTEGER");
     this._ensureColumn("scheduler", "last_claim_result", "TEXT NOT NULL DEFAULT ''");
@@ -531,6 +532,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["queued_job_count", "INTEGER NOT NULL DEFAULT 0"],
       ["queued_job_count_initialized", "INTEGER NOT NULL DEFAULT 0"],
       ["claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0"],
+      ["lease_count_today", "INTEGER NOT NULL DEFAULT 0"],
       ["claim_reason_counts_json", "TEXT NOT NULL DEFAULT '{}'"],
       ["last_claim_at", "INTEGER"],
       ["last_claim_result", "TEXT NOT NULL DEFAULT ''"],
@@ -763,6 +765,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._envInt("MAX_IN_FLIGHT_LLM_CALLS", 8);
   }
 
+  _maxLeasesPerUtcDay() {
+    return this._envInt("MAX_LEASES_PER_UTC_DAY", 1750);
+  }
+
   _maxBundlesPerUtcDay() {
     return this._envInt("MAX_BUNDLES_PER_UTC_DAY", 1000);
   }
@@ -900,8 +906,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const sql = this._getSql();
     const today = this._currentUtcDay(now);
     const rows = [...sql.exec(
-      `SELECT utc_day, bundle_count_today, jobs_ingested_today, ingress_write_units_today,
-              claim_empty_count_today, claim_reason_counts_json, last_claim_at,
+      `SELECT utc_day, bundle_count_today, lease_count_today, jobs_ingested_today,
+              ingress_write_units_today, claim_empty_count_today, claim_reason_counts_json,
+              last_claim_at,
               last_claim_result, last_claim_reason, last_claim_diagnostics_json
        FROM scheduler WHERE id = 1`
     )];
@@ -916,6 +923,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       return {
         utc_day: today,
         bundle_count_today: 0,
+        lease_count_today: 0,
         jobs_ingested_today: 0,
         ingress_write_units_today: 0,
         claim_empty_count_today: 0,
@@ -926,7 +934,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     if (sched.utc_day !== today) {
       sql.exec(
         `UPDATE scheduler SET utc_day = ?, bundle_count_today = 0, jobs_ingested_today = 0,
-         ingress_write_units_today = 0, claim_empty_count_today = 0,
+         ingress_write_units_today = 0, claim_empty_count_today = 0, lease_count_today = 0,
          claim_reason_counts_json = '{}' WHERE id = 1`,
         today
       );
@@ -934,6 +942,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         ...sched,
         utc_day: today,
         bundle_count_today: 0,
+        lease_count_today: 0,
         jobs_ingested_today: 0,
         ingress_write_units_today: 0,
         claim_empty_count_today: 0,
@@ -1443,7 +1452,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._ensureQueuedJobCounter();
       const one = (query, ...args) => [...sql.exec(query, ...args)][0] || {};
       const scheduler = one(
-        `SELECT utc_day, bundle_count_today, jobs_ingested_today, queued_job_count,
+        `SELECT utc_day, bundle_count_today, lease_count_today, jobs_ingested_today,
+                ingress_write_units_today, queued_job_count,
                 next_maintenance_alarm_at, last_claim_at, last_claim_result,
                 last_claim_reason, claim_empty_count_today, claim_reason_counts_json
            FROM scheduler WHERE id = 1`
@@ -1465,6 +1475,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         scheduler: {
           utc_day: scheduler.utc_day ?? null,
           bundle_count_today: scheduler.bundle_count_today ?? 0,
+          lease_count_today: scheduler.lease_count_today ?? 0,
+          ingress_write_units_today: scheduler.ingress_write_units_today ?? 0,
           jobs_ingested_today: scheduler.jobs_ingested_today ?? 0,
           next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
         },
@@ -1646,6 +1658,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       scheduler: {
         utc_day: scheduler.utc_day ?? null,
         bundle_count_today: scheduler.bundle_count_today ?? 0,
+          lease_count_today: scheduler.lease_count_today ?? 0,
+          ingress_write_units_today: scheduler.ingress_write_units_today ?? 0,
         jobs_ingested_today: scheduler.jobs_ingested_today ?? 0,
         next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
       },
@@ -2492,6 +2506,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
           max_bundles_per_day: maxBundlesPerDay,
         });
       }
+      // The dispatch half of the DO row-write budget (write_budget.js): each lease costs up to
+      // ~40 billed rows through retirement. Bundles alone did not bound it -- 1,400 bundles of 5
+      // jobs could write ~280k rows against the account's 100,000/day.
+      const maxLeasesPerDay = this._maxLeasesPerUtcDay();
+      const leasesRemaining = Math.max(0, maxLeasesPerDay - (Number(sched.lease_count_today) || 0));
+      if (leasesRemaining <= 0) {
+        return recordEmpty("daily_lease_limit", {
+          leases_today: Number(sched.lease_count_today) || 0,
+          max_leases_per_day: maxLeasesPerDay,
+        });
+      }
+      const bundleJobLimit = Math.min(maxBundleJobs, leasesRemaining);
 
       // Reap bundles whose lease expired without ever reaching completeBatch -- an executor
       // crash, a CPU/wall-clock eviction mid-tick, or an uncaught error before the final
@@ -2614,7 +2640,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const modelPlans = this._rankModelsByCapacity(now, windowSeconds, dispatchLimits);
       const modelPlansByModel = new Map(modelPlans.map((plan) => [plan.model, plan]));
       for (const modelPlan of modelPlans) {
-        if (chosen.length >= maxBundleJobs) break;
+        if (chosen.length >= bundleJobLimit) break;
         // Head-of-line guard. Reading only the oldest maxJobsPerModelClaim entries let a few jobs
         // too large for every route that currently has capacity (e.g. 10-14k-token Gemma batches
         // while the 10k-ceiling AI Studio routes were the only Gemma legs with headroom) block
@@ -2637,7 +2663,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         let acceptedForModel = 0;
 
         for (const job of candidates) {
-          if (chosen.length >= maxBundleJobs) break;
+          if (chosen.length >= bundleJobLimit) break;
           if (acceptedForModel >= maxJobsPerModelClaim) break;
           if (chosenJobIds.has(job.id)) continue;
           diagnostics.candidate_jobs += 1;
@@ -2877,7 +2903,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
         dispatchWindowEnd,
         now
       );
-      sql.exec("UPDATE scheduler SET bundle_count_today = bundle_count_today + 1 WHERE id = 1");
+      // One statement, one scheduler row: counting leases here adds no billed rows.
+      sql.exec(
+        `UPDATE scheduler SET bundle_count_today = bundle_count_today + 1,
+                              lease_count_today = lease_count_today + ? WHERE id = 1`,
+        resultJobs.length
+      );
       recordClaimed(resultJobs.length);
 
       return {

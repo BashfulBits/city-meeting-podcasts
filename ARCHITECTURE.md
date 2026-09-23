@@ -461,7 +461,14 @@ routes and what it may spend cannot describe different things.
 [`citypods/compute/llm_lanes.py`](citypods/compute/llm_lanes.py) reads it on the client. A purpose
 with no entry is rejected at ingress rather than drawing on shared headroom, so adding a verb or
 task is a deliberate config edit; a sub-purpose (`topic-tags:prelabeler`) does not inherit its
-prefix's (`topic-tags:tagger`) budget. A job may only name routes its own lane declares — ingress
+prefix's (`topic-tags:tagger`) budget. **The binding daily limit is the account's Durable Object
+row-write budget** (Free plan: 100,000 billed rows/day; every index entry and trigger write is a
+billed row). `workers/llm-dispatch-v2/src/write_budget.js` holds per-phase costs measured under
+workerd by `bench/rows-written/` (ingress 3 rows per write unit; each dispatch lease up to 34;
+retirement 6), and `validateConfig` refuses a deploy whose worst case
+(`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` + `MAX_LEASES_PER_UTC_DAY`) could exceed
+`DO_ROWS_WRITTEN_DAILY_BUDGET` (90,000). That caps sustained throughput at roughly 1,300 LLM
+jobs/day end to end; the lane budgets above divide it. A job may only name routes its own lane declares — ingress
 rejects `model_not_in_lane` — so the block describes what actually runs, not merely what was
 intended. The registry is repository-level policy read from the committed file and has no per-run
 override: a `--site-config` chooses site content and may *narrow* a lane

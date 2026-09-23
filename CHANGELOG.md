@@ -29,6 +29,27 @@ Phase R (Research-Tool Surface)._
   12 -> 9, claim 9.9 -> 6.9, attempt start 6 -> 4, complete 10.3 -> 7.3, ack 5 -> 2); a retried
   attempt 40 -> 32. No data or behavior change; dropping an index writes no rows.
 
+- **LLM dispatch budgets re-derived from measured billed DO rows**
+  (`workers/llm-dispatch-v2/src/write_budget.js`, `wrangler.jsonc`, `config/site_config.yml`).
+  The Free plan's 100,000 DO rows written per day is account-wide, and Cloudflare bills every index
+  entry and trigger write. The old arithmetic ("~7 lifecycle writes per job", 24,000 ingress units)
+  understated the real cost ~5x and never bounded dispatch; 2026-09-23 reached 97,877 rows by
+  15:00 UTC. `bench/rows-written/` now measures each lifecycle phase under workerd (ingress 3 rows per
+  write unit, claim 9.4/bundle + 7.6/job, attemptStarted 6, completeBatch 10.3, ack 5, purge 1,
+  idle tick 1); for 2026-09-22's counts it predicts 70.2k rows against 71.1k billed.
+  - New `MAX_LEASES_PER_UTC_DAY` (1,750) caps provider attempts per day; claims stop with
+    `daily_lease_limit` and the counter (`lease_count_today`, exposed in `/v2/stats`) resets at
+    00:00 UTC. `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 24,000 -> 5,800 and `MAX_JOBS_PER_UTC_DAY`
+    8,000 -> 1,450. Worst case: 17,400 + 70,000 + 1,440 = 88,840 rows, under the new
+    `DO_ROWS_WRITTEN_DAILY_BUDGET` (90,000), which `validateConfig` now enforces at deploy.
+  - Lane budgets rescaled to fit (reservations 13,000 -> 3,780 of 5,800): chapter-agenda 500
+    jobs/day, prelabeler 300, tagger 300, locator 150, shadow evaluator 60, and smaller research
+    lanes. Sustained end-to-end throughput is ~1,300 LLM jobs/day on the Free plan; raising it
+    means fewer billed rows per job (e.g. dropping the redundant `idx_jobs_state_updated` index)
+    or Workers Paid.
+  No recipe or pipeline-version change; nothing is re-queued. Producers that exceed their smaller
+  lane budgets are deferred at ingress (0 rows written) and retried on later runs.
+
 - **Pre-labeler batches sized to Google AI Studio's Gemma ceiling; gemma-4-26b shadow evaluator**
   (`citypods/tags.py`, `citypods/stages.py`, `citypods/llm_evaluation.py`, `config/site_config.yml`,
   `scripts/reconcile_stuck_chapter_agenda.py`).
