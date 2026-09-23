@@ -479,8 +479,19 @@ admission scan key `(model, priority, created_at, job_id)` plus a unique `(job_i
 and is pruned oldest-first by rowid; token calibration writes every completion until a
 route/model/prompt-family window holds 32 samples, then a deterministic 1-in-4 sample by job id;
 and same-row bookkeeping in one transaction (per-purpose ingress counters, a success's route
-settlement, the claim-outcome scheduler row with its bundle/lease counters) is folded into one
-statement. A job may only name routes its own lane declares — ingress
+settlement, the claim-outcome scheduler row with its bundle/lease/queued counters) is folded into
+one statement. The queued-job counter is maintained by those explicit deltas, not per-row
+triggers, and recounted exactly once an hour by scheduled cleanup (`recountQueuedJobs`); it is
+diagnostic only. A completed job is retired by *consumption*, never by age: after `poll_batch`
+persists its result, the client deletes the job's B2 payload/result and calls
+`/v2/jobs:retire-batch`, which deletes the row only while it is still `completed` with the same
+`result_key` (anything else falls back to ack + scheduled cleanup). A claim advances each route's
+and provider's pacing ledger in memory and writes it once per claim, and `completeBatch` folds
+same-route successes into one routes UPDATE per route, flushing a route's pending successes before
+any non-success write to it so the final backoff state matches per-job order ([PR
+#1843](https://github.com/BashfulBits/city-meeting-podcasts/pull/1843)). `bundles` is `WITHOUT
+ROWID` and a bundle row is deleted when its last job settles; `BUNDLE_RETENTION_DAYS` now prunes
+only bundles whose lease expired unreported. A job may only name routes its own lane declares — ingress
 rejects `model_not_in_lane` — so the block describes what actually runs, not merely what was
 intended. The registry is repository-level policy read from the committed file and has no per-run
 override: a `--site-config` chooses site content and may *narrow* a lane
