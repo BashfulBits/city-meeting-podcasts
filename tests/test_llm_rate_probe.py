@@ -136,6 +136,34 @@ def test_report_records_header_names_and_values_but_no_api_key(monkeypatch):
     assert secret_key not in report_str
 
 
+def test_gemini_probe_uses_google_api_key_header(monkeypatch):
+    secret_key = "not-a-real-secret"
+    response = MagicMock()
+    response.status_code = 200
+    response.headers = {}
+    response.json.return_value = {"choices": [{"message": {"content": "pong"}}]}
+    session = MagicMock()
+    session.post.return_value = response
+    runner = RateProbeRunner(apply=True, session=session)
+    monkeypatch.setenv("TEST_KEY", secret_key)
+
+    runner.send_request(
+        {
+            "route_id": "gemini-probe",
+            "provider": "gemini",
+            "api_key_env": "TEST_KEY",
+            "api_base": "https://example.test/v1beta/openai",
+            "chat_path": "/chat/completions",
+            "upstream_model": "gemini-test",
+        },
+        "Ping",
+    )
+
+    headers = session.post.call_args.kwargs["headers"]
+    assert headers["x-goog-api-key"] == secret_key
+    assert "Authorization" not in headers
+
+
 def test_phase_4_ground_truth_agreement():
     """Phase 4 labels cold-first 429s as upstream_capacity and checks classifier agreement."""
     # Agrees with upstream_capacity

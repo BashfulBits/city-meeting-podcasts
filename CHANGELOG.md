@@ -17,6 +17,19 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Added review-PR-only provider catalog reconciliation**
+  (`scripts/reconcile_provider_routes.py`, `provider-catalog-reconcile.yml`, review/48). The weekly
+  control-plane check reads authenticated provider model lists, distinguishes availability from
+  free-tier evidence, then requires an exact independent Artificial Analysis comparison against the
+  GPT-OSS-120B / Nemotron-3 Super floor (with a verified Hugging Face-evaluation fallback) plus a
+  fixed non-sensitive completion canary before adding a route. It can remove a route only after
+  both catalog absence and an explicit model-not-found response; missing/incomparable quality
+  evidence, quota, payment, entitlement, and scraper uncertainty are retained in one deduplicated
+  GitHub issue. Safe changes are committed to a digest-named review PR and never auto-merged or
+  deployed. Exact logical-model siblings remain usable automatically; a cross-model replacement
+  still requires reviewed `model_routing` or lane backup policy. No pipeline version, recipe,
+  stored artifact, or automatic artifact backfill changes.
+
 - **Terminal-job cleanup drains as fast as dispatch can finish jobs**
   (`workers/llm-dispatch-v2/wrangler.jsonc`, `src/index.js`, `src/write_budget.js`).
   `CLEANUP_INTERVAL_MINUTES` 60 -> 12: 5 runs/hour x `PURGE_BATCH_LIMIT` 15 = 1,800 jobs/day, just

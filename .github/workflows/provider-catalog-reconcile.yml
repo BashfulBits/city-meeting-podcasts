@@ -1,0 +1,79 @@
+name: Provider catalog reconciliation
+
+on:
+  schedule:
+    - cron: "17 10 * * 1"
+  workflow_dispatch:
+    inputs:
+      provider:
+        description: "Provider to reconcile (optional; empty reconciles all)"
+        required: false
+        default: ""
+        type: string
+      apply:
+        description: "Create safe amendments, issue updates, and a review PR"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: provider-catalog-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # The reconciler's explicit --open-pr path creates a digest-named branch and pushes it.
+          # Keep the scoped Actions token available to git; contents: write above is deliberate.
+          persist-credentials: true
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -e ".[llm]" -c constraints/prod.txt
+      - name: Reconcile provider route catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_APPLY: ${{ inputs.apply }}
+          INPUT_PROVIDER: ${{ inputs.provider }}
+          AIRFORCE_API_KEY: ${{ secrets.AIRFORCE_API_KEY }}
+          ARTIFICIAL_ANALYSIS_API_KEY: ${{ secrets.ARTIFICIAL_ANALYSIS_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          MISTRAL_API_KEY_SECONDARY: ${{ secrets.MISTRAL_API_KEY_SECONDARY }}
+          MISTRAL_API_KEY_TERTIARY: ${{ secrets.MISTRAL_API_KEY_TERTIARY }}
+          NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
+          SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
+          SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+        run: |
+          args=(--report provider-catalog-report.md)
+          if [ -n "$INPUT_PROVIDER" ]; then
+            args+=(--provider "$INPUT_PROVIDER")
+          fi
+          if [ "${{ github.event_name }}" = "schedule" ] || [ "$INPUT_APPLY" = "true" ]; then
+            args+=(--apply --sync-issues --open-pr)
+          fi
+          python scripts/reconcile_provider_routes.py "${args[@]}"
+      - name: Upload reconciliation report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: provider-catalog-report
+          path: provider-catalog-report.md
+          if-no-files-found: ignore

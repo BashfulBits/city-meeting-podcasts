@@ -178,12 +178,14 @@ there is only one place the decision is made.
 
 `scripts/compile_llm_limits.py`'s default invocation (what the deploy workflow runs) is pure
 YAML→JSON, no network call — deterministic, and the deployed artifact can never differ from the
-reviewed one. `--discover [provider ...]` (maintainer-run only, bare form covers every provider with a
-`discovery.endpoint` in its YAML block) fetches and appends newly discovered routes, then rewrites
-`provider_limits.yml` for the maintainer to review and commit. The gate and the fetcher/transform
-registry (`DISCOVERY_FETCHERS`/`DISCOVERY_TRANSFORMS`) are provider-name-keyed, not OpenRouter-specific
-— a future provider that gains a real discovery endpoint (Mistral/Gemini/DeepSeek `GET /models`-style)
-plugs in the same way, gated identically.
+reviewed one. `--discover [provider ...]` remains a maintainer-run, append-only command. **Superseded
+for scheduled catalog maintenance:** review/48 adds a separate authenticated reconciliation script that
+may propose a review PR, but only after provider-specific free evidence, an exact independent
+Artificial Analysis comparison against the GPT-OSS-120B / Nemotron-3 Super floor (or verified
+Hub-evaluation fallback), and a fixed completion canary;
+it never changes the deploy compiler's network-free contract. Its explicit missing-model gate and rolling
+inconclusive-evidence issue replace the earlier assumption that a future `GET /models` endpoint alone
+would be enough to add or remove a route.
 
 ## §4. Known, accepted limitations (not fixed in this pass)
 
