@@ -444,8 +444,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // The queued-job counter used to be maintained by three per-row triggers, which cost a billed
     // row on every insert, lease and requeue (~2 per job). It is now maintained explicitly inside
     // scheduler UPDATEs the hot paths already make (enqueue, claim, completion requeues, cancels,
-    // schema retries), and recounted exactly on every cleanup tick (purgePendingBatch), which
-    // also heals rare paths and direct Data Studio edits. The count is diagnostic only (stats and
+    // schema retries), and recounted exactly once an hour by scheduled cleanup
+    // (recountQueuedJobs), which also heals rare paths and direct Data Studio edits. The count is diagnostic only (stats and
     // the empty-claim reason), never an admission input.
     for (const trigger of [
       "trg_jobs_queued_count_insert",
@@ -1032,7 +1032,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   /**
    * Backfill the queue counter once for an already-deployed scheduler, then leave all ordinary
-   * mutations to the bounded SQLite triggers installed by _initSchema. The one COUNT(*) is an
+   * mutations to the explicit deltas folded into scheduler UPDATEs (see _initSchema) and the
+   * hourly recountQueuedJobs. The one COUNT(*) is an
    * intentional migration cost, not an RPC-path diagnostic: subsequent snapshots read only the
    * scheduler singleton. Must run before a transaction changes any queued-job state.
    */
