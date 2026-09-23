@@ -28,6 +28,18 @@ Phase R (Research-Tool Surface)._
   (3 x 5,800 + 34 x 1,750 + 6 x 1,800 + 1,440 = 89,140 <= 90,000), so a faster cadence cannot
   quietly turn a terminal backlog into a row-write burst.
 
+- **DO row writes per LLM job cut 32% (tier 1): three redundant `jobs` indexes dropped**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). Cloudflare bills every index entry a write
+  touches, and a job is inserted once and changes state ~4 times, so each index on `jobs` cost ~4-5
+  billed rows per job. `idx_jobs_state_updated` (an exact prefix of `idx_jobs_state_updated_id`),
+  `idx_jobs_state_priority_created` (obsolete since `job_models` took over admission ordering), and
+  `idx_jobs_purpose_state_created` (no query used it) are dropped on startup; every state-filtered
+  query still seeks on `idx_jobs_state_updated_id` (planner-verified, rows-read guards pass).
+  `attemptStarted` no longer bumps the indexed `updated_at`, which nothing reads for a
+  non-terminal job. Measured under workerd: 44.3 -> 30.3 billed rows per completed job (enqueue
+  12 -> 9, claim 9.9 -> 6.9, attempt start 6 -> 4, complete 10.3 -> 7.3, ack 5 -> 2); a retried
+  attempt 40 -> 32. No data or behavior change; dropping an index writes no rows.
+
 - **LLM dispatch budgets re-derived from measured billed DO rows**
   (`workers/llm-dispatch-v2/src/write_budget.js`, `wrangler.jsonc`, `config/site_config.yml`).
   The Free plan's 100,000 DO rows written per day is account-wide, and Cloudflare bills every index
