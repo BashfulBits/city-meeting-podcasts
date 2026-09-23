@@ -48,8 +48,9 @@ Phase R (Research-Tool Surface)._
   - *Head-of-line*: when every route of a model that has capacity carries a size ceiling, the claim
     looks up to `MAX_CANDIDATE_LOOKAHEAD` (32) queue entries deep for jobs that fit, instead of
     stalling behind oversized queue-head jobs.
-  No recipe, lane-string, or pipeline-version change; nothing is re-queued. Stored artifacts are
-  unaffected. The Worker's existing `estimates` rows start a fresh calibration window (the old
+  No recipe, lane-string, or pipeline-version change, so deploying this does not re-queue any
+  existing job or artifact (at runtime, a job that hits a 404/410 route is requeued as described
+  above). Stored artifacts are unaffected. The Worker's existing `estimates` rows start a fresh calibration window (the old
   single-total summaries carry no input/output split).
 
 - **Raised the validated LLM dispatcher and chapter-agenda intake limits**

@@ -2462,25 +2462,18 @@ test("dispatchBatch admits multiple Gemma-4 requests in a single batch with stag
 
 test("dispatchBatch defers same-route candidates when TPM delay exceeds max stagger", async () => {
   const env = isolatedEnv();
-  // Request with 8000 tokens. google/gemma-4-31b-it maps to 5 routes: two Gemini accounts
-  // (7200 compiled TPM each -> a 66.7s reuse interval, far past the 20s in-batch stagger ceiling),
-  // OpenRouter's free leg (no TPM cap, paced only by its 5 RPM -> 12s reuse interval), and NVIDIA
-  // build's leg. This scenario is intentionally exact-number-pinned against the real compiled
-  // catalog rather than hand-derived, since the ranking that decides which route absorbs each
-  // reuse is its own logic -- so it must be re-probed whenever those limits move.
+  // Request with 8000 tokens against the real compiled catalog. Exact-number-pinned rather than
+  // hand-derived, since the ranking that decides which route absorbs each reuse is its own logic --
+  // re-probe whenever those limits move.
   //
-  // Re-probed 2026-09-18 after adding SambaNova's live-probed route: 8 offered requests admit
-  // exactly 6 -- one per Gemini account, one on OpenRouter, one on SambaNova, and *two* on NVIDIA,
-  // the second via a single ~15s in-batch paced wait inside the 20s stagger ceiling.
+  // Re-probed 2026-09-23 after NVIDIA's and OpenRouter's Gemma legs were paused (rpd: 0) so
+  // NVIDIA's shared concurrency goes to Nemotron 3 Ultra: 8 offered requests admit exactly 3 --
+  // one per Google AI Studio account (7200 compiled TPM each, a 66.7s reuse interval far past the
+  // 20s in-batch stagger ceiling) and one on SambaNova -- with no in-batch paced wait and no
+  // NVIDIA call at all.
   //
-  // NVIDIA's second slot is now bounded by TPM, not concurrency: at 18000 compiled TPM two
-  // 8000-token requests fit (16000) and a third does not (24000). That is the intended shape of
-  // the change -- concurrency should stop being the binding constraint and let the real rate
-  // limits bind instead.
-  //
-  // History, since this number has moved three times: it was 7 before 2026-08-29 (NVIDIA serving 4
-  // via 3 paced waits at 100000 TPM), then 4 when concurrency was capped at 1 that day, then 5
-  // after NVIDIA's TPM correction, and now 6 with SambaNova's added route.
+  // History: 7 before 2026-08-29, then 4, 5, and 6 (2026-09-18, SambaNova added) as NVIDIA's
+  // concurrency/TPM and the SambaNova route changed.
   for (let i = 0; i < 8; i += 1) {
     await handleRequest(
       chatRequest(
@@ -2522,28 +2515,31 @@ test("dispatchBatch defers same-route candidates when TPM delay exceeds max stag
   );
 
   assert.equal(batchResult.status, "completed");
-  assert.equal(batchResult.count, 6);
-  assert.equal(batchResult.completedCount, 6);
-  assert.equal(calls.length, 6);
-  // Exactly one paced wait: NVIDIA's second request, spaced by its own rpm.
-  assert.equal(slept.length, 1, "NVIDIA's second slot arrives via one in-batch paced wait");
-  assert.ok(slept[0] <= 20_000, "and it stays inside the 20s max stagger");
+  assert.equal(batchResult.count, 3);
+  assert.equal(batchResult.completedCount, 3);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(slept, [], "no route can absorb a second request inside the stagger ceiling");
+  assert.equal(
+    calls.filter((c) => c.url.includes("generativelanguage.googleapis.com")).length,
+    2,
+    "one request per AI Studio account"
+  );
   assert.equal(
     calls.filter((c) => c.url.includes("integrate.api.nvidia.com")).length,
-    2,
-    "the raised concurrency ceiling is what admits the second NVIDIA call"
+    0,
+    "NVIDIA's paused Gemma leg is never used"
   );
 
   const listRes = await env.LLM_QUEUE.list({ prefix: "requests/" });
   const completedObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "completed",
   );
-  assert.equal(completedObjects.length, 6);
+  assert.equal(completedObjects.length, 3);
   const pendingObjects = listRes.objects.filter(
     (o) => o.customMetadata?.status === "pending",
   );
-  // 8 offered, 6 admitted, so 2 stay pending for a later batch.
-  assert.equal(pendingObjects.length, 2);
+  // 8 offered, 3 admitted, so 5 stay pending for a later batch.
+  assert.equal(pendingObjects.length, 5);
 });
 
 test("dispatchBatch runs four independently paced routes concurrently", async () => {
@@ -3001,9 +2997,10 @@ test("a sub-1-rpm route admits its first request from a fresh ledger", async () 
   // route paced below one request per minute refused its first request (0 + 1 > 0.25). That
   // refusal is also what prevents `requests_available_at` from ever being written, so the route
   // could never admit anything again -- silently dead, not slow.
-  const routeId = "nvidia_deepseek_v4_pro_0813_free";
-  const route = DISPATCH_LIMITS.routes_by_id[routeId];
-  assert.ok(route.rpm < 1, `precondition: ${routeId} must be paced below 1 rpm, got ${route.rpm}`);
+  // No catalog route is paced below 1 rpm since NVIDIA retired deepseek-v4-pro-0813 (2026-09-23),
+  // so exercise the pacing path with a synthetic sub-1-rpm copy of a real route.
+  const routeId = "nvidia_deepseek_v4_1_flash_free";
+  const route = { ...DISPATCH_LIMITS.routes_by_id[routeId], rpm: 0.25 };
 
   const coordinator = {};
   const entry = ledgerEntry(coordinator, routeId);
@@ -3015,12 +3012,22 @@ test("a sub-1-rpm route admits its first request from a fresh ledger", async () 
   );
 });
 
-test("a sub-1-rpm route then spaces requests at 60000/rpm", async () => {
+test("a sub-1-rpm route then spaces requests at 60000/rpm", async (t) => {
   const env = isolatedEnv();
-  const routeId = "nvidia_deepseek_v4_pro_0813_free";
+  // Synthetic sub-1-rpm pacing on the single-route exact v4.1 pool (see the test above).
+  const routeId = "nvidia_deepseek_v4_1_flash_free";
   const route = DISPATCH_LIMITS.routes_by_id[routeId];
+  const originalRpm = route.rpm;
+  route.rpm = 0.25;
+  t.after(() => {
+    route.rpm = originalRpm;
+  });
   const queued = await handleRequest(
-    chatRequest([{ role: "user", content: "pace me" }], "sub-rpm-pace", "deepseek/deepseek-v4-pro"),
+    chatRequest(
+      [{ role: "user", content: "pace me" }],
+      "sub-rpm-pace",
+      "deepseek/deepseek-v4.1-flash",
+    ),
     env,
   );
   await queued.json();

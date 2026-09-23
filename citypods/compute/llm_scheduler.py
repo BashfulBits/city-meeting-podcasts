@@ -26,6 +26,7 @@ from citypods.compute.llm_policy import (
     LLMRequestPolicy,
     LLMRoute,
     canonical_model,
+    route_input_tokens,
 )
 
 
@@ -399,6 +400,7 @@ def select_route(
     # block, or waiting for its cheapest price window -- is predicted to become eligible again. A
     # pacing caller sleeps until this rather than deferring the whole request to a future run.
     retry_ats: list[datetime] = []
+    input_split_known = input_tokens is not None
     input_tokens = estimated_tokens if input_tokens is None else input_tokens
     output_tokens = 0 if output_tokens is None else output_tokens
 
@@ -424,7 +426,10 @@ def select_route(
                 continue
             route = replace(route, model=pool)
             model = pool
-        if input_tokens > route.input_context_limit:
+        # Every limit below is in this route's own tokenizer units; the caller's estimate is the
+        # shared chars/4 heuristic (`input_token_ratio`, measured per model family).
+        route_input = route_input_tokens(input_tokens, route)
+        if route_input > route.input_context_limit:
             rejected.append((model, "input context limit"))
             continue
         # A SEPARATE, tighter, opt-in ceiling from `input_context_limit` above. Some providers'
@@ -436,7 +441,7 @@ def select_route(
         # oversized request for such a route would pass the check above (it's under the model's
         # real context window) and only fail once it reaches the provider as a genuine 429.
         hard_ceiling = route.hard_input_ceiling
-        if hard_ceiling is not None and input_tokens > hard_ceiling:
+        if hard_ceiling is not None and route_input > hard_ceiling:
             rejected.append((model, "hard input ceiling"))
             continue
         if output_tokens > route.output_context_limit:
@@ -451,8 +456,16 @@ def select_route(
         transport = _selected_transport(
             route, available_transports, allow_dispatch_overflow=policy.allow_dispatch_overflow
         )
+        # Scale the input share of the TPM reservation the same way. Each worst-case attempt
+        # re-sends the input; without a known input/output split the whole estimate is input.
+        if input_split_known:
+            route_estimated_tokens = estimated_tokens + max(0, route_input - input_tokens) * max(
+                1, requests
+            )
+        else:
+            route_estimated_tokens = route_input_tokens(estimated_tokens, route)
         route_requests, route_tokens = _reservation_size(
-            route, requests=requests, tokens=estimated_tokens, transport=transport
+            route, requests=requests, tokens=route_estimated_tokens, transport=transport
         )
         # Flexible work waits for the cheaper price before capacity admission. In particular,
         # applying a peak-rate estimate to a daily cost cap must not reject work that can fit at

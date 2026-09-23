@@ -34,7 +34,6 @@ import {
   calibrationFor,
   parseCalibrationSummary,
   recordCalibrationSample,
-  routeInputTokenRatio,
 } from "./calibration.js";
 
 /**
@@ -728,23 +727,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   /**
-   * The largest raw (chars/4) input estimate any of this model's currently-scored routes could
-   * accept, or Infinity when at least one such route has no size ceiling beyond a context window
-   * large enough not to matter for queue ordering. Uses each route's static input_token_ratio
-   * prior: this only decides which queue entries are worth reading; the exact calibrated check
-   * still runs per job in routeHasCapacityFor.
+   * Whether every route of this model that currently scores capacity carries a size ceiling --
+   * i.e. whether some queued jobs may be too large for all of them right now, so the claim should
+   * read a bounded lookahead rather than only the queue head.
    */
-  _maxServableRawInput(modelPlan, dispatchLimits) {
-    let best = 0;
+  _modelIsCeilingBound(modelPlan, dispatchLimits) {
+    let live = 0;
     for (const [routeId, score] of modelPlan.routeScores || []) {
       if (!(score > 0)) continue;
-      const route = dispatchLimits?.routes_by_id?.[routeId];
-      if (!route) continue;
-      const ceiling = Number(route.hard_input_ceiling);
-      if (!(Number.isFinite(ceiling) && ceiling > 0)) return Number.POSITIVE_INFINITY;
-      best = Math.max(best, Math.floor(ceiling / routeInputTokenRatio(route)));
+      const ceiling = Number(dispatchLimits?.routes_by_id?.[routeId]?.hard_input_ceiling);
+      if (!(Number.isFinite(ceiling) && ceiling > 0)) return false;
+      live += 1;
     }
-    return best > 0 ? best : Number.POSITIVE_INFINITY;
+    return live > 0;
   }
 
   _maxJobsPerRoutePerBundle() {
@@ -2619,40 +2614,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // too large for every route that currently has capacity (e.g. 10-14k-token Gemma batches
         // while the 10k-ceiling AI Studio routes were the only Gemma legs with headroom) block
         // the whole model every tick, with hundreds of servable jobs queued behind them. When the
-        // model's available routes all carry a size ceiling, look a bounded distance further down
-        // the same index for jobs that fit one of them; otherwise keep the plain oldest-first read.
-        const maxServableInput = this._maxServableRawInput(modelPlan, dispatchLimits);
-        const candidates = Number.isFinite(maxServableInput)
-          ? [...sql.exec(
-              `SELECT * FROM (
-                 SELECT jobs.*, job_models.priority AS jm_priority,
-                        job_models.created_at AS jm_created_at, job_models.job_id AS jm_job_id
-                 FROM job_models
-                 JOIN jobs ON jobs.id = job_models.job_id
-                 WHERE job_models.model = ? AND jobs.state = 'queued'
-                 ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
-                 LIMIT ?
-               )
-               WHERE input_token_estimate <= ?
-               ORDER BY jm_priority ASC, jm_created_at ASC, jm_job_id ASC
-               LIMIT ?`,
-              modelPlan.model,
-              candidateLookahead,
-              maxServableInput,
-              maxJobsPerModelClaim
-            )]
-          : [...sql.exec(
-              `SELECT jobs.* FROM job_models
-               JOIN jobs ON jobs.id = job_models.job_id
-               WHERE job_models.model = ? AND jobs.state = 'queued'
-               ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
-               LIMIT ?`,
-              modelPlan.model,
-              maxJobsPerModelClaim
-            )];
+        // model's available routes all carry a size ceiling, read a bounded lookahead instead and
+        // let the exact, calibrated per-job check below (routeHasCapacityFor) decide each row;
+        // maxJobsPerModelClaim then caps jobs ACCEPTED for this model, not rows read. No size
+        // filter in SQL: a static-ratio prefilter could disagree with the learned ratio and
+        // re-create the stall it exists to prevent.
+        const ceilingBound = this._modelIsCeilingBound(modelPlan, dispatchLimits);
+        const candidates = [...sql.exec(
+          `SELECT jobs.* FROM job_models
+           JOIN jobs ON jobs.id = job_models.job_id
+           WHERE job_models.model = ? AND jobs.state = 'queued'
+           ORDER BY job_models.priority ASC, job_models.created_at ASC, job_models.job_id ASC
+           LIMIT ?`,
+          modelPlan.model,
+          ceilingBound ? candidateLookahead : maxJobsPerModelClaim
+        )];
+        let acceptedForModel = 0;
 
         for (const job of candidates) {
           if (chosen.length >= maxBundleJobs) break;
+          if (acceptedForModel >= maxJobsPerModelClaim) break;
           if (chosenJobIds.has(job.id)) continue;
           diagnostics.candidate_jobs += 1;
           // The capacity-ranked model index is a bounded way to *find* work, not permission to
@@ -2734,6 +2715,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             chosen.push({ job, route });
             chosenJobIds.add(job.id);
             seenRoutes.add(route.route_id);
+            acceptedForModel += 1;
             break;
           }
         }
@@ -3477,14 +3459,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // A positive delta refunds, a negative one debits; the rolling per-minute window is
             // only adjusted while it is still the window this reservation counted against.
             const catalogRoute = this._dispatchLimits()?.routes_by_id?.[job.lease_route_id];
+            const routeTpm = Number(catalogRoute?.tpm);
             const delta = reservation - observedTotal;
-            if (Number(catalogRoute?.tpm) > 0 && delta !== 0) {
+            if (routeTpm > 0 && delta !== 0) {
+              // _applyProvisionalReservation adds a reservation to the rolling per-minute window
+              // only when it fits in one window (reservation <= tpm); a larger one is gated by the
+              // token bucket alone. Adjust the window only for reservations it actually holds, or
+              // a refund would remove other jobs' tokens from it (and a debit add phantom ones).
+              const countedInWindow = reservation <= routeTpm ? 1 : 0;
               sql.exec(
                 `UPDATE routes SET
-                   tpm_reserved = CASE WHEN tpm_window_start = ?
+                   tpm_reserved = CASE WHEN ? = 1 AND tpm_window_start = ?
                                        THEN MAX(0, tpm_reserved - ?) ELSE tpm_reserved END,
                    full_token_budget = full_token_budget + ?
                  WHERE route_id = ?`,
+                countedInWindow,
                 job.reservation_tpm_window_start,
                 delta,
                 delta,
