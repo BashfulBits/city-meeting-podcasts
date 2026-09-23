@@ -468,7 +468,9 @@ workerd by `bench/rows-written/` (ingress 3 rows per write unit; each dispatch l
 retirement 6), and `validateConfig` refuses a deploy whose worst case
 (`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` + `MAX_LEASES_PER_UTC_DAY`) could exceed
 `DO_ROWS_WRITTEN_DAILY_BUDGET` (90,000). That caps sustained throughput at roughly 1,300 LLM
-jobs/day end to end; the lane budgets above divide it. A job may only name routes its own lane declares — ingress
+jobs/day end to end; the lane budgets above divide it. Terminal-job cleanup
+(`CLEANUP_INTERVAL_MINUTES` x `PURGE_BATCH_LIMIT`, 1,800/day) must retire at least as many jobs per
+day as the lease cap allows and is counted in the same projection. A job may only name routes its own lane declares — ingress
 rejects `model_not_in_lane` — so the block describes what actually runs, not merely what was
 intended. The registry is repository-level policy read from the committed file and has no per-run
 override: a `--site-config` chooses site content and may *narrow* a lane

@@ -297,7 +297,7 @@ test("scheduled() purges aged-out terminal jobs and deletes their B2 objects on 
   try {
     // makeEnv builds the coordinator's env separately from the Worker's, so age the row past
     // the coordinator's own default COMPLETED_RETENTION_DAYS (38) rather than overriding it.
-    const env = makeEnv({ CLEANUP_INTERVAL_MINUTES: "60" });
+    const env = makeEnv({ CLEANUP_INTERVAL_MINUTES: "60", MAX_LEASES_PER_UTC_DAY: "300" });
     const resultKey = await completeOneJob(env, store, "j1");
     assert.ok(store.has("payloads/j1/request.json"));
     assert.ok(store.has(resultKey));
@@ -334,7 +334,7 @@ test("cleanup leaves a terminal job that is still inside its retention window un
   const originalFetch = globalThis.fetch;
   globalThis.fetch = fakeFetch(store);
   try {
-    const env = makeEnv({ CLEANUP_INTERVAL_MINUTES: "60" });
+    const env = makeEnv({ CLEANUP_INTERVAL_MINUTES: "60", MAX_LEASES_PER_UTC_DAY: "300" });
     const resultKey = await completeOneJob(env, store, "j1");
 
     const waits = [];

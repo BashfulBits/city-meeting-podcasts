@@ -76,10 +76,11 @@
     // lease up to 34 (claim + attemptStarted + completeBatch), retirement 6 (ack + purge);
     // ~45-60 rows per completed job including retries. Worst case these caps allow:
     //   3 x 5,800 ingress units      = 17,400
-    //   40 x 1,750 leases            = 70,000
+    //   34 x 1,750 leases            = 59,500
+    //   6 x 1,800 retirements        = 10,800  (cleanup capacity; see CLEANUP_INTERVAL_MINUTES)
     //   1 x 1,440 idle cron ticks    =  1,440
     //                                  ------
-    //                                  88,840  <= DO_ROWS_WRITTEN_DAILY_BUDGET (90,000)
+    //                                  89,140  <= DO_ROWS_WRITTEN_DAILY_BUDGET (90,000)
     // leaving ~10% of the platform limit for maintenance writes (cancels, schema retries,
     // route_failures upserts, reconcile runs). validateConfig refuses a deploy whose caps could
     // exceed the budget. At the observed ~1.34 leases per completed job this sustains roughly
@@ -134,7 +135,16 @@
     // two B2 delete subrequests (payload + result keys). 15 costs up to 30, leaving headroom
     // under the 50-subrequest-per-invocation Free ceiling alongside dispatch's own B2 traffic in
     // the same invocation -- validateConfig enforces this bound against both knobs together.
-    "CLEANUP_INTERVAL_MINUTES": "60",
+    //
+    // Every 12 minutes since 2026-09-23 (was 60): 5 runs/hour x PURGE_BATCH_LIMIT 15 = 1,800
+    // jobs/day, just above the most the Worker can finish (MAX_LEASES_PER_UTC_DAY 1,750), so
+    // terminal rows no longer accumulate -- at 15/hour, 18,500 acked jobs were waiting. The
+    // per-run limit cannot rise (subrequests), so the cadence does. A backlog drains at the
+    // surplus (1,800 minus the day's terminal jobs). The worst case, 6 billed rows per retired job,
+    // is inside the DO row budget above:
+    //   3 x 5,800 + 34 x 1,750 + 6 x max(1,750, 1,800) + 1,440 = 89,140 <= 90,000
+    // validateConfig refuses a cleanup capacity below the lease cap.
+    "CLEANUP_INTERVAL_MINUTES": "12",
     "PURGE_BATCH_LIMIT": "15",
     // Admission-time allowance subtracted from the dispatch window: a job is admitted only if its
     // planned start + this value <= the window's end. Lowered 20 -> 2 on 2026-09-23. At 20 it

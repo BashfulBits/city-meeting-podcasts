@@ -25,7 +25,9 @@ export const ROWS_PER_INGRESS_WRITE_UNIT = 3;
 export const ROWS_PER_LEASE_WORST = 34;
 
 /** Retiring one terminal job: the consumption ack (or the retention transition for a job no
- * client acks) 5, plus confirmPurge's row delete 1. At most one per lease. */
+ * client acks) 5, plus confirmPurge's row delete 1. Bounded per day by the larger of the lease
+ * cap (each lease retires at most one job) and the cleanup capacity (a backlog of terminal jobs
+ * drains at up to the cleanup rate). */
 export const ROWS_PER_TERMINAL_JOB = 6;
 
 /** An empty cron claim writes the claim-outcome snapshot row. */
@@ -39,10 +41,16 @@ export const CRON_TICKS_PER_DAY = 1440;
  * tick idle. Maintenance (cancels, schema retries, route_failures upserts) is NOT modeled here --
  * it is what the gap between this and the platform's 100,000 exists to absorb.
  */
-export function projectedDailyRowsWritten({ maxIngressWriteUnits, maxLeases }) {
+export function projectedDailyRowsWritten({ maxIngressWriteUnits, maxLeases, maxPurgesPerDay = 0 }) {
   return (
     ROWS_PER_INGRESS_WRITE_UNIT * maxIngressWriteUnits +
-    (ROWS_PER_LEASE_WORST + ROWS_PER_TERMINAL_JOB) * maxLeases +
+    ROWS_PER_LEASE_WORST * maxLeases +
+    ROWS_PER_TERMINAL_JOB * Math.max(maxLeases, maxPurgesPerDay) +
     ROWS_PER_IDLE_TICK * CRON_TICKS_PER_DAY
   );
+}
+
+/** Terminal jobs the scheduled cleanup can retire per UTC day. */
+export function cleanupCapacityPerDay({ cleanupIntervalMinutes, purgeBatchLimit }) {
+  return Math.floor(CRON_TICKS_PER_DAY / cleanupIntervalMinutes) * purgeBatchLimit;
 }

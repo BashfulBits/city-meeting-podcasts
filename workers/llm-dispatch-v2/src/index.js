@@ -15,7 +15,7 @@ import {
 import { B2Client } from "./b2.js";
 import { callAiGateway, observedTokens, upstreamCapacityFailure, upstreamEmptyCompletion } from "./gateway.js";
 import { classifyProviderFailure } from "./classify.js";
-import { projectedDailyRowsWritten } from "./write_budget.js";
+import { cleanupCapacityPerDay, projectedDailyRowsWritten } from "./write_budget.js";
 
 export { LLMSchedulerDO };
 
@@ -120,10 +120,26 @@ export function validateConfig(env) {
       `MAX_BUNDLES_PER_UTC_DAY x MAX_BUNDLE_JOBS (${maxBundlesPerDay * maxBundleJobs})`
     );
   }
+  // Terminal-job cleanup must keep up with the most jobs dispatch can finish in a day, or
+  // purge_pending/completed rows accumulate without bound (they did: 15/hour against ~1,000+
+  // terminal jobs/day left 18,500 waiting on 2026-09-23). Its capacity is also part of the write
+  // budget, since a backlog drains at up to this rate.
+  const purgesPerDay = cleanupCapacityPerDay({
+    cleanupIntervalMinutes: Number(env.CLEANUP_INTERVAL_MINUTES ?? 12),
+    purgeBatchLimit: Number(env.PURGE_BATCH_LIMIT ?? 15),
+  });
+  if (Number(env.PURGE_BATCH_LIMIT ?? 15) > 0 && purgesPerDay < maxLeasesPerDay) {
+    throw new Error(
+      `Invalid config: cleanup retires at most ${purgesPerDay} jobs/day (CLEANUP_INTERVAL_MINUTES ` +
+      `x PURGE_BATCH_LIMIT), below MAX_LEASES_PER_UTC_DAY (${maxLeasesPerDay}); terminal jobs ` +
+      "would accumulate faster than they are purged"
+    );
+  }
   const rowsWrittenBudget = Number(env.DO_ROWS_WRITTEN_DAILY_BUDGET || 90000);
   const projectedRows = projectedDailyRowsWritten({
     maxIngressWriteUnits,
     maxLeases: maxLeasesPerDay,
+    maxPurgesPerDay: purgesPerDay,
   });
   if (!Number.isFinite(rowsWrittenBudget) || projectedRows > rowsWrittenBudget) {
     throw new Error(
@@ -250,7 +266,7 @@ export function validateConfig(env) {
   // Divisors of 60 only: getUTCMinutes() % intervalMinutes === 0 does not fire evenly spaced
   // ticks for a non-divisor (e.g. 7 fires at :00,:07,...,:56, then :00 again -- a 4-minute gap,
   // not 7). Every other value in [1, 60] repeats an identical, evenly-spaced pattern every hour.
-  const cleanupInterval = Number(env.CLEANUP_INTERVAL_MINUTES ?? 60);
+  const cleanupInterval = Number(env.CLEANUP_INTERVAL_MINUTES ?? 12);
   if (
     !Number.isInteger(cleanupInterval) ||
     cleanupInterval < 1 ||
@@ -984,7 +1000,7 @@ async function runScheduledDispatch(env) {
  * to read.
  */
 async function runScheduledCleanup(env, scheduledTime) {
-  const intervalMinutes = Number(env.CLEANUP_INTERVAL_MINUTES || 60);
+  const intervalMinutes = Number(env.CLEANUP_INTERVAL_MINUTES || 12);
   if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
   // Cloudflare always supplies scheduledTime for a real cron firing. Without it we cannot know
   // where in the cadence we are, so skip rather than run this on every single tick.
