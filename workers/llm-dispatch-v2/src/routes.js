@@ -11,6 +11,8 @@
  * build-time dependency on v1's directory continuing to exist past its Phase 3 retirement.
  */
 
+import { routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
+
 /** Follow model_aliases until a non-aliased (canonical) model name is reached. */
 export function canonicalModelName(model, dispatchLimits) {
   let current = model;
@@ -44,6 +46,11 @@ const _routeModelCache = new WeakMap();
  */
 export function modelForRouteId(routeId, dispatchLimits) {
   if (!routeId || !dispatchLimits) return null;
+  // A route can sit in several pools (`also_serves` in config/provider_limits.yml), so the pool
+  // scan below is ambiguous for it. The compiler records each route's primary model explicitly;
+  // prefer that, and keep the scan only for catalogs compiled before the field existed.
+  const primary = dispatchLimits.routes_by_id?.[routeId]?.model;
+  if (typeof primary === "string" && primary) return primary;
   let cache = _routeModelCache.get(dispatchLimits);
   if (!cache) {
     cache = new Map();
@@ -70,6 +77,9 @@ export function modelForRouteId(routeId, dispatchLimits) {
  * through to alternative routes (e.g. NVIDIA NIM).
  */
 export function routeFitsContext(route, inputTokens, outputTokens) {
+  // The caller passes the job's raw chars/4 estimate; every limit below is in the provider's own
+  // tokenizer units, so scale by the route's measured ratio first (calibration.js).
+  inputTokens = scaledInputTokens(inputTokens, routeInputTokenRatio(route));
   const contextLimit = route.input_context_limit || 32768;
   const outputLimit = route.output_context_limit || 1024;
   const hardCeiling = Number(route?.hard_input_ceiling);

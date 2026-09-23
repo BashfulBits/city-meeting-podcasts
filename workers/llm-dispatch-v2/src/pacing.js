@@ -35,6 +35,8 @@
  * long the bucket needs, once admitted.
  */
 
+import { outputReserveFor, routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
+
 const MS_PER_MINUTE = 60_000;
 const MS_PER_DAY = 24 * 60 * 60_000;
 // Retained ONLY for the provider-level shared budget below (a distinct, unmeasured mechanism --
@@ -191,13 +193,16 @@ export function effectiveBufferSeconds(route, now) {
 }
 
 /**
- * The token reservation this job must carry on this route: never lower than the client's own
- * conservative estimate, the configured floor, or the calibrated per-route/model/prompt-family
- * margin (looked up by the caller, since that's a DB read) -- see Unit 4's exact wording.
+ * The token reservation this job must carry on this route, in the PROVIDER's token units: the
+ * raw chars/4 input estimate scaled by the route's input ratio, plus the calibrated output
+ * forecast (never more than the request's own max_tokens), and never below the configured floor.
+ * `inputRatio` / `outputForecast` come from calibration.js's calibrationFor (a DB read the caller
+ * does); omitted, they fall back to the route's static prior and the full max_tokens.
  */
-export function reservationFor(job, { estimateFloor = 0, calibratedMargin = 0 } = {}) {
-  const clientEstimate = (job.input_token_estimate || 0) + (job.max_output_token_estimate || 0);
-  return Math.max(clientEstimate, estimateFloor, calibratedMargin);
+export function reservationFor(job, { estimateFloor = 0, inputRatio, outputForecast = null, route } = {}) {
+  const ratio = Number.isFinite(inputRatio) ? inputRatio : routeInputTokenRatio(route);
+  const input = scaledInputTokens(job.input_token_estimate, ratio);
+  return Math.max(input + outputReserveFor(job, outputForecast), estimateFloor);
 }
 
 /**
@@ -212,7 +217,10 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   // in routesEligibleFor so any future caller of the pacing primitive fails closed.
   if (route?.rpd != null && Number(route.rpd) === 0) return null;
 
-  const reservation = reservationFor(job, options);
+  const inputRatio = Number.isFinite(options?.inputRatio)
+    ? options.inputRatio
+    : routeInputTokenRatio(route);
+  const reservation = reservationFor(job, { ...options, inputRatio, route });
   const tpm = Number(route?.tpm);
   // ONE absolute admissibility gate (2026-09-13 redesign, see module docstring): does this
   // route's own measured per-request ceiling admit this job's INPUT, at all -- not a timing
@@ -221,8 +229,10 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   // so the two never disagree about which jobs a route can serve. `input_context_limit` is a
   // separate, coarser, earlier filter (routes.js); a route with no `hard_input_ceiling` measured
   // gets no extra restriction here at all -- it simply waits, however long, once admitted.
+  // Compared in the provider's units: the ceiling was measured against real provider token
+  // counts, while the job carries a tokenizer-agnostic chars/4 estimate (see calibration.js).
   const hardCeiling = Number(route?.hard_input_ceiling);
-  const inputEstimate = Number(job?.input_token_estimate) || 0;
+  const inputEstimate = scaledInputTokens(job?.input_token_estimate, inputRatio);
   if (Number.isFinite(hardCeiling) && hardCeiling > 0 && inputEstimate > hardCeiling) {
     return null;
   }

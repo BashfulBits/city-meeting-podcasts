@@ -247,10 +247,10 @@ providers:
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
-    # Provider-wide safety net only -- the REAL limit is per route, and it is NOT uniform: 8 of the
-    # 9 routes below are `rpm: 4` and one (`nvidia_deepseek_v4_pro_0813_free`) is `rpm: 0.5` --
-    # verified 2026-08-29, real per-route sum 8*4 + 0.5 = 32.5, not a flat "9 routes at the same
-    # rate". NVIDIA's quota is per MODEL, not per account: on the same day, `deepseek-v4-pro`
+    # Provider-wide safety net only -- the REAL limit is per route. On 2026-08-29 8 of the then 9
+    # routes were `rpm: 4` and the since-retired `deepseek-v4-pro` route was `rpm: 0.5`, a real
+    # per-route sum of 32.5, not a flat "9 routes at the same rate". NVIDIA's quota is per MODEL,
+    # not per account: on the same day, `deepseek-v4-pro`
     # returned 429 nine times out of nine while `nemotron-3-super` returned 200 three times, twice
     # inside the same minute (16:58:14 ok / 16:58:50 429). A tight provider-wide cap would
     # therefore be the wrong instrument -- it would make nine models share one model's budget.
@@ -261,7 +261,13 @@ providers:
     # accidental binding constraint instead.
     rpm: 35
     tpm: 100000
-    concurrency: 2
+    # Raised 2 -> 3 on 2026-09-23 so Nemotron 3 Ultra -- the chapter-agenda lane's only route
+    # with headroom beyond two 200-RPD pools -- always has a slot. The other NVIDIA routes that
+    # carry slow overflow work (kimi-k3 ~590s, deepseek-v4.1-flash) are capped at concurrency 1
+    # each, and the Gemma route (172s median) is paused, so at most two slots can be held by
+    # non-Nemotron work. AI Gateway logs for 2026-09-21/22 put NVIDIA's average in-flight count
+    # at 0.5-0.65, so 3 remains well inside what the account has absorbed.
+    concurrency: 3
     accounts:
       - id: primary
         api_key_env: NVIDIA_API_KEY
@@ -290,6 +296,8 @@ routes:
     upstream_model: gemini-3.5-flash-lite
     input_context_limit: 1048576
     output_context_limit: 65536
+    # Gemini 3.5 Flash Lite vs chars/4: p50 1.70 / p95 2.15 over 106 paired jobs (2026-09-23).
+    input_token_ratio: 2.15
     account_id: project_primary
     rpm: 15
     rpd: 500
@@ -306,6 +314,8 @@ routes:
     upstream_model: gemini-3.5-flash-lite
     input_context_limit: 1048576
     output_context_limit: 65536
+    # Gemini 3.5 Flash Lite vs chars/4: p50 1.70 / p95 2.15 over 106 paired jobs (2026-09-23).
+    input_token_ratio: 2.15
     account_id: project_secondary
     rpm: 15
     rpd: 500
@@ -322,6 +332,8 @@ routes:
     upstream_model: gemini-3.1-flash-lite
     input_context_limit: 1048576
     output_context_limit: 65536
+    # Gemini 3.1 Flash Lite vs chars/4: p50 1.06 / p95 1.59 over 339 paired jobs (2026-09-23).
+    input_token_ratio: 1.6
     account_id: project_primary
     rpm: 15
     rpd: 500
@@ -338,6 +350,8 @@ routes:
     upstream_model: gemini-3.1-flash-lite
     input_context_limit: 1048576
     output_context_limit: 65536
+    # Gemini 3.1 Flash Lite vs chars/4: p50 1.06 / p95 1.59 over 339 paired jobs (2026-09-23).
+    input_token_ratio: 1.6
     account_id: project_secondary
     rpm: 15
     rpd: 500
@@ -370,6 +384,8 @@ routes:
     upstream_model: gemma-4-26b-a4b-it
     input_context_limit: 262144
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    input_token_ratio: 1.2
     account_id: project_primary
     rpm: 30
     rpd: 14400
@@ -386,6 +402,8 @@ routes:
     upstream_model: gemma-4-26b-a4b-it
     input_context_limit: 262144
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    input_token_ratio: 1.2
     account_id: project_secondary
     rpm: 30
     rpd: 14400
@@ -402,6 +420,8 @@ routes:
     upstream_model: gemma-4-31b-it
     input_context_limit: 262144
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    input_token_ratio: 1.2
     account_id: project_primary
     rpm: 30
     rpd: 14400
@@ -418,6 +438,8 @@ routes:
     upstream_model: gemma-4-31b-it
     input_context_limit: 262144
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    input_token_ratio: 1.2
     account_id: project_secondary
     rpm: 30
     rpd: 14400
@@ -640,6 +662,8 @@ routes:
     upstream_model: gemma-4-31B-it
     input_context_limit: 131072
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    input_token_ratio: 1.2
     account_id: primary
     concurrency: 1
     rpm: 20
@@ -1152,9 +1176,14 @@ routes:
     upstream_model: google/gemma-4-31b-it:free
     input_context_limit: 262144
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    input_token_ratio: 1.2
     account_id: primary
     rpm: 10
-    rpd: 200
+    # Paused 2026-09-23 (was 200): 148 of 149 AI Gateway attempts on 2026-09-22 were upstream
+    # 429s, so this leg spent attempts without adding capacity. rpd: 0 is the paused-route
+    # convention; re-enable only after a live probe shows the free pool serving again.
+    rpd: 0
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1166,9 +1195,13 @@ routes:
     upstream_model: google/gemma-4-26b-a4b-it:free
     input_context_limit: 131072
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    input_token_ratio: 1.2
     account_id: primary
     rpm: 10
-    rpd: 200
+    # Paused 2026-09-23 (was 200): all 27 AI Gateway attempts on 2026-09-21 were upstream 429s.
+    # The two AI Studio routes carry this model's 14,400-RPD free quota.
+    rpd: 0
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1182,6 +1215,8 @@ routes:
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
     input_context_limit: 1000000
     output_context_limit: 65536
+    # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
+    input_token_ratio: 1.75
     account_id: primary
     hard_input_ceiling: 234437
     rpm: 10
@@ -1238,6 +1273,8 @@ routes:
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
     input_context_limit: 1000000
     output_context_limit: 65536
+    # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
+    input_token_ratio: 1.75
     account_id: primary
     concurrency: 1
     rpm: 20
@@ -1326,10 +1363,13 @@ routes:
     #
     # Concurrency, not rpm/tpm, was the binding constraint: with a ceiling of 1 the
     # dispatcher never came close to either limit, because nothing was allowed in
-    # flight to consume them. 4 here matches this route's rpm. It is per-Worker-ledger,
-    # so v1 and v2 each keep their own -- up to 8 in flight while both transports are
-    # live, the same coexistence caveat as split_cap_multiplier.
-    concurrency: 4
+    # flight to consume them.
+    #
+    # Lowered 4 -> 1 on 2026-09-23. This route carries only full-transcript overflow for the
+    # locator/moments lanes, and those calls ran ~590s. NVIDIA's provider-wide concurrency is
+    # shared with Nemotron 3 Ultra (the chapter-agenda lane's elastic route), so a few of these
+    # overflow calls could otherwise hold every NVIDIA slot for ten minutes at a time.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
@@ -1337,88 +1377,40 @@ routes:
     observed_burst: 2
     observed_input_ceiling: 234437
 
-  # Both DeepSeek routes below were disabled 2026-08-29 on a misdiagnosis: their 404s were blamed
-  # on a per-key NVIDIA "Public API Endpoints" entitlement gap. The real cause was this provider
-  # block's `ai_gateway_chat_path` (see above) -- Cloudflare AI Gateway dropped the `/v1` from the
-  # Custom Provider base URL, so every NVIDIA route, not just these two, was dispatching to
-  # `https://integrate.api.nvidia.com/chat/completions` and getting NVIDIA's empty-body ELB 404.
-  # With the path corrected, both models were re-verified through the gateway on 2026-08-29 and
-  # returned HTTP 200 with real completions. No entitlement request was needed or filed.
-  - route_id: nvidia_deepseek_v4_pro_0813_free
-    model: deepseek/deepseek-v4-pro
+  # NVIDIA retired both `deepseek-ai/deepseek-v4-pro-0813` and `deepseek-ai/deepseek-v4-flash-0731`
+  # (HTTP 410 Gone; 22-28 locator/moments jobs a day failed terminally against the pro route on
+  # 2026-09-21/22) and now serves `deepseek-ai/deepseek-v4.1-flash` in their place -- confirmed
+  # in NVIDIA's /v1/models listing on 2026-09-23. It is the preferred route for both the flash and
+  # pro logical models, so it is listed in three pools with ONE ledger (one set of rpm/rpd/tpm
+  # counters for the one upstream model):
+  #   deepseek/deepseek-v4.1-flash  -> this route only (exact-model contestants, e.g. tournament:tag)
+  #   deepseek/deepseek-v4-flash    -> this route + OrcaRouter's older v4-flash
+  #   deepseek/deepseek-v4-pro      -> this route only (chapter-locator / r6-moments overflow; their
+  #                                   lane strings are part of their recipes and stay unchanged)
+  #
+  # No `hard_input_ceiling` yet: NVIDIA was returning 503 "Service temporarily overloaded" for
+  # every model when this route was added, so run the route probe (llm-rate-probe.yml) and author
+  # a measured ceiling in a follow-up. Until then admission falls back to `input_context_limit`.
+  - route_id: nvidia_deepseek_v4_1_flash_free
+    model: nvidia/deepseek-v4.1-flash
+    model_key: deepseek/deepseek-v4.1-flash
+    also_serves:
+      - deepseek/deepseek-v4-flash
+      - deepseek/deepseek-v4-pro
     provider: nvidia
-    upstream_model: deepseek-ai/deepseek-v4-pro-0813
+    upstream_model: deepseek-ai/deepseek-v4.1-flash
     input_context_limit: 1000000
     output_context_limit: 384000
     account_id: primary
-    # 0.5 rpm = 30/hr, applied ONLY to this route. NVIDIA's limits are per MODEL (see the provider
-    # block), so this rate must not be generalised. Measured 2026-08-29: `deepseek-v4-pro` locks out
-    # for 22+ minutes once ~30 successful calls for THIS model land inside a rolling hour (onsets at
-    # 28 and 37), and a lockout beginning at 15:54 was still running 66 minutes later -- the penalty
-    # appears to lengthen while we keep probing. Pacing to 30/hr costs no throughput here, since the
-    # quota caps us either way. Sub-1 rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s
-    # minute bucket both used to clamp a fractional rate UP to 1.
-    rpm: 0.5
-    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
-    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
-    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
-    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
-    # formula, not measured or published. Input-ceiling (max size of one request, measured
-    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
-    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
-    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
-    # developer forums: "limits vary by model and are not published"). This tpm value remains
-    # exactly what it was before this session -- an unverified inherited placeholder, not a
-    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
-    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
-    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
-    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
-    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
-    # request this size, exactly the behavior this route's real ~6x ratio calls for.
+    # Carried over from the v4-flash-0731 route it replaces (never returned a 429 at 4 rpm).
+    rpm: 4
     tpm: 40000
-    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
-    # queueing it. Successful calls on these models run 41s median / 77s p90 /
-    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
-    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
-    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
-    # one -- up to 2 in flight while both transports are live, the same
-    # coexistence caveat as split_cap_multiplier.
+    # 1, not the old routes' 4: this route carries full-transcript overflow (multi-minute calls)
+    # and must not crowd Nemotron 3 Ultra out of NVIDIA's shared provider concurrency.
     concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-    observed_on: "2026-09-12"
-    observed_burst: 6
-    hard_input_ceiling: 249027
-    observed_input_ceiling: 249027
-
-  - route_id: nvidia_deepseek_v4_flash_0731_free
-    model: nvidia/deepseek-v4-flash-0731
-    model_key: deepseek/deepseek-v4-flash
-    provider: nvidia
-    upstream_model: deepseek-ai/deepseek-v4-flash-0731
-    input_context_limit: 1000000
-    output_context_limit: 384000
-    account_id: primary
-    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
-    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
-    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
-    # showed up immediately as a drop in dispatched jobs.
-    rpm: 4
-    tpm: 40000
-    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
-    # queueing it. Successful calls on these models run 41s median / 77s p90 /
-    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
-    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
-    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
-    # one -- up to 2 in flight while both transports are live, the same
-    # coexistence caveat as split_cap_multiplier.
-    concurrency: 4
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-09-09"
-    observed_burst: 0
     upstream_429_default: upstream_capacity
 
   - route_id: nvidia_gemma_4_31b_it_free
@@ -1429,12 +1421,20 @@ routes:
     upstream_model: google/gemma-4-31b-it
     input_context_limit: 262144
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    input_token_ratio: 1.2
     account_id: primary
     # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
     # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
+    # Paused 2026-09-23 (temporary). Gemma calls here ran 172s median / 531s p90 and held
+    # NVIDIA's shared provider concurrency that Nemotron 3 Ultra -- the chapter-agenda lane's
+    # only elastic route -- needs. Gemma producers now size jobs to fit Google AI Studio's two
+    # 14,400-RPD Gemma routes instead (see tags.py's prelabeler batching), so this leg is no
+    # longer needed for capacity. rpd: 0 is the repository's paused-route convention.
+    rpd: 0
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1465,6 +1465,9 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
+    # Paused 2026-09-23: NVIDIA returns 410 Gone for `openai/gpt-oss-120b` (every attempt on
+    # 2026-09-21) and no longer lists it in /v1/models. Groq's route still serves this model.
+    rpd: 0
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1492,6 +1495,8 @@ routes:
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b
     input_context_limit: 1000000
     output_context_limit: 65536
+    # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
+    input_token_ratio: 1.75
     account_id: primary
     # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
     # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the

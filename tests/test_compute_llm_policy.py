@@ -60,7 +60,16 @@ def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
     assert {candidate.provider for candidate in deepseek} == {"nvidia", "orcarouter"}
     assert canonical_model("orcarouter/deepseek-v4-flash") == "deepseek/deepseek-v4-flash"
-    assert MODEL_ALIASES["nvidia/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"
+    assert MODEL_ALIASES["nvidia/deepseek-v4.1-flash"] == "deepseek/deepseek-v4.1-flash"
+    # also_serves: the same physical NVIDIA route is a candidate in the v4-pro and exact v4.1
+    # pools, while OrcaRouter stays only in the pooled v4-flash name.
+    assert canonical_model("deepseek/deepseek-v4-pro") == "deepseek/deepseek-v4-pro"
+    assert [route.route_id for route in ROUTE_CANDIDATES["deepseek/deepseek-v4-pro"]] == [
+        "nvidia_deepseek_v4_1_flash_free"
+    ]
+    assert [route.route_id for route in ROUTE_CANDIDATES["deepseek/deepseek-v4.1-flash"]] == [
+        "nvidia_deepseek_v4_1_flash_free"
+    ]
 
     # NVIDIA build's direct Nemotron 3 Ultra leg (added 2026-08-29) bypasses the OpenRouter/Kilo
     # broker legs -- see nvidia_nemotron_3_ultra_550b_a55b_free.
