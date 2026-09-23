@@ -17,6 +17,22 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **DO row writes per LLM job cut a further ~17% (tier 2): batched and folded bookkeeping writes**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). Measured under workerd: 30.3 -> 25.3 billed rows
+  per completed job (~24.6 once calibration windows are full); a retried attempt 32 -> 29.
+  - The per-purpose ingress ledger is upserted once per purpose per `enqueueBatch`, not per job.
+  - A successful completion releases its reservation, settles to actual usage, and clears route
+    backoff in ONE `routes` UPDATE instead of three.
+  - `job_models` is rebuilt (once, bounded by the queued backlog) as a `WITHOUT ROWID` table
+    clustered on the admission scan order, with a `UNIQUE (job_id, model)` index: 2 billed rows per
+    indexed model instead of 3, same uniqueness, no sort in the claim scan.
+  - `attempts` drops its `created_at` index; retention pruning reads oldest-first by rowid.
+  - Token calibration persists every completion until a key's 32-sample window is full, then a
+    deterministic 1-in-4 sample by job id (the learned p95 refreshes ~4x slower).
+  - A claimed tick writes the scheduler row once (bundle counter folded into the claim snapshot).
+  No data loss or behavior change beyond calibration refresh rate. The one-time `job_models`
+  rebuild writes ~2 billed rows per queued job-model row on first start after deploy.
+
 - **DO row writes per LLM job cut 32% (tier 1): three redundant `jobs` indexes dropped**
   (`workers/llm-dispatch-v2/src/coordinator.js`). Cloudflare bills every index entry a write
   touches, and a job is inserted once and changes state ~4 times, so each index on `jobs` cost ~4-5

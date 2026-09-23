@@ -2070,3 +2070,55 @@ test("jobs carries exactly one secondary state index; retired indexes are droppe
     .sort();
   assert.deepEqual(names, ["idx_jobs_state_updated_id"]);
 });
+
+test("an existing rowid job_models is rebuilt clustered, keeping rows, uniqueness and the priority trigger", async () => {
+  const { storage, sql } = createMockSqlStorage();
+  // A pre-2026-09-23 coordinator: rowid job_models + separate scan index.
+  sql.exec(`
+    CREATE TABLE job_models (
+      job_id TEXT NOT NULL, model TEXT NOT NULL, priority INTEGER NOT NULL,
+      created_at INTEGER NOT NULL, PRIMARY KEY (job_id, model)
+    );
+    CREATE INDEX idx_job_models_model_priority_created
+      ON job_models (model, priority, created_at, job_id);
+  `);
+  const { coordinator } = makeCoordinator({}, { storage, sql });
+  await coordinator.enqueueBatch([
+    {
+      id: "legacy-1",
+      idempotency_key: "k1",
+      request_digest: "d1",
+      policy_json: JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"] }),
+      prompt_family: "tags",
+      input_token_estimate: 10,
+      max_output_token_estimate: 10,
+      payload_key: "p1",
+    },
+  ].map((job) => ({ ...job })));
+  // Rebuild happens at construction; a second construction must be a no-op.
+  makeCoordinator({}, { storage, sql });
+  const ddl = sql.exec("SELECT sql FROM sqlite_master WHERE name = 'job_models'")[0].sql;
+  assert.match(ddl, /WITHOUT ROWID/i);
+  const indexes = sql
+    .exec("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'job_models'")
+    .map((row) => row.name)
+    .filter((name) => !name.startsWith("sqlite_autoindex_"));
+  assert.deepEqual(indexes, ["idx_job_models_job_model"]);
+  // Uniqueness per job/model survives: a duplicate insert is ignored.
+  const before = sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n;
+  sql.exec(
+    "INSERT OR IGNORE INTO job_models (job_id, model, priority, created_at) SELECT job_id, model, priority + 0, created_at + 1 FROM job_models"
+  );
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n, before);
+  // The priority-sync trigger still reaches the rebuilt table.
+  sql.exec("UPDATE jobs SET priority = 0 WHERE id IN (SELECT job_id FROM job_models)");
+  assert.ok(sql.exec("SELECT priority FROM job_models").every((row) => row.priority === 0));
+  // The admission scan reads the clustered key in order: no temp sort.
+  const plan = sql
+    .exec(
+      "EXPLAIN QUERY PLAN SELECT jobs.* FROM job_models JOIN jobs ON jobs.id = job_models.job_id WHERE job_models.model = 'm' AND jobs.state = 'queued' ORDER BY job_models.priority, job_models.created_at, job_models.job_id LIMIT 4"
+    )
+    .map((row) => row.detail)
+    .join(" | ");
+  assert.ok(!plan.includes("TEMP B-TREE"), plan);
+});

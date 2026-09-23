@@ -31,10 +31,24 @@ import {
   effectiveBufferSeconds,
 } from "./pacing.js";
 import {
+  CALIBRATION_WINDOW,
   calibrationFor,
   parseCalibrationSummary,
   recordCalibrationSample,
 } from "./calibration.js";
+
+/** Persist calibration for 1 in this many completions once a key's window is full. */
+const CALIBRATION_SAMPLE_EVERY = 4;
+
+/** A stable 0..buckets-1 bucket for an id (FNV-1a), so sampling is deterministic per job. */
+function sampleBucket(id, buckets) {
+  let hash = 0x811c9dc5;
+  for (const ch of String(id ?? "")) {
+    hash ^= ch.codePointAt(0);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash % buckets;
+}
 
 /**
  * index.js's getCoordinator() reaches this class through env.LLM_SCHEDULER.getByName(), the
@@ -132,6 +146,17 @@ function mergeSortedRows(left, right, limit, compare) {
   return merged;
 }
 
+/** Keeps job_models' ordering priority in step with a direct jobs.priority edit (see the
+ * comment where _initSchema installs it). Shared with _migrateJobModelsClustered, which must drop
+ * and re-create it around the job_models rebuild. */
+const JOB_PRIORITY_SYNC_TRIGGER = `
+      CREATE TRIGGER IF NOT EXISTS trg_jobs_priority_sync
+      AFTER UPDATE OF priority ON jobs
+      WHEN NEW.priority IS NOT OLD.priority
+      BEGIN
+        UPDATE job_models SET priority = NEW.priority WHERE job_id = NEW.id;
+      END;`;
+
 export class LLMSchedulerDO extends DurableObjectBase {
   constructor(ctx, env) {
     super(ctx, env);
@@ -201,15 +226,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
       -- A queued job can be compatible with more than one model. This small index is the
       -- scheduler's route-independent work index: admission asks for a few jobs belonging to a
       -- capacity-ranked model rather than reading an arbitrary prefix of the whole queue.
+      --
+      -- Clustered on the admission scan order (WITHOUT ROWID), so the claim reads it directly and
+      -- an insert writes 2 billed rows (the row + the (job_id, model) index) instead of 3. The
+      -- UNIQUE index keeps one row per job/model and serves deletes by job_id. Coordinators
+      -- created before 2026-09-23 are rebuilt into this shape by _migrateJobModelsClustered.
       CREATE TABLE IF NOT EXISTS job_models (
         job_id      TEXT NOT NULL,
         model       TEXT NOT NULL,
         priority    INTEGER NOT NULL,
         created_at  INTEGER NOT NULL,
-        PRIMARY KEY (job_id, model)
-      );
-      CREATE INDEX IF NOT EXISTS idx_job_models_model_priority_created
-        ON job_models (model, priority, created_at, job_id);
+        PRIMARY KEY (model, priority, created_at, job_id)
+      ) WITHOUT ROWID;
 
       CREATE TABLE IF NOT EXISTS routes (
         route_id                TEXT PRIMARY KEY,
@@ -284,10 +312,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         created_at              INTEGER NOT NULL
       );
 
-      -- attempts is otherwise keyed only by attempt_id, so _pruneTerminalRecords's age-based
-      -- lookup would have to scan the whole (unbounded, append-only) table to find its batch.
-      CREATE INDEX IF NOT EXISTS idx_attempts_created
-        ON attempts (created_at);
+      -- No created_at index: _pruneTerminalRecords reads attempts oldest-first by rowid
+      -- (insertion order) with a bounded LIMIT, and an index here cost a billed row per attempt.
 
       CREATE TABLE IF NOT EXISTS estimates (
         key                     TEXT PRIMARY KEY,
@@ -348,18 +374,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
       -- never change admission order: the index row already exists, so backfill never revisits
       -- it either. A no-op UPDATE (0 rows matched) when the job isn't currently indexed -- e.g.
       -- already claimed -- is expected and harmless.
-      CREATE TRIGGER IF NOT EXISTS trg_jobs_priority_sync
-      AFTER UPDATE OF priority ON jobs
-      WHEN NEW.priority IS NOT OLD.priority
-      BEGIN
-        UPDATE job_models SET priority = NEW.priority WHERE job_id = NEW.id;
-      END;
+      ${JOB_PRIORITY_SYNC_TRIGGER}
     `);
 
     // CREATE TABLE IF NOT EXISTS only creates the table on its first-ever run for this DO
     // instance; it does not retroactively add a column introduced later (rpd_window_start/
     // rpd_count, added alongside Phase 2's claimDispatchWindow) to a `routes` table an earlier
     // deploy already created. Defensive, cheap, and a no-op on a fresh instance.
+    this._migrateJobModelsClustered();
+    sql.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_job_models_job_model ON job_models (job_id, model)"
+    );
     this._ensureColumn("routes", "rpd_window_start", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "rpd_count", "INTEGER NOT NULL DEFAULT 0");
     // Daily quotas reset on the provider's calendar day, not 24h after first use.
@@ -393,6 +418,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       "idx_jobs_state_updated",
       "idx_jobs_state_priority_created",
       "idx_jobs_purpose_state_created",
+      // attempts are pruned oldest-first by rowid (insertion order) -- see _pruneTerminalRecords.
+      "idx_attempts_created",
     ]) {
       sql.exec(`DROP INDEX IF EXISTS ${index}`);
     }
@@ -467,6 +494,39 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
     this._ensureColumn("scheduler", "mistral_latest_migrated", "INTEGER NOT NULL DEFAULT 0");
     this._ensureMigratedJobModels();
+  }
+
+  /**
+   * One-time rebuild of a pre-2026-09-23 job_models (rowid table, PRIMARY KEY (job_id, model)
+   * plus a separate (model, priority, created_at, job_id) index = 3 billed rows per insert) into
+   * the clustered WITHOUT ROWID shape (2 rows per insert). job_models only ever holds QUEUED
+   * work, so the copy is bounded by the queue (a few thousand rows, ~2 billed rows each, once).
+   * Runs inside one transaction; the trigger that references job_models resolves by name at
+   * execution time, so it keeps working across the swap.
+   */
+  _migrateJobModelsClustered() {
+    const sql = this._getSql();
+    const [row] = [...sql.exec(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'job_models'"
+    )];
+    if (!row || /WITHOUT\s+ROWID/i.test(String(row.sql))) return;
+    this.ctx.storage.transactionSync(() => {
+      sql.exec(`
+        CREATE TABLE job_models_clustered (
+          job_id      TEXT NOT NULL,
+          model       TEXT NOT NULL,
+          priority    INTEGER NOT NULL,
+          created_at  INTEGER NOT NULL,
+          PRIMARY KEY (model, priority, created_at, job_id)
+        ) WITHOUT ROWID;
+        INSERT OR IGNORE INTO job_models_clustered (job_id, model, priority, created_at)
+          SELECT job_id, model, priority, created_at FROM job_models;
+        DROP TRIGGER IF EXISTS trg_jobs_priority_sync;
+        DROP TABLE job_models;
+        ALTER TABLE job_models_clustered RENAME TO job_models;
+        ${JOB_PRIORITY_SYNC_TRIGGER}
+      `);
+    });
   }
 
   _ensureMigratedJobModels() {
@@ -987,6 +1047,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // Resolved once for the whole batch: both the lane-model check and the write-unit charge
       // canonicalize against it, and it is a static catalog for the life of the call.
       const dispatchLimits = this._dispatchLimits();
+      const purposeDeltas = new Map();
       const purposeUsage = new Map(
         [...sql.exec(
           "SELECT purpose, jobs_ingested, write_units FROM ingress_purpose WHERE utc_day = ?",
@@ -1237,17 +1298,28 @@ export class LLMSchedulerDO extends DurableObjectBase {
           jobs_ingested: purposeUsageRow.jobs_ingested + 1,
           write_units: purposeUsageRow.write_units + writeUnits,
         });
+        const delta = purposeDeltas.get(purpose) || { jobs: 0, units: 0 };
+        delta.jobs += 1;
+        delta.units += writeUnits;
+        purposeDeltas.set(purpose, delta);
+        accepted.push({ id: job.id, submitted_id: job.id });
+      }
+
+      // One ledger upsert per purpose per batch, not per job: admission above reads the
+      // in-memory purposeUsage, so the persisted row only needs the batch's net delta (a billed
+      // row saved per admitted job). The whole batch is one transaction either way.
+      for (const [purpose, delta] of purposeDeltas) {
         sql.exec(
           `INSERT INTO ingress_purpose (utc_day, purpose, jobs_ingested, write_units)
-           VALUES (?, ?, 1, ?)
+           VALUES (?, ?, ?, ?)
            ON CONFLICT (utc_day, purpose) DO UPDATE SET
-             jobs_ingested = jobs_ingested + 1,
+             jobs_ingested = jobs_ingested + excluded.jobs_ingested,
              write_units = write_units + excluded.write_units`,
           sched.utc_day,
           purpose,
-          writeUnits
+          delta.jobs,
+          delta.units
         );
-        accepted.push({ id: job.id, submitted_id: job.id });
       }
 
       if (newlyInsertedCount > 0) {
@@ -2050,11 +2122,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
     if (attemptLimit > 0) {
       const cutoff = now - this._attemptRetentionMs();
-      const ids = [...sql.exec(
-        `SELECT attempt_id FROM attempts WHERE created_at < ? ORDER BY created_at ASC LIMIT ?`,
-        cutoff,
+      // Oldest-first by rowid, which is insertion order (created_at is set at insert and never
+      // changes). This needs no created_at index -- an index that cost a billed row on every
+      // attempt insert. `rowid >= 0` keeps it an INTEGER PRIMARY KEY range seek, read-bounded by
+      // the LIMIT; stop at the first row still inside the retention window.
+      const ids = [];
+      for (const row of sql.exec(
+        `SELECT attempt_id, created_at FROM attempts WHERE rowid >= 0 ORDER BY rowid ASC LIMIT ?`,
         attemptLimit
-      )].map((row) => row.attempt_id);
+      )) {
+        if (!(row.created_at < cutoff)) break;
+        ids.push(row.attempt_id);
+      }
       for (const chunk of this._chunks(ids)) {
         const placeholders = chunk.map(() => "?").join(",");
         sql.exec(`DELETE FROM attempts WHERE attempt_id IN (${placeholders})`, ...chunk);
@@ -2414,7 +2493,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return result;
   }
 
-  _recordClaimOutcome(now, result, reason, diagnostics) {
+  _recordClaimOutcome(now, result, reason, diagnostics, bundlesClaimed = 0) {
     const sql = this._getSql();
     const row = [...sql.exec(
       "SELECT claim_empty_count_today, claim_reason_counts_json FROM scheduler WHERE id = 1"
@@ -2424,14 +2503,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const emptyCount = Number(row.claim_empty_count_today) || 0;
     sql.exec(
       `UPDATE scheduler SET last_claim_at=?, last_claim_result=?, last_claim_reason=?,
-       last_claim_diagnostics_json=?, claim_empty_count_today=?, claim_reason_counts_json=?
+       last_claim_diagnostics_json=?, claim_empty_count_today=?, claim_reason_counts_json=?,
+       bundle_count_today = bundle_count_today + ?
        WHERE id=1`,
       now,
       result,
       reason,
       JSON.stringify(diagnostics),
       result === "empty" ? emptyCount + 1 : emptyCount,
-      JSON.stringify(reasonCounts)
+      JSON.stringify(reasonCounts),
+      bundlesClaimed
     );
   }
 
@@ -2482,7 +2563,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       };
       const recordClaimed = (jobs) => {
         diagnostics.chosen_jobs = jobs;
-        this._recordClaimOutcome(now, "claimed", "claimed", diagnostics);
+        // The bundle counter rides on the same scheduler UPDATE: one billed row per claim.
+        this._recordClaimOutcome(now, "claimed", "claimed", diagnostics, 1);
       };
 
       const sched = this._rollUtcDayIfNeeded(now);
@@ -2877,7 +2959,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
         dispatchWindowEnd,
         now
       );
-      sql.exec("UPDATE scheduler SET bundle_count_today = bundle_count_today + 1 WHERE id = 1");
       recordClaimed(resultJobs.length);
 
       return {
@@ -3409,15 +3490,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // cannot show it was not ours, so we stay conservative and keep the charge).
           const nonConsuming = NON_CONSUMING_FAILURE_CLASSES.has(result.failure_class || "");
           const settledUsage = nonConsuming ? 0 : (observedTotal ?? reservation);
-          sql.exec(
-            `UPDATE routes SET
-               provisional_reservation = MAX(0, provisional_reservation - ?),
-               settled_usage = settled_usage + ?
-             WHERE route_id = ?`,
-            reservation,
-            settledUsage,
-            job.lease_route_id
-          );
+          // A success folds release, settle-to-actual and the backoff reset into ONE routes
+          // UPDATE below (each statement on the same row is a separate billed row).
+          if (result.outcome !== "success") {
+            sql.exec(
+              `UPDATE routes SET
+                 provisional_reservation = MAX(0, provisional_reservation - ?),
+                 settled_usage = settled_usage + ?
+               WHERE route_id = ?`,
+              reservation,
+              settledUsage,
+              job.lease_route_id
+            );
+          }
           if (nonConsuming && result.outcome !== "success") {
             const catalogRoute = this._dispatchLimits()?.routes_by_id?.[job.lease_route_id];
             // Uncapped refill (2026-09-13 redesign, see pacing.js) -- refunding a reservation
@@ -3458,45 +3543,39 @@ export class LLMSchedulerDO extends DurableObjectBase {
             }
           }
 
-          if (result.outcome === "success" && observedTotal != null) {
-            // Settle the claim-time reservation to what the provider actually counted. The
-            // reservation is a forecast (calibration.js); without this a job that reserved 15k and
-            // used 5k kept the route's token bucket 10k short, delaying the next admission by
-            // however long 10k takes to refill -- and an under-forecast was never charged at all.
-            // A positive delta refunds, a negative one debits; the rolling per-minute window is
-            // only adjusted while it is still the window this reservation counted against.
+          if (result.outcome === "success") {
+            // One statement for the whole success settlement, in this order of meaning:
+            //  1. release the claim-time provisional reservation and record settled usage;
+            //  2. settle the reservation to what the provider actually counted. The reservation
+            //     is a forecast (calibration.js); without this a job that reserved 15k and used 5k
+            //     kept the route's token bucket 10k short. A positive delta refunds, a negative one
+            //     debits. _applyProvisionalReservation adds a reservation to the rolling per-minute
+            //     window only when it fits in one window (reservation <= tpm), so the window is
+            //     adjusted only for reservations it holds, and only while it is still that window;
+            //  3. a successful call proves the route healthy -- clear every backoff signal.
             const catalogRoute = this._dispatchLimits()?.routes_by_id?.[job.lease_route_id];
             const routeTpm = Number(catalogRoute?.tpm);
-            const delta = reservation - observedTotal;
-            if (routeTpm > 0 && delta !== 0) {
-              // _applyProvisionalReservation adds a reservation to the rolling per-minute window
-              // only when it fits in one window (reservation <= tpm); a larger one is gated by the
-              // token bucket alone. Adjust the window only for reservations it actually holds, or
-              // a refund would remove other jobs' tokens from it (and a debit add phantom ones).
-              const countedInWindow = reservation <= routeTpm ? 1 : 0;
-              sql.exec(
-                `UPDATE routes SET
-                   tpm_reserved = CASE WHEN ? = 1 AND tpm_window_start = ?
-                                       THEN MAX(0, tpm_reserved - ?) ELSE tpm_reserved END,
-                   full_token_budget = full_token_budget + ?
-                 WHERE route_id = ?`,
-                countedInWindow,
-                job.reservation_tpm_window_start,
-                delta,
-                delta,
-                job.lease_route_id
-              );
-            }
-          }
-
-          if (result.outcome === "success") {
-            // A successful call proves the route is healthy again -- clear every backoff signal,
-            // 402's included, not just the 429 ones already cleared here.
+            const delta =
+              routeTpm > 0 && observedTotal != null ? reservation - observedTotal : 0;
+            const countedInWindow = routeTpm > 0 && reservation <= routeTpm ? 1 : 0;
             sql.exec(
-              `UPDATE routes SET throttle_streak = 0, buffer_seconds = 0, buffer_updated_at = 0,
-                                  payment_required_streak = 0, upstream_capacity_streak = 0,
-                                  last_failure_class = '', blocked_until = NULL,
-                                  last_provider_status = ? WHERE route_id = ?`,
+              `UPDATE routes SET
+                 provisional_reservation = MAX(0, provisional_reservation - ?),
+                 settled_usage = settled_usage + ?,
+                 tpm_reserved = CASE WHEN ? = 1 AND ? <> 0 AND tpm_window_start = ?
+                                     THEN MAX(0, tpm_reserved - ?) ELSE tpm_reserved END,
+                 full_token_budget = full_token_budget + ?,
+                 throttle_streak = 0, buffer_seconds = 0, buffer_updated_at = 0,
+                 payment_required_streak = 0, upstream_capacity_streak = 0,
+                 last_failure_class = '', blocked_until = NULL, last_provider_status = ?
+               WHERE route_id = ?`,
+              reservation,
+              settledUsage,
+              countedInWindow,
+              delta,
+              job.reservation_tpm_window_start,
+              delta,
+              delta,
               result.provider_status_code ?? 200,
               job.lease_route_id
             );
@@ -3586,6 +3665,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // (calibration.js) rather than a never-decreasing total.
           if (observedTotal != null) {
             this._calibrateEstimate(job.lease_route_id, job.prompt_family, observedTotal, now, {
+              jobId: job.id,
               inputEstimate: job.input_token_estimate,
               observedInput: result.observed_input_tokens,
               observedOutput: result.observed_output_tokens,
@@ -3617,9 +3697,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
       "SELECT margin_tokens, recent_observed_summary FROM estimates WHERE key = ?",
       key
     )];
-    const summary = JSON.stringify(
-      recordCalibrationSample(parseCalibrationSummary(existing[0]?.recent_observed_summary), sample)
-    );
+    const parsed = parseCalibrationSummary(existing[0]?.recent_observed_summary);
+    // Once the window is full, persist only a deterministic 1-in-CALIBRATION_SAMPLE_EVERY sample
+    // (by job id): each estimates UPDATE is a billed row per completion, and a full 32-sample
+    // p95 window stays representative when refreshed at a quarter of the rate. The window is
+    // filled at full rate first, so new routes/prompt families still converge quickly.
+    if (
+      existing.length > 0 &&
+      parsed.r.length >= CALIBRATION_WINDOW &&
+      parsed.o.length >= CALIBRATION_WINDOW &&
+      sampleBucket(sample.jobId, CALIBRATION_SAMPLE_EVERY) !== 0
+    ) {
+      return;
+    }
+    const summary = JSON.stringify(recordCalibrationSample(parsed, sample));
     // margin_tokens stays a high-water mark for diagnostics only; admission no longer reads it.
     if (existing.length === 0) {
       sql.exec(
