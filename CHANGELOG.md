@@ -17,6 +17,16 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Unblocked the LLM Dispatch v2 deploy: back under Workers Free's 64-variable limit**
+  (`workers/llm-dispatch-v2/wrangler.jsonc`, `tests/test_llm_dispatch_worker_limits.py`). #1846
+  declared `DO_ROWS_ENQUEUE_STOP`/`_CLAIM_STOP`/`_OPTIONAL_STOP` and `MAX_QUEUED_JOBS` at exactly the
+  coordinator's code defaults, taking the Worker to 66 variables (43 vars + 23 secrets); Cloudflare
+  rejected every deploy from then on, so #1846, #1847 and #1848 never reached production. Those four
+  vars are removed (same effective values; the JS config test now checks the effective thresholds),
+  and a new test derives the Worker's secrets from its fixed set plus every provider account's
+  `api_key_env` and fails CI when vars + secrets + 2 headroom would exceed 64. No pipeline version,
+  recipe, or stored-artifact change.
+
 - **Removed the retired NVIDIA gpt-oss-120b route; lanes now fail CI if a model loses every live
   route** (`config/provider_limits.yml`, regenerated catalogs, `tests/test_llm_lanes.py`).
   `nvidia_gpt_oss_120b_free` had been paused (`rpd: 0`) since 2026-09-23 after NVIDIA started
