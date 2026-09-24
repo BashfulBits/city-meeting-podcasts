@@ -89,6 +89,33 @@ the commit after it.
 `results/<date>.json` holds every run: per-model summary and per-episode outcome. The latest
 comparison is summarized in the PR or review that acted on it.
 
+### 2026-09-24b (main + holdout; validator repairs; corrected scorer)
+
+Run with stored replies, then scored with the repaired validator (`results/2026-09-24b*.json`).
+Every reply was also re-scored with the pre-repair validator; on episodes valid under both, every
+score is identical, and no previously valid episode became invalid.
+
+| Model | Split | Valid (before -> after) | Precision | Recall | F1 | Chapters found per answered agenda (before -> after) | Median s |
+|---|---|---|---|---|---|---|---|
+| Nemotron 3 Ultra | main | 90% -> 100% | 0.864 | 0.662 | 0.750 | 0.521 -> 0.662 | 57 |
+| Nemotron 3 Ultra | holdout | 88% -> 92% | 0.949 | 0.753 | 0.840 | 0.553 -> 0.691 | 44 |
+| tencent/hy3 | main | 83% -> 90% | 0.885 | 0.666 | 0.760 | 0.463 -> 0.535 | 37 |
+| tencent/hy3 | holdout | 75% -> 83% | 0.909 | 0.828 | 0.867 | 0.572 -> 0.618 | 42 |
+| Gemini 3.1 Flash Lite | main | 93% -> 97% | 0.802 | 0.705 | 0.750 | 0.548 -> 0.590 | 7 |
+| Gemini 3.1 Flash Lite | holdout | 96% -> 100% | 0.914 | 0.760 | 0.830 | 0.747 -> 0.760 | 4 |
+| Gemini 3.5 Flash Lite | main | 72% -> 100% | 0.728 | 0.636 | 0.679 | 0.394 -> 0.636 | 4 |
+| Gemini 3.5 Flash Lite | holdout | 96% -> 100% | 0.909 | 0.737 | 0.814 | 0.711 -> 0.737 | 3 |
+
+- The morning run's validity for hy3 (96.6%) was inflated: the harness then retried a reply that
+  failed the JSON schema as if the provider were busy. hy3's remaining failures are schema errors
+  (`items` not a list, an extra field), which production also retries.
+- hy3 under `json_schema` instead of `json_object` was worse on both splits (valid 86% / 67%,
+  F1 0.679 / 0.731), so its route keeps `json_object`.
+- NVIDIA deepseek-v4.1-flash was not scored: valid JSON only with `prompt_only`, and ~200 s per
+  small agenda even with thinking disabled (see review/48).
+- Scores differ from the morning table: position-only chapters ("Item 3A") are now matched by
+  reference, and single runs vary.
+
 ### 2026-09-24 (set v1)
 
 | Model | Answered | Valid | Recall | Precision | F1 | Median s |
