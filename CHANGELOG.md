@@ -17,6 +17,17 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **DO rows read: id lookups no longer walk a whole terminal state**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). `confirmPurge`, `ackResults` and
+  `retireConsumed` filter `WHERE id IN (...) AND state = '...'`, and SQLite's planner chose the
+  `(state, updated_at, id)` index over the primary key, reading every row in that state. Live on
+  2026-09-24 each cleanup run read ~18.8k rows (the whole 18k `purge_pending` backlog) -- 120 runs/day
+  at the 12-minute cadence is ~2.3M of the Free plan's 5M daily rows read -- and a sweep's retire
+  calls read the whole `completed` set per chunk (79.5k in one minute). The state filter is now
+  written `+state` so the lookup seeks by id and the state is only checked per row. The rows-read
+  guard now seeds an acked backlog and exercises ack/retire, and its estimator credits an in-order
+  seek that stops at a bound `LIMIT`.
+
 - **Terminal-job cleanup drains as fast as dispatch can finish jobs**
   (`workers/llm-dispatch-v2/wrangler.jsonc`, `src/index.js`, `src/write_budget.js`).
   `CLEANUP_INTERVAL_MINUTES` 60 -> 12: 5 runs/hour x `PURGE_BATCH_LIMIT` 15 = 1,800 jobs/day, just
