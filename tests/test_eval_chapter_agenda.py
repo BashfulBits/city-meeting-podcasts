@@ -139,3 +139,50 @@ def test_an_unparseable_reply_is_invalid_output_and_is_not_retried(monkeypatch):
     monkeypatch.setattr(ev.time, "sleep", lambda _s: None)
     run = ev._run_one(Backend(), "m", {"uid": "a", "agenda_text": "1. Call to order"})
     assert (run["answered"], run["valid"], len(calls)) == (True, False, 1)
+
+
+def test_rescore_rejudges_stored_replies_and_keeps_provider_outcomes(monkeypatch):
+    # Re-scoring isolates a validator change: same replies, only the judgement is redone.
+    agenda = "1. Approve the budget amendment\n2. Zoning case Z-24-17"
+    manifest = {"version": 1, "episodes": [{"uid": u, "agenda_text": agenda} for u in "ab"]}
+    gold = {"version": 1, "episodes": [{"uid": u, "chapters": CHAPTERS} for u in "ab"]}
+    monkeypatch.setattr(
+        ev, "_load", lambda name, split="main": manifest if name == "manifest.json" else gold
+    )
+    reply = json.dumps(
+        {
+            "items": [
+                {
+                    "title": c["title"],
+                    "evidence_quote": c["title"],
+                    "line_start": n,
+                    "line_end": n,
+                }
+                for n, c in enumerate(CHAPTERS, start=1)
+            ]
+        }
+    )
+    results = {
+        "split": "main",
+        "models": {
+            "m": {
+                "summary": {"model": "m"},
+                "episodes": [
+                    {
+                        "uid": "a",
+                        "answered": True,
+                        "valid": False,
+                        "raw_response": reply,
+                        "seconds": 1,
+                    },
+                    {"uid": "b", "answered": False, "valid": False, "error": "503", "seconds": 1},
+                ],
+            }
+        },
+    }
+    out = ev.rescore(results)["models"]["m"]
+    assert [(e["uid"], e["answered"], e["valid"]) for e in out["episodes"]] == [
+        ("a", True, True),
+        ("b", False, False),
+    ]
+    assert out["summary"]["rescorable"] == 1

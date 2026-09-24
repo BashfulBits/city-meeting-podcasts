@@ -56,9 +56,13 @@ from citypods.chapter_jobs import (  # noqa: E402
     finalize_agenda_job,
 )
 from citypods.chapter_titles import recover_agenda_item_extractor_response  # noqa: E402
+from citypods.compute.base import JobResult  # noqa: E402
 from citypods.compute.llm import LLMStructuredOutputError  # noqa: E402
 
 EVAL_DIR = REPO_ROOT / "evals" / "chapter-agenda"
+# `main` is the set results and repairs were studied on; `holdout` is never inspected while a
+# change is designed, so a validator or prompt change that only fits `main` shows up there.
+SPLIT_DIRS = {"main": EVAL_DIR, "holdout": EVAL_DIR / "holdout"}
 MIN_VALID_RATE = 0.95
 # More unanswered episodes than this makes a model's run inconclusive rather than a result.
 MAX_UNANSWERED_RATE = 0.10
@@ -66,8 +70,8 @@ RETRY_DELAYS_SECONDS = (20, 60, 180)
 WORKER_RESPONSE_SECONDS = 720.0  # workers/llm-dispatch-v2 MAX_RESPONSE_SECONDS
 
 
-def _load(name: str) -> dict[str, Any]:
-    return json.loads((EVAL_DIR / name).read_text(encoding="utf-8"))
+def _load(name: str, split: str = "main") -> dict[str, Any]:
+    return json.loads((SPLIT_DIRS[split] / name).read_text(encoding="utf-8"))
 
 
 def score_episode(items: list[Mapping[str, Any]], chapters: list[Mapping[str, Any]]) -> dict:
@@ -191,6 +195,25 @@ def _run_one(backend: Any, model: str, episode: Mapping[str, Any]) -> dict:
             "attempt_errors": attempt_errors,
             "seconds": round(time.monotonic() - started, 1),
         }
+    run = finalize_reply(episode, _response_content(result.output), model)
+    return {
+        **run,
+        "attempt_errors": attempt_errors,
+        "seconds": round(time.monotonic() - started, 1),
+    }
+
+
+def finalize_reply(episode: Mapping[str, Any], content: str, model: str) -> dict:
+    """Run production finalization on one model reply; keep the reply for offline re-scoring.
+
+    Every answered episode stores its raw reply, so a validator change can be re-scored against
+    exactly the same model output (``--rescore``) instead of a fresh, noisier model run.
+    """
+    agenda_text = episode["agenda_text"]
+    source_hash = hashlib.sha256(agenda_text.encode("utf-8")).hexdigest()
+    result = JobResult(
+        task="agenda-item-extract", recipe_hash="eval-chapter-agenda", output=content, model=model
+    )
     try:
         artifact = finalize_agenda_job(
             result,
@@ -206,7 +229,7 @@ def _run_one(backend: Any, model: str, episode: Mapping[str, Any]) -> dict:
             "valid": False,
             "error": f"{type(exc).__name__}: {exc}"[:300],
             "validation": _validation_detail(result, agenda_text),
-            "seconds": round(time.monotonic() - started, 1),
+            "raw_response": content,
         }
     items = [
         {"title": c.title, "evidence_text": c.evidence_text, "display_ref": c.display_ref}
@@ -217,8 +240,7 @@ def _run_one(backend: Any, model: str, episode: Mapping[str, Any]) -> dict:
         "answered": True,
         "valid": True,
         "items": items,
-        "attempt_errors": attempt_errors,
-        "seconds": round(time.monotonic() - started, 1),
+        "raw_response": content,
     }
 
 
@@ -266,7 +288,7 @@ def beats(candidate: Mapping[str, float], baseline: Mapping[str, float]) -> bool
     )
 
 
-def freeze(state_dir: Path, per_provider: int, version: int) -> None:
+def freeze(state_dir: Path, per_provider: int, version: int, split: str = "main") -> None:
     """Freeze episodes that have provider-supplied chapters and a usable agenda (read-only).
 
     Selection reuses the locator research cohort (``collect_benchmark_cohort`` +
@@ -286,7 +308,14 @@ def freeze(state_dir: Path, per_provider: int, version: int) -> None:
     site = load_site_config("config/site_config.yml")
     cities = load_city_configs("config", site.get("defaults", {}))
     cohort = collect_benchmark_cohort(cities, state_dir, sample_size=999_999)
-    pool = select_locator_samples(cohort, per_provider=per_provider * 3)
+    # Every other split's episodes are excluded, so the splits never share a meeting.
+    excluded = {
+        episode["uid"]
+        for other, directory in SPLIT_DIRS.items()
+        if other != split and (directory / "manifest.json").exists()
+        for episode in _load("manifest.json", other)["episodes"]
+    }
+    pool = select_locator_samples(cohort, per_provider=per_provider * 3 + len(excluded))
     session, storage = make_session(), b2_from_env()
     episodes, gold, skipped = [], [], []
     with tempfile.TemporaryDirectory() as tmp:
@@ -295,6 +324,8 @@ def freeze(state_dir: Path, per_provider: int, version: int) -> None:
             for sample in pool[provider]:
                 if kept >= per_provider:
                     break
+                if sample.uid in excluded:
+                    continue
                 ok, reason = _is_valid_chapter_record(sample)
                 if not ok:
                     skipped.append({"uid": sample.uid, "reason": reason})
@@ -330,17 +361,49 @@ def freeze(state_dir: Path, per_provider: int, version: int) -> None:
                 )
                 kept += 1
     stamp = datetime.now(UTC).date().isoformat()
-    common = {"version": version, "frozen_on": stamp, "per_provider": per_provider}
-    EVAL_DIR.mkdir(parents=True, exist_ok=True)
-    (EVAL_DIR / "manifest.json").write_text(
+    common = {"version": version, "frozen_on": stamp, "per_provider": per_provider, "split": split}
+    out_dir = SPLIT_DIRS[split]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "manifest.json").write_text(
         json.dumps({**common, "skipped": skipped, "episodes": episodes}, indent=1) + "\n",
         encoding="utf-8",
     )
-    (EVAL_DIR / "gold.json").write_text(
+    (out_dir / "gold.json").write_text(
         json.dumps({**common, "episodes": gold}, indent=1) + "\n", encoding="utf-8"
     )
     counts = {p: sum(e["provider"] == p for e in episodes) for p in sorted(pool)}
     print(f"froze {len(episodes)} episodes {counts}; skipped {len(skipped)}")
+
+
+def rescore(results: Mapping[str, Any]) -> dict[str, Any]:
+    """Re-finalize every stored reply with the current validator; provider outcomes are kept.
+
+    Only replies are re-judged: unanswered episodes stay unanswered, so a before/after comparison
+    isolates the validator change from model and provider variance.
+    """
+    split = results.get("split", "main")
+    manifest, gold = _load("manifest.json", split), _load("gold.json", split)
+    episodes = {episode["uid"]: episode for episode in manifest["episodes"]}
+    out = {**results, "rescored_at": datetime.now(UTC).isoformat(timespec="seconds"), "models": {}}
+    for model, entry in results["models"].items():
+        runs = []
+        for run in entry["episodes"]:
+            content = run.get("raw_response")
+            if content is None:
+                content = (run.get("validation") or {}).get("raw_response")
+            if not run.get("answered") or content is None:
+                runs.append(run)
+                continue
+            runs.append(
+                {
+                    **finalize_reply(episodes[run["uid"]], content, model),
+                    "seconds": run.get("seconds"),
+                }
+            )
+        summary = {**entry["summary"], **summarize(runs, gold)}
+        summary["rescorable"] = sum(1 for r in runs if r.get("raw_response") is not None)
+        out["models"][model] = {"summary": summary, "episodes": runs}
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -353,6 +416,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--workers", type=int, default=3, help="concurrent episodes per model")
     parser.add_argument("--no-pause", action="store_true")
     parser.add_argument("--out", type=Path, help="results JSON (default: evals/.../results/)")
+    parser.add_argument("--split", choices=sorted(SPLIT_DIRS), default="main")
+    parser.add_argument(
+        "--rescore",
+        type=Path,
+        help="re-finalize a results file's stored replies with the current code (no model calls)",
+    )
     args = parser.parse_args(argv)
     # A terminated run must still resume the providers it paused: turn SIGTERM into SystemExit so
     # the `paused(...)` contexts' finally blocks run (their Worker-side expiry is the backstop).
@@ -362,7 +431,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.freeze:
         if not args.state_dir:
             parser.error("--freeze needs --state-dir")
-        freeze(args.state_dir, args.per_provider, args.set_version)
+        freeze(args.state_dir, args.per_provider, args.set_version, args.split)
+        return 0
+    if args.rescore:
+        rescored = rescore(json.loads(args.rescore.read_text(encoding="utf-8")))
+        out = args.out or args.rescore.with_name(args.rescore.stem + "-rescored.json")
+        out.write_text(json.dumps(rescored, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        for model, entry in rescored["models"].items():
+            print(json.dumps({"model": model, **entry["summary"]}, sort_keys=True))
+        print(f"wrote {out}")
         return 0
     if not args.model:
         parser.error("give at least one --model")
@@ -371,9 +448,10 @@ def main(argv: list[str] | None = None) -> int:
     from citypods.compute.llm_dispatch_pause import Selection, paused
     from citypods.compute.llm_policy import ROUTE_CANDIDATES, canonical_model
 
-    manifest, gold = _load("manifest.json"), _load("gold.json")
+    manifest, gold = _load("manifest.json", args.split), _load("gold.json", args.split)
     results: dict[str, Any] = {
         "task": "chapter-agenda",
+        "split": args.split,
         "eval_set_version": manifest["version"],
         "run_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "models": {},
@@ -421,7 +499,8 @@ def main(argv: list[str] | None = None) -> int:
         summary["contended"] = contended
         results["models"][model] = {"summary": summary, "episodes": runs}
         print(json.dumps({"model": model, **summary}, sort_keys=True), flush=True)
-    out = args.out or EVAL_DIR / "results" / f"{datetime.now(UTC):%Y-%m-%d}.json"
+    suffix = "" if args.split == "main" else f"-{args.split}"
+    out = args.out or EVAL_DIR / "results" / f"{datetime.now(UTC):%Y-%m-%d}{suffix}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     existing = json.loads(out.read_text()) if out.exists() else {"models": {}}
     existing.update({k: v for k, v in results.items() if k != "models"})
