@@ -141,9 +141,17 @@ llm_lanes:
     # candidates from the same benchmark (100%/97% valid JSON, faster, slightly lower precision than
     # Nemotron). Worker (queue_only) dispatch only; see workers/llm-dispatch-v2/src/routes.js's
     # backupModelsActive/modelsForJob.
+    # 2026-09-24 (evals/chapter-agenda v1, provider chapters as ground truth; admission rule in its
+    # README): tencent/hy3 (OrcaRouter) replaces gemini-3.5-flash-lite -- F1 0.689 vs 0.528,
+    # precision 0.795 vs 0.578, 96.6% vs 62.1% valid; it also leads on the 17 episodes both passed.
+    # It does not beat Nemotron (F1 0.711, precision 0.869), so it stays a backup. It answers the
+    # lane's full json_schema as well as json_object (verified live), which matters until the v2
+    # Worker shapes structured output per route (review/48 PR C). gemini-3.1-flash-lite stays: its
+    # run was inconclusive (Gemini 503s on 20 of 29 episodes), not a loss. Dropping 3.5-flash-lite
+    # re-dispatches the agenda artifacts it produced (deliberate backfill).
     backup_models:
+      - "tencent/hy3"
       - "gemini/gemini-3.1-flash-lite"
-      - "gemini/gemini-3.5-flash-lite"
     # 12 is comfortably within the 5-20 range this mechanism expects: once a lane declares
     # backup_models, the Worker's own class-specific retry ceilings (MAX_5XX_RETRIES,
     # MAX_UPSTREAM_CAPACITY_RETRIES) are automatically raised to guarantee the job survives to

@@ -21,8 +21,13 @@ Phase R (Research-Tool Surface)._
   `citypods/moments.py`, regenerated catalogs; 2026-09-24 capacity review under review/48).
   - *DeepSeek:* one pool name per version. `deepseek/deepseek-v4-flash` is now OrcaRouter's v4
     only and `deepseek/deepseek-v4.1-flash` NVIDIA's v4.1 only; the `deepseek-v4-pro` alias is
-    retired. chapter-locator (lighter primary) overflows to v4 (800/day, 1M context), r6-moments
-    (stronger primaries) to v4.1; the tournament scores v4 and v4.1 as separate contestants.
+    retired. chapter-locator overflows to v4 (800/day, 1M context). The tournament scores v4 and
+    v4.1 as separate contestants.
+  - *NVIDIA DeepSeek v4.1 kept out of production pools:* it returns empty content to any
+    `response_format` (json_schema or json_object; verified live) and the v2 Worker forwards the
+    job's format unchanged, so r6-moments and council-moments overflow go to OrcaRouter v4 instead.
+    The tournament keeps its v4.1 contestant as a documented gap. The fix -- the Worker shaping
+    structured output per route from verified methods -- is review/48 PR C.
   - *Tagger:* Kilo `step-3.7-flash` and OrcaRouter v4 added as throughput models after the
     pinned Gemini 3.1 Flash Lite (recipe/calibration key unchanged); they also take transcripts
     above Gemini's input ceiling. Daily write budget raised to keep 930 jobs/day.
@@ -35,7 +40,21 @@ Phase R (Research-Tool Surface)._
   - *Dead routes removed:* 21 Mistral routes blocked by the account's plan, the unused Mistral
     tertiary account (its key was never set on the Workers), and the paused SambaNova Llama 3.3
     route. The v1 Worker's advertised default moves from Mistral Large to Codestral 2508.
+  - *chapter-agenda backup:* `tencent/hy3` (OrcaRouter) replaces Gemini 3.5 Flash Lite under the
+    maintainer's admission rule (higher F1, precision not lower, ≥95% valid): F1 0.689 vs 0.528,
+    precision 0.795 vs 0.578, 96.6% vs 62.1% valid. It does not beat Nemotron (F1 0.711, precision
+    0.869), so Nemotron stays sole primary. Agenda artifacts produced by 3.5 Flash Lite are
+    re-dispatched (deliberate backfill).
   - No pipeline version change; council moments re-run through their recipe hash.
+
+- **First committed per-task evaluation set: `evals/chapter-agenda/`** (GH#1852;
+  `scripts/eval_chapter_agenda.py`, `tests/test_eval_chapter_agenda.py`). 29 episodes whose meeting
+  providers (Granicus, Swagit, CivicClerk) publish their own chapters, used as model-independent
+  ground truth (376 chapters). Each model gets production's exact request and post-processing, runs
+  with its providers paused on the v2 Worker, and is scored with the original crosswalk matcher.
+  Provider errors are "unanswered" (retried, never counted as bad output); an empty or unparseable
+  reply is invalid output. Rejected responses keep per-item validation outcomes and the raw reply.
+  Results: `evals/chapter-agenda/results/2026-09-24.json`.
 
 - **Removed the Airforce `kimi-k2.7-code` route** (`config/provider_limits.yml`, regenerated
   catalogs). It stopped being free: a canary under the v2 dispatch pause on 2026-09-24 returned 402

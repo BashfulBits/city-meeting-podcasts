@@ -320,8 +320,8 @@ class TestRecipeAffectingModelPins:
         assert AGENDA_PRODUCTION_MODEL == lane_for("chapter-agenda").primary_model
         assert AGENDA_PRODUCTION_MODELS == lane_for("chapter-agenda").models
         assert AGENDA_BACKUP_MODELS == (
+            "tencent/hy3",
             "gemini/gemini-3.1-flash-lite",
-            "gemini/gemini-3.5-flash-lite",
         )
         assert AGENDA_BACKUP_AFTER_ATTEMPTS == 12
         assert PRODUCTION_LOCATOR_MODEL == lane_for("chapter-locator").primary_model
