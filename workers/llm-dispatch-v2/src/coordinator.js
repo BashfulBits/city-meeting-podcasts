@@ -1234,10 +1234,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
   _validatePauseTarget(scope, target) {
     if (scope === "global") return null;
     const catalog = this._dispatchLimits();
-    if (scope === "provider" && !catalog?.providers?.[target]) {
+    // Own properties only: `constructor`/`toString` resolve through Object.prototype and would
+    // otherwise pass as a "known" target (and reserve would write a ledger row under that name).
+    if (scope === "provider" && !(catalog?.providers && Object.hasOwn(catalog.providers, target))) {
       return `unknown provider '${target}'`;
     }
-    if (scope === "route" && !catalog?.routes_by_id?.[target]) {
+    if (
+      scope === "route" &&
+      !(catalog?.routes_by_id && Object.hasOwn(catalog.routes_by_id, target))
+    ) {
       return `unknown route '${target}'`;
     }
     return null;
@@ -1304,12 +1309,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return { ...catalog, model_routes_map: modelRoutesMap };
   }
 
-  /** Leased jobs per route and per provider: the calls that are, or are about to be, in flight. */
-  _inFlightCounts(dispatchLimits = this._dispatchLimits()) {
+  /**
+   * Live leased jobs per route and per provider: the calls that are, or are about to be, in flight.
+   * An expired lease is a dead bundle (crash/eviction), not a call -- the claim-time reaper uses
+   * the same `lease_expires_at` test -- and a global pause skips that reaper, so counting expired
+   * leases would hold the drain signal above zero until the pause itself ran out.
+   */
+  _inFlightCounts(now, dispatchLimits = this._dispatchLimits()) {
     const byRoute = {};
     const byProvider = {};
     for (const row of this._getSql().exec(
-      "SELECT lease_route_id, COUNT(*) AS cnt FROM jobs WHERE state = 'leased' GROUP BY lease_route_id"
+      `SELECT lease_route_id, COUNT(*) AS cnt FROM jobs
+        WHERE state = 'leased' AND lease_expires_at > ? GROUP BY lease_route_id`,
+      now
     )) {
       if (!row.lease_route_id) continue;
       byRoute[row.lease_route_id] = row.cnt;
@@ -1328,7 +1340,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const invalid = this._validatePauseTarget(scope, target);
     if (invalid) return { ok: false, error: "unknown_target", detail: invalid };
     const catalog = this._dispatchLimits();
-    const inFlight = this._inFlightCounts(catalog);
+    const inFlight = this._inFlightCounts(now, catalog);
     const selectedRouteIds = Object.keys(catalog?.routes_by_id || {}).filter((routeId) => {
       if (scope === "route") return routeId === target;
       if (scope === "provider") return catalog.routes_by_id[routeId]?.provider === target;
@@ -2055,7 +2067,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           active_expired: activeBundles.filter((row) => row.lease_expires_at <= now).length,
         },
         // Leased jobs per route/provider (bounded by the in-flight caps) and any operator pause.
-        in_flight: this._inFlightCounts(),
+        in_flight: this._inFlightCounts(now),
         dispatch_pauses: this._activePauses(now),
         scheduler: {
           utc_day: scheduler.utc_day ?? null,

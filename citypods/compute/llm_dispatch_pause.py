@@ -25,9 +25,9 @@ import sys
 import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
-from urllib.parse import urlencode, urljoin
+from urllib.parse import urlencode, urljoin, urlsplit
 
 import requests
 
@@ -51,17 +51,25 @@ class Selection:
 
 @dataclass
 class PauseOutcome:
-    """What the caller needs to interpret its probe results."""
+    """What the caller needs to interpret its probe results.
+
+    ``pause_expired`` is set when the ``paused(...)`` block exits: it is true if the pause could
+    have lapsed before the probe finished, in which case production claims may have resumed
+    underneath it. Read ``contended`` after the block, not inside it.
+    """
 
     selection: Selection
     drained: bool
     in_flight_at_start: int
     waited_seconds: float
+    pause_expired: bool = False
+    # Re-arms the pause for another full window; call it between steps of a long probe.
+    renew: Callable[[], None] = field(default=lambda: None, repr=False, compare=False)
 
     @property
     def contended(self) -> bool:
         """Probe results may reflect production traffic, not the model alone."""
-        return not self.drained
+        return not self.drained or self.pause_expired
 
 
 class DispatchPauseClient:
@@ -85,6 +93,14 @@ class DispatchPauseClient:
         )
         if not self.url:
             raise DispatchPauseError("LLM_DISPATCH_V2_URL is not set")
+        # The bearer token must never travel in cleartext; plain HTTP is allowed only tokenless
+        # (e.g. a local `wrangler dev`).
+        if self.token:
+            parts = urlsplit(self.url)
+            if parts.scheme.lower() != "https" or not parts.netloc:
+                raise DispatchPauseError(
+                    "LLM_DISPATCH_V2_URL must be an https:// URL when an auth token is set"
+                )
         self.session = session or requests.Session()
         self.timeout = timeout
 
@@ -119,6 +135,13 @@ class DispatchPauseClient:
         query = urlencode({k: v for k, v in selection.body().items() if v is not None})
         return self._request("GET", f"v2/dispatch:pause-status?{query}")
 
+    def in_flight(self, selection: Selection) -> int:
+        """The selection's live leased-job count; a malformed status is an error, never zero."""
+        value = self.status(selection).get("in_flight")
+        if type(value) is not int or value < 0:
+            raise DispatchPauseError("pause-status did not return a non-negative in_flight count")
+        return value
+
     def reserve(self, route_id: str, requests_made: int = 1) -> dict:
         return self._request(
             "POST", "v2/dispatch:reserve", {"route_id": route_id, "requests": requests_made}
@@ -139,25 +162,48 @@ def paused(
 ) -> Iterator[PauseOutcome]:
     """Pause ``selection``, wait for its in-flight work to drain, and always resume afterwards.
 
+    The pause is kept armed for the whole drain and probe: it is renewed whenever it would lapse
+    before the next drain poll, and once more when the drain ends so the probe starts with a full
+    ``seconds`` window (``outcome.renew()`` re-arms it again for a longer probe). Expiry is
+    tracked on the local clock from *before* each pause request, so it never outlives the Worker's.
+
     ``drain_timeout`` bounds the wait; if it passes, the body still runs and the outcome is marked
-    ``contended`` so the caller can treat its results as inconclusive rather than as evidence.
+    ``contended`` so the caller can treat its results as inconclusive rather than as evidence. The
+    outcome is also contended if the pause could have lapsed before the body finished.
     """
     client = client or DispatchPauseClient()
-    client.pause(selection, seconds, reason)
+    deadline = 0.0
+
+    def arm() -> None:
+        nonlocal deadline
+        requested_at = clock()
+        client.pause(selection, seconds, reason)
+        deadline = requested_at + seconds
+
+    arm()
+    outcome: PauseOutcome | None = None
     try:
         start = clock()
-        in_flight = int(client.status(selection).get("in_flight") or 0)
+        in_flight = client.in_flight(selection)
         first = in_flight
         while in_flight > 0 and clock() - start < drain_timeout:
+            if deadline - clock() <= poll_interval:
+                arm()
             sleep(poll_interval)
-            in_flight = int(client.status(selection).get("in_flight") or 0)
-        yield PauseOutcome(
+            in_flight = client.in_flight(selection)
+        waited = round(clock() - start, 1)
+        arm()  # the probe gets a full window, however long the drain took
+        outcome = PauseOutcome(
             selection=selection,
             drained=in_flight == 0,
             in_flight_at_start=first,
-            waited_seconds=round(clock() - start, 1),
+            waited_seconds=waited,
+            renew=arm,
         )
+        yield outcome
     finally:
+        if outcome is not None:
+            outcome.pause_expired = clock() >= deadline
         try:
             client.resume(selection)
         except DispatchPauseError as exc:

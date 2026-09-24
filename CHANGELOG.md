@@ -25,12 +25,15 @@ Phase R (Research-Tool Surface)._
   claims around the paused routes (their models' other routes keep serving); a global pause returns
   before any SQL runs, so a paused tick writes zero DO rows. In-flight bundles and their 429
   retries are left alone (refusing a retry would fail the job); `GET /v2/dispatch:pause-status`
-  instead reports the selection's leased-job count as the drain signal, plus each selected route's
+  instead reports the selection's live (unexpired) leased-job count as the drain signal, plus each
+  selected route's
   `rpd_remaining` and `rpd_resets_at` on the provider's reset timezone. `POST /v2/dispatch:reserve`
   charges up to five out-of-band calls to a route's rpm/rpd ledger so production pacing counts
   canary and probe traffic. `/v2/stats` now includes `in_flight` by route/provider and active
-  `dispatch_pauses`. The Python `paused(...)` context manager pauses, waits for drain (or marks the
-  run `contended`), and always resumes. No pipeline version, recipe, or stored-artifact change.
+  `dispatch_pauses`. The Python `paused(...)` context manager pauses, waits for drain, keeps the
+  pause armed through the drain and the probe (marking the run `contended` if the drain times out
+  or the pause could have lapsed), and always resumes; it refuses to send its token over plain
+  HTTP. No pipeline version, recipe, or stored-artifact change.
 
 - **Removed the unused NVIDIA Riva Translate route**
   (`config/provider_limits.yml`, regenerated `llm_routes.json` and both Workers'

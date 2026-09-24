@@ -2324,3 +2324,32 @@ test("reserve charges out-of-band calls to the route's daily ledger, on the prov
   assert.equal(nextDay.routes.gemini_3_1_flash_lite_primary.rpd_used, 0);
   assert.equal(nextDay.routes.gemini_3_1_flash_lite_primary.rpd_remaining, 500);
 });
+
+test("pause targets must be own catalog entries, not Object.prototype members", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  for (const target of ["constructor", "toString", "__proto__"]) {
+    assert.equal((await coordinator.pauseDispatch({ scope: "route", target, seconds: 60 })).ok, false);
+    assert.equal((await coordinator.pauseDispatch({ scope: "provider", target, seconds: 60 })).ok, false);
+    assert.equal((await coordinator.reserveRouteRequests({ route_id: target, requests: 1 })).ok, false);
+  }
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM routes WHERE route_id = 'constructor'")[0].n, 0);
+});
+
+test("the drain signal ignores expired leases, which a global pause never reaps", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([pauseJob("e1"), pauseJob("e2")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.ok(plan.jobs.length > 0);
+  await coordinator.pauseDispatch({ scope: "global", seconds: 3600 }, now);
+  const live = await coordinator.dispatchPauseStatus({ scope: "provider", target: "gemini" }, now);
+  assert.equal(live.in_flight, plan.jobs.length);
+
+  // The bundle dies: its leases pass lease_expires_at while still `leased`.
+  const expiry = sql.exec("SELECT MAX(lease_expires_at) AS t FROM jobs WHERE state = 'leased'")[0].t;
+  const later = expiry + 1;
+  assert.equal((await coordinator.claimDispatchWindow(later, 30)).claim_reason, "dispatch_paused");
+  const dead = await coordinator.dispatchPauseStatus({ scope: "provider", target: "gemini" }, later);
+  assert.equal(dead.in_flight, 0);
+  assert.equal((await coordinator.stats(later)).in_flight.by_provider.gemini, undefined);
+});
