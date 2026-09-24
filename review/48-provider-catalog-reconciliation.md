@@ -65,7 +65,9 @@ only a slug exactly one creator has. An exact slug always wins, and a normalized
 when it is unique, so ambiguity stays unscored. Unscored models get research links.
 
 **R5 Low noise.** One rolling issue lists only actionable items: proven candidates and
-unacknowledged anomalies on configured routes. Everything else is in a collapsed Observations
+unacknowledged anomalies on configured routes. Each anomaly shows the lanes that use the route and
+what else still serves each of them (or that the lane would stall). A free route that became paid
+(`not_entitled`) gets a **remove route / keep as a paid route** checkbox, never an automatic PR. Everything else is in a collapsed Observations
 block. The issue closes when nothing is actionable and reopens (same issue) when something is.
 
 **R6 Bounded, useful probing.** At most 3 candidate canaries per provider per run: never-tried
@@ -159,7 +161,10 @@ paid (`not_entitled`) is **never** removed automatically, even when no lane uses
 notify-only anomaly for a maintainer decision (maintainer decision 2026-09-24). Same PR repairs lanes
 (drop backups; promote the first backup for a removed primary with `needs:human-verification`;
 escalate instead of removing when a lane would be empty). Worker: on a catalog-digest change, a
-bounded per-tick pass fails queued jobs whose models all lack routes as `route_retired`, and
+bounded per-tick pass fails queued jobs whose models all lack routes as `route_retired` -- including
+jobs already indexed under the Worker's `__unroutable__` sentinel or under a model with no route
+(2026-09-24: 34 and 10 such jobs, e.g. `llama-4-maverick`), which the first pass after Slice 3
+deploys picks up because no catalog digest has been recorded yet -- and
 also queued jobs no eligible route can ever admit (input above every route's hard ceiling -- e.g.
 2026-09-24: ~2,600 prelabeler batches built before the 2026-09-23 sizing fix could only reach a
 20/day route) as `unadmissible`, so the producer re-batches them; the

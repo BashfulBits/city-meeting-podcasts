@@ -119,6 +119,9 @@ class Anomaly:
     reason: str
     absent_from_catalog: bool
     new: bool = True
+    # Each lane whose models this route serves, with the lane's other models (or this model's
+    # other routes) that still have a live route -- what keeps the lane working without it.
+    lane_usage: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @property
     def key(self) -> str:
@@ -210,6 +213,35 @@ def other_lanes(
         for purpose, scores in sorted(incumbents.items())
         if scores and score < min(scores)
     )
+
+
+def lane_usage(
+    route: Mapping[str, Any],
+    lanes: Mapping[str, LaneConfig],
+    routes: list[Mapping[str, Any]],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Lanes this route serves, each with what would still serve that lane without it."""
+    keys = _route_model_keys(route)
+    rid = route.get("route_id")
+
+    def live_elsewhere(model: str) -> bool:
+        return any(
+            other.get("route_id") != rid
+            and other.get("rpd") != 0
+            and model in _route_model_keys(other)
+            for other in routes
+        )
+
+    usage = []
+    for purpose, lane in sorted(lanes.items()):
+        lane_models = (*lane.models, *lane.backup_models)
+        if not keys & set(lane_models):
+            continue
+        alternates = tuple(
+            f"{m} (its other routes)" if m in keys else m for m in lane_models if live_elsewhere(m)
+        )
+        usage.append((purpose, alternates))
+    return tuple(usage)
 
 
 def _context_limit(record: Mapping[str, Any]) -> int | None:
@@ -400,7 +432,15 @@ def reconcile(
                     not catalog.error and rules.catalog_is_complete and model not in catalog.models
                 )
                 _record_health(
-                    report, decisions, provider, rid, model, result, absent, known_anomalies
+                    report,
+                    decisions,
+                    provider,
+                    rid,
+                    model,
+                    result,
+                    absent,
+                    known_anomalies,
+                    usage=lane_usage(route, lanes, routes),
                 )
             api_key = account_key(cfg)
             for model, record, score, _retry in candidates:
@@ -466,7 +506,15 @@ def _merge_into_last_full(
         rid for rid in route_checks if any(rid in o for o in report.observations)
     }
     carried = [
-        Anomaly(**{**a, "new": False})
+        Anomaly(
+            **{
+                **a,
+                "new": False,
+                "lane_usage": tuple(
+                    (lane, tuple(alts)) for lane, alts in a.get("lane_usage") or ()
+                ),
+            }
+        )
         for a in last_full.get("anomalies") or []
         if a.get("route_id") not in rechecked
     ]
@@ -518,6 +566,8 @@ def _record_health(
     result: Classification,
     absent: bool,
     known: set[str],
+    *,
+    usage: tuple[tuple[str, tuple[str, ...]], ...] = (),
 ) -> None:
     where = " (absent from catalog)" if absent else ""
     if result.verdict not in ANOMALY_VERDICTS:
@@ -530,7 +580,9 @@ def _record_health(
             f"{route_id}: {result.verdict}{where} -- acknowledged: {acknowledged.get('reason')}"
         )
         return
-    anomaly = Anomaly(provider, route_id, model, result.verdict, result.reason, absent)
+    anomaly = Anomaly(
+        provider, route_id, model, result.verdict, result.reason, absent, lane_usage=usage
+    )
     anomaly.new = anomaly.key not in known
     report.anomalies.append(anomaly)
 

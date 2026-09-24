@@ -49,6 +49,11 @@ def _encode_state(state: Mapping[str, Any]) -> str:
     return f"<!-- citypods:provider-catalog-state {raw} -->"
 
 
+# A free route that turns paid is never removed automatically (maintainer decision 2026-09-24):
+# it becomes a decision here instead, applied by `/apply` like any other.
+PAID_ROUTE_VERDICT = "not_entitled"
+
+
 def decision_choices(report: Report) -> tuple[str, ...]:
     choices: list[str] = []
     for candidate in report.candidates:
@@ -56,6 +61,10 @@ def decision_choices(report: Report) -> tuple[str, ...]:
         choices.append(f"{key}: ignore")
         choices.append(f"{key}: add route only")
         choices.extend(f"{key}: add as backup to `{lane}`" for lane in candidate.lanes)
+    for anomaly in report.anomalies:
+        if anomaly.verdict == PAID_ROUTE_VERDICT:
+            choices.append(f"`{anomaly.route_id}`: remove route")
+            choices.append(f"`{anomaly.route_id}`: keep as a paid route")
     return tuple(choices)
 
 
@@ -100,13 +109,10 @@ def render_body(report: Report, *, run_date: str, previous_body: str = "") -> st
             )
         lines += [
             "",
-            "Tick what you want, then comment `/apply` to get one curated PR with exactly those "
-            "changes (review/48 Slice 2). Ticks are kept across weekly updates. A lane checkbox "
+            "Decide below in **Decisions**. A lane checkbox "
             "is offered when the candidate scores at least that lane's weakest scored model; "
             "other eligible lanes are listed with the gap (capacity backups are often weaker by "
             "design). Promoting a lane's primary model stays a manual edit.",
-            "",
-            _render_decision_block(choices, checked),
         ]
     else:
         lines.append("None this week.")
@@ -118,6 +124,13 @@ def render_body(report: Report, *, run_date: str, previous_body: str = "") -> st
             lines.append(
                 f"- {flag}`{a.route_id}` (`{a.model}`): **{a.verdict}** -- {a.reason}{where}"
             )
+            if not a.lane_usage:
+                lines.append("  - used by no LLM lane")
+            for lane, alternates in a.lane_usage:
+                still = (
+                    ", ".join(f"`{m}`" for m in alternates) or "**nothing else -- the lane stalls**"
+                )
+                lines.append(f"  - used by `{lane}`; still served by: {still}")
         lines += [
             "",
             "Fix the route in `config/provider_limits.yml`, or record the state as known under "
@@ -125,6 +138,17 @@ def render_body(report: Report, *, run_date: str, previous_body: str = "") -> st
         ]
     else:
         lines.append("None.")
+    if choices:
+        lines += [
+            "",
+            "## Decisions",
+            "",
+            "Tick what you want, then comment `/apply` to get one curated PR with exactly those "
+            "changes (review/48 Slice 2). Ticks are kept across weekly updates. A free route that "
+            "became paid is never removed automatically: remove it, or keep it as a paid route.",
+            "",
+            _render_decision_block(choices, checked),
+        ]
     lines += [
         "",
         f"<details><summary>Observations ({len(report.observations)})</summary>",

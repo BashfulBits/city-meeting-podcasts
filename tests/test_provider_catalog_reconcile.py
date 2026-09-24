@@ -562,3 +562,49 @@ def test_backtest_reports_the_first_gate_that_drops_each_configured_model(monkey
         summary.startswith("discovery self-check: 2/4")
         and "qwen/qwen-gone (not in catalog)" in summary
     )
+
+
+def test_a_free_route_turned_paid_is_a_decision_with_its_lane_impact(monkeypatch):
+    # Maintainer decision 2026-09-24: never auto-remove; offer remove / keep-as-paid, and show
+    # which lanes use the route and what else still serves them.
+    monkeypatch.setenv("K", "test-key")
+    paid = Response(status=403, body='{"error":{"message":"only available on agentic harnesses"}}')
+    lanes = parse_lanes(
+        {
+            "moments": {
+                "models": ["google/gem-scarce", "meta/llama-keep"],
+                "max_dispatches_per_run": 1,
+                "daily_write_units": 100,
+            },
+            "solo": {
+                "models": ["google/gem-scarce"],
+                "max_dispatches_per_run": 1,
+                "daily_write_units": 100,
+            },
+        }
+    )
+    report = reconcile(
+        LIMITS,
+        lanes,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(quota={"or_scarce": {"rpd_remaining": 5}}),
+        today=TODAY,
+        canary_fn=lambda rules, cfg, model, key, session: (
+            paid
+            if model == "google/gem-scarce:free"
+            else (GONE if model == "qwen/qwen-gone" else OK)
+        ),
+    )
+    [anomaly] = [a for a in report.anomalies if a.route_id == "or_scarce"]
+    assert anomaly.verdict == "not_entitled"
+    assert anomaly.lane_usage == (("moments", ("meta/llama-keep",)), ("solo", ()))
+    choices = decision_choices(report)
+    assert "`or_scarce`: remove route" in choices
+    assert "`or_scarce`: keep as a paid route" in choices
+    body = render_body(report, run_date="2026-09-24")
+    assert "used by `moments`; still served by: `meta/llama-keep`" in body
+    assert "used by `solo`; still served by: **nothing else -- the lane stalls**" in body
+    assert body.index("## Decisions") > body.index("## Configured-route anomalies")
