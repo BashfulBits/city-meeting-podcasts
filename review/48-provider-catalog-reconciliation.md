@@ -1,127 +1,178 @@
-# review/48 — Provider catalog reconciliation and free-route evidence
+# review/48 — Provider catalog reconciliation
 
-**Maturity: L3 dev-ready · authorized 2026-09-23**
+**Maturity: Slice 1 shipped (observe and propose) · Slices 2–4 L3 dev-ready · redesigned 2026-09-24**
 
-Owner: LLM dispatch maintainers. Scope: `scripts/reconcile_provider_routes.py`,
-`config/provider_limits.yml`, `tests/test_reconcile_provider_routes.py`, and the scheduled GitHub
-Actions workflow. This supersedes review/41 §3.4's append-only maintainer discovery restriction for
-the explicitly reviewed reconciliation path; the deploy compiler remains a deterministic,
-network-free YAML-to-JSON transformation.
+Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
+`scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
+`config/provider_catalog_decisions.yml`. Prerequisite shipped: the v2 dispatch pause (#1848).
 
-## Goal
+This supersedes the first design in PR #1841. Its free-evidence rules, Artificial Analysis matching
+and comment-preserving route edits were kept; its always-open issue, digest-branch PRs, unreachable
+auto-added routes, HTML scraper and hand-kept alias tables were not.
 
-Keep the committed free-route catalog aligned with each provider's authenticated model catalog and
-authoritative free-tier evidence. A scheduled run may create a review PR and may maintain an
-operational GitHub issue, but it never merges, deploys, or invents a substitute model.
+## 1. Why
 
-## Evidence and decision rules
+LLM routes churned heavily in Aug–Sep 2026: providers retired models (NVIDIA's gpt-oss-120b and
+deepseek-v4-pro went 410), plans changed (Airforce's kimi-k2.7-code became paid), new free
+models appeared (NVIDIA's GLM-5.3), and limits drifted. Checking all of that by hand is not
+sustainable. The goal is automation that *reduces* maintenance: it finds changes, proves them, and
+asks a human only for real decisions.
 
-The reconciler sends its compact evidence summary directly to the rolling issue or review PR; it
-never writes provider response bodies to a local report artifact or stdout. A model-list response only
-establishes availability. It does not establish either pricing or the active account's entitlement.
-Every automatic addition therefore needs provider-specific free evidence, an exact independent
-Artificial Analysis comparison at least equal to the lower score of GPT-OSS-120B and Nemotron-3
-Super, and a small
-non-sensitive completion canary that returns HTTP 2xx. Missing or incomparable quality evidence is
-an inconclusive issue finding, not a candidate for a separate quality workflow.
+## 2. Goals
 
-Artificial Analysis is the primary quality source: its documented LLM API publishes its independent
-Intelligence Index and individual benchmark scores under stable creator/model IDs. One catalog fetch
-is shared by the entire reconciliation run; a candidate must match both the normalized publisher and
-model slug exactly, and its non-negative, numeric `artificial_analysis_intelligence_index` must meet
-the lower score of `openai/gpt-oss-120b` and `nvidia/nvidia-nemotron-3-super-120b-a12b`. No score is
-inferred from an earlier model version, model name, vendor claim, parameter count, or rank. This
-direct rule admits newly evaluated releases (such as GLM-5.3) without assuming that a predecessor's
-score carries forward.
+| | Goal |
+|---|---|
+| G1 | Keep LLM config current with providers: routes, context limits and rate limits. |
+| G2 | Automate discovery and retirement: read `/models`, prove each model with a canary, screen quality, check limits. |
+| G3 | Never strand jobs when a route is removed; affected jobs are reassigned automatically. |
+| G4 | Humans decide additions (issue checkboxes + `/apply` → curated PR); removals and small, conservative limit changes are automatic PRs. |
+| G5 | Extensible: providers and LLM lanes are added or removed without touching the reconciler core. |
 
-The Intelligence Index is a versioned, evolving composite. A methodology or evaluation refresh can
-change numeric scores, so a reconciler-added route records its AA score only as a dated YAML comment:
-it is explanatory and never changes dispatch behavior. Each reconciliation re-fetches AA and applies
-the current score and current floor; the comment must not be treated as a permanent model ranking.
+Out of scope: task-specific output scoring and judge-based admission (a later design).
 
-Hugging Face is a strict fallback, not a model-card source: the reconciler requests `evalResults` and
-accepts only explicitly `verified` results for a narrow, direction-safe task allow-list shared with
-Gemma-4. It does not read unstructured publisher claims or unverified results. Small reviewed
-organization aliases (currently NVIDIA's `z-ai` identifier → Hub's `zai-org`) resolve publisher
-naming differences without fuzzy repository matching.
+## 3. Requirements
 
-| Provider | Availability source | Free evidence | Automatic action |
-|---|---|---|---|
-| Airforce | authenticated `/v1/models` | authoritative `tier: free` (not broad `access_tiers`) | add only after independent quality evidence and canary, when the response supplies the needed route limits |
-| NVIDIA | authenticated `/v1/models` | matching Build Catalog `Free Endpoint` label | add only after independent quality evidence and canary; no matching label is not free, while scraper failure is inconclusive |
-| Groq | authenticated `/models` | maintainer-confirmed free account: every exposed model is free-route eligible | add only after independent quality evidence and canary with conservative catalog-derived limits |
-| Mistral | authenticated `/v1/models` | Free Mode is an account/quota policy; only `completion_chat` entries are eligible | deduplicate provider billing aliases, then add only after independent quality evidence and a bounded canary; a zero-provisioned quota header halts admission |
-| OpenRouter, Kilo | authenticated `/models` | literal `:free` identifier plus explicit zero prompt and completion pricing | add only after independent quality evidence and canary |
-| OrcaRouter | authenticated `/models` | `-free` identifier, `(Free)` display label, and zero request pricing | add only after independent quality evidence and canary |
-| Gemini | authenticated model list | Google documents Free Tier access for only certain models; the list has no tier marker | inspect a newly discovered route with the bounded rate-limit probe; do not auto-add from catalog visibility alone |
-| SambaNova | authenticated `/models` | account-level Free plan is distinct from its nonzero model pricing | no automatic additions without an account-credit/free-entitlement signal |
-| z.ai | authenticated `/models` | account-wide free-plan assertion has no per-model marker | no automatic additions; retain existing routes unless definitely missing and ticket any entitlement ambiguity |
-| SiliconFlow, DeepSeek | authenticated `/models` | no GLOBAL SiliconFlow free marker; DeepSeek is paid | no additions; report any configured inconsistency |
+**R1 Complete catalogs.** Every provider catalog is read completely (Gemini pages at 50 by default)
+with the provider's first account key.
 
-The NVIDIA metadata scraper is deliberately treated as a scraper, not an API contract: NVIDIA does
-not publish a stable documented Build Catalog JSON API with the `Free Endpoint` property. Candidates
-come exclusively from authenticated `/models`; once per run the reconciler reads Build Catalog's
-public NGC `search/catalog/resources/ENDPOINT` response for its `Free Endpoint` label and matches
-the publisher/model identifier exactly. After a model passes that quality gate, its matching NGC
-endpoint detail may supply a published context limit when `/models` did not. Its transport, HTTP,
-or schema failure therefore creates an issue rather than removing or adding a route.
+**R2 Providers are plugins.** Each provider's knowledge lives in one
+`citypods/provider_catalog/providers/<name>.py` exporting `RULES = ProviderRules(...)`:
+catalog endpoint and auth style, free evidence, chat filter, response `Signal`s, the free-variant
+suffix, the creator for bare model IDs, and research links. The registry discovers plugins
+automatically; `_template.py` is the starting point. Contract tests fail CI when a configured
+provider has no plugin, a plugin names a provider that is no longer configured, or the core
+branches on a provider name.
 
-For an existing route absent from its catalog, the reconciler sends one fixed completion canary.
-Only an explicit invalid-model/not-found response removes that route. A payment, subscription,
-quota, timeout, or server response is inconclusive and goes to the rolling issue. This prevents an
-empty credit balance from being mistaken for a model retirement. NVIDIA's one-off admission canary
-has a 90-second bound rather than the normal 30 seconds, because a slow but successful first
-completion is evidence of availability, not model retirement.
+**R3 Canaries are fair evidence.**
+- One 4-token streaming completion; success is decided by *parsing* the first SSE event (a 200
+  whose first event is an error is not a success; a normal chunk may carry `"error": null`).
+- Timeout matches the Worker's own 720 s response ceiling. A timeout or transport error is always
+  `inconclusive`; so is anything no provider signal recognizes.
+- Each provider's probes run inside a provider-scoped v2 dispatch pause, after its in-flight work
+  drains, with the pause renewed per probe. Without the Worker, probes still run and are reported
+  as possibly contended.
+- **Scarce daily quotas** (configured `rpd` ≤ 50, e.g. Gemini's 20/day) are checked every 4 weeks,
+  only when the Worker reports quota left (`pause-status.rpd_remaining`), and each probe is charged
+  to the Worker's ledger (`/v2/dispatch:reserve`). With no quota left the check is deferred to the
+  reset; a daily `--due-only` run picks it up. A spent quota is a deferral, never a verdict.
 
-## PR-safe mutation and fallback
+**R4 Quality is informational.** The Artificial Analysis Intelligence Index is fetched once per
+run and shown next to each lane's incumbents. The floor (lower of GPT-OSS-120B and Nemotron-3
+Super) is a flag, not a gate. Matching is exact identity plus generic naming rules and a
+publisher-alias table — no per-model aliases: AA may prefix the creator; `-it`/`-instruct`/`-chat`/
+`-preview`/`-reasoning` are optional on either side; a bare ID from a multi-publisher host matches
+only a slug exactly one creator has. An exact slug always wins, and a normalized match is used only
+when it is unique, so ambiguity stays unscored. Unscored models get research links.
 
-The script changes `config/provider_limits.yml` only in `--apply` mode. It makes a targeted YAML
-route-block edit rather than round-tripping the whole document through PyYAML, preserving the
-curated explanatory comments. It then runs the existing compiler, so the PR contains all three
-generated dispatch artifacts and carries its evidence summary in the PR body.
+**R5 Low noise.** One rolling issue lists only actionable items: proven candidates and
+unacknowledged anomalies on configured routes. Everything else is in a collapsed Observations
+block. The issue closes when nothing is actionable and reopens (same issue) when something is.
 
-The successful catalog plan is content-addressed. A digest-named branch is reused only for the
-same planned changes; a new plan gets a new branch and never force-pushes an unrelated review.
-The script uses `gh` to create/reuse a PR only when `--open-pr` and `GH_TOKEN` are present.
+**R6 Bounded, useful probing.** At most 3 candidate canaries per provider per run: never-tried
+first, then retries of inconclusive ones, best-scored first within each. Only definitive verdicts
+are remembered (28 days); an inconclusive or spent-quota result is retried, so a provider's rate
+limit cannot hide a model for a month. A plugin can space its canaries (Airforce: 1.5 s, for its
+global 1 req/s limit). Skipped before any canary: aliases of a configured model (same name without
+free/variant decorations) and models whose listed context is below the smallest configured free
+route's (a data-driven floor, not a constant).
 
-If a removal leaves a logical model with another verified, free physical route, that route remains
-the exact-model backfill automatically. If no exact logical route remains, the reconciler only
-uses an already reviewed `model_routing` target (or lane `backup_models` for failure fallback).
-It never selects a different model by fuzzy name, family, context size, or price. Missing explicit
-fallback is included in the rolling issue for a maintainer decision.
+**R7 Decisions are durable.** `config/provider_catalog_decisions.yml` holds `ignored` candidates
+(optionally until `revisit_after`) and `acknowledged` known states of configured routes (e.g. the
+Mistral account-tier block), so a decision is made once.
 
-## GitHub issue lifecycle
+**R8 Lanes come from the registry.** Lane placement reads `load_lanes()` only. Eligible lanes
+are those whose `accepts_catalog_backups` is true (pooled, and `catalog_backup_candidates` not set
+false). A lane checkbox is
+offered when the candidate scores at least the lane's *weakest* scored member (backups add capacity
+and are usually weaker than the primary); every other eligible lane is listed with its score gap,
+because capacity backups are sometimes chosen below that bar. Promotion to a lane's primary model
+stays manual (it changes recipe hashes).
 
-One issue titled **Provider catalog reconciliation — inconclusive free-route evidence** is deduped
-by a hidden marker. The body is replaced with the current outstanding provider/model findings; it
-is updated rather than duplicated and closed only when no inconclusive finding remains. It has
-`type:operations`, `area:provider`, `signal:endpoint-contract`, and
-`needs:human-verification` labels. Dry runs render the would-be issue action without calling
-GitHub.
+**R9 Observe before acting.** Slice 1 changes no config; its only side effect is the issue.
 
-## Workflow and secrets
+## 4. What a response means (evidence, 2026-09-24)
 
-`provider-catalog-reconcile.yml` runs weekly and on manual dispatch. It has only `contents: write`,
-`pull-requests: write`, and `issues: write`, checks out without persisted credentials, and passes
-provider keys plus `ARTIFICIAL_ANALYSIS_API_KEY` only as step environment variables. The latter is
-the free API key, subject to its 1,000-request-per-day limit and attribution requirement; the script
-makes one request per run and attributes the source in its PR or issue body. That body contains only
-route identifiers, HTTP status or classifier evidence, and reviewed quality/free-route summaries;
-it excludes Authorization headers, keys, and provider response bodies. A manual provider filter allows
-focused recovery without widening the scheduled scope.
+Recorded under provider-scoped pauses and pinned in
+`tests/fixtures/provider_catalog/evidence_2026_09_24.json` and
+`tests/test_provider_catalog_signals.py`. Verdicts: `proven`, `retired`, `not_served`,
+`not_entitled`, `account_blocked`, `quota_exhausted`, `inconclusive`. Only `proven`, `retired` and
+`not_served` can ever change config.
 
-## Tests and acceptance criteria
+| Provider | Free evidence | Signals seen |
+|---|---|---|
+| NVIDIA | Build Catalog "Free Endpoint" label (NGC JSON) **and** a canary | 404 "Function … not found for account" = not served (all 8 sampled card-less listings); 410 = end of life. A 200 proves *served*, not cost: two unlabeled non-chat models also served, and NVIDIA returns no billing signal, so the label is required. First bytes took up to 300 s. |
+| Gemini | account-level (free-tier project) | 404 "no longer available" = retired; 429 with free-tier quota violations **without** a value = not in the free tier (models production never uses); 429 **with** a value (e.g. 20/day) = spent quota, defer |
+| Mistral | chat-capable entries (account-level) | 429 + `x-ratelimit-limit-req-minute: 0` = account-blocked (all 3 keys); 403 `tier_not_allowed` = not entitled; 403 Labs = preference toggle |
+| Groq | account-level (all-free account) | 404 "does not exist" = retired; headers carry per-day requests and per-minute tokens |
+| OpenRouter, Kilo | `:free` + zero prompt/completion price | 403 "agentic harness" = not entitled; 429 upstream = inconclusive |
+| OrcaRouter | `-free` + "(Free)" + zero request price | — |
+| Airforce | record's own `tier: free` | 402 subscription = not entitled; 429 global 1 rps = spent quota |
+| z.ai | none (observation-only) | `/models` omits its free flash models (absence is not evidence); code 1113 = paid; 1305 = overloaded |
+| SambaNova | account-level (documented Free tier; routes are `free: true`) | 429 "high demand" = inconclusive |
+| SiliconFlow, DeepSeek | none (observation-only) | — |
 
-Offline tests fake catalog and canary clients and cover:
+## 5. Discovery backtest (2026-09-24)
 
-1. provider free evidence, an exact independent Artificial Analysis comparison (or verified Hub
-   fallback), and canary all require success before an addition; missing evidence becomes an issue
-   finding;
-2. explicit missing-model response removes exactly that route block, while payment/quota preserves
-   it and creates a finding;
-3. a last-route removal reports a missing fallback, while an exact sibling route is retained;
-4. targeted source edits preserve unrelated comments and compile generated catalogs;
-5. issue/PR commands are skipped in dry-run mode and digest branches reuse only matching work.
+`--backtest` replays the candidate gates for every configured model as if it were not configured
+(catalog reads only). Every weekly run adds the one-line result to the issue's Observations, so a
+plugin gate that drifts from how routes are actually chosen shows up without anyone looking.
 
-The workflow is accepted when a manual dry run emits only plan counts; an apply run with a safe fixture
-plan opens a review PR and updates the rolling issue without merge/deploy authority.
+- **Recall 34/39.** Misses: three retired or de-listed models (groq `qwen3.6-27b`; mistral
+  `devstral-2512`, `mistral-large-2512`) — correct — and z.ai's two free flash models, which z.ai's
+  `/models` does not list at all (added by hand; documented in its plugin).
+- **What the backtest changed:** SambaNova moved from observation-only to account-level (it had
+  made both configured SambaNova models undiscoverable); the lane rule moved from "beats every
+  member" to "at least the weakest member" (12 real memberships missed → 4); AA matching gained the
+  `-preview`/`-reasoning` and unique-bare-ID rules (most configured Gemini/NVIDIA/SambaNova models
+  went from unscored to scored).
+- **Remaining lane gap, by design:** four capacity placements score below their lane's weakest
+  member (`gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gpt-oss-120b`); they appear in the
+  issue's "other lanes" column with the gap rather than as checkboxes.
+
+The same day's paused dry run found both real anomalies (Airforce `kimi-k2.7-code` now paid,
+Groq `qwen3.6-27b` retired), treated the Mistral account-tier states as acknowledged, and surfaced
+NVIDIA `z-ai/glm-5.3` (AA 44.8, above every configured model) as the top candidate. It also drove the
+alias skip, the context floor, the definitive-only memory, the Airforce spacing and a 600 s drain.
+
+## 6. Design and delivery
+
+**Slice 1 — observe and propose (shipped).**
+`reconcile.py` plans a run: per provider, list the catalog, health-check one live route per
+configured upstream model, and canary up to 3 free candidates, all inside the pause.
+`issue.py` renders and syncs the rolling issue: candidates table (AA score, floor flag, context,
+research links) with a checkbox decision block per candidate (ignore / add route only / add as
+backup to each eligible lane), anomalies, collapsed observations, and a base64 state marker (canary
+memory, scarce-route checks, deferrals, known anomalies, the last full report for `--due-only`
+merges). Ticked boxes survive weekly rewrites. Workflow: weekly full run + daily due-only run,
+`issues: write` only.
+
+**Slice 2 — `/apply` → curated additions PR.** `provider-catalog-commands.yml` on `issue_comment`
+(`author_association` prefilter + `require_repository_write`), reading `checked_decisions` and
+re-verifying candidate digests. Writes route blocks (comment-preserving append; limits from catalog,
+canary headers, else rpm 1 / concurrency 1), lane `backup_models`, and `ignored` decisions; runs
+both compilers and the lane/limit tests in-job (GITHUB_TOKEN PRs do not trigger CI); fixed branch
+`automation/provider-catalog-additions` rebuilt from main with list/edit/create.
+
+**Slice 3 — automatic removals, lane repair, job rescue.** Remove a route only when the model is
+absent from a complete catalog and its canary is `retired`/`not_served`. Same PR repairs lanes
+(drop backups; promote the first backup for a removed primary with `needs:human-verification`;
+escalate instead of removing when a lane would be empty). Worker: on a catalog-digest change, a
+bounded per-tick pass fails queued jobs whose models all lack routes as `route_retired`; the
+deferred sweep does not count `route_retired` toward the retry cap, and the producer resubmits
+under the current lane. The lane↔route CI guard (#1849) blocks any removal that would strand a
+lane.
+
+**Slice 4 — bounded limit maintenance.** Record header-reported limits and a bounded rate-probe
+pass under the pause. Effective value = the maximum of the last 6 observations within 90 days.
+Within ±20%: nothing. Below by >20% with ≥3 consecutive low readings: automatic tightening PR.
+Above by >20%: an issue checkbox. Any swing >50% or an observed 0: flagged as a material change.
+The Worker's `route_failures` (sustained `own_rpm`/`own_tpm`/`unknown_429`) triggers an early
+re-probe of a scarce route.
+
+## 7. Verification
+
+- Offline: `pytest tests/test_provider_catalog_*.py tests/test_llm_lanes.py tests/test_workflows.py`.
+- Live dry run: `citypods-env python scripts/reconcile_provider_routes.py` prints the would-be issue.
+- Discovery recall: `citypods-env python scripts/reconcile_provider_routes.py --backtest`.
+- New or changed provider: `--evidence-report --provider <name>` under the pause, then pin the new
+  response shapes in the fixture.

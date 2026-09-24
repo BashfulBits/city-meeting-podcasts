@@ -95,18 +95,23 @@ Phase R (Research-Tool Surface)._
   Worker would refuse, while the run still applies already-completed results. Fails open. `daily_row_budget`/`queue_full` rejections defer like the
   daily cap. Cleanup runs every 10 minutes (was 12). `/v2/stats` reports `row_budget`.
 
-- **Added review-PR-only provider catalog reconciliation**
-  (`scripts/reconcile_provider_routes.py`, `provider-catalog-reconcile.yml`, review/48). The weekly
-  control-plane check reads authenticated provider model lists, distinguishes availability from
-  free-tier evidence, then requires an exact independent Artificial Analysis comparison against the
-  GPT-OSS-120B / Nemotron-3 Super floor (with a verified Hugging Face-evaluation fallback) plus a
-  fixed non-sensitive completion canary before adding a route. It can remove a route only after
-  both catalog absence and an explicit model-not-found response; missing/incomparable quality
-  evidence, quota, payment, entitlement, and scraper uncertainty are retained in one deduplicated
-  GitHub issue. Safe changes are committed to a digest-named review PR and never auto-merged or
-  deployed. Exact logical-model siblings remain usable automatically; a cross-model replacement
-  still requires reviewed `model_routing` or lane backup policy. No pipeline version, recipe,
-  stored artifact, or automatic artifact backfill changes.
+- **Weekly provider-catalog reconciliation (observe and propose)** (`citypods/provider_catalog/`,
+  `scripts/reconcile_provider_routes.py`, `provider-catalog-reconcile.yml`,
+  `config/provider_catalog_decisions.yml`, review/48 Slice 1). Lists every provider's catalog
+  (paginated), health-checks one live route per configured upstream model, and canaries up to three
+  free-marked candidates per provider, each provider inside a drained v2 dispatch pause; scarce
+  daily-quota routes are checked every four weeks, only with quota left, and charged to the Worker's
+  ledger. Each provider is a plugin whose response signals are pinned against responses recorded
+  under the pause on 2026-09-24. Findings go to one rolling issue: proven candidates with Artificial
+  Analysis scores (informational; the GPT-OSS-120B / Nemotron-3 Super floor is a flag) and
+  lane-backup checkboxes from the lane registry, unacknowledged anomalies on configured routes, and
+  collapsed observations; it closes when nothing is actionable and reopens when something is. Lanes
+  gain an optional `catalog_backup_candidates: false` opt-out. It changes no config and needs only
+  `issues: write`. Every weekly run also reports a discovery self-check (`--backtest`): replaying the
+  candidate gates against the configured routes re-finds 34/39 (the misses are three retired models
+  and z.ai's free models, which its catalog omits). #1841's Gemini rate-probe header change is reverted (the OpenAI-compatible
+  endpoint rejects `x-goog-api-key` and accepts Bearer). No pipeline version, recipe, or
+  stored-artifact change.
 
 - **Terminal-job cleanup drains as fast as dispatch can finish jobs**
   (`workers/llm-dispatch-v2/wrangler.jsonc`, `src/index.js`, `src/write_budget.js`).

@@ -1609,3 +1609,44 @@ def test_deferred_full_prune_workflow_runs_weekly_and_is_main_only():
     assert step["timeout-minutes"] == 165
     assert "--full-prune-only" in step["run"]
     assert "--run-time-budget-minutes 120" in step["run"]
+
+
+def test_provider_catalog_reconcile_is_issue_only_paused_and_keyed_from_config():
+    """review/48 Slice 1: observe/propose only, and every configured route can be health-checked.
+
+    The key secrets are derived from config/provider_limits.yml, so adding a provider or account
+    without wiring its key here fails CI instead of silently skipping that route's health check.
+    """
+    wf, job = _job("provider-catalog-reconcile.yml", "reconcile")
+    assert wf["permissions"] == {}
+    assert job["permissions"] == {"contents": "read", "issues": "write"}
+    crons = {entry["cron"] for entry in _on(wf)["schedule"]}
+    assert crons == {"17 10 * * 1", "20 8 * * *"}
+    step = job["steps"][_step_index(job, "reconcile_provider_routes.py")]
+    assert "--sync-issues" in step["run"] and "--due-only" in step["run"]
+    assert "--apply" not in step["run"] and "--open-pr" not in step["run"]
+    env = step["env"]
+    for name in (
+        "LLM_DISPATCH_V2_URL",
+        "LLM_DISPATCH_V2_AUTH_TOKEN",
+        "ARTIFICIAL_ANALYSIS_API_KEY",
+    ):
+        assert env.get(name) == f"${{{{ secrets.{name} }}}}"
+    limits = yaml.safe_load((REPO_ROOT / "config" / "provider_limits.yml").read_text())
+    # The planner health-checks the first unpaused route per (provider, upstream model), with that
+    # route's own account key; catalogs and candidates use each provider's first account.
+    needed = {
+        cfg["accounts"][0]["api_key_env"]
+        for cfg in limits["providers"].values()
+        if cfg.get("accounts")
+    }
+    seen = set()
+    for route in limits["routes"]:
+        key = (route["provider"], route["upstream_model"])
+        if route.get("rpd") == 0 or key in seen:
+            continue
+        seen.add(key)
+        accounts = limits["providers"][route["provider"]].get("accounts") or []
+        needed |= {a["api_key_env"] for a in accounts if a["id"] == route.get("account_id")}
+    for name in sorted(needed):
+        assert env.get(name) == f"${{{{ secrets.{name} }}}}", name

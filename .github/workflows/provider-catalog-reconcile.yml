@@ -1,25 +1,25 @@
 name: Provider catalog reconciliation
 
+# review/48 Slice 1: observe and propose only. Lists every provider's catalog, health-checks the
+# configured free routes and canaries a few free-marked candidates -- each provider inside a v2
+# dispatch pause so production traffic cannot distort the results -- then updates ONE rolling
+# issue. It never edits config, opens PRs, merges or deploys.
 on:
   schedule:
-    - cron: "17 10 * * 1"
+    - cron: "17 10 * * 1" # weekly full run
+    # Daily: only health checks deferred because a scarce daily quota (e.g. Gemini's 20/day) was
+    # spent. 08:20 UTC is just after Pacific midnight in both PDT (07:00) and PST (08:00), when
+    # Google's quotas reset. A run with nothing deferred makes no provider calls.
+    - cron: "20 8 * * *"
   workflow_dispatch:
     inputs:
-      provider:
-        description: "Provider to reconcile (optional; empty reconciles all)"
-        required: false
-        default: ""
-        type: string
-      apply:
-        description: "Create safe amendments, issue updates, and a review PR"
+      due_only:
+        description: "Only re-run checks deferred until a daily-quota reset"
         required: false
         default: false
         type: boolean
 
-permissions:
-  contents: write
-  pull-requests: write
-  issues: write
+permissions: {}
 
 concurrency:
   group: provider-catalog-reconcile
@@ -28,33 +28,35 @@ concurrency:
 jobs:
   reconcile:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # NVIDIA's first bytes can take several minutes and every provider waits for its in-flight
+    # work to drain before probing; a typical run takes 10-20 minutes.
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          # The reconciler explicitly configures git authentication immediately before its
-          # constrained fetch/push path, so checkout never leaves a credential for repo code.
           persist-credentials: false
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.14"
           cache: pip
       - run: pip install -e ".[llm]" -c constraints/prod.txt
-      - name: Reconcile provider route catalog
+      - name: Reconcile provider catalogs
         env:
           GH_TOKEN: ${{ github.token }}
-          INPUT_APPLY: ${{ inputs.apply }}
-          INPUT_PROVIDER: ${{ inputs.provider }}
-          AIRFORCE_API_KEY: ${{ secrets.AIRFORCE_API_KEY }}
+          DUE_ONLY: ${{ github.event.schedule == '20 8 * * *' || inputs.due_only == true }}
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           ARTIFICIAL_ANALYSIS_API_KEY: ${{ secrets.ARTIFICIAL_ANALYSIS_API_KEY }}
+          # Exactly the keys the planner uses (test_workflows derives this set from config).
+          AIRFORCE_API_KEY: ${{ secrets.AIRFORCE_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-          MISTRAL_API_KEY_SECONDARY: ${{ secrets.MISTRAL_API_KEY_SECONDARY }}
-          MISTRAL_API_KEY_TERTIARY: ${{ secrets.MISTRAL_API_KEY_TERTIARY }}
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ORCAROUTER_API_KEY: ${{ secrets.ORCAROUTER_API_KEY }}
@@ -62,11 +64,8 @@ jobs:
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
         run: |
-          args=()
-          if [ -n "$INPUT_PROVIDER" ]; then
-            args+=(--provider "$INPUT_PROVIDER")
-          fi
-          if [ "${{ github.event_name }}" = "schedule" ] || [ "$INPUT_APPLY" = "true" ]; then
-            args+=(--apply --sync-issues --open-pr)
+          args=(--sync-issues)
+          if [ "$DUE_ONLY" = "true" ]; then
+            args+=(--due-only)
           fi
           python scripts/reconcile_provider_routes.py "${args[@]}"

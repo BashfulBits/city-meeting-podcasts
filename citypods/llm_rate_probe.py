@@ -119,14 +119,8 @@ class RateProbeRunner:
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
         }
-        if route.get("provider") == "gemini":
-            # Google AI Studio's OpenAI-compatible endpoint authenticates with an API-key header,
-            # not an OpenAI-style bearer token.  Without this the bounded discovery probe can only
-            # report a false authentication failure and cannot inspect its quota response.
-            headers["x-goog-api-key"] = api_key
-        else:
-            headers["Authorization"] = f"Bearer {api_key}"
         payload = {
             "model": route.get("upstream_model"),
             "messages": [{"role": "user", "content": prompt}],

@@ -429,3 +429,19 @@ def test_every_lane_model_has_a_live_worker_route(purpose, model):
     # its queued jobs exactly like a missing one.
     live = [r for r in routes if catalog["routes_by_id"][r].get("rpd") != 0]
     assert live, f"{purpose}: every route for {model} is paused (rpd: 0): {routes}"
+
+
+def test_catalog_backup_candidates_defaults_on_and_excludes_per_model_lanes():
+    lanes = load_lanes()
+    assert all(
+        lane.accepts_catalog_backups == (lane.dispatch_shape == "pooled") for lane in lanes.values()
+    )
+    base = {"models": ["a/b"], "max_dispatches_per_run": 1, "daily_write_units": 100}
+    assert (
+        parse_lanes({"x": {**base, "catalog_backup_candidates": False}})[
+            "x"
+        ].accepts_catalog_backups
+        is False
+    )
+    with pytest.raises(ValueError, match="catalog_backup_candidates"):
+        parse_lanes({"x": {**base, "catalog_backup_candidates": "yes"}})
