@@ -2775,9 +2775,13 @@ def _build_impl(
     moment_max_dispatches = lane_for("r6-moments").max_dispatches_per_run
     # Ingress preflight: a lane the dispatch Worker would refuse today (daily DO row budget,
     # pending-queue cap, daily job cap, or its own budget) gets a zero per-run cap, so the stages
-    # skip building its prompts instead of doing the work only to have every job rejected.
-    # Fails open; enqueue still enforces every limit.
-    if not dry_run and phase != "render" and os.environ.get("LLM_DISPATCH_V2_URL"):
+    # skip building its prompts instead of doing the work only to have every job rejected. The
+    # run itself still goes ahead: the same stages apply already-completed deferred results to
+    # episodes, and a closed lane (a full queue can stay closed for days) must not stall that.
+    # Fails open; enqueue still enforces every limit. Same URL precedence as
+    # LLMBackendConfig.from_env().
+    v2_url = os.environ.get("CITYPODS_LLM_DISPATCH_V2_URL") or os.environ.get("LLM_DISPATCH_V2_URL")
+    if not dry_run and phase != "render" and v2_url:
         closed = _closed_llm_lanes(
             {
                 "topic-tags:tagger": tagging_config.get("enabled"),

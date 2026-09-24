@@ -2453,17 +2453,26 @@ test("the pending cap refuses new jobs once MAX_QUEUED_JOBS are waiting", async 
   assert.deepEqual(result.rejected, [{ id: "j3", reason: "queue_full" }]);
 });
 
-test("past the claim threshold no lease is claimed and the empty claim writes nothing", async () => {
+test("past the claim threshold no lease is claimed and pending rows still get persisted", async () => {
   const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1")]);
   setRowsWrittenToday(sql, 97_000);
-  const before = [...sql.exec("SELECT last_claim_reason, rows_written_today FROM scheduler")][0];
+  const read = () => [...sql.exec("SELECT last_claim_reason, rows_written_today FROM scheduler")][0];
+  const before = read();
+  // Rows written since the last flush (in production: completions, acks, retires).
+  coordinator._rowsUnflushed = 40;
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
   assert.equal(plan.bundle_id, null);
   assert.equal(plan.claim_reason, "daily_row_budget");
-  const after = [...sql.exec("SELECT last_claim_reason, rows_written_today FROM scheduler")][0];
-  assert.deepEqual(after, before);
+  const after = read();
+  assert.equal(after.last_claim_reason, before.last_claim_reason);
+  assert.ok(after.rows_written_today >= before.rows_written_today + 40);
   assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'j1'")][0].state, "queued");
+  // An idle braked tick (nothing pending but its own reads) writes nothing more.
+  coordinator._rowsUnflushed = 0;
+  const settled = read().rows_written_today;
+  await coordinator.claimDispatchWindow(Date.now() + 61_000, 30);
+  assert.ok(read().rows_written_today - settled <= 1);
 });
 
 test("past the optional threshold acks and retires are refused but completions still land", async () => {

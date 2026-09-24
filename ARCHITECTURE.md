@@ -472,9 +472,11 @@ dispatch; at `DO_ROWS_CLAIM_STOP` (97,000) no new lease is claimed; at `DO_ROWS_
 refused. There is no working daily lease cap (`MAX_LEASES_PER_UTC_DAY` is a 7,000 backstop), so a
 cheap day dispatches until the budget, not until a worst-case projection. Ingress is bounded by a
 daily quota near real drain (`MAX_JOBS_PER_UTC_DAY` 4,000, `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`
-18,000, divided by the lane budgets above) and a pending cap (`MAX_QUEUED_JOBS` 20,000). Producers
-preflight `GET /v2/ingress-status?purpose=` (`python -m citypods.cli llm-ingress-status`) and skip
-a closed lane's run; the check fails open, since enqueue re-checks everything.
+18,000, divided by the lane budgets above) and a pending cap (`MAX_QUEUED_JOBS` 20,000). `build()`
+preflights `GET /v2/ingress-status?purpose=` for each enabled lane and zeroes a closed lane's
+per-run cap, so no prompts are built for refused work while the run still applies completed
+results (`python -m citypods.cli llm-ingress-status` is the operator view); the check fails open,
+since enqueue re-checks everything.
 `workers/llm-dispatch-v2/src/write_budget.js` records the measured per-phase costs
 (`bench/rows-written/`): a completed first-try job is ~20 billed rows. Because every index entry is billed, the
 coordinator's schema is kept minimal on purpose (2026-09-23 row-write tiers; see CHANGELOG): `jobs`

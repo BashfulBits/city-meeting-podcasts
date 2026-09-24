@@ -230,9 +230,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   /**
    * Billed rows this DO has written today: the persisted counter (flushed on the scheduler
-   * writes each claim and enqueue already make, so tracking it costs no extra rows) plus what is
-   * still in memory. An eviction loses at most the in-memory part -- about one cron tick of
-   * writes -- which the reserve above each threshold absorbs.
+   * writes each claim and enqueue already make, and on a braked claim tick whenever rows are
+   * pending, so tracking it costs almost no extra rows) plus what is still in memory. Every cron
+   * tick flushes, so an eviction loses at most about one tick of writes, which the reserve above
+   * each threshold absorbs.
    */
   _rowsWrittenToday(sched) {
     const persisted =
@@ -2908,8 +2909,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const sched = this._rollUtcDayIfNeeded(now);
       const rowsToday = this._rowsWrittenToday(sched);
       // The daily brake. Past the claim threshold no new lease is claimed, and the empty result
-      // is not even recorded -- every row left belongs to completing what is already in flight.
+      // is not recorded -- every row left belongs to completing what is already in flight. The
+      // row counter is still persisted when rows are pending (completions, acks and retires keep
+      // writing), since nothing else flushes it past the enqueue threshold and an eviction would
+      // otherwise drop them and reopen the optional-write gate. One row, only when more than one
+      // is pending, so an idle braked tick writes nothing.
       if (rowsToday >= this._claimRowStop()) {
+        if ((this._rowsUnflushed || 0) > 1) {
+          sql.exec(
+            "UPDATE scheduler SET rows_written_today = rows_written_today + ? WHERE id = 1",
+            this._takeUnflushedRows()
+          );
+        }
         return {
           ...EMPTY,
           claim_result: "empty",

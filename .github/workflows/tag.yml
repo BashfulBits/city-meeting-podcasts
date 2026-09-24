@@ -47,17 +47,7 @@ jobs:
           echo "CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE=$CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE" >> "$GITHUB_ENV"
           python scripts/llm_submission_telemetry.py snapshot start
 
-      # Skip the producer run when the dispatch Worker would refuse its work today (daily DO row
-      # budget, pending-queue cap, daily job cap, or the lane's own budget). Fails open.
-      - name: Check LLM ingress is open
-        id: ingress
-        env:
-          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
-          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
-        run: python -m citypods.cli llm-ingress-status --github-output --purpose topic-tags:tagger --purpose topic-tags:prelabeler
-
       - name: Produce bounded LLM topic-tag candidates
-        if: steps.ingress.outputs.open != 'false'
         # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
         # GitHub reports as a grey "cancelled" -- indistinguishable at a glance from someone
         # cancelling it by hand, and it skips every later step so nothing is persisted or

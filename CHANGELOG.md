@@ -46,9 +46,9 @@ Phase R (Research-Tool Surface)._
   (`MAX_JOBS_PER_UTC_DAY` 1,450 -> 4,000, `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 5,800 -> 18,000,
   every `llm_lanes` reserved/daily budget x ~3.1, per-run caps unchanged) and a new pending cap,
   `MAX_QUEUED_JOBS` 20,000 (`queue_full`). New read-only `GET /v2/ingress-status?purpose=` and
-  `python -m citypods.cli llm-ingress-status` let the chapter-agenda, chapter-locator, tag, moments
-  and tournament-backfill workflows skip a run whose lanes are closed, and `build()` zeroes a closed
-  lane's per-run cap; both fail open. `daily_row_budget`/`queue_full` rejections defer like the
+  `python -m citypods.cli llm-ingress-status` report whether a lane is open; `build()` checks each
+  enabled lane at start and zeroes a closed lane's per-run cap, so no prompts are built for work the
+  Worker would refuse, while the run still applies already-completed results. Fails open. `daily_row_budget`/`queue_full` rejections defer like the
   daily cap. Cleanup runs every 10 minutes (was 12). `/v2/stats` reports `row_budget`.
 
 - **Terminal-job cleanup drains as fast as dispatch can finish jobs**

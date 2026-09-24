@@ -588,10 +588,10 @@ def _asr_bench(args) -> int:
 def _llm_ingress_status(args: argparse.Namespace) -> int:
     """Print each lane's admission preflight; always exits 0 (a closed lane is not a failure).
 
-    A workflow gates its heavy LLM-producing step on the ``open`` output, so a day whose ingress
-    is closed (daily DO row budget, pending-queue cap, daily job cap, or the lane's own budget)
-    costs one request instead of a run of work the Worker would refuse. Fails open: an unreachable
-    Worker reports open, and enqueue still enforces every limit.
+    The operator view of the preflight ``build()`` runs for each enabled lane: why a lane is closed
+    (daily DO row budget, pending-queue cap, daily job cap, or the lane's own budget). The
+    ``--github-output`` flag lets a workflow branch on it. Fails open: an unreachable Worker
+    reports open, and enqueue still enforces every limit.
     """
     from citypods.compute.llm import dispatch_v2_ingress_open
 
