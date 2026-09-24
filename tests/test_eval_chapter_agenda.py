@@ -186,3 +186,18 @@ def test_rescore_rejudges_stored_replies_and_keeps_provider_outcomes(monkeypatch
         ("b", False, False),
     ]
     assert out["summary"]["rescorable"] == 1
+
+
+def test_a_position_only_chapter_is_matched_by_the_items_reference():
+    # 19% of main-set chapters are titled only "Item 3A": text similarity cannot match them.
+    items = [
+        {"title": "Approve minutes of April 2", "evidence_text": "", "display_ref": "3.a"},
+        {"title": "Officer report", "evidence_text": "", "display_ref": "3.b"},
+    ]
+    assert ev.score_episode(items, [{"title": "Item 3A"}])["matched"] == 1
+    # A range credits only the item the chapter starts at; the rest are not conflicts.
+    score = ev.score_episode(items, [{"title": "Items 3A - 3B"}])
+    assert (score["matched"], score["mapped"], score["conflicted"]) == (1, 1, 0)
+    assert ev._chapter_first_reference("Items 3A-3C") == "3a"
+    assert ev._chapter_first_reference("Item Z-24-17") == "z2417"
+    assert ev._chapter_first_reference("Consent Agenda") is None

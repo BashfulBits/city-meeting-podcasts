@@ -23,6 +23,16 @@ bumps `version`; results always record the set version they used.
 Known limits: three providers only; agendas are mostly short (median ~600 tokens, max ~12k), so
 long-agenda behavior is under-represented.
 
+## Holdout split (frozen 2026-09-24)
+
+`holdout/` holds 24 more episodes (304 provider chapters; Granicus 12, Swagit 12; CivicClerk had no
+further qualifying episodes), disjoint **by meeting** from the main set. Rule: nobody inspects
+holdout outputs while designing a change (a validator repair, a prompt edit). A change is accepted
+only if it helps on the main set **and** does not hurt on the holdout; a change that only fits the
+main set's meetings shows up there. Limit: few providers publish chapters, so the splits share most
+cities (5 of the holdout's 8 feeds also appear in the main set), and holdout agendas share those
+cities' layouts. `--split holdout` runs it; results go to `results/<date>-holdout.json`.
+
 ## Method
 
 `scripts/eval_chapter_agenda.py --model <model>`:
@@ -66,6 +76,13 @@ output).
   is dropped from the backups.
 - Beats the primary (Nemotron 3 Ultra): it joins the lane's `models` as a same-priority
   alternate, with no 12-attempt wait.
+
+### Re-scoring a validator change
+
+Every answered episode stores its raw reply. `--rescore results/<file>.json` re-runs production
+finalization on those replies with the current code, without calling any model, so a validator
+change is compared on identical output: score the same file at the commit before the change and at
+the commit after it.
 
 ## Results
 

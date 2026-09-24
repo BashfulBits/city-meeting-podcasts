@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import time
 from collections.abc import Mapping
@@ -74,10 +75,56 @@ def _load(name: str, split: str = "main") -> dict[str, Any]:
     return json.loads((SPLIT_DIRS[split] / name).read_text(encoding="utf-8"))
 
 
+# A provider chapter titled only by its agenda position ("Item 3A", "Items 3A - 3C", "Item 16
+# (Part 1 of 2)"): 19% of main-set and 13% of holdout chapters. Text similarity cannot match these
+# to an item titled "Approve minutes of April 2", so they are matched by reference instead.
+_REFERENCE_CHAPTER_RE = re.compile(
+    r"^\s*(?:agenda\s+)?items?\s*#?\s*(?P<refs>[\w.\-]+(?:\s*(?:,|&|and|to|-|–)\s*[\w.\-]+)*)"
+    r"\s*(?:\(part \d+ of \d+\))?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _reference_key(value: str) -> str:
+    value = re.sub(r"^\s*(?:agenda\s+)?items?\s*#?\s*", "", value, flags=re.IGNORECASE)
+    return re.sub(r"[^0-9a-z]", "", value.casefold())
+
+
+def _chapter_first_reference(title: str) -> str | None:
+    """The reference a position-only chapter starts at (`Items 3A - 3C` -> `3a`), else None."""
+    match = _REFERENCE_CHAPTER_RE.match(title)
+    if not match:
+        return None
+    refs = match["refs"].strip()
+    # `3A-3C` is a range of short positions; `Z-24-17` is one identifier and stays whole.
+    compact_range = re.fullmatch(r"(\d{1,3}[a-z]{0,2})\s*[-–]\s*\d{1,3}[a-z]{0,2}", refs, re.I)
+    if compact_range:
+        return _reference_key(compact_range[1])
+    first = re.split(r"\s*(?:,|&|\band\b|\bto\b|\s-\s|\s–\s)\s*", refs)[0]
+    return _reference_key(first) or None
+
+
+def _features_with_reference(chapter_title: str, item: Mapping[str, Any]) -> dict:
+    """The original text features, plus a reference match for position-only chapters.
+
+    An item whose own label is the chapter's (first) reference is a strong match; an item labelled
+    with another reference keeps its text score. Only the first item of a range is credited, the
+    item the chapter starts at; the rest of the range stays unmapped, which neither helps nor hurts
+    precision.
+    """
+    features = _pair_features(chapter_title, item)
+    reference = _chapter_first_reference(chapter_title)
+    item_ref = item.get("display_ref")
+    if reference and isinstance(item_ref, str) and _reference_key(item_ref) == reference:
+        return {**features, "score": 1.0, "identifier_overlap": [reference]}
+    return features
+
+
 def score_episode(items: list[Mapping[str, Any]], chapters: list[Mapping[str, Any]]) -> dict:
-    """Match generated items to provider chapters exactly as the original benchmark did."""
+    """Match generated items to provider chapters: the original benchmark's text matcher, plus
+    reference matching for position-only chapters (see ``_features_with_reference``)."""
     pairs = [
-        (ci, ii, _pair_features(str(ch.get("title") or ""), item))
+        (ci, ii, _features_with_reference(str(ch.get("title") or ""), item))
         for ci, ch in enumerate(chapters)
         for ii, item in enumerate(items)
     ]
