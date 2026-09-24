@@ -17,6 +17,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Removed the unused NVIDIA Riva Translate route**
+  (`config/provider_limits.yml`, regenerated `llm_routes.json` and both Workers'
+  `dispatch_limits.json`). `nvidia_riva_translate_4b_instruct_v2_free` was reserved for future
+  translation work, but no lane referenced it and its real context is only 8,192 tokens. Split
+  out of #1841 so it doesn't wait on the catalog-reconciliation redesign. No pipeline version,
+  recipe, or stored-artifact change.
+
 - **DO rows read: id lookups no longer walk a whole terminal state**
   (`workers/llm-dispatch-v2/src/coordinator.js`). `confirmPurge`, `ackResults` and
   `retireConsumed` filter `WHERE id IN (...) AND state = '...'`, and SQLite's planner chose the
