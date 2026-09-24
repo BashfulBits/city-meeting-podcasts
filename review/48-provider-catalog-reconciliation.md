@@ -1,6 +1,6 @@
 # review/48 — Provider catalog reconciliation
 
-**Maturity: Slice 1 shipped (observe and propose) · Slices 2–4 L3 dev-ready · redesigned 2026-09-24**
+**Maturity: Slice 1 shipped (observe and propose) · PR C and Slices 2–4 L3 dev-ready · redesigned 2026-09-24**
 
 Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
 `scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
@@ -27,6 +27,7 @@ asks a human only for real decisions.
 | G3 | Never strand jobs when a route is removed; affected jobs are reassigned automatically. |
 | G4 | Humans decide additions (issue checkboxes + `/apply` → curated PR); removals and small, conservative limit changes are automatic PRs. |
 | G5 | Extensible: providers and LLM lanes are added or removed without touching the reconciler core. |
+| G6 | Every structured request reaches its route in a form that route answers with JSON; a route that stops doing so fails loudly, never with silent empty replies. |
 
 Out of scope: task-specific output scoring and judge-based admission (a later design).
 
@@ -92,6 +93,37 @@ stays manual (it changes recipe hashes).
 
 **R9 Observe before acting.** Slice 1 changes no config; its only side effect is the issue.
 
+**R10 Structured output is shaped per route, from verified configuration (G6).** Producers
+(GitHub Actions, local runs, evals) send only the response *schema*; they never choose how to ask
+for JSON. The v2 Worker shapes the request for the route it actually dispatches to, because only it
+knows that route (a pooled job may be served by any route in the pool). A small, closed set of
+methods covers every route:
+
+| Method | Request shape |
+|---|---|
+| `json_schema` | `response_format: json_schema` with the full schema |
+| `json_schema_relaxed` | `response_format: json_schema`, schema with size/length/range bounds stripped |
+| `json_object` | `response_format: json_object`, schema appended to the prompt |
+| `prompt_only` | no `response_format`; schema appended to the prompt |
+
+- **Resolution:** a route's own *verified* method is authoritative (with its `verified_on` date).
+  Support is a property of the provider *serving* a model, not of either alone, so the
+  verification lives on the route. An unverified route (between being added and its first canary)
+  falls back to the method verified for the same model on another route, then the provider's
+  default, then `prompt_only` (the only method every chat endpoint accepts).
+- **Verification:** the catalog canary (Slice 1) sends a small schema-bound request with each
+  method to each configured route and to each candidate, and records which methods return valid
+  JSON. It proposes the method for a new route (Slice 2 writes it), and a configured method that
+  stops working is an anomaly on the rolling issue. Methods that work are preferred in table order
+  (strictest first).
+- **Loud failure:** the Worker treats a 200 with empty or unparseable content on a structured
+  request as a route failure (`structured_output_empty`/`structured_output_invalid` in
+  `route_failures`) and retries the job on another route; it never completes a job with it. Full
+  schema validation stays in Python (LLM output is untrusted; the Pydantic models live there).
+- **One definition:** local direct calls (tests, evals, research) use the same shaping. A shared
+  fixture of `method + schema -> expected request` is asserted by both the Python and the Worker
+  test suites, so the two implementations cannot drift.
+
 ## 4. What a response means (evidence, 2026-09-24)
 
 Recorded under provider-scoped pauses and pinned in
@@ -112,6 +144,15 @@ Recorded under provider-scoped pauses and pinned in
 | z.ai | none (observation-only) | `/models` omits its free flash models (absence is not evidence); code 1113 = paid; 1305 = overloaded |
 | SambaNova | account-level (documented Free tier; routes are `free: true`) | 429 "high demand" = inconclusive |
 | SiliconFlow, DeepSeek | none (observation-only) | — |
+
+**Structured output (2026-09-24).** NVIDIA's `deepseek-ai/deepseek-v4.1-flash` returned a 200 with
+**empty content** (`finish_reason: stop`, reasoning only) to *both* `response_format: json_schema`
+and `json_object`, and valid JSON only with no `response_format`. NVIDIA's earlier
+`deepseek-v4-pro` answered the default `json_schema` fine, and OrcaRouter's `deepseek-v4-flash`
+answers both formats (5–14 s). No config recorded that difference, and the Worker forwarded the
+job's format unchanged, so the failure was silent: an agenda benchmark spent hours retrying empty
+replies before it was traced. Until PR C lands, v4.1 is out of the r6-moments and council-moments
+pools (OrcaRouter v4 serves that overflow instead).
 
 ## 5. Discovery backtest (2026-09-24)
 
@@ -137,6 +178,28 @@ NVIDIA `z-ai/glm-5.3` (AA 44.8, above every configured model) as the top candida
 alias skip, the context floor, the definitive-only memory, the Airforce spacing and a 600 s drain.
 
 ## 6. Design and delivery
+
+**PR C — per-route structured-output shaping (ahead of Slices 2–4, like the pause PR).**
+Implements R10 on today's routes, before the catalog automates them.
+- *Config:* `structured_output_profiles` in `config/provider_limits.yml` become the four R10
+  methods; `structured_output_method` + `structured_output_verified_on` may be set on a route,
+  otherwise resolved as R10 describes. `compile_llm_limits.py` validates methods, resolves every
+  route's method, and emits it into both `llm_routes.json` and the Worker's
+  `dispatch_limits.json`.
+- *Payload:* Python's durable and dispatch payloads carry `structured_output: {name, schema}`
+  instead of a pre-shaped `response_format`, and messages without schema-in-prompt edits.
+  Admission estimates keep today's conservative rule (the larger, schema-in-prompt form).
+- *Worker:* `gateway.js:upstreamRequestForRoute` renders the four methods from the chosen route's
+  method; the executor classifies an empty/unparseable structured 200 as a retryable route failure
+  (R10). A stored payload without `structured_output` (jobs already in B2) keeps today's
+  `response_format` passthrough until those drain; the passthrough is then removed.
+- *Python direct path:* the same four renderers, one local parse/validate/retry path; Instructor's
+  schema mode is retired from the direct path.
+- *Tests:* the shared shaping fixture (both suites); a Worker test that an empty structured 200
+  retries on another route and is counted; a compile test that every route resolves a method.
+- *Rollout:* mark NVIDIA `deepseek-v4.1-flash` `prompt_only`, re-run its agenda benchmark
+  (`evals/chapter-agenda/`), and return it to the r6-moments / council pools. The other
+  configured routes keep their current method until the Slice 1 canary verifies them.
 
 **Slice 1 — observe and propose (shipped).**
 `reconcile.py` plans a run: per provider, list the catalog, health-check one live route per
@@ -206,3 +269,7 @@ shown side by side.
 - Discovery recall: `citypods-env python scripts/reconcile_provider_routes.py --backtest`.
 - New or changed provider: `--evidence-report --provider <name>` under the pause, then pin the new
   response shapes in the fixture.
+- PR C: the shared shaping fixture passes in `pytest` and `npm test`; after deploy, one r6-moments
+  job forced to NVIDIA `deepseek-v4.1-flash` completes with valid JSON, and a route configured with
+  a failing method shows `structured_output_empty` in `/v2/stats?detail=1` and the job completes on
+  another route.
