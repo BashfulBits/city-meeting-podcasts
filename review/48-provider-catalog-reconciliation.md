@@ -179,6 +179,26 @@ Above by >20%: an issue checkbox. Any swing >50% or an observed 0: flagged as a 
 The Worker's `route_failures` (sustained `own_rpm`/`own_tpm`/`unknown_429`) triggers an early
 re-probe of a scarce route.
 
+**Shadow exit (maintainer decision 2026-09-24).** A shadow evaluator lane (today
+`topic-tags:prelabeler-shadow`, gemma-4-26b-a4b-it shadowing the gemma-4-31b-it pre-labeler) runs
+the production prompt on the same subjects, never affects display, and earns its own calibration
+row: human reviews of the production evaluator are mirrored onto it through the subject's truth
+(`llm_evaluation.mirror_shadow_prelabeler_review`), so it is scored at no extra reviewer cost.
+It **qualifies to exit** shadow when, on those mirrored reviews, it meets the same bar the
+production evaluator must meet before it may act on its own (`EvaluationConfig`):
+- at least 50 scored reviews (`prelabeler_minimum_reviews`);
+- at least 95% precision on each actionable decision (`prelabeler_required_precision`), each with
+  at least 5 reviews (`prelabeler_minimum_decision_reviews`); and
+- precision not lower than the production evaluator's over the same subjects.
+
+When it qualifies, the rolling catalog issue shows the evidence (review counts, per-decision
+precision, agreement with production) and offers a **promote shadow** checkbox; `/apply` (Slice 2)
+turns it into a curated PR that adds the model as the production lane's backup (or as an
+additional model) and retires the shadow lane. Promotion to the lane's primary stays a manual
+edit, because the primary is part of the recipe hash. Until a task has a committed evaluation set
+(GH#1852), these mirrored reviews are its task-level quality evidence; once it has one, both are
+shown side by side.
+
 ## 7. Verification
 
 - Offline: `pytest tests/test_provider_catalog_*.py tests/test_llm_lanes.py tests/test_workflows.py`.
