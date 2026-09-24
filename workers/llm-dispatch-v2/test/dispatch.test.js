@@ -2541,3 +2541,24 @@ test("ingressStatus closes a lane whose daily write units are spent", async () =
   assert.deepEqual(status.reasons, ["purpose_write_budget_exceeded"]);
   assert.equal(status.lane.write_units_available, 0);
 });
+
+test("a mid-day deploy seeds the new row counter from today's recorded work, never from zero", () => {
+  const { sql, storage } = createMockSqlStorage();
+  const env = withTestReservations({ DISPATCH_LIMITS_OVERRIDE: TEST_CATALOG });
+  new LLMSchedulerDO({ storage }, env);
+  // An already-deployed coordinator from before the counter existed, mid-way through its day.
+  sql.exec("ALTER TABLE scheduler DROP COLUMN rows_written_today");
+  sql.exec(
+    `UPDATE scheduler SET ingress_write_units_today = 5000, lease_count_today = 1000,
+       bundle_count_today = 400 WHERE id = 1`
+  );
+  const coordinator = new LLMSchedulerDO({ storage }, env);
+  const { rows_written_today: seeded } = [...sql.exec("SELECT rows_written_today FROM scheduler")][0];
+  // 2 x 5,000 ingress + 6 x 400 bundles + 24 x 1,000 leases, before cleanup and idle ticks.
+  assert.ok(seeded >= 10_000 + 2_400 + 24_000, `seeded ${seeded}`);
+  assert.ok(coordinator._readRowsWrittenToday() >= seeded);
+  // A later construction (column present) leaves the running count alone.
+  sql.exec("UPDATE scheduler SET rows_written_today = 5 WHERE id = 1");
+  new LLMSchedulerDO({ storage }, env);
+  assert.equal([...sql.exec("SELECT rows_written_today FROM scheduler")][0].rows_written_today, 5);
+});

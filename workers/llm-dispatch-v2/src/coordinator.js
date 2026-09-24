@@ -9,6 +9,12 @@ import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 // about which purposes exist or what each may spend. Drift-checked in the deploy workflow.
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
 import {
+  ROWS_PER_BUNDLE,
+  ROWS_PER_CLEANUP_JOB,
+  ROWS_PER_INGRESS_WRITE_UNIT,
+  ROWS_PER_LEASE_WORST,
+} from "./write_budget.js";
+import {
   canonicalModelName,
   jobPolicy,
   modelForRouteId,
@@ -619,7 +625,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("scheduler", "queued_job_count_initialized", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "claim_empty_count_today", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "lease_count_today", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureColumn("scheduler", "rows_written_today", "INTEGER NOT NULL DEFAULT 0");
+    const addedRowCounter = this._ensureColumn(
+      "scheduler",
+      "rows_written_today",
+      "INTEGER NOT NULL DEFAULT 0"
+    );
     this._ensureColumn("scheduler", "claim_reason_counts_json", "TEXT NOT NULL DEFAULT '{}'");
     this._ensureColumn("scheduler", "last_claim_at", "INTEGER");
     this._ensureColumn("scheduler", "last_claim_result", "TEXT NOT NULL DEFAULT ''");
@@ -655,6 +665,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
          VALUES (1, ?, 0, 0)`,
         today
       );
+    } else if (addedRowCounter) {
+      this._seedRowCounter(today);
     }
     this._ensureColumn("scheduler", "mistral_latest_migrated", "INTEGER NOT NULL DEFAULT 0");
     this._ensureMigratedJobModels();
@@ -809,8 +821,34 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
     const sql = this._getSql();
     const columns = [...sql.exec(`PRAGMA table_info(${table})`)];
-    if (columns.some((c) => c.name === column)) return;
+    if (columns.some((c) => c.name === column)) return false;
     sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    return true;
+  }
+
+  /**
+   * A deploy that adds the row counter mid-day would otherwise start today's count at 0 after
+   * the DO had already written an unknown number of rows, and could let the day run past the
+   * platform limit. Seed it from what the scheduler already recorded today, each at its
+   * worst-case measured cost (write_budget.js), plus a full cleanup and idle-tick allowance for
+   * the minutes elapsed. It over-counts, which only stops enqueues or claims early on that one day.
+   */
+  _seedRowCounter(today) {
+    const sql = this._getSql();
+    const sched = [...sql.exec(
+      `SELECT utc_day, ingress_write_units_today, lease_count_today, bundle_count_today
+         FROM scheduler WHERE id = 1`
+    )][0];
+    if (!sched || sched.utc_day !== today) return;
+    const minutes = Math.floor((Date.now() - Date.parse(`${today}T00:00:00Z`)) / 60_000);
+    const cleanupRuns = Math.floor(minutes / Math.max(1, this._envInt("CLEANUP_INTERVAL_MINUTES", 10)));
+    const estimate =
+      ROWS_PER_INGRESS_WRITE_UNIT * (Number(sched.ingress_write_units_today) || 0) +
+      ROWS_PER_BUNDLE * (Number(sched.bundle_count_today) || 0) +
+      ROWS_PER_LEASE_WORST * (Number(sched.lease_count_today) || 0) +
+      ROWS_PER_CLEANUP_JOB * cleanupRuns * this._envInt("PURGE_BATCH_LIMIT", 15) +
+      minutes;
+    sql.exec("UPDATE scheduler SET rows_written_today = ? WHERE id = 1", estimate);
   }
 
   _currentUtcDay(now = Date.now()) {
