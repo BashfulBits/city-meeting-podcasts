@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
-import { createMockSqlStorage, withTestReservations } from "./helpers.js";
+import { createMockSqlStorage, createRecordingSqlStorage, withTestReservations } from "./helpers.js";
 
 function makeCoordinator(env, { sql, storage } = createMockSqlStorage()) {
   return { coordinator: new LLMSchedulerDO({ storage }, withTestReservations(env)), sql, storage };
@@ -2187,4 +2187,140 @@ test("an existing rowid job_models is rebuilt clustered, keeping rows, uniquenes
     .map((row) => row.detail)
     .join(" | ");
   assert.ok(!plan.includes("TEMP B-TREE"), plan);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Dispatch pause (POST /v2/dispatch:pause|resume, pause-status, reserve)
+// ---------------------------------------------------------------------------------------------
+
+const PAUSE_MODEL = "gemini/gemini-3.1-flash-lite";
+const pauseJob = (id) => ({
+  id,
+  idempotency_key: `${id}-key`,
+  request_digest: `${id}-digest`,
+  policy_json: JSON.stringify({ allowed_models: [PAUSE_MODEL], purpose: "topic-tags:tagger" }),
+  prompt_family: "tags",
+  input_token_estimate: 100,
+  max_output_token_estimate: 50,
+  payload_key: `payloads/${id}/request.json`,
+});
+
+test("a provider pause stops claims on that provider until resumed", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([pauseJob("p1"), pauseJob("p2")]);
+  const now = Date.now();
+
+  const paused = await coordinator.pauseDispatch(
+    { scope: "provider", target: "gemini", seconds: 600, reason: "canary" },
+    now
+  );
+  assert.equal(paused.ok, true);
+  assert.equal(paused.scope, "provider:gemini");
+  const blocked = await coordinator.claimDispatchWindow(now, 30);
+  assert.deepEqual(blocked.jobs, []);
+
+  const resumed = await coordinator.resumeDispatch({ scope: "provider", target: "gemini" }, now);
+  assert.equal(resumed.resumed, true);
+  const claimed = await coordinator.claimDispatchWindow(now, 30);
+  assert.ok(claimed.jobs.length > 0);
+});
+
+test("a route pause leaves the model's other routes claimable", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([pauseJob("r1"), pauseJob("r2")]);
+  const now = Date.now();
+  await coordinator.pauseDispatch(
+    { scope: "route", target: "gemini_3_1_flash_lite_primary", seconds: 600 },
+    now
+  );
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.ok(plan.jobs.length > 0);
+  for (const job of plan.jobs) {
+    assert.equal(job.route_id ?? job.lease_route_id, "gemini_3_1_flash_lite_secondary");
+  }
+});
+
+test("a pause expires by itself", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([pauseJob("t1")]);
+  const now = Date.now();
+  await coordinator.pauseDispatch({ scope: "global", seconds: 60 }, now);
+  assert.equal((await coordinator.claimDispatchWindow(now + 59_000, 30)).claim_reason, "dispatch_paused");
+  const after = await coordinator.claimDispatchWindow(now + 61_000, 30);
+  assert.ok(after.jobs.length > 0);
+  assert.deepEqual((await coordinator.dispatchPauseStatus({}, now + 61_000)).pauses, []);
+});
+
+test("a globally paused claim tick executes no SQL at all, so it writes no rows", async () => {
+  const { sql, storage, recorder } = createRecordingSqlStorage();
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" }, { sql, storage });
+  await coordinator.enqueueBatch([pauseJob("g1")]);
+  const now = Date.now();
+  await coordinator.pauseDispatch({ scope: "global", seconds: 600, reason: "incident" }, now);
+  await coordinator.claimDispatchWindow(now, 30); // warms nothing: the pause cache is already fresh
+  recorder.start();
+  const plan = await coordinator.claimDispatchWindow(now + 1000, 30);
+  assert.equal(plan.claim_reason, "dispatch_paused");
+  assert.deepEqual(plan.jobs, []);
+  assert.deepEqual(recorder.statements, []);
+});
+
+test("pause and status reject targets the catalog does not know", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const bad = await coordinator.pauseDispatch({ scope: "provider", target: "nope", seconds: 60 });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.error, "unknown_target");
+  const badRoute = await coordinator.dispatchPauseStatus({ scope: "route", target: "nope" });
+  assert.equal(badRoute.ok, false);
+});
+
+test("pause-status reports the selection's in-flight count and each route's daily quota", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([pauseJob("s1"), pauseJob("s2")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.ok(plan.jobs.length > 0);
+
+  const status = await coordinator.dispatchPauseStatus({ scope: "provider", target: "gemini" }, now);
+  assert.equal(status.ok, true);
+  assert.equal(status.selection, "provider:gemini");
+  assert.equal(status.in_flight, plan.jobs.length);
+  const route = status.routes.gemini_3_1_flash_lite_primary;
+  assert.equal(route.rpd_limit, 500);
+  assert.equal(route.rpd_remaining, 500 - route.rpd_used);
+  assert.ok(route.rpd_resets_at > now);
+
+  const other = await coordinator.dispatchPauseStatus({ scope: "provider", target: "nvidia" }, now);
+  assert.equal(other.in_flight, 0);
+
+  const stats = await coordinator.stats(now);
+  assert.equal(stats.in_flight.by_provider.gemini, plan.jobs.length);
+});
+
+test("reserve charges out-of-band calls to the route's daily ledger, on the provider's day", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  // 2026-09-24 12:00 America/Los_Angeles (19:00 UTC); Gemini resets at Pacific midnight.
+  const noonPacific = Date.UTC(2026, 8, 24, 19, 0, 0);
+  const reserved = await coordinator.reserveRouteRequests(
+    { route_id: "gemini_3_1_flash_lite_primary", requests: 2 },
+    noonPacific
+  );
+  assert.equal(reserved.ok, true);
+  assert.equal(reserved.rpd_count, 2);
+  assert.equal(reserved.rpd_day_key, "2026-09-24");
+
+  const selection = { scope: "route", target: "gemini_3_1_flash_lite_primary" };
+  const sameDay = await coordinator.dispatchPauseStatus(selection, noonPacific + 60_000);
+  assert.equal(sameDay.routes.gemini_3_1_flash_lite_primary.rpd_remaining, 498);
+  // Midnight PDT, to nextZonedMidnightMs's one-minute resolution.
+  const resetsAt = sameDay.routes.gemini_3_1_flash_lite_primary.rpd_resets_at;
+  const midnightPdt = Date.UTC(2026, 8, 25, 7, 0, 0);
+  assert.ok(resetsAt >= midnightPdt && resetsAt < midnightPdt + 60_000, String(resetsAt));
+  // 20:00 Pacific is already 2026-09-25 in UTC but still the same provider day.
+  const eveningPacific = Date.UTC(2026, 8, 25, 3, 0, 0);
+  const evening = await coordinator.dispatchPauseStatus(selection, eveningPacific);
+  assert.equal(evening.routes.gemini_3_1_flash_lite_primary.rpd_used, 2);
+  const nextDay = await coordinator.dispatchPauseStatus(selection, Date.UTC(2026, 8, 25, 8, 0, 0));
+  assert.equal(nextDay.routes.gemini_3_1_flash_lite_primary.rpd_used, 0);
+  assert.equal(nextDay.routes.gemini_3_1_flash_lite_primary.rpd_remaining, 500);
 });

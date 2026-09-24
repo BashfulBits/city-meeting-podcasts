@@ -559,6 +559,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
         PRIMARY KEY (utc_day, route_id, failure_class)
       );
 
+      -- Operator dispatch pauses (POST /v2/dispatch:pause). One row per active scope --
+      -- 'global', 'provider:<name>' or 'route:<route_id>' -- so the table stays at a handful of
+      -- rows. Every pause carries paused_until: a pause ends by itself, so a probe that crashes
+      -- mid-run cannot leave production halted. Written only by pause/resume; the claim path reads
+      -- an in-memory copy (see _pauseRows) and never touches this table per tick.
+      CREATE TABLE IF NOT EXISTS dispatch_pause (
+        scope         TEXT PRIMARY KEY,
+        paused_until  INTEGER NOT NULL,
+        reason        TEXT NOT NULL DEFAULT '',
+        created_at    INTEGER NOT NULL
+      );
+
       -- Keeps the model-queue index's ordering priority synchronized with a direct jobs.priority
       -- edit -- review/44 documents an operator promoting an already-queued job for
       -- recovery/testing as a direct SQLite edit through Cloudflare's dashboard Data Studio or
@@ -1182,6 +1194,220 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * never confusable with a real Cloudflare string env var) env.DISPATCH_LIMITS_OVERRIDE. */
   _dispatchLimits() {
     return this.env.DISPATCH_LIMITS_OVERRIDE || DISPATCH_LIMITS;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Dispatch pause (POST /v2/dispatch:pause|resume, GET /v2/dispatch:pause-status,
+  // POST /v2/dispatch:reserve). Lets an out-of-band caller -- a catalog canary, a rate probe, an
+  // incident responder -- stop NEW claims for a whole deployment, one provider, or one route
+  // without a redeploy, then wait for that selection's in-flight work to drain. In-flight bundles
+  // are never interrupted and their 429 retries are not refused: a refused retry ends the attempt
+  // as terminal_error, which would fail the job rather than pause it. The drain signal
+  // (leased jobs for the selection) already waits for those retries to finish.
+  //
+  // Row budget: only pause, resume and reserve write, one or two rows each. A claim tick reads the
+  // in-memory copy below, and a globally paused tick returns before any other statement runs.
+  // ---------------------------------------------------------------------------------------------
+
+  static PAUSE_MAX_SECONDS = 3600;
+
+  /** `global`, `provider:<name>` or `route:<route_id>`. */
+  static pauseScopeKey(scope, target) {
+    return scope === "global" ? "global" : `${scope}:${target}`;
+  }
+
+  /** Every stored pause row, cached in memory; pause/resume clear the cache after writing. */
+  _pauseRows() {
+    if (!this._pauseCache) {
+      this._pauseCache = [...this._getSql().exec(
+        "SELECT scope, paused_until, reason, created_at FROM dispatch_pause"
+      )];
+    }
+    return this._pauseCache;
+  }
+
+  _activePauses(now) {
+    return this._pauseRows().filter((row) => Number(row.paused_until) > now);
+  }
+
+  /** Reject a pause target the compiled catalog does not know: a typo must not pause nothing. */
+  _validatePauseTarget(scope, target) {
+    if (scope === "global") return null;
+    const catalog = this._dispatchLimits();
+    if (scope === "provider" && !catalog?.providers?.[target]) {
+      return `unknown provider '${target}'`;
+    }
+    if (scope === "route" && !catalog?.routes_by_id?.[target]) {
+      return `unknown route '${target}'`;
+    }
+    return null;
+  }
+
+  async pauseDispatch({ scope, target = null, seconds, reason = "" }, now = Date.now()) {
+    const invalid = this._validatePauseTarget(scope, target);
+    if (invalid) return { ok: false, error: "unknown_target", detail: invalid };
+    const key = LLMSchedulerDO.pauseScopeKey(scope, target);
+    const pausedUntil = now + Math.min(seconds, LLMSchedulerDO.PAUSE_MAX_SECONDS) * 1000;
+    const sql = this._getSql();
+    this.ctx.storage.transactionSync(() => {
+      // Expired rows are removed lazily here rather than by a scheduled sweep: the table only
+      // ever holds a few scopes, and this keeps pausing the only thing that writes it.
+      sql.exec("DELETE FROM dispatch_pause WHERE paused_until <= ?", now);
+      sql.exec(
+        `INSERT INTO dispatch_pause (scope, paused_until, reason, created_at) VALUES (?, ?, ?, ?)
+         ON CONFLICT(scope) DO UPDATE SET paused_until = excluded.paused_until,
+                                          reason = excluded.reason,
+                                          created_at = excluded.created_at`,
+        key,
+        pausedUntil,
+        String(reason || "").slice(0, 200),
+        now
+      );
+    });
+    this._pauseCache = null;
+    return { ok: true, scope: key, paused_until: pausedUntil };
+  }
+
+  async resumeDispatch({ scope, target = null }, now = Date.now()) {
+    const key = LLMSchedulerDO.pauseScopeKey(scope, target);
+    const sql = this._getSql();
+    const existed = this._activePauses(now).some((row) => row.scope === key);
+    this.ctx.storage.transactionSync(() => {
+      sql.exec("DELETE FROM dispatch_pause WHERE scope = ? OR paused_until <= ?", key, now);
+    });
+    this._pauseCache = null;
+    return { ok: true, scope: key, resumed: existed };
+  }
+
+  /**
+   * The catalog claimDispatchWindow routes against. With no provider/route pause active this is
+   * the compiled catalog itself; otherwise a copy whose model_routes_map omits paused routes, so
+   * _rankModelsByCapacity and routesEligibleFor skip them without any pause-specific branches.
+   * routes_by_id stays whole: in-flight leases on a paused route must still resolve.
+   */
+  _claimDispatchLimits(now) {
+    const catalog = this._dispatchLimits();
+    const pausedProviders = new Set();
+    const pausedRoutes = new Set();
+    for (const row of this._activePauses(now)) {
+      if (row.scope.startsWith("provider:")) pausedProviders.add(row.scope.slice(9));
+      else if (row.scope.startsWith("route:")) pausedRoutes.add(row.scope.slice(6));
+    }
+    if (pausedProviders.size === 0 && pausedRoutes.size === 0) return catalog;
+    const isPaused = (routeId) =>
+      pausedRoutes.has(routeId) ||
+      pausedProviders.has(catalog?.routes_by_id?.[routeId]?.provider);
+    const modelRoutesMap = {};
+    for (const [model, routeIds] of Object.entries(catalog?.model_routes_map || {})) {
+      modelRoutesMap[model] = (routeIds || []).filter((routeId) => !isPaused(routeId));
+    }
+    return { ...catalog, model_routes_map: modelRoutesMap };
+  }
+
+  /** Leased jobs per route and per provider: the calls that are, or are about to be, in flight. */
+  _inFlightCounts(dispatchLimits = this._dispatchLimits()) {
+    const byRoute = {};
+    const byProvider = {};
+    for (const row of this._getSql().exec(
+      "SELECT lease_route_id, COUNT(*) AS cnt FROM jobs WHERE state = 'leased' GROUP BY lease_route_id"
+    )) {
+      if (!row.lease_route_id) continue;
+      byRoute[row.lease_route_id] = row.cnt;
+      const provider = dispatchLimits?.routes_by_id?.[row.lease_route_id]?.provider;
+      if (provider) byProvider[provider] = (byProvider[provider] || 0) + row.cnt;
+    }
+    return { by_route: byRoute, by_provider: byProvider };
+  }
+
+  /**
+   * Status for one selection: active pauses, the selection's in-flight count (the drain signal a
+   * canary waits on) and, per selected route, how much daily quota is left and when it resets.
+   * Read-only.
+   */
+  async dispatchPauseStatus({ scope = "global", target = null } = {}, now = Date.now()) {
+    const invalid = this._validatePauseTarget(scope, target);
+    if (invalid) return { ok: false, error: "unknown_target", detail: invalid };
+    const catalog = this._dispatchLimits();
+    const inFlight = this._inFlightCounts(catalog);
+    const selectedRouteIds = Object.keys(catalog?.routes_by_id || {}).filter((routeId) => {
+      if (scope === "route") return routeId === target;
+      if (scope === "provider") return catalog.routes_by_id[routeId]?.provider === target;
+      return true;
+    });
+    let selectionInFlight;
+    if (scope === "route") selectionInFlight = inFlight.by_route[target] || 0;
+    else if (scope === "provider") selectionInFlight = inFlight.by_provider[target] || 0;
+    else selectionInFlight = Object.values(inFlight.by_route).reduce((sum, n) => sum + n, 0);
+
+    // Daily quota per route is reported only for a provider/route selection: a global status
+    // would read every routes row for no caller that needs it.
+    const routes = {};
+    if (scope !== "global") {
+      const ledgers = new Map(
+        [...this._getSql().exec(
+          `SELECT route_id, rpd_count, rpd_day_key FROM routes
+            WHERE route_id IN (${selectedRouteIds.map(() => "?").join(",") || "''"})`,
+          ...selectedRouteIds
+        )].map((row) => [row.route_id, row])
+      );
+      for (const routeId of selectedRouteIds) {
+        const catalogRoute = catalog.routes_by_id[routeId];
+        const timeZone = catalog?.providers?.[catalogRoute.provider]?.reset_timezone || "UTC";
+        const rpdLimit = configuredLimit(catalogRoute.rpd);
+        const ledger = ledgers.get(routeId);
+        const usedToday =
+          ledger && ledger.rpd_day_key === zonedDateKey(now, timeZone)
+            ? Number(ledger.rpd_count) || 0
+            : 0;
+        routes[routeId] = {
+          provider: catalogRoute.provider,
+          in_flight: inFlight.by_route[routeId] || 0,
+          rpd_limit: rpdLimit,
+          rpd_used: usedToday,
+          rpd_remaining: rpdLimit === null ? null : Math.max(0, rpdLimit - usedToday),
+          rpd_resets_at: nextZonedMidnightMs(now, timeZone),
+        };
+      }
+    }
+    return {
+      ok: true,
+      now,
+      selection: LLMSchedulerDO.pauseScopeKey(scope, target),
+      in_flight: selectionInFlight,
+      pauses: this._activePauses(now),
+      routes,
+    };
+  }
+
+  /**
+   * Charge out-of-band calls (a canary or probe made directly against the provider) to a route's
+   * rpm/rpd ledger, exactly as claimDispatchWindow charges an admitted job, so production pacing
+   * accounts for them. Tokens are not reserved: these calls are a few tokens each.
+   */
+  async reserveRouteRequests({ route_id: routeId, requests = 1 }, now = Date.now()) {
+    const invalid = this._validatePauseTarget("route", routeId);
+    if (invalid) return { ok: false, error: "unknown_target", detail: invalid };
+    const catalog = this._dispatchLimits();
+    const catalogRoute = catalog.routes_by_id[routeId];
+    return this.ctx.storage.transactionSync(() => {
+      let merged = {
+        ...catalogRoute,
+        ...this._getOrCreateRouteLedger(routeId, now, catalogRoute),
+        route_id: routeId,
+        reset_timezone: catalog?.providers?.[catalogRoute.provider]?.reset_timezone || "UTC",
+      };
+      for (let i = 0; i < requests; i += 1) {
+        merged = this._applyProvisionalReservation(merged, 0, now);
+      }
+      this._writeRouteLedger(merged);
+      return {
+        ok: true,
+        route_id: routeId,
+        rpm_count: merged.rpm_count,
+        rpd_count: merged.rpd_count,
+        rpd_day_key: merged.rpd_day_key,
+      };
+    });
   }
 
   // Cloudflare's SQLite-backed Durable Object storage caps bound parameters per query at 100
@@ -1828,6 +2054,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           active_call_count: activeCalls,
           active_expired: activeBundles.filter((row) => row.lease_expires_at <= now).length,
         },
+        // Leased jobs per route/provider (bounded by the in-flight caps) and any operator pause.
+        in_flight: this._inFlightCounts(),
+        dispatch_pauses: this._activePauses(now),
         scheduler: {
           utc_day: scheduler.utc_day ?? null,
           bundle_count_today: scheduler.bundle_count_today ?? 0,
@@ -2853,7 +3082,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /** review/44 Unit 4: fenced, capacity-ranked admission and pacing in one SQLite transaction. */
   async claimDispatchWindow(now, windowSeconds) {
     const sql = this._getSql();
-    const dispatchLimits = this._dispatchLimits();
+    // A global pause ends the tick before any statement runs -- not even the day roll or the
+    // lease reaper -- so a paused deployment writes zero rows per tick. Expired leases are simply
+    // reaped by the first tick after the pause ends.
+    const globalPause = this._activePauses(now).find((row) => row.scope === "global");
+    if (globalPause) {
+      return {
+        ...LLMSchedulerDO.EMPTY_CLAIM_RESULT,
+        claim_result: "empty",
+        claim_reason: "dispatch_paused",
+        claim_diagnostics: { paused_until: globalPause.paused_until, reason: globalPause.reason },
+      };
+    }
+    // Provider/route pauses: the same catalog minus the paused routes (see _claimDispatchLimits).
+    const dispatchLimits = this._claimDispatchLimits(now);
 
     return this.ctx.storage.transactionSync(() => {
       this._ensureMigratedJobModels();
