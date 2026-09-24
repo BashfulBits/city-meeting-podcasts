@@ -79,9 +79,13 @@
     // at 97,000 rather than 98,000 because the DO's count can trail Cloudflare's by ~1.3% (and
     // Data Studio edits are invisible to it); raise it once a day of counter-vs-analytics data
     // shows the gap.
-    "DO_ROWS_ENQUEUE_STOP": "90000",
-    "DO_ROWS_CLAIM_STOP": "97000",
-    "DO_ROWS_OPTIONAL_STOP": "99000",
+    //
+    // These three thresholds are the coordinator's code defaults (`_enqueueRowStop`,
+    // `_claimRowStop`, `_optionalRowStop`: DO_ROWS_ENQUEUE_STOP 90000, DO_ROWS_CLAIM_STOP 97000,
+    // DO_ROWS_OPTIONAL_STOP 99000) and are deliberately NOT declared as vars: Workers Free allows
+    // 64 variables per Worker, secrets included, and declaring defaults pushed this Worker to 66,
+    // which rejected every deploy from #1846 on. Add a var here only to override a default;
+    // tests/test_llm_dispatch_worker_limits.py fails CI before the limit is crossed again.
     // A blast-radius backstop, not the working limit: MAX_BUNDLES_PER_UTC_DAY x MAX_BUNDLE_JOBS.
     "MAX_LEASES_PER_UTC_DAY": "7000",
     // Ingress quota, sized near what dispatch can finish in a day (~20-29 billed rows per job, so
@@ -91,8 +95,9 @@
     // of ingress is at most 36,000 rows). ~4,000 jobs at the lanes' ~4.5 units/job. Lane
     // reservations compiled from `llm_lanes` must fit inside this.
     "MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY": "18000",
-    // Global cap on queued jobs: past it new work waits in the producer, not in the DO.
-    "MAX_QUEUED_JOBS": "20000",
+    // Global cap on queued jobs (MAX_QUEUED_JOBS): past it new work waits in the producer, not in
+    // the DO. Left at the coordinator's default of 20,000 (`_maxQueuedJobs`), so not declared --
+    // see the variable-limit note above.
     // Per-purpose ingress budgets now live in config/site_config.yml's `llm_lanes` block and are
     // compiled into src/ingress_reservations.json by scripts/compile_llm_lanes.py (drift-checked
     // in llm-dispatch-v2-worker-deploy.yml), so this var is gone. It had drifted to reserve

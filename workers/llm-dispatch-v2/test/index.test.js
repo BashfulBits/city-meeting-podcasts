@@ -421,13 +421,20 @@ test("the committed wrangler.jsonc vars pass validateConfig", async () => {
   const { DO_ROWS_WRITTEN_PLATFORM_LIMIT, ROWS_PER_INGRESS_WRITE_UNIT } = await import(
     "../src/write_budget.js"
   );
-  assert.equal(vars.DO_ROWS_ENQUEUE_STOP, "90000");
-  assert.equal(vars.DO_ROWS_CLAIM_STOP, "97000");
-  assert.equal(vars.DO_ROWS_OPTIONAL_STOP, "99000");
-  assert.ok(Number(vars.DO_ROWS_OPTIONAL_STOP) < DO_ROWS_WRITTEN_PLATFORM_LIMIT);
+  // The thresholds run at the coordinator's code defaults and are not declared as vars (Workers
+  // Free counts every var and secret against a 64-variable limit), so check the EFFECTIVE value:
+  // the declared one if a deployment overrides it, the default otherwise.
+  const { LLMSchedulerDO } = await import("../src/coordinator.js");
+  const { createMockSqlStorage } = await import("./helpers.js");
+  const effective = new LLMSchedulerDO({ storage: createMockSqlStorage().storage }, { ...vars });
+  assert.equal(effective._enqueueRowStop(), 90000);
+  assert.equal(effective._claimRowStop(), 97000);
+  assert.equal(effective._optionalRowStop(), 99000);
+  assert.equal(effective._maxQueuedJobs(), 20000);
+  assert.ok(effective._optionalRowStop() < DO_ROWS_WRITTEN_PLATFORM_LIMIT);
   assert.ok(
     ROWS_PER_INGRESS_WRITE_UNIT * Number(vars.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY) <=
-      Number(vars.DO_ROWS_ENQUEUE_STOP)
+      effective._enqueueRowStop()
   );
   assert.equal(vars.ESTIMATED_CALL_DURATION_CEILING_SECONDS, "2");
   assert.doesNotThrow(() => validateConfig(createMockEnv({ ...vars })));
