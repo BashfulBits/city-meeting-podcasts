@@ -7,6 +7,8 @@
  * re-keyed off v2's own route/job shapes instead of v1's queue record.
  */
 
+import { shapeForRoute } from "./structured_output.js";
+
 // Every real, provider-facing chat-completions field this Worker forwards -- everything else on
 // the stored payload is dropped, not spread. Mirrors workers/llm-dispatch-proxy/src/index.js's
 // own COPY_FIELDS exactly (that Worker's normalizeChatRequest() rebuilds its request object this
@@ -59,6 +61,15 @@ export function upstreamRequestForRoute(payload, route) {
     if (payload && payload[field] !== undefined) {
       request[field] = payload[field];
     }
+  }
+  // A schema-only job (review/48 R10) is shaped here for THIS route's method: the producer could
+  // not know which route in the pool would serve it. A legacy payload that already carries a
+  // response_format (jobs staged before this change) is forwarded as it always was.
+  if (payload?.structured_output) {
+    const shaped = shapeForRoute(payload.messages, payload.structured_output, route);
+    request.messages = shaped.messages;
+    delete request.response_format;
+    if (shaped.responseFormat) request.response_format = shaped.responseFormat;
   }
   return request;
 }

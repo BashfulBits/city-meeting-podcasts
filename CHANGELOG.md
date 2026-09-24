@@ -17,6 +17,28 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Structured output is shaped per route by the v2 Worker** (review/48 PR C;
+  `config/provider_limits.yml`, `scripts/compile_llm_limits.py`, `citypods/compute/structured_shaping.py`,
+  `citypods/compute/llm.py`, `workers/llm-dispatch-v2/src/structured_output.js`, `gateway.js`,
+  `index.js`, `coordinator.js`). Producers no longer choose how to ask for JSON: a queued job stores
+  only its response schema, and the Worker shapes the request for the route it actually dispatches
+  to. Before, the format was chosen at enqueue time for the pool's first model and forwarded
+  unchanged, so a pooled job could reach a route with the wrong shape -- NVIDIA's
+  `deepseek-v4.1-flash` answered every `response_format` with empty content, and Gemini backups of
+  Nemotron-primary lanes received the full, unsimplified schema.
+  - Four methods (`json_schema`, `json_schema_relaxed`, `json_object`, `prompt_only`) replace the
+    three profiles. A route's own verified method (`structured_output_verified_on`) wins, then one
+    verified for the same model elsewhere, then the provider's. Every provider now declares its
+    method explicitly (unchanged from before); NVIDIA v4.1 is `prompt_only`, OrcaRouter v4 and hy3
+    `json_object`, all verified live 2026-09-24.
+  - An empty or non-JSON 200 on a structured request is a retryable `structured_output_empty` /
+    `structured_output_invalid` failure: the job retries, the route cools down, and the class shows
+    in `route_failures`. It is never settled as a result.
+  - The Python direct path uses the same shaping and one local parse/validate/retry path; the
+    Instructor code path is retired. One shared fixture pins the Python and Worker shapes.
+  - Jobs already staged in B2 keep their pre-shaped `response_format` and are forwarded as before.
+    No pipeline version or recipe change.
+
 - **LLM lane capacity and route cleanup** (`config/provider_limits.yml`, `config/site_config.yml`,
   `citypods/moments.py`, regenerated catalogs; 2026-09-24 capacity review under review/48).
   - *DeepSeek:* one pool name per version. `deepseek/deepseek-v4-flash` is now OrcaRouter's v4

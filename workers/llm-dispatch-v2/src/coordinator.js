@@ -3999,9 +3999,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const _retryCeiling = (base) =>
           backupAfterAttempts > 0 ? backupAfterAttempts + base : base;
 
+        // A structured reply that was empty or not JSON (review/48 R10) is also the route's
+        // problem, not the job's: same budget, same escalating per-route cooldown (reset by the
+        // route's next success), so the job moves to another route while this one stands down.
         const isUpstreamClass =
           result.failure_class === "upstream_capacity" ||
-          result.failure_class === "gateway_limit";
+          result.failure_class === "gateway_limit" ||
+          result.failure_class === "structured_output_empty" ||
+          result.failure_class === "structured_output_invalid";
         const isFinal5xx =
           result.outcome === "retryable_error" &&
           Number.isInteger(result.provider_status_code) &&

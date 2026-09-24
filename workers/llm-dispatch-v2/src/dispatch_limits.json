@@ -210,6 +210,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -246,6 +249,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -282,6 +288,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -318,6 +327,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -354,6 +366,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -390,6 +405,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -426,6 +444,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -462,6 +483,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -498,6 +522,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -534,6 +561,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -570,6 +600,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -606,6 +639,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -642,6 +678,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -678,6 +717,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -714,6 +756,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -750,6 +795,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -786,6 +834,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -822,6 +873,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema_relaxed",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [
         "minLength",
         "maxLength",
@@ -858,6 +912,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "groq_gpt_oss_120b_primary": {
@@ -887,6 +944,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_object",
+      "structured_output_response_format": "json_object",
+      "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": []
     },
     "groq_qwen_3_6_27b_primary": {
@@ -916,6 +976,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_object",
+      "structured_output_response_format": "json_object",
+      "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": []
     },
     "groq_qwen_3_8_27b_primary": {
@@ -945,6 +1008,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_object",
+      "structured_output_response_format": "json_object",
+      "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": []
     },
     "mistral_codestral_2508_primary": {
@@ -974,6 +1040,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "mistral_codestral_2508_secondary": {
@@ -1003,6 +1072,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "zai_glm_4_7_flash_primary": {
@@ -1032,6 +1104,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "zai_glm_4_5_flash_primary": {
@@ -1061,6 +1136,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "openrouter_google_gemma_4_31b_it_free": {
@@ -1090,6 +1168,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "openrouter_google_gemma_4_26b_a4b_it_free": {
@@ -1119,6 +1200,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free": {
@@ -1148,6 +1232,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "openrouter_nvidia_nemotron_3_super_120b_a12b_free": {
@@ -1177,6 +1264,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "kilo_stepfun_step_3_7_flash_free": {
@@ -1206,6 +1296,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "kilo_nvidia_nemotron_3_ultra_550b_a55b_free": {
@@ -1235,6 +1328,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "nvidia_kimi_k3_free": {
@@ -1264,6 +1360,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "nvidia_deepseek_v4_1_flash_free": {
@@ -1293,6 +1392,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "prompt_only",
+      "structured_output_response_format": "none",
+      "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": []
     },
     "nvidia_gemma_4_31b_it_free": {
@@ -1322,6 +1424,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "nvidia_nemotron_3_ultra_550b_a55b_free": {
@@ -1351,6 +1456,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "nvidia_nemotron_3_super_120b_a12b_free": {
@@ -1380,6 +1488,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": null,
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free": {
@@ -1409,6 +1520,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": null,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     },
     "orcarouter_deepseek_v4_flash_free": {
@@ -1438,6 +1552,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": true,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_object",
+      "structured_output_response_format": "json_object",
+      "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": []
     },
     "orcarouter_tencent_hy3_free": {
@@ -1467,6 +1584,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": true,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_object",
+      "structured_output_response_format": "json_object",
+      "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": []
     },
     "orcarouter_zai_glm_5_3_flash_free": {
@@ -1496,6 +1616,9 @@
       "observed_recovery_seconds": null,
       "retry_after_trustworthy": true,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_object",
+      "structured_output_response_format": "json_object",
+      "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": []
     },
     "mistral_codestral_airforce_primary": {
@@ -1525,6 +1648,9 @@
       "observed_recovery_seconds": 111.0,
       "retry_after_trustworthy": true,
       "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_schema",
+      "structured_output_response_format": "json_schema",
+      "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": []
     }
   },

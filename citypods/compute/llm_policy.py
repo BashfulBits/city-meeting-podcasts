@@ -183,12 +183,11 @@ class LLMRoute:
     chat_path: str = "/v1/chat/completions"
     api_key_env: str = ""
     account_id: str = ""
-    # Structured-output behavior is compiled from the provider/route capability profile rather
-    # than inferred from a model or route name.  The profile's resolved fields are carried here
-    # so direct and queued transports make the same request-format decision.
-    structured_output_profile: str = "standard_json_schema"
-    structured_output_response_format: Literal["json_schema", "json_object"] = "json_schema"
-    structured_output_direct_handler: Literal["instructor", "native"] = "instructor"
+    # Structured-output METHOD (review/48 R10), resolved by the compiler per route: the route's own
+    # verified method, else one verified for the same model elsewhere, else the provider's.
+    # Direct calls shape requests from these fields exactly as the v2 Worker does.
+    structured_output_method: str = "json_schema"
+    structured_output_response_format: Literal["json_schema", "json_object", "none"] = "json_schema"
     structured_output_include_schema_in_prompt: bool = False
     structured_output_schema_strip_keys: tuple[str, ...] = ()
     # Conservative defaults for hand-authored/test routes. Generated route catalogs materialize
@@ -326,14 +325,9 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                 chat_path=str(item.get("chat_path", "/v1/chat/completions")),
                 api_key_env=str(item.get("api_key_env", "")),
                 account_id=str(item.get("account_id", "")),
-                structured_output_profile=str(
-                    item.get("structured_output_profile", "standard_json_schema")
-                ),
+                structured_output_method=str(item.get("structured_output_method", "json_schema")),
                 structured_output_response_format=str(
                     item.get("structured_output_response_format", "json_schema")
-                ),
-                structured_output_direct_handler=str(
-                    item.get("structured_output_direct_handler", "instructor")
                 ),
                 structured_output_include_schema_in_prompt=bool(
                     item.get("structured_output_include_schema_in_prompt", False)

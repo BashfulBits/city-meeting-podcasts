@@ -1675,6 +1675,51 @@ test("completeBatch applies the upstream_capacity cooldown to a 2xx with no usab
   assert.ok(row.blocked_until >= now + 15_000, "cooldown must be at least the base 15s, same as authorizeRetry's");
 });
 
+test("an empty structured reply requeues the job, stands the route down and is counted (review/48 R10)", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, transient_retry_count
+    ) VALUES (
+      'j-empty-json', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
+      'ltok', 'tags', 100, 50, 'payloads/j-empty-json/request.json', ?, ?, 0
+    )`,
+    now, now
+  );
+
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-empty-json",
+      lease_token: "ltok",
+      attempt_id: "att-empty-json",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "retryable_error",
+      provider_status_code: 200,
+      failure_class: "structured_output_empty",
+    },
+  ]);
+
+  const job = [...sql.exec("SELECT state FROM jobs WHERE id = 'j-empty-json'")][0];
+  assert.equal(job.state, "queued", "the job must retry, not complete with a non-answer or fail");
+  const route = [...sql.exec("SELECT upstream_capacity_streak, blocked_until FROM routes WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")][0];
+  assert.equal(route.upstream_capacity_streak, 1);
+  assert.ok(route.blocked_until >= now + 15_000, "the route cools down so the job can move elsewhere");
+  const failures = [...sql.exec("SELECT failure_class, count FROM route_failures WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")];
+  assert.deepEqual(
+    failures.map((row) => [row.failure_class, row.count]),
+    [["structured_output_empty", 1]]
+  );
+});
+
 test("completeBatch success clears upstream_capacity_streak and last_failure_class", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
