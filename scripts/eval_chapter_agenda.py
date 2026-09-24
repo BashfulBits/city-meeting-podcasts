@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
 import re
 import sys
@@ -92,7 +93,8 @@ def _reference_key(value: str) -> str:
 
 def _chapter_first_reference(title: str) -> str | None:
     """The reference a position-only chapter starts at (`Items 3A - 3C` -> `3a`), else None."""
-    match = _REFERENCE_CHAPTER_RE.match(title)
+    # Some stored provider titles carry an escaped ampersand ("Items 1 \\u0026 2").
+    match = _REFERENCE_CHAPTER_RE.match(html.unescape(title.replace("\\u0026", "&")))
     if not match:
         return None
     refs = match["refs"].strip()

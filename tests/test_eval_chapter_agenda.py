@@ -201,3 +201,5 @@ def test_a_position_only_chapter_is_matched_by_the_items_reference():
     assert ev._chapter_first_reference("Items 3A-3C") == "3a"
     assert ev._chapter_first_reference("Item Z-24-17") == "z2417"
     assert ev._chapter_first_reference("Consent Agenda") is None
+    assert ev._chapter_first_reference("Items 1 \\u0026 2") == "1"
+    assert ev._chapter_first_reference("Items 4 &amp; 5") == "4"
