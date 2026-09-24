@@ -1688,22 +1688,3 @@ routes:
     retry_after_trustworthy: true
     upstream_429_default: upstream_capacity
 
-  - route_id: airforce_kimi_k2_7_code_primary
-    model: moonshotai/kimi-k2.7-code
-    provider: airforce
-    upstream_model: kimi-k2.7-code
-    input_context_limit: 131072
-    output_context_limit: 8192
-    account_id: primary
-    rpm: 1
-    rpd: 1000
-    tpm: 200000
-    request_start_margin_seconds: 2
-    concurrency: 1
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-    observed_on: "2026-09-16"
-    observed_recovery_seconds: 111
-    retry_after_trustworthy: true
-    upstream_429_default: upstream_capacity

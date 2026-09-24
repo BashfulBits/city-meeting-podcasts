@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Removed the Airforce `kimi-k2.7-code` route** (`config/provider_limits.yml`, regenerated
+  catalogs). It stopped being free: a canary under the v2 dispatch pause on 2026-09-24 returned 402
+  "requires an active subscription or a positive Pay-as-you-Go balance". No lane referenced it. No
+  pipeline version, recipe, or stored-artifact change.
+
 - **Unblocked the LLM Dispatch v2 deploy: back under Workers Free's 64-variable limit**
   (`workers/llm-dispatch-v2/wrangler.jsonc`, `tests/test_llm_dispatch_worker_limits.py`). #1846
   declared `DO_ROWS_ENQUEUE_STOP`/`_CLAIM_STOP`/`_OPTIONAL_STOP` and `MAX_QUEUED_JOBS` at exactly the
