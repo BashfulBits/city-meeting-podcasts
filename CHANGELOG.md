@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Removed the retired NVIDIA gpt-oss-120b route; lanes now fail CI if a model loses every live
+  route** (`config/provider_limits.yml`, regenerated catalogs, `tests/test_llm_lanes.py`).
+  `nvidia_gpt_oss_120b_free` had been paused (`rpd: 0`) since 2026-09-23 after NVIDIA started
+  returning 410 Gone (end of life 2026-09-03, re-confirmed 2026-09-24); Groq's route still serves
+  `openai/gpt-oss-120b`. The new registry-driven test checks that every `llm_lanes` model and backup
+  resolves through the compiled v2 `model_routes_map` to at least one route that is not paused: a
+  lane model with no live route is otherwise silent until its queued jobs never dispatch. It covers
+  new lanes with no edit. No pipeline version, recipe, or stored-artifact change.
+
 - **Removed the unused NVIDIA Riva Translate route**
   (`config/provider_limits.yml`, regenerated `llm_routes.json` and both Workers'
   `dispatch_limits.json`). `nvidia_riva_translate_4b_instruct_v2_free` was reserved for future

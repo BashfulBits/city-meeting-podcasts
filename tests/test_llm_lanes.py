@@ -388,3 +388,44 @@ class TestTournamentSampleBudget:
         assert samples >= 1
         assert samples * len(MODELS) <= tag.max_dispatches_per_run
         assert samples * len(CONTESTS) * 2 <= judge.max_dispatches_per_run
+
+
+# --- Lane <-> route catalog consistency -----------------------------------------------------------
+#
+# A lane naming a model with no dispatchable route is silent at every other layer: the lane
+# compiles, ingress admits the job (the lane check compares model strings, not routes), and the v2
+# coordinator never ranks a model absent from `model_routes_map`, so the job sits `queued` forever.
+# Removing a route (by hand or by the provider-catalog reconciler, review/48) must therefore keep
+# every lane model resolvable. Driven by `load_lanes()`, so a new lane is covered with no edit here.
+
+_WORKER_CATALOG = (
+    Path(__file__).resolve().parents[1] / "workers/llm-dispatch-v2/src/dispatch_limits.json"
+)
+
+
+def _lane_models() -> list[tuple[str, str]]:
+    return [
+        (purpose, model)
+        for purpose, lane in sorted(load_lanes().items())
+        for model in (*lane.models, *lane.backup_models)
+    ]
+
+
+def _worker_routes_for(model: str, catalog: dict) -> list[str]:
+    aliases = catalog.get("model_aliases") or {}
+    seen: set[str] = set()
+    while model in aliases and model not in seen:
+        seen.add(model)
+        model = aliases[model]
+    return list((catalog.get("model_routes_map") or {}).get(model) or [])
+
+
+@pytest.mark.parametrize(("purpose", "model"), _lane_models())
+def test_every_lane_model_has_a_live_worker_route(purpose, model):
+    catalog = json.loads(_WORKER_CATALOG.read_text(encoding="utf-8"))
+    routes = _worker_routes_for(model, catalog)
+    assert routes, f"{purpose}: {model} has no route in the compiled v2 catalog"
+    # rpd: 0 is the catalog's paused-route convention; a model whose every route is paused strands
+    # its queued jobs exactly like a missing one.
+    live = [r for r in routes if catalog["routes_by_id"][r].get("rpd") != 0]
+    assert live, f"{purpose}: every route for {model} is paused (rpd: 0): {routes}"
