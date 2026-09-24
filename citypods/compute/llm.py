@@ -30,7 +30,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urlencode, urljoin, urlsplit
 
 import requests
 
@@ -167,8 +167,16 @@ _DEFERRED_INGRESS_REASONS = frozenset(
         "daily_cap_exceeded",
         "purpose_write_budget_exceeded",
         "ingress_write_budget_reserved",
+        # The coordinator's daily DO row budget has reached its enqueue threshold.
+        "daily_row_budget",
+        # MAX_QUEUED_JOBS jobs are already waiting; new work waits in the producer.
+        "queue_full",
     }
 )
+
+# Rejections that close ingress for everyone for the rest of this process: once seen, a producer
+# stops building and submitting more work instead of paying for each job's rejection.
+_INGRESS_CLOSED_REASONS = frozenset({"daily_cap_exceeded", "daily_row_budget", "queue_full"})
 
 # --- Cloudflare AI Gateway (direct transport only) ---------------------------------------------
 # The gateway is an observability shim, not a routing decision: it proxies to the same upstream
@@ -2472,7 +2480,7 @@ class LiteLLMBackend(Backend):
                 if reason in _DEFERRED_INGRESS_REASONS:
                     deferred_count += 1
                     telemetry_outcomes.append((job, "deferred", reason))
-                    if reason == "daily_cap_exceeded":
+                    if reason in _INGRESS_CLOSED_REASONS:
                         self._mark_daily_ingest_exhausted()
                     policy = (
                         job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
@@ -2969,6 +2977,36 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("LLM dispatch v2 stats returned malformed JSON") from exc
         if not isinstance(data, Mapping):
             raise LLMBackendError("LLM dispatch v2 stats returned a malformed response")
+        return data
+
+    def dispatch_v2_ingress_status(self, purpose: str | None = None) -> Mapping[str, Any]:
+        """Return the v2 coordinator's admission preflight for ``purpose``.
+
+        Read-only on the Worker. ``open`` says whether a new job for this purpose would be
+        admitted right now and ``reasons`` why not (daily row budget, pending-queue cap, daily job
+        cap, the lane's own budget). Advisory: enqueue re-checks everything.
+        """
+        if not self.config.dispatch_v2_url:
+            raise LLMBackendError("LLM dispatch v2 ingress status requires LLM_DISPATCH_V2_URL")
+        headers = {}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+        query = f"?{urlencode({'purpose': purpose})}" if purpose else ""
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", f"v2/ingress-status{query}")
+        try:
+            response = self._session.get(url, headers=headers, timeout=self.config.timeout_seconds)
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch v2 ingress status request failed") from exc
+        if response.status_code != 200:
+            raise LLMBackendError(
+                f"LLM dispatch v2 ingress status returned HTTP {response.status_code}"
+            )
+        try:
+            data = response.json()
+        except (TypeError, ValueError) as exc:
+            raise LLMBackendError("LLM dispatch v2 ingress status returned malformed JSON") from exc
+        if not isinstance(data, Mapping) or not isinstance(data.get("open"), bool):
+            raise LLMBackendError("LLM dispatch v2 ingress status returned a malformed response")
         return data
 
     def _settle_dispatched_reservation(self, handle: JobHandle, output: Mapping[str, Any]) -> None:
@@ -3660,3 +3698,27 @@ __all__ = [
     "TASK_VERSIONS",
     "dispatch_job_batch",
 ]
+
+
+def dispatch_v2_ingress_open(
+    purpose: str, *, backend: LiteLLMBackend | None = None
+) -> tuple[bool, Mapping[str, Any] | None]:
+    """Whether the v2 coordinator would admit new work for ``purpose`` right now.
+
+    Fails OPEN: with no v2 Worker configured, or when the preflight itself errors, returns
+    ``(True, None)``. The check only saves a producer from building work the Worker would refuse;
+    enqueue still enforces every limit, so a missed "closed" costs a rejected submission, while a
+    spurious "closed" would idle a lane for no reason.
+    """
+    try:
+        client = backend or LiteLLMBackend(LLMBackendConfig.from_env())
+    except ValueError:
+        return True, None
+    if not client.config.dispatch_v2_url:
+        return True, None
+    try:
+        status = client.dispatch_v2_ingress_status(purpose)
+    except LLMBackendError as exc:
+        print(f"llm ingress preflight for {purpose!r} failed ({exc}); assuming open", flush=True)
+        return True, None
+    return bool(status.get("open")), status

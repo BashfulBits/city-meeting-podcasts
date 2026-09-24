@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import collections
 import json
+import os
 import sys
 
 from citypods.bodies import is_excluded
@@ -109,6 +110,22 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="the canonical planner snapshot is already present locally; skip the durable-state "
         "pull",
+    )
+
+    li = sub.add_parser(
+        "llm-ingress-status",
+        help="preflight: would the LLM dispatch Worker admit new work for these lanes right now?",
+    )
+    li.add_argument(
+        "--purpose",
+        action="append",
+        required=True,
+        help="an llm_lanes purpose; repeat for a workflow that feeds several lanes",
+    )
+    li.add_argument(
+        "--github-output",
+        action="store_true",
+        help="also write open=true|false to $GITHUB_OUTPUT (open if ANY listed lane is open)",
     )
 
     d = sub.add_parser("bodies", help="list the meeting bodies in a city's source")
@@ -357,6 +374,9 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
+    if args.command == "llm-ingress-status":
+        return _llm_ingress_status(args)
+
     if args.command == "bodies":
         return _bodies(args)
 
@@ -563,6 +583,36 @@ def _asr_bench(args) -> int:
         cpu_threads=args.cpu_threads,
         beam_size=args.beam_size,
     )
+
+
+def _llm_ingress_status(args: argparse.Namespace) -> int:
+    """Print each lane's admission preflight; always exits 0 (a closed lane is not a failure).
+
+    A workflow gates its heavy LLM-producing step on the ``open`` output, so a day whose ingress
+    is closed (daily DO row budget, pending-queue cap, daily job cap, or the lane's own budget)
+    costs one request instead of a run of work the Worker would refuse. Fails open: an unreachable
+    Worker reports open, and enqueue still enforces every limit.
+    """
+    from citypods.compute.llm import dispatch_v2_ingress_open
+
+    any_open = False
+    for purpose in args.purpose:
+        is_open, status = dispatch_v2_ingress_open(purpose)
+        any_open = any_open or is_open
+        reasons = ", ".join((status or {}).get("reasons") or []) or "-"
+        rows = ((status or {}).get("row_budget") or {}).get("rows_written_today")
+        print(
+            f"{purpose}: {'open' if is_open else 'closed'} (reasons: {reasons}; "
+            f"DO rows written today: {rows if rows is not None else 'unknown'})",
+            flush=True,
+        )
+        if status is not None:
+            print(json.dumps(status, sort_keys=True), flush=True)
+    output_path = os.environ.get("GITHUB_OUTPUT")
+    if args.github_output and output_path:
+        with open(output_path, "a", encoding="utf-8") as handle:
+            handle.write(f"open={'true' if any_open else 'false'}\n")
+    return 0
 
 
 def _bodies(args) -> int:

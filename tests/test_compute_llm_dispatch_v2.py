@@ -1900,3 +1900,84 @@ def test_retire_tolerates_malformed_responses(body):
     retired = backend._retire_consumed(storage, [("a", "results/a.json", None)])
     well_formed = isinstance(body, dict) and isinstance(body["retired"], list)
     assert retired == ({"a"} if well_formed else set())
+
+
+@pytest.mark.parametrize("reason", ["daily_row_budget", "queue_full"])
+def test_enqueue_batch_defers_and_closes_ingress_on_row_budget_or_full_queue(reason):
+    """The Worker's daily row threshold and pending-queue cap defer work (retry after the reset)
+    and close ingress for the rest of the process, like the daily job cap."""
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.side_effect = lambda url, json=None, **_kw: _mock_response(
+        status_code=200,
+        json_data={
+            "accepted": [],
+            "rejected": [{"id": job["id"], "reason": reason} for job in json["jobs"]],
+        },
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    job = InferenceJob(
+        task="tag", inputs={"messages": [{"role": "user", "content": "later"}]}, recipe_hash="rb"
+    )
+    result = backend.enqueue_batch([job])
+    assert isinstance(result[0], JobHandle)
+    assert result[0].ref.startswith(f"deferred-{reason}-")
+    assert backend._daily_ingest_exhausted is True
+
+
+def test_dispatch_v2_ingress_status_encodes_purpose_and_validates_shape():
+    session = MagicMock()
+    session.get.return_value = _mock_response(
+        status_code=200, json_data={"open": False, "reasons": ["daily_row_budget"]}
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+            dispatch_v2_auth_token="tok",
+        ),
+        http_session=session,
+    )
+    status = backend.dispatch_v2_ingress_status("topic-tags:tagger")
+    assert status["open"] is False
+    url = session.get.call_args.args[0]
+    assert url == "https://dispatch-v2.example.com/v2/ingress-status?purpose=topic-tags%3Atagger"
+    assert session.get.call_args.kwargs["headers"]["authorization"] == "Bearer tok"
+
+    session.get.return_value = _mock_response(status_code=200, json_data={"reasons": []})
+    with pytest.raises(LLMBackendError):
+        backend.dispatch_v2_ingress_status("topic-tags:tagger")
+
+
+def test_dispatch_v2_ingress_open_reports_closed_and_fails_open():
+    from citypods.compute.llm import dispatch_v2_ingress_open
+
+    session = MagicMock()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+    )
+    session.get.return_value = _mock_response(
+        status_code=200, json_data={"open": False, "reasons": ["queue_full"]}
+    )
+    is_open, status = dispatch_v2_ingress_open("chapter-agenda", backend=backend)
+    assert is_open is False and status["reasons"] == ["queue_full"]
+
+    # An unreachable or broken Worker must not idle a lane: enqueue still enforces every limit.
+    session.get.return_value = _mock_response(status_code=503, json_data={})
+    assert dispatch_v2_ingress_open("chapter-agenda", backend=backend) == (True, None)
+
+    no_v2 = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"), http_session=MagicMock()
+    )
+    assert dispatch_v2_ingress_open("chapter-agenda", backend=no_v2) == (True, None)

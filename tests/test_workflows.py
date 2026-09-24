@@ -1609,3 +1609,46 @@ def test_deferred_full_prune_workflow_runs_weekly_and_is_main_only():
     assert step["timeout-minutes"] == 165
     assert "--full-prune-only" in step["run"]
     assert "--run-time-budget-minutes 120" in step["run"]
+
+
+@pytest.mark.parametrize(
+    ("workflow", "step", "purposes"),
+    [
+        ("chapter-agenda.yml", "Extract agenda candidates", ["chapter-agenda"]),
+        (
+            "chapter-locator.yml",
+            "Locate agenda candidates in complete transcripts",
+            ["chapter-locator"],
+        ),
+        (
+            "tag.yml",
+            "Produce bounded LLM topic-tag candidates",
+            ["topic-tags:tagger", "topic-tags:prelabeler"],
+        ),
+        (
+            "moments.yml",
+            "Produce bounded R6 moment candidates and judge assessments",
+            ["r6-moments", "r6-judge"],
+        ),
+        (
+            "tournament-tag-backfill.yml",
+            "Refresh one retained source through the normal bounded tag lane",
+            ["topic-tags:tagger", "topic-tags:prelabeler"],
+        ),
+    ],
+)
+def test_llm_producers_skip_when_ingress_is_closed(workflow, step, purposes):
+    """Each scheduled LLM producer checks the Worker's ingress preflight first and skips its heavy
+    step when the day's ingress is closed, instead of building work that would be refused."""
+    doc = yaml.safe_load((WORKFLOWS / workflow).read_text())
+    steps = next(iter(doc["jobs"].values()))["steps"]
+    names = [s.get("name") for s in steps]
+    preflight = steps[names.index("Check LLM ingress is open")]
+    heavy = steps[names.index(step)]
+    assert names.index("Check LLM ingress is open") < names.index(step)
+    assert preflight["id"] == "ingress"
+    assert "llm-ingress-status --github-output" in preflight["run"]
+    for purpose in purposes:
+        assert f"--purpose {purpose}" in preflight["run"]
+    assert "LLM_DISPATCH_V2_URL" in preflight["env"]
+    assert "steps.ingress.outputs.open != 'false'" in heavy["if"]

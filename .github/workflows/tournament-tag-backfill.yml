@@ -66,8 +66,17 @@ jobs:
           echo "source=$(jq -r '.source // empty' next.json)" >> "$GITHUB_OUTPUT"
           echo "issue=$(jq -r '.issue_number // empty' next.json)" >> "$GITHUB_OUTPUT"
           echo "model=$(jq -r '.model // empty' next.json)" >> "$GITHUB_OUTPUT"
+      # Skip the producer run when the dispatch Worker would refuse its work today (daily DO row
+      # budget, pending-queue cap, daily job cap, or the lane's own budget). Fails open.
+      - name: Check LLM ingress is open
+        id: ingress
+        env:
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+        run: python -m citypods.cli llm-ingress-status --github-output --purpose topic-tags:tagger --purpose topic-tags:prelabeler
+
       - name: Refresh one retained source through the normal bounded tag lane
-        if: steps.next.outputs.status == 'active'
+        if: steps.next.outputs.status == 'active' && steps.ingress.outputs.open != 'false'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}

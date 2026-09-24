@@ -463,14 +463,20 @@ with no entry is rejected at ingress rather than drawing on shared headroom, so 
 task is a deliberate config edit; a sub-purpose (`topic-tags:prelabeler`) does not inherit its
 prefix's (`topic-tags:tagger`) budget. **The binding daily limit is the account's Durable Object
 row-write budget** (Free plan: 100,000 billed rows/day; every index entry and trigger write is a
-billed row). `workers/llm-dispatch-v2/src/write_budget.js` holds per-phase costs measured under
-workerd by `bench/rows-written/` (ingress 3 rows per write unit; each dispatch lease up to 34;
-retirement 6), and `validateConfig` refuses a deploy whose worst case
-(`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` + `MAX_LEASES_PER_UTC_DAY`) could exceed
-`DO_ROWS_WRITTEN_DAILY_BUDGET` (90,000). That caps sustained throughput at roughly 1,300 LLM
-jobs/day end to end; the lane budgets above divide it. Terminal-job cleanup
-(`CLEANUP_INTERVAL_MINUTES` x `PURGE_BATCH_LIMIT`, 1,800/day) must retire at least as many jobs per
-day as the lease cap allows and is counted in the same projection. Because every index entry is billed, the
+billed row), enforced at **runtime against the rows the coordinator actually writes**: every SQL
+cursor's `rowsWritten` (the figure Cloudflare bills) is summed per RPC and persisted on scheduler
+writes the claim and enqueue paths already make. At `DO_ROWS_ENQUEUE_STOP` (90,000) new enqueues,
+schema retries, scheduled cleanup and retention pruning stop, so the rest of the day funds
+dispatch; at `DO_ROWS_CLAIM_STOP` (97,000) no new lease is claimed; at `DO_ROWS_OPTIONAL_STOP`
+(99,000) acks, retires and cancels are refused too. In-flight completions and polls are never
+refused. There is no working daily lease cap (`MAX_LEASES_PER_UTC_DAY` is a 7,000 backstop), so a
+cheap day dispatches until the budget, not until a worst-case projection. Ingress is bounded by a
+daily quota near real drain (`MAX_JOBS_PER_UTC_DAY` 4,000, `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`
+18,000, divided by the lane budgets above) and a pending cap (`MAX_QUEUED_JOBS` 20,000). Producers
+preflight `GET /v2/ingress-status?purpose=` (`python -m citypods.cli llm-ingress-status`) and skip
+a closed lane's run; the check fails open, since enqueue re-checks everything.
+`workers/llm-dispatch-v2/src/write_budget.js` records the measured per-phase costs
+(`bench/rows-written/`): a completed first-try job is ~20 billed rows. Because every index entry is billed, the
 coordinator's schema is kept minimal on purpose (2026-09-23 row-write tiers; see CHANGELOG): `jobs`
 carries only the indexes a query uses (`idx_jobs_state_updated_id`), and nothing bumps its indexed
 `updated_at` for a non-terminal job; `job_models` is a `WITHOUT ROWID` table clustered on its
