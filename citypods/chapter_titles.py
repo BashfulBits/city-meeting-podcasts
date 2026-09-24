@@ -244,6 +244,12 @@ def _normalized_source_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+# Quote and prime marks carry no grounding information, but models routinely normalize them (a
+# straight `today's` quoting a curly `today’s`) or drop them (`8 round` for `8" round`). They are
+# removed from both sides of every evidence comparison; the stored evidence keeps the source text.
+_QUOTE_MARKS = str.maketrans({mark: None for mark in "'\"`‘’‚‛“”„‟′″‴"})
+
+
 def _evidence_comparison_text(value: str) -> str:
     """Remove layout-extraction spacing artifacts without accepting paraphrased source text."""
     value = _normalized_source_text(value)
@@ -261,7 +267,8 @@ def _evidence_comparison_text(value: str) -> str:
     value = re.sub(r"(?<=\w)\s*-\s*(?=\w)", "-", value)
     value = re.sub(r"\(\s*", "(", value)
     value = re.sub(r"\s*\)", ")", value)
-    return _normalized_source_text(value)
+    # Last, after the rules above have re-joined PDF-split apostrophes (`City  ’s`).
+    return _normalized_source_text(value.translate(_QUOTE_MARKS))
 
 
 def _evidence_span(
@@ -786,6 +793,17 @@ def _recovery_expand_trailing_reference(
     return line_end, False
 
 
+_OUTLINE_SEGMENT = r"(?:[ivxlcdm]+|\d{1,3}|[a-z])"
+_OUTLINE_REFERENCE_RE = re.compile(
+    rf"^\(?{_OUTLINE_SEGMENT}(?:\s*[.)]\s*\(?{_OUTLINE_SEGMENT})*\s*[.)]?$", re.IGNORECASE
+)
+
+
+def _is_outline_reference(reference: object) -> bool:
+    """True for an agenda-outline position such as `4.A`, `II.D.1`, `1.d.3` or `III.`."""
+    return isinstance(reference, str) and bool(_OUTLINE_REFERENCE_RE.match(reference.strip()))
+
+
 def _recovery_resolve_reference(
     reference: object,
     lines: Sequence[str],
@@ -892,7 +910,15 @@ def recover_agenda_item_extractor_response(
             line_end=line_end,
         )
         if not resolved:
-            continue
+            # The evidence is uniquely grounded but the model's reference is not in the source.
+            # For an OUTLINE position (`4.A`, `II.D.1`, `III.`) that is a label the model composed
+            # from the agenda's structure -- the item is real, so the label comes from the source
+            # instead (or none). An identifier-style reference (`DCA26-0002B`, `ID 26-2000`) is
+            # left unresolved as before: it names a specific record and is not re-derived.
+            if not _is_outline_reference(raw_item.display_ref):
+                continue
+            kind = "derived"
+            method += "+derived-reference"
         if matched_prefix_lines:
             line_start = min(line_start, *matched_prefix_lines)
             method += "+hierarchical-prefix"
@@ -901,9 +927,12 @@ def recover_agenda_item_extractor_response(
             if prefix_start < line_start:
                 line_start = prefix_start
                 method += "+identifier-prefix"
-        display_ref = (
-            _normalized_source_text(raw_item.display_ref or "") if kind == "formal" else None
-        )
+        if kind == "formal":
+            display_ref = _normalized_source_text(raw_item.display_ref or "")
+        elif kind == "derived":
+            display_ref = _derive_display_ref(lines, line_start=line_start, line_end=line_end)
+        else:
+            display_ref = None
         source_evidence = "\n".join(lines[line_start - 1 : line_end])
         key = (
             line_start,

@@ -245,7 +245,13 @@ def test_finalize_agenda_job_valid_and_invalid_responses():
     assert artifact.items[0].line_end == 1
     assert artifact.items[0].kind == "substantive_action"
     assert artifact.items[0].source == "strict"
-    assert artifact.diagnostics == {"source_line_count": 2, "recovered_item_count": 0}
+    assert artifact.diagnostics == {
+        "source_line_count": 2,
+        "recovered_item_count": 0,
+        "duplicate_item_count": 0,
+        "dropped_item_count": 0,
+        "dropped_item_reasons": [],
+    }
 
     # Malformed JSON raises ValueError
     invalid_json_result = JobResult(
@@ -528,3 +534,105 @@ def test_finalize_locator_job_valid_and_invalid_responses():
             transcript_hash="trans-sha",
             units=units,
         )
+
+
+def _agenda_result(items):
+    return JobResult(
+        task="agenda-item-extract",
+        recipe_hash="recipe",
+        output=json.dumps({"items": items}),
+        model="nvidia/nemotron-3-ultra-550b-a55b:free",
+    )
+
+
+def _finalize(agenda_text, items):
+    return finalize_agenda_job(
+        _agenda_result(items),
+        episode_uid="e1",
+        agenda_text=agenda_text,
+        agenda_source_hash="sha",
+    )
+
+
+def _numbered_agenda(count):
+    return "\n".join(
+        f"{n}. Consider approval of contract number {1000 + n}" for n in range(1, count + 1)
+    )
+
+
+def _numbered_item(n, **overrides):
+    return {
+        "display_ref": f"{n}.",
+        "title": f"Contract {1000 + n}",
+        "evidence_quote": f"Consider approval of contract number {1000 + n}",
+        "line_start": n,
+        "line_end": n,
+        **overrides,
+    }
+
+
+def test_a_composed_reference_is_replaced_by_the_source_reference_not_rejected():
+    # Models label a sub-item with its section path (`4.A`) although the source line reads `A.`.
+    agenda = "4. Items from the Commissioners Court\n  A. Outdoor burning in the county\n"
+    artifact = _finalize(
+        agenda,
+        [
+            {
+                "display_ref": "4.A",
+                "title": "Outdoor burning",
+                "evidence_quote": "Outdoor burning in the county",
+                "line_start": 2,
+                "line_end": 2,
+            }
+        ],
+    )
+    assert [item.display_ref for item in artifact.items] == ["A."]
+    assert artifact.items[0].source == "recovery"
+
+
+def test_quote_marks_do_not_decide_whether_a_quote_is_grounded():
+    agenda = 'Review of cases on Today\u2019s Agenda\nInstall 8" round wooden columns\n'
+    artifact = _finalize(
+        agenda,
+        [
+            {
+                "title": "Case review",
+                "evidence_quote": "Review of cases on Today's Agenda",
+                "line_start": 1,
+                "line_end": 1,
+            },
+            {
+                "title": "Columns",
+                "evidence_quote": "Install 8 round wooden columns",
+                "line_start": 2,
+                "line_end": 2,
+            },
+        ],
+    )
+    assert len(artifact.items) == 2
+
+
+def test_a_repeated_item_is_dropped_not_fatal():
+    artifact = _finalize(
+        _numbered_agenda(3), [_numbered_item(1), _numbered_item(1), _numbered_item(2)]
+    )
+    assert len(artifact.items) == 2
+    assert artifact.diagnostics["duplicate_item_count"] == 1
+
+
+def test_a_few_ungrounded_items_are_dropped_but_a_mostly_ungrounded_reply_still_fails():
+    agenda = _numbered_agenda(20)
+    stitched = {"evidence_quote": "Consider approval of contract number 9999 (Commissioner X)"}
+    one_bad = [_numbered_item(n) for n in range(1, 20)] + [_numbered_item(20, **stitched)]
+    artifact = _finalize(agenda, one_bad)
+    assert len(artifact.items) == 19
+    assert artifact.diagnostics["dropped_item_count"] == 1
+    assert artifact.diagnostics["dropped_item_reasons"] == [
+        "agenda item evidence quote is absent from cited lines"
+    ]
+
+    three_bad = [_numbered_item(n) for n in range(1, 18)] + [
+        _numbered_item(n, **stitched) for n in (18, 19, 20)
+    ]
+    with pytest.raises(ValueError, match="absent from cited lines"):
+        _finalize(agenda, three_bad)

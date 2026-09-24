@@ -70,6 +70,12 @@ def _locator_cues(display_ref: str | None, evidence_text: str) -> tuple[str, ...
     return tuple(dict.fromkeys(values))
 
 
+# The share of a response's items that may be dropped as unverifiable before the whole response
+# is treated as bad output and retried (2026-09-24 eval: 2-7% per affected response).
+MAX_DROPPED_AGENDA_ITEM_SHARE = 0.10
+_DUPLICATE_EVIDENCE_REASON = "duplicate agenda item source evidence"
+
+
 def _response_content(output: Any) -> str:
     """Extract the assistant JSON content from a provider-neutral completion response."""
 
@@ -158,8 +164,18 @@ def finalize_agenda_job(
 
     content = _response_content(result.output)
     assessment = recover_agenda_item_extractor_response(content, agenda_text=agenda_text)
-    if assessment.unrecovered:
-        raise ValueError(assessment.unrecovered[0].reason)
+    # A repeated item adds nothing, so it is dropped rather than failing the response. Any other
+    # unrecoverable item is dropped only while such items stay a small share of the response: one
+    # bad quote no longer discards (and re-spends a scarce call on) an otherwise grounded agenda,
+    # but a response that is mostly ungrounded still fails and is retried. Nothing unverified is
+    # ever kept -- every surviving item passed the same evidence checks as before.
+    duplicates = [
+        item for item in assessment.unrecovered if item.reason == _DUPLICATE_EVIDENCE_REASON
+    ]
+    dropped = [item for item in assessment.unrecovered if item.reason != _DUPLICATE_EVIDENCE_REASON]
+    total_items = len(assessment.items) + len(assessment.recovered) + len(assessment.unrecovered)
+    if dropped and len(dropped) > MAX_DROPPED_AGENDA_ITEM_SHARE * total_items:
+        raise ValueError(dropped[0].reason)
     lines = agenda_text.splitlines()
     candidates: list[AgendaCandidate] = []
     for item in assessment.items:
@@ -208,6 +224,9 @@ def finalize_agenda_job(
         diagnostics={
             "source_line_count": len(lines),
             "recovered_item_count": len(assessment.recovered),
+            "duplicate_item_count": len(duplicates),
+            "dropped_item_count": len(dropped),
+            "dropped_item_reasons": sorted({item.reason for item in dropped}),
         },
         pipeline_version=pipeline_version,
     )
