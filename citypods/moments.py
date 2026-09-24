@@ -25,8 +25,8 @@ MOMENTS_PROMPT_VERSION = "1"
 MOMENTS_PIPELINE_VERSION = "2"
 # Council feeds run on full-meeting transcripts, which can exceed the Gemini free tier's real
 # per-request ceiling well before its 1M-token context window (confirmed live -- see
-# `hard_input_ceiling` in config/provider_limits.yml). `deepseek/deepseek-v4.1-flash` and
-# `moonshotai/kimi-k3` are free NVIDIA routes with no such hard cap, added as overflow so an
+# `hard_input_ceiling` in config/provider_limits.yml). `deepseek/deepseek-v4-flash` (OrcaRouter,
+# 1M context) and `moonshotai/kimi-k3` (NVIDIA) have no such hard cap, added as overflow so an
 # oversized council job has somewhere to go instead of a guaranteed 429. Order matters only for
 # tie-breaking (the caller's own model is still preferred when multiple routes are eligible), not
 # correctness -- the Gemini entries stay first.
@@ -34,13 +34,14 @@ MOMENTS_PIPELINE_VERSION = "2"
 # THIS TUPLE IS PART OF THE MOMENTS RECIPE HASH (`recipe_hash(route_models=...)`): changing it
 # re-runs moments for every council episode. 2026-09-24 (approved backfill): gemini-3.8/3.7-flash
 # added for capacity (independent 20/day pools, AA 40.9/39.1), and the retired
-# `deepseek/deepseek-v4-pro` alias replaced by the explicit v4.1 pool it pointed at.
+# `deepseek/deepseek-v4-pro` alias (which pointed at NVIDIA's v4.1) replaced by OrcaRouter's v4:
+# NVIDIA's v4.1 returns empty content to any `response_format` (verified live 2026-09-24).
 COUNCIL_MOMENT_MODELS = (
     "gemini/gemini-3.8-flash",
     "gemini/gemini-3.7-flash",
     "gemini/gemini-3.6-flash",
     "gemini/gemini-3.5-flash",
-    "deepseek/deepseek-v4.1-flash",
+    "deepseek/deepseek-v4-flash",
     "moonshotai/kimi-k3",
 )
 DEFAULT_MOMENT_MODELS = ("gemini/gemini-3.5-flash-lite", "gemini/gemini-3.1-flash-lite")

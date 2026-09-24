@@ -224,8 +224,11 @@ llm_lanes:
     # advertised 1M-token context window (confirmed live -- see `hard_input_ceiling` in
     # config/provider_limits.yml); the two Gemini entries above stay first/unaffected.
     # 2026-09-24: gemini-3.8/3.7-flash (AA 40.9/39.1, independent 20/day pools per account) added
-    # ahead of 3.6/3.5, whose 20/day pools were exhausted by midday; the overflow pair now names
-    # NVIDIA's DeepSeek v4.1 explicitly (the retired `deepseek-v4-pro` alias pointed at it).
+    # ahead of 3.6/3.5, whose 20/day pools were exhausted by midday. The DeepSeek overflow slot is
+    # OrcaRouter's v4, not NVIDIA's v4.1: NVIDIA's v4.1 returns EMPTY content whenever a request
+    # carries any `response_format` (json_schema or json_object; verified live 2026-09-24) and
+    # answers only without one, and the v2 Worker forwards the job's format unchanged. v4.1
+    # returns here once the Worker applies each route's own structured-output method (review/48).
     # Changing the council list is a deliberate moments recipe change (approved backfill).
     models:
       - "gemini/gemini-3.8-flash"
@@ -234,7 +237,7 @@ llm_lanes:
       - "gemini/gemini-3.5-flash"
       - "gemini/gemini-3.5-flash-lite"
       - "gemini/gemini-3.1-flash-lite"
-      - "deepseek/deepseek-v4.1-flash"
+      - "deepseek/deepseek-v4-flash"
       - "moonshotai/kimi-k3"
     max_dispatches_per_run: 40
     reserved_write_units: 840
@@ -261,8 +264,12 @@ llm_lanes:
     models:
       - "gemini/gemini-3.1-flash-lite"
       # One pool name per DeepSeek version (2026-09-24), so v4.1 (NVIDIA) and v4 (OrcaRouter) are
-      # scored as separate contestants. gemma-4-26b-a4b-it was removed: its 10k-token AI Studio
-      # ceiling cannot take tagging-size inputs, so its comparisons never completed.
+      # scored as separate contestants. KNOWN GAP: NVIDIA's v4.1 returns empty content to any
+      # `response_format` (see r6-moments), so its candidates fail until the v2 Worker applies
+      # each route's own structured-output method (review/48). It stays because the round robin
+      # is a fixed four (citypods/tournament.py:contest_plan) and this lane is weekly research.
+      # gemma-4-26b-a4b-it was removed: its 10k-token AI Studio ceiling cannot take tagging-size
+      # inputs, so its comparisons never completed.
       - "deepseek/deepseek-v4.1-flash"
       - "deepseek/deepseek-v4-flash"
       - "zai/glm-4.7-flash"
