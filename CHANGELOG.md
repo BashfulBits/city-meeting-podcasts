@@ -27,6 +27,15 @@ Phase R (Research-Tool Surface)._
   `api_key_env` and fails CI when vars + secrets + 2 headroom would exceed 64. No pipeline version,
   recipe, or stored-artifact change.
 
+- **Removed the retired NVIDIA gpt-oss-120b route; lanes now fail CI if a model loses every live
+  route** (`config/provider_limits.yml`, regenerated catalogs, `tests/test_llm_lanes.py`).
+  `nvidia_gpt_oss_120b_free` had been paused (`rpd: 0`) since 2026-09-23 after NVIDIA started
+  returning 410 Gone (end of life 2026-09-03, re-confirmed 2026-09-24); Groq's route still serves
+  `openai/gpt-oss-120b`. The new registry-driven test checks that every `llm_lanes` model and backup
+  resolves through the compiled v2 `model_routes_map` to at least one route that is not paused: a
+  lane model with no live route is otherwise silent until its queued jobs never dispatch. It covers
+  new lanes with no edit. No pipeline version, recipe, or stored-artifact change.
+
 - **LLM Dispatch v2 can pause new claims without a redeploy**
   (`workers/llm-dispatch-v2/src/coordinator.js`, `index.js`, `protocol.js`,
   `citypods/compute/llm_dispatch_pause.py`, review/48 PR A). `POST /v2/dispatch:pause` stops new

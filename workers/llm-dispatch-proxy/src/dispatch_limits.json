@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 61,
+    "routes_count": 60,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -1821,35 +1821,6 @@
       "upstream_429_default": "upstream_capacity",
       "structured_output_schema_strip_keys": []
     },
-    "nvidia_gpt_oss_120b_free": {
-      "route_id": "nvidia_gpt_oss_120b_free",
-      "model": "openai/gpt-oss-120b",
-      "provider": "nvidia",
-      "upstream_model": "openai/gpt-oss-120b",
-      "input_context_limit": 131072,
-      "output_context_limit": 65536,
-      "hard_input_ceiling": null,
-      "input_token_ratio": null,
-      "account_id": "primary",
-      "rpm": 4,
-      "rpd": 0,
-      "tpm": 36000,
-      "concurrency": 4,
-      "request_start_margin_seconds": null,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": "2026-09-09",
-      "observed_rpm": null,
-      "observed_burst": 0,
-      "observed_input_ceiling": null,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": "upstream_capacity",
-      "structured_output_schema_strip_keys": []
-    },
     "nvidia_nemotron_3_ultra_550b_a55b_free": {
       "route_id": "nvidia_nemotron_3_ultra_550b_a55b_free",
       "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
@@ -2128,8 +2099,7 @@
       "sambanova_llama_3_3_70b_instruct_primary"
     ],
     "openai/gpt-oss-120b": [
-      "groq_gpt_oss_120b_primary",
-      "nvidia_gpt_oss_120b_free"
+      "groq_gpt_oss_120b_primary"
     ],
     "qwen/qwen3.6-27b": [
       "groq_qwen_3_6_27b_primary"
@@ -2283,7 +2253,6 @@
     "nvidia/deepseek-ai/deepseek-v4.1-flash": "deepseek/deepseek-v4.1-flash",
     "google/gemma-4-31b-it": "google/gemma-4-31b-it",
     "nvidia/google/gemma-4-31b-it": "google/gemma-4-31b-it",
-    "nvidia/openai/gpt-oss-120b": "openai/gpt-oss-120b",
     "nvidia/nvidia/nemotron-3-ultra-550b-a55b": "nvidia/nemotron-3-ultra-550b-a55b:free",
     "nvidia/nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
