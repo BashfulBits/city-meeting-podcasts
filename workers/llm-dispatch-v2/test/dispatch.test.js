@@ -2412,3 +2412,162 @@ test("a legacy rowid bundles table is rebuilt WITHOUT ROWID, keeping only open b
   )];
   assert.ok(index);
 });
+
+// ---- Daily DO row thresholds -------------------------------------------------------------
+
+function setRowsWrittenToday(sql, rows) {
+  sql.exec("UPDATE scheduler SET rows_written_today = ? WHERE id = 1", rows);
+}
+
+test("the coordinator tallies the rows its RPCs write and persists them on the claim write", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
+  const afterEnqueue = [...sql.exec("SELECT rows_written_today FROM scheduler WHERE id = 1")][0];
+  await coordinator.claimDispatchWindow(Date.now(), 30);
+  await coordinator.claimDispatchWindow(Date.now() + 61_000, 30);
+  const afterClaims = [...sql.exec("SELECT rows_written_today FROM scheduler WHERE id = 1")][0];
+  assert.ok(afterClaims.rows_written_today > afterEnqueue.rows_written_today);
+  const stats = await coordinator.stats(Date.now());
+  assert.ok(stats.row_budget.rows_written_today >= afterClaims.rows_written_today);
+  assert.equal(stats.row_budget.enqueue_open, true);
+});
+
+test("past the enqueue threshold new work is refused but an exact replay still succeeds", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  setRowsWrittenToday(sql, 90_000);
+  const result = await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
+  assert.deepEqual(result.accepted.map((row) => row.id), ["j1"]);
+  assert.deepEqual(result.rejected, [{ id: "j2", reason: "daily_row_budget" }]);
+  // Dispatch keeps going between the enqueue and claim thresholds.
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.jobs.length, 1);
+  // Scheduled cleanup waits for tomorrow.
+  assert.deepEqual(await coordinator.purgePendingBatch(15), { jobs: [] });
+});
+
+test("the pending cap refuses new jobs once MAX_QUEUED_JOBS are waiting", async () => {
+  const { coordinator } = makeCoordinator({ MAX_QUEUED_JOBS: "2" });
+  const result = await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2"), makeJob("j3")]);
+  assert.deepEqual(result.accepted.map((row) => row.id), ["j1", "j2"]);
+  assert.deepEqual(result.rejected, [{ id: "j3", reason: "queue_full" }]);
+});
+
+test("past the claim threshold no lease is claimed and pending rows still get persisted", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  setRowsWrittenToday(sql, 97_000);
+  const read = () => [...sql.exec("SELECT last_claim_reason, rows_written_today FROM scheduler")][0];
+  const before = read();
+  // Rows written since the last flush (in production: completions, acks, retires).
+  coordinator._rowsUnflushed = 40;
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.bundle_id, null);
+  assert.equal(plan.claim_reason, "daily_row_budget");
+  const after = read();
+  assert.equal(after.last_claim_reason, before.last_claim_reason);
+  assert.ok(after.rows_written_today >= before.rows_written_today + 40);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'j1'")][0].state, "queued");
+  // An idle braked tick (nothing pending but its own reads) writes nothing more.
+  coordinator._rowsUnflushed = 0;
+  const settled = read().rows_written_today;
+  await coordinator.claimDispatchWindow(Date.now() + 61_000, 30);
+  assert.ok(read().rows_written_today - settled <= 1);
+});
+
+test("past the optional threshold acks and retires are refused but completions still land", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  setRowsWrittenToday(sql, 99_000);
+  await coordinator.completeBatch(
+    plan.bundle_id,
+    plan.execution_token,
+    plan.jobs.map((job, i) => ({
+      job_id: job.id,
+      lease_token: job.lease_token,
+      attempt_id: `a${i}`,
+      planned_at: Date.now(),
+      outcome: "success",
+      provider_status_code: 200,
+      result_key: `results/${job.id}.json`,
+    }))
+  );
+  const states = [...sql.exec("SELECT state FROM jobs ORDER BY id")].map((row) => row.state);
+  assert.deepEqual(states, ["completed", "completed"]);
+  assert.deepEqual(await coordinator.ackResults(["j1"]), { acked: [], ignored: ["j1"] });
+  assert.deepEqual(
+    await coordinator.retireConsumed([{ id: "j2", result_key: "results/j2.json" }]),
+    { retired: [], ignored: ["j2"] }
+  );
+  assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM jobs")][0].n, 2);
+});
+
+test("yesterday's row count does not close today", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  sql.exec("UPDATE scheduler SET utc_day = '2000-01-01', rows_written_today = 99999 WHERE id = 1");
+  const status = await coordinator.ingressStatus("unspecified");
+  assert.equal(status.open, true);
+  const result = await coordinator.enqueueBatch([makeJob("j1")]);
+  assert.equal(result.accepted.length, 1);
+  const row = [...sql.exec("SELECT utc_day, rows_written_today FROM scheduler")][0];
+  assert.notEqual(row.utc_day, "2000-01-01");
+  assert.ok(row.rows_written_today < 1000);
+});
+
+test("ingressStatus reports why ingress is closed without writing anything", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_QUEUED_JOBS: "1" });
+  const open = await coordinator.ingressStatus("unspecified");
+  assert.equal(open.open, true);
+  assert.deepEqual(open.reasons, []);
+  assert.equal(open.purpose, "unspecified");
+
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  setRowsWrittenToday(sql, 95_000);
+  const snapshot = () => [...sql.exec("SELECT * FROM scheduler")][0];
+  const before = snapshot();
+  const closed = await coordinator.ingressStatus("unspecified");
+  assert.equal(closed.open, false);
+  assert.deepEqual(closed.reasons, ["daily_row_budget", "queue_full"]);
+  assert.equal(closed.row_budget.enqueue_open, false);
+  assert.equal(closed.row_budget.claims_open, true);
+  assert.deepEqual(snapshot(), before);
+
+  const unknown = await coordinator.ingressStatus("not-a-lane");
+  assert.ok(unknown.reasons.includes("purpose_not_registered"));
+});
+
+test("ingressStatus closes a lane whose daily write units are spent", async () => {
+  const { coordinator } = makeCoordinator({
+    INGRESS_PURPOSE_RESERVATIONS: JSON.stringify({
+      unspecified: { reserved_write_units: 0, daily_write_units: 4, write_units_per_job: 4 },
+    }),
+  });
+  assert.equal((await coordinator.ingressStatus("unspecified")).open, true);
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  const status = await coordinator.ingressStatus("unspecified");
+  assert.equal(status.open, false);
+  assert.deepEqual(status.reasons, ["purpose_write_budget_exceeded"]);
+  assert.equal(status.lane.write_units_available, 0);
+});
+
+test("a mid-day deploy seeds the new row counter from today's recorded work, never from zero", () => {
+  const { sql, storage } = createMockSqlStorage();
+  const env = withTestReservations({ DISPATCH_LIMITS_OVERRIDE: TEST_CATALOG });
+  new LLMSchedulerDO({ storage }, env);
+  // An already-deployed coordinator from before the counter existed, mid-way through its day.
+  sql.exec("ALTER TABLE scheduler DROP COLUMN rows_written_today");
+  sql.exec(
+    `UPDATE scheduler SET ingress_write_units_today = 5000, lease_count_today = 1000,
+       bundle_count_today = 400 WHERE id = 1`
+  );
+  const coordinator = new LLMSchedulerDO({ storage }, env);
+  const { rows_written_today: seeded } = [...sql.exec("SELECT rows_written_today FROM scheduler")][0];
+  // 2 x 5,000 ingress + 6 x 400 bundles + 24 x 1,000 leases, before cleanup and idle ticks.
+  assert.ok(seeded >= 10_000 + 2_400 + 24_000, `seeded ${seeded}`);
+  assert.ok(coordinator._readRowsWrittenToday() >= seeded);
+  // A later construction (column present) leaves the running count alone.
+  sql.exec("UPDATE scheduler SET rows_written_today = 5 WHERE id = 1");
+  new LLMSchedulerDO({ storage }, env);
+  assert.equal([...sql.exec("SELECT rows_written_today FROM scheduler")][0].rows_written_today, 5);
+});

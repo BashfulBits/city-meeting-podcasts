@@ -7,7 +7,9 @@ matter most are the ones proving a hostile or confused proposal cannot reach the
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
@@ -38,6 +40,7 @@ from citypods.audit_remedy import (
     safe_classification_error,
     stable_body_selector,
     validate_proposals,
+    verify_remedy_mutations,
     write_evidence_file,
 )
 from citypods.compute.base import JobResult
@@ -873,3 +876,61 @@ def test_write_evidence_file_empty_list(tmp_path):
     assert payload["sources"] == []
     assert isinstance(payload["digest"], str)
     assert len(payload["digest"]) == 64
+
+
+# --- verify remedy mutations --------------------------------------------------------------
+
+
+def test_verify_remedy_mutations_success(repo, monkeypatch):
+    monkeypatch.setattr("citypods.config.load_city_configs", lambda path, registry: None)
+    mock_run = MagicMock(
+        return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    )
+    monkeypatch.setattr("subprocess.run", mock_run)
+
+    success, message = verify_remedy_mutations(repo)
+
+    assert success is True
+    assert "Config load, Ruff lint/format, and the full pytest suite all passed." in message
+    assert mock_run.call_count == 3
+
+
+def test_verify_remedy_mutations_config_load_failure(repo, monkeypatch):
+    def mock_load_city_configs(path, registry):
+        raise ValueError("Invalid YAML in city feed")
+
+    monkeypatch.setattr("citypods.config.load_city_configs", mock_load_city_configs)
+
+    success, message = verify_remedy_mutations(repo)
+
+    assert success is False
+    assert "Feed config failed to load:" in message
+    assert "Invalid YAML in city feed" in message
+
+
+def test_verify_remedy_mutations_check_failed(repo, monkeypatch):
+    monkeypatch.setattr("citypods.config.load_city_configs", lambda path, registry: None)
+    mock_run = MagicMock(
+        return_value=subprocess.CompletedProcess(
+            args=["ruff", "check", "."], returncode=1, stdout="ruff error", stderr=""
+        )
+    )
+    monkeypatch.setattr("subprocess.run", mock_run)
+
+    success, message = verify_remedy_mutations(repo)
+
+    assert success is False
+    assert "Ruff lint failed:" in message
+    assert "ruff error" in message
+
+
+def test_verify_remedy_mutations_timeout_or_oserror(repo, monkeypatch):
+    monkeypatch.setattr("citypods.config.load_city_configs", lambda path, registry: None)
+    monkeypatch.setattr(
+        "subprocess.run", MagicMock(side_effect=subprocess.TimeoutExpired(cmd="pytest", timeout=5))
+    )
+
+    success, message = verify_remedy_mutations(repo)
+
+    assert success is False
+    assert "Ruff lint could not finish (TimeoutExpired)" in message

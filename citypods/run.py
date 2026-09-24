@@ -2772,6 +2772,38 @@ def _build_impl(
     ).max_dispatches_per_run
     chapter_agenda_max_dispatches = lane_for("chapter-agenda").max_dispatches_per_run
     chapter_locator_max_dispatches = lane_for("chapter-locator").max_dispatches_per_run
+    moment_max_dispatches = lane_for("r6-moments").max_dispatches_per_run
+    # Ingress preflight: a lane the dispatch Worker would refuse today (daily DO row budget,
+    # pending-queue cap, daily job cap, or its own budget) gets a zero per-run cap, so the stages
+    # skip building its prompts instead of doing the work only to have every job rejected. The
+    # run itself still goes ahead: the same stages apply already-completed deferred results to
+    # episodes, and a closed lane (a full queue can stay closed for days) must not stall that.
+    # Fails open; enqueue still enforces every limit. Same URL precedence as
+    # LLMBackendConfig.from_env().
+    v2_url = os.environ.get("CITYPODS_LLM_DISPATCH_V2_URL") or os.environ.get("LLM_DISPATCH_V2_URL")
+    if not dry_run and phase != "render" and v2_url:
+        closed = _closed_llm_lanes(
+            {
+                "topic-tags:tagger": tagging_config.get("enabled"),
+                "topic-tags:prelabeler": tagging_config.get("enabled"),
+                "topic-tags:prelabeler-shadow": tagging_config.get("enabled"),
+                "chapter-agenda": True,
+                "chapter-locator": True,
+                "r6-moments": moments_config.get("enabled"),
+            }
+        )
+        if "topic-tags:tagger" in closed:
+            tag_max_dispatches = 0
+        if "topic-tags:prelabeler" in closed:
+            tag_prelabeler_max_dispatches = 0
+        if "topic-tags:prelabeler-shadow" in closed:
+            tag_prelabeler_shadow_max_dispatches = 0
+        if "chapter-agenda" in closed:
+            chapter_agenda_max_dispatches = 0
+        if "chapter-locator" in closed:
+            chapter_locator_max_dispatches = 0
+        if "r6-moments" in closed:
+            moment_max_dispatches = 0
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
     # merely because tagging is enabled in site_config.yml.
@@ -3183,7 +3215,7 @@ def _build_impl(
             **moments_config,
             **(moments_config.get("evaluation") or {}),
         },
-        moment_max_dispatches=lane_for("r6-moments").max_dispatches_per_run,
+        moment_max_dispatches=moment_max_dispatches,
         speaker_registry_path=state_dir
         / str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
         speaker_evaluation_state_path=state_dir
@@ -3954,6 +3986,25 @@ def _build_impl(
             _abandoned_asr_exit()
 
     return results
+
+
+def _closed_llm_lanes(purposes: dict[str, object]) -> set[str]:
+    """The enabled lanes whose ingress the dispatch Worker reports closed right now."""
+    from citypods.compute.llm import dispatch_v2_ingress_open
+
+    closed: set[str] = set()
+    for purpose, enabled in purposes.items():
+        if not enabled:
+            continue
+        is_open, status = dispatch_v2_ingress_open(purpose)
+        if not is_open:
+            closed.add(purpose)
+            reasons = ", ".join((status or {}).get("reasons") or []) or "closed"
+            print(
+                f"llm ingress: {purpose} closed today ({reasons}); skipping its dispatch",
+                flush=True,
+            )
+    return closed
 
 
 def build(

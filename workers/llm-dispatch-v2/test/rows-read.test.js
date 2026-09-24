@@ -97,6 +97,10 @@ function seed(history, { liveQueued = 6 } = {}) {
     insJob.run(`bk${i}`, `kbk${i}`, "d", null, "queued", 1, policy, "tags", 500, 200,
       `payloads/bk${i}.json`, null, null, null, null, null, 0, 0, old + i, old + i);
     insJobModel.run(`bk${i}`, "gemini/gemini-flash-lite", 1, old + i);
+    // An acked-but-not-yet-purged backlog (18k rows in production on 2026-09-24): statements
+    // that look jobs up by id and also filter on state must not walk this by the state index.
+    insJob.run(`pp${i}`, `kpp${i}`, "d", null, "purge_pending", 1, policy, "tags", 500, 200,
+      `payloads/pp${i}.json`, `results/pp${i}.json`, null, null, null, null, 1, 0, old, now);
   }
   db.exec("COMMIT");
   // Seed uses raw SQL to create historical rows, so it deliberately bypasses the production
@@ -148,6 +152,11 @@ async function exerciseAll(fixture) {
         observed_input_tokens: 500, observed_output_tokens: 100, outcome: "success",
         provider_status_code: 200, result_key: `results/${job.id}.json`,
       }))));
+  await run("ackResults", () => coordinator.ackResults([plan.jobs[0].id, "nope"]));
+  await run("retireConsumed", () =>
+    coordinator.retireConsumed(plan.jobs.slice(1).map((job) => ({
+      id: job.id, result_key: `results/${job.id}.json`,
+    }))));
   await run("resolveUnknownBatch", () => coordinator.resolveUnknownBatch(["att-1", "nope"]));
   await run("confirmNeverAccepted", () => coordinator.confirmNeverAccepted(["live-0", "nope"]));
   await run("terminalFeed", () => coordinator.terminalFeed({ updated_at: 0, id: "" }, 20));

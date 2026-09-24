@@ -17,6 +17,84 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Unblocked the LLM Dispatch v2 deploy: back under Workers Free's 64-variable limit**
+  (`workers/llm-dispatch-v2/wrangler.jsonc`, `tests/test_llm_dispatch_worker_limits.py`). #1846
+  declared `DO_ROWS_ENQUEUE_STOP`/`_CLAIM_STOP`/`_OPTIONAL_STOP` and `MAX_QUEUED_JOBS` at exactly the
+  coordinator's code defaults, taking the Worker to 66 variables (43 vars + 23 secrets); Cloudflare
+  rejected every deploy from then on, so #1846, #1847 and #1848 never reached production. Those four
+  vars are removed (same effective values; the JS config test now checks the effective thresholds),
+  and a new test derives the Worker's secrets from its fixed set plus every provider account's
+  `api_key_env` and fails CI when vars + secrets + 2 headroom would exceed 64. No pipeline version,
+  recipe, or stored-artifact change.
+
+- **Removed the retired NVIDIA gpt-oss-120b route; lanes now fail CI if a model loses every live
+  route** (`config/provider_limits.yml`, regenerated catalogs, `tests/test_llm_lanes.py`).
+  `nvidia_gpt_oss_120b_free` had been paused (`rpd: 0`) since 2026-09-23 after NVIDIA started
+  returning 410 Gone (end of life 2026-09-03, re-confirmed 2026-09-24); Groq's route still serves
+  `openai/gpt-oss-120b`. The new registry-driven test checks that every `llm_lanes` model and backup
+  resolves through the compiled v2 `model_routes_map` to at least one route that is not paused: a
+  lane model with no live route is otherwise silent until its queued jobs never dispatch. It covers
+  new lanes with no edit. No pipeline version, recipe, or stored-artifact change.
+
+- **LLM Dispatch v2 can pause new claims without a redeploy**
+  (`workers/llm-dispatch-v2/src/coordinator.js`, `index.js`, `protocol.js`,
+  `citypods/compute/llm_dispatch_pause.py`, review/48 PR A). `POST /v2/dispatch:pause` stops new
+  claims for `global`, `provider:<name>` or `route:<route_id>` for 1-3,600 seconds, after which the
+  pause ends by itself; `POST /v2/dispatch:resume` ends it early. Provider/route pauses route
+  claims around the paused routes (their models' other routes keep serving); a global pause returns
+  before any SQL runs, so a paused tick writes zero DO rows. In-flight bundles and their 429
+  retries are left alone (refusing a retry would fail the job); `GET /v2/dispatch:pause-status`
+  instead reports the selection's live (unexpired) leased-job count as the drain signal, plus each
+  selected route's
+  `rpd_remaining` and `rpd_resets_at` on the provider's reset timezone. `POST /v2/dispatch:reserve`
+  charges up to five out-of-band calls to a route's rpm/rpd ledger so production pacing counts
+  canary and probe traffic. `/v2/stats` now includes `in_flight` by route/provider and active
+  `dispatch_pauses`. The Python `paused(...)` context manager pauses, waits for drain, keeps the
+  pause armed through the drain and the probe (marking the run `contended` if the drain times out
+  or the pause could have lapsed), and always resumes; it refuses to send its token over plain
+  HTTP. No pipeline version, recipe, or stored-artifact change.
+
+- **Removed the unused NVIDIA Riva Translate route**
+  (`config/provider_limits.yml`, regenerated `llm_routes.json` and both Workers'
+  `dispatch_limits.json`). `nvidia_riva_translate_4b_instruct_v2_free` was reserved for future
+  translation work, but no lane referenced it and its real context is only 8,192 tokens. Split
+  out of #1841 so it doesn't wait on the catalog-reconciliation redesign. No pipeline version,
+  recipe, or stored-artifact change.
+
+- **DO rows read: id lookups no longer walk a whole terminal state**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). `confirmPurge`, `ackResults` and
+  `retireConsumed` filter `WHERE id IN (...) AND state = '...'`, and SQLite's planner chose the
+  `(state, updated_at, id)` index over the primary key, reading every row in that state. Live on
+  2026-09-24 each cleanup run read ~18.8k rows (the whole 18k `purge_pending` backlog) -- 120 runs/day
+  at the 12-minute cadence is ~2.3M of the Free plan's 5M daily rows read -- and a sweep's retire
+  calls read the whole `completed` set per chunk (79.5k in one minute). The state filter is now
+  written `+state` so the lookup seeks by id and the state is only checked per row. The rows-read
+  guard now seeds an acked backlog and exercises ack/retire, and its estimator credits an in-order
+  seek that stops at a bound `LIMIT`.
+
+- **LLM dispatch runs to the real daily DO row budget instead of worst-case caps**
+  (`workers/llm-dispatch-v2/src/`, `wrangler.jsonc`, `config/site_config.yml`, `citypods/`,
+  producer workflows). The coordinator now sums the billed rows it actually writes (each SQL
+  cursor's `rowsWritten`, persisted on scheduler writes it already makes) and gates on that total:
+  - *90,000* (`DO_ROWS_ENQUEUE_STOP`): new enqueues, schema retries, scheduled cleanup and
+    retention pruning stop; the rest of the day funds dispatch.
+  - *97,000* (`DO_ROWS_CLAIM_STOP`): no new leases. Starts below the requested 98,000 because the
+    DO's count can trail Cloudflare's by ~1.3% and cannot see Data Studio edits; raise it once the
+    counter has been compared against Cloudflare's analytics.
+  - *99,000* (`DO_ROWS_OPTIONAL_STOP`): acks, retires and cancels are refused too (all safe to
+    skip). In-flight completions, attempt fencing and polls are never refused.
+
+  The fixed daily lease cap (1,750) is gone as a working limit (`MAX_LEASES_PER_UTC_DAY` 7,000
+  backstop): a typical lease costs ~13 rows, not the ~24 a worst-case cap had to assume, so dispatch
+  no longer idles at half the budget. Ingress is bounded by a quota near real drain
+  (`MAX_JOBS_PER_UTC_DAY` 1,450 -> 4,000, `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 5,800 -> 18,000,
+  every `llm_lanes` reserved/daily budget x ~3.1, per-run caps unchanged) and a new pending cap,
+  `MAX_QUEUED_JOBS` 20,000 (`queue_full`). New read-only `GET /v2/ingress-status?purpose=` and
+  `python -m citypods.cli llm-ingress-status` report whether a lane is open; `build()` checks each
+  enabled lane at start and zeroes a closed lane's per-run cap, so no prompts are built for work the
+  Worker would refuse, while the run still applies already-completed results. Fails open. `daily_row_budget`/`queue_full` rejections defer like the
+  daily cap. Cleanup runs every 10 minutes (was 12). `/v2/stats` reports `row_budget`.
+
 - **Added review-PR-only provider catalog reconciliation**
   (`scripts/reconcile_provider_routes.py`, `provider-catalog-reconcile.yml`, review/48). The weekly
   control-plane check reads authenticated provider model lists, distinguishes availability from

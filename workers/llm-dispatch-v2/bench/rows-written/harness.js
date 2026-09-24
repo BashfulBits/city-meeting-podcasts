@@ -47,7 +47,9 @@ export class MeasureDO extends LLMSchedulerDO {
     return { w, r };
   }
 
-  async measure({ n = 60, purpose = "chapter-agenda", model = NEMOTRON }) {
+  async measure({ n = 60, purpose = "chapter-agenda", model = NEMOTRON, bundle = 0, retire = false }) {
+    // bundle > 0 caps jobs per bundle (bundle=1 is write_budget.js's worst-case lease).
+    if (bundle > 0) this.env = { ...this.env, MAX_BUNDLE_JOBS: String(bundle) };
     this._getSql();
     const out = {};
     const t0 = Date.now();
@@ -87,8 +89,18 @@ export class MeasureDO extends LLMSchedulerDO {
     Object.assign(out, phase);
 
     const ids = [...leasedIds];
-    await this.pollBatch(ids);
+    const polled = await this.pollBatch(ids);
     out.poll = this._take();
+    if (retire) {
+      // Consumption-based retirement (the client's default path for a persisted completion).
+      await this.retireConsumed(polled.statuses.map((s) => ({ id: s.id, result_key: s.result_key })));
+      out.retire = this._take();
+      let idleW = 0;
+      for (let k = 0; k < 20; k += 1) { now += 61_000; await this.claimDispatchWindow(now, 30); idleW += this._take().w; }
+      out.idle_tick_w = idleW / 20;
+      return out;
+    }
+    // The ack + scheduled-cleanup path (fallback, and every job the client never retires).
     await this.ackResults(ids);
     out.ack = this._take();
 
@@ -169,6 +181,10 @@ export default {
       n: Number(url.searchParams.get("n")) }));
     const purpose = url.searchParams.get("purpose") || "chapter-agenda";
     const model = url.searchParams.get("model") || NEMOTRON;
-    return Response.json(await stub.measure({ n: Number(url.searchParams.get("n") || 60), purpose, model }));
+    return Response.json(await stub.measure({
+      n: Number(url.searchParams.get("n") || 60), purpose, model,
+      bundle: Number(url.searchParams.get("bundle") || 0),
+      retire: url.searchParams.get("retire") === "1",
+    }));
   },
 };
