@@ -16,7 +16,7 @@ import {
 import { B2Client } from "./b2.js";
 import { callAiGateway, observedTokens, upstreamCapacityFailure, upstreamEmptyCompletion } from "./gateway.js";
 import { classifyProviderFailure } from "./classify.js";
-import { cleanupCapacityPerDay, projectedDailyRowsWritten } from "./write_budget.js";
+import { DO_ROWS_WRITTEN_PLATFORM_LIMIT, ROWS_PER_INGRESS_WRITE_UNIT } from "./write_budget.js";
 
 export { LLMSchedulerDO };
 
@@ -107,10 +107,39 @@ export function validateConfig(env) {
     );
   }
 
-  // The account-wide DO row-write budget (Free plan: 100,000 billed rows/day). The worst case the
-  // configured caps permit must fit under it with room left for maintenance writes -- see
-  // write_budget.js for the measured per-phase costs behind projectedDailyRowsWritten.
-  const maxLeasesPerDay = Number(env.MAX_LEASES_PER_UTC_DAY || 1750);
+  // The account-wide DO row-write budget (Free plan: 100,000 billed rows/day) is enforced at
+  // runtime against the rows the coordinator actually writes (coordinator.js _rowsWrittenToday):
+  // enqueues and cleanup stop at DO_ROWS_ENQUEUE_STOP, new leases at DO_ROWS_CLAIM_STOP, and
+  // acks/retires/cancels at DO_ROWS_OPTIONAL_STOP, leaving the rest for in-flight completions.
+  // The thresholds must rise in that order and stay under the platform limit.
+  const enqueueRowStop = Number(env.DO_ROWS_ENQUEUE_STOP ?? 90000);
+  const claimRowStop = Number(env.DO_ROWS_CLAIM_STOP ?? 97000);
+  const optionalRowStop = Number(env.DO_ROWS_OPTIONAL_STOP ?? 99000);
+  if (
+    ![enqueueRowStop, claimRowStop, optionalRowStop].every(Number.isInteger) ||
+    !(enqueueRowStop > 0 && enqueueRowStop <= claimRowStop && claimRowStop <= optionalRowStop) ||
+    optionalRowStop >= DO_ROWS_WRITTEN_PLATFORM_LIMIT
+  ) {
+    throw new Error(
+      `Invalid config: DO_ROWS_ENQUEUE_STOP (${enqueueRowStop}) <= DO_ROWS_CLAIM_STOP ` +
+      `(${claimRowStop}) <= DO_ROWS_OPTIONAL_STOP (${optionalRowStop}) must hold, all positive ` +
+      `integers below the platform's ${DO_ROWS_WRITTEN_PLATFORM_LIMIT} rows/day`
+    );
+  }
+  // A full day of admitted ingress must fit under the enqueue threshold on its own.
+  if (ROWS_PER_INGRESS_WRITE_UNIT * maxIngressWriteUnits > enqueueRowStop) {
+    throw new Error(
+      `Invalid config: MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY (${maxIngressWriteUnits}) can write up ` +
+      `to ${ROWS_PER_INGRESS_WRITE_UNIT * maxIngressWriteUnits} rows, past DO_ROWS_ENQUEUE_STOP ` +
+      `(${enqueueRowStop})`
+    );
+  }
+  const maxQueuedJobs = Number(env.MAX_QUEUED_JOBS ?? 20000);
+  if (!Number.isInteger(maxQueuedJobs) || maxQueuedJobs < 1 || maxQueuedJobs > 100000) {
+    throw new Error("Invalid config: MAX_QUEUED_JOBS must be an integer from 1 to 100000");
+  }
+  // A blast-radius backstop only, not the working limit; unset means the bundle ceiling itself.
+  const maxLeasesPerDay = Number(env.MAX_LEASES_PER_UTC_DAY || maxBundlesPerDay * maxBundleJobs);
   if (
     !Number.isInteger(maxLeasesPerDay) ||
     maxLeasesPerDay < 1 ||
@@ -119,35 +148,6 @@ export function validateConfig(env) {
     throw new Error(
       `Invalid config: MAX_LEASES_PER_UTC_DAY (${maxLeasesPerDay}) must be an integer from 1 to ` +
       `MAX_BUNDLES_PER_UTC_DAY x MAX_BUNDLE_JOBS (${maxBundlesPerDay * maxBundleJobs})`
-    );
-  }
-  // Terminal-job cleanup must keep up with the most jobs dispatch can finish in a day, or
-  // purge_pending/completed rows accumulate without bound (they did: 15/hour against ~1,000+
-  // terminal jobs/day left 18,500 waiting on 2026-09-23). Its capacity is also part of the write
-  // budget, since a backlog drains at up to this rate.
-  const purgesPerDay = cleanupCapacityPerDay({
-    cleanupIntervalMinutes: Number(env.CLEANUP_INTERVAL_MINUTES ?? 12),
-    purgeBatchLimit: Number(env.PURGE_BATCH_LIMIT ?? 15),
-  });
-  if (Number(env.PURGE_BATCH_LIMIT ?? 15) > 0 && purgesPerDay < maxLeasesPerDay) {
-    throw new Error(
-      `Invalid config: cleanup retires at most ${purgesPerDay} jobs/day (CLEANUP_INTERVAL_MINUTES ` +
-      `x PURGE_BATCH_LIMIT), below MAX_LEASES_PER_UTC_DAY (${maxLeasesPerDay}); terminal jobs ` +
-      "would accumulate faster than they are purged"
-    );
-  }
-  const rowsWrittenBudget = Number(env.DO_ROWS_WRITTEN_DAILY_BUDGET || 90000);
-  const projectedRows = projectedDailyRowsWritten({
-    maxIngressWriteUnits,
-    maxLeases: maxLeasesPerDay,
-    maxPurgesPerDay: purgesPerDay,
-  });
-  if (!Number.isFinite(rowsWrittenBudget) || projectedRows > rowsWrittenBudget) {
-    throw new Error(
-      `Invalid config: the worst-case daily DO rows written these caps allow (${projectedRows}: ` +
-      `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY ${maxIngressWriteUnits} and MAX_LEASES_PER_UTC_DAY ` +
-      `${maxLeasesPerDay}) exceeds DO_ROWS_WRITTEN_DAILY_BUDGET (${rowsWrittenBudget}); ` +
-      "see write_budget.js"
     );
   }
 
@@ -267,7 +267,7 @@ export function validateConfig(env) {
   // Divisors of 60 only: getUTCMinutes() % intervalMinutes === 0 does not fire evenly spaced
   // ticks for a non-divisor (e.g. 7 fires at :00,:07,...,:56, then :00 again -- a 4-minute gap,
   // not 7). Every other value in [1, 60] repeats an identical, evenly-spaced pattern every hour.
-  const cleanupInterval = Number(env.CLEANUP_INTERVAL_MINUTES ?? 12);
+  const cleanupInterval = Number(env.CLEANUP_INTERVAL_MINUTES ?? 10);
   if (
     !Number.isInteger(cleanupInterval) ||
     cleanupInterval < 1 ||
@@ -379,6 +379,19 @@ export async function handleRequest(request, env) {
     } catch (err) {
       const detail = describeError(err);
       console.error(`stats failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
+  // Producer preflight: is ingress open for this purpose right now? Read-only; enqueue-batch
+  // re-checks every condition.
+  if (request.method === "GET" && path === "/v2/ingress-status") {
+    try {
+      const status = await coordinator.ingressStatus(url.searchParams.get("purpose") || null, Date.now());
+      return jsonResponse(status, 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`ingress-status failed: ${detail}`);
       return errorResponse(500, "coordinator_error", detail);
     }
   }
@@ -1025,7 +1038,7 @@ async function runScheduledDispatch(env) {
  * to read.
  */
 async function runScheduledCleanup(env, scheduledTime) {
-  const intervalMinutes = Number(env.CLEANUP_INTERVAL_MINUTES || 12);
+  const intervalMinutes = Number(env.CLEANUP_INTERVAL_MINUTES || 10);
   if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
   // Cloudflare always supplies scheduledTime for a real cron firing. Without it we cannot know
   // where in the cadence we are, so skip rather than run this on every single tick.

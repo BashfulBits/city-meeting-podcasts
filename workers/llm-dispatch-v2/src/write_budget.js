@@ -1,54 +1,46 @@
 /**
- * Durable Object row-write budget for LLM Dispatch v2, in BILLED rows.
+ * Durable Object row-write costs for LLM Dispatch v2, in BILLED rows.
  *
  * The Workers Free plan allows 100,000 Durable Object rows written per UTC day across the whole
  * account; past it every DO call fails until 00:00 UTC. Billed rows are not statements or
  * "write units": Cloudflare counts every table row AND every index entry a write touches, plus
- * rows written by triggers. The Worker's own ingress currency (`3 + models` write units per job)
- * therefore understates the real cost, and nothing bounded the dispatch half at all -- on
- * 2026-09-23 the account reached 97,877 rows written by 15:00 UTC.
+ * rows written by triggers.
  *
- * Every constant below was MEASURED, not derived: `bench/rows-written/` runs the real
- * `LLMSchedulerDO` under workerd (the runtime that meters billing) and sums each SQL cursor's
- * `rowsWritten` per lifecycle phase. Cross-check: these constants predict 70.2k rows for
- * 2026-09-22's real counts (2,202 jobs ingested, 661 bundles, 1,316 provider attempts, ~980
- * completions) against 71.1k billed. Re-run the bench and update these whenever the schema, an
- * index, a trigger, or a lifecycle statement changes.
+ * The daily limit is enforced at RUNTIME against what the coordinator actually writes -- every
+ * SQL cursor's `rowsWritten`, the same figure Cloudflare bills -- not against a worst-case
+ * projection of static caps (coordinator.js _rowsWrittenToday and the DO_ROWS_*_STOP thresholds).
+ * A worst-case projection had to assume every lease hit a 429 and requeued (~24 rows), which
+ * idled dispatch at roughly half the budget on a typical day (~13 rows per lease).
+ *
+ * The constants below were MEASURED by `bench/rows-written/` (the real `LLMSchedulerDO` under
+ * workerd) on 2026-09-24, after the row-write tiers (#1838, #1840, #1842, #1843): a completed
+ * first-try job costs ~20 billed rows end to end (44.3 before). They size the ingress quota and
+ * are the reference for re-measuring after a schema, index, or lifecycle-statement change.
  */
 
-/** Rows written per ingress write unit admitted (12 for a 1-model job, 18 for 3, 27 for 6).
- * A rejected job writes nothing. */
-export const ROWS_PER_INGRESS_WRITE_UNIT = 3;
+/** The platform's account-wide limit; every threshold must stay below it. */
+export const DO_ROWS_WRITTEN_PLATFORM_LIMIT = 100000;
 
-/** One lease, worst case (a one-job bundle): claim 17 (9.4 per bundle + 7.6 per job),
- * attemptStarted 6, completeBatch 10.3. A retried attempt is a new lease and costs the same. */
-export const ROWS_PER_LEASE_WORST = 34;
+/** Rows written per ingress write unit admitted: a job writes 4 + 2 x models billed rows
+ * (job row + two unique keys + state index; a clustered model-index row + its unique index each)
+ * for 3 + models units -- 1.5 per unit at 1 model, 1.67 at 3, approaching 2 as models grow. 2 is
+ * the ceiling at any model count. A rejected job writes nothing. */
+export const ROWS_PER_INGRESS_WRITE_UNIT = 2;
 
-/** Retiring one terminal job: the consumption ack (or the retention transition for a job no
- * client acks) 5, plus confirmPurge's row delete 1. Bounded per day by the larger of the lease
- * cap (each lease retires at most one job) and the cleanup capacity (a backlog of terminal jobs
- * drains at up to the cleanup rate). */
-export const ROWS_PER_TERMINAL_JOB = 6;
+/** Fixed per-bundle cost: the bundle row + its index, the claim-outcome scheduler row, and the
+ * bundle delete at completion (4.5 claim-side + 1.4 completion-side). */
+export const ROWS_PER_BUNDLE = 6;
 
-/** An empty cron claim writes the claim-outcome snapshot row. */
-export const ROWS_PER_IDLE_TICK = 1;
+/** One lease beyond its bundle, worst case: per-job claim 3.8, attemptStarted 3, an in-lease 429
+ * retry (authorizeRetry 3 + a second attemptStarted 3), then a requeue completion ~11. A success
+ * with its consumption retire is ~13. */
+export const ROWS_PER_LEASE_WORST = 24;
+
+/** One job through scheduled cleanup: the purge_pending transition of a failed or aged job (2)
+ * plus confirmPurge's row delete (1). A client-retired completion (1 row) never reaches cleanup. */
+export const ROWS_PER_CLEANUP_JOB = 3;
 
 export const CRON_TICKS_PER_DAY = 1440;
-
-/**
- * The worst-case rows one UTC day can write under these caps: every admissible ingress unit,
- * every admissible lease at its one-job-bundle cost, a terminal retirement per lease, and every
- * tick idle. Maintenance (cancels, schema retries, route_failures upserts) is NOT modeled here --
- * it is what the gap between this and the platform's 100,000 exists to absorb.
- */
-export function projectedDailyRowsWritten({ maxIngressWriteUnits, maxLeases, maxPurgesPerDay = 0 }) {
-  return (
-    ROWS_PER_INGRESS_WRITE_UNIT * maxIngressWriteUnits +
-    ROWS_PER_LEASE_WORST * maxLeases +
-    ROWS_PER_TERMINAL_JOB * Math.max(maxLeases, maxPurgesPerDay) +
-    ROWS_PER_IDLE_TICK * CRON_TICKS_PER_DAY
-  );
-}
 
 /** Terminal jobs the scheduled cleanup can retire per UTC day. */
 export function cleanupCapacityPerDay({ cleanupIntervalMinutes, purgeBatchLimit }) {

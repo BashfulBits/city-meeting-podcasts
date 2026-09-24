@@ -28,6 +28,29 @@ Phase R (Research-Tool Surface)._
   guard now seeds an acked backlog and exercises ack/retire, and its estimator credits an in-order
   seek that stops at a bound `LIMIT`.
 
+- **LLM dispatch runs to the real daily DO row budget instead of worst-case caps**
+  (`workers/llm-dispatch-v2/src/`, `wrangler.jsonc`, `config/site_config.yml`, `citypods/`,
+  producer workflows). The coordinator now sums the billed rows it actually writes (each SQL
+  cursor's `rowsWritten`, persisted on scheduler writes it already makes) and gates on that total:
+  - *90,000* (`DO_ROWS_ENQUEUE_STOP`): new enqueues, schema retries, scheduled cleanup and
+    retention pruning stop; the rest of the day funds dispatch.
+  - *97,000* (`DO_ROWS_CLAIM_STOP`): no new leases. Starts below the requested 98,000 because the
+    DO's count can trail Cloudflare's by ~1.3% and cannot see Data Studio edits; raise it once the
+    counter has been compared against Cloudflare's analytics.
+  - *99,000* (`DO_ROWS_OPTIONAL_STOP`): acks, retires and cancels are refused too (all safe to
+    skip). In-flight completions, attempt fencing and polls are never refused.
+
+  The fixed daily lease cap (1,750) is gone as a working limit (`MAX_LEASES_PER_UTC_DAY` 7,000
+  backstop): a typical lease costs ~13 rows, not the ~24 a worst-case cap had to assume, so dispatch
+  no longer idles at half the budget. Ingress is bounded by a quota near real drain
+  (`MAX_JOBS_PER_UTC_DAY` 1,450 -> 4,000, `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 5,800 -> 18,000,
+  every `llm_lanes` reserved/daily budget x ~3.1, per-run caps unchanged) and a new pending cap,
+  `MAX_QUEUED_JOBS` 20,000 (`queue_full`). New read-only `GET /v2/ingress-status?purpose=` and
+  `python -m citypods.cli llm-ingress-status` report whether a lane is open; `build()` checks each
+  enabled lane at start and zeroes a closed lane's per-run cap, so no prompts are built for work the
+  Worker would refuse, while the run still applies already-completed results. Fails open. `daily_row_budget`/`queue_full` rejections defer like the
+  daily cap. Cleanup runs every 10 minutes (was 12). `/v2/stats` reports `row_budget`.
+
 - **Terminal-job cleanup drains as fast as dispatch can finish jobs**
   (`workers/llm-dispatch-v2/wrangler.jsonc`, `src/index.js`, `src/write_budget.js`).
   `CLEANUP_INTERVAL_MINUTES` 60 -> 12: 5 runs/hour x `PURGE_BATCH_LIMIT` 15 = 1,800 jobs/day, just

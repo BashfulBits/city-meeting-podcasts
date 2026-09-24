@@ -114,14 +114,15 @@ tournament:
 # counter). `daily_write_units` is that lane's hard daily ceiling; `reserved_write_units` is the
 # slice no other lane may consume. Reserved must sum to <= MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY;
 # `compile_llm_lanes.py` enforces that and the per-lane arithmetic below.
-# Rescaled 2026-09-23 to the MEASURED DO row-write budget (workers/llm-dispatch-v2/src/
-# write_budget.js): MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY fell 24,000 -> 5,800 because one write
-# unit is 3 BILLED rows and every admitted job also costs ~40 rows per dispatch attempt in the
-# Worker, which the old budget did not count. The account's 100,000 rows/day sustain ~1,300 LLM
-# jobs/day end to end, so lanes are sized to real flow and priority, not to their old headroom:
-# chapter-agenda gets the largest share (its output feeds the locator and tagger); reservations
-# total 3,780 of 5,800, leaving 2,020 shared. Per-lane comments below that cite the pre-rescale
-# budgets describe history, not today's values.
+# Rescaled 2026-09-23 to the MEASURED DO row-write budget, then raised 2026-09-24 when the
+# Worker moved to runtime row thresholds (workers/llm-dispatch-v2/src/write_budget.js): the daily
+# ingress quota is now sized near what dispatch can finish in a day (MAX_JOBS_PER_UTC_DAY 4,000,
+# MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY 5,800 -> 18,000), and every lane's reserved/daily budget
+# scaled by the same ~3.1x, so lane shares and priorities are unchanged (chapter-agenda keeps the
+# largest share; its output feeds the locator and tagger). Reservations total 11,720 of 18,000,
+# leaving 6,280 shared. Per-run caps are unchanged: each producer runs several times a day, and a
+# run's cap bounds its runtime, not the lane's daily throughput. Per-lane comments below that cite
+# older budgets describe history, not today's values.
 llm_lanes:
   # --- Production enrichment lanes (daily crons; these carry the catalog) ------------------
   chapter-agenda:
@@ -152,13 +153,14 @@ llm_lanes:
     # `server_error`, gated by MAX_5XX_RETRIES=1 (only 2 attempts) without that extension. Given
     # Nemotron's benchmarked ~97% success rate, a job needing 12 attempts is a genuine outlier.
     backup_after_attempts: 12
-    # Equal to what daily_write_units funds (2000 / 4 units per job). A higher run cap is not a
-    # harmless ceiling: the producer submits to it and the Worker rejects the surplus.
+    # Per-run share of the day: this lane runs every 2 hours, so 12 runs x 500 exceeds what
+    # daily_write_units funds (6200 / 4 units per job = 1,550). A run cap above the daily budget
+    # is not a harmless ceiling: the producer submits to it and the Worker rejects the surplus.
     # backup_models are not part of this per-job unit cost (see LaneConfig.ingress_write_units_per_job)
     # -- they're only ever indexed once a job's own attempts/schema_retry_count activate them.
     max_dispatches_per_run: 500
-    reserved_write_units: 1200
-    daily_write_units: 2000
+    reserved_write_units: 3720
+    daily_write_units: 6200
   chapter-locator:
     # Replaces citypods/chapter_locator.py:PRODUCTION_LOCATOR_MODEL. Gemini 3.5 Flash Lite is
     # reserved for this long-context workload and deliberately not shared with tagging; it stays
@@ -171,29 +173,29 @@ llm_lanes:
       - "gemini/gemini-3.5-flash-lite"
       - "deepseek/deepseek-v4-pro"
       - "moonshotai/kimi-k3"
-    # Run cap equal to what daily_write_units funds at 3 models (3 index rows + 3 bookkeeping
-    # rows = 6 units/job; 900/6 = 150); see
+    # Per-run share of what daily_write_units funds at 3 models (3 index rows + 3 bookkeeping
+    # rows = 6 units/job; 2790/6 = 465 a day over 12 runs); see
     # `LaneConfig.max_jobs_per_day`, which `parse_lanes` enforces this can never exceed.
     max_dispatches_per_run: 150
-    reserved_write_units: 600
-    daily_write_units: 900
+    reserved_write_units: 1860
+    daily_write_units: 2790
   topic-tags:tagger:
     # Keep tagging pinned to the stable/calibrated Gemini 3.1 route; it is the recipe and
     # calibration-matrix key. Mirrors the legacy `tagging.llm_models`.
     models: ["gemini/gemini-3.1-flash-lite"]
     max_dispatches_per_run: 300
-    reserved_write_units: 600
-    daily_write_units: 1200
+    reserved_write_units: 1860
+    daily_write_units: 3720
   topic-tags:prelabeler:
     # Mirrors the legacy `tagging.prelabeler.model`. Its own budget, NOT a share of the
     # tagger's -- this split is exactly what the old `topic-tags` key failed to express.
     models: ["google/gemma-4-31b-it"]
     max_dispatches_per_run: 300
-    reserved_write_units: 600
+    reserved_write_units: 1860
     # 300 jobs/day. Batches are sized to fit Google AI Studio's 10k-token Gemma ceiling (tags.py
     # prelabeler_batch_limits), so one episode may yield several jobs; the binding limit is the
     # account's DO row-write budget (see the note above `llm_lanes`), not Gemma's quota.
-    daily_write_units: 1200
+    daily_write_units: 3720
   topic-tags:prelabeler-shadow:
     # SHADOW evaluator (2026-09-23): gemma-4-26b-a4b-it runs the identical prelabeler prompt on the
     # same candidates as production, on its own free Gemini quota (a separate per-model pool from
@@ -205,7 +207,7 @@ llm_lanes:
     models: ["google/gemma-4-26b-a4b-it"]
     max_dispatches_per_run: 60
     reserved_write_units: 0
-    daily_write_units: 240
+    daily_write_units: 740
   r6-moments:
     # Mirrors the legacy `moments.llm_models`; the stage still filters this allowlist by
     # meeting family before dispatching. The two NVIDIA free routes at the end mirror
@@ -221,8 +223,8 @@ llm_lanes:
       - "deepseek/deepseek-v4-pro"
       - "moonshotai/kimi-k3"
     max_dispatches_per_run: 40
-    reserved_write_units: 270
-    daily_write_units: 540
+    reserved_write_units: 840
+    daily_write_units: 1680
   r6-judge:
     # Mirrors the legacy `moments.judges.models`.
     models:
@@ -231,8 +233,8 @@ llm_lanes:
       - "gemini/gemini-3.6-flash"
       - "openai/gpt-oss-120b"
     max_dispatches_per_run: 40
-    reserved_write_units: 210
-    daily_write_units: 420
+    reserved_write_units: 650
+    daily_write_units: 1300
   # --- Research lanes (bounded, manual or low-cadence; must not starve production) ---------
   tournament:tag:
     # Replaces citypods/tournament.py:MODELS. These are CONTESTANTS being compared, so the lane
@@ -250,17 +252,17 @@ llm_lanes:
     # One sample costs 4 candidate jobs here and 12 comparisons in `tournament:tag-judge`, so
     # the two budgets are split ~1:3 to let both fill on the same number of samples instead of
     # one lane capping the run while the other sits idle. Run caps equal what each daily budget
-    # funds (300 / 4 units per job = 75).
+    # funds per run (weekly; 930 / 4 units per job = 232 a day).
     max_dispatches_per_run: 75
-    reserved_write_units: 100
-    daily_write_units: 300
+    reserved_write_units: 310
+    daily_write_units: 930
   tournament:tag-judge:
     # Replaces citypods/tournament.py:JUDGE_MODEL. Must stay independent of every candidate
     # route above -- `_build_pairwise_judge_job` rejects a judge that is also a contestant.
     models: ["google/gemma-4-31b-it"]
     max_dispatches_per_run: 225
-    reserved_write_units: 200
-    daily_write_units: 900
+    reserved_write_units: 620
+    daily_write_units: 2790
   r5-benchmark:tag:
     # Replaces citypods/r5_benchmark.py:DEFAULT_TAGGER_MODELS. Compared, not pooled (see
     # tournament:tag). Manual-dispatch only, so it carries no reservation: it draws purely on
@@ -272,13 +274,13 @@ llm_lanes:
       - "zai/glm-4.7-flash"
     max_dispatches_per_run: 200
     reserved_write_units: 0
-    daily_write_units: 800
+    daily_write_units: 2480
   r5-benchmark:judge:
     # Replaces citypods/r5_benchmark.py:DEFAULT_PRELABELER_MODEL in its judge role.
     models: ["google/gemma-4-31b-it"]
     max_dispatches_per_run: 200
     reserved_write_units: 0
-    daily_write_units: 800
+    daily_write_units: 2480
 # Purposes deliberately absent from `llm_lanes`, because neither reaches the v2 ingress Worker:
 #   `topic-tags:rules`  -- rule-engine bookkeeping recorded via `remember_call_attempt` with a
 #                          `rule:<version>` pseudo-model; no LLM call is ever made.

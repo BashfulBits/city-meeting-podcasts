@@ -3767,3 +3767,25 @@ def test_tag_lane_pre_filter_keeps_episodes_with_pending_shadow_prelabels(tmp_pa
         processed(tag_prelabeler_shadow_max_dispatches=1, tag_prelabeler_shadow_dispatches_count=1)
         == []
     )
+
+
+def test_closed_llm_lanes_checks_only_enabled_lanes(monkeypatch):
+    """The run-level ingress preflight asks the Worker about each enabled lane and reports the
+    closed ones, whose per-run caps build() then zeroes."""
+    import citypods.compute.llm as llm
+    from citypods import run as run_module
+
+    asked = []
+
+    def fake_open(purpose, *, backend=None):
+        asked.append(purpose)
+        if purpose == "chapter-agenda":
+            return False, {"open": False, "reasons": ["daily_row_budget"]}
+        return True, {"open": True, "reasons": []}
+
+    monkeypatch.setattr(llm, "dispatch_v2_ingress_open", fake_open)
+    closed = run_module._closed_llm_lanes(
+        {"chapter-agenda": True, "chapter-locator": True, "r6-moments": False}
+    )
+    assert closed == {"chapter-agenda"}
+    assert asked == ["chapter-agenda", "chapter-locator"]

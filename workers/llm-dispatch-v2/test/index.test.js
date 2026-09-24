@@ -23,7 +23,7 @@ function createMockEnv(overrides = {}) {
     MAX_BUNDLES_PER_UTC_DAY: "1000",
     MAX_CONCURRENT_ROUTE_LANES: "5",
     MAX_JOBS_PER_UTC_DAY: "5000",
-    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "5800",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "18000",
     ENQUEUE_BATCH_MAX: "1000",
     POLL_BATCH_MAX: "1000",
     ...overrides,
@@ -98,12 +98,14 @@ test("validateConfig rejects a CLEANUP_INTERVAL_MINUTES that does not evenly div
   // 7 fires at :00, :07, ..., :56, then wraps to :00 -- a 4-minute gap, not the claimed 7-minute
   // cadence. Only divisors of 60 repeat an identical, evenly-spaced pattern every hour.
   assert.throws(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "7" })));
-  // Divisors are accepted when their cleanup capacity still keeps up with the lease cap (and fits
-  // the row budget): 20 -> 1,080 jobs/day, 12 -> 1,800.
+  // Divisors are accepted: 20 -> 1,080 jobs/day, 12 -> 1,800, 10 -> 2,160.
   assert.doesNotThrow(() =>
     validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "20", MAX_LEASES_PER_UTC_DAY: "1000" }))
   );
-  assert.doesNotThrow(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "12" })));
+  assert.doesNotThrow(() =>
+    validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "12", MAX_LEASES_PER_UTC_DAY: "1800" }))
+  );
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "10" })));
 });
 
 test("validateConfig rejects a PURGE_BATCH_LIMIT that would exceed the 50-subrequest Free ceiling", () => {
@@ -367,6 +369,28 @@ test("GET /v2/stats requires auth and returns the bounded snapshot by default", 
   assert.equal(body.queued_by_model, undefined);
 });
 
+test("GET /v2/ingress-status requires auth and reports the admission preflight", async () => {
+  const env = createMockEnv();
+  const unauthRes = await worker.fetch(
+    new Request("http://localhost/v2/ingress-status?purpose=chapter-agenda"),
+    env
+  );
+  assert.equal(unauthRes.status, 401);
+
+  const res = await worker.fetch(
+    new Request("http://localhost/v2/ingress-status?purpose=chapter-agenda", {
+      headers: { authorization: "Bearer secret-token" },
+    }),
+    env
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.purpose, "chapter-agenda");
+  assert.equal(typeof body.open, "boolean");
+  assert.ok(Array.isArray(body.reasons));
+  assert.ok(body.row_budget && Number.isFinite(body.row_budget.rows_written_today));
+});
+
 test("GET /v2/stats makes historical diagnostics explicit and clamps their limit", async () => {
   const env = createMockEnv();
   const call = async (qs) =>
@@ -392,62 +416,59 @@ test("the committed wrangler.jsonc vars pass validateConfig", async () => {
     .join("\n");
   const { vars } = JSON.parse(stripped);
   assert.equal(vars.DISPATCH_WINDOW_SECONDS, "30");
-  // The committed caps' worst case must fit the DO row-write budget with maintenance headroom.
-  const { projectedDailyRowsWritten } = await import("../src/write_budget.js");
-  const { cleanupCapacityPerDay } = await import("../src/write_budget.js");
-  const purges = cleanupCapacityPerDay({
-    cleanupIntervalMinutes: Number(vars.CLEANUP_INTERVAL_MINUTES),
-    purgeBatchLimit: Number(vars.PURGE_BATCH_LIMIT),
-  });
-  assert.equal(purges, 1800);
-  assert.ok(purges >= Number(vars.MAX_LEASES_PER_UTC_DAY), "cleanup keeps up with dispatch");
-  const projected = projectedDailyRowsWritten({
-    maxIngressWriteUnits: Number(vars.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY),
-    maxLeases: Number(vars.MAX_LEASES_PER_UTC_DAY),
-    maxPurgesPerDay: purges,
-  });
-  assert.equal(projected, 89140);
-  assert.ok(projected <= Number(vars.DO_ROWS_WRITTEN_DAILY_BUDGET));
-  assert.ok(Number(vars.DO_ROWS_WRITTEN_DAILY_BUDGET) < 100000, "leave platform headroom");
+  // The daily row thresholds rise enqueue <= claim <= optional, under the platform limit, and a
+  // full day of admitted ingress fits under the enqueue threshold on its own.
+  const { DO_ROWS_WRITTEN_PLATFORM_LIMIT, ROWS_PER_INGRESS_WRITE_UNIT } = await import(
+    "../src/write_budget.js"
+  );
+  assert.equal(vars.DO_ROWS_ENQUEUE_STOP, "90000");
+  assert.equal(vars.DO_ROWS_CLAIM_STOP, "97000");
+  assert.equal(vars.DO_ROWS_OPTIONAL_STOP, "99000");
+  assert.ok(Number(vars.DO_ROWS_OPTIONAL_STOP) < DO_ROWS_WRITTEN_PLATFORM_LIMIT);
+  assert.ok(
+    ROWS_PER_INGRESS_WRITE_UNIT * Number(vars.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY) <=
+      Number(vars.DO_ROWS_ENQUEUE_STOP)
+  );
   assert.equal(vars.ESTIMATED_CALL_DURATION_CEILING_SECONDS, "2");
   assert.doesNotThrow(() => validateConfig(createMockEnv({ ...vars })));
 });
 
 
-test("validateConfig refuses caps whose worst case exceeds the DO row-write budget", () => {
-  // 1,750 leases already use 70,000 of the 90,000 rows; 8,000 more ingress units (24,000 rows)
-  // push the worst case to 95,440.
+test("validateConfig requires ordered daily row thresholds under the platform limit", () => {
+  assert.doesNotThrow(() => validateConfig(createMockEnv()));
+  // Claims must not stop before enqueues, nor optional writes before claims.
   assert.throws(
-    () => validateConfig(createMockEnv({ MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "8000" })),
-    /exceeds DO_ROWS_WRITTEN_DAILY_BUDGET/
+    () => validateConfig(createMockEnv({ DO_ROWS_ENQUEUE_STOP: "98000", DO_ROWS_CLAIM_STOP: "97000" })),
+    /DO_ROWS_ENQUEUE_STOP/
   );
+  assert.throws(
+    () => validateConfig(createMockEnv({ DO_ROWS_CLAIM_STOP: "99500", DO_ROWS_OPTIONAL_STOP: "99000" })),
+    /DO_ROWS_ENQUEUE_STOP/
+  );
+  // Nothing may be allowed to reach the platform's own cutoff.
+  assert.throws(
+    () => validateConfig(createMockEnv({ DO_ROWS_OPTIONAL_STOP: "100000" })),
+    /below the platform/
+  );
+  assert.throws(() => validateConfig(createMockEnv({ DO_ROWS_CLAIM_STOP: "abc" })));
+});
+
+test("validateConfig keeps a full day of ingress under the enqueue threshold", () => {
+  // 2 rows per unit: 40,000 units could write 80,000 rows, past a 70,000 enqueue stop.
   assert.throws(
     () =>
       validateConfig(
-        createMockEnv({ MAX_LEASES_PER_UTC_DAY: "2500", CLEANUP_INTERVAL_MINUTES: "6" })
+        createMockEnv({ MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "40000", DO_ROWS_ENQUEUE_STOP: "70000" })
       ),
-    /exceeds DO_ROWS_WRITTEN_DAILY_BUDGET/
+    /past DO_ROWS_ENQUEUE_STOP/
   );
-  // A cleanup cadence far faster than dispatch needs is itself a write-budget risk: a backlog of
-  // terminal jobs drains at that rate (every 6 min x 15 = 3,600 jobs/day x 6 rows).
-  assert.throws(
-    () => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "6" })),
-    /exceeds DO_ROWS_WRITTEN_DAILY_BUDGET/
-  );
-  assert.throws(() => validateConfig(createMockEnv({ MAX_LEASES_PER_UTC_DAY: "0" })));
   assert.doesNotThrow(() =>
-    validateConfig(createMockEnv({ MAX_LEASES_PER_UTC_DAY: "1000", MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "5800" }))
+    validateConfig(createMockEnv({ MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "18000" }))
   );
 });
 
-
-test("validateConfig refuses a cleanup cadence that cannot keep up with the lease cap", () => {
-  // Hourly x 15 = 360/day, far below 1,750 leases/day.
-  assert.throws(
-    () => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "60", PURGE_BATCH_LIMIT: "15" })),
-    /cleanup retires at most 360 jobs\/day/
-  );
-  assert.doesNotThrow(() =>
-    validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "12", PURGE_BATCH_LIMIT: "15" }))
-  );
+test("validateConfig bounds MAX_QUEUED_JOBS", () => {
+  assert.throws(() => validateConfig(createMockEnv({ MAX_QUEUED_JOBS: "0" })));
+  assert.throws(() => validateConfig(createMockEnv({ MAX_QUEUED_JOBS: "200000" })));
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ MAX_QUEUED_JOBS: "20000" })));
 });

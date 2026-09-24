@@ -20,12 +20,16 @@ export function createMockSqlStorage() {
         const stmt = db.prepare(query);
         return stmt.all(...params);
       }
+      // Workers' cursors report rowsWritten (billed rows, index entries included); SQLite's
+      // `changes` (table rows only) is a close-enough stand-in for the coordinator's row counter.
+      const result = [];
       if (params.length > 0) {
-        db.prepare(query).run(...params);
+        result.rowsWritten = Number(db.prepare(query).run(...params).changes) || 0;
       } else {
         db.exec(query);
+        result.rowsWritten = 0;
       }
-      return [];
+      return result;
     },
   };
 
