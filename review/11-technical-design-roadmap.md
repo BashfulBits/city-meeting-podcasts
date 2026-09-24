@@ -980,6 +980,11 @@ each written by exactly one lane, so no shared file is ever read-modify-written 
 2026-06-16 foreign-block-preserving merge (review/12 §H6) closes the cross-lane clobber but leaves a tiny
 re-read→upload TOCTOU window; this split removes the shared file entirely and pairs naturally with the
 diarization lane. Sequence after the `diarize` lane lands so the file set is defined once.
+**Source-grounded financial and contract analysis (GH#1839, L0).** A future opt-in
+`financial_analysis` task may use a reviewed domain model such as Ling-3.0-flash-Fin for fiscal,
+budget, procurement, and contract analysis. It must be source-grounded, auditable, and explicitly
+separate from general civic summarization; it does not provide legal, investment, or procurement
+advice. Define task-specific evaluation and human-review thresholds before promotion.
 **Deleted:** #5 NER (the city's own document search is better ground truth).
 
 ---

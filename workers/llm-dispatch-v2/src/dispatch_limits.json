@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 62,
+    "routes_count": 61,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -1937,35 +1937,6 @@
       "upstream_429_default": "upstream_capacity",
       "structured_output_schema_strip_keys": []
     },
-    "nvidia_riva_translate_4b_instruct_v2_free": {
-      "route_id": "nvidia_riva_translate_4b_instruct_v2_free",
-      "model": "nvidia/riva-translate-4b-instruct-v2",
-      "provider": "nvidia",
-      "upstream_model": "nvidia/riva-translate-4b-instruct-v2",
-      "input_context_limit": 32768,
-      "output_context_limit": 8192,
-      "hard_input_ceiling": 8192,
-      "input_token_ratio": null,
-      "account_id": "primary",
-      "rpm": 4,
-      "rpd": null,
-      "tpm": 36000,
-      "concurrency": 4,
-      "request_start_margin_seconds": null,
-      "free": true,
-      "input_per_token": 0.0,
-      "output_per_token": 0.0,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": "2026-09-12",
-      "observed_rpm": null,
-      "observed_burst": 5,
-      "observed_input_ceiling": 8192,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_schema_strip_keys": []
-    },
     "orcarouter_deepseek_v4_flash_free": {
       "route_id": "orcarouter_deepseek_v4_flash_free",
       "model": "deepseek/deepseek-v4-flash",
@@ -2224,9 +2195,6 @@
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": [
       "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free"
     ],
-    "nvidia/riva-translate-4b-instruct-v2": [
-      "nvidia_riva_translate_4b_instruct_v2_free"
-    ],
     "deepseek/deepseek-v4-flash": [
       "orcarouter_deepseek_v4_flash_free",
       "nvidia_deepseek_v4_1_flash_free"
@@ -2320,8 +2288,6 @@
     "nvidia/nvidia/nemotron-3-super-120b-a12b": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
     "nvidia/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
-    "nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
-    "nvidia/nvidia/riva-translate-4b-instruct-v2": "nvidia/riva-translate-4b-instruct-v2",
     "deepseek/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
     "orcarouter/deepseek/deepseek-v4-flash-free": "deepseek/deepseek-v4-flash",
     "tencent/hy3-free": "tencent/hy3",
