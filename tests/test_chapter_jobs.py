@@ -597,7 +597,10 @@ def test_an_outline_reference_the_agenda_contradicts_falls_back_to_the_source_la
 
 
 def test_quote_marks_do_not_decide_whether_a_quote_is_grounded():
-    agenda = 'Review of cases on Today\u2019s Agenda\nInstall 8" round wooden columns\n'
+    agenda = (
+        'Review of cases on Today\u2019s Agenda\nInstall 8" round wooden columns\n'
+        'Rezone from: "MU-1" Low Intensity Mixed Use\n'
+    )
     artifact = _finalize(
         agenda,
         [
@@ -613,9 +616,17 @@ def test_quote_marks_do_not_decide_whether_a_quote_is_grounded():
                 "line_start": 2,
                 "line_end": 2,
             },
+            {
+                # A closing single quote next to a word must not glue the words together.
+                "title": "Rezoning",
+                "evidence_quote": "Rezone from: 'MU-1' Low Intensity Mixed Use",
+                "line_start": 3,
+                "line_end": 3,
+            },
         ],
     )
-    assert len(artifact.items) == 2
+    assert len(artifact.items) == 3
+    assert artifact.diagnostics["dropped_item_count"] == 0
 
 
 def test_a_repeated_item_is_dropped_not_fatal():

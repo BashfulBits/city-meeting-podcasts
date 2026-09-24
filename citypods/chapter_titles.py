@@ -245,9 +245,11 @@ def _normalized_source_text(value: str) -> str:
 
 
 # Quote and prime marks carry no grounding information, but models routinely normalize them (a
-# straight `today's` quoting a curly `today’s`) or drop them (`8 round` for `8" round`). They are
-# removed from both sides of every evidence comparison; the stored evidence keeps the source text.
-_QUOTE_MARKS = str.maketrans({mark: None for mark in "'\"`‘’‚‛“”„‟′″‴"})
+# straight `today's` quoting a curly `today’s`, `'MU-1'` quoting `"MU-1"`) or drop them (`8 round`
+# for `8" round`). Both sides of every evidence comparison turn them into spaces -- not deletions,
+# which would glue a closing quote's neighbours (`'MU-1' Low` -> `mu-1low`) differently from the
+# source's -- and the stored evidence keeps the source text.
+_QUOTE_MARKS = str.maketrans({mark: " " for mark in "'\"`‘’‚‛“”„‟′″‴"})
 
 
 def _evidence_comparison_text(value: str) -> str:
