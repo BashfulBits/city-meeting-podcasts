@@ -571,23 +571,29 @@ def _numbered_item(n, **overrides):
     }
 
 
-def test_a_composed_reference_is_replaced_by_the_source_reference_not_rejected():
-    # Models label a sub-item with its section path (`4.A`) although the source line reads `A.`.
+def _outline_item(display_ref):
+    return {
+        "display_ref": display_ref,
+        "title": "Outdoor burning",
+        "evidence_quote": "Outdoor burning in the county",
+        "line_start": 2,
+        "line_end": 2,
+    }
+
+
+def test_a_composed_outline_reference_the_agenda_confirms_is_kept():
+    # The line reads `A.` under section `4.`; the model's `4.A` is the item's real position --
+    # and how providers name the chapter ("Item 4A") -- so it is kept, not rejected.
     agenda = "4. Items from the Commissioners Court\n  A. Outdoor burning in the county\n"
-    artifact = _finalize(
-        agenda,
-        [
-            {
-                "display_ref": "4.A",
-                "title": "Outdoor burning",
-                "evidence_quote": "Outdoor burning in the county",
-                "line_start": 2,
-                "line_end": 2,
-            }
-        ],
-    )
-    assert [item.display_ref for item in artifact.items] == ["A."]
+    artifact = _finalize(agenda, [_outline_item("4.A")])
+    assert [item.display_ref for item in artifact.items] == ["4.A"]
     assert artifact.items[0].source == "recovery"
+
+
+def test_an_outline_reference_the_agenda_contradicts_falls_back_to_the_source_label():
+    agenda = "4. Items from the Commissioners Court\n  A. Outdoor burning in the county\n"
+    artifact = _finalize(agenda, [_outline_item("7.A")])  # no `7.` anywhere above
+    assert [item.display_ref for item in artifact.items] == ["A."]
 
 
 def test_quote_marks_do_not_decide_whether_a_quote_is_grounded():

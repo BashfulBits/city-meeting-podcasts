@@ -804,6 +804,43 @@ def _is_outline_reference(reference: object) -> bool:
     return isinstance(reference, str) and bool(_OUTLINE_REFERENCE_RE.match(reference.strip()))
 
 
+def _outline_marker_at(line: str, segment: str) -> bool:
+    """True when *line* starts with the outline marker *segment* (`3.`, `a)`, `(iv)`, `II.`)."""
+    return bool(re.match(rf"^\s*\(?{re.escape(segment)}\s*[.):]", line, flags=re.IGNORECASE))
+
+
+def _outline_reference_in_source(
+    reference: object, lines: Sequence[str], *, line_start: int, line_end: int
+) -> bool:
+    """Whether a composed outline reference matches the agenda's own outline.
+
+    The last segment must mark a line of the item's span (or the marker line just above it); each
+    earlier segment must mark the nearest preceding line with that marker, in order. `3.a` is thus
+    confirmed for `a. Approve minutes` under `3. Consent items`, and refused when no `3.` precedes.
+    """
+    if not _is_outline_reference(reference):
+        return False
+    assert isinstance(reference, str)
+    segments = [s for s in re.split(r"[.()\s]+", reference.strip()) if s]
+    if not segments:
+        return False
+    first = max(1, line_start - 1)
+    position = next(
+        (n for n in range(first, line_end + 1) if _outline_marker_at(lines[n - 1], segments[-1])),
+        None,
+    )
+    if position is None:
+        return False
+    for segment in reversed(segments[:-1]):
+        position = next(
+            (n for n in range(position - 1, 0, -1) if _outline_marker_at(lines[n - 1], segment)),
+            None,
+        )
+        if position is None:
+            return False
+    return True
+
+
 def _recovery_resolve_reference(
     reference: object,
     lines: Sequence[str],
@@ -917,8 +954,16 @@ def recover_agenda_item_extractor_response(
             # left unresolved as before: it names a specific record and is not re-derived.
             if not _is_outline_reference(raw_item.display_ref):
                 continue
-            kind = "derived"
-            method += "+derived-reference"
+            if _outline_reference_in_source(
+                raw_item.display_ref, lines, line_start=line_start, line_end=line_end
+            ):
+                # `3.a` for a line marked `a.` under the nearest `3.` above: the model composed
+                # the item's real outline position, which is exactly how providers name chapters
+                # ("Item 3A"), so the label is kept.
+                method += "+outline-reference"
+            else:
+                kind = "derived"
+                method += "+derived-reference"
         if matched_prefix_lines:
             line_start = min(line_start, *matched_prefix_lines)
             method += "+hierarchical-prefix"
