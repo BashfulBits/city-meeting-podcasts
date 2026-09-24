@@ -198,9 +198,9 @@ def test_vtt_parser_accepts_cue_settings_and_quote_padding():
 
 
 def test_judges_are_free_only_and_clips_are_recipe_addressed():
-    policy = judge_policy(["zai/glm-4.7-flash"])
+    policy = judge_policy(["qwen/qwen3.8-27b"])
     assert policy.allow_paid is False
-    assert policy.allowed_models == ("zai/glm-4.7-flash",)
+    assert policy.allowed_models == ("qwen/qwen3.8-27b",)
     source_a = video_clip_key("episode", 10, 20, "timeline", source_identity="source-a")
     assert source_a != video_clip_key(
         "episode", 10, 20, "changed-timeline", source_identity="source-a"

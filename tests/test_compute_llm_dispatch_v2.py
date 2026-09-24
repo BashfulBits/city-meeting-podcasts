@@ -968,7 +968,7 @@ def test_poll_batch_classifies_an_upstream_error_passthrough_distinctly():
     )
 
     config = LLMBackendConfig(
-        model="mistral/mistral-medium-latest",
+        model="mistral/codestral-2508",
         dispatch_v2_url="https://dispatch-v2.example.com",
     )
     backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)

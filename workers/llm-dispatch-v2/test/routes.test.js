@@ -12,7 +12,7 @@ function eligibleMistralRoutes(inputTokens, outputTokens) {
   return routesEligibleFor(
     {
       policy_json: JSON.stringify({
-        allowed_models: ["mistral/mistral-medium-latest"],
+        allowed_models: ["mistral/codestral-2508"],
         allow_paid: false,
       }),
       input_token_estimate: inputTokens,
@@ -22,21 +22,18 @@ function eligibleMistralRoutes(inputTokens, outputTokens) {
   ).filter((route) => route.provider === "mistral");
 }
 
-test("all native Mistral Medium latest routes admit a request within context limit", () => {
-  // primary + secondary + tertiary (the maintainer's third, non-payment-limited key, 2026-09-12).
+// Codestral is the one Mistral family this account's plan provisions (Medium/Large/Small were
+// removed 2026-09-24); its native routes span the primary and secondary accounts.
+test("all native Mistral Codestral routes admit a request within its input ceiling", () => {
   const routes = eligibleMistralRoutes(120000, 8000);
   assert.deepEqual(
     routes.map((route) => route.route_id),
-    [
-      "mistral_medium_latest_primary",
-      "mistral_medium_latest_secondary",
-      "mistral_medium_latest_tertiary",
-    ],
+    ["mistral_codestral_2508_primary", "mistral_codestral_2508_secondary"],
   );
 });
 
-test("native Mistral Medium latest routes reject input plus output above context limit", () => {
-  assert.deepEqual(eligibleMistralRoutes(131073, 1000), []);
+test("native Mistral Codestral routes reject input above their hard input ceiling", () => {
+  assert.deepEqual(eligibleMistralRoutes(249028, 1000), []);
 });
 
 test("paused rpd:0 routes are excluded before free/paid admission", () => {
@@ -251,14 +248,11 @@ test("a route serving several pools reports its primary model, not the first poo
   assert.equal(modelForRouteId("orca", catalog), "deepseek/deepseek-v4-flash");
 });
 
-test("the compiled catalog puts NVIDIA deepseek-v4.1-flash in all three DeepSeek pools", () => {
+test("the compiled catalog has one pool per DeepSeek version (2026-09-24)", () => {
   const map = DISPATCH_LIMITS.model_routes_map;
   assert.deepEqual(map["deepseek/deepseek-v4.1-flash"], ["nvidia_deepseek_v4_1_flash_free"]);
-  assert.deepEqual(map["deepseek/deepseek-v4-pro"], ["nvidia_deepseek_v4_1_flash_free"]);
-  assert.deepEqual(
-    [...map["deepseek/deepseek-v4-flash"]].sort(),
-    ["nvidia_deepseek_v4_1_flash_free", "orcarouter_deepseek_v4_flash_free"]
-  );
+  assert.deepEqual(map["deepseek/deepseek-v4-flash"], ["orcarouter_deepseek_v4_flash_free"]);
+  assert.equal(map["deepseek/deepseek-v4-pro"], undefined);
   assert.equal(
     modelForRouteId("nvidia_deepseek_v4_1_flash_free", DISPATCH_LIMITS),
     "deepseek/deepseek-v4.1-flash"

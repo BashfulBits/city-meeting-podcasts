@@ -17,6 +17,26 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **LLM lane capacity and route cleanup** (`config/provider_limits.yml`, `config/site_config.yml`,
+  `citypods/moments.py`, regenerated catalogs; 2026-09-24 capacity review under review/48).
+  - *DeepSeek:* one pool name per version. `deepseek/deepseek-v4-flash` is now OrcaRouter's v4
+    only and `deepseek/deepseek-v4.1-flash` NVIDIA's v4.1 only; the `deepseek-v4-pro` alias is
+    retired. chapter-locator (lighter primary) overflows to v4 (800/day, 1M context), r6-moments
+    (stronger primaries) to v4.1; the tournament scores v4 and v4.1 as separate contestants.
+  - *Tagger:* Kilo `step-3.7-flash` and OrcaRouter v4 added as throughput models after the
+    pinned Gemini 3.1 Flash Lite (recipe/calibration key unchanged); they also take transcripts
+    above Gemini's input ceiling. Daily write budget raised to keep 930 jobs/day.
+  - *r6-moments:* Gemini 3.8/3.7 Flash added (independent 20/day pools; 3.6/3.5 ran out by
+    midday). The council model list is part of the moments recipe hash, so **council moments are
+    re-generated** (approved backfill).
+  - *r6-judge:* glm-4.7-flash and gpt-oss-120b removed; gemma-4-26b-a4b-it joins the panel as its
+    own calibrated judge. gemma-4-26b removed from `tournament:tag` and `r5-benchmark:tag` (its
+    10k-token ceiling cannot take tagging inputs).
+  - *Dead routes removed:* 21 Mistral routes blocked by the account's plan, the unused Mistral
+    tertiary account (its key was never set on the Workers), and the paused SambaNova Llama 3.3
+    route. The v1 Worker's advertised default moves from Mistral Large to Codestral 2508.
+  - No pipeline version change; council moments re-run through their recipe hash.
+
 - **Removed the Airforce `kimi-k2.7-code` route** (`config/provider_limits.yml`, regenerated
   catalogs). It stopped being free: a canary under the v2 dispatch pause on 2026-09-24 returned 402
   "requires an active subscription or a positive Pay-as-you-Go balance". No lane referenced it. No

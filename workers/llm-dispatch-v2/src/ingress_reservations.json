@@ -24,7 +24,7 @@
       "daily_write_units": 2790,
       "models": [
         "gemini/gemini-3.5-flash-lite",
-        "deepseek/deepseek-v4-pro",
+        "deepseek/deepseek-v4-flash",
         "moonshotai/kimi-k3"
       ],
       "backup_models": [],
@@ -48,7 +48,6 @@
       "daily_write_units": 2480,
       "models": [
         "gemini/gemini-3.1-flash-lite",
-        "google/gemma-4-26b-a4b-it",
         "zai/glm-4.7-flash"
       ],
       "backup_models": [],
@@ -61,30 +60,31 @@
       "daily_write_units": 1300,
       "models": [
         "qwen/qwen3.8-27b",
-        "zai/glm-4.7-flash",
         "gemini/gemini-3.6-flash",
-        "openai/gpt-oss-120b"
+        "google/gemma-4-26b-a4b-it"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
-      "write_units_per_job": 7
+      "write_units_per_job": 6
     },
     "r6-moments": {
       "reserved_write_units": 840,
-      "daily_write_units": 1680,
+      "daily_write_units": 2046,
       "models": [
+        "gemini/gemini-3.8-flash",
+        "gemini/gemini-3.7-flash",
         "gemini/gemini-3.6-flash",
         "gemini/gemini-3.5-flash",
         "gemini/gemini-3.5-flash-lite",
         "gemini/gemini-3.1-flash-lite",
-        "deepseek/deepseek-v4-pro",
+        "deepseek/deepseek-v4.1-flash",
         "moonshotai/kimi-k3"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
-      "write_units_per_job": 9
+      "write_units_per_job": 11
     },
     "topic-tags:prelabeler": {
       "reserved_write_units": 1860,
@@ -110,14 +110,16 @@
     },
     "topic-tags:tagger": {
       "reserved_write_units": 1860,
-      "daily_write_units": 3720,
+      "daily_write_units": 5580,
       "models": [
-        "gemini/gemini-3.1-flash-lite"
+        "gemini/gemini-3.1-flash-lite",
+        "kilo/stepfun/step-3.7-flash:free",
+        "deepseek/deepseek-v4-flash"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
-      "write_units_per_job": 4
+      "write_units_per_job": 6
     },
     "tournament:tag": {
       "reserved_write_units": 310,
@@ -125,8 +127,8 @@
       "models": [
         "gemini/gemini-3.1-flash-lite",
         "deepseek/deepseek-v4.1-flash",
-        "zai/glm-4.7-flash",
-        "google/gemma-4-26b-a4b-it"
+        "deepseek/deepseek-v4-flash",
+        "zai/glm-4.7-flash"
       ],
       "backup_models": [],
       "backup_after_attempts": null,

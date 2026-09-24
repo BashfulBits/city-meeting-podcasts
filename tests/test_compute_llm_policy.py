@@ -44,10 +44,16 @@ def test_policy_and_route_dataclasses_and_token_estimate():
 
 
 def test_generated_catalog_deduplicates_logical_models_across_direct_routes():
-    # Groq stopped serving llama-3.3-70b-versatile and the paid OpenRouter route was removed;
-    # the only remaining catalog entry is the paused SambaNova route.
-    candidates = ROUTE_CANDIDATES["meta-llama/llama-3.3-70b-instruct"]
-    assert {candidate.provider for candidate in candidates} == {"sambanova"}
+    # One logical model, five physical routes across four providers (the llama-3.3 example this
+    # test used was removed with its last, paused route on 2026-09-24).
+    candidates = ROUTE_CANDIDATES["google/gemma-4-31b-it"]
+    assert {candidate.provider for candidate in candidates} == {
+        "gemini",
+        "sambanova",
+        "openrouter",
+        "nvidia",
+    }
+    assert len({candidate.route_id for candidate in candidates}) == len(candidates)
     assert all(set(candidate.transports) == {"direct", "llm-dispatch"} for candidate in candidates)
     assert all(candidate.route_id and candidate.direct_model for candidate in candidates)
 
@@ -57,16 +63,13 @@ def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
     # on a misdiagnosis -- the 404s were NOT NVIDIA-side model gating but a custom-provider path
     # mismatch in Cloudflare AI Gateway (see config/provider_limits.yml's `nvidia` block). Restored
     # once the path fix was verified end-to-end against the live gateway. Paid routes are absent.
+    # One pool name per DeepSeek version (2026-09-24): v4 is OrcaRouter only, v4.1 NVIDIA only,
+    # and the old `v4-pro` alias pool is retired.
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
-    assert {candidate.provider for candidate in deepseek} == {"nvidia", "orcarouter"}
+    assert {candidate.provider for candidate in deepseek} == {"orcarouter"}
     assert canonical_model("orcarouter/deepseek-v4-flash") == "deepseek/deepseek-v4-flash"
     assert MODEL_ALIASES["nvidia/deepseek-v4.1-flash"] == "deepseek/deepseek-v4.1-flash"
-    # also_serves: the same physical NVIDIA route is a candidate in the v4-pro and exact v4.1
-    # pools, while OrcaRouter stays only in the pooled v4-flash name.
-    assert canonical_model("deepseek/deepseek-v4-pro") == "deepseek/deepseek-v4-pro"
-    assert [route.route_id for route in ROUTE_CANDIDATES["deepseek/deepseek-v4-pro"]] == [
-        "nvidia_deepseek_v4_1_flash_free"
-    ]
+    assert "deepseek/deepseek-v4-pro" not in ROUTE_CANDIDATES
     assert [route.route_id for route in ROUTE_CANDIDATES["deepseek/deepseek-v4.1-flash"]] == [
         "nvidia_deepseek_v4_1_flash_free"
     ]
@@ -100,8 +103,8 @@ def test_generated_catalog_includes_observed_characterization_fields() -> None:
     assert groq.observed_input_ceiling == 7125
     assert groq.hard_input_ceiling == 7125
 
-    medium = next((r for r in routes if r.route_id == "mistral_medium_latest_primary"), None)
-    assert medium is not None
-    assert medium.observed_on == "2026-09-09"
-    assert medium.observed_burst == 0
-    assert medium.upstream_429_default == "upstream_capacity"
+    codestral = next((r for r in routes if r.route_id == "mistral_codestral_2508_primary"), None)
+    assert codestral is not None
+    assert codestral.observed_on == "2026-09-12"
+    assert codestral.observed_burst == 40
+    assert codestral.observed_input_ceiling == 249027

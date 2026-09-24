@@ -165,13 +165,14 @@ llm_lanes:
     # Replaces citypods/chapter_locator.py:PRODUCTION_LOCATOR_MODEL. Gemini 3.5 Flash Lite is
     # reserved for this long-context workload and deliberately not shared with tagging; it stays
     # `models[0]` (the recipe/calibration key -- see chapter_locator.py's own docstring on why
-    # changing it re-queues the whole locator catalog). The two overflow models are free NVIDIA
-    # routes with no verified hard per-request ceiling (confirmed live -- see `hard_input_ceiling`
-    # in config/provider_limits.yml), added so a full-transcript job too large for Gemini's real
-    # free-tier ceiling has somewhere to go instead of a guaranteed 429.
+    # changing it re-queues the whole locator catalog). The two overflow models take full-transcript
+    # jobs too large for Gemini's real free-tier ceiling. OrcaRouter's DeepSeek v4 (AA 34.3, 800/day,
+    # 1M context) replaced NVIDIA's v4.1 here on 2026-09-24: this lane's primary is a lighter model,
+    # so the higher-capacity v4 pool is the better overflow; v4.1 is kept for r6-moments, whose
+    # primaries score higher. kimi-k3 is latency-bound (~590 s calls on one slot, ~146/day).
     models:
       - "gemini/gemini-3.5-flash-lite"
-      - "deepseek/deepseek-v4-pro"
+      - "deepseek/deepseek-v4-flash"
       - "moonshotai/kimi-k3"
     # Per-run share of what daily_write_units funds at 3 models (3 index rows + 3 bookkeeping
     # rows = 6 units/job; 2790/6 = 465 a day over 12 runs); see
@@ -181,11 +182,18 @@ llm_lanes:
     daily_write_units: 2790
   topic-tags:tagger:
     # Keep tagging pinned to the stable/calibrated Gemini 3.1 route; it is the recipe and
-    # calibration-matrix key. Mirrors the legacy `tagging.llm_models`.
-    models: ["gemini/gemini-3.1-flash-lite"]
+    # calibration-matrix key (models[0]). The two additional models (2026-09-24) are throughput
+    # spill onto independent free pools and take the largest transcripts Gemini's ceiling cannot
+    # (Kilo step-3.7-flash: AA 19.5, 200/day, 249k; OrcaRouter DeepSeek v4: AA 34.3, 800/day, 1M).
+    # Each answer records the model that produced it, so calibration stays keyed on real usage.
+    models:
+      - "gemini/gemini-3.1-flash-lite"
+      - "kilo/stepfun/step-3.7-flash:free"
+      - "deepseek/deepseek-v4-flash"
     max_dispatches_per_run: 300
     reserved_write_units: 1860
-    daily_write_units: 3720
+    # 930 jobs/day at 6 units/job (3 bookkeeping + 3 models), unchanged from the one-model lane.
+    daily_write_units: 5580
   topic-tags:prelabeler:
     # Mirrors the legacy `tagging.prelabeler.model`. Its own budget, NOT a share of the
     # tagger's -- this split is exactly what the old `topic-tags` key failed to express.
@@ -215,23 +223,32 @@ llm_lanes:
     # transcripts that can exceed Gemini's real free-tier per-request ceiling well before its
     # advertised 1M-token context window (confirmed live -- see `hard_input_ceiling` in
     # config/provider_limits.yml); the two Gemini entries above stay first/unaffected.
+    # 2026-09-24: gemini-3.8/3.7-flash (AA 40.9/39.1, independent 20/day pools per account) added
+    # ahead of 3.6/3.5, whose 20/day pools were exhausted by midday; the overflow pair now names
+    # NVIDIA's DeepSeek v4.1 explicitly (the retired `deepseek-v4-pro` alias pointed at it).
+    # Changing the council list is a deliberate moments recipe change (approved backfill).
     models:
+      - "gemini/gemini-3.8-flash"
+      - "gemini/gemini-3.7-flash"
       - "gemini/gemini-3.6-flash"
       - "gemini/gemini-3.5-flash"
       - "gemini/gemini-3.5-flash-lite"
       - "gemini/gemini-3.1-flash-lite"
-      - "deepseek/deepseek-v4-pro"
+      - "deepseek/deepseek-v4.1-flash"
       - "moonshotai/kimi-k3"
     max_dispatches_per_run: 40
     reserved_write_units: 840
-    daily_write_units: 1680
+    # ~186 jobs/day at 11 units/job (3 + 8 models), as before the two added Gemini models.
+    daily_write_units: 2046
   r6-judge:
-    # Mirrors the legacy `moments.judges.models`.
+    # A PANEL, not a pool: MomentJudgeStage sends each candidate to every judge pinned to that
+    # model, and admission is calibrated per judge. 2026-09-24: glm-4.7-flash (AA 14.9) and
+    # gpt-oss-120b (AA 11.6) removed; gemma-4-26b-a4b-it (AA 16.7, ~0.5k-token inputs, two 14,400/day
+    # AI Studio pools) joins as its own judge. A new judge admits nothing until calibrated.
     models:
       - "qwen/qwen3.8-27b"
-      - "zai/glm-4.7-flash"
       - "gemini/gemini-3.6-flash"
-      - "openai/gpt-oss-120b"
+      - "google/gemma-4-26b-a4b-it"
     max_dispatches_per_run: 40
     reserved_write_units: 650
     daily_write_units: 1300
@@ -243,12 +260,12 @@ llm_lanes:
     dispatch_shape: per_model
     models:
       - "gemini/gemini-3.1-flash-lite"
-      # Exact-model pool (NVIDIA's deepseek-v4.1-flash only). `deepseek/deepseek-v4-flash` now
-      # pools v4.1 with OrcaRouter's older v4, so a contestant named that way would be answered by
-      # two different models and void the comparison (2026-09-23).
+      # One pool name per DeepSeek version (2026-09-24), so v4.1 (NVIDIA) and v4 (OrcaRouter) are
+      # scored as separate contestants. gemma-4-26b-a4b-it was removed: its 10k-token AI Studio
+      # ceiling cannot take tagging-size inputs, so its comparisons never completed.
       - "deepseek/deepseek-v4.1-flash"
+      - "deepseek/deepseek-v4-flash"
       - "zai/glm-4.7-flash"
-      - "google/gemma-4-26b-a4b-it"
     # One sample costs 4 candidate jobs here and 12 comparisons in `tournament:tag-judge`, so
     # the two budgets are split ~1:3 to let both fill on the same number of samples instead of
     # one lane capping the run while the other sits idle. Run caps equal what each daily budget
@@ -268,9 +285,9 @@ llm_lanes:
     # tournament:tag). Manual-dispatch only, so it carries no reservation: it draws purely on
     # unreserved shared headroom and can never displace a scheduled production lane.
     dispatch_shape: per_model
+    # gemma-4-26b-a4b-it removed 2026-09-24 (10k-token ceiling < tagging-size inputs).
     models:
       - "gemini/gemini-3.1-flash-lite"
-      - "google/gemma-4-26b-a4b-it"
       - "zai/glm-4.7-flash"
     max_dispatches_per_run: 200
     reserved_write_units: 0

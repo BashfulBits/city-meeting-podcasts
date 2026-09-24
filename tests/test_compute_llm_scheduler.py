@@ -208,8 +208,8 @@ def test_no_route_is_selected_when_free_routes_are_exhausted_and_paid_is_disallo
     assert all(reason == "quota or budget exhausted" for _, reason in result.rejected)
 
 
-def test_allowlist_can_select_the_free_deepseek_pro_route():
-    model = "deepseek/deepseek-v4-pro"
+def test_allowlist_can_select_the_free_deepseek_v41_route():
+    model = "deepseek/deepseek-v4.1-flash"
     result = select_route(
         LLMRequestPolicy(allowed_models=(model,), allow_paid=False),
         routes=ROUTES,
@@ -219,8 +219,7 @@ def test_allowlist_can_select_the_free_deepseek_pro_route():
         now=datetime(2026, 7, 16, 18, tzinfo=UTC),
     )
     assert result.model == model
-    # Served by NVIDIA's deepseek-v4.1-flash through `also_serves`: the same physical route (and
-    # so the same route_id-keyed ledger) as the exact v4.1 pool, reported under the pool asked for.
+    # One pool name per DeepSeek version (2026-09-24): v4.1 is served only by NVIDIA's route.
     assert result.route.route_id == "nvidia_deepseek_v4_1_flash_free"
     assert result.route.model == model
 
@@ -316,14 +315,14 @@ def test_price_gate_precedes_peak_rate_daily_cost_admission():
 
 def test_direct_transport_selects_a_direct_capable_route():
     result = select_route(
-        LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",), allow_paid=True),
+        LLMRequestPolicy(allowed_models=("mistral/codestral-2508",), allow_paid=True),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=DIRECT,
         estimated_tokens=1024,
         now=NOW,
     )
-    assert result.model == "mistral/mistral-large-2512"
+    assert result.model == "mistral/codestral-2508"
     assert result.transport == "direct"
 
 
@@ -348,12 +347,15 @@ def test_transport_gate_rejects_a_dispatch_only_route_from_a_direct_caller():
     assert (route.model, "transport gate") in result.rejected
 
 
-def test_mistral_large_policy_matches_the_deployed_dispatch_worker_ceiling():
-    """Mistral Large route matches the upstream 0.07-RPS (4 RPM) ceiling with split-cap lifted."""
-    route = ROUTES["mistral/mistral-large-2512"]
+def test_mistral_codestral_policy_matches_the_deployed_dispatch_worker_ceiling():
+    """Codestral matches the upstream 2.08-RPS (124 RPM) ceiling with split-cap lifted.
+
+    (Mistral Large, this test's former subject, was removed 2026-09-24: this account's plan
+    blocks it.)"""
+    route = ROUTES["mistral/codestral-2508"]
     assert route.transport == "direct"
     assert set(route.transports) == {"direct", "llm-dispatch"}
-    assert route.quota.rpm == 4
+    assert route.quota.rpm == 124
 
 
 def test_owner_for_keys_off_the_selected_transport_not_route_capability():
@@ -385,7 +387,7 @@ def test_selected_transport_prefers_direct_unless_overflow_is_explicit():
     # Overflow requested but the Worker isn't actually reachable -- direct is all there is.
     assert _selected_transport(gemini_route, DIRECT, allow_dispatch_overflow=True) == "direct"
 
-    mistral_route = ROUTES["mistral/mistral-large-2512"]
+    mistral_route = ROUTES["mistral/codestral-2508"]
     dispatch_only = frozenset({"llm-dispatch"})
     assert _selected_transport(mistral_route, dispatch_only, allow_dispatch_overflow=False) == (
         "llm-dispatch"
@@ -431,8 +433,8 @@ def test_select_and_reserve_dual_transport_direct_vs_overflow_owner():
     assert overflow_selection.transport == "llm-dispatch"
     assert overflow_selection.owner == "recipe-overflow"
 
-    model = "mistral/mistral-medium-2508"
-    canonical = "mistral/mistral-medium-latest"
+    model = "orcarouter/deepseek-v4-flash"  # an alias of the canonical pool name
+    canonical = "deepseek/deepseek-v4-flash"
     direct = select_route(
         LLMRequestPolicy(allowed_models=(model,)),
         routes=ROUTES,
@@ -858,14 +860,14 @@ def test_a_caller_reaching_both_transports_can_select_either():
     what lets a single backend instance service pending records regardless of which provider
     originally claimed them."""
     result = select_route(
-        LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",), allow_paid=True),
+        LLMRequestPolicy(allowed_models=("mistral/codestral-2508",), allow_paid=True),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=BOTH_TRANSPORTS,
         estimated_tokens=1024,
         now=NOW,
     )
-    assert result.model == "mistral/mistral-large-2512"
+    assert result.model == "mistral/codestral-2508"
 
 
 def test_select_and_reserve_retries_after_one_cas_conflict():
@@ -968,7 +970,7 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner(
     updated ledger state, would now pick differently (e.g. a previously-exhausted free route
     recovering)."""
     gemini = ROUTES["gemini/gemini-3-flash-preview"]
-    mistral = ROUTES["mistral/mistral-large-2512"]
+    mistral = ROUTES["mistral/codestral-2508"]
     routes = {
         gemini.route_id or gemini.model: gemini,
         mistral.route_id or mistral.model: mistral,
