@@ -154,6 +154,14 @@ job's format unchanged, so the failure was silent: an agenda benchmark spent hou
 replies before it was traced. Until PR C lands, v4.1 is out of the r6-moments and council-moments
 pools (OrcaRouter v4 serves that overflow instead).
 
+Follow-up (same day): with `prompt_only` (PR C, #1854) v4.1 returns valid JSON, but NVIDIA serves
+it at roughly 11 output tokens/s with long reasoning -- 151 s for a 465-character agenda, and no
+full-size agenda finished within two hours of a benchmark run. That is far past the Worker's 720 s
+response ceiling, so v4.1 stays out of every production pool regardless of method. Lesson for the
+canary (Slice 1): a method check proves the *shape* of an answer, not that a route is usable;
+record first-byte and completion latency with each canary and flag routes whose typical task would
+exceed the Worker ceiling.
+
 ## 5. Discovery backtest (2026-09-24)
 
 `--backtest` replays the candidate gates for every configured model as if it were not configured
