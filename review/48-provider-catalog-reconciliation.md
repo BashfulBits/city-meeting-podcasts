@@ -154,10 +154,15 @@ both compilers and the lane/limit tests in-job (GITHUB_TOKEN PRs do not trigger 
 `automation/provider-catalog-additions` rebuilt from main with list/edit/create.
 
 **Slice 3 — automatic removals, lane repair, job rescue.** Remove a route only when the model is
-absent from a complete catalog and its canary is `retired`/`not_served`. Same PR repairs lanes
+absent from a complete catalog and its canary is `retired`/`not_served`. A free route that becomes
+paid (`not_entitled`) is **never** removed automatically, even when no lane uses it: it stays a
+notify-only anomaly for a maintainer decision (maintainer decision 2026-09-24). Same PR repairs lanes
 (drop backups; promote the first backup for a removed primary with `needs:human-verification`;
 escalate instead of removing when a lane would be empty). Worker: on a catalog-digest change, a
-bounded per-tick pass fails queued jobs whose models all lack routes as `route_retired`; the
+bounded per-tick pass fails queued jobs whose models all lack routes as `route_retired`, and
+also queued jobs no eligible route can ever admit (input above every route's hard ceiling -- e.g.
+2026-09-24: ~2,600 prelabeler batches built before the 2026-09-23 sizing fix could only reach a
+20/day route) as `unadmissible`, so the producer re-batches them; the
 deferred sweep does not count `route_retired` toward the retry cap, and the producer resubmits
 under the current lane. The lane↔route CI guard (#1849) blocks any removal that would strand a
 lane.
