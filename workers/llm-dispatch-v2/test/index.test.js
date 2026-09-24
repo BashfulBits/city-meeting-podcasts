@@ -472,3 +472,53 @@ test("validateConfig bounds MAX_QUEUED_JOBS", () => {
   assert.throws(() => validateConfig(createMockEnv({ MAX_QUEUED_JOBS: "200000" })));
   assert.doesNotThrow(() => validateConfig(createMockEnv({ MAX_QUEUED_JOBS: "20000" })));
 });
+
+test("dispatch pause endpoints: auth, validation, pause, status and resume", async () => {
+  const env = createMockEnv();
+  const call = (method, path, body, token = "secret-token") =>
+    worker.fetch(
+      new Request(`https://example.test${path}`, {
+        method,
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
+      env
+    );
+
+  assert.equal((await call("POST", "/v2/dispatch:pause", { scope: "global", seconds: 60 }, "wrong")).status, 401);
+  assert.equal((await call("POST", "/v2/dispatch:pause", { scope: "global" })).status, 400);
+  assert.equal((await call("POST", "/v2/dispatch:pause", { scope: "global", seconds: 3601 })).status, 400);
+  assert.equal((await call("POST", "/v2/dispatch:pause", { scope: "provider", seconds: 60 })).status, 400);
+  const unknown = await call("POST", "/v2/dispatch:pause", { scope: "provider", target: "nope", seconds: 60 });
+  assert.equal(unknown.status, 400);
+  assert.equal((await unknown.json()).error, "unknown_target");
+
+  const paused = await call("POST", "/v2/dispatch:pause", {
+    scope: "provider",
+    target: "gemini",
+    seconds: 120,
+    reason: "catalog canary",
+  });
+  assert.equal(paused.status, 200);
+  assert.equal((await paused.json()).scope, "provider:gemini");
+
+  const status = await call("GET", "/v2/dispatch:pause-status?scope=provider&target=gemini");
+  assert.equal(status.status, 200);
+  const statusBody = await status.json();
+  assert.equal(statusBody.in_flight, 0);
+  assert.equal(statusBody.pauses[0].scope, "provider:gemini");
+  assert.ok(Object.keys(statusBody.routes).length > 0);
+  assert.equal((await call("GET", "/v2/dispatch:pause-status?scope=provider")).status, 400);
+
+  const reserve = await call("POST", "/v2/dispatch:reserve", {
+    route_id: "gemini_3_1_flash_lite_primary",
+    requests: 1,
+  });
+  assert.equal(reserve.status, 200);
+  assert.equal((await call("POST", "/v2/dispatch:reserve", { route_id: "x", requests: 6 })).status, 400);
+
+  const resumed = await call("POST", "/v2/dispatch:resume", { scope: "provider", target: "gemini" });
+  assert.equal((await resumed.json()).resumed, true);
+  const statsBody = await (await call("GET", "/v2/stats")).json();
+  assert.deepEqual(statsBody.dispatch_pauses, []);
+});

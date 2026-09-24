@@ -202,3 +202,62 @@ export function validateRetireBatchRequest(body, maxBatchSize = 1000) {
   }
   return { valid: true };
 }
+
+const PAUSE_SCOPES = new Set(["global", "provider", "route"]);
+
+function validatePauseSelection(body) {
+  if (!body || typeof body !== "object") {
+    return { valid: false, error: "invalid_request", detail: "Request body must be an object" };
+  }
+  if (!PAUSE_SCOPES.has(body.scope)) {
+    return { valid: false, error: "invalid_request", detail: "scope must be global, provider or route" };
+  }
+  if (body.scope === "global") {
+    if (body.target != null) {
+      return { valid: false, error: "invalid_request", detail: "global scope takes no target" };
+    }
+  } else if (typeof body.target !== "string" || !body.target.trim()) {
+    return { valid: false, error: "invalid_request", detail: `${body.scope} scope requires a target` };
+  }
+  return { valid: true };
+}
+
+/**
+ * `POST /v2/dispatch:pause` -- `{scope, target?, seconds, reason?}`. `seconds` is required and
+ * bounded so every pause ends by itself: a probe that dies mid-run cannot leave dispatch halted.
+ */
+export function validatePauseRequest(body, maxSeconds = 3600) {
+  const selection = validatePauseSelection(body);
+  if (!selection.valid) return selection;
+  if (!Number.isInteger(body.seconds) || body.seconds < 1 || body.seconds > maxSeconds) {
+    return {
+      valid: false,
+      error: "invalid_request",
+      detail: `seconds must be an integer from 1 to ${maxSeconds}`,
+    };
+  }
+  if (body.reason != null && typeof body.reason !== "string") {
+    return { valid: false, error: "invalid_request", detail: "reason must be a string" };
+  }
+  return { valid: true };
+}
+
+/** `POST /v2/dispatch:resume` -- `{scope, target?}`. */
+export function validateResumeRequest(body) {
+  return validatePauseSelection(body);
+}
+
+/** `POST /v2/dispatch:reserve` -- `{route_id, requests}`: charge out-of-band probe calls. */
+export function validateReserveRequest(body, maxRequests = 5) {
+  if (!body || typeof body !== "object" || typeof body.route_id !== "string" || !body.route_id.trim()) {
+    return { valid: false, error: "invalid_request", detail: "route_id must be a non-empty string" };
+  }
+  if (!Number.isInteger(body.requests) || body.requests < 1 || body.requests > maxRequests) {
+    return {
+      valid: false,
+      error: "invalid_request",
+      detail: `requests must be an integer from 1 to ${maxRequests}`,
+    };
+  }
+  return { valid: true };
+}
