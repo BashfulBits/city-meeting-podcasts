@@ -122,6 +122,11 @@ export function estimateRowsRead(db, { query, params }) {
     );
   };
 
+  // A state-seek whose ORDER BY the index already satisfies (no temp sort) and that ends in a
+  // bound LIMIT stops after LIMIT rows; counting the whole state there would be a false positive.
+  const limitParam = /LIMIT\s+\?\s*$/i.test(query.trim()) ? Number(params[params.length - 1]) : NaN;
+  const earlyStop = Number.isFinite(limitParam) && !plan.some((d) => d.includes("TEMP B-TREE"));
+
   let rows = 0;
   for (const detail of plan) {
     const scan = detail.match(/^SCAN (\w+)/);
@@ -132,7 +137,11 @@ export function estimateRowsRead(db, { query, params }) {
     const search = detail.match(/^SEARCH (\w+) USING (?:COVERING )?INDEX \w+ \(([^)]*)\)/);
     if (search) {
       const [, table, constraints] = search;
-      rows += constraints.trim() === "state=?" ? stateRows(table) : 1;
+      if (constraints.trim() === "state=?") {
+        rows += earlyStop ? Math.min(stateRows(table), limitParam) : stateRows(table);
+      } else {
+        rows += 1;
+      }
       continue;
     }
     if (/^SEARCH /.test(detail)) rows += 1;

@@ -4009,7 +4009,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       for (const chunk of this._chunks(jobIds)) {
         const placeholders = chunk.map(() => "?").join(",");
         const eligible = [...sql.exec(
-          `SELECT id FROM jobs WHERE id IN (${placeholders}) AND state = 'completed'`,
+          `SELECT id FROM jobs WHERE id IN (${placeholders}) AND +state = 'completed'`,
           ...chunk
         )].map((row) => row.id);
         if (eligible.length === 0) continue;
@@ -4050,7 +4050,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       for (const chunk of this._chunks([...wanted.keys()])) {
         const placeholders = chunk.map(() => "?").join(",");
         const rows = [...sql.exec(
-          `SELECT id, result_key FROM jobs WHERE id IN (${placeholders}) AND state = 'completed'`,
+          `SELECT id, result_key FROM jobs WHERE id IN (${placeholders}) AND +state = 'completed'`,
           ...chunk
         )];
         const matched = rows
@@ -4059,7 +4059,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         for (const deleteChunk of this._chunks(matched)) {
           const marks = deleteChunk.map(() => "?").join(",");
           sql.exec(
-            `DELETE FROM jobs WHERE id IN (${marks}) AND state = 'completed'`,
+            `DELETE FROM jobs WHERE id IN (${marks}) AND +state = 'completed'`,
             ...deleteChunk
           );
           retired.push(...deleteChunk);
@@ -4082,7 +4082,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const placeholders = chunk.map(() => "?").join(",");
         sql.exec(`DELETE FROM job_models WHERE job_id IN (${placeholders})`, ...chunk);
         sql.exec(
-          `DELETE FROM jobs WHERE id IN (${placeholders}) AND state = 'purge_pending'`,
+          `DELETE FROM jobs WHERE id IN (${placeholders}) AND +state = 'purge_pending'`,
           ...chunk
         );
         purged += chunk.length;
