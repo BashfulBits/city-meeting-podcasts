@@ -26,6 +26,24 @@ Phase R (Research-Tool Surface)._
   lane model with no live route is otherwise silent until its queued jobs never dispatch. It covers
   new lanes with no edit. No pipeline version, recipe, or stored-artifact change.
 
+- **LLM Dispatch v2 can pause new claims without a redeploy**
+  (`workers/llm-dispatch-v2/src/coordinator.js`, `index.js`, `protocol.js`,
+  `citypods/compute/llm_dispatch_pause.py`, review/48 PR A). `POST /v2/dispatch:pause` stops new
+  claims for `global`, `provider:<name>` or `route:<route_id>` for 1-3,600 seconds, after which the
+  pause ends by itself; `POST /v2/dispatch:resume` ends it early. Provider/route pauses route
+  claims around the paused routes (their models' other routes keep serving); a global pause returns
+  before any SQL runs, so a paused tick writes zero DO rows. In-flight bundles and their 429
+  retries are left alone (refusing a retry would fail the job); `GET /v2/dispatch:pause-status`
+  instead reports the selection's live (unexpired) leased-job count as the drain signal, plus each
+  selected route's
+  `rpd_remaining` and `rpd_resets_at` on the provider's reset timezone. `POST /v2/dispatch:reserve`
+  charges up to five out-of-band calls to a route's rpm/rpd ledger so production pacing counts
+  canary and probe traffic. `/v2/stats` now includes `in_flight` by route/provider and active
+  `dispatch_pauses`. The Python `paused(...)` context manager pauses, waits for drain, keeps the
+  pause armed through the drain and the probe (marking the run `contended` if the drain times out
+  or the pause could have lapsed), and always resumes; it refuses to send its token over plain
+  HTTP. No pipeline version, recipe, or stored-artifact change.
+
 - **Removed the unused NVIDIA Riva Translate route**
   (`config/provider_limits.yml`, regenerated `llm_routes.json` and both Workers'
   `dispatch_limits.json`). `nvidia_riva_translate_4b_instruct_v2_free` was reserved for future

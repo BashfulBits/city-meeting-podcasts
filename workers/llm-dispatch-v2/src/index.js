@@ -12,6 +12,9 @@ import {
   validateRetireBatchRequest,
   validateResolveUnknownBatchRequest,
   validateSchemaRetryRequest,
+  validatePauseRequest,
+  validateResumeRequest,
+  validateReserveRequest,
 } from "./protocol.js";
 import { B2Client } from "./b2.js";
 import { callAiGateway, observedTokens, upstreamCapacityFailure, upstreamEmptyCompletion } from "./gateway.js";
@@ -392,6 +395,58 @@ export async function handleRequest(request, env) {
     } catch (err) {
       const detail = describeError(err);
       console.error(`ingress-status failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
+  // Operator dispatch pause (see LLMSchedulerDO's "Dispatch pause" block). A probe pauses one
+  // provider or route, waits for pause-status `in_flight` to reach 0, runs, reserves what it
+  // spent against the route's ledger, and resumes; every pause also expires by itself.
+  const pauseHandlers = {
+    "/v2/dispatch:pause": [validatePauseRequest, (body) => coordinator.pauseDispatch(body, Date.now())],
+    "/v2/dispatch:resume": [validateResumeRequest, (body) => coordinator.resumeDispatch(body, Date.now())],
+    "/v2/dispatch:reserve": [
+      validateReserveRequest,
+      (body) => coordinator.reserveRouteRequests(body, Date.now()),
+    ],
+  };
+  if (request.method === "POST" && Object.hasOwn(pauseHandlers, path)) {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+    }
+    const [validate, run] = pauseHandlers[path];
+    const validation = validate(body);
+    if (!validation.valid) {
+      return errorResponse(400, validation.error, validation.detail);
+    }
+    try {
+      const result = await run(body);
+      return result.ok ? jsonResponse(result, 200) : errorResponse(400, result.error, result.detail);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`${path} failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
+  if (request.method === "GET" && path === "/v2/dispatch:pause-status") {
+    const selection = {
+      scope: url.searchParams.get("scope") || "global",
+      target: url.searchParams.get("target"),
+    };
+    const validation = validateResumeRequest(selection.scope === "global" ? { scope: "global" } : selection);
+    if (!validation.valid) {
+      return errorResponse(400, validation.error, validation.detail);
+    }
+    try {
+      const status = await coordinator.dispatchPauseStatus(selection, Date.now());
+      return status.ok ? jsonResponse(status, 200) : errorResponse(400, status.error, status.detail);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`dispatchPauseStatus failed: ${detail}`);
       return errorResponse(500, "coordinator_error", detail);
     }
   }
