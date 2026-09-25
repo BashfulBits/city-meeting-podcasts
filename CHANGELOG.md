@@ -17,6 +17,30 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Structured output is shaped per route by the v2 Worker** (review/48 PR C;
+  `config/provider_limits.yml`, `scripts/compile_llm_limits.py`, `citypods/compute/structured_shaping.py`,
+  `citypods/compute/llm.py`, `workers/llm-dispatch-v2/src/structured_output.js`, `gateway.js`,
+  `index.js`, `coordinator.js`). Producers no longer choose how to ask for JSON: a queued job stores
+  only its response schema, and the Worker shapes the request for the route it actually dispatches
+  to. Before, the format was chosen at enqueue time for the pool's first model and forwarded
+  unchanged, so a pooled job could reach a route with the wrong shape -- NVIDIA's
+  `deepseek-v4.1-flash` answered every `response_format` with empty content, and Gemini backups of
+  Nemotron-primary lanes received the full, unsimplified schema.
+  - Four methods (`json_schema`, `json_schema_relaxed`, `json_object`, `prompt_only`) replace the
+    three profiles. A route's own verified method (`structured_output_verified_on`) wins, then one
+    verified for the same model elsewhere, then the provider's. Every provider now declares its
+    method explicitly (unchanged from before); NVIDIA v4.1 is `prompt_only`, OrcaRouter v4 and hy3
+    `json_object`, all verified live 2026-09-24.
+  - An empty or non-JSON 200 on a structured request is a retryable `structured_output_empty` /
+    `structured_output_invalid` failure: the job retries, the route cools down, and the class shows
+    in `route_failures`. It is never settled as a result.
+  - The Python direct path uses the same shaping and one local parse/validate/retry path; the
+    Instructor code path is retired. One shared fixture pins the Python and Worker shapes.
+  - Jobs already staged in B2 keep their pre-shaped `response_format` and are forwarded as before.
+    No pipeline version or recipe change.
+  - Routes may declare provider controls they always send (`request_params`, allowlisted:
+    `chat_template_kwargs`, `reasoning_effort`); NVIDIA v4.1 runs with thinking off.
+
 - **Moments: explicit pull-quote criteria and word-accurate quote timing** (`citypods/moments.py`,
   `citypods/moment_judging.py`, `citypods/stages.py`; review/36). The extraction prompt now says
   what a pull quote is for and what to avoid, derived from VISION, and the judge scores against the

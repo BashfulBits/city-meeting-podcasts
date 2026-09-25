@@ -1,0 +1,715 @@
+{
+ "_comment": "review/48 R10 shared contract: citypods/compute/structured_shaping.py and workers/llm-dispatch-v2/src/structured_output.js must both turn each request into exactly its expected messages/response_format. Regenerate only with a reviewed change to both implementations.",
+ "cases": [
+  {
+   "expected": {
+    "messages": [
+     {
+      "content": "You extract agenda items.",
+      "role": "system"
+     },
+     {
+      "content": "1. Call to order",
+      "role": "user"
+     }
+    ],
+    "response_format": {
+     "json_schema": {
+      "name": "Synthetic",
+      "schema": {
+       "properties": {
+        "items": {
+         "items": {
+          "type": "string"
+         },
+         "maxItems": 5,
+         "minItems": 1,
+         "type": "array"
+        },
+        "minimum": {
+         "description": "a property literally named minimum",
+         "type": "integer"
+        },
+        "score": {
+         "maximum": 1.0,
+         "minimum": 0.0,
+         "type": "number"
+        },
+        "title": {
+         "description": "Agenda title — verbatim",
+         "maxLength": 200,
+         "minLength": 1,
+         "type": "string"
+        }
+       },
+       "required": [
+        "title",
+        "score"
+       ],
+       "title": "Synthetic",
+       "type": "object"
+      }
+     },
+     "type": "json_schema"
+    }
+   },
+   "name": "json_schema keeps messages and sends the full schema",
+   "request": {
+    "messages": [
+     {
+      "content": "You extract agenda items.",
+      "role": "system"
+     },
+     {
+      "content": "1. Call to order",
+      "role": "user"
+     }
+    ],
+    "structured_output": {
+     "name": "Synthetic",
+     "schema": {
+      "properties": {
+       "items": {
+        "items": {
+         "type": "string"
+        },
+        "maxItems": 5,
+        "minItems": 1,
+        "type": "array"
+       },
+       "minimum": {
+        "description": "a property literally named minimum",
+        "type": "integer"
+       },
+       "score": {
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "type": "number"
+       },
+       "title": {
+        "description": "Agenda title — verbatim",
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+       }
+      },
+      "required": [
+       "title",
+       "score"
+      ],
+      "title": "Synthetic",
+      "type": "object"
+     }
+    }
+   },
+   "route": {
+    "structured_output_include_schema_in_prompt": false,
+    "structured_output_method": "json_schema",
+    "structured_output_response_format": "json_schema",
+    "structured_output_schema_strip_keys": []
+   }
+  },
+  {
+   "expected": {
+    "messages": [
+     {
+      "content": "You extract agenda items.",
+      "role": "system"
+     },
+     {
+      "content": "1. Call to order",
+      "role": "user"
+     }
+    ],
+    "response_format": {
+     "json_schema": {
+      "name": "Synthetic",
+      "schema": {
+       "properties": {
+        "items": {
+         "items": {
+          "type": "string"
+         },
+         "type": "array"
+        },
+        "score": {
+         "type": "number"
+        },
+        "title": {
+         "description": "Agenda title — verbatim",
+         "type": "string"
+        }
+       },
+       "required": [
+        "title",
+        "score"
+       ],
+       "title": "Synthetic",
+       "type": "object"
+      }
+     },
+     "type": "json_schema"
+    }
+   },
+   "name": "json_schema_relaxed strips bound keywords at every depth, including a property named like one",
+   "request": {
+    "messages": [
+     {
+      "content": "You extract agenda items.",
+      "role": "system"
+     },
+     {
+      "content": "1. Call to order",
+      "role": "user"
+     }
+    ],
+    "structured_output": {
+     "name": "Synthetic",
+     "schema": {
+      "properties": {
+       "items": {
+        "items": {
+         "type": "string"
+        },
+        "maxItems": 5,
+        "minItems": 1,
+        "type": "array"
+       },
+       "minimum": {
+        "description": "a property literally named minimum",
+        "type": "integer"
+       },
+       "score": {
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "type": "number"
+       },
+       "title": {
+        "description": "Agenda title — verbatim",
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+       }
+      },
+      "required": [
+       "title",
+       "score"
+      ],
+      "title": "Synthetic",
+      "type": "object"
+     }
+    }
+   },
+   "route": {
+    "structured_output_include_schema_in_prompt": false,
+    "structured_output_method": "json_schema_relaxed",
+    "structured_output_response_format": "json_schema",
+    "structured_output_schema_strip_keys": [
+     "minLength",
+     "maxLength",
+     "minimum",
+     "maximum",
+     "minItems",
+     "maxItems"
+    ]
+   }
+  },
+  {
+   "expected": {
+    "messages": [
+     {
+      "content": "You extract agenda items.\n\nReturn one JSON object only (no Markdown or commentary) matching this JSON Schema:\n{\"properties\":{\"items\":{\"items\":{\"type\":\"string\"},\"maxItems\":5,\"minItems\":1,\"type\":\"array\"},\"minimum\":{\"description\":\"a property literally named minimum\",\"type\":\"integer\"},\"score\":{\"maximum\":1,\"minimum\":0,\"type\":\"number\"},\"title\":{\"description\":\"Agenda title — verbatim\",\"maxLength\":200,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"title\",\"score\"],\"title\":\"Synthetic\",\"type\":\"object\"}",
+      "role": "system"
+     },
+     {
+      "content": "1. Call to order",
+      "role": "user"
+     }
+    ],
+    "response_format": {
+     "type": "json_object"
+    }
+   },
+   "name": "json_object appends the schema to the system message",
+   "request": {
+    "messages": [
+     {
+      "content": "You extract agenda items.",
+      "role": "system"
+     },
+     {
+      "content": "1. Call to order",
+      "role": "user"
+     }
+    ],
+    "structured_output": {
+     "name": "Synthetic",
+     "schema": {
+      "properties": {
+       "items": {
+        "items": {
+         "type": "string"
+        },
+        "maxItems": 5,
+        "minItems": 1,
+        "type": "array"
+       },
+       "minimum": {
+        "description": "a property literally named minimum",
+        "type": "integer"
+       },
+       "score": {
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "type": "number"
+       },
+       "title": {
+        "description": "Agenda title — verbatim",
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+       }
+      },
+      "required": [
+       "title",
+       "score"
+      ],
+      "title": "Synthetic",
+      "type": "object"
+     }
+    }
+   },
+   "route": {
+    "structured_output_include_schema_in_prompt": true,
+    "structured_output_method": "json_object",
+    "structured_output_response_format": "json_object",
+    "structured_output_schema_strip_keys": []
+   }
+  },
+  {
+   "expected": {
+    "messages": [
+     {
+      "content": "Return one JSON object only (no Markdown or commentary) matching this JSON Schema:\n{\"properties\":{\"items\":{\"items\":{\"type\":\"string\"},\"maxItems\":5,\"minItems\":1,\"type\":\"array\"},\"minimum\":{\"description\":\"a property literally named minimum\",\"type\":\"integer\"},\"score\":{\"maximum\":1,\"minimum\":0,\"type\":\"number\"},\"title\":{\"description\":\"Agenda title — verbatim\",\"maxLength\":200,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"title\",\"score\"],\"title\":\"Synthetic\",\"type\":\"object\"}",
+      "role": "system"
+     },
+     {
+      "content": "1. Call to order",
+      "role": "user"
+     }
+    ],
+    "response_format": null
+   },
+   "name": "prompt_only sends no response_format and prepends a system message when there is none",
+   "request": {
+    "messages": [
+     {
+      "content": "1. Call to order",
+      "role": "user"
+     }
+    ],
+    "structured_output": {
+     "name": "Synthetic",
+     "schema": {
+      "properties": {
+       "items": {
+        "items": {
+         "type": "string"
+        },
+        "maxItems": 5,
+        "minItems": 1,
+        "type": "array"
+       },
+       "minimum": {
+        "description": "a property literally named minimum",
+        "type": "integer"
+       },
+       "score": {
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "type": "number"
+       },
+       "title": {
+        "description": "Agenda title — verbatim",
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+       }
+      },
+      "required": [
+       "title",
+       "score"
+      ],
+      "title": "Synthetic",
+      "type": "object"
+     }
+    }
+   },
+   "route": {
+    "structured_output_include_schema_in_prompt": true,
+    "structured_output_method": "prompt_only",
+    "structured_output_response_format": "none",
+    "structured_output_schema_strip_keys": []
+   }
+  },
+  {
+   "expected": {
+    "messages": [
+     {
+      "content": "Return one JSON object only (no Markdown or commentary) matching this JSON Schema:\n{\"properties\":{\"items\":{\"items\":{\"type\":\"string\"},\"maxItems\":5,\"minItems\":1,\"type\":\"array\"},\"minimum\":{\"description\":\"a property literally named minimum\",\"type\":\"integer\"},\"score\":{\"maximum\":1,\"minimum\":0,\"type\":\"number\"},\"title\":{\"description\":\"Agenda title — verbatim\",\"maxLength\":200,\"minLength\":1,\"type\":\"string\"}},\"required\":[\"title\",\"score\"],\"title\":\"Synthetic\",\"type\":\"object\"}",
+      "role": "system"
+     },
+     {
+      "content": [
+       {
+        "text": "Part-form system prompt.",
+        "type": "text"
+       }
+      ],
+      "role": "system"
+     },
+     {
+      "content": "x",
+      "role": "user"
+     }
+    ],
+    "response_format": {
+     "type": "json_object"
+    }
+   },
+   "name": "a non-text system message is left alone and a schema system message is prepended",
+   "request": {
+    "messages": [
+     {
+      "content": [
+       {
+        "text": "Part-form system prompt.",
+        "type": "text"
+       }
+      ],
+      "role": "system"
+     },
+     {
+      "content": "x",
+      "role": "user"
+     }
+    ],
+    "structured_output": {
+     "name": "Synthetic",
+     "schema": {
+      "properties": {
+       "items": {
+        "items": {
+         "type": "string"
+        },
+        "maxItems": 5,
+        "minItems": 1,
+        "type": "array"
+       },
+       "minimum": {
+        "description": "a property literally named minimum",
+        "type": "integer"
+       },
+       "score": {
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "type": "number"
+       },
+       "title": {
+        "description": "Agenda title — verbatim",
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+       }
+      },
+      "required": [
+       "title",
+       "score"
+      ],
+      "title": "Synthetic",
+      "type": "object"
+     }
+    }
+   },
+   "route": {
+    "structured_output_include_schema_in_prompt": true,
+    "structured_output_method": "json_object",
+    "structured_output_response_format": "json_object",
+    "structured_output_schema_strip_keys": []
+   }
+  },
+  {
+   "expected": {
+    "messages": [
+     {
+      "content": "You extract agenda items.\n\nReturn one JSON object only (no Markdown or commentary) matching this JSON Schema:\n{\"$defs\":{\"Item\":{\"additionalProperties\":false,\"properties\":{\"display_ref\":{\"anyOf\":[{\"maxLength\":500,\"type\":\"string\"},{\"type\":\"null\"}],\"default\":null,\"title\":\"Display Ref\"},\"evidence_quote\":{\"maxLength\":20000,\"minLength\":1,\"title\":\"Evidence Quote\",\"type\":\"string\"},\"line_end\":{\"minimum\":1,\"title\":\"Line End\",\"type\":\"integer\"},\"line_start\":{\"minimum\":1,\"title\":\"Line Start\",\"type\":\"integer\"},\"title\":{\"maxLength\":2000,\"minLength\":1,\"title\":\"Title\",\"type\":\"string\"}},\"required\":[\"title\",\"evidence_quote\",\"line_start\",\"line_end\"],\"title\":\"Item\",\"type\":\"object\"}},\"additionalProperties\":false,\"properties\":{\"items\":{\"items\":{\"$ref\":\"#/$defs/Item\"},\"maxItems\":300,\"title\":\"Items\",\"type\":\"array\"}},\"title\":\"Response\",\"type\":\"object\"}",
+      "role": "system"
+     },
+     {
+      "content": "1. Call to order",
+      "role": "user"
+     }
+    ],
+    "response_format": null
+   },
+   "name": "the production agenda-extractor schema under prompt_only",
+   "request": {
+    "messages": [
+     {
+      "content": "You extract agenda items.",
+      "role": "system"
+     },
+     {
+      "content": "1. Call to order",
+      "role": "user"
+     }
+    ],
+    "structured_output": {
+     "name": "Response",
+     "schema": {
+      "$defs": {
+       "Item": {
+        "additionalProperties": false,
+        "properties": {
+         "display_ref": {
+          "anyOf": [
+           {
+            "maxLength": 500,
+            "type": "string"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "default": null,
+          "title": "Display Ref"
+         },
+         "evidence_quote": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Evidence Quote",
+          "type": "string"
+         },
+         "line_end": {
+          "minimum": 1,
+          "title": "Line End",
+          "type": "integer"
+         },
+         "line_start": {
+          "minimum": 1,
+          "title": "Line Start",
+          "type": "integer"
+         },
+         "title": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+         }
+        },
+        "required": [
+         "title",
+         "evidence_quote",
+         "line_start",
+         "line_end"
+        ],
+        "title": "Item",
+        "type": "object"
+       }
+      },
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "$ref": "#/$defs/Item"
+        },
+        "maxItems": 300,
+        "title": "Items",
+        "type": "array"
+       }
+      },
+      "title": "Response",
+      "type": "object"
+     }
+    }
+   },
+   "route": {
+    "structured_output_include_schema_in_prompt": true,
+    "structured_output_method": "prompt_only",
+    "structured_output_response_format": "none",
+    "structured_output_schema_strip_keys": []
+   }
+  },
+  {
+   "expected": {
+    "messages": [
+     {
+      "content": "You extract agenda items.",
+      "role": "system"
+     },
+     {
+      "content": "1. Call to order",
+      "role": "user"
+     }
+    ],
+    "response_format": {
+     "json_schema": {
+      "name": "Response",
+      "schema": {
+       "$defs": {
+        "Item": {
+         "additionalProperties": false,
+         "properties": {
+          "display_ref": {
+           "anyOf": [
+            {
+             "type": "string"
+            },
+            {
+             "type": "null"
+            }
+           ],
+           "default": null,
+           "title": "Display Ref"
+          },
+          "evidence_quote": {
+           "title": "Evidence Quote",
+           "type": "string"
+          },
+          "line_end": {
+           "title": "Line End",
+           "type": "integer"
+          },
+          "line_start": {
+           "title": "Line Start",
+           "type": "integer"
+          },
+          "title": {
+           "title": "Title",
+           "type": "string"
+          }
+         },
+         "required": [
+          "title",
+          "evidence_quote",
+          "line_start",
+          "line_end"
+         ],
+         "title": "Item",
+         "type": "object"
+        }
+       },
+       "additionalProperties": false,
+       "properties": {
+        "items": {
+         "items": {
+          "$ref": "#/$defs/Item"
+         },
+         "title": "Items",
+         "type": "array"
+        }
+       },
+       "title": "Response",
+       "type": "object"
+      }
+     },
+     "type": "json_schema"
+    }
+   },
+   "name": "the production agenda-extractor schema under json_schema_relaxed",
+   "request": {
+    "messages": [
+     {
+      "content": "You extract agenda items.",
+      "role": "system"
+     },
+     {
+      "content": "1. Call to order",
+      "role": "user"
+     }
+    ],
+    "structured_output": {
+     "name": "Response",
+     "schema": {
+      "$defs": {
+       "Item": {
+        "additionalProperties": false,
+        "properties": {
+         "display_ref": {
+          "anyOf": [
+           {
+            "maxLength": 500,
+            "type": "string"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "default": null,
+          "title": "Display Ref"
+         },
+         "evidence_quote": {
+          "maxLength": 20000,
+          "minLength": 1,
+          "title": "Evidence Quote",
+          "type": "string"
+         },
+         "line_end": {
+          "minimum": 1,
+          "title": "Line End",
+          "type": "integer"
+         },
+         "line_start": {
+          "minimum": 1,
+          "title": "Line Start",
+          "type": "integer"
+         },
+         "title": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+         }
+        },
+        "required": [
+         "title",
+         "evidence_quote",
+         "line_start",
+         "line_end"
+        ],
+        "title": "Item",
+        "type": "object"
+       }
+      },
+      "additionalProperties": false,
+      "properties": {
+       "items": {
+        "items": {
+         "$ref": "#/$defs/Item"
+        },
+        "maxItems": 300,
+        "title": "Items",
+        "type": "array"
+       }
+      },
+      "title": "Response",
+      "type": "object"
+     }
+    }
+   },
+   "route": {
+    "structured_output_include_schema_in_prompt": false,
+    "structured_output_method": "json_schema_relaxed",
+    "structured_output_response_format": "json_schema",
+    "structured_output_schema_strip_keys": [
+     "minLength",
+     "maxLength",
+     "minimum",
+     "maximum",
+     "minItems",
+     "maxItems"
+    ]
+   }
+  }
+ ]
+}

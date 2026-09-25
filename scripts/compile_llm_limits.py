@@ -37,8 +37,15 @@ OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-proxy" / "src" / "dispatch_l
 V2_OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "dispatch_limits.json"
 PYTHON_OUTPUT_JSON = REPO_ROOT / "citypods" / "compute" / "llm_routes.json"
 
-_STRUCTURED_OUTPUT_FORMATS = frozenset({"json_schema", "json_object"})
-_STRUCTURED_OUTPUT_HANDLERS = frozenset({"instructor", "native"})
+# review/48 R10: the closed set of structured-output methods. Python's direct path and the v2
+# Worker each implement exactly these four shapes (asserted against one shared fixture), so a name
+# outside this set is a compile error rather than a request shape nobody implements.
+_STRUCTURED_OUTPUT_METHODS = frozenset(
+    {"json_schema", "json_schema_relaxed", "json_object", "prompt_only"}
+)
+_STRUCTURED_OUTPUT_FORMATS = frozenset({"json_schema", "json_object", "none"})
+# The shape every chat endpoint accepts: no response_format, schema in the prompt.
+_FALLBACK_STRUCTURED_OUTPUT_METHOD = "prompt_only"
 
 
 def _json_default(value: object) -> str:
@@ -186,47 +193,123 @@ def _direct_model(provider: str, upstream_model: str) -> str:
     return f"{provider}/{upstream_model}"
 
 
-def _normalize_structured_output_profiles(raw_profiles: Any) -> dict[str, dict[str, Any]]:
-    """Validate and normalize the named structured-output capability profiles."""
-    if not isinstance(raw_profiles, dict) or not raw_profiles:
-        raise ValueError("structured_output_profiles must be a non-empty mapping")
-    profiles: dict[str, dict[str, Any]] = {}
-    for name, raw_profile in raw_profiles.items():
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError(f"structured output profile has an invalid name: {name!r}")
-        if not isinstance(raw_profile, dict):
-            raise ValueError(f"structured output profile {name!r} must be a mapping")
-        response_format = raw_profile.get("response_format", "json_schema")
+def _normalize_structured_output_methods(raw_methods: Any) -> dict[str, dict[str, Any]]:
+    """Validate the structured-output method table against the closed set of methods."""
+    if not isinstance(raw_methods, dict) or set(raw_methods) != _STRUCTURED_OUTPUT_METHODS:
+        raise ValueError(
+            "structured_output_methods must define exactly "
+            f"{sorted(_STRUCTURED_OUTPUT_METHODS)} (review/48 R10)"
+        )
+    methods: dict[str, dict[str, Any]] = {}
+    for name, raw_method in raw_methods.items():
+        if not isinstance(raw_method, dict):
+            raise ValueError(f"structured output method {name!r} must be a mapping")
+        response_format = raw_method.get("response_format")
         if response_format not in _STRUCTURED_OUTPUT_FORMATS:
             raise ValueError(
-                f"structured output profile {name!r} has unsupported response_format "
+                f"structured output method {name!r} has unsupported response_format "
                 f"{response_format!r}"
             )
-        direct_handler = raw_profile.get("direct_handler", "instructor")
-        if direct_handler not in _STRUCTURED_OUTPUT_HANDLERS:
-            raise ValueError(
-                f"structured output profile {name!r} has unsupported direct_handler "
-                f"{direct_handler!r}"
-            )
-        strip_schema_keys = raw_profile.get("strip_schema_keys", [])
+        strip_schema_keys = raw_method.get("strip_schema_keys", [])
         if not isinstance(strip_schema_keys, list) or any(
             not isinstance(key, str) or not key for key in strip_schema_keys
         ):
             raise ValueError(
-                f"structured output profile {name!r} strip_schema_keys must be a list of strings"
+                f"structured output method {name!r} strip_schema_keys must be a list of strings"
             )
-        include_schema_in_prompt = raw_profile.get("include_schema_in_prompt", False)
+        include_schema_in_prompt = raw_method.get("include_schema_in_prompt", False)
         if not isinstance(include_schema_in_prompt, bool):
             raise ValueError(
-                f"structured output profile {name!r} include_schema_in_prompt must be boolean"
+                f"structured output method {name!r} include_schema_in_prompt must be boolean"
             )
-        profiles[name] = {
+        if response_format != "json_schema" and not include_schema_in_prompt:
+            # Without a json_schema response_format the prompt is the only place the schema can
+            # reach the model.
+            raise ValueError(
+                f"structured output method {name!r} must include the schema in the prompt"
+            )
+        methods[name] = {
             "response_format": response_format,
-            "direct_handler": direct_handler,
             "include_schema_in_prompt": include_schema_in_prompt,
             "strip_schema_keys": list(dict.fromkeys(strip_schema_keys)),
         }
-    return profiles
+    return methods
+
+
+# Provider-specific request parameters a route may always send. Deliberately small: each key is
+# a documented provider control (thinking/reasoning), never a way to override what the pipeline
+# sends (model, messages, response_format, max_tokens ...), which the Worker owns.
+_ALLOWED_REQUEST_PARAMS = frozenset({"chat_template_kwargs", "reasoning_effort"})
+
+
+def _validate_request_params(route: dict[str, Any]) -> None:
+    params = route.get("request_params")
+    if params is None:
+        return
+    if not isinstance(params, dict) or not params:
+        raise ValueError(f"route {route['route_id']!r} request_params must be a non-empty mapping")
+    unknown = set(params) - _ALLOWED_REQUEST_PARAMS
+    if unknown:
+        raise ValueError(
+            f"route {route['route_id']!r} request_params has unsupported keys {sorted(unknown)}; "
+            f"allowed: {sorted(_ALLOWED_REQUEST_PARAMS)}"
+        )
+    json.dumps(params)  # must be plain JSON
+
+
+def _resolve_structured_output_methods(
+    routes: list[dict[str, Any]], providers: dict[str, Any]
+) -> dict[str, tuple[str, str, str | None]]:
+    """Resolve every route's method as ``route_id -> (method, source, verified_on)``.
+
+    Support is a property of the provider *serving* a model, so a route's own verified method is
+    authoritative. An unverified route falls back to a method verified for the same model on
+    another route, then its provider's method, then ``prompt_only`` (review/48 R10).
+    """
+    for scope, cfg in [("route", r) for r in routes] + [
+        ("provider", c) for c in providers.values()
+    ]:
+        if "structured_output_profile" in cfg:
+            raise ValueError(
+                f"{scope} uses retired key structured_output_profile; use structured_output_method"
+            )
+    verified_by_model: dict[str, set[str]] = {}
+    for route in routes:
+        method = route.get("structured_output_method")
+        verified_on = route.get("structured_output_verified_on")
+        if method is not None and method not in _STRUCTURED_OUTPUT_METHODS:
+            raise ValueError(
+                f"route {route['route_id']!r} has unknown structured_output_method {method!r}"
+            )
+        if verified_on is not None and method is None:
+            raise ValueError(
+                f"route {route['route_id']!r} has structured_output_verified_on without a method"
+            )
+        if method is not None and verified_on is not None:
+            verified_by_model.setdefault(route["model"], set()).add(method)
+    resolved: dict[str, tuple[str, str, str | None]] = {}
+    for route in routes:
+        route_id = route["route_id"]
+        own = route.get("structured_output_method")
+        verified_on = route.get("structured_output_verified_on")
+        provider_method = (providers.get(route.get("provider")) or {}).get(
+            "structured_output_method"
+        )
+        if provider_method is not None and provider_method not in _STRUCTURED_OUTPUT_METHODS:
+            raise ValueError(
+                f"provider {route.get('provider')!r} has unknown structured_output_method "
+                f"{provider_method!r}"
+            )
+        model_methods = verified_by_model.get(route["model"], set())
+        if own is not None:
+            resolved[route_id] = (own, "route", str(verified_on) if verified_on else None)
+        elif len(model_methods) == 1:
+            resolved[route_id] = (next(iter(model_methods)), "model", None)
+        elif provider_method is not None:
+            resolved[route_id] = (provider_method, "provider", None)
+        else:
+            resolved[route_id] = (_FALLBACK_STRUCTURED_OUTPUT_METHOD, "default", None)
+    return resolved
 
 
 def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
@@ -326,12 +409,15 @@ _WORKER_ROUTE_FIELDS = (
     "observed_recovery_seconds",
     "retry_after_trustworthy",
     "upstream_429_default",
-    # Read by the Worker's upstreamRequestForRoute to relax a route's outbound structured-output
-    # schema. Every other structured_output_* field is Python-direct-dispatch-only and stays out
-    # of this list, which whitelists what the Worker receives per route -- but each entry lands
-    # under its own field name in the compiled catalog, so order here does not matter and this list
-    # does not need to match anything on the JS side positionally.
+    # Read by the Worker's upstreamRequestForRoute (gateway.js) to shape a schema-only structured
+    # job for this route (review/48 R10). Each entry lands under its own field name in the
+    # compiled catalog, so order here does not matter.
+    "structured_output_method",
+    "structured_output_response_format",
+    "structured_output_include_schema_in_prompt",
     "structured_output_schema_strip_keys",
+    # Merged into the provider request by gateway.js's upstreamRequestForRoute.
+    "request_params",
 )
 
 _WORKER_PROVIDER_FIELDS = (
@@ -812,8 +898,8 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     )
 
     routes = raw.get("routes", [])
-    structured_output_profiles = _normalize_structured_output_profiles(
-        raw.get("structured_output_profiles")
+    structured_output_methods = _normalize_structured_output_methods(
+        raw.get("structured_output_methods")
     )
     normalized_routes, routes_by_id, model_routes_map, model_aliases = _validated_routes(routes)
     model_routing = _validated_model_routing(
@@ -821,6 +907,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         model_aliases=model_aliases,
         canonical_models=set(model_routes_map),
     )
+    resolved_methods = _resolve_structured_output_methods(normalized_routes, providers)
     for route in normalized_routes:
         _validate_pricing_windows(route)
         if split_cap_multiplier != 1.0:
@@ -990,23 +1077,17 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         obs_on = route.get("observed_on")
         if obs_on is not None:
             route["observed_on"] = str(obs_on)
-        profile_name = route.get(
-            "structured_output_profile",
-            provider_cfg.get("structured_output_profile", "standard_json_schema"),
-        )
-        profile = structured_output_profiles.get(profile_name)
-        if profile is None:
-            raise ValueError(
-                f"route {route.get('route_id', route.get('model'))!r} references unknown "
-                f"structured_output_profile {profile_name!r}"
-            )
+        _validate_request_params(route)
+        method_name, method_source, verified_on = resolved_methods[route["route_id"]]
+        method = structured_output_methods[method_name]
         route.update(
             {
-                "structured_output_profile": profile_name,
-                "structured_output_response_format": profile["response_format"],
-                "structured_output_direct_handler": profile["direct_handler"],
-                "structured_output_include_schema_in_prompt": profile["include_schema_in_prompt"],
-                "structured_output_schema_strip_keys": profile["strip_schema_keys"],
+                "structured_output_method": method_name,
+                "structured_output_method_source": method_source,
+                "structured_output_verified_on": verified_on,
+                "structured_output_response_format": method["response_format"],
+                "structured_output_include_schema_in_prompt": method["include_schema_in_prompt"],
+                "structured_output_schema_strip_keys": method["strip_schema_keys"],
             }
         )
         if provider_cfg.get("ai_gateway_max_attempts") is not None:
@@ -1023,7 +1104,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
             "split_cap_multiplier": split_cap_multiplier,
         },
         "providers": providers,
-        "structured_output_profiles": structured_output_profiles,
+        "structured_output_methods": structured_output_methods,
         "routes": normalized_routes,
         "routes_by_id": routes_by_id,
         "model_routes_map": model_routes_map,

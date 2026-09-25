@@ -18,24 +18,27 @@ split_cap_multiplier: 1.0
 # Context ceilings are required on every physical route below. They are not provider defaults:
 # model families differ, and a gateway/account can expose a lower ceiling than the native model.
 
-# Structured-output profiles are provider capabilities, not model-name conventions. A provider or
-# individual route may select one; the compiler materializes the resolved behavior on every route
-# consumed by Python and the dispatch Worker.
-structured_output_profiles:
-  standard_json_schema:
+# Structured-output METHODS (review/48 R10). Producers never choose how to ask for JSON: a
+# durable v2 job carries only its response schema, and the v2 Worker shapes the request for the
+# route it actually dispatches to (a pooled job can land on any route in the pool, so a format
+# chosen at enqueue time for the pool's first model was wrong for the rest). Python's direct path
+# applies the same shaping. The set is closed -- the compiler rejects any other name -- and every
+# method is exercised by the shared fixture tests/fixtures/structured_output_shaping.json, which
+# both the Python and the Worker suites assert.
+#
+# Resolution per route (compile_llm_limits.py): the route's own `structured_output_method` (with
+# `structured_output_verified_on`, the date a live request proved it) -> a method verified for the
+# same model on another route -> the provider's `structured_output_method` -> `prompt_only`, the
+# one shape every chat endpoint accepts. Provider methods below are today's inherited
+# configuration, not verifications; the provider-catalog canary (review/48 Slice 1) verifies them.
+structured_output_methods:
+  json_schema:
     response_format: json_schema
-    direct_handler: instructor
     include_schema_in_prompt: false
     strip_schema_keys: []
-  json_object:
-    response_format: json_object
-    direct_handler: native
-    include_schema_in_prompt: true
-    strip_schema_keys: []
-  relaxed_json_schema:
+  json_schema_relaxed:
     # Google accepts the nested Pydantic schema, but rejects JSON Schema size/range keywords.
     response_format: json_schema
-    direct_handler: native
     include_schema_in_prompt: false
     strip_schema_keys:
       - minLength
@@ -44,6 +47,17 @@ structured_output_profiles:
       - maximum
       - minItems
       - maxItems
+  json_object:
+    # JSON-object mode guarantees JSON syntax, not the schema, so the schema goes in the prompt.
+    response_format: json_object
+    include_schema_in_prompt: true
+    strip_schema_keys: []
+  prompt_only:
+    # No response_format at all. NVIDIA's deepseek-v4.1-flash returns EMPTY content to both
+    # json_schema and json_object (verified 2026-09-24) and valid JSON only without one.
+    response_format: none
+    include_schema_in_prompt: true
+    strip_schema_keys: []
 
 # Optional cross-model overflow routing. A key names a model whose callers may also be satisfied
 # by any of its listed target models once its own routes are exhausted/unavailable -- extra daily
@@ -65,6 +79,7 @@ model_routing:
 # through -- required for every provider, not just Mistral.
 providers:
   mistral:
+    structured_output_method: json_schema
     api_base: https://api.mistral.ai
     ai_gateway_slug: mistral
     ai_gateway_chat_path: /v1/chat/completions
@@ -93,6 +108,7 @@ providers:
   # and can race the upstream limiter. Live 429 error responses report 1 RPM (plan_rpm: 1),
   # so rpm: 1 and concurrency: 1 are used here.
   airforce:
+    structured_output_method: json_schema
     api_base: https://api.airforce/v1
     ai_gateway_slug: custom-airforce
     ai_gateway_chat_path: /chat/completions
@@ -110,7 +126,7 @@ providers:
     ai_gateway_chat_path: /v1beta/openai/chat/completions
     chat_path: /chat/completions
     reset_timezone: America/Los_Angeles
-    structured_output_profile: relaxed_json_schema
+    structured_output_method: json_schema_relaxed
     accounts:
       - id: project_primary
         api_key_env: GEMINI_API_KEY
@@ -124,11 +140,12 @@ providers:
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
-    structured_output_profile: json_object
+    structured_output_method: json_object
     accounts:
       - id: primary
         api_key_env: DEEPSEEK_API_KEY
   siliconflow:
+    structured_output_method: json_schema
     # The GLOBAL platform (`.com`), which is a different service from `siliconflow.cn` with its own
     # accounts -- a `.com` key is rejected by `.cn` with 401 "Api key is invalid". Only `.cn` offers
     # Free SiliconFlow models require Chinese real-name ID verification. Paid SiliconFlow routes
@@ -149,11 +166,12 @@ providers:
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
-    structured_output_profile: json_object
+    structured_output_method: json_object
     accounts:
       - id: primary
         api_key_env: GROQ_API_KEY
   sambanova:
+    structured_output_method: json_schema
     api_base: https://api.sambanova.ai/v1
     ai_gateway_slug: custom-sambanova
     # The registered Base URL ends in `/v1`, and the gateway now honors that path. A root-relative
@@ -172,6 +190,7 @@ providers:
       - id: primary
         api_key_env: SAMBANOVA_API_KEY
   zai:
+    structured_output_method: json_schema
     api_base: https://api.z.ai/api/paas/v4
     ai_gateway_slug: custom-zai
     # Cloudflare AI Gateway Base URL for custom-zai is configured to `https://api.z.ai/api/paas`,
@@ -183,6 +202,7 @@ providers:
       - id: primary
         api_key_env: ZAI_API_KEY
   openrouter:
+    structured_output_method: json_schema
     api_base: https://openrouter.ai/api/v1
     ai_gateway_slug: openrouter
     ai_gateway_chat_path: /chat/completions
@@ -194,6 +214,7 @@ providers:
       - id: primary
         api_key_env: OPENROUTER_API_KEY
   kilo:
+    structured_output_method: json_schema
     api_base: https://api.kilo.ai/api/gateway
     ai_gateway_slug: custom-kilo
     # The registered Base URL is `https://api.kilo.ai/api/gateway/v1`, not api_base. Kilo serves
@@ -231,6 +252,7 @@ providers:
   # OpenAI-compatible direct-adapter path as Kilo/OpenCode/SiliconFlow (see `_direct_model` in
   # `scripts/compile_llm_limits.py`).
   nvidia:
+    structured_output_method: json_schema
     api_base: https://integrate.api.nvidia.com/v1
     ai_gateway_slug: custom-nvidia
     # The registered Base URL ends in `/v1`, and the gateway now honors that path. Keep the
@@ -272,7 +294,7 @@ providers:
     reset_timezone: UTC
     rpm: 10
     concurrency: 2
-    structured_output_profile: json_object
+    structured_output_method: json_object
     accounts:
       - id: primary
         api_key_env: ORCAROUTER_API_KEY
@@ -914,9 +936,10 @@ routes:
   # caps us either way -- it just spends the quota evenly instead of burning it in half an hour and
   # then sitting locked out. Below 1 rpm is deliberate and supported; see _scale_rate_limit and
   # per-route 40k TPM self-imposed cap that is *not* summed across routes (no real provider-level
-  # TPM ledger exists yet). No `rpd` -- NVIDIA publishes no daily cap. `structured_output_profile`
-  # is left at the config default (`standard_json_schema`, via `instructor`) rather than guessing
-  # this gateway's native JSON-mode behavior, which is unverified.
+  # TPM ledger exists yet). No `rpd` -- NVIDIA publishes no daily cap. The provider-level
+  # `structured_output_method: json_schema` is inherited, not verified: NVIDIA serves each model
+  # through its own stack, and at least one (deepseek-v4.1-flash) answers json_schema with empty
+  # content, so a route that has been checked carries its own verified method.
   #
   # Each route ALSO declares its own `rpm: 12`, matching the provider-wide cap, even though
   # Python's LLMBudget already enforces that cap correctly at the shared-provider level
@@ -1026,6 +1049,17 @@ routes:
     input_per_token: 0.0
     output_per_token: 0.0
     upstream_429_default: upstream_capacity
+    # Verified 2026-09-24: json_schema and json_object both return a 200 with EMPTY content
+    # (reasoning only); with no response_format the model returns valid JSON.
+    structured_output_method: prompt_only
+    structured_output_verified_on: "2026-09-24"
+    # Thinking off (verified 2026-09-24): with thinking the model spends thousands of reasoning
+    # tokens before answering and full agendas ran past the Worker's 720 s ceiling; without it a
+    # median agenda took 205 s (~178 s to first token on NVIDIA's queue, then ~24 tokens/s) and
+    # returned valid JSON.
+    request_params:
+      chat_template_kwargs:
+        enable_thinking: false
 
   - route_id: nvidia_gemma_4_31b_it_free
     model: google/gemma-4-31b-it
@@ -1238,7 +1272,9 @@ routes:
     observed_on: "2026-09-14"
     retry_after_trustworthy: true
     upstream_429_default: upstream_capacity
-    structured_output_profile: json_object
+    # Verified 2026-09-24: json_object and json_schema both return valid JSON (5-14 s).
+    structured_output_method: json_object
+    structured_output_verified_on: "2026-09-24"
 
   - route_id: orcarouter_tencent_hy3_free
     model: orcarouter/tencent-hy3
@@ -1257,6 +1293,9 @@ routes:
     observed_on: "2026-09-14"
     retry_after_trustworthy: true
     upstream_429_default: upstream_capacity
+    # Verified 2026-09-24: json_object and json_schema both return valid JSON (~12 s).
+    structured_output_method: json_object
+    structured_output_verified_on: "2026-09-24"
 
   - route_id: orcarouter_zai_glm_5_3_flash_free
     model: orcarouter/glm-5.3-flash
@@ -1275,6 +1314,10 @@ routes:
     observed_on: "2026-09-14"
     retry_after_trustworthy: true
     upstream_429_default: upstream_capacity
+    # Verified 2026-09-24: json_object returns exactly the schema's fields (~5 s); json_schema
+    # returned JSON with an unrequested field that the strict contract rejects.
+    structured_output_method: json_object
+    structured_output_verified_on: "2026-09-24"
 
   # ==========================================
   # AIRFORCE FREE ROUTES (api.airforce)

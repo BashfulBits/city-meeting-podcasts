@@ -396,12 +396,17 @@ total on `/admin/status`.
   `summarize`, `tag`, and `soundbite-select` verbs. Direct calls use LiteLLM's provider translation;
   rate-limited calls enqueue the same OpenAI-shaped payload through `workers/llm-dispatch-proxy` and
   reconcile its completed response into the normal `JobResult` shape. Provider API keys remain in
-  environment/secret storage and are never persisted in catalog records or logs. **Structured output**
-  (`_run_structured_direct`) uses Instructor for typed parsing + one corrective retry on every route
-  *except* Gemini, whose native schema-constrained JSON mode Instructor's pinned release has no
-  `(Provider.GEMINI, Mode.JSON_SCHEMA)` entry for — `gemini/*` routes call LiteLLM directly with the
-  same native `response_format` and replicate Instructor's parse/validate/retry contract by hand
-  (`_run_gemini_structured_direct`).
+  environment/secret storage and are never persisted in catalog records or logs. **Structured output
+  is shaped per route** (review/48 R10). Each route resolves one of four methods at compile time —
+  `json_schema`, `json_schema_relaxed` (size/range keywords stripped; Gemini), `json_object` (schema in
+  the prompt) or `prompt_only` (no `response_format`; schema in the prompt) — from its own verified
+  `structured_output_method`, else a method verified for the same model elsewhere, else its
+  provider's. A queued v2 job stores only `structured_output: {name, schema}`; the v2 Worker
+  (`workers/llm-dispatch-v2/src/structured_output.js`) shapes it for the route it dispatches to, and
+  fails a 200 whose content is empty or not JSON as `structured_output_empty`/`_invalid` (retried
+  on another route, the route cooled down, counted in `route_failures`). Direct calls shape the same
+  way (`citypods/compute/structured_shaping.py`) and validate locally with one corrective retry;
+  both implementations are asserted against `tests/fixtures/structured_output_shaping.json`.
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
   private R2 queue, now multi-provider (review/41, extending R10/review/27 §9's original single-Mistral
   design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests

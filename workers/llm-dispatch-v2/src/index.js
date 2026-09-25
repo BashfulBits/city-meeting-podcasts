@@ -18,6 +18,7 @@ import {
 } from "./protocol.js";
 import { B2Client } from "./b2.js";
 import { callAiGateway, observedTokens, upstreamCapacityFailure, upstreamEmptyCompletion } from "./gateway.js";
+import { isStructuredPayload, structuredReplyProblem } from "./structured_output.js";
 import { classifyProviderFailure } from "./classify.js";
 import { DO_ROWS_WRITTEN_PLATFORM_LIMIT, ROWS_PER_INGRESS_WRITE_UNIT } from "./write_budget.js";
 
@@ -825,6 +826,27 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
         gateway_correlation_id: response.correlationId,
         failure_class: "upstream_capacity",
         classify_rule_id: cls.rule_id,
+      },
+    };
+  }
+
+  const structuredProblem =
+    response.ok && isStructuredPayload(job.payload) ? structuredReplyProblem(response.body) : null;
+  if (structuredProblem) {
+    // A 200 whose content is empty or not JSON, on a request that must return JSON (review/48
+    // R10). Never settle it as success: that stores a non-answer and clears the route's backoff,
+    // which is how NVIDIA's deepseek-v4.1-flash failed silently. The coordinator treats it as an
+    // upstream-class failure -- the job retries (on another route while this one cools down) and
+    // the class is counted in route_failures, so a route whose method is wrong shows up.
+    const usage = observedTokens(response.body);
+    return {
+      result: {
+        ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "retryable_error"),
+        observed_input_tokens: usage.input,
+        observed_output_tokens: usage.output,
+        provider_status_code: response.status,
+        gateway_correlation_id: response.correlationId,
+        failure_class: structuredProblem,
       },
     };
   }

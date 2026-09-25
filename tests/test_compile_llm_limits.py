@@ -10,6 +10,17 @@ from scripts import compile_llm_limits
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PROVIDER_LIMITS_YAML = REPO_ROOT / "config" / "provider_limits.yml"
 
+STRUCTURED_OUTPUT_METHODS = {
+    "json_schema": {"response_format": "json_schema", "include_schema_in_prompt": False},
+    "json_schema_relaxed": {
+        "response_format": "json_schema",
+        "include_schema_in_prompt": False,
+        "strip_schema_keys": ["minLength"],
+    },
+    "json_object": {"response_format": "json_object", "include_schema_in_prompt": True},
+    "prompt_only": {"response_format": "none", "include_schema_in_prompt": True},
+}
+
 
 def _raw_provider_limits() -> dict:
     return pyyaml.safe_load(PROVIDER_LIMITS_YAML.read_text(encoding="utf-8"))
@@ -42,7 +53,7 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     }
     assert len(worker["routes_by_id"]) == len(compiled["routes"])
     assert "routes" not in worker
-    assert "structured_output_profiles" not in worker
+    assert "structured_output_methods" not in worker
     assert worker["model_aliases"]["nvidia/deepseek-v4.1-flash"] == "deepseek/deepseek-v4.1-flash"
     # One pool name per DeepSeek version (2026-09-24); the old `v4-pro` alias pool is retired.
     assert "deepseek/deepseek-v4-pro" not in worker["model_aliases"]
@@ -150,7 +161,7 @@ def test_compiled_routes_materialize_route_specific_input_and_output_limits():
 
 def test_route_limits_cannot_fall_back_to_provider_defaults():
     raw = {
-        "structured_output_profiles": {"standard": {}},
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
         "providers": {"example": {"input_context_limit": 999999}},
         "routes": [{"route_id": "example", "model": "example/model", "provider": "example"}],
     }
@@ -163,26 +174,112 @@ def test_route_limits_cannot_fall_back_to_provider_defaults():
             compile_llm_limits.compile_limits()
 
 
-def test_compiled_routes_materialize_structured_output_profiles():
-    # This used to also assert on groq_llama_3_3_70b_versatile_primary, whose route entry had no
-    # route-level structured_output_profile of its own and so exercised the provider-level
-    # fallback (`route.get("structured_output_profile", provider_cfg.get(...))`) for a non-default
-    # ("json_object") value. That route was removed 2026-08-26 (Groq stopped serving the model);
-    # every remaining json_object-profile route sets structured_output_profile explicitly at the
-    # route level (see deepseek below), so this fallback branch's non-default case is currently
-    # untested against the real config -- its default case (falling through to
-    # "standard_json_schema") is still exercised by every other route that sets nothing at all.
+def test_compiled_routes_resolve_a_structured_output_method_per_route():
+    # review/48 R10: a route's own verified method wins; otherwise its provider's method.
     compiled = compile_llm_limits.compile_limits()
-    gemma = compiled["routes_by_id"]["gemma_4_31b_primary"]
-    deepseek = compiled["routes_by_id"]["orcarouter_deepseek_v4_flash_free"]
+    routes = compiled["routes_by_id"]
+    gemma = routes["gemma_4_31b_primary"]
+    v41 = routes["nvidia_deepseek_v4_1_flash_free"]
+    nemotron = routes["nvidia_nemotron_3_ultra_550b_a55b_free"]
 
-    assert gemma["structured_output_profile"] == "relaxed_json_schema"
-    assert gemma["structured_output_response_format"] == "json_schema"
-    assert gemma["structured_output_direct_handler"] == "native"
+    assert (gemma["structured_output_method"], gemma["structured_output_method_source"]) == (
+        "json_schema_relaxed",
+        "provider",
+    )
     assert "minLength" in gemma["structured_output_schema_strip_keys"]
-    assert deepseek["structured_output_profile"] == "json_object"
-    assert deepseek["structured_output_response_format"] == "json_object"
-    assert deepseek["structured_output_include_schema_in_prompt"] is True
+    assert (v41["structured_output_method"], v41["structured_output_method_source"]) == (
+        "prompt_only",
+        "route",
+    )
+    assert v41["structured_output_verified_on"] == "2026-09-24"
+    assert v41["structured_output_response_format"] == "none"
+    assert v41["structured_output_include_schema_in_prompt"] is True
+    # Same provider, different model: the v4.1 override is not a provider-wide change.
+    assert nemotron["structured_output_method"] == "json_schema"
+    worker_route = compile_llm_limits._worker_catalog(compiled)["routes_by_id"][
+        "nvidia_deepseek_v4_1_flash_free"
+    ]
+    assert worker_route["structured_output_response_format"] == "none"
+    assert worker_route["structured_output_include_schema_in_prompt"] is True
+
+
+def _methods_raw(routes, providers=None):
+    return {
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
+        "providers": providers
+        or {
+            "example": {
+                "api_base": "https://example.com",
+                "structured_output_method": "json_schema",
+            }
+        },
+        "routes": routes,
+    }
+
+
+def _route(route_id, model, **extra):
+    return {
+        "route_id": route_id,
+        "model": model,
+        "provider": "example",
+        "input_context_limit": 1000,
+        "output_context_limit": 1000,
+        **extra,
+    }
+
+
+def test_an_unverified_route_inherits_the_method_verified_for_its_model_before_its_provider():
+    routes = [
+        _route(
+            "a",
+            "m/one",
+            upstream_model="one-a",
+            structured_output_method="prompt_only",
+            structured_output_verified_on="2026-09-24",
+        ),
+        _route("b", "m/one", upstream_model="one-b"),
+        _route("c", "m/two", upstream_model="two"),
+    ]
+    resolved = compile_llm_limits._resolve_structured_output_methods(
+        [dict(r) for r in routes], _methods_raw(routes)["providers"]
+    )
+    assert resolved["a"] == ("prompt_only", "route", "2026-09-24")
+    assert resolved["b"] == ("prompt_only", "model", None)
+    assert resolved["c"] == ("json_schema", "provider", None)
+
+
+def test_a_provider_without_a_method_falls_back_to_prompt_only():
+    resolved = compile_llm_limits._resolve_structured_output_methods(
+        [_route("a", "m/one")], {"example": {}}
+    )
+    assert resolved["a"] == ("prompt_only", "default", None)
+
+
+@pytest.mark.parametrize(
+    ("route_extra", "providers", "match"),
+    [
+        ({"structured_output_method": "tool_call"}, None, "unknown structured_output_method"),
+        ({"structured_output_verified_on": "2026-09-24"}, None, "verified_on without a method"),
+        ({"structured_output_profile": "json_object"}, None, "retired key"),
+        ({}, {"example": {"structured_output_method": "xml"}}, "unknown structured_output_method"),
+    ],
+)
+def test_structured_output_method_config_errors_fail_the_compile(route_extra, providers, match):
+    with pytest.raises(ValueError, match=match):
+        compile_llm_limits._resolve_structured_output_methods(
+            [_route("a", "m/one", **route_extra)],
+            providers or {"example": {"structured_output_method": "json_schema"}},
+        )
+
+
+def test_the_method_table_must_be_exactly_the_closed_set():
+    partial = dict(STRUCTURED_OUTPUT_METHODS)
+    partial.pop("prompt_only")
+    with pytest.raises(ValueError, match="must define exactly"):
+        compile_llm_limits._normalize_structured_output_methods(partial)
+    no_prompt = {**STRUCTURED_OUTPUT_METHODS, "prompt_only": {"response_format": "none"}}
+    with pytest.raises(ValueError, match="must include the schema in the prompt"):
+        compile_llm_limits._normalize_structured_output_methods(no_prompt)
 
 
 def test_google_routes_use_live_model_identifiers():
@@ -482,14 +579,7 @@ def test_validate_token_buffer_rejects_invalid_values():
 
 def test_token_estimate_buffer_omitted_defaults_to_one():
     raw = {
-        "structured_output_profiles": {
-            "standard_json_schema": {
-                "response_format": "json_schema",
-                "direct_handler": "instructor",
-                "include_schema_in_prompt": False,
-                "strip_schema_keys": [],
-            }
-        },
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
         "providers": {
             "example": {
                 "api_base": "https://example.com",
@@ -521,14 +611,7 @@ def test_token_estimate_buffer_omitted_defaults_to_one():
 def test_token_usage_buffer_fallback_key():
     raw = {
         "token_usage_buffer": 0.80,
-        "structured_output_profiles": {
-            "standard_json_schema": {
-                "response_format": "json_schema",
-                "direct_handler": "instructor",
-                "include_schema_in_prompt": False,
-                "strip_schema_keys": [],
-            }
-        },
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
         "providers": {
             "example": {
                 "api_base": "https://example.com",
@@ -575,14 +658,7 @@ def test_split_cap_multiplier_halves_rpm_rpd_tpm():
     raw = {
         "split_cap_multiplier": 0.50,
         "token_estimate_buffer": 1.0,
-        "structured_output_profiles": {
-            "standard_json_schema": {
-                "response_format": "json_schema",
-                "direct_handler": "instructor",
-                "include_schema_in_prompt": False,
-                "strip_schema_keys": [],
-            }
-        },
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
         "providers": {
             "example": {
                 "api_base": "https://example.com",
@@ -659,18 +735,11 @@ def test_observed_characterization_fields_validation_and_compilation():
         "providers": {
             "test_prov": {
                 "api_base": "https://api.test.com",
-                "structured_output_profile": "standard_json_schema",
+                "structured_output_method": "json_schema",
                 "accounts": [{"id": "primary", "api_key_env": "TEST_KEY"}],
             }
         },
-        "structured_output_profiles": {
-            "standard_json_schema": {
-                "response_format": "json_schema",
-                "direct_handler": "instructor",
-                "include_schema_in_prompt": False,
-                "strip_schema_keys": [],
-            }
-        },
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
         "routes": [
             {
                 "route_id": "test_route_1",
@@ -708,14 +777,7 @@ def test_observed_characterization_fields_validation_and_compilation():
 def test_observed_characterization_fields_invalid_rejects():
     raw = {
         "providers": {"test_prov": {"api_base": "https://api.test.com"}},
-        "structured_output_profiles": {
-            "standard_json_schema": {
-                "response_format": "json_schema",
-                "direct_handler": "instructor",
-                "include_schema_in_prompt": False,
-                "strip_schema_keys": [],
-            }
-        },
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
         "routes": [
             {
                 "route_id": "test_route_bad",
@@ -751,18 +813,11 @@ def test_observed_rpm_lowers_the_effective_limit_but_never_raises_it():
             "providers": {
                 "test_prov": {
                     "api_base": "https://api.test.com",
-                    "structured_output_profile": "standard_json_schema",
+                    "structured_output_method": "json_schema",
                     "accounts": [{"id": "primary", "api_key_env": "TEST_KEY"}],
                 }
             },
-            "structured_output_profiles": {
-                "standard_json_schema": {
-                    "response_format": "json_schema",
-                    "direct_handler": "instructor",
-                    "include_schema_in_prompt": False,
-                    "strip_schema_keys": [],
-                }
-            },
+            "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
             "routes": [
                 {
                     "route_id": "r1",
@@ -872,3 +927,25 @@ def test_also_serves_rejects_an_alias_instead_of_a_canonical_pool():
         compile_llm_limits._validated_routes(
             [aliased, _also_serves_route(also_serves=["orcarouter/ds-v4-flash"])]
         )
+
+
+@pytest.mark.parametrize(
+    ("params", "match"),
+    [
+        ({"model": "other"}, "unsupported keys"),
+        ({}, "non-empty mapping"),
+        ("enable_thinking=false", "non-empty mapping"),
+    ],
+)
+def test_request_params_are_limited_to_provider_controls(params, match):
+    with pytest.raises(ValueError, match=match):
+        compile_llm_limits._validate_request_params({"route_id": "r", "request_params": params})
+
+
+def test_request_params_are_compiled_for_the_worker():
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
+    assert worker["nvidia_deepseek_v4_1_flash_free"]["request_params"] == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+    assert worker["nvidia_nemotron_3_ultra_550b_a55b_free"]["request_params"] is None

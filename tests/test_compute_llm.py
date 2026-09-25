@@ -21,8 +21,6 @@ from citypods.compute.llm import (
     _priced_actual,
     _retry_after_seconds,
     _safe_structured_failure_diagnostic,
-    _schema_variant_model,
-    _strip_schema_keys,
     _usage_tokens,
 )
 from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas, mutate_llm_budget
@@ -33,6 +31,7 @@ from citypods.compute.llm_policy import (
     LLMRequestPolicy,
 )
 from citypods.compute.structured import register_response_model
+from citypods.compute.structured_shaping import strip_schema_keys
 from tests._cas_fake import MemStorage
 
 
@@ -1048,7 +1047,7 @@ def test_strip_schema_keys_removes_matching_keys_at_every_depth():
             "b": {"type": "array", "items": {"type": "integer", "maximum": 5}},
         },
     }
-    stripped = _strip_schema_keys(schema, frozenset({"minLength", "maximum"}))
+    stripped = strip_schema_keys(schema, frozenset({"minLength", "maximum"}))
     assert stripped == {
         "type": "object",
         "properties": {
@@ -1059,19 +1058,7 @@ def test_strip_schema_keys_removes_matching_keys_at_every_depth():
     assert schema["properties"]["a"]["minLength"] == 1, "must not mutate the caller's schema"
 
 
-def test_schema_variant_model_preserves_name_and_leaves_original_untouched():
-    Relaxed = _schema_variant_model(
-        ConstrainedOutput,
-        frozenset({"minLength", "maxLength", "minimum", "maximum", "maxItems"}),
-    )
-
-    assert Relaxed.__name__ == "ConstrainedOutput"
-    assert issubclass(Relaxed, ConstrainedOutput)
-    assert "minLength" not in json.dumps(Relaxed.model_json_schema())
-    assert ConstrainedOutput.model_json_schema()["properties"]["value"]["minLength"] == 1
-
-
-def test_deepseek_invalid_reply_fails_after_one_instructor_retry():
+def test_deepseek_invalid_reply_fails_after_one_corrective_retry():
     calls = []
     private_marker = "untrusted-output-marker"
     invalid = '{"value":42,"extra":"' + private_marker + '"}'
