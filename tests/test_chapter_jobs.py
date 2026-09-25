@@ -23,10 +23,16 @@ def test_agenda_job_is_pinned_and_idempotent():
     assert first.task == "agenda-item-extract"
     assert first.recipe_hash == second.recipe_hash
     assert first.inputs["structured_output"] == "agenda-chapter-item-extract"
-    assert first.inputs["llm_policy"].allowed_models == ("nvidia/nemotron-3-ultra-550b-a55b:free",)
-    assert first.inputs["llm_policy"].backup_models == (
+    # A same-priority pool; Nemotron stays first because it alone is in the recipe hash.
+    assert first.inputs["llm_policy"].allowed_models == (
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "tencent/hy3",
         "gemini/gemini-3.1-flash-lite",
-        "gemini/gemini-3.5-flash-lite",
+    )
+    # Repeated as backups only for the Worker's extended retry budget (see site_config.yml).
+    assert first.inputs["llm_policy"].backup_models == (
+        "tencent/hy3",
+        "gemini/gemini-3.1-flash-lite",
     )
     assert first.inputs["llm_policy"].backup_after_attempts == 12
     assert first.inputs["llm_policy"].queue_only is True

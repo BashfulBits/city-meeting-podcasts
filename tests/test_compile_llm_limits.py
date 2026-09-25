@@ -44,8 +44,9 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert "routes" not in worker
     assert "structured_output_profiles" not in worker
     assert worker["model_aliases"]["nvidia/deepseek-v4.1-flash"] == "deepseek/deepseek-v4.1-flash"
-    # One NVIDIA route serves three pools via also_serves -- never by aliasing the pools together.
+    # One pool name per DeepSeek version (2026-09-24); the old `v4-pro` alias pool is retired.
     assert "deepseek/deepseek-v4-pro" not in worker["model_aliases"]
+    assert "deepseek/deepseek-v4-pro" not in worker["model_routes_map"]
     assert worker["routes_by_id"]["nvidia_deepseek_v4_1_flash_free"]["model"] == (
         "deepseek/deepseek-v4.1-flash"
     )
@@ -54,8 +55,6 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert isinstance(gemma, dict)
     assert set(gemma) == set(compile_llm_limits._WORKER_ROUTE_FIELDS)
     assert gemma["route_id"] == "gemma_4_31b_primary"
-    samba = worker["routes_by_id"]["sambanova_llama_3_3_70b_instruct_primary"]
-    assert samba["rpd"] == 0
     samba_gemma = worker["routes_by_id"]["sambanova_gemma_4_31b_it_primary"]
     assert samba_gemma["rpd"] == 20
     assert "sambanova_gemma_4_31b_it_primary" in worker["model_routes_map"]["google/gemma-4-31b-it"]
@@ -82,27 +81,15 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
 def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     compiled = compile_llm_limits.compile_limits()
 
+    # One pool name per DeepSeek version (2026-09-24): v4 is OrcaRouter only and v4.1 is NVIDIA
+    # only, so a lane or tournament contestant always knows which model answers. Lanes that want
+    # both list both names.
     deepseek_key = "deepseek/deepseek-v4-flash"
-    deepseek_routes = compiled["model_routes_map"][deepseek_key]
-    # NVIDIA build + OrcaRouter (both free) -- two independent physical pools for the same
-    # logical model. Paid SiliconFlow and DeepSeek Direct routes are intentionally absent.
-    assert len(deepseek_routes) == 2
-    physical_routes = [compiled["routes_by_id"][route_id] for route_id in deepseek_routes]
-    assert (
-        len(
-            {
-                (route["provider"], route["account_id"], route["upstream_model"])
-                for route in physical_routes
-            }
-        )
-        == 2
-    )
-    # NVIDIA's deepseek-v4.1-flash is ONE route (one ledger) listed in three pools via
-    # `also_serves`: its own exact-model pool, the pooled v4-flash name, and v4-pro.
-    nvidia_v41 = "nvidia_deepseek_v4_1_flash_free"
-    assert compiled["model_routes_map"]["deepseek/deepseek-v4.1-flash"] == [nvidia_v41]
-    assert compiled["model_routes_map"]["deepseek/deepseek-v4-pro"] == [nvidia_v41]
-    assert nvidia_v41 in deepseek_routes
+    assert compiled["model_routes_map"][deepseek_key] == ["orcarouter_deepseek_v4_flash_free"]
+    assert compiled["model_routes_map"]["deepseek/deepseek-v4.1-flash"] == [
+        "nvidia_deepseek_v4_1_flash_free"
+    ]
+    assert "deepseek/deepseek-v4-pro" not in compiled["model_routes_map"]
     assert "deepseek/deepseek-v4-pro" not in compiled["model_aliases"]
     assert compiled["model_aliases"]["orcarouter/deepseek-v4-flash"] == deepseek_key
 
@@ -121,20 +108,11 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     assert len(compiled["model_routes_map"][nemotron_super_key]) == 2
     assert compiled["model_aliases"]["nvidia/nemotron-3-super-120b-a12b"] == nemotron_super_key
 
-    mistral_medium_key = "mistral/mistral-medium-latest"
-    medium_routes = compiled["model_routes_map"][mistral_medium_key]
-    # primary + secondary + tertiary Mistral accounts.
-    assert len(medium_routes) == 3
-    assert {compiled["routes_by_id"][route_id]["provider"] for route_id in medium_routes} == {
-        "mistral",
-    }
-    assert compiled["model_aliases"]["mistral/mistral-medium-2508"] == mistral_medium_key
-    assert compiled["model_aliases"]["mistral/mistral-medium-2505"] == mistral_medium_key
-
     codestral_key = "mistral/codestral-2508"
     codestral_routes = compiled["model_routes_map"][codestral_key]
-    # primary + secondary + tertiary Mistral accounts + airforce codestral-latest route.
-    assert len(codestral_routes) == 4
+    # primary + secondary Mistral accounts + airforce codestral-latest route (the tertiary
+    # account was removed 2026-09-24: its key was never set on the dispatch Workers).
+    assert len(codestral_routes) == 3
     assert {compiled["routes_by_id"][route_id]["provider"] for route_id in codestral_routes} == {
         "mistral",
         "airforce",
@@ -163,8 +141,11 @@ def test_compiled_routes_materialize_route_specific_input_and_output_limits():
         and route["output_context_limit"] > 0
         for route in compiled["routes"]
     )
-    medium = compiled["routes_by_id"]["mistral_medium_latest_primary"]
-    assert (medium["input_context_limit"], medium["output_context_limit"]) == (131072, 8192)
+    codestral = compiled["routes_by_id"]["mistral_codestral_2508_primary"]
+    assert (codestral["input_context_limit"], codestral["output_context_limit"]) == (
+        256000,
+        256000,
+    )
 
 
 def test_route_limits_cannot_fall_back_to_provider_defaults():
@@ -237,17 +218,11 @@ def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
             "gemini/gemini-3.5-flash",
         ]
     }
-    assert compiled["model_routes_map"]["mistral/mistral-medium-latest"] == [
-        "mistral_medium_latest_primary",
-        "mistral_medium_latest_secondary",
-        "mistral_medium_latest_tertiary",
+    assert compiled["model_routes_map"]["mistral/codestral-2508"] == [
+        "mistral_codestral_2508_primary",
+        "mistral_codestral_2508_secondary",
+        "mistral_codestral_airforce_primary",
     ]
-    assert (
-        compiled["model_aliases"]["mistral/mistral-medium-2508"] == "mistral/mistral-medium-latest"
-    )
-    assert (
-        compiled["model_aliases"]["mistral/mistral-medium-2505"] == "mistral/mistral-medium-latest"
-    )
     worker = compile_llm_limits._worker_catalog(compiled)
     python_catalog = compile_llm_limits._python_routes(compiled)
     assert worker["model_routing"] == compiled["model_routing"]
@@ -409,7 +384,7 @@ def test_validated_routes_reports_the_offending_index_not_a_bare_keyerror():
 def test_validated_routes_rejects_a_duplicate_hand_authored_route_id():
     routes = [
         {"route_id": "dup", "model": "gemini/gemini-3-flash-preview"},
-        {"route_id": "dup", "model": "mistral/mistral-large-2512"},
+        {"route_id": "dup", "model": "mistral/codestral-2508"},
     ]
     with pytest.raises(ValueError, match=r"route #1 redeclares route_id 'dup'"):
         compile_llm_limits._validated_routes(routes)
@@ -830,20 +805,6 @@ def test_nvidia_provider_wide_rpm_is_not_below_the_sum_of_its_own_routes():
         f"providers['nvidia'].rpm ({provider_rpm}) is below the sum of its own routes' rpm "
         f"({route_rpm_sum}); per-route pacing can never be the binding constraint like this"
     )
-
-
-def test_mistral_medium_legacy_aliases_match_latest_account_coverage():
-    """mistral/mistral-medium-2505 and -2508 are legacy aliases for mistral/mistral-medium-latest
-    (`model_key`) -- their account coverage (which accounts have a route at all) must match the
-    live name's, or a job pinned to the legacy name silently has fewer routes to fall back to."""
-    raw = _raw_provider_limits()
-    accounts_by_model: dict[str, set[str]] = {}
-    for route in raw["routes"]:
-        accounts_by_model.setdefault(route["model"], set()).add(route["account_id"])
-    latest_accounts = accounts_by_model["mistral/mistral-medium-latest"]
-    assert latest_accounts == {"primary", "secondary", "tertiary"}
-    for alias in ("mistral/mistral-medium-2505", "mistral/mistral-medium-2508"):
-        assert accounts_by_model[alias] == latest_accounts, alias
 
 
 def _also_serves_route(**overrides):

@@ -126,66 +126,74 @@ tournament:
 llm_lanes:
   # --- Production enrichment lanes (daily crons; these carry the catalog) ------------------
   chapter-agenda:
-    # Preferred: NVIDIA Nemotron 3 Ultra (free). A 30-episode audit-crosswalk benchmark
-    # (scripts/research/agenda_chapters/audit_locator_crosswalk.py's _pair_features/_chapter_status
-    # scorer) found 29/30 valid JSON (97%), recall 77.9%, precision 87.4% (best of any model
-    # tested), ~134s latency, at max_tokens=32768 -- see citypods/compute/llm_routes.json's
-    # nvidia/nemotron-3-ultra-550b-a55b:free route. Replaces mistral/mistral-medium-latest, which
-    # is blocked by an account-tier issue (primary/secondary/tertiary Mistral keys all report an
-    # identical zero rate limit for every flagship model).
-    # Replaces citypods/chapter_titles.py:AGENDA_PRODUCTION_MODEL.
-    models: ["nvidia/nemotron-3-ultra-550b-a55b:free"]
-    # Backup models (LaneConfig.backup_models/backup_after_attempts, citypods/compute/llm_lanes.py)
-    # take over once a job has been dispatched backup_after_attempts times without a successful
-    # response, or already needed a JSON-schema-validation correction -- the next-best/most-reliable
-    # candidates from the same benchmark (100%/97% valid JSON, faster, slightly lower precision than
-    # Nemotron). Worker (queue_only) dispatch only; see workers/llm-dispatch-v2/src/routes.js's
-    # backupModelsActive/modelsForJob.
-    backup_models:
+    # A same-priority POOL: the Worker sends each job to the first eligible route with capacity
+    # across all `models` (workers/llm-dispatch-v2/src/routes.js modelsForJob/routesEligibleFor),
+    # so work flows to whichever of the three is free. On evals/chapter-agenda (main + holdout,
+    # 2026-09-24, repaired validator) the three are about equal:
+    #   Nemotron 3 Ultra   AA 22.9  F1 0.750 / 0.840  valid 100% / 92%   NVIDIA + OpenRouter + Kilo
+    #   tencent/hy3        AA 25.3  F1 0.760 / 0.867  valid 90% / 83% per call (~99% after one retry)
+    #   Gemini 3.1 Flash Lite AA 15.6 F1 0.750 / 0.830 valid 97% / 100%, ~5 s (shares its 1,000/day
+    #                      with the tagger's primary; add tagger routes if tagging congests)
+    # Nemotron stays models[0]: it is AGENDA_PRODUCTION_MODEL, the only model in the agenda recipe
+    # hash, so the pool adds capacity without re-queuing the catalog. Completed artifacts from any
+    # model in `models` or `backup_models` stay reusable.
+    models:
+      - "nvidia/nemotron-3-ultra-550b-a55b:free"
+      - "tencent/hy3"
       - "gemini/gemini-3.1-flash-lite"
-      - "gemini/gemini-3.5-flash-lite"
-    # 12 is comfortably within the 5-20 range this mechanism expects: once a lane declares
-    # backup_models, the Worker's own class-specific retry ceilings (MAX_5XX_RETRIES,
-    # MAX_UPSTREAM_CAPACITY_RETRIES) are automatically raised to guarantee the job survives to
-    # this threshold before any of them could terminally fail it (coordinator.js's completeBatch,
-    # `_retryCeiling`) -- confirmed necessary live: a raw 5xx (e.g. NVIDIA's own "Service
-    # temporarily overloaded" 503, the realistic dominant failure mode here) classifies as
-    # `server_error`, gated by MAX_5XX_RETRIES=1 (only 2 attempts) without that extension. Given
-    # Nemotron's benchmarked ~97% success rate, a job needing 12 attempts is a genuine outlier.
+    # backup_models repeats two pooled models on purpose, for their retry budget, not capacity:
+    # the Worker raises its per-class retry ceilings to backup_after_attempts + base ONLY when
+    # backup_models is non-empty (coordinator.js completeBatch `_retryCeiling`); without it an
+    # NVIDIA 503 (`server_error`, MAX_5XX_RETRIES=1) fails a job terminally after two attempts.
+    # Repeating pooled models adds no routes (the Worker de-duplicates them). Gemini 3.5 Flash
+    # Lite is not a fallback here: it is weaker on this task and better used as the locator's
+    # primary. Dropping it re-dispatches the agenda artifacts it produced (approved backfill).
+    backup_models:
+      - "tencent/hy3"
+      - "gemini/gemini-3.1-flash-lite"
     backup_after_attempts: 12
-    # Per-run share of the day: this lane runs every 2 hours, so 12 runs x 500 exceeds what
-    # daily_write_units funds (6200 / 4 units per job = 1,550). A run cap above the daily budget
-    # is not a harmless ceiling: the producer submits to it and the Worker rejects the surplus.
-    # backup_models are not part of this per-job unit cost (see LaneConfig.ingress_write_units_per_job)
-    # -- they're only ever indexed once a job's own attempts/schema_retry_count activate them.
+    # Per-run share of the day: this lane runs every 2 hours. daily_write_units funds 1,550 jobs a
+    # day at 6 units per job (3 bookkeeping rows + 3 pooled models; backup_models are not part of
+    # the per-job cost, see LaneConfig.ingress_write_units_per_job): 9,300 / 6 = 1,550. A run cap
+    # above the daily budget is not a harmless ceiling: the producer submits to it and the Worker
+    # rejects the surplus.
     max_dispatches_per_run: 500
-    reserved_write_units: 3720
-    daily_write_units: 6200
+    reserved_write_units: 5580
+    daily_write_units: 9300
   chapter-locator:
     # Replaces citypods/chapter_locator.py:PRODUCTION_LOCATOR_MODEL. Gemini 3.5 Flash Lite is
     # reserved for this long-context workload and deliberately not shared with tagging; it stays
     # `models[0]` (the recipe/calibration key -- see chapter_locator.py's own docstring on why
-    # changing it re-queues the whole locator catalog). The two overflow models are free NVIDIA
-    # routes with no verified hard per-request ceiling (confirmed live -- see `hard_input_ceiling`
-    # in config/provider_limits.yml), added so a full-transcript job too large for Gemini's real
-    # free-tier ceiling has somewhere to go instead of a guaranteed 429.
+    # changing it re-queues the whole locator catalog). The overflow models take full-transcript
+    # jobs too large for Gemini's real free-tier ceiling. 2026-09-24: OrcaRouter's GLM 5.3 Flash
+    # (AA 41.8, 800/day, 1M context, ~5 s; json_object verified live) and DeepSeek v4 (AA 34.3,
+    # 800/day, 1M) give placement -- long-context reasoning -- two responsive independent pools;
+    # kimi-k3 is latency-bound (~590 s calls on one slot, ~146/day).
     models:
       - "gemini/gemini-3.5-flash-lite"
-      - "deepseek/deepseek-v4-pro"
+      - "zai/glm-5.3-flash"
+      - "deepseek/deepseek-v4-flash"
       - "moonshotai/kimi-k3"
-    # Per-run share of what daily_write_units funds at 3 models (3 index rows + 3 bookkeeping
-    # rows = 6 units/job; 2790/6 = 465 a day over 12 runs); see
+    # Per-run share of what daily_write_units funds at 4 models (4 index rows + 3 bookkeeping
+    # rows = 7 units/job; 3255/7 = 465 a day over 12 runs); see
     # `LaneConfig.max_jobs_per_day`, which `parse_lanes` enforces this can never exceed.
     max_dispatches_per_run: 150
-    reserved_write_units: 1860
-    daily_write_units: 2790
+    reserved_write_units: 2170
+    daily_write_units: 3255
   topic-tags:tagger:
     # Keep tagging pinned to the stable/calibrated Gemini 3.1 route; it is the recipe and
-    # calibration-matrix key. Mirrors the legacy `tagging.llm_models`.
-    models: ["gemini/gemini-3.1-flash-lite"]
+    # calibration-matrix key (models[0]). The two additional models (2026-09-24) are throughput
+    # spill onto independent free pools and take the largest transcripts Gemini's ceiling cannot
+    # (Kilo step-3.7-flash: AA 19.5, 200/day, 249k; OrcaRouter DeepSeek v4: AA 34.3, 800/day, 1M).
+    # Each answer records the model that produced it, so calibration stays keyed on real usage.
+    models:
+      - "gemini/gemini-3.1-flash-lite"
+      - "kilo/stepfun/step-3.7-flash:free"
+      - "deepseek/deepseek-v4-flash"
     max_dispatches_per_run: 300
     reserved_write_units: 1860
-    daily_write_units: 3720
+    # 930 jobs/day at 6 units/job (3 bookkeeping + 3 models), unchanged from the one-model lane.
+    daily_write_units: 5580
   topic-tags:prelabeler:
     # Mirrors the legacy `tagging.prelabeler.model`. Its own budget, NOT a share of the
     # tagger's -- this split is exactly what the old `topic-tags` key failed to express.
@@ -215,23 +223,38 @@ llm_lanes:
     # transcripts that can exceed Gemini's real free-tier per-request ceiling well before its
     # advertised 1M-token context window (confirmed live -- see `hard_input_ceiling` in
     # config/provider_limits.yml); the two Gemini entries above stay first/unaffected.
+    # 2026-09-24: gemini-3.8/3.7-flash (AA 40.9/39.1, independent 20/day pools per account) added
+    # ahead of 3.6/3.5, whose 20/day pools were exhausted by midday. The DeepSeek overflow slot is
+    # OrcaRouter's v4, not NVIDIA's v4.1: NVIDIA's v4.1 returns EMPTY content whenever a request
+    # carries any `response_format` (json_schema or json_object; verified live 2026-09-24) and
+    # answers only without one, and the v2 Worker forwards the job's format unchanged.
+    # OrcaRouter's GLM 5.3 Flash (AA 41.8 -- general strength on par with the Gemini Flash
+    # primaries -- 800/day, 1M context, ~5 s; json_object verified live 2026-09-24) adds the
+    # capacity those 20/day Gemini pools lack; it is also in the council list.
+    # Changing the council list is a deliberate moments recipe change (approved backfill).
     models:
+      - "gemini/gemini-3.8-flash"
+      - "gemini/gemini-3.7-flash"
       - "gemini/gemini-3.6-flash"
       - "gemini/gemini-3.5-flash"
+      - "zai/glm-5.3-flash"
       - "gemini/gemini-3.5-flash-lite"
       - "gemini/gemini-3.1-flash-lite"
-      - "deepseek/deepseek-v4-pro"
+      - "deepseek/deepseek-v4-flash"
       - "moonshotai/kimi-k3"
     max_dispatches_per_run: 40
-    reserved_write_units: 840
-    daily_write_units: 1680
+    reserved_write_units: 916
+    # ~186 jobs/day at 12 units/job (3 + 9 models).
+    daily_write_units: 2232
   r6-judge:
-    # Mirrors the legacy `moments.judges.models`.
+    # A PANEL, not a pool: MomentJudgeStage sends each candidate to every judge pinned to that
+    # model, and admission is calibrated per judge. 2026-09-24: glm-4.7-flash (AA 14.9) and
+    # gpt-oss-120b (AA 11.6) removed; gemma-4-26b-a4b-it (AA 16.7, ~0.5k-token inputs, two 14,400/day
+    # AI Studio pools) joins as its own judge. A new judge admits nothing until calibrated.
     models:
       - "qwen/qwen3.8-27b"
-      - "zai/glm-4.7-flash"
       - "gemini/gemini-3.6-flash"
-      - "openai/gpt-oss-120b"
+      - "google/gemma-4-26b-a4b-it"
     max_dispatches_per_run: 40
     reserved_write_units: 650
     daily_write_units: 1300
@@ -243,12 +266,16 @@ llm_lanes:
     dispatch_shape: per_model
     models:
       - "gemini/gemini-3.1-flash-lite"
-      # Exact-model pool (NVIDIA's deepseek-v4.1-flash only). `deepseek/deepseek-v4-flash` now
-      # pools v4.1 with OrcaRouter's older v4, so a contestant named that way would be answered by
-      # two different models and void the comparison (2026-09-23).
+      # One pool name per DeepSeek version (2026-09-24), so v4.1 (NVIDIA) and v4 (OrcaRouter) are
+      # scored as separate contestants. KNOWN GAP: NVIDIA's v4.1 returns empty content to any
+      # `response_format` (see r6-moments), so its candidates fail until the v2 Worker applies
+      # each route's own structured-output method (review/48). It stays because the round robin
+      # is a fixed four (citypods/tournament.py:contest_plan) and this lane is weekly research.
+      # gemma-4-26b-a4b-it was removed: its 10k-token AI Studio ceiling cannot take tagging-size
+      # inputs, so its comparisons never completed.
       - "deepseek/deepseek-v4.1-flash"
+      - "deepseek/deepseek-v4-flash"
       - "zai/glm-4.7-flash"
-      - "google/gemma-4-26b-a4b-it"
     # One sample costs 4 candidate jobs here and 12 comparisons in `tournament:tag-judge`, so
     # the two budgets are split ~1:3 to let both fill on the same number of samples instead of
     # one lane capping the run while the other sits idle. Run caps equal what each daily budget
@@ -268,9 +295,9 @@ llm_lanes:
     # tournament:tag). Manual-dispatch only, so it carries no reservation: it draws purely on
     # unreserved shared headroom and can never displace a scheduled production lane.
     dispatch_shape: per_model
+    # gemma-4-26b-a4b-it removed 2026-09-24 (10k-token ceiling < tagging-size inputs).
     models:
       - "gemini/gemini-3.1-flash-lite"
-      - "google/gemma-4-26b-a4b-it"
       - "zai/glm-4.7-flash"
     max_dispatches_per_run: 200
     reserved_write_units: 0

@@ -889,13 +889,19 @@ def test_tag_lane_uses_async_llm_dispatch_and_keeps_provider_key_off_runner():
     env = step["env"]
     assert env["LLM_DISPATCH_URL"] == "${{ secrets.LLM_DISPATCH_URL }}"
     assert env["LLM_DISPATCH_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}"
-    assert "GEMINI_API_KEY" not in env
+    for key in ("GEMINI_API_KEY", "KILO_API_KEY", "ORCAROUTER_API_KEY"):
+        assert key not in env  # every tagger model is dispatched by the Worker, never the runner
 
     site = yaml.safe_load((WORKFLOWS.parent.parent / "config" / "site_config.yml").read_text())
     assert site["tagging"]["llm_mode"] == "dispatch"
     # The tag lane's routes moved out of `tagging.llm_model`/`llm_models` and into the canonical
     # `llm_lanes` registry, which also carries the lane's ingress write budget (review/44 Phase 4).
-    assert site["llm_lanes"]["topic-tags:tagger"]["models"] == ["gemini/gemini-3.1-flash-lite"]
+    # models[0] is the recipe/calibration key; the rest are throughput spill (2026-09-24).
+    assert site["llm_lanes"]["topic-tags:tagger"]["models"] == [
+        "gemini/gemini-3.1-flash-lite",
+        "kilo/stepfun/step-3.7-flash:free",
+        "deepseek/deepseek-v4-flash",
+    ]
 
 
 def test_granicus_worker_deploy_is_path_scoped_and_uses_cloudflare_secrets():

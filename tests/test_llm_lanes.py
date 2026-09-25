@@ -152,9 +152,11 @@ class TestBackupModels:
         with pytest.raises(ValueError, match="backup_models must be a non-empty list"):
             parse_lanes(_lane(backup_after_attempts=5))
 
-    def test_rejects_overlap_with_models(self):
-        with pytest.raises(ValueError, match="overlaps its own models"):
-            parse_lanes(_lane(backup_models=["m1"], backup_after_attempts=5))
+    def test_allows_a_pooled_model_as_backup_for_its_retry_budget(self):
+        # Repeating a pooled model adds no routes (the Worker de-duplicates them); a non-empty
+        # backup_models is what raises the Worker's retry ceilings for the lane.
+        lane = parse_lanes(_lane(backup_models=["m1"], backup_after_attempts=5))
+        assert lane["a-purpose"].backup_models == ("m1",)
 
     def test_rejects_backup_models_on_a_per_model_lane(self):
         with pytest.raises(ValueError, match="per_model"):
@@ -319,10 +321,8 @@ class TestRecipeAffectingModelPins:
 
         assert AGENDA_PRODUCTION_MODEL == lane_for("chapter-agenda").primary_model
         assert AGENDA_PRODUCTION_MODELS == lane_for("chapter-agenda").models
-        assert AGENDA_BACKUP_MODELS == (
-            "gemini/gemini-3.1-flash-lite",
-            "gemini/gemini-3.5-flash-lite",
-        )
+        assert AGENDA_PRODUCTION_MODEL == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert AGENDA_BACKUP_MODELS == ("tencent/hy3", "gemini/gemini-3.1-flash-lite")
         assert AGENDA_BACKUP_AFTER_ATTEMPTS == 12
         assert PRODUCTION_LOCATOR_MODEL == lane_for("chapter-locator").primary_model
 

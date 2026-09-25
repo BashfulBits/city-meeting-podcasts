@@ -17,6 +17,71 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Moments: explicit pull-quote criteria and word-accurate quote timing** (`citypods/moments.py`,
+  `citypods/moment_judging.py`, `citypods/stages.py`; review/36). The extraction prompt now says
+  what a pull quote is for and what to avoid, derived from VISION, and the judge scores against the
+  same criteria (moments prompt 1 -> 2, judge prompt 1 -> 2: new calibration cells). Candidates
+  keep the exact spoken span (`quote_start`/`quote_end`) from the served-time words sidecar beside
+  the padded clip window, decisions carry word-accurate `start`/`end`, and a short quote is widened
+  to the 8 s clip minimum instead of dropped. Summary points record the real prompt version. Moments
+  re-extract through the recipe hash (folded into the council-moments backfill above).
+
+- **LLM lane capacity and route cleanup** (`config/provider_limits.yml`, `config/site_config.yml`,
+  `citypods/moments.py`, regenerated catalogs; 2026-09-24 capacity review under review/48).
+  - *DeepSeek:* one pool name per version. `deepseek/deepseek-v4-flash` is now OrcaRouter's v4
+    only and `deepseek/deepseek-v4.1-flash` NVIDIA's v4.1 only; the `deepseek-v4-pro` alias is
+    retired. The tournament scores v4 and v4.1 as separate contestants.
+  - *GLM 5.3 Flash (OrcaRouter; AA 41.8, 800/day, 1M context, ~5 s; `json_object` verified live)*
+    added to chapter-locator overflow (ahead of DeepSeek v4 and kimi-k3) and to r6-moments,
+    including the council list. It adds a responsive, strong general-purpose pool where the
+    Gemini Flash moments pools (20/day each) run out and locator overflow was latency-bound.
+    Lane write budgets are raised to keep the same daily job counts.
+  - *NVIDIA DeepSeek v4.1 kept out of production pools:* it returns empty content to any
+    `response_format` (json_schema or json_object; verified live) and the v2 Worker forwards the
+    job's format unchanged, so r6-moments and council-moments overflow go to OrcaRouter v4 instead.
+    The tournament keeps its v4.1 contestant as a documented gap. The fix -- the Worker shaping
+    structured output per route from verified methods -- is review/48 PR C.
+  - *Tagger:* Kilo `step-3.7-flash` and OrcaRouter v4 added as throughput models after the
+    pinned Gemini 3.1 Flash Lite (recipe/calibration key unchanged); they also take transcripts
+    above Gemini's input ceiling. Daily write budget raised to keep 930 jobs/day.
+  - *r6-moments:* Gemini 3.8/3.7 Flash and GLM 5.3 Flash added (independent pools; 3.6/3.5 ran
+    out by midday). The council model list is part of the moments recipe hash, so **council moments are
+    re-generated** (approved backfill).
+  - *r6-judge:* glm-4.7-flash and gpt-oss-120b removed; gemma-4-26b-a4b-it joins the panel as its
+    own calibrated judge. gemma-4-26b removed from `tournament:tag` and `r5-benchmark:tag` (its
+    10k-token ceiling cannot take tagging inputs).
+  - *Dead routes removed:* 22 Mistral routes -- the 21 routes of the seven plan-blocked models
+    (Medium latest/2508/2505, Large 2512, Small 2603, Devstral 2512, Labs Leanstral) on all three
+    accounts, plus the tertiary account's Codestral route, retiring that unused account (its key was
+    never set on the Workers) -- and the paused SambaNova Llama 3.3 route. The v1 Worker's advertised
+    default moves from Mistral Large to Codestral 2508.
+  - *chapter-agenda is a same-priority pool:* Nemotron 3 Ultra, tencent/hy3 (OrcaRouter) and
+    Gemini 3.1 Flash Lite are all in `models`, so the Worker sends each job to whichever route has
+    capacity (the ~3,700-job Nemotron backlog had left the former backups idle). On
+    `evals/chapter-agenda` (main + holdout, repaired validator) they are about equal (F1
+    0.750/0.840, 0.760/0.867, 0.750/0.830). Nemotron stays `models[0]`, the only model in the
+    agenda recipe hash, so nothing re-queues. hy3 and 3.1 Flash Lite are repeated in
+    `backup_models` solely to keep the Worker's extended retry budget, which applies only when
+    backups are declared; the lane parser now allows that overlap (the Worker de-duplicates
+    routes). Gemini 3.5 Flash Lite leaves the lane, so agenda artifacts it produced are
+    re-dispatched (deliberate backfill). 3.1 Flash Lite shares its daily quota with the tagger's
+    primary; tagging routes will be added if it congests.
+  - No pipeline version change; council moments re-run through their recipe hash.
+
+- **First committed per-task evaluation set: `evals/chapter-agenda/`** (GH#1852;
+  `scripts/eval_chapter_agenda.py`, `tests/test_eval_chapter_agenda.py`). 29 episodes whose meeting
+  providers (Granicus, Swagit, CivicClerk) publish their own chapters, used as model-independent
+  ground truth (376 chapters). Each model gets production's exact request and post-processing, runs
+  with its providers paused on the v2 Worker, and is scored with the original crosswalk matcher.
+  Provider errors are "unanswered" (retried, never counted as bad output); an empty or unparseable
+  reply is invalid output. Rejected responses keep per-item validation outcomes and the raw reply.
+  Results: `evals/chapter-agenda/results/2026-09-24.json`.
+
+- **Removed the Airforce `kimi-k2.7-code` route** (`config/provider_limits.yml`, regenerated
+  catalogs). It stopped being free: a canary under the v2 dispatch pause on 2026-09-24 returned 402
+  "requires an active subscription or a positive Pay-as-you-Go balance". No lane referenced it. No
+  pipeline version, recipe, or stored-artifact change.
+
 - **Unblocked the LLM Dispatch v2 deploy: back under Workers Free's 64-variable limit**
   (`workers/llm-dispatch-v2/wrangler.jsonc`, `tests/test_llm_dispatch_worker_limits.py`). #1846
   declared `DO_ROWS_ENQUEUE_STOP`/`_CLAIM_STOP`/`_OPTIONAL_STOP` and `MAX_QUEUED_JOBS` at exactly the
