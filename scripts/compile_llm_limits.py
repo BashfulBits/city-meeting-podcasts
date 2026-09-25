@@ -985,9 +985,9 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"({route['input_context_limit']}); it can never bind and should be removed"
                 )
             route["hard_input_ceiling"] = int(hard_ceiling)
-        # Optional fraction the Worker may exceed `hard_input_ceiling` by before refusing a job
-        # outright. Only for a ceiling authored with known slack below the provider's real limit:
-        # a provider input-limit rejection stands the whole route down.
+        # Optional fraction over `hard_input_ceiling` the Worker may still try when a claim finds
+        # nothing else to dispatch. Only for a ceiling authored with known slack below the
+        # provider's real limit: a provider input-limit rejection stands the whole route down.
         tolerance = route.get("hard_input_ceiling_tolerance")
         if tolerance is not None:
             if (

@@ -82,7 +82,9 @@ export function routeFitsContext(route, inputTokens, outputTokens) {
   inputTokens = scaledInputTokens(inputTokens, routeInputTokenRatio(route));
   const contextLimit = route.input_context_limit || 32768;
   const outputLimit = route.output_context_limit || 1024;
-  if (inputTokens > hardInputCeilingLimit(route)) {
+  // Tolerant here: this coarse filter only decides which routes a claim may consider. Whether
+  // a near miss is actually tried is the claim's drain-pass decision (earliestSafeStart).
+  if (inputTokens > hardInputCeilingLimit(route, { tolerant: true })) {
     return false;
   }
   return (

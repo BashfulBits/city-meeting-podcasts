@@ -566,9 +566,10 @@ in the Worker). The v2 Worker additionally learns, per route × model × prompt 
 ratio and p95 output size of the last 32 completions (after 16 samples) and reserves
 `scaled input + min(max_tokens, 1.25 × p95 output)` rather than the full `max_tokens`; each successful
 completion then settles the route's token bucket to the provider's reported usage. The Worker checks
-`hard_input_ceiling` at that learned ratio, plus an optional per-route `hard_input_ceiling_tolerance`
-(0.1 on the Gemma AI Studio routes, still under Google's 16,000/minute quota) so a near-miss estimate
-is tried rather than stranded; producers read the same ratio from the read-only `GET /v2/calibration`
+`hard_input_ceiling` at that learned ratio. A route may add `hard_input_ceiling_tolerance` (0.1 on the
+Gemma AI Studio routes, still under Google's 16,000/minute quota): a job refused only for being within
+it is tried when a claim finds nothing else to dispatch, one per route per claim, so near misses drain
+instead of stranding at the head of the queue; producers read the same ratio from the read-only `GET /v2/calibration`
 (one row) and size prelabeler batches to it with a 5% margin. One physical route
 may serve several logical pools via `also_serves` (one `route_id`, one ledger — e.g. NVIDIA's
 `deepseek-v4.1-flash` is the only route in `deepseek/deepseek-v4.1-flash` and `deepseek/deepseek-v4-pro`

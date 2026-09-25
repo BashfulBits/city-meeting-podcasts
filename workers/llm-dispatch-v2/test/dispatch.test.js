@@ -928,20 +928,23 @@ test("lookahead uses the calibrated ratio, not the static prior, to skip unserva
   assert.deepEqual(plan.jobs.map((job) => job.id), ["fits"]);
 });
 
-test("a near-miss job over the calibrated ceiling is still tried within the route's tolerance", async () => {
+test("near misses over the calibrated ceiling drain only when nothing else is dispatchable", async () => {
   // 2026-09-25: producer-sized 10,000-token Gemma batches (14,000 at the 1.4 prior) met a learned
-  // 1.3 x 1.2 = 1.56 ratio (15,600) at claim time and were refused forever on a strict 14,400.
-  const route = (tolerance) => ({
-    ...CEILING_CATALOG.routes_by_id["gemma-ai-studio"],
-    hard_input_ceiling: 14400,
-    hard_input_ceiling_tolerance: tolerance,
-    input_token_ratio: 1.4,
-  });
-  const claimWith = async (tolerance) => {
+  // 1.3 x 1.2 = 1.56 ratio (15,600) at claim time and were refused forever on a strict 14,400,
+  // filling the claim lookahead while nothing else could run.
+  const coordinatorWith = (tolerance) => {
     const { coordinator, sql } = makeCoordinator({
+      MAX_BUNDLE_JOBS: "4",
       DISPATCH_LIMITS_OVERRIDE: {
         ...CEILING_CATALOG,
-        routes_by_id: { "gemma-ai-studio": route(tolerance) },
+        routes_by_id: {
+          "gemma-ai-studio": {
+            ...CEILING_CATALOG.routes_by_id["gemma-ai-studio"],
+            hard_input_ceiling: 14400,
+            hard_input_ceiling_tolerance: tolerance,
+            input_token_ratio: 1.4,
+          },
+        },
       },
     });
     sql.exec(
@@ -950,11 +953,26 @@ test("a near-miss job over the calibrated ceiling is still tried within the rout
       "gemma-ai-studio:google/gemma-4-31b-it:tags",
       JSON.stringify({ r: Array(16).fill(1.3), o: Array(16).fill(200) })
     );
-    await coordinator.enqueueBatch([gemmaJob("near-miss", 10_000)]);
-    return (await coordinator.claimDispatchWindow(Date.now(), 30)).jobs.map((job) => job.id);
+    return coordinator;
   };
-  assert.deepEqual(await claimWith(null), []);
-  assert.deepEqual(await claimWith(0.1), ["near-miss"]);
+  const claim = async (coordinator) =>
+    (await coordinator.claimDispatchWindow(Date.now(), 30)).jobs.map((job) => job.id);
+
+  // No tolerance on the route: the near miss is never tried.
+  const strict = coordinatorWith(null);
+  await strict.enqueueBatch([gemmaJob("near-miss", 10_000)]);
+  assert.deepEqual(await claim(strict), []);
+
+  // Servable work goes first; the near miss waits even though it is older.
+  const busy = coordinatorWith(0.1);
+  await busy.enqueueBatch([gemmaJob("near-miss", 10_000)]);
+  await busy.enqueueBatch([gemmaJob("fits", 5_000)]);
+  assert.deepEqual(await claim(busy), ["fits"]);
+
+  // With nothing else dispatchable, the near misses drain one per route per claim.
+  const idle = coordinatorWith(0.1);
+  await idle.enqueueBatch([gemmaJob("near-miss-1", 10_000), gemmaJob("near-miss-2", 10_000)]);
+  assert.deepEqual(await claim(idle), ["near-miss-1"]);
 });
 
 test("claims stop at MAX_LEASES_PER_UTC_DAY and resume on the next UTC day", async () => {

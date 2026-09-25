@@ -392,10 +392,11 @@ routes:
   # 10000 stopgap, which unnecessarily sent otherwise admissible jobs to fallback routes.
   # observed_input_ceiling below remains the historical probe observation; it is not promoted to
   # the new hard ceiling because this quota probe did not measure a per-request maximum.
-  # hard_input_ceiling_tolerance 0.1 lets the Worker still try a job whose calibrated size is up
-  # to 10% over 14400 (15840, still under the 16000 quota): the calibrated size is itself an
-  # estimate (learned p95 x headroom), and refusing near-miss jobs outright left them queued with
-  # no route once SambaNova's 20/day was spent (2026-09-25).
+  # hard_input_ceiling_tolerance 0.1: when a claim finds nothing else to dispatch, the Worker still
+  # tries a job whose calibrated size is up to 10% over 14400 (15840, still under the 16000 quota),
+  # one per route per claim. The calibrated size is itself an estimate (learned p95 x headroom);
+  # refusing near misses outright left them queued with no route once SambaNova's 20/day was spent
+  # (2026-09-25).
   - route_id: gemma_4_26b_primary
     model: google/gemma-4-26b-a4b-it
     provider: gemini
