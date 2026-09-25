@@ -25,6 +25,8 @@ Phase R (Research-Tool Surface)._
     route's own output limit (bounded by its input room, capped at 65,536). Their `max_tokens`
     becomes the scheduling reservation, lowered to observed needs (agenda and moments 16,384, tagger
     8,192, locator 16,384), which keeps small-TPM routes schedulable.
+    Deferred-dispatch capsules keep `max_tokens_mode`, so a rebuilt job still sends the route's
+    limit.
   - Lanes can set a reasoning level per model (`llm_lanes[...].reasoning: {model: off|low}`); routes
     say how their provider expresses it (`reasoning_controls`). NVIDIA DeepSeek v4.1's thinking
     switch moves from a route-wide `request_params` override to `reasoning_controls.off`, so it
@@ -53,6 +55,20 @@ Phase R (Research-Tool Surface)._
   r6-moments route allows at least 65,536 output tokens; the budget is not in the moments recipe
   hash, so nothing re-extracts. `config/provider_limits.yml` also records OrcaRouter's published
   free-tier limits and that `rpm: 10` / `concurrency: 2` are deliberate choices below them.
+
+- **Agenda extraction keeps grounded agendas instead of discarding them over one item**
+  (`citypods/chapter_titles.py`, `citypods/chapter_jobs.py`; evidence in `evals/chapter-agenda`).
+  A composed outline reference the agenda confirms (`3.a` under `3.`) is kept, and a contradicted
+  one falls back to the source's own label; quote marks no longer decide whether a quote is
+  grounded; a repeated item is dropped; other unverifiable items are dropped while they are at most
+  10% of a response (above that it still fails and is retried). Diagnostics record the counts. On
+  identical replies no previously valid episode changed, and chapters found per answered agenda
+  rose for every model on both the main set and a new holdout (e.g. Nemotron 0.52 -> 0.66 main,
+  0.55 -> 0.69 holdout). No pipeline version change: responses that failed before succeed on retry.
+- **Chapter-agenda eval: holdout split, stored replies, offline `--rescore`, and reference
+  matching** (`evals/chapter-agenda/holdout/`, `scripts/eval_chapter_agenda.py`). 24 more episodes
+  disjoint by meeting; position-only provider chapters ("Item 3A", 11% of all provider chapters,
+  all Swagit) are now matched by the item's reference instead of never matching.
 
 - **Structured output is shaped per route by the v2 Worker** (review/48 PR C;
   `config/provider_limits.yml`, `scripts/compile_llm_limits.py`, `citypods/compute/structured_shaping.py`,
@@ -402,6 +418,21 @@ Phase R (Research-Tool Surface)._
   per-provider and per-route limits, recipe schema, and backfill behavior are unchanged.
 
 ### Fixed
+
+- **Direct LiteLLM calls now have a bounded 720 s default timeout** (`citypods/compute/llm.py`,
+  `tests/test_compute_llm.py`, `LLM_SETUP.md`). `LLMBackendConfig.timeout_seconds` (30 s,
+  `LLM_TIMEOUT_SECONDS`) only covered HTTP calls to the dispatch Worker; direct provider calls
+  (Instructor and native structured paths, and the unstructured direct path, with or without a
+  policy) got a `timeout` only when the job's `inputs` carried one, and only `audit_remedy` sets
+  one. Every other direct call fell back to LiteLLM's 6000 s `request_timeout`, and on 2026-09-24 a
+  chapter-agenda benchmark hung for about 40 minutes on NVIDIA `deepseek-v4.1-flash`. A new
+  `direct_timeout_seconds` (default 720 s, matching the v2 Worker's `MAX_RESPONSE_SECONDS`;
+  env `LLM_DIRECT_TIMEOUT_SECONDS`) is now applied by `_provider_options(direct=True)` via
+  `setdefault`, so a job-level `timeout` still wins. A blank env value keeps the default; zero,
+  negative or non-finite values fail at startup. Deferred-dispatch capsules (`llm_deferred.py`) now
+  persist the job's `timeout` and its `output_token_budget`, which were previously dropped, so a
+  rebuilt job fell back to 1,024 output tokens. Older capsules keep the old defaults. The dispatch
+  payload is unchanged. No pipeline version, recipe, or stored-artifact change.
 
 - **Gemini daily request-quota 429s now use the provider reset window** (`citypods/compute/
   llm_failure_class.py`, `workers/llm-dispatch-v2/src/classify.js`). Google AI Studio's

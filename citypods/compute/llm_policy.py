@@ -79,6 +79,12 @@ class DeferredLLMRequest:
     messages: tuple[Mapping[str, Any], ...]
     policy: LLMRequestPolicy
     output_token_budget: int = DEFAULT_OUTPUT_TOKEN_MARGIN
+    # The job's own ``inputs["timeout"]`` (e.g. a deadline-aware budget), so a rebuilt job keeps
+    # it instead of falling back to the direct-call default. ``None`` when the job set none.
+    timeout: float | None = None
+    # ``"route_max"`` when the job asked for the route's own output limit (see
+    # ``route_output_tokens``); a rebuilt job must keep it or it truncates at its reservation.
+    max_tokens_mode: str | None = None
 
 
 @dataclass(frozen=True)

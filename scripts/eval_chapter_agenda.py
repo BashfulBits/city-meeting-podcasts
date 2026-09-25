@@ -30,7 +30,9 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import html
 import json
+import re
 import sys
 import time
 from collections.abc import Mapping
@@ -56,24 +58,80 @@ from citypods.chapter_jobs import (  # noqa: E402
     finalize_agenda_job,
 )
 from citypods.chapter_titles import recover_agenda_item_extractor_response  # noqa: E402
+from citypods.compute.base import JobResult  # noqa: E402
 from citypods.compute.llm import LLMStructuredOutputError  # noqa: E402
 
 EVAL_DIR = REPO_ROOT / "evals" / "chapter-agenda"
-MIN_VALID_RATE = 0.95
+# `main` is the set results and repairs were studied on; `holdout` is never inspected while a
+# change is designed, so a validator or prompt change that only fits `main` shows up there.
+SPLIT_DIRS = {"main": EVAL_DIR, "holdout": EVAL_DIR / "holdout"}
+MIN_VALID_RATE = 0.95  # after at most one fresh retry of an invalid reply
+MIN_FIRST_ATTEMPT_VALID_RATE = 0.80
 # More unanswered episodes than this makes a model's run inconclusive rather than a result.
 MAX_UNANSWERED_RATE = 0.10
 RETRY_DELAYS_SECONDS = (20, 60, 180)
 WORKER_RESPONSE_SECONDS = 720.0  # workers/llm-dispatch-v2 MAX_RESPONSE_SECONDS
 
 
-def _load(name: str) -> dict[str, Any]:
-    return json.loads((EVAL_DIR / name).read_text(encoding="utf-8"))
+def _load(name: str, split: str = "main") -> dict[str, Any]:
+    return json.loads((SPLIT_DIRS[split] / name).read_text(encoding="utf-8"))
+
+
+# A provider chapter titled only by its agenda position ("Item 3A", "Items 3A - 3C", "Item 16
+# (Part 1 of 2)"): 19% of main-set and 13% of holdout chapters. Text similarity cannot match these
+# to an item titled "Approve minutes of April 2", so they are matched by reference instead.
+# Separators never overlap the reference characters (linear matching, no ReDoS): `,` and `&` are
+# not reference characters, and a word or dash separator needs surrounding whitespace, which a
+# reference cannot contain. An unspaced dash stays inside one reference (`3A-3C`, `Z-24-17`).
+_REFERENCE_CHAPTER_RE = re.compile(
+    r"^\s*(?:agenda\s+)?items?\s*#?\s*"
+    r"(?P<refs>[\w.\-–]+(?:(?:\s*[,&]\s*|\s+(?:and|to|-|–)\s+)[\w.\-–]+)*)"
+    r"\s*(?:\(part \d+ of \d+\))?\s*$",
+    re.IGNORECASE,
+)
+
+
+def _reference_key(value: str) -> str:
+    value = re.sub(r"^\s*(?:agenda\s+)?items?\s*#?\s*", "", value, flags=re.IGNORECASE)
+    return re.sub(r"[^0-9a-z]", "", value.casefold())
+
+
+def _chapter_first_reference(title: str) -> str | None:
+    """The reference a position-only chapter starts at (`Items 3A - 3C` -> `3a`), else None."""
+    # Some stored provider titles carry an escaped ampersand ("Items 1 \\u0026 2").
+    match = _REFERENCE_CHAPTER_RE.match(html.unescape(title.replace("\\u0026", "&")))
+    if not match:
+        return None
+    refs = match["refs"].strip()
+    # `3A-3C` is a range of short positions; `Z-24-17` is one identifier and stays whole.
+    compact_range = re.fullmatch(r"(\d{1,3}[a-z]{0,2})\s*[-–]\s*\d{1,3}[a-z]{0,2}", refs, re.I)
+    if compact_range:
+        return _reference_key(compact_range[1])
+    first = re.split(r"\s*(?:,|&|\band\b|\bto\b|\s-\s|\s–\s)\s*", refs)[0]
+    return _reference_key(first) or None
+
+
+def _features_with_reference(chapter_title: str, item: Mapping[str, Any]) -> dict:
+    """The original text features, plus a reference match for position-only chapters.
+
+    An item whose own label is the chapter's (first) reference is a strong match; an item labelled
+    with another reference keeps its text score. Only the first item of a range is credited, the
+    item the chapter starts at; the rest of the range stays unmapped, which neither helps nor hurts
+    precision.
+    """
+    features = _pair_features(chapter_title, item)
+    reference = _chapter_first_reference(chapter_title)
+    item_ref = item.get("display_ref")
+    if reference and isinstance(item_ref, str) and _reference_key(item_ref) == reference:
+        return {**features, "score": 1.0, "identifier_overlap": [reference]}
+    return features
 
 
 def score_episode(items: list[Mapping[str, Any]], chapters: list[Mapping[str, Any]]) -> dict:
-    """Match generated items to provider chapters exactly as the original benchmark did."""
+    """Match generated items to provider chapters: the original benchmark's text matcher, plus
+    reference matching for position-only chapters (see ``_features_with_reference``)."""
     pairs = [
-        (ci, ii, _pair_features(str(ch.get("title") or ""), item))
+        (ci, ii, _features_with_reference(str(ch.get("title") or ""), item))
         for ci, ch in enumerate(chapters)
         for ii, item in enumerate(items)
     ]
@@ -144,6 +202,29 @@ def _validation_detail(result: Any, agenda_text: str) -> dict:
 
 
 def _run_one(backend: Any, model: str, episode: Mapping[str, Any]) -> dict:
+    """One episode, with the admission rule's single retry of an invalid reply.
+
+    Production re-dispatches an invalid reply as a fresh job, so admission counts an episode
+    valid when either of two fresh attempts is (``valid``), and separately keeps the first
+    attempt's outcome (``first_attempt_valid``) for the per-call floor.
+    """
+    first = _attempt(backend, model, episode)
+    if not first.get("answered") or first.get("valid"):
+        return {**first, "first_attempt_valid": bool(first.get("valid")), "retried": False}
+    second = _attempt(backend, model, episode)
+    if not second.get("answered"):
+        # The retry never got an answer: the episode stays invalid on its first reply.
+        return {**first, "first_attempt_valid": False, "retried": True}
+    return {
+        **second,
+        "first_attempt_valid": False,
+        "retried": True,
+        "first_attempt": {k: first.get(k) for k in ("error", "validation", "raw_response")},
+        "seconds": round(float(first.get("seconds") or 0) + float(second.get("seconds") or 0), 1),
+    }
+
+
+def _attempt(backend: Any, model: str, episode: Mapping[str, Any]) -> dict:
     agenda_text = episode["agenda_text"]
     source_hash = hashlib.sha256(agenda_text.encode("utf-8")).hexdigest()
     job = build_agenda_job(
@@ -152,6 +233,9 @@ def _run_one(backend: Any, model: str, episode: Mapping[str, Any]) -> dict:
     # Evaluation pins exactly one model and calls it directly: without the production policy there
     # is no pool, no backup model and no Worker queue -- only the backend's configured model.
     inputs = {k: v for k, v in job.inputs.items() if k != "llm_policy"}
+    # The Worker's response ceiling, applied to the direct call itself: LiteLLM's own default is
+    # 6,000 s, and LLMBackendConfig.timeout_seconds only governs HTTP calls to the Worker.
+    inputs["timeout"] = WORKER_RESPONSE_SECONDS
     started = time.monotonic()
     # A busy or rate-limited provider says nothing about the model's output quality, so transport
     # and capacity errors are retried and, if they persist, recorded as "unanswered" -- never as
@@ -191,6 +275,25 @@ def _run_one(backend: Any, model: str, episode: Mapping[str, Any]) -> dict:
             "attempt_errors": attempt_errors,
             "seconds": round(time.monotonic() - started, 1),
         }
+    run = finalize_reply(episode, _response_content(result.output), model)
+    return {
+        **run,
+        "attempt_errors": attempt_errors,
+        "seconds": round(time.monotonic() - started, 1),
+    }
+
+
+def finalize_reply(episode: Mapping[str, Any], content: str, model: str) -> dict:
+    """Run production finalization on one model reply; keep the reply for offline re-scoring.
+
+    Every answered episode stores its raw reply, so a validator change can be re-scored against
+    exactly the same model output (``--rescore``) instead of a fresh, noisier model run.
+    """
+    agenda_text = episode["agenda_text"]
+    source_hash = hashlib.sha256(agenda_text.encode("utf-8")).hexdigest()
+    result = JobResult(
+        task="agenda-item-extract", recipe_hash="eval-chapter-agenda", output=content, model=model
+    )
     try:
         artifact = finalize_agenda_job(
             result,
@@ -206,7 +309,7 @@ def _run_one(backend: Any, model: str, episode: Mapping[str, Any]) -> dict:
             "valid": False,
             "error": f"{type(exc).__name__}: {exc}"[:300],
             "validation": _validation_detail(result, agenda_text),
-            "seconds": round(time.monotonic() - started, 1),
+            "raw_response": content,
         }
     items = [
         {"title": c.title, "evidence_text": c.evidence_text, "display_ref": c.display_ref}
@@ -217,8 +320,7 @@ def _run_one(backend: Any, model: str, episode: Mapping[str, Any]) -> dict:
         "answered": True,
         "valid": True,
         "items": items,
-        "attempt_errors": attempt_errors,
-        "seconds": round(time.monotonic() - started, 1),
+        "raw_response": content,
     }
 
 
@@ -238,14 +340,20 @@ def summarize(runs: list[dict], gold: Mapping[str, Any]) -> dict:
     # Precision therefore asks whether the items that DO correspond to a chapter are right.
     judged = totals["mapped"] + totals["conflicted"]
     precision = totals["mapped"] / judged if judged else 0.0
+    first_valid = [r for r in answered if r.get("first_attempt_valid", r["valid"])]
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     seconds = sorted(r["seconds"] for r in runs)
     return {
         "episodes": len(runs),
         "answered": len(answered),
         "valid": len(valid),
-        # Share of *answered* episodes whose output passed production finalization.
+        # Share of *answered* episodes whose output passed production finalization, allowing one
+        # fresh retry of an invalid reply (as production re-dispatches it) ...
         "valid_rate": round(len(valid) / len(answered), 4) if answered else 0.0,
+        # ... and on the first attempt alone, for the per-call floor.
+        "first_attempt_valid_rate": (
+            round(len(first_valid) / len(answered), 4) if answered else 0.0
+        ),
         "inconclusive": (len(runs) - len(answered)) > MAX_UNANSWERED_RATE * len(runs),
         "recall": round(recall, 4),
         "precision": round(precision, 4),
@@ -257,22 +365,41 @@ def summarize(runs: list[dict], gold: Mapping[str, Any]) -> dict:
 
 
 def beats(candidate: Mapping[str, float], baseline: Mapping[str, float]) -> bool:
-    """The README's admission rule: higher F1, no lower precision, valid_rate >= 95%."""
+    """The README's admission rule for one split (apply it to the main set and the holdout):
+    higher F1, no lower precision, at least 95% valid after one retry and 80% on the first
+    attempt. An ``inconclusive`` run (too many unanswered episodes) never qualifies. A contended
+    run (shared with production) is recorded but not rejected: contention costs availability,
+    which ``inconclusive`` already bounds, not answer quality."""
     return (
         not candidate.get("inconclusive")
         and candidate["f1"] > baseline["f1"]
         and candidate["precision"] >= baseline["precision"]
         and candidate["valid_rate"] >= MIN_VALID_RATE
+        and candidate.get("first_attempt_valid_rate", candidate["valid_rate"])
+        >= MIN_FIRST_ATTEMPT_VALID_RATE
     )
 
 
-def freeze(state_dir: Path, per_provider: int, version: int) -> None:
+def _check_freeze_version(split: str, version: int) -> None:
+    """A re-freeze must bump the version, so a version label always means one input set."""
+    manifest = SPLIT_DIRS[split] / "manifest.json"
+    if manifest.exists():
+        current = int(json.loads(manifest.read_text(encoding="utf-8")).get("version") or 0)
+        if version <= current:
+            raise SystemExit(
+                f"{split} set is already frozen at version {current}; re-freezing needs "
+                f"--set-version {current + 1} or higher"
+            )
+
+
+def freeze(state_dir: Path, per_provider: int, version: int, split: str = "main") -> None:
     """Freeze episodes that have provider-supplied chapters and a usable agenda (read-only).
 
     Selection reuses the locator research cohort (``collect_benchmark_cohort`` +
     ``select_locator_samples``: provider x duration x body diverse, deterministic) and its
     chapter-validity and agenda-artifact checks, without the locator's body-disjoint split.
     """
+    _check_freeze_version(split, version)
     import tempfile
 
     from audit_chapters import collect_benchmark_cohort
@@ -286,7 +413,14 @@ def freeze(state_dir: Path, per_provider: int, version: int) -> None:
     site = load_site_config("config/site_config.yml")
     cities = load_city_configs("config", site.get("defaults", {}))
     cohort = collect_benchmark_cohort(cities, state_dir, sample_size=999_999)
-    pool = select_locator_samples(cohort, per_provider=per_provider * 3)
+    # Every other split's episodes are excluded, so the splits never share a meeting.
+    excluded = {
+        episode["uid"]
+        for other, directory in SPLIT_DIRS.items()
+        if other != split and (directory / "manifest.json").exists()
+        for episode in _load("manifest.json", other)["episodes"]
+    }
+    pool = select_locator_samples(cohort, per_provider=per_provider * 3 + len(excluded))
     session, storage = make_session(), b2_from_env()
     episodes, gold, skipped = [], [], []
     with tempfile.TemporaryDirectory() as tmp:
@@ -295,6 +429,8 @@ def freeze(state_dir: Path, per_provider: int, version: int) -> None:
             for sample in pool[provider]:
                 if kept >= per_provider:
                     break
+                if sample.uid in excluded:
+                    continue
                 ok, reason = _is_valid_chapter_record(sample)
                 if not ok:
                     skipped.append({"uid": sample.uid, "reason": reason})
@@ -330,17 +466,100 @@ def freeze(state_dir: Path, per_provider: int, version: int) -> None:
                 )
                 kept += 1
     stamp = datetime.now(UTC).date().isoformat()
-    common = {"version": version, "frozen_on": stamp, "per_provider": per_provider}
-    EVAL_DIR.mkdir(parents=True, exist_ok=True)
-    (EVAL_DIR / "manifest.json").write_text(
+    common = {"version": version, "frozen_on": stamp, "per_provider": per_provider, "split": split}
+    out_dir = SPLIT_DIRS[split]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "manifest.json").write_text(
         json.dumps({**common, "skipped": skipped, "episodes": episodes}, indent=1) + "\n",
         encoding="utf-8",
     )
-    (EVAL_DIR / "gold.json").write_text(
+    (out_dir / "gold.json").write_text(
         json.dumps({**common, "episodes": gold}, indent=1) + "\n", encoding="utf-8"
     )
     counts = {p: sum(e["provider"] == p for e in episodes) for p in sorted(pool)}
     print(f"froze {len(episodes)} episodes {counts}; skipped {len(skipped)}")
+
+
+PAUSE_SECONDS = 3600
+RENEW_EVERY_SECONDS = 900
+
+
+def _renew_while(work: Any, outcomes: list[Any]) -> dict[str, Any]:
+    """Run ``work()`` while re-arming every pause each RENEW_EVERY_SECONDS."""
+    import threading
+
+    done = threading.Event()
+    state: dict[str, Any] = {"failed": False}
+
+    def renew_loop() -> None:
+        while not done.wait(RENEW_EVERY_SECONDS):
+            for outcome in outcomes:
+                try:
+                    outcome.renew()
+                except Exception:  # noqa: BLE001 -- a lapsed pause is recorded, not fatal
+                    state["failed"] = True
+
+    thread = threading.Thread(target=renew_loop, daemon=True)
+    thread.start()
+    try:
+        state["runs"] = work()
+    finally:
+        done.set()
+        thread.join(timeout=5)
+    return state
+
+
+def rescore(results: Mapping[str, Any]) -> dict[str, Any]:
+    """Re-finalize every stored reply with the current validator; provider outcomes are kept.
+
+    Only replies are re-judged: unanswered episodes stay unanswered, so a before/after comparison
+    isolates the validator change from model and provider variance.
+    """
+    split = results.get("split", "main")
+    manifest, gold = _load("manifest.json", split), _load("gold.json", split)
+    if results.get("eval_set_version") not in (None, manifest.get("version")):
+        raise SystemExit(
+            f"results were scored on {split} v{results['eval_set_version']}, "
+            f"but the frozen set is now v{manifest.get('version')}; they cannot be rescored"
+        )
+    episodes = {episode["uid"]: episode for episode in manifest["episodes"]}
+    out = {**results, "rescored_at": datetime.now(UTC).isoformat(timespec="seconds"), "models": {}}
+    for model, entry in results["models"].items():
+        runs = []
+        for run in entry["episodes"]:
+            content = run.get("raw_response")
+            if content is None:
+                content = (run.get("validation") or {}).get("raw_response")
+            if not run.get("answered") or content is None:
+                runs.append(run)
+                continue
+            episode = episodes[run["uid"]]
+            first_content = (run.get("first_attempt") or {}).get("raw_response")
+            if first_content is None:
+                rerun = finalize_reply(episode, content, model)
+                runs.append(
+                    {**rerun, "first_attempt_valid": rerun["valid"], "seconds": run.get("seconds")}
+                )
+                continue
+            # A retried episode: re-judge its first reply too, which may now pass on its own.
+            first = finalize_reply(episode, first_content, model)
+            if first["valid"]:
+                runs.append({**first, "first_attempt_valid": True, "seconds": run.get("seconds")})
+                continue
+            rerun = finalize_reply(episode, content, model)
+            runs.append(
+                {
+                    **rerun,
+                    "first_attempt_valid": False,
+                    "retried": True,
+                    "first_attempt": {**run["first_attempt"], "error": first.get("error")},
+                    "seconds": run.get("seconds"),
+                }
+            )
+        summary = {**entry["summary"], **summarize(runs, gold)}
+        summary["rescorable"] = sum(1 for r in runs if r.get("raw_response") is not None)
+        out["models"][model] = {"summary": summary, "episodes": runs}
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -349,10 +568,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--freeze", action="store_true")
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument("--per-provider", type=int, default=6)
-    parser.add_argument("--set-version", type=int, default=1)
+    parser.add_argument(
+        "--set-version", type=int, default=1, help="version to freeze; must exceed an existing one"
+    )
     parser.add_argument("--workers", type=int, default=3, help="concurrent episodes per model")
     parser.add_argument("--no-pause", action="store_true")
     parser.add_argument("--out", type=Path, help="results JSON (default: evals/.../results/)")
+    parser.add_argument("--split", choices=sorted(SPLIT_DIRS), default="main")
+    parser.add_argument(
+        "--rescore",
+        type=Path,
+        help="re-finalize a results file's stored replies with the current code (no model calls)",
+    )
     args = parser.parse_args(argv)
     # A terminated run must still resume the providers it paused: turn SIGTERM into SystemExit so
     # the `paused(...)` contexts' finally blocks run (their Worker-side expiry is the backstop).
@@ -362,7 +589,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.freeze:
         if not args.state_dir:
             parser.error("--freeze needs --state-dir")
-        freeze(args.state_dir, args.per_provider, args.set_version)
+        freeze(args.state_dir, args.per_provider, args.set_version, args.split)
+        return 0
+    if args.rescore:
+        rescored = rescore(json.loads(args.rescore.read_text(encoding="utf-8")))
+        out = args.out or args.rescore.with_name(args.rescore.stem + "-rescored.json")
+        out.write_text(json.dumps(rescored, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        for model, entry in rescored["models"].items():
+            print(json.dumps({"model": model, **entry["summary"]}, sort_keys=True))
+        print(f"wrote {out}")
         return 0
     if not args.model:
         parser.error("give at least one --model")
@@ -371,9 +606,10 @@ def main(argv: list[str] | None = None) -> int:
     from citypods.compute.llm_dispatch_pause import Selection, paused
     from citypods.compute.llm_policy import ROUTE_CANDIDATES, canonical_model
 
-    manifest, gold = _load("manifest.json"), _load("gold.json")
+    manifest, gold = _load("manifest.json", args.split), _load("gold.json", args.split)
     results: dict[str, Any] = {
         "task": "chapter-agenda",
+        "split": args.split,
         "eval_set_version": manifest["version"],
         "run_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "models": {},
@@ -407,23 +643,34 @@ def main(argv: list[str] | None = None) -> int:
                     stack.enter_context(
                         paused(
                             Selection("provider", provider),
-                            seconds=3600,
+                            seconds=PAUSE_SECONDS,
                             drain_timeout=600,
                             reason="chapter-agenda eval",
                         )
                     )
                     for provider in providers
                 ]
-                runs = run_all()
-            contended = any(outcome.contended for outcome in outcomes)
+                # A run can outlast one pause window (serial episodes up to 720 s each), so the
+                # pauses are re-armed while it runs; a failed renewal marks the run contended.
+                renewal_failed = _renew_while(run_all, outcomes)
+                runs = renewal_failed.pop("runs")
+            contended = renewal_failed["failed"] or any(o.contended for o in outcomes)
         summary = summarize(runs, gold)
         summary["providers"] = providers
         summary["contended"] = contended
         results["models"][model] = {"summary": summary, "episodes": runs}
         print(json.dumps({"model": model, **summary}, sort_keys=True), flush=True)
-    out = args.out or EVAL_DIR / "results" / f"{datetime.now(UTC):%Y-%m-%d}.json"
+    suffix = "" if args.split == "main" else f"-{args.split}"
+    out = args.out or EVAL_DIR / "results" / f"{datetime.now(UTC):%Y-%m-%d}{suffix}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     existing = json.loads(out.read_text()) if out.exists() else {"models": {}}
+    # Never mix models scored on different frozen sets (or splits) in one results file.
+    for key in ("eval_set_version", "split"):
+        if existing.get(key) not in (None, results.get(key)):
+            raise SystemExit(
+                f"{out} holds {key}={existing.get(key)!r}, this run is {results.get(key)!r}; "
+                "write to a different --out"
+            )
     existing.update({k: v for k, v in results.items() if k != "models"})
     existing["models"] = {**existing.get("models", {}), **results["models"]}
     out.write_text(json.dumps(existing, indent=1, sort_keys=True) + "\n", encoding="utf-8")

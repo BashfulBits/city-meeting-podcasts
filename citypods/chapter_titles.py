@@ -248,6 +248,14 @@ def _normalized_source_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+# Quote and prime marks carry no grounding information, but models routinely normalize them (a
+# straight `today's` quoting a curly `today’s`, `'MU-1'` quoting `"MU-1"`) or drop them (`8 round`
+# for `8" round`). Both sides of every evidence comparison turn them into spaces -- not deletions,
+# which would glue a closing quote's neighbours (`'MU-1' Low` -> `mu-1low`) differently from the
+# source's -- and the stored evidence keeps the source text.
+_QUOTE_MARKS = str.maketrans({mark: " " for mark in "'\"`‘’‚‛“”„‟′″‴"})
+
+
 def _evidence_comparison_text(value: str) -> str:
     """Remove layout-extraction spacing artifacts without accepting paraphrased source text."""
     value = _normalized_source_text(value)
@@ -261,11 +269,16 @@ def _evidence_comparison_text(value: str) -> str:
     )
     value = re.sub(r"\s*([,.;:!?])\s*", r"\1 ", value)
     value = re.sub(r"(?<=\d)\.\s+(?=[A-Za-z]\b)", ".", value)
-    value = re.sub(r"(?<=\w)\s*([’'])\s*(?=\w)", r"\1", value)
+    # Re-join a PDF-split apostrophe (`City  ’s`) only before a contraction ending, so a closing
+    # single quote before the next word (`'MU-1' Low`) is not glued onto it.
+    value = re.sub(r"(?<=\w)\s*([’'])\s*(?=(?:s|t|d|m|ll|re|ve)\b)", r"\1", value)
     value = re.sub(r"(?<=\w)\s*-\s*(?=\w)", "-", value)
     value = re.sub(r"\(\s*", "(", value)
     value = re.sub(r"\s*\)", ")", value)
-    return _normalized_source_text(value)
+    # Last, after the rules above have re-joined PDF-split apostrophes: an apostrophe inside a word
+    # is dropped (`Today’s` == `Todays` == `Today's`), every other quote mark becomes a space.
+    value = re.sub(r"(?<=\w)[’'‘‛`](?=\w)", "", value)
+    return _normalized_source_text(value.translate(_QUOTE_MARKS))
 
 
 def _evidence_span(
@@ -273,6 +286,10 @@ def _evidence_span(
 ) -> tuple[int, int, bool]:
     """Return the declared span or a uniquely exact nearby correction for LLM line-number drift."""
     quote = _evidence_comparison_text(evidence_quote).casefold()
+    if not quote:
+        # A quote made only of quote marks/punctuation normalizes to "", which is "in" any line;
+        # untrusted model output must never ground an item that way.
+        raise ValueError("agenda item evidence quote is empty after normalization")
     declared = _evidence_comparison_text(" ".join(lines[line_start - 1 : line_end])).casefold()
     if quote in declared:
         return line_start, line_end, False
@@ -790,6 +807,81 @@ def _recovery_expand_trailing_reference(
     return line_end, False
 
 
+_OUTLINE_SEGMENT = r"(?:[ivxlcdm]+|\d{1,3}|[a-z])"
+_OUTLINE_REFERENCE_RE = re.compile(
+    rf"^\(?{_OUTLINE_SEGMENT}(?:\s*[.)]\s*\(?{_OUTLINE_SEGMENT})*\s*[.)]?$", re.IGNORECASE
+)
+
+
+def _is_outline_reference(reference: object) -> bool:
+    """True for an agenda-outline position such as `4.A`, `II.D.1`, `1.d.3` or `III.`."""
+    return isinstance(reference, str) and bool(_OUTLINE_REFERENCE_RE.match(reference.strip()))
+
+
+def _outline_marker_at(line: str, segment: str) -> bool:
+    """True when *line* starts with the outline marker *segment* (`3.`, `a)`, `(iv)`, `II.`)."""
+    return bool(re.match(rf"^\s*\(?{re.escape(segment)}\s*[.):]", line, flags=re.IGNORECASE))
+
+
+_OUTLINE_MARKER_RE = re.compile(r"^\s*\(?([0-9]{1,3}|[ivxlcdm]{1,6}|[a-z])\s*[.):]", re.IGNORECASE)
+
+
+def _outline_marker(line: str) -> str | None:
+    match = _OUTLINE_MARKER_RE.match(line)
+    return match.group(1) if match else None
+
+
+def _outline_kind(marker: str) -> str:
+    """`number`, `roman` (II, xiv) or `letter` (a, B); a lone roman letter counts as a letter."""
+    if marker.isdigit():
+        return "number"
+    if len(marker) > 1 and all(ch in "ivxlcdm" for ch in marker.casefold()):
+        return "roman"
+    return "letter"
+
+
+def _outline_reference_in_source(
+    reference: object, lines: Sequence[str], *, line_start: int, line_end: int
+) -> bool:
+    """Whether a composed outline reference matches the agenda's own outline.
+
+    The last segment must mark a line of the item's span (or the marker line just above it); each
+    earlier segment must mark the nearest preceding line with that marker, in order. `3.a` is thus
+    confirmed for `a. Approve minutes` under `3. Consent items`, and refused when no `3.` precedes.
+    """
+    if not _is_outline_reference(reference):
+        return False
+    assert isinstance(reference, str)
+    segments = [s for s in re.split(r"[.()\s]+", reference.strip()) if s]
+    if not segments:
+        return False
+    first = max(1, line_start - 1)
+    position = next(
+        (n for n in range(first, line_end + 1) if _outline_marker_at(lines[n - 1], segments[-1])),
+        None,
+    )
+    if position is None:
+        return False
+    for segment in reversed(segments[:-1]):
+        kind = _outline_kind(segment)
+        found = None
+        for n in range(position - 1, 0, -1):
+            marker = _outline_marker(lines[n - 1])
+            if marker is None:
+                continue
+            if marker.casefold() == segment.casefold():
+                found = n
+                break
+            if _outline_kind(marker) == kind:
+                # A different marker at the ancestor's level (`4.` while looking for `3.`) closes
+                # the section: the item is not under the named ancestor.
+                return False
+        if found is None:
+            return False
+        position = found
+    return True
+
+
 def _recovery_resolve_reference(
     reference: object,
     lines: Sequence[str],
@@ -866,6 +958,8 @@ def recover_agenda_item_extractor_response(
         declared_end = min(len(lines), int(raw_item.line_end))
         if declared_start > declared_end or not lines:
             continue
+        if not _evidence_comparison_text(raw_item.evidence_quote):
+            continue  # an empty normalized quote grounds nothing (see _evidence_span)
         exact = _recovery_tightest_spans(_recovery_exact_spans(lines, raw_item.evidence_quote))
         spans = exact
         method = ""
@@ -895,8 +989,32 @@ def recover_agenda_item_extractor_response(
             line_start=line_start,
             line_end=line_end,
         )
+        if (
+            resolved
+            and matched_prefix_lines
+            and not (line_start - 1 <= matched_prefix_lines[-1] <= line_end)
+        ):
+            # The hierarchical match must end on THIS item's own marker; `3.` then the first `A.`
+            # of section 3 does not confirm `3.A` for an `A.` under `4.` further down.
+            resolved, matched_prefix_lines = False, []
         if not resolved:
-            continue
+            # The evidence is uniquely grounded but the model's reference is not in the source.
+            # For an OUTLINE position (`4.A`, `II.D.1`, `III.`) that is a label the model composed
+            # from the agenda's structure -- the item is real, so the label comes from the source
+            # instead (or none). An identifier-style reference (`DCA26-0002B`, `ID 26-2000`) is
+            # left unresolved as before: it names a specific record and is not re-derived.
+            if not _is_outline_reference(raw_item.display_ref):
+                continue
+            if _outline_reference_in_source(
+                raw_item.display_ref, lines, line_start=line_start, line_end=line_end
+            ):
+                # `3.a` for a line marked `a.` under the nearest `3.` above: the model composed
+                # the item's real outline position, which is exactly how providers name chapters
+                # ("Item 3A"), so the label is kept.
+                method += "+outline-reference"
+            else:
+                kind = "derived"
+                method += "+derived-reference"
         if matched_prefix_lines:
             line_start = min(line_start, *matched_prefix_lines)
             method += "+hierarchical-prefix"
@@ -905,9 +1023,12 @@ def recover_agenda_item_extractor_response(
             if prefix_start < line_start:
                 line_start = prefix_start
                 method += "+identifier-prefix"
-        display_ref = (
-            _normalized_source_text(raw_item.display_ref or "") if kind == "formal" else None
-        )
+        if kind == "formal":
+            display_ref = _normalized_source_text(raw_item.display_ref or "")
+        elif kind == "derived":
+            display_ref = _derive_display_ref(lines, line_start=line_start, line_end=line_end)
+        else:
+            display_ref = None
         source_evidence = "\n".join(lines[line_start - 1 : line_end])
         key = (
             line_start,

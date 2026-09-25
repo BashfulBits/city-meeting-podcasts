@@ -128,6 +128,62 @@ def test_direct_litellm_call_is_normalized():
     assert calls[0]["stream"] is False
 
 
+@pytest.mark.parametrize("structured", [False, True], ids=["unstructured", "native-structured"])
+def test_direct_litellm_call_gets_a_bounded_default_timeout(structured):
+    """Without a job-level timeout LiteLLM falls back to its 6000 s default, which once hung a
+    run for ~40 minutes on a stalled provider; direct calls must carry the bounded default."""
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response('{"value":"ok"}')
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"), completion=completion
+    )
+    inputs = {"structured_output": "test-output"} if structured else {}
+    backend.run_inference(job(content="meeting text", **inputs))
+
+    assert calls[0]["timeout"] == 720.0
+
+
+@pytest.mark.parametrize("structured", [False, True], ids=["unstructured", "native-structured"])
+def test_job_level_timeout_overrides_the_direct_default(structured):
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response('{"value":"ok"}')
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview", direct_timeout_seconds=300.0),
+        completion=completion,
+    )
+    inputs = {"structured_output": "test-output"} if structured else {}
+    backend.run_inference(job(content="meeting text", timeout=45, **inputs))
+
+    assert calls[0]["timeout"] == 45
+
+
+def test_dispatch_payload_does_not_pick_up_the_direct_timeout_default():
+    backend = LiteLLMBackend(LLMBackendConfig(model="gemini/gemini-3-flash-preview"))
+    payload = backend._payload(
+        job(content="meeting text"), resolved_model="gemini/gemini-3-flash-preview"
+    )
+
+    assert "timeout" not in payload
+
+
+def test_direct_timeout_default_reads_its_own_env_var(monkeypatch):
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "30")
+    monkeypatch.setenv("LLM_DIRECT_TIMEOUT_SECONDS", "900")
+
+    config = LLMBackendConfig.from_env()
+
+    assert config.timeout_seconds == 30.0
+    assert config.direct_timeout_seconds == 900.0
+
+
 def test_policy_route_is_resolved_and_settled_in_cas_ledger():
     calls = []
 
@@ -2350,3 +2406,15 @@ def test_validate_reconciled_propagates_upstream_passthrough_uncaught():
     airforce_524 = {"error": {"message": "the provider refused this request (HTTP 524)"}}
     with pytest.raises(LLMUpstreamPassthroughError):
         backend._validate_reconciled(airforce_524, "test-output")
+
+
+@pytest.mark.parametrize("raw", ["0", "-5", "nan", "inf"])
+def test_the_direct_timeout_must_be_a_finite_positive_number(monkeypatch, raw):
+    monkeypatch.setenv("LLM_DIRECT_TIMEOUT_SECONDS", raw)
+    with pytest.raises(ValueError, match="LLM_DIRECT_TIMEOUT_SECONDS"):
+        LLMBackendConfig.from_env()
+
+
+def test_a_blank_direct_timeout_keeps_the_default(monkeypatch):
+    monkeypatch.setenv("LLM_DIRECT_TIMEOUT_SECONDS", " ")
+    assert LLMBackendConfig.from_env().direct_timeout_seconds == 720.0

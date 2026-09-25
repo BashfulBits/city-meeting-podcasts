@@ -516,6 +516,13 @@ def _record_for(result: JobResult | JobHandle) -> dict[str, Any]:
     if isinstance(deferred, DeferredLLMRequest):
         record["messages"] = [dict(m) for m in deferred.messages]
         record["policy"] = _serialize_policy(deferred.policy)
+        # Without these a rebuilt job fell back to the 1,024-token default margin and the
+        # direct-call default timeout, dropping the job's own budget and deadline.
+        record["output_token_budget"] = deferred.output_token_budget
+        if deferred.timeout is not None:
+            record["timeout"] = deferred.timeout
+        if deferred.max_tokens_mode is not None:
+            record["max_tokens_mode"] = deferred.max_tokens_mode
     return record
 
 
@@ -546,8 +553,23 @@ def _decode_record(data: Any) -> JobResult | JobHandle | None:
                 return None
             deferred = None
             if "messages" in data and "policy" in data:
+                budget = data.get("output_token_budget")
+                timeout = data.get("timeout")
                 deferred = DeferredLLMRequest(
-                    messages=tuple(data["messages"]), policy=_deserialize_policy(data["policy"])
+                    messages=tuple(data["messages"]),
+                    policy=_deserialize_policy(data["policy"]),
+                    # Records written before these fields existed keep the old defaults.
+                    **(
+                        {"output_token_budget": budget}
+                        if type(budget) is int and budget > 0
+                        else {}
+                    ),
+                    timeout=float(timeout)
+                    if isinstance(timeout, (int, float)) and not isinstance(timeout, bool)
+                    else None,
+                    max_tokens_mode="route_max"
+                    if data.get("max_tokens_mode") == "route_max"
+                    else None,
                 )
             return JobHandle(
                 task=data["task"],
