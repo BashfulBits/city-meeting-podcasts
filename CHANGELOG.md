@@ -74,9 +74,11 @@ Phase R (Research-Tool Surface)._
   - *r6-judge:* glm-4.7-flash and gpt-oss-120b removed; gemma-4-26b-a4b-it joins the panel as its
     own calibrated judge. gemma-4-26b removed from `tournament:tag` and `r5-benchmark:tag` (its
     10k-token ceiling cannot take tagging inputs).
-  - *Dead routes removed:* 21 Mistral routes blocked by the account's plan, the unused Mistral
-    tertiary account (its key was never set on the Workers), and the paused SambaNova Llama 3.3
-    route. The v1 Worker's advertised default moves from Mistral Large to Codestral 2508.
+  - *Dead routes removed:* 22 Mistral routes -- the 21 routes of the seven plan-blocked models
+    (Medium latest/2508/2505, Large 2512, Small 2603, Devstral 2512, Labs Leanstral) on all three
+    accounts, plus the tertiary account's Codestral route, retiring that unused account (its key was
+    never set on the Workers) -- and the paused SambaNova Llama 3.3 route. The v1 Worker's advertised
+    default moves from Mistral Large to Codestral 2508.
   - *chapter-agenda is a same-priority pool:* Nemotron 3 Ultra, tencent/hy3 (OrcaRouter) and
     Gemini 3.1 Flash Lite are all in `models`, so the Worker sends each job to whichever route has
     capacity (the ~3,700-job Nemotron backlog had left the former backups idle). On
