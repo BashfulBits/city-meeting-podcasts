@@ -406,7 +406,16 @@ total on `/admin/status`.
   fails a 200 whose content is empty or not JSON as `structured_output_empty`/`_invalid` (retried
   on another route, the route cooled down, counted in `route_failures`). Direct calls shape the same
   way (`citypods/compute/structured_shaping.py`) and validate locally with one corrective retry;
-  both implementations are asserted against `tests/fixtures/structured_output_shaping.json`.
+  both implementations are asserted against `tests/fixtures/structured_output_shaping.json`. **Output budgets and reasoning are also decided per route.** `max_tokens` only truncates, it
+  never shortens an answer, so a job marked `max_tokens_mode: "route_max"` (agenda, locator, moments,
+  tagger) is sent the chosen route's own output limit, bounded by its input room and capped at
+  65,536; the job's `max_tokens` is only the scheduling reservation. A lane may set a reasoning level
+  per model (`llm_lanes[...].reasoning`), which the route expresses through `reasoning_controls`
+  (e.g. NVIDIA DeepSeek v4.1's thinking switch); models without an entry keep their provider
+  default. A reply that stops at its output limit (`finish_reason: length`) is never stored: it is
+  `output_budget_exhausted`, retried without cooling the route, and counted. `llm-budget-monitor.yml`
+  turns those counts, empty/invalid JSON, own-rate 429s and oversized inputs into one rolling issue
+  that names the lane and the config key to change.
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
   private R2 queue, now multi-provider (review/41, extending R10/review/27 §9's original single-Mistral
   design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests

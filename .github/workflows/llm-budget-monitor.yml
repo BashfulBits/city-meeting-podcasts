@@ -1,0 +1,68 @@
+name: LLM token-budget monitor
+
+# Reads the v2 dispatch Worker's per-route failure counts near the end of each UTC day (they reset
+# at 00:00 UTC) and keeps one rolling issue with token-budget and request-shape findings: replies
+# cut off at their output limit, 200s without usable JSON, our own token-rate 429s, and oversized
+# inputs. Each finding names the lanes involved and the config key that would correct it; the
+# workflow never changes config. The issue closes itself on a day with no findings.
+on:
+  schedule:
+    - cron: "40 23 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: llm-budget-monitor
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+      LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install pinned gh CLI
+        uses: ./.github/actions/setup-gh-cli
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install
+        run: pip install -e . -c constraints/prod.txt
+
+      - name: Build report
+        id: report
+        run: |
+          python scripts/llm_budget_monitor.py --out budget-monitor | tee "$GITHUB_STEP_SUMMARY"
+          echo "has_findings=$(cat budget-monitor/has_findings)" >> "$GITHUB_OUTPUT"
+
+      - name: Open, update or close the rolling issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_FINDINGS: ${{ steps.report.outputs.has_findings }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          TITLE="LLM token-budget monitor"
+          existing=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title \
+            --jq ".[] | select(.title == \"$TITLE\") | .number" | head -n1)
+          if [ "$HAS_FINDINGS" = "true" ]; then
+            { cat budget-monitor/report.md; echo; echo "Run: $RUN_URL"; } > body.md
+            if [ -n "$existing" ]; then
+              gh issue edit "$existing" --body-file body.md
+            else
+              gh issue create --title "$TITLE" --body-file body.md
+            fi
+          elif [ -n "$existing" ]; then
+            gh issue close "$existing" --comment "No token-budget findings on this UTC day. Run: $RUN_URL"
+          fi

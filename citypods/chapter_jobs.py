@@ -119,6 +119,7 @@ def build_agenda_job(
             "messages": list(request.messages),
             "structured_output": AGENDA_ITEM_EXTRACTOR_CONTRACT,
             "max_tokens": AGENDA_OUTPUT_TOKEN_BUDGET,
+            "max_tokens_mode": "route_max",
             "llm_policy": LLMRequestPolicy(
                 allowed_models=AGENDA_PRODUCTION_MODELS,
                 backup_models=AGENDA_BACKUP_MODELS,
@@ -262,6 +263,7 @@ def build_locator_job(
             # request into a route's context window; the bare LiteLLMBackend default (1024) starved
             # multi-anchor responses mid-JSON well before that reserve was ever exercised.
             "max_tokens": LOCATOR_OUTPUT_TOKEN_RESERVE,
+            "max_tokens_mode": "route_max",
             "llm_policy": LLMRequestPolicy(
                 allowed_models=(LOCATOR_MODEL,),
                 purpose="chapter-locator",

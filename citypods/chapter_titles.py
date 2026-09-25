@@ -57,7 +57,11 @@ AGENDA_BACKUP_AFTER_ATTEMPTS = _AGENDA_LANE.backup_after_attempts
 # generic DEFAULT_OUTPUT_TOKEN_MARGIN (1024) -- fine for a short classification call, but nowhere
 # near enough for a multi-item agenda extraction, so most responses were cut off mid-JSON and
 # failed structured-output parsing (see the recovery-shadow layer this feeds in chapter_jobs.py).
-AGENDA_OUTPUT_TOKEN_BUDGET = 32768
+# The SCHEDULING RESERVATION for one agenda job, not a cap on the answer: the job is sent with
+# ``max_tokens_mode: "route_max"``, so the route's own output limit (bounded by
+# MAX_ROUTE_OUTPUT_TOKENS) is what reaches the provider. 16,384 covers the observed p90
+# (Nemotron ~12-13.5k output tokens, AI Gateway 2026-09-25) without over-reserving TPM.
+AGENDA_OUTPUT_TOKEN_BUDGET = 16_384
 
 _PROMPT_VARIANT_INSTRUCTIONS = {
     "standard": "",

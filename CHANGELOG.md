@@ -17,6 +17,25 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Output budgets sent per route; per-lane reasoning levels; token-budget monitor**
+  (`workers/llm-dispatch-v2/src/{gateway,index,coordinator}.js`, `citypods/compute/{llm,llm_policy,
+  llm_lanes}.py`, `scripts/compile_llm_{limits,lanes}.py`, `scripts/llm_budget_monitor.py`,
+  `.github/workflows/llm-budget-monitor.yml`).
+  - `max_tokens` only truncates, so agenda, locator, moments and tagger jobs are sent the chosen
+    route's own output limit (bounded by its input room, capped at 65,536). Their `max_tokens`
+    becomes the scheduling reservation, lowered to observed needs (agenda and moments 16,384, tagger
+    8,192, locator 16,384), which keeps small-TPM routes schedulable.
+  - Lanes can set a reasoning level per model (`llm_lanes[...].reasoning: {model: off|low}`); routes
+    say how their provider expresses it (`reasoning_controls`). NVIDIA DeepSeek v4.1's thinking
+    switch moves from a route-wide `request_params` override to `reasoning_controls.off`, so it
+    thinks by default again and a lane can turn thinking off for one job type only.
+  - A reply that stops at its output limit (`finish_reason: length`) is `output_budget_exhausted`:
+    never stored, retried on the upstream budget without cooling the route (the budget, not the
+    route, is at fault), and counted in `route_failures`.
+  - A daily workflow reads those counts and keeps one rolling issue listing output-budget
+    cut-offs, empty/invalid structured replies, own-rate 429s and oversized inputs, each with the
+    lanes involved and the config key that would correct it. It never edits config.
+
 - **Moments and tagger output budgets raised to 32,768 tokens** (moments from 4,096,
   `citypods/moments.py` `MOMENTS_OUTPUT_TOKEN_BUDGET`; tagger from 1,024, `citypods/tags.py`
   `TAG_OUTPUT_TOKEN_BUDGET`, used for the request, batch fitting and the context/TPM gates). The

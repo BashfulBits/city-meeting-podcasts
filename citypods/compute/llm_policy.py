@@ -194,6 +194,8 @@ class LLMRoute:
     # e.g. `chat_template_kwargs: {enable_thinking: false}`). Stored as a JSON string so the frozen
     # route stays hashable; `request_params` decodes it.
     request_params_json: str = ""
+    # How this route expresses each reasoning level a lane may ask for (JSON, like request_params).
+    reasoning_controls_json: str = ""
     # Conservative defaults for hand-authored/test routes. Generated route catalogs materialize
     # provider- or route-specific values for every physical route.
     input_context_limit: int = 32768
@@ -344,6 +346,11 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                 request_params_json=(
                     json.dumps(item["request_params"], sort_keys=True)
                     if item.get("request_params")
+                    else ""
+                ),
+                reasoning_controls_json=(
+                    json.dumps(item["reasoning_controls"], sort_keys=True)
+                    if item.get("reasoning_controls")
                     else ""
                 ),
                 hard_input_ceiling=(
@@ -577,3 +584,30 @@ def route_request_params(route: object) -> dict[str, Any]:
     """The provider-specific request parameters a compiled route always sends (may be empty)."""
     raw = getattr(route, "request_params_json", "") or ""
     return json.loads(raw) if raw else {}
+
+
+def route_reasoning_controls(route: object, level: str | None) -> dict[str, Any]:
+    """Request parameters that express ``level`` on this route (empty when unsupported/unset)."""
+    raw = getattr(route, "reasoning_controls_json", "") or ""
+    if not level or not raw:
+        return {}
+    return dict(json.loads(raw).get(level) or {})
+
+
+# The most output a "route_max" job is ever sent, whatever the route allows (a runaway reasoning
+# loop should stop at a length limit and be reported, not run to the Worker's 720 s ceiling).
+# Twin of gateway.js MAX_ROUTE_OUTPUT_TOKENS.
+MAX_ROUTE_OUTPUT_TOKENS = 65_536
+
+
+def route_output_tokens(route: object, requested: int, input_tokens: int) -> int:
+    """The route's output limit, bounded by its input room -- never below ``requested``.
+
+    Mirrors workers/llm-dispatch-v2/src/gateway.js:outputTokensForRoute for direct calls.
+    """
+    output_limit = min(int(getattr(route, "output_context_limit", 0) or 0), MAX_ROUTE_OUTPUT_TOKENS)
+    if not output_limit:
+        return requested
+    input_limit = int(getattr(route, "input_context_limit", 0) or 0)
+    room = input_limit - input_tokens if input_limit and input_tokens else output_limit
+    return max(requested, min(output_limit, room if room > 0 else output_limit))

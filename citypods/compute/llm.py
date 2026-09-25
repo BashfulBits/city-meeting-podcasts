@@ -62,6 +62,8 @@ from citypods.compute.llm_policy import (
     QuotaPolicy,
     canonical_model,
     estimate_tokens,
+    route_output_tokens,
+    route_reasoning_controls,
     route_request_params,
 )
 from citypods.compute.llm_scheduler import (
@@ -653,6 +655,20 @@ def _messages(job: InferenceJob) -> list[dict[str, Any]]:
     ]
 
 
+def _lane_reasoning_level(job: InferenceJob, route: Any) -> str | None:
+    """The reasoning level the job's lane sets for this route's model, if any."""
+    policy = job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+    purpose = getattr(policy, "purpose", "") or ""
+    if not purpose:
+        return None
+    from citypods.compute.llm_lanes import load_lanes
+
+    lane = load_lanes().get(purpose)
+    if lane is None:
+        return None
+    return lane.reasoning_levels.get(canonical_model(getattr(route, "model", "") or ""))
+
+
 def _messages_with_schema(
     messages: list[dict[str, Any]], model: ResponseModel
 ) -> list[dict[str, Any]]:
@@ -876,6 +892,11 @@ class LiteLLMBackend(Backend):
                 if api_key:
                     options["api_key"] = api_key
             request_params = route_request_params(route)
+            # The lane's reasoning level for this model, expressed the way this route does it --
+            # the same rule the v2 Worker applies at send time (index.js laneReasoningLevel).
+            request_params.update(
+                route_reasoning_controls(route, _lane_reasoning_level(job, route))
+            )
             if request_params:
                 # Sent verbatim in the request body, exactly as the v2 Worker sends them.
                 options["extra_body"] = request_params
@@ -889,6 +910,17 @@ class LiteLLMBackend(Backend):
         ):
             if field in job.inputs:
                 options[field] = job.inputs[field]
+        if (
+            direct
+            and route is not None
+            and job.inputs.get("max_tokens_mode") == "route_max"
+            and isinstance(options.get("max_tokens"), int)
+        ):
+            # Direct calls send the route's own output limit; the job's max_tokens stays the
+            # scheduling reservation (queued jobs get the same rule in the Worker).
+            options["max_tokens"] = route_output_tokens(
+                route, options["max_tokens"], estimate_tokens(_messages(job))
+            )
         return options
 
     def _payload(
@@ -923,6 +955,10 @@ class LiteLLMBackend(Backend):
             }
             # The job's own max_tokens is folded in below by _provider_options, as for every
             # payload; this is the schema the Worker shapes per route, not a job definition.
+            if job.inputs.get("max_tokens_mode") == "route_max":
+                # The Worker sends the chosen route's output limit; max_tokens stays the
+                # scheduling reservation (gateway.js outputTokensForRoute).
+                payload["max_tokens_mode"] = "route_max"
             payload["structured_output"] = {
                 "name": model.__name__,
                 "schema": model.model_json_schema(),

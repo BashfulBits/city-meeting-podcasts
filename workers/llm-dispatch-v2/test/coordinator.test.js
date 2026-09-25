@@ -1723,6 +1723,45 @@ test("an empty structured reply requeues the job, stands the route down and is c
   );
 });
 
+test("a reply cut off at its output limit requeues without cooling the route down, and is counted", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, transient_retry_count
+    ) VALUES (
+      'j-length', 'idem-len', 'digest-len', '{"allowed_models":["google/gemma-4-31b-it"]}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
+      'ltok', 'tags', 100, 50, 'payloads/j-length/request.json', ?, ?, 0
+    )`,
+    now, now
+  );
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-length",
+      lease_token: "ltok",
+      attempt_id: "att-length",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "retryable_error",
+      provider_status_code: 200,
+      failure_class: "output_budget_exhausted",
+    },
+  ]);
+  const job = [...sql.exec("SELECT state FROM jobs WHERE id = 'j-length'")][0];
+  assert.equal(job.state, "queued");
+  const route = [...sql.exec("SELECT blocked_until, upstream_capacity_streak FROM routes WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")][0];
+  assert.ok(!route || !route.blocked_until, "the job's budget is not the route's fault");
+  const failures = [...sql.exec("SELECT failure_class, count FROM route_failures WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")];
+  assert.deepEqual(failures.map((row) => [row.failure_class, row.count]), [["output_budget_exhausted", 1]]);
+});
+
 test("completeBatch success clears upstream_capacity_streak and last_failure_class", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();

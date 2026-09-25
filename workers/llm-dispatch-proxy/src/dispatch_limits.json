@@ -221,7 +221,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_5_flash_lite_secondary": {
       "route_id": "gemini_3_5_flash_lite_secondary",
@@ -261,7 +262,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_1_flash_lite_primary": {
       "route_id": "gemini_3_1_flash_lite_primary",
@@ -301,7 +303,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_1_flash_lite_secondary": {
       "route_id": "gemini_3_1_flash_lite_secondary",
@@ -341,7 +344,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemma_4_26b_primary": {
       "route_id": "gemma_4_26b_primary",
@@ -381,7 +385,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemma_4_26b_secondary": {
       "route_id": "gemma_4_26b_secondary",
@@ -421,7 +426,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemma_4_31b_primary": {
       "route_id": "gemma_4_31b_primary",
@@ -461,7 +467,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemma_4_31b_secondary": {
       "route_id": "gemma_4_31b_secondary",
@@ -501,7 +508,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_flash_preview_primary": {
       "route_id": "gemini_3_flash_preview_primary",
@@ -541,7 +549,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_flash_preview_secondary": {
       "route_id": "gemini_3_flash_preview_secondary",
@@ -581,7 +590,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_8_flash_primary": {
       "route_id": "gemini_3_8_flash_primary",
@@ -621,7 +631,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_8_flash_secondary": {
       "route_id": "gemini_3_8_flash_secondary",
@@ -661,7 +672,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_7_flash_primary": {
       "route_id": "gemini_3_7_flash_primary",
@@ -701,7 +713,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_7_flash_secondary": {
       "route_id": "gemini_3_7_flash_secondary",
@@ -741,7 +754,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_6_flash_primary": {
       "route_id": "gemini_3_6_flash_primary",
@@ -781,7 +795,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_6_flash_secondary": {
       "route_id": "gemini_3_6_flash_secondary",
@@ -821,7 +836,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_5_flash_primary": {
       "route_id": "gemini_3_5_flash_primary",
@@ -861,7 +877,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "gemini_3_5_flash_secondary": {
       "route_id": "gemini_3_5_flash_secondary",
@@ -901,7 +918,8 @@
         "minItems",
         "maxItems"
       ],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "sambanova_gemma_4_31b_it_primary": {
       "route_id": "sambanova_gemma_4_31b_it_primary",
@@ -934,7 +952,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "groq_gpt_oss_120b_primary": {
       "route_id": "groq_gpt_oss_120b_primary",
@@ -967,7 +986,8 @@
       "structured_output_response_format": "json_object",
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "groq_qwen_3_6_27b_primary": {
       "route_id": "groq_qwen_3_6_27b_primary",
@@ -1000,7 +1020,8 @@
       "structured_output_response_format": "json_object",
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "groq_qwen_3_8_27b_primary": {
       "route_id": "groq_qwen_3_8_27b_primary",
@@ -1033,7 +1054,8 @@
       "structured_output_response_format": "json_object",
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "mistral_codestral_2508_primary": {
       "route_id": "mistral_codestral_2508_primary",
@@ -1066,7 +1088,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "mistral_codestral_2508_secondary": {
       "route_id": "mistral_codestral_2508_secondary",
@@ -1099,7 +1122,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "zai_glm_4_7_flash_primary": {
       "route_id": "zai_glm_4_7_flash_primary",
@@ -1132,7 +1156,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "zai_glm_4_5_flash_primary": {
       "route_id": "zai_glm_4_5_flash_primary",
@@ -1165,7 +1190,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "openrouter_google_gemma_4_31b_it_free": {
       "route_id": "openrouter_google_gemma_4_31b_it_free",
@@ -1198,7 +1224,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "openrouter_google_gemma_4_26b_a4b_it_free": {
       "route_id": "openrouter_google_gemma_4_26b_a4b_it_free",
@@ -1231,7 +1258,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free": {
       "route_id": "openrouter_nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -1264,7 +1292,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "openrouter_nvidia_nemotron_3_super_120b_a12b_free": {
       "route_id": "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
@@ -1297,7 +1326,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "kilo_stepfun_step_3_7_flash_free": {
       "route_id": "kilo_stepfun_step_3_7_flash_free",
@@ -1330,7 +1360,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "kilo_nvidia_nemotron_3_ultra_550b_a55b_free": {
       "route_id": "kilo_nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -1363,7 +1394,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "nvidia_kimi_k3_free": {
       "route_id": "nvidia_kimi_k3_free",
@@ -1396,7 +1428,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "nvidia_deepseek_v4_1_flash_free": {
       "route_id": "nvidia_deepseek_v4_1_flash_free",
@@ -1429,9 +1462,12 @@
       "structured_output_response_format": "none",
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
-      "request_params": {
-        "chat_template_kwargs": {
-          "enable_thinking": false
+      "request_params": null,
+      "reasoning_controls": {
+        "off": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
         }
       }
     },
@@ -1466,7 +1502,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "nvidia_nemotron_3_ultra_550b_a55b_free": {
       "route_id": "nvidia_nemotron_3_ultra_550b_a55b_free",
@@ -1499,7 +1536,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "nvidia_nemotron_3_super_120b_a12b_free": {
       "route_id": "nvidia_nemotron_3_super_120b_a12b_free",
@@ -1532,7 +1570,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free": {
       "route_id": "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free",
@@ -1565,7 +1604,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "orcarouter_deepseek_v4_flash_free": {
       "route_id": "orcarouter_deepseek_v4_flash_free",
@@ -1598,7 +1638,8 @@
       "structured_output_response_format": "json_object",
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "orcarouter_tencent_hy3_free": {
       "route_id": "orcarouter_tencent_hy3_free",
@@ -1631,7 +1672,8 @@
       "structured_output_response_format": "json_object",
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "orcarouter_zai_glm_5_3_flash_free": {
       "route_id": "orcarouter_zai_glm_5_3_flash_free",
@@ -1664,7 +1706,8 @@
       "structured_output_response_format": "json_object",
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     },
     "mistral_codestral_airforce_primary": {
       "route_id": "mistral_codestral_airforce_primary",
@@ -1697,7 +1740,8 @@
       "structured_output_response_format": "json_schema",
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
-      "request_params": null
+      "request_params": null,
+      "reasoning_controls": null
     }
   },
   "model_routes_map": {

@@ -55,13 +55,42 @@ export function normalizeProviderBody(body) {
  * inert extra key that gets silently dropped, not a live incident -- and it retroactively repairs
  * every payload already sitting in B2 from before the write-side fix, since this reads fresh at
  * dispatch time rather than a cached copy: nothing needs to be re-enqueued or backfilled. */
-export function upstreamRequestForRoute(payload, route) {
+/**
+ * The output budget actually sent. A payload marked `max_tokens_mode: "route_max"` sends the
+ * route's own output limit, bounded by the input room the route leaves, instead of the job's
+ * `max_tokens` -- which then serves only as the scheduling reservation. `max_tokens` truncates, it
+ * never shortens an answer, so a budget below what the model needs only produces an empty or cut
+ * reply; the lane's reservation still keeps small-TPM routes schedulable.
+ */
+// The most output a "route_max" job is ever sent, whatever the route allows: a runaway reasoning
+// loop should stop at a length limit and be reported, not run to MAX_RESPONSE_SECONDS. Twin of
+// citypods/compute/llm_policy.py MAX_ROUTE_OUTPUT_TOKENS.
+export const MAX_ROUTE_OUTPUT_TOKENS = 65536;
+
+export function outputTokensForRoute(payload, route, inputTokens) {
+  const requested = Number(payload?.max_tokens) || 0;
+  if (payload?.max_tokens_mode !== "route_max") return requested || undefined;
+  const outputLimit = Math.min(Number(route?.output_context_limit) || 0, MAX_ROUTE_OUTPUT_TOKENS);
+  if (!outputLimit) return requested || undefined;
+  const inputLimit = Number(route?.input_context_limit) || 0;
+  const room = inputLimit && inputTokens ? inputLimit - Number(inputTokens) : outputLimit;
+  return Math.max(requested, Math.min(outputLimit, room > 0 ? room : outputLimit));
+}
+
+export function upstreamRequestForRoute(payload, route, { inputTokens = 0, reasoningLevel = null } = {}) {
   const request = { model: route.upstream_model, messages: payload?.messages, stream: false };
   for (const field of COPY_FIELDS) {
     if (payload && payload[field] !== undefined) {
       request[field] = payload[field];
     }
   }
+  const maxTokens = outputTokensForRoute(payload, route, inputTokens);
+  if (maxTokens) request.max_tokens = maxTokens;
+  // A lane can set a reasoning level per model (llm_lanes[...].reasoning); the route says how its
+  // provider expresses that level (reasoning_controls). No level, or a level the route does not
+  // declare, sends the provider's default.
+  const controls = reasoningLevel ? route?.reasoning_controls?.[reasoningLevel] : null;
+  if (controls && typeof controls === "object") Object.assign(request, controls);
   // A schema-only job (review/48 R10) is shaped here for THIS route's method: the producer could
   // not know which route in the pool would serve it. A legacy payload that already carries a
   // response_format (jobs staged before this change) is forwarded as it always was.
@@ -157,9 +186,9 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
  * level failures (abort, DNS, TLS) throw, which the caller maps to a retryable/terminal outcome
  * itself.
  */
-export async function callAiGateway({ env, route, payload, dispatchLimits, idempotencyKey, signal }) {
+export async function callAiGateway({ env, route, payload, dispatchLimits, idempotencyKey, signal, shaping }) {
   const creds = resolveProviderCredentials(env, route, dispatchLimits);
-  const upstreamPayload = upstreamRequestForRoute(payload, route);
+  const upstreamPayload = upstreamRequestForRoute(payload, route, shaping);
 
   const headers = { accept: "application/json", "content-type": "application/json" };
   if (creds.apiKey) headers.authorization = `Bearer ${creds.apiKey}`;

@@ -242,6 +242,30 @@ def _normalize_structured_output_methods(raw_methods: Any) -> dict[str, dict[str
 _ALLOWED_REQUEST_PARAMS = frozenset({"chat_template_kwargs", "reasoning_effort"})
 
 
+# Reasoning levels a lane may request (llm_lanes[...].reasoning); a route maps each level it
+# supports to provider-specific request parameters in `reasoning_controls`.
+_REASONING_LEVELS = frozenset({"off", "low"})
+
+
+def _validate_reasoning_controls(route: dict[str, Any]) -> None:
+    controls = route.get("reasoning_controls")
+    if controls is None:
+        return
+    if not isinstance(controls, dict) or not controls:
+        raise ValueError(
+            f"route {route['route_id']!r} reasoning_controls must be a non-empty mapping"
+        )
+    for level, params in controls.items():
+        if level not in _REASONING_LEVELS:
+            raise ValueError(
+                f"route {route['route_id']!r} reasoning_controls has unknown level {level!r}; "
+                f'allowed: {sorted(_REASONING_LEVELS)} (quote "off": bare off is YAML false)'
+            )
+        _validate_request_params(
+            {"route_id": f"{route['route_id']}.{level}", "request_params": params}
+        )
+
+
 def _validate_request_params(route: dict[str, Any]) -> None:
     params = route.get("request_params")
     if params is None:
@@ -418,6 +442,8 @@ _WORKER_ROUTE_FIELDS = (
     "structured_output_schema_strip_keys",
     # Merged into the provider request by gateway.js's upstreamRequestForRoute.
     "request_params",
+    # How this route expresses a reasoning level a lane asks for (gateway.js applies it).
+    "reasoning_controls",
 )
 
 _WORKER_PROVIDER_FIELDS = (
@@ -1078,6 +1104,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         if obs_on is not None:
             route["observed_on"] = str(obs_on)
         _validate_request_params(route)
+        _validate_reasoning_controls(route)
         method_name, method_source, verified_on = resolved_methods[route["route_id"]]
         method = structured_output_methods[method_name]
         route.update(

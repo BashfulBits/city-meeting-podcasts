@@ -3574,6 +3574,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
             payload_key: job.payload_key,
             lease_token: leaseToken,
             route_id: route.route_id,
+            // For per-lane request shaping at send time (reasoning level, output budget): the
+            // lane comes from the job's own policy and costs no extra row reads or writes.
+            purpose: this._purposeForJob(job),
+            input_token_estimate: Number(job.input_token_estimate || 0),
             token_reservation: waitResult.reservation,
             wait_ms: waitResult.wait_ms,
             not_before_at: waitResult.not_before_at,
@@ -4007,6 +4011,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           result.failure_class === "gateway_limit" ||
           result.failure_class === "structured_output_empty" ||
           result.failure_class === "structured_output_invalid";
+        // The reply stopped at its output-token limit (finish_reason "length"): the job's own
+        // shape -- a budget too small for this model's reasoning -- not the route's health. It
+        // retries on the upstream budget (another route or a later attempt may fit) but does NOT
+        // cool the route down; it is counted in route_failures so the budget monitor sees it.
+        const isOutputBudgetExhausted = result.failure_class === "output_budget_exhausted";
         const isFinal5xx =
           result.outcome === "retryable_error" &&
           Number.isInteger(result.provider_status_code) &&
@@ -4058,7 +4067,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const shouldRetryRouteUnavailable =
           isRouteUnavailable &&
           job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
+        const shouldRetryOutputBudget =
+          isOutputBudgetExhausted &&
+          job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
         const shouldRequeue =
+          shouldRetryOutputBudget ||
           shouldRetryRouteUnavailable ||
           shouldRetry5xx ||
           shouldRetryRouteInputLimit ||

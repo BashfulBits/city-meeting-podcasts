@@ -1318,9 +1318,11 @@
       "upstream_429_default": "upstream_capacity",
       "structured_output_method": "prompt_only",
       "structured_output_verified_on": "2026-09-24",
-      "request_params": {
-        "chat_template_kwargs": {
-          "enable_thinking": false
+      "reasoning_controls": {
+        "off": {
+          "chat_template_kwargs": {
+            "enable_thinking": false
+          }
         }
       },
       "structured_output_method_source": "route",

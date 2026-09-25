@@ -47,13 +47,12 @@ PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrec
 # the "not valid JSON"/multi-field Pydantic validation failures seen in production. Sized so a
 # full 100-item batch (100 * 200 + 200 = 20,200) comfortably fits under every prelabeler route's
 # configured output_context_limit.
-# Output-token budget for one tagger call. Reasoning models in the tagger pool spend output tokens
-# thinking before they answer: at the former 1,024, Kilo's step-3.7-flash used the whole budget
-# reasoning over a 35k-token transcript and stopped with EMPTY content (finish_reason "length",
-# AI Gateway logs 2026-09-25). Every topic-tags:tagger route allows at least 65,536 output tokens;
-# 32,768 matches the agenda lane (reasoning models wrote 12-22k output tokens on similar inputs).
-# Not part of the tag recipe hash, so nothing re-tags.
-TAG_OUTPUT_TOKEN_BUDGET = 32_768
+# The SCHEDULING RESERVATION for one tagger call (TPM admission and batch fitting), not a cap on
+# the answer: the job is sent with ``max_tokens_mode: "route_max"``, so the route's own output
+# limit (bounded by MAX_ROUTE_OUTPUT_TOKENS) reaches the provider. A fixed cap only truncates -- at
+# 1,024 Kilo step-3.7-flash spent every token reasoning and returned EMPTY content. 8,192 covers
+# the observed tagger outputs (Gemini 3.1 Flash Lite up to ~8.4k, AI Gateway 2026-09-25).
+TAG_OUTPUT_TOKEN_BUDGET = 8_192
 PRELABELER_OUTPUT_TOKENS_PER_ITEM = 200
 PRELABELER_OUTPUT_TOKEN_OVERHEAD = 200
 # Keep a full megabyte beneath the Worker's 8 MiB JSON-body ceiling for the structured-output
@@ -1219,6 +1218,7 @@ def llm_tag_suggestions(
         "messages": messages,
         "structured_output": LLM_CONTRACT,
         "max_tokens": TAG_OUTPUT_TOKEN_BUDGET,
+        "max_tokens_mode": "route_max",
     }
     backend_storage = getattr(backend, "storage", None)
     backend_config = getattr(backend, "config", None)

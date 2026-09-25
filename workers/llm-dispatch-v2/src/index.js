@@ -738,6 +738,12 @@ function b2ClientFromEnv(env) {
   });
 }
 
+/** A lane's configured reasoning level for this route's model (compiled from llm_lanes). */
+function laneReasoningLevel(purpose, route) {
+  const lane = purpose ? INGRESS_RESERVATIONS.reservations?.[purpose] : null;
+  return lane?.reasoning?.[route?.model] || null;
+}
+
 function routeForId(routeId, dispatchLimits) {
   const stored = dispatchLimits.routes_by_id?.[routeId];
   return stored ? { ...stored, route_id: routeId } : null;
@@ -778,7 +784,18 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
   const timeout = setTimeout(() => controller.abort(), maxResponseMs);
   let response;
   try {
-    response = await callAiGateway({ env, route, payload: job.payload, dispatchLimits, idempotencyKey, signal: controller.signal });
+    response = await callAiGateway({
+      env,
+      route,
+      payload: job.payload,
+      dispatchLimits,
+      idempotencyKey,
+      signal: controller.signal,
+      shaping: {
+        inputTokens: job.input_token_estimate || 0,
+        reasoningLevel: laneReasoningLevel(job.purpose, route),
+      },
+    });
   } catch (err) {
     return {
       result: {
@@ -826,6 +843,23 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
         gateway_correlation_id: response.correlationId,
         failure_class: "upstream_capacity",
         classify_rule_id: cls.rule_id,
+      },
+    };
+  }
+
+  if (response.ok && response.body?.choices?.[0]?.finish_reason === "length") {
+    // The reply stopped at its output-token limit: whatever it holds is cut off. Never stored as a
+    // result; retried, and counted per route as output_budget_exhausted so the token-budget
+    // monitor can tell a too-small lane budget from a model reasoning without end.
+    const usage = observedTokens(response.body);
+    return {
+      result: {
+        ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "retryable_error"),
+        observed_input_tokens: usage.input,
+        observed_output_tokens: usage.output,
+        provider_status_code: response.status,
+        gateway_correlation_id: response.correlationId,
+        failure_class: "output_budget_exhausted",
       },
     };
   }

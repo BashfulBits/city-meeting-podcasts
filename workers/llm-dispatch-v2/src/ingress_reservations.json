@@ -19,6 +19,7 @@
       ],
       "backup_after_attempts": 12,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 6
     },
     "chapter-locator": {
@@ -33,6 +34,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 7
     },
     "r5-benchmark:judge": {
@@ -44,6 +46,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 4
     },
     "r5-benchmark:tag": {
@@ -56,6 +59,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "per_model",
+      "reasoning": {},
       "write_units_per_job": 4
     },
     "r6-judge": {
@@ -69,6 +73,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 6
     },
     "r6-moments": {
@@ -88,6 +93,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 12
     },
     "topic-tags:prelabeler": {
@@ -99,6 +105,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 4
     },
     "topic-tags:prelabeler-shadow": {
@@ -110,6 +117,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 4
     },
     "topic-tags:tagger": {
@@ -123,6 +131,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 6
     },
     "tournament:tag": {
@@ -137,6 +146,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "per_model",
+      "reasoning": {},
       "write_units_per_job": 4
     },
     "tournament:tag-judge": {
@@ -148,6 +158,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 4
     }
   }

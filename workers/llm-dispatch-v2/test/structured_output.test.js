@@ -118,3 +118,29 @@ test("a reply with too many unparseable JSON starts fails closed", () => {
   const junk = "[x] ".repeat(40) + '{"a": 1} trailing prose';
   assert.equal(structuredReplyProblem(reply(junk)), "structured_output_invalid");
 });
+
+import { MAX_ROUTE_OUTPUT_TOKENS, outputTokensForRoute } from "../src/gateway.js";
+
+test("a route_max job is sent the route's output limit, capped and bounded by input room", () => {
+  const big = { output_context_limit: 384000, input_context_limit: 1000000 };
+  assert.equal(outputTokensForRoute({ max_tokens: 16384, max_tokens_mode: "route_max" }, big, 20000), MAX_ROUTE_OUTPUT_TOKENS);
+  const tight = { output_context_limit: 65536, input_context_limit: 262144 };
+  assert.equal(outputTokensForRoute({ max_tokens: 8192, max_tokens_mode: "route_max" }, tight, 240000), 22144);
+  assert.equal(outputTokensForRoute({ max_tokens: 30000, max_tokens_mode: "route_max" }, tight, 240000), 30000);
+  // Without the flag the job's own max_tokens is sent unchanged.
+  assert.equal(outputTokensForRoute({ max_tokens: 4096 }, big, 20000), 4096);
+});
+
+test("a lane's reasoning level is applied through the route's controls, and only when set", () => {
+  const route = {
+    ...PROMPT_ONLY_ROUTE,
+    reasoning_controls: { off: { chat_template_kwargs: { enable_thinking: false } } },
+  };
+  const payload = { messages: [{ role: "user", content: "hi" }], max_tokens: 64 };
+  assert.deepEqual(
+    upstreamRequestForRoute(payload, route, { reasoningLevel: "off" }).chat_template_kwargs,
+    { enable_thinking: false }
+  );
+  assert.equal("chat_template_kwargs" in upstreamRequestForRoute(payload, route, {}), false);
+  assert.equal("chat_template_kwargs" in upstreamRequestForRoute(payload, route, { reasoningLevel: "low" }), false);
+});

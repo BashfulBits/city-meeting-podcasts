@@ -158,6 +158,22 @@ class TestBackupModels:
         lane = parse_lanes(_lane(backup_models=["m1"], backup_after_attempts=5))
         assert lane["a-purpose"].backup_models == ("m1",)
 
+    def test_parses_a_per_model_reasoning_level(self):
+        lanes = parse_lanes(_lane(reasoning={"m1": "off"}))
+        assert lanes["a-purpose"].reasoning_levels == {"m1": "off"}
+
+    @pytest.mark.parametrize(
+        ("reasoning", "match"),
+        [
+            ({"other": "off"}, "not one of the lane"),
+            ({"m1": "max"}, "must be one of"),
+            ({"m1": False}, "quote"),
+        ],
+    )
+    def test_rejects_an_invalid_reasoning_map(self, reasoning, match):
+        with pytest.raises(ValueError, match=match):
+            parse_lanes(_lane(reasoning=reasoning))
+
     def test_rejects_backup_models_on_a_per_model_lane(self):
         with pytest.raises(ValueError, match="per_model"):
             parse_lanes(

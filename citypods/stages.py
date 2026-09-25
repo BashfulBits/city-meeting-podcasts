@@ -1171,6 +1171,7 @@ class MomentsStage:
                 "messages": messages,
                 "structured_output": MOMENTS_CONTRACT,
                 "max_tokens": MOMENTS_OUTPUT_TOKEN_BUDGET,
+                "max_tokens_mode": "route_max",
             }
             inputs["llm_policy"] = LLMRequestPolicy(
                 allowed_models=allowed_models,

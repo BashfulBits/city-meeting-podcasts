@@ -85,14 +85,12 @@ MOMENTS_SYSTEM_PROMPT = (
 
 MOMENTS_MIN_SECONDS = 8.0
 MOMENTS_MAX_SECONDS = 90.0
-# Output-token budget for one moments extraction. Reasoning models spend output tokens thinking
-# before they answer: at the former 4,096, GLM 5.3 Flash on a 21-27k-token council transcript used
-# all 4,096 on reasoning and stopped with EMPTY content (finish_reason "length", verified in the AI
-# Gateway logs 2026-09-25; kimi-k3 hit the same wall on 3 of 8 calls). Every r6-moments route
-# allows at least 65,536 output tokens. 32,768 matches the agenda lane: on 2026-09-25 reasoning
-# models routinely wrote 12-22k output tokens on these transcripts (AI Gateway logs), so 16k would
-# still truncate. Not part of the recipe hash (nothing re-extracts).
-MOMENTS_OUTPUT_TOKEN_BUDGET = 32_768
+# The SCHEDULING RESERVATION for one moments extraction, not a cap on the answer: the job is sent
+# with ``max_tokens_mode: "route_max"``, so the route's own output limit (bounded by
+# MAX_ROUTE_OUTPUT_TOKENS) reaches the provider. A fixed cap only truncates -- at 4,096 GLM 5.3
+# Flash spent every token reasoning and returned EMPTY content (finish_reason "length", AI Gateway
+# 2026-09-25) -- so the cap is the route's, and this number only sizes TPM admission.
+MOMENTS_OUTPUT_TOKEN_BUDGET = 16_384
 MOMENTS_PADDING_SECONDS = 1.5
 MOMENTS_FRAMING_PROFILE = "social-vertical-opencv-mouth-motion-v1"
 
