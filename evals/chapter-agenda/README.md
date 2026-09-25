@@ -96,6 +96,10 @@ comparison is summarized in the PR or review that acted on it.
 
 ### 2026-09-24b (main + holdout; validator repairs; corrected scorer)
 
+These runs predate the single admission retry, so "Valid" below is first-attempt validity (the
+per-call floor). Runs from here on also report `valid_rate` after one fresh retry of an invalid
+reply and `first_attempt_valid_rate`; the retry test on hy3's failures passed 20 of 21 retries.
+
 Run with stored replies, then scored with the repaired validator (`results/2026-09-24b*.json`).
 Every reply was also re-scored with the pre-repair validator; on episodes valid under both, every
 score is identical, and no previously valid episode became invalid.

@@ -65,7 +65,8 @@ EVAL_DIR = REPO_ROOT / "evals" / "chapter-agenda"
 # `main` is the set results and repairs were studied on; `holdout` is never inspected while a
 # change is designed, so a validator or prompt change that only fits `main` shows up there.
 SPLIT_DIRS = {"main": EVAL_DIR, "holdout": EVAL_DIR / "holdout"}
-MIN_VALID_RATE = 0.95
+MIN_VALID_RATE = 0.95  # after at most one fresh retry of an invalid reply
+MIN_FIRST_ATTEMPT_VALID_RATE = 0.80
 # More unanswered episodes than this makes a model's run inconclusive rather than a result.
 MAX_UNANSWERED_RATE = 0.10
 RETRY_DELAYS_SECONDS = (20, 60, 180)
@@ -197,6 +198,29 @@ def _validation_detail(result: Any, agenda_text: str) -> dict:
 
 
 def _run_one(backend: Any, model: str, episode: Mapping[str, Any]) -> dict:
+    """One episode, with the admission rule's single retry of an invalid reply.
+
+    Production re-dispatches an invalid reply as a fresh job, so admission counts an episode
+    valid when either of two fresh attempts is (``valid``), and separately keeps the first
+    attempt's outcome (``first_attempt_valid``) for the per-call floor.
+    """
+    first = _attempt(backend, model, episode)
+    if not first.get("answered") or first.get("valid"):
+        return {**first, "first_attempt_valid": bool(first.get("valid")), "retried": False}
+    second = _attempt(backend, model, episode)
+    if not second.get("answered"):
+        # The retry never got an answer: the episode stays invalid on its first reply.
+        return {**first, "first_attempt_valid": False, "retried": True}
+    return {
+        **second,
+        "first_attempt_valid": False,
+        "retried": True,
+        "first_attempt": {k: first.get(k) for k in ("error", "validation", "raw_response")},
+        "seconds": round(float(first.get("seconds") or 0) + float(second.get("seconds") or 0), 1),
+    }
+
+
+def _attempt(backend: Any, model: str, episode: Mapping[str, Any]) -> dict:
     agenda_text = episode["agenda_text"]
     source_hash = hashlib.sha256(agenda_text.encode("utf-8")).hexdigest()
     job = build_agenda_job(
@@ -312,14 +336,20 @@ def summarize(runs: list[dict], gold: Mapping[str, Any]) -> dict:
     # Precision therefore asks whether the items that DO correspond to a chapter are right.
     judged = totals["mapped"] + totals["conflicted"]
     precision = totals["mapped"] / judged if judged else 0.0
+    first_valid = [r for r in answered if r.get("first_attempt_valid", r["valid"])]
     f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
     seconds = sorted(r["seconds"] for r in runs)
     return {
         "episodes": len(runs),
         "answered": len(answered),
         "valid": len(valid),
-        # Share of *answered* episodes whose output passed production finalization.
+        # Share of *answered* episodes whose output passed production finalization, allowing one
+        # fresh retry of an invalid reply (as production re-dispatches it) ...
         "valid_rate": round(len(valid) / len(answered), 4) if answered else 0.0,
+        # ... and on the first attempt alone, for the per-call floor.
+        "first_attempt_valid_rate": (
+            round(len(first_valid) / len(answered), 4) if answered else 0.0
+        ),
         "inconclusive": (len(runs) - len(answered)) > MAX_UNANSWERED_RATE * len(runs),
         "recall": round(recall, 4),
         "precision": round(precision, 4),
@@ -331,13 +361,31 @@ def summarize(runs: list[dict], gold: Mapping[str, Any]) -> dict:
 
 
 def beats(candidate: Mapping[str, float], baseline: Mapping[str, float]) -> bool:
-    """The README's admission rule: higher F1, no lower precision, valid_rate >= 95%."""
+    """The README's admission rule for one split (apply it to the main set and the holdout):
+    higher F1, no lower precision, at least 95% valid after one retry and 80% on the first
+    attempt. An ``inconclusive`` run (too many unanswered episodes) never qualifies. A contended
+    run (shared with production) is recorded but not rejected: contention costs availability,
+    which ``inconclusive`` already bounds, not answer quality."""
     return (
         not candidate.get("inconclusive")
         and candidate["f1"] > baseline["f1"]
         and candidate["precision"] >= baseline["precision"]
         and candidate["valid_rate"] >= MIN_VALID_RATE
+        and candidate.get("first_attempt_valid_rate", candidate["valid_rate"])
+        >= MIN_FIRST_ATTEMPT_VALID_RATE
     )
+
+
+def _check_freeze_version(split: str, version: int) -> None:
+    """A re-freeze must bump the version, so a version label always means one input set."""
+    manifest = SPLIT_DIRS[split] / "manifest.json"
+    if manifest.exists():
+        current = int(json.loads(manifest.read_text(encoding="utf-8")).get("version") or 0)
+        if version <= current:
+            raise SystemExit(
+                f"{split} set is already frozen at version {current}; re-freezing needs "
+                f"--set-version {current + 1} or higher"
+            )
 
 
 def freeze(state_dir: Path, per_provider: int, version: int, split: str = "main") -> None:
@@ -347,6 +395,7 @@ def freeze(state_dir: Path, per_provider: int, version: int, split: str = "main"
     ``select_locator_samples``: provider x duration x body diverse, deterministic) and its
     chapter-validity and agenda-artifact checks, without the locator's body-disjoint split.
     """
+    _check_freeze_version(split, version)
     import tempfile
 
     from audit_chapters import collect_benchmark_cohort
@@ -427,6 +476,35 @@ def freeze(state_dir: Path, per_provider: int, version: int, split: str = "main"
     print(f"froze {len(episodes)} episodes {counts}; skipped {len(skipped)}")
 
 
+PAUSE_SECONDS = 3600
+RENEW_EVERY_SECONDS = 900
+
+
+def _renew_while(work: Any, outcomes: list[Any]) -> dict[str, Any]:
+    """Run ``work()`` while re-arming every pause each RENEW_EVERY_SECONDS."""
+    import threading
+
+    done = threading.Event()
+    state: dict[str, Any] = {"failed": False}
+
+    def renew_loop() -> None:
+        while not done.wait(RENEW_EVERY_SECONDS):
+            for outcome in outcomes:
+                try:
+                    outcome.renew()
+                except Exception:  # noqa: BLE001 -- a lapsed pause is recorded, not fatal
+                    state["failed"] = True
+
+    thread = threading.Thread(target=renew_loop, daemon=True)
+    thread.start()
+    try:
+        state["runs"] = work()
+    finally:
+        done.set()
+        thread.join(timeout=5)
+    return state
+
+
 def rescore(results: Mapping[str, Any]) -> dict[str, Any]:
     """Re-finalize every stored reply with the current validator; provider outcomes are kept.
 
@@ -446,9 +524,26 @@ def rescore(results: Mapping[str, Any]) -> dict[str, Any]:
             if not run.get("answered") or content is None:
                 runs.append(run)
                 continue
+            episode = episodes[run["uid"]]
+            first_content = (run.get("first_attempt") or {}).get("raw_response")
+            if first_content is None:
+                rerun = finalize_reply(episode, content, model)
+                runs.append(
+                    {**rerun, "first_attempt_valid": rerun["valid"], "seconds": run.get("seconds")}
+                )
+                continue
+            # A retried episode: re-judge its first reply too, which may now pass on its own.
+            first = finalize_reply(episode, first_content, model)
+            if first["valid"]:
+                runs.append({**first, "first_attempt_valid": True, "seconds": run.get("seconds")})
+                continue
+            rerun = finalize_reply(episode, content, model)
             runs.append(
                 {
-                    **finalize_reply(episodes[run["uid"]], content, model),
+                    **rerun,
+                    "first_attempt_valid": False,
+                    "retried": True,
+                    "first_attempt": {**run["first_attempt"], "error": first.get("error")},
                     "seconds": run.get("seconds"),
                 }
             )
@@ -464,7 +559,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--freeze", action="store_true")
     parser.add_argument("--state-dir", type=Path)
     parser.add_argument("--per-provider", type=int, default=6)
-    parser.add_argument("--set-version", type=int, default=1)
+    parser.add_argument(
+        "--set-version", type=int, default=1, help="version to freeze; must exceed an existing one"
+    )
     parser.add_argument("--workers", type=int, default=3, help="concurrent episodes per model")
     parser.add_argument("--no-pause", action="store_true")
     parser.add_argument("--out", type=Path, help="results JSON (default: evals/.../results/)")
@@ -537,15 +634,18 @@ def main(argv: list[str] | None = None) -> int:
                     stack.enter_context(
                         paused(
                             Selection("provider", provider),
-                            seconds=3600,
+                            seconds=PAUSE_SECONDS,
                             drain_timeout=600,
                             reason="chapter-agenda eval",
                         )
                     )
                     for provider in providers
                 ]
-                runs = run_all()
-            contended = any(outcome.contended for outcome in outcomes)
+                # A run can outlast one pause window (serial episodes up to 720 s each), so the
+                # pauses are re-armed while it runs; a failed renewal marks the run contended.
+                renewal_failed = _renew_while(run_all, outcomes)
+                runs = renewal_failed.pop("runs")
+            contended = renewal_failed["failed"] or any(o.contended for o in outcomes)
         summary = summarize(runs, gold)
         summary["providers"] = providers
         summary["contended"] = contended
@@ -555,6 +655,13 @@ def main(argv: list[str] | None = None) -> int:
     out = args.out or EVAL_DIR / "results" / f"{datetime.now(UTC):%Y-%m-%d}{suffix}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     existing = json.loads(out.read_text()) if out.exists() else {"models": {}}
+    # Never mix models scored on different frozen sets (or splits) in one results file.
+    for key in ("eval_set_version", "split"):
+        if existing.get(key) not in (None, results.get(key)):
+            raise SystemExit(
+                f"{out} holds {key}={existing.get(key)!r}, this run is {results.get(key)!r}; "
+                "write to a different --out"
+            )
     existing.update({k: v for k, v in results.items() if k != "models"})
     existing["models"] = {**existing.get("models", {}), **results["models"]}
     out.write_text(json.dumps(existing, indent=1, sort_keys=True) + "\n", encoding="utf-8")

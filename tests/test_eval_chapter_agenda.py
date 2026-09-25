@@ -6,6 +6,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -67,6 +69,32 @@ def test_provider_errors_are_unanswered_not_invalid_and_rates_use_answered_episo
     assert summary["answered"] == 2 and summary["valid_rate"] == 0.5
     assert (summary["recall"], summary["precision"], summary["f1"]) == (1.0, 1.0, 1.0)
     assert summary["inconclusive"] is True  # 1 of 3 unanswered > 10%
+
+
+def test_an_invalid_first_reply_that_passes_on_retry_counts_as_valid_but_not_first_attempt():
+    good = json.dumps(
+        {
+            "items": [
+                {"title": c["title"], "evidence_quote": c["title"], "line_start": n, "line_end": n}
+                for n, c in enumerate(CHAPTERS, start=1)
+            ]
+        }
+    )
+    replies = iter(["not json at all", good])
+
+    class Backend:
+        def run_inference(self, job):
+            from citypods.compute.base import JobResult
+
+            return JobResult(task="t", recipe_hash="r", output=next(replies), model="m")
+
+    agenda = "\n".join(c["title"] for c in CHAPTERS)
+    run = ev._run_one(Backend(), "m", {"uid": "a", "agenda_text": agenda})
+    assert (run["valid"], run["first_attempt_valid"], run["retried"]) == (True, False, True)
+    assert run["first_attempt"]["raw_response"] == "not json at all"
+    gold = {"episodes": [{"uid": "a", "chapters": CHAPTERS}]}
+    summary = ev.summarize([run], gold)
+    assert (summary["valid_rate"], summary["first_attempt_valid_rate"]) == (1.0, 0.0)
 
 
 def test_admission_rule_requires_higher_f1_no_lower_precision_and_95_percent_valid():
@@ -138,7 +166,9 @@ def test_an_unparseable_reply_is_invalid_output_and_is_not_retried(monkeypatch):
 
     monkeypatch.setattr(ev.time, "sleep", lambda _s: None)
     run = ev._run_one(Backend(), "m", {"uid": "a", "agenda_text": "1. Call to order"})
-    assert (run["answered"], run["valid"], len(calls)) == (True, False, 1)
+    # Exactly one fresh admission retry -- never the provider-busy retry loop.
+    assert (run["answered"], run["valid"], len(calls)) == (True, False, 2)
+    assert (run["first_attempt_valid"], run["retried"]) == (False, True)
 
 
 def test_rescore_rejudges_stored_replies_and_keeps_provider_outcomes(monkeypatch):
@@ -203,3 +233,41 @@ def test_a_position_only_chapter_is_matched_by_the_items_reference():
     assert ev._chapter_first_reference("Consent Agenda") is None
     assert ev._chapter_first_reference("Items 1 \\u0026 2") == "1"
     assert ev._chapter_first_reference("Items 4 &amp; 5") == "4"
+
+
+def test_admission_rule_also_requires_an_80_percent_first_attempt_floor():
+    base = {"f1": 0.80, "precision": 0.85, "valid_rate": 0.97}
+    ok = {"f1": 0.81, "precision": 0.86, "valid_rate": 0.99, "first_attempt_valid_rate": 0.80}
+    assert ev.beats(ok, base)
+    assert not ev.beats({**ok, "first_attempt_valid_rate": 0.79}, base)
+
+
+def test_a_frozen_set_cannot_be_refrozen_under_the_same_version(tmp_path, monkeypatch):
+    split_dir = tmp_path / "main"
+    split_dir.mkdir()
+    (split_dir / "manifest.json").write_text(json.dumps({"version": 1, "episodes": []}))
+    monkeypatch.setattr(ev, "SPLIT_DIRS", {"main": split_dir})
+    with pytest.raises(SystemExit, match="--set-version 2"):
+        ev._check_freeze_version("main", 1)
+    ev._check_freeze_version("main", 2)  # a bump is allowed
+
+
+def test_pauses_are_renewed_while_a_long_run_is_in_progress(monkeypatch):
+    import time as _time
+
+    monkeypatch.setattr(ev, "RENEW_EVERY_SECONDS", 0.01)
+    renewals = []
+
+    class Outcome:
+        def renew(self):
+            renewals.append(1)
+
+    state = ev._renew_while(lambda: _time.sleep(0.1) or ["run"], [Outcome()])
+    assert state["runs"] == ["run"] and not state["failed"]
+    assert len(renewals) >= 2
+
+    class Broken:
+        def renew(self):
+            raise RuntimeError("worker unreachable")
+
+    assert ev._renew_while(lambda: _time.sleep(0.05) or [], [Broken()])["failed"] is True
