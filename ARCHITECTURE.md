@@ -428,7 +428,9 @@ total on `/admin/status`.
   selection onto the next rather than blocking the model — this is what makes "key rotation" real rather
   than a first-match static pick. Every compiled route exposes both direct LiteLLM and Worker
   transports; `LLM_MODE=direct` is the synchronous GH Actions path, while `LLM_MODE=dispatch` is the
-  asynchronous Worker path. A direct-capable caller may explicitly opt into Worker overflow with
+  asynchronous Worker path. Direct LiteLLM calls default to a 720 s `timeout`
+  (`LLMBackendConfig.direct_timeout_seconds`, the Worker's `MAX_RESPONSE_SECONDS`) unless the job sets
+  its own. A direct-capable caller may explicitly opt into Worker overflow with
   `LLMRequestPolicy.allow_dispatch_overflow`; the Worker's
   transport is inherently always-asynchronous, and defaulting to it whenever a backend merely had
   `dispatch_url` configured previously broke city discovery's same-run-completion requirement (review/41

@@ -1003,3 +1003,44 @@ def _write_raw(storage: MemStorage, recipe_hash: str, record: dict) -> None:
         path = Path(tmp) / "record.json"
         path.write_text(json.dumps(record))
         storage.put_file(deferred_key(recipe_hash), path, "application/json")
+
+
+def test_a_deferred_capsule_keeps_the_jobs_output_budget_and_timeout():
+    # Without these a rebuilt job fell back to the 1,024-token margin and the direct-call default
+    # timeout, silently dropping the job's own budget and deadline.
+    handle = JobHandle(
+        task="tag",
+        recipe_hash="r-capsule",
+        backend="litellm",
+        ref="deferred",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "hi"},),
+            policy=LLMRequestPolicy(),
+            output_token_budget=16_384,
+            timeout=45.0,
+        ),
+    )
+    decoded = llm_deferred._decode_record(llm_deferred._record_for(handle))
+    assert decoded.deferred_request.output_token_budget == 16_384
+    assert decoded.deferred_request.timeout == 45.0
+
+
+def test_a_capsule_written_before_those_fields_existed_keeps_the_old_defaults():
+    record = llm_deferred._record_for(
+        JobHandle(
+            task="tag",
+            recipe_hash="r-old",
+            backend="litellm",
+            ref="deferred",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "hi"},), policy=LLMRequestPolicy()
+            ),
+        )
+    )
+    record.pop("output_token_budget")
+    decoded = llm_deferred._decode_record(record)
+    assert (
+        decoded.deferred_request.output_token_budget
+        == DeferredLLMRequest(messages=(), policy=LLMRequestPolicy()).output_token_budget
+    )
+    assert decoded.deferred_request.timeout is None

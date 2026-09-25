@@ -405,7 +405,14 @@ class LLMBackendConfig:
     # outright. Off -> the plain ack path (the Worker's scheduled cleanup deletes them later).
     dispatch_v2_client_retire: bool = True
     daily_ingest_cap: int | None = None
+    # HTTP timeout for calls to the dispatch Worker (submit/poll/ack), which return quickly.
     timeout_seconds: float = 30.0
+    # Default LiteLLM ``timeout`` for calls this process makes to a provider itself (``direct``
+    # routes). Without it LiteLLM falls back to ``litellm.request_timeout`` (6000 s), which let a
+    # stalled provider hang a run for ~40 minutes. 720 s matches the v2 Worker's
+    # ``MAX_RESPONSE_SECONDS`` ceiling; ``timeout_seconds`` is far too short for long structured
+    # generations. A job-level ``inputs["timeout"]`` still wins.
+    direct_timeout_seconds: float = 720.0
     # Extra routes a policy-bearing call may spill onto once ``model``'s own per-minute/daily quota
     # window fills -- e.g. tagging pins ``gemini-3.1-flash-lite`` as the recipe/calibration route
     # but lets the scheduler also draw on ``gemini-3.5-flash-lite``'s independent free-tier pool for
@@ -440,6 +447,9 @@ class LLMBackendConfig:
             or os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
             daily_ingest_cap=daily_cap,
             timeout_seconds=float(os.environ.get("LLM_TIMEOUT_SECONDS", cls.timeout_seconds)),
+            direct_timeout_seconds=_positive_seconds(
+                "LLM_DIRECT_TIMEOUT_SECONDS", cls.direct_timeout_seconds
+            ),
             dispatch_v2_client_retire=os.environ.get("CITYPODS_LLM_DISPATCH_V2_CLIENT_RETIRE", "1")
             .strip()
             .lower()
@@ -653,6 +663,23 @@ def _messages(job: InferenceJob) -> list[dict[str, Any]]:
     ]
 
 
+def _job_timeout(job: InferenceJob) -> float | None:
+    """The job's own ``inputs["timeout"]``, kept on a deferred capsule so a rebuild restores it."""
+    value = job.inputs.get("timeout") if isinstance(job.inputs, Mapping) else None
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _positive_seconds(name: str, default: float) -> float:
+    """A finite, positive number of seconds from ``name`` (``default`` when unset or blank)."""
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    value = float(raw)
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be a finite number of seconds greater than 0, got {raw!r}")
+    return value
+
+
 def _messages_with_schema(
     messages: list[dict[str, Any]], model: ResponseModel
 ) -> list[dict[str, Any]]:
@@ -862,7 +889,7 @@ class LiteLLMBackend(Backend):
 
         ``direct`` marks a call this process makes to the provider itself. It defaults to False so
         the dispatch payload -- which shares this builder but is consumed by the Worker rather
-        than by LiteLLM -- never picks up gateway routing.
+        than by LiteLLM -- never picks up gateway routing or the direct-call timeout default.
         """
         options: dict[str, Any] = {"model": resolved_model}
         if route is not None:
@@ -889,6 +916,8 @@ class LiteLLMBackend(Backend):
         ):
             if field in job.inputs:
                 options[field] = job.inputs[field]
+        if direct:
+            options.setdefault("timeout", self.config.direct_timeout_seconds)
         return options
 
     def _payload(
@@ -1218,6 +1247,7 @@ class LiteLLMBackend(Backend):
                 messages=tuple(messages),
                 policy=policy,
                 output_token_budget=self._output_token_budget(job),
+                timeout=_job_timeout(job),
             ),
         )
 
@@ -1768,6 +1798,8 @@ class LiteLLMBackend(Backend):
         assert deferred is not None
         messages = [dict(message) for message in deferred.messages]
         inputs: dict[str, Any] = {"messages": messages, "max_tokens": deferred.output_token_budget}
+        if deferred.timeout is not None:
+            inputs["timeout"] = deferred.timeout
         if handle.structured_output:
             inputs["structured_output"] = handle.structured_output
         job = InferenceJob(task=handle.task, inputs=inputs, recipe_hash=handle.recipe_hash)
@@ -2092,6 +2124,7 @@ class LiteLLMBackend(Backend):
                         messages=tuple(_messages(job)),
                         policy=policy or LLMRequestPolicy(),
                         output_token_budget=self._output_token_budget(job),
+                        timeout=_job_timeout(job),
                     ),
                 )
                 telemetry_outcomes.append((job, "client_daily_cap", "client_daily_ingest_cap"))
@@ -2273,6 +2306,7 @@ class LiteLLMBackend(Backend):
                         messages=tuple(_messages(job)),
                         policy=policy or LLMRequestPolicy(),
                         output_token_budget=self._output_token_budget(job),
+                        timeout=_job_timeout(job),
                     ),
                 )
                 telemetry_outcomes.append((job, "deferred", "http_429"))
@@ -2405,6 +2439,7 @@ class LiteLLMBackend(Backend):
                             messages=tuple(_messages(job)),
                             policy=policy or LLMRequestPolicy(),
                             output_token_budget=self._output_token_budget(job),
+                            timeout=_job_timeout(job),
                         ),
                     )
                     deferred_writes.append((job.recipe_hash, handle))
