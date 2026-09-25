@@ -17,6 +17,20 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Moments and tagger output budgets raised to 32,768 tokens** (moments from 4,096,
+  `citypods/moments.py` `MOMENTS_OUTPUT_TOKEN_BUDGET`; tagger from 1,024, `citypods/tags.py`
+  `TAG_OUTPUT_TOKEN_BUDGET`, used for the request, batch fitting and the context/TPM gates). The
+  tagger case is the same failure: Kilo step-3.7-flash spent all 1,024 tokens reasoning over a
+  35k-token transcript and returned empty content (`finish_reason: length`). Reasoning models spent the whole 4,096 on
+  thinking and returned empty content: every GLM 5.3 Flash moments call on 2026-09-25 ended with
+  `finish_reason: length`, 4,096 reasoning tokens and no answer (AI Gateway logs), and kimi-k3 hit
+  the same limit on 3 of 8 calls. 32,768 matches the agenda lane; reasoning models wrote 12-22k
+  output tokens on these transcripts, so 16k would still truncate. The v2 Worker's new structured-output check caught these as
+  `structured_output_empty` and retried them elsewhere, so no bad result was stored. Every
+  r6-moments route allows at least 65,536 output tokens; the budget is not in the moments recipe
+  hash, so nothing re-extracts. `config/provider_limits.yml` also records OrcaRouter's published
+  free-tier limits and that `rpm: 10` / `concurrency: 2` are deliberate choices below them.
+
 - **Structured output is shaped per route by the v2 Worker** (review/48 PR C;
   `config/provider_limits.yml`, `scripts/compile_llm_limits.py`, `citypods/compute/structured_shaping.py`,
   `citypods/compute/llm.py`, `workers/llm-dispatch-v2/src/structured_output.js`, `gateway.js`,

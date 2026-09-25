@@ -47,6 +47,13 @@ PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrec
 # the "not valid JSON"/multi-field Pydantic validation failures seen in production. Sized so a
 # full 100-item batch (100 * 200 + 200 = 20,200) comfortably fits under every prelabeler route's
 # configured output_context_limit.
+# Output-token budget for one tagger call. Reasoning models in the tagger pool spend output tokens
+# thinking before they answer: at the former 1,024, Kilo's step-3.7-flash used the whole budget
+# reasoning over a 35k-token transcript and stopped with EMPTY content (finish_reason "length",
+# AI Gateway logs 2026-09-25). Every topic-tags:tagger route allows at least 65,536 output tokens;
+# 32,768 matches the agenda lane (reasoning models wrote 12-22k output tokens on similar inputs).
+# Not part of the tag recipe hash, so nothing re-tags.
+TAG_OUTPUT_TOKEN_BUDGET = 32_768
 PRELABELER_OUTPUT_TOKENS_PER_ITEM = 200
 PRELABELER_OUTPUT_TOKEN_OVERHEAD = 200
 # Keep a full megabyte beneath the Worker's 8 MiB JSON-body ceiling for the structured-output
@@ -1174,7 +1181,7 @@ def llm_tag_suggestions(
             {
                 "model": getattr(getattr(backend, "config", None), "model", ""),
                 "messages": messages,
-                "max_tokens": 1024,
+                "max_tokens": TAG_OUTPUT_TOKEN_BUDGET,
             },
             ensure_ascii=False,
             separators=(",", ":"),
@@ -1192,7 +1199,7 @@ def llm_tag_suggestions(
     call_metadata = {
         "job_recipe_hashes": [recipe_hash],
         "input_tokens_estimate": input_tokens_estimate,
-        "output_token_budget": 1024,
+        "output_token_budget": TAG_OUTPUT_TOKEN_BUDGET,
         "route_input_context_limit": None,
         "route_output_context_limit": None,
         "request_bytes_estimate": request_bytes,
@@ -1211,7 +1218,7 @@ def llm_tag_suggestions(
     inputs: dict[str, Any] = {
         "messages": messages,
         "structured_output": LLM_CONTRACT,
-        "max_tokens": 1024,
+        "max_tokens": TAG_OUTPUT_TOKEN_BUDGET,
     }
     backend_storage = getattr(backend, "storage", None)
     backend_config = getattr(backend, "config", None)
@@ -1244,10 +1251,10 @@ def llm_tag_suggestions(
                 if size > TAGGER_MAX_REQUEST_BYTES:
                     return False
                 input_tokens = estimate_tokens(candidate_messages)
-                total_tokens = input_tokens + 1024
+                total_tokens = input_tokens + TAG_OUTPUT_TOKEN_BUDGET
                 return any(
                     input_tokens <= route.input_context_limit
-                    and 1024 <= route.output_context_limit
+                    and TAG_OUTPUT_TOKEN_BUDGET <= route.output_context_limit
                     and (route.quota.tpm is None or total_tokens <= int(route.quota.tpm))
                     for route in candidate_routes
                 )
@@ -1259,7 +1266,11 @@ def llm_tag_suggestions(
                 proposed_messages = messages_for(proposed)
                 proposed_bytes = len(
                     json.dumps(
-                        {"model": backend_model, "messages": proposed_messages, "max_tokens": 1024},
+                        {
+                            "model": backend_model,
+                            "messages": proposed_messages,
+                            "max_tokens": TAG_OUTPUT_TOKEN_BUDGET,
+                        },
                         ensure_ascii=False,
                         separators=(",", ":"),
                     ).encode()
@@ -1272,7 +1283,11 @@ def llm_tag_suggestions(
                 single_messages = messages_for(current)
                 single_bytes = len(
                     json.dumps(
-                        {"model": backend_model, "messages": single_messages, "max_tokens": 1024},
+                        {
+                            "model": backend_model,
+                            "messages": single_messages,
+                            "max_tokens": TAG_OUTPUT_TOKEN_BUDGET,
+                        },
                         ensure_ascii=False,
                         separators=(",", ":"),
                     ).encode()
@@ -1335,7 +1350,8 @@ def llm_tag_suggestions(
         if request_bytes > TAGGER_MAX_REQUEST_BYTES:
             return [], {}, True, "payload-too-large"
         if candidate_routes and all(
-            input_tokens_estimate > route.input_context_limit or 1024 > route.output_context_limit
+            input_tokens_estimate > route.input_context_limit
+            or TAG_OUTPUT_TOKEN_BUDGET > route.output_context_limit
             for route in candidate_routes
         ):
             return [], {}, True, "payload-too-large"
@@ -1362,7 +1378,9 @@ def llm_tag_suggestions(
             for route in candidate_routes
             if route.quota.tpm is not None
         }
-        if capped_tpm and all(token_estimate + 1024 > tpm for tpm in capped_tpm.values()):
+        if capped_tpm and all(
+            token_estimate + TAG_OUTPUT_TOKEN_BUDGET > tpm for tpm in capped_tpm.values()
+        ):
             print(
                 f"llm tag budget: material estimate={token_estimate} tokens exceeds every "
                 f"tpm-capped allowed route's budget ({capped_tpm}) for recipe_hash="
