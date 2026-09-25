@@ -1072,11 +1072,14 @@ class MomentsStage:
             COUNCIL_MOMENT_MODELS,
             DEFAULT_MOMENT_MODELS,
             MOMENTS_CONTRACT,
+            MOMENTS_PROMPT_VERSION,
+            MOMENTS_SYSTEM_PROMPT,
             candidate_matrix_key,
             ensure_moment_contract,
             normalize_decision_candidate,
             normalize_quote_candidate,
             parse_transcript_segments,
+            parse_words_sidecar,
             recipe_hash,
             response_payload,
         )
@@ -1116,6 +1119,11 @@ class MomentsStage:
             if not segments:
                 stats.quality("shadow-no-captions")
                 continue
+            # Served-time word timing, so each quote keeps its exact spoken span for share clips;
+            # cue-level timing remains the fallback when there is no sidecar.
+            words = parse_words_sidecar(
+                _read_storage_bytes(ctx.storage, ep.transcript_words_key or "")
+            )
             chapters = episode_served_chapters(ep)
             chapter_rows = [
                 {
@@ -1144,15 +1152,7 @@ class MomentsStage:
                 stats.reused += 1
                 continue
             messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        "You extract civic meeting moments. Quote only exact contiguous wording "
-                        "from the transcript. Return one summary point per supplied chapter. "
-                        "Do not invent "
-                        "votes, decisions, names, times, or outcomes."
-                    ),
-                },
+                {"role": "system", "content": MOMENTS_SYSTEM_PROMPT},
                 {
                     "role": "user",
                     "content": json.dumps(
@@ -1230,7 +1230,7 @@ class MomentsStage:
                     "confidence": row.get("confidence", 0.0),
                     "source_kind": "llm",
                     "provider_model": model,
-                    "prompt_version": "1",
+                    "prompt_version": MOMENTS_PROMPT_VERSION,
                 }
                 for row in summary_by_chapter.values()
                 if row.get("chapter_id") in {item["chapter_id"] for item in chapter_rows}
@@ -1246,6 +1246,7 @@ class MomentsStage:
                     recipe=moments_recipe,
                     meeting_family=family,
                     transcript_segments=segments,
+                    transcript_words=words,
                 )
                 if candidate:
                     candidates.append(candidate)
@@ -1256,7 +1257,10 @@ class MomentsStage:
                 if isinstance(row, dict)
                 if (
                     normalized := normalize_decision_candidate(
-                        row, provider_model=model, transcript_segments=segments
+                        row,
+                        provider_model=model,
+                        transcript_segments=segments,
+                        transcript_words=words,
                     )
                 )
                 is not None
@@ -1339,6 +1343,7 @@ class MomentJudgeStage:
             JUDGE_CONTRACT,
             JUDGE_PROMPT_VERSION,
             JUDGE_SCHEMA_VERSION,
+            JUDGE_SYSTEM_PROMPT,
             ensure_judge_contract,
             judge_input,
             judge_models,
@@ -1391,10 +1396,7 @@ class MomentJudgeStage:
                         "messages": [
                             {
                                 "role": "system",
-                                "content": (
-                                    "You are an independent civic-publication judge. Score only "
-                                    "the candidate and evidence. Never rewrite or create one."
-                                ),
+                                "content": JUDGE_SYSTEM_PROMPT,
                             },
                             {
                                 "role": "user",
