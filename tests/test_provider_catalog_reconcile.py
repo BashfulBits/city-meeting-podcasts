@@ -631,7 +631,9 @@ def test_a_due_only_run_calls_only_providers_with_deferred_checks(monkeypatch):
         canary_fn=lambda *args: OK,
         due_only=True,
     )
-    assert requested and all(url.startswith("https://or.test") for url in requested)
+    from urllib.parse import urlsplit
+
+    assert requested and {urlsplit(url).hostname for url in requested} == {"or.test"}
 
 
 @pytest.mark.parametrize("payload", ["oops", 7, {"data": "oops"}])
