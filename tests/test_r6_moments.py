@@ -441,7 +441,7 @@ def test_the_moments_output_budget_leaves_room_for_reasoning_on_every_route():
 
     from citypods.compute.llm_lanes import lane_for
 
-    assert _moments.MOMENTS_OUTPUT_TOKEN_BUDGET >= 16_384
+    assert _moments.MOMENTS_OUTPUT_TOKEN_BUDGET >= 32_768
     catalog = _json.loads(
         (
             _Path(__file__).resolve().parents[1]
@@ -462,7 +462,7 @@ def test_the_tagger_output_budget_leaves_room_for_reasoning_on_every_route():
     from citypods.compute.llm_lanes import lane_for
     from citypods.tags import TAG_OUTPUT_TOKEN_BUDGET
 
-    assert TAG_OUTPUT_TOKEN_BUDGET >= 16_384
+    assert TAG_OUTPUT_TOKEN_BUDGET >= 32_768
     catalog = _json.loads(
         (
             _Path(__file__).resolve().parents[1]

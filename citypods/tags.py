@@ -50,9 +50,10 @@ PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrec
 # Output-token budget for one tagger call. Reasoning models in the tagger pool spend output tokens
 # thinking before they answer: at the former 1,024, Kilo's step-3.7-flash used the whole budget
 # reasoning over a 35k-token transcript and stopped with EMPTY content (finish_reason "length",
-# AI Gateway logs 2026-09-25). Every topic-tags:tagger route allows at least 65,536 output tokens.
+# AI Gateway logs 2026-09-25). Every topic-tags:tagger route allows at least 65,536 output tokens;
+# 32,768 matches the agenda lane (reasoning models wrote 12-22k output tokens on similar inputs).
 # Not part of the tag recipe hash, so nothing re-tags.
-TAG_OUTPUT_TOKEN_BUDGET = 16_384
+TAG_OUTPUT_TOKEN_BUDGET = 32_768
 PRELABELER_OUTPUT_TOKENS_PER_ITEM = 200
 PRELABELER_OUTPUT_TOKEN_OVERHEAD = 200
 # Keep a full megabyte beneath the Worker's 8 MiB JSON-body ceiling for the structured-output

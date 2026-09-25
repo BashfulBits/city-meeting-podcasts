@@ -89,8 +89,10 @@ MOMENTS_MAX_SECONDS = 90.0
 # before they answer: at the former 4,096, GLM 5.3 Flash on a 21-27k-token council transcript used
 # all 4,096 on reasoning and stopped with EMPTY content (finish_reason "length", verified in the AI
 # Gateway logs 2026-09-25; kimi-k3 hit the same wall on 3 of 8 calls). Every r6-moments route
-# allows at least 65,536 output tokens. Not part of the recipe hash (nothing re-extracts).
-MOMENTS_OUTPUT_TOKEN_BUDGET = 16_384
+# allows at least 65,536 output tokens. 32,768 matches the agenda lane: on 2026-09-25 reasoning
+# models routinely wrote 12-22k output tokens on these transcripts (AI Gateway logs), so 16k would
+# still truncate. Not part of the recipe hash (nothing re-extracts).
+MOMENTS_OUTPUT_TOKEN_BUDGET = 32_768
 MOMENTS_PADDING_SECONDS = 1.5
 MOMENTS_FRAMING_PROFILE = "social-vertical-opencv-mouth-motion-v1"
 
