@@ -58,11 +58,11 @@ jobs:
       has_work: ${{ steps.plan.outputs.has_work }}
       shard_count: ${{ steps.plan.outputs.shard_count }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
           cache: pip
@@ -134,11 +134,11 @@ jobs:
       FFMPEG_SHA256: 30d8f18138393081d7fdf95f7006fa132e7b063fd87c0e955652c64a4bc0d52d
       FFMPEG_FALLBACK_DIR: /home/runner/.cache/citypods/ffmpeg-static-v1
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
           cache: pip
@@ -155,7 +155,7 @@ jobs:
       # The host fallback is cached independently of the GHCR image. It is restored before the pull
       # attempt so a registry outage does not turn into an apt mirror dependency.
       - name: Cache static ffmpeg fallback
-        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: ${{ env.FFMPEG_FALLBACK_DIR }}
           key: ffmpeg-static-linux64-7.1.5-v2
@@ -302,11 +302,11 @@ jobs:
     needs: [plan, audio, audio-no-op]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
           cache: pip

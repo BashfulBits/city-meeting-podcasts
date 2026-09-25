@@ -22,11 +22,11 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
           cache: pip
@@ -39,7 +39,7 @@ jobs:
       # Actions caches. This gives `--no-refresh` real records to render; on a cache miss (first run
       # / eviction) the render is empty-but-valid (it still verifies the build/render flow).
       - name: Restore build state
-        uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           # Match the path set deploy.yml caches under, so a restore-keys hit extracts cleanly.
           # (docs/ is harmless here — the render below overwrites it.)
