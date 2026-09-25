@@ -1,6 +1,8 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from citypods.compute.base import JobHandle, JobResult
 from citypods.compute.llm_deferred import write_deferred
 from citypods.models import Episode
@@ -396,3 +398,37 @@ def test_extraction_and_judge_share_the_pull_quote_criteria():
     assert "Any civic topic qualifies" in criteria  # emphasis, not a restriction
     assert "never name a member of the public" in criteria
     assert (_moments.MOMENTS_PROMPT_VERSION, _judging.JUDGE_PROMPT_VERSION) == ("2", "2")
+
+
+def test_a_word_match_outside_the_matched_cue_falls_back_to_the_cue():
+    # The only word-level occurrence is far from the cue the quote matched: keep the cue span.
+    words = [{"text": "vote", "start": 300.0, "end": 300.4}]
+    assert _moments.word_region("vote", words, near=(115.0, 130.0)) is None
+    timing = _moments.quote_timing("We need a vote tonight.", _SEGMENTS, words)
+    assert timing == (115.0, 130.0, "cues")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b'{"segments": null}',
+        b'{"segments": [null, {"words": null},'
+        b' {"words": [null, "w", {"w": "ok", "s": 1, "e": 2}]}]}',
+        b"not json",
+        b'["segments"]',
+    ],
+)
+def test_a_malformed_words_sidecar_never_raises(payload):
+    words = _moments.parse_words_sidecar(payload)
+    assert all(word["text"] == "ok" for word in words)
+
+
+def test_captions_show_only_words_spoken_inside_the_clip():
+    from citypods.video_clips import caption_cues
+
+    # The clip (105-111 s) is narrower than the cue (100-115 s): only the words it plays appear.
+    cues = caption_cues(_SEGMENTS, 105.0, 111.0, _WORDS)
+    assert [cue["text"] for cue in cues] == ["Parking minimums blocked my bakery expansion."]
+    assert caption_text(_SEGMENTS, 105.0, 111.0, _WORDS) == cues[0]["text"]
+    # Without word timing, whole overlapping cues are kept (previous behavior).
+    assert caption_text(_SEGMENTS, 105.0, 111.0) == _SEGMENTS[0]["text"]
