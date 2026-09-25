@@ -173,21 +173,22 @@ llm_lanes:
     # Replaces citypods/chapter_locator.py:PRODUCTION_LOCATOR_MODEL. Gemini 3.5 Flash Lite is
     # reserved for this long-context workload and deliberately not shared with tagging; it stays
     # `models[0]` (the recipe/calibration key -- see chapter_locator.py's own docstring on why
-    # changing it re-queues the whole locator catalog). The two overflow models take full-transcript
-    # jobs too large for Gemini's real free-tier ceiling. OrcaRouter's DeepSeek v4 (AA 34.3, 800/day,
-    # 1M context) replaced NVIDIA's v4.1 here on 2026-09-24: this lane's primary is a lighter model,
-    # so the higher-capacity v4 pool is the better overflow; v4.1 is kept for r6-moments, whose
-    # primaries score higher. kimi-k3 is latency-bound (~590 s calls on one slot, ~146/day).
+    # changing it re-queues the whole locator catalog). The overflow models take full-transcript
+    # jobs too large for Gemini's real free-tier ceiling. 2026-09-24: OrcaRouter's GLM 5.3 Flash
+    # (AA 41.8, 800/day, 1M context, ~5 s; json_object verified live) and DeepSeek v4 (AA 34.3,
+    # 800/day, 1M) give placement -- long-context reasoning -- two responsive independent pools;
+    # kimi-k3 is latency-bound (~590 s calls on one slot, ~146/day).
     models:
       - "gemini/gemini-3.5-flash-lite"
+      - "zai/glm-5.3-flash"
       - "deepseek/deepseek-v4-flash"
       - "moonshotai/kimi-k3"
-    # Per-run share of what daily_write_units funds at 3 models (3 index rows + 3 bookkeeping
-    # rows = 6 units/job; 2790/6 = 465 a day over 12 runs); see
+    # Per-run share of what daily_write_units funds at 4 models (4 index rows + 3 bookkeeping
+    # rows = 7 units/job; 3255/7 = 465 a day over 12 runs); see
     # `LaneConfig.max_jobs_per_day`, which `parse_lanes` enforces this can never exceed.
     max_dispatches_per_run: 150
-    reserved_write_units: 1860
-    daily_write_units: 2790
+    reserved_write_units: 2170
+    daily_write_units: 3255
   topic-tags:tagger:
     # Keep tagging pinned to the stable/calibrated Gemini 3.1 route; it is the recipe and
     # calibration-matrix key (models[0]). The two additional models (2026-09-24) are throughput
@@ -235,22 +236,25 @@ llm_lanes:
     # ahead of 3.6/3.5, whose 20/day pools were exhausted by midday. The DeepSeek overflow slot is
     # OrcaRouter's v4, not NVIDIA's v4.1: NVIDIA's v4.1 returns EMPTY content whenever a request
     # carries any `response_format` (json_schema or json_object; verified live 2026-09-24) and
-    # answers only without one, and the v2 Worker forwards the job's format unchanged. v4.1
-    # returns here once the Worker applies each route's own structured-output method (review/48).
+    # answers only without one, and the v2 Worker forwards the job's format unchanged.
+    # OrcaRouter's GLM 5.3 Flash (AA 41.8 -- general strength on par with the Gemini Flash
+    # primaries -- 800/day, 1M context, ~5 s; json_object verified live 2026-09-24) adds the
+    # capacity those 20/day Gemini pools lack; it is also in the council list.
     # Changing the council list is a deliberate moments recipe change (approved backfill).
     models:
       - "gemini/gemini-3.8-flash"
       - "gemini/gemini-3.7-flash"
       - "gemini/gemini-3.6-flash"
       - "gemini/gemini-3.5-flash"
+      - "zai/glm-5.3-flash"
       - "gemini/gemini-3.5-flash-lite"
       - "gemini/gemini-3.1-flash-lite"
       - "deepseek/deepseek-v4-flash"
       - "moonshotai/kimi-k3"
     max_dispatches_per_run: 40
-    reserved_write_units: 840
-    # ~186 jobs/day at 11 units/job (3 + 8 models), as before the two added Gemini models.
-    daily_write_units: 2046
+    reserved_write_units: 916
+    # ~186 jobs/day at 12 units/job (3 + 9 models).
+    daily_write_units: 2232
   r6-judge:
     # A PANEL, not a pool: MomentJudgeStage sends each candidate to every judge pinned to that
     # model, and admission is calibrated per judge. 2026-09-24: glm-4.7-flash (AA 14.9) and

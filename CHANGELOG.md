@@ -57,8 +57,12 @@ Phase R (Research-Tool Surface)._
   `citypods/moments.py`, regenerated catalogs; 2026-09-24 capacity review under review/48).
   - *DeepSeek:* one pool name per version. `deepseek/deepseek-v4-flash` is now OrcaRouter's v4
     only and `deepseek/deepseek-v4.1-flash` NVIDIA's v4.1 only; the `deepseek-v4-pro` alias is
-    retired. chapter-locator overflows to v4 (800/day, 1M context). The tournament scores v4 and
-    v4.1 as separate contestants.
+    retired. The tournament scores v4 and v4.1 as separate contestants.
+  - *GLM 5.3 Flash (OrcaRouter; AA 41.8, 800/day, 1M context, ~5 s; `json_object` verified live)*
+    added to chapter-locator overflow (ahead of DeepSeek v4 and kimi-k3) and to r6-moments,
+    including the council list. It adds a responsive, strong general-purpose pool where the
+    Gemini Flash moments pools (20/day each) run out and locator overflow was latency-bound.
+    Lane write budgets are raised to keep the same daily job counts.
   - *NVIDIA DeepSeek v4.1 kept out of production pools:* it returns empty content to any
     `response_format` (json_schema or json_object; verified live) and the v2 Worker forwards the
     job's format unchanged, so r6-moments and council-moments overflow go to OrcaRouter v4 instead.
@@ -67,8 +71,8 @@ Phase R (Research-Tool Surface)._
   - *Tagger:* Kilo `step-3.7-flash` and OrcaRouter v4 added as throughput models after the
     pinned Gemini 3.1 Flash Lite (recipe/calibration key unchanged); they also take transcripts
     above Gemini's input ceiling. Daily write budget raised to keep 930 jobs/day.
-  - *r6-moments:* Gemini 3.8/3.7 Flash added (independent 20/day pools; 3.6/3.5 ran out by
-    midday). The council model list is part of the moments recipe hash, so **council moments are
+  - *r6-moments:* Gemini 3.8/3.7 Flash and GLM 5.3 Flash added (independent pools; 3.6/3.5 ran
+    out by midday). The council model list is part of the moments recipe hash, so **council moments are
     re-generated** (approved backfill).
   - *r6-judge:* glm-4.7-flash and gpt-oss-120b removed; gemma-4-26b-a4b-it joins the panel as its
     own calibrated judge. gemma-4-26b removed from `tournament:tag` and `r5-benchmark:tag` (its
