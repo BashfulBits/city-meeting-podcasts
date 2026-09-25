@@ -53,11 +53,17 @@ Phase R (Research-Tool Surface)._
   - *Dead routes removed:* 21 Mistral routes blocked by the account's plan, the unused Mistral
     tertiary account (its key was never set on the Workers), and the paused SambaNova Llama 3.3
     route. The v1 Worker's advertised default moves from Mistral Large to Codestral 2508.
-  - *chapter-agenda backup:* `tencent/hy3` (OrcaRouter) replaces Gemini 3.5 Flash Lite under the
-    maintainer's admission rule (higher F1, precision not lower, ≥95% valid): F1 0.689 vs 0.528,
-    precision 0.795 vs 0.578, 96.6% vs 62.1% valid. It does not beat Nemotron (F1 0.711, precision
-    0.869), so Nemotron stays sole primary. Agenda artifacts produced by 3.5 Flash Lite are
-    re-dispatched (deliberate backfill).
+  - *chapter-agenda is a same-priority pool:* Nemotron 3 Ultra, tencent/hy3 (OrcaRouter) and
+    Gemini 3.1 Flash Lite are all in `models`, so the Worker sends each job to whichever route has
+    capacity (the ~3,700-job Nemotron backlog had left the former backups idle). On
+    `evals/chapter-agenda` (main + holdout, repaired validator) they are about equal (F1
+    0.750/0.840, 0.760/0.867, 0.750/0.830). Nemotron stays `models[0]`, the only model in the
+    agenda recipe hash, so nothing re-queues. hy3 and 3.1 Flash Lite are repeated in
+    `backup_models` solely to keep the Worker's extended retry budget, which applies only when
+    backups are declared; the lane parser now allows that overlap (the Worker de-duplicates
+    routes). Gemini 3.5 Flash Lite leaves the lane, so agenda artifacts it produced are
+    re-dispatched (deliberate backfill). 3.1 Flash Lite shares its daily quota with the tagger's
+    primary; tagging routes will be added if it congests.
   - No pipeline version change; council moments re-run through their recipe hash.
 
 - **First committed per-task evaluation set: `evals/chapter-agenda/`** (GH#1852;

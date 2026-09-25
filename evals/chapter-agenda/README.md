@@ -55,17 +55,21 @@ within 0.08 is *ambiguous* and credits neither. The original 2026-09-13 benchmar
 definition was not recorded, so its 87.4% is not directly comparable -- every model here, including
 the baselines, is re-run on this set.
 
-## Admission rule (maintainer decision 2026-09-24)
+## Admission rule (maintainer decisions 2026-09-24)
 
-`chapter-agenda` output is upstream of the locator, tags and moments, so correctness wins over
-throughput. A candidate **beats** a baseline when its F1 is higher, its precision is not lower,
-and its valid_rate is at least 95% (re-runs of an invalid response are an accepted cost of better
-output).
+`chapter-agenda` output is upstream of the locator, tags and moments, so correctness comes first.
 
-- Beats the current backup (Gemini 3.5 Flash Lite): it becomes a backup model, and 3.5 Flash Lite
-  is dropped from the backups.
-- Beats the primary (Nemotron 3 Ultra): it joins the lane's `models` as a same-priority
-  alternate, with no 12-attempt wait.
+- **Validity:** at least 95% valid after at most one retry, and at least 80% valid per call. An
+  invalid reply is re-dispatched as a fresh job; tested failures were random per call (hy3: 20 of
+  21 retries passed), so a single retry clears them, while the per-call floor keeps a chronically
+  flaky model from quietly doubling its calls.
+- **Quality:** a candidate beats a baseline when its F1 is higher and its precision is not lower,
+  on both the main set and the holdout.
+- **Models that are about equal share the work:** they go together in the lane's `models` pool,
+  so dispatch uses whichever route has capacity.
+- **Prefer the lowest general score that does the task well:** between otherwise-equal choices,
+  favor the model with the lower Artificial Analysis index, keeping strong general models free for
+  tasks that need them.
 
 ## Results
 
