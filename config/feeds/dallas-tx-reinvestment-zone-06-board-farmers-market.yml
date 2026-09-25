@@ -6,6 +6,15 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: Reinvestment Zone 06 Board Farmers Market
+  body_any:
+    - "Dallas Farmers Market TIF District Board of Directors Special Meeting"
+    - "Reinvestment Zone 06 Board Grand Park South"
+    - "Reinvestment Zone Six Farmers Market TIF"
+  body_includes:
+    - provider_guid: "204757"
+      body: "Farmers Market TIF District Board of Directors Meeting"
+    - provider_guid: "204634"
+      body: "Reinvestment Zone 06 Farmers Market Board"
 lifecycle:
   status: retired
   reason: latest observed meeting was 2022-02-28 (1653 days ago)

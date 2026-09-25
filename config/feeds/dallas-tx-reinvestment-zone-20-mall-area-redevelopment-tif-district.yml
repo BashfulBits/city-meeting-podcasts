@@ -1,0 +1,16 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Reinvestment Zone 20 Mall Area Redevelopment TIF District is a recurring body with 3 observed meetings spanning from June 2016 to January 2017, matching existing taxonomy pattern for TIF districts.
+slug: dallas-tx-reinvestment-zone-20-mall-area-redevelopment-tif-district
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Reinvestment Zone 20 Mall Area Redevelopment TIF District
+lifecycle:
+  status: retired
+  reason: latest observed meeting was 2017-01-30 (3509 days ago)
+podcast_title: 'Dallas: Reinvestment Zone 20 Mall Area Redevelopment TIF District'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Reinvestment Zone 20 Mall Area Redevelopment
+  TIF District board.
