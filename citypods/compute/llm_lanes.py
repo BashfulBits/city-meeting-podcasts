@@ -100,6 +100,16 @@ class LaneConfig:
     def accepts_catalog_backups(self) -> bool:
         return self.catalog_backup_candidates and self.dispatch_shape == "pooled"
 
+    # Per-model reasoning level for THIS lane's jobs (e.g. ``{"deepseek/deepseek-v4.1-flash":
+    # "off"}``), applied at send time through the route's ``reasoning_controls``. A model without
+    # an entry keeps its provider default, so a model can think in one job type and not another.
+    # Stored as sorted pairs to keep the frozen config hashable; see ``reasoning_levels``.
+    reasoning: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def reasoning_levels(self) -> dict[str, str]:
+        return dict(self.reasoning)
+
     @property
     def primary_model(self) -> str:
         """The stable recipe/calibration route.
@@ -160,6 +170,31 @@ def _coerce_bool(raw: Any, *, purpose: str, field: str) -> bool:
     if not isinstance(raw, bool):
         raise ValueError(f"llm_lanes[{purpose!r}].{field} must be true or false, got {raw!r}")
     return raw
+
+
+REASONING_LEVELS = frozenset({"off", "low"})
+
+
+def _parse_reasoning(raw: Any, purpose: str, lane_models: set[str]) -> tuple[tuple[str, str], ...]:
+    """Validate a lane's ``reasoning`` map: only this lane's models, only known levels."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict):
+        raise ValueError(f"llm_lanes[{purpose!r}].reasoning must be a mapping of model -> level")
+    pairs: list[tuple[str, str]] = []
+    for model, level in raw.items():
+        if model not in lane_models:
+            raise ValueError(
+                f"llm_lanes[{purpose!r}].reasoning names {model!r}, which is not one of the lane's "
+                "models or backup_models"
+            )
+        if level not in REASONING_LEVELS:
+            raise ValueError(
+                f"llm_lanes[{purpose!r}].reasoning[{model!r}] must be one of "
+                f'{sorted(REASONING_LEVELS)}, got {level!r} (quote "off": bare off is YAML false)'
+            )
+        pairs.append((model, level))
+    return tuple(sorted(pairs))
 
 
 def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
@@ -244,11 +279,11 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                 raise ValueError(
                     f"llm_lanes[{purpose!r}].backup_models contains duplicates: {backup_models}"
                 )
-            if set(backup_models) & set(models):
-                raise ValueError(
-                    f"llm_lanes[{purpose!r}].backup_models overlaps its own models: "
-                    f"{sorted(set(backup_models) & set(models))}"
-                )
+            # A backup may also be one of the lane's own `models`. That adds no routes -- the
+            # Worker de-duplicates them (routes.js routesEligibleFor) -- but a non-empty
+            # backup_models is what raises the Worker's per-class retry ceilings to
+            # backup_after_attempts + base (coordinator.js `_retryCeiling`), so a pooled lane can
+            # keep that retry budget without dedicating a weaker model as a fallback.
             if shape == "per_model":
                 raise ValueError(
                     f"llm_lanes[{purpose!r}] is dispatch_shape 'per_model' (a model comparison) "
@@ -263,6 +298,7 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                     f"{backup_after_attempts}"
                 )
 
+        reasoning = _parse_reasoning(entry.get("reasoning"), purpose, {*models, *backup_models})
         lane = LaneConfig(
             purpose=purpose,
             models=models,
@@ -281,6 +317,7 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                 purpose=purpose,
                 field="catalog_backup_candidates",
             ),
+            reasoning=reasoning,
         )
         if daily < lane.ingress_write_units_per_job:
             raise ValueError(

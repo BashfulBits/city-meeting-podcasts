@@ -607,6 +607,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Backup-model gating (routes.js's backupModelsActive) reads this alongside `attempts`; an
     // already-provisioned DO's existing rows get 0, same as a freshly-created job.
     this._ensureColumn("jobs", "schema_retry_count", "INTEGER NOT NULL DEFAULT 0");
+    // usage_today groups attempts by lane and compares output with the reservation; a completed
+    // job's row is retired once its result is consumed, so the attempt keeps both itself.
+    this._ensureColumn("attempts", "purpose", "TEXT NOT NULL DEFAULT ''");
+    this._ensureColumn("attempts", "reserved_output_tokens", "INTEGER NOT NULL DEFAULT 0");
     // The route's own rpm/rpd/tpm window identity AT CLAIM TIME, so a non-consuming refund
     // (completeBatch) can tell whether the route's current window is still the one this
     // reservation actually counted against, or whether it has since rolled over (see
@@ -813,6 +817,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["buffer_updated_at", "INTEGER NOT NULL DEFAULT 0"],
       ["token_reservation", "INTEGER NOT NULL DEFAULT 0"],
       ["purpose", "TEXT NOT NULL DEFAULT ''"],
+      ["reserved_output_tokens", "INTEGER NOT NULL DEFAULT 0"],
       ["ingress_write_units_today", "INTEGER NOT NULL DEFAULT 0"],
       ["queued_job_count", "INTEGER NOT NULL DEFAULT 0"],
       ["queued_job_count_initialized", "INTEGER NOT NULL DEFAULT 0"],
@@ -1427,6 +1432,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
   // parameter count scales with caller-supplied batch size (e.g. POLL_BATCH_MAX up to 1000) into
   // multiple queries of at most this many ids each.
   static MAX_SQL_BOUND_PARAMS = 100;
+  // _usageToday: a day's attempts are a few thousand; the cap only bounds a pathological day.
+  static USAGE_SCAN_LIMIT = 20000;
+  static FILTERED_FAILURE_LIMIT = 1000;
+  // A call at or past this share of MAX_RESPONSE_SECONDS (720 s) counts as slow: 600 s.
+  static SLOW_CALL_MS = 600_000;
 
   *_chunks(items, size = LLMSchedulerDO.MAX_SQL_BOUND_PARAMS) {
     for (let offset = 0; offset < items.length; offset += size) {
@@ -2094,7 +2104,84 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * history and is intentionally never called by scheduled producer telemetry; use stats()
    * for recurring observation. The HTTP route requires `?detail=1` to reach this method.
    */
-  async detailedStats(now, limit = 20) {
+  /**
+   * Per (lane, route) usage for the current UTC day, computed at read time from rows the executor
+   * already writes -- `attempts` (actual output tokens, start/end) joined to `jobs` (lane via
+   * policy, reserved output) -- so this telemetry adds no row writes. Attempts carry no time index
+   * (it would cost a billed write per attempt), so today's rows are read newest-first by rowid and
+   * the scan stops at the first earlier row, capped at USAGE_SCAN_LIMIT.
+   *
+   * Feeds scripts/llm_budget_monitor.py: output far below the reservation (over-reservation that
+   * wastes TPM admission), output above it (reservation too small), and calls near the Worker's
+   * response ceiling (a slow route or runaway reasoning).
+   */
+  _usageToday(sql, now) {
+    const dayStart = Date.parse(`${new Date(now).toISOString().slice(0, 10)}T00:00:00Z`);
+    const attempts = [];
+    for (const row of sql.exec(
+      `SELECT job_id, route_id, actual_start_at, actual_end_at, observed_output_tokens, created_at,
+              purpose, reserved_output_tokens
+         FROM attempts ORDER BY rowid DESC LIMIT ?`,
+      LLMSchedulerDO.USAGE_SCAN_LIMIT
+    )) {
+      if (row.created_at < dayStart) break;
+      if (row.actual_start_at == null) continue; // planned but never sent
+      attempts.push(row);
+    }
+    const jobs = new Map();
+    // Only attempts written before the attempt carried its own lane need the job row.
+    const jobIds = [...new Set(attempts.filter((row) => !row.purpose).map((row) => row.job_id))];
+    for (const chunk of this._chunks(jobIds)) {
+      const placeholders = chunk.map(() => "?").join(",");
+      for (const row of sql.exec(
+        `SELECT id, purpose, policy_json, max_output_token_estimate FROM jobs WHERE id IN (${placeholders})`,
+        ...chunk
+      )) {
+        jobs.set(row.id, row);
+      }
+    }
+    const byKey = new Map();
+    for (const row of attempts) {
+      const job = jobs.get(row.job_id);
+      const purpose = row.purpose || (job ? this._purposeForJob(job) : "unknown");
+      const key = `${purpose}\u0000${row.route_id}`;
+      let agg = byKey.get(key);
+      if (!agg) {
+        agg = { purpose, route_id: row.route_id, calls: 0, measured_calls: 0, outputs: [],
+          reserved_sum: 0, over_reservation_calls: 0, slow_calls: 0, max_duration_ms: 0 };
+        byKey.set(key, agg);
+      }
+      agg.calls += 1;
+      const duration = row.actual_end_at != null ? row.actual_end_at - row.actual_start_at : 0;
+      if (duration >= LLMSchedulerDO.SLOW_CALL_MS) agg.slow_calls += 1;
+      agg.max_duration_ms = Math.max(agg.max_duration_ms, duration);
+      // A call that returned no usage (failed before the provider answered) says nothing about
+      // output size: it is counted as a call but kept out of the percentiles and the reservation
+      // comparison, or a lane with many such failures would look over-reserved.
+      if (row.observed_output_tokens == null) continue;
+      const output = Number(row.observed_output_tokens) || 0;
+      const reserved =
+        Number(row.reserved_output_tokens) || Number(job?.max_output_token_estimate) || 0;
+      agg.measured_calls += 1;
+      agg.outputs.push(output);
+      agg.reserved_sum += reserved;
+      if (reserved && output > reserved) agg.over_reservation_calls += 1;
+    }
+    return [...byKey.values()]
+      .map(({ outputs, reserved_sum, ...agg }) => {
+        outputs.sort((a, b) => a - b);
+        return {
+          ...agg,
+          output_tokens_p50: outputs[Math.floor((outputs.length - 1) * 0.5)] || 0,
+          output_tokens_p90: outputs[Math.floor((outputs.length - 1) * 0.9)] || 0,
+          output_tokens_max: outputs[outputs.length - 1] || 0,
+          reserved_output_mean: agg.measured_calls ? Math.round(reserved_sum / agg.measured_calls) : 0,
+        };
+      })
+      .sort((a, b) => b.calls - a.calls);
+  }
+
+  async detailedStats(now, limit = 20, { failureClasses = null } = {}) {
     this._ensureQueuedJobCounter();
     const sql = this._getSql();
     const one = (query, ...args) => [...sql.exec(query, ...args)][0] || {};
@@ -2214,14 +2301,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const lastClaimDiagnostics = parseJsonObject(scheduler.last_claim_diagnostics_json);
 
     const today = new Date(now).toISOString().slice(0, 10);
+    // A caller that names failure classes (the budget monitor) gets every row of those classes,
+    // up to FILTERED_FAILURE_LIMIT, so unrelated high-count rows cannot push them past `limit`.
+    const classes = Array.isArray(failureClasses) && failureClasses.length ? failureClasses : null;
     const routeFailures = [...sql.exec(
       `SELECT utc_day, route_id, failure_class, count, last_status, last_seen_at
          FROM route_failures
-        WHERE utc_day = ?
+        WHERE utc_day = ?${classes ? ` AND failure_class IN (${classes.map(() => "?").join(",")})` : ""}
         ORDER BY count DESC
         LIMIT ?`,
       today,
-      limit
+      ...(classes || []),
+      classes ? LLMSchedulerDO.FILTERED_FAILURE_LIMIT : limit
     )];
 
     return {
@@ -2243,6 +2334,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         all: routes.slice(0, limit),
       },
       route_failures: routeFailures,
+      usage_today: this._usageToday(sql, now),
       bundles: {
         active: one("SELECT COUNT(*) AS n FROM bundles WHERE state = 'active'").n,
         active_call_count: one(
@@ -3574,6 +3666,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
             payload_key: job.payload_key,
             lease_token: leaseToken,
             route_id: route.route_id,
+            // For per-lane request shaping at send time (reasoning level, output budget): the
+            // lane comes from the job's own policy and costs no extra row reads or writes.
+            purpose: this._purposeForJob(job),
+            input_token_estimate: Number(job.input_token_estimate || 0),
             token_reservation: waitResult.reservation,
             wait_ms: waitResult.wait_ms,
             not_before_at: waitResult.not_before_at,
@@ -3944,8 +4040,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           `INSERT INTO attempts (
             attempt_id, job_id, route_id, planned_at, actual_start_at, actual_end_at,
             observed_input_tokens, observed_output_tokens, start_state, outcome,
-            provider_status_code, gateway_correlation_id, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            provider_status_code, gateway_correlation_id, created_at, purpose,
+            reserved_output_tokens
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(attempt_id) DO UPDATE SET
             planned_at = excluded.planned_at,
             actual_start_at = excluded.actual_start_at,
@@ -3955,7 +4052,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
             start_state = excluded.start_state,
             outcome = excluded.outcome,
             provider_status_code = excluded.provider_status_code,
-            gateway_correlation_id = excluded.gateway_correlation_id`,
+            gateway_correlation_id = excluded.gateway_correlation_id,
+            purpose = CASE WHEN excluded.purpose <> '' THEN excluded.purpose ELSE attempts.purpose END,
+            reserved_output_tokens = CASE WHEN excluded.reserved_output_tokens > 0
+              THEN excluded.reserved_output_tokens ELSE attempts.reserved_output_tokens END`,
           result.attempt_id,
           result.job_id,
           routeIdForAttempt || "unknown",
@@ -3968,7 +4068,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           result.outcome,
           result.provider_status_code ?? null,
           result.gateway_correlation_id ?? null,
-          now
+          now,
+          // Lane and reservation live on the attempt too: usage_today reads them after the job
+          // row itself is retired (retireConsumed). Same row write, no extra cost.
+          jobRows.length > 0 ? this._purposeForJob(jobRows[0]) : "",
+          jobRows.length > 0 ? Number(jobRows[0].max_output_token_estimate) || 0 : 0
         );
 
         if (jobRows.length === 0 || jobRows[0].lease_token !== result.lease_token) {
@@ -3999,9 +4103,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const _retryCeiling = (base) =>
           backupAfterAttempts > 0 ? backupAfterAttempts + base : base;
 
+        // A structured reply that was empty or not JSON (review/48 R10) is also the route's
+        // problem, not the job's: same budget, same escalating per-route cooldown (reset by the
+        // route's next success), so the job moves to another route while this one stands down.
         const isUpstreamClass =
           result.failure_class === "upstream_capacity" ||
-          result.failure_class === "gateway_limit";
+          result.failure_class === "gateway_limit" ||
+          result.failure_class === "structured_output_empty" ||
+          result.failure_class === "structured_output_invalid";
+        // The reply stopped at its output-token limit (finish_reason "length"): the job's own
+        // shape -- a budget too small for this model's reasoning -- not the route's health. It
+        // retries on the upstream budget (another route or a later attempt may fit) but does NOT
+        // cool the route down; it is counted in route_failures so the budget monitor sees it.
+        const isOutputBudgetExhausted = result.failure_class === "output_budget_exhausted";
         const isFinal5xx =
           result.outcome === "retryable_error" &&
           Number.isInteger(result.provider_status_code) &&
@@ -4053,7 +4167,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const shouldRetryRouteUnavailable =
           isRouteUnavailable &&
           job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
+        const shouldRetryOutputBudget =
+          isOutputBudgetExhausted &&
+          job.transient_retry_count < _retryCeiling(this._maxUpstreamCapacityRetries());
         const shouldRequeue =
+          shouldRetryOutputBudget ||
           shouldRetryRouteUnavailable ||
           shouldRetry5xx ||
           shouldRetryRouteInputLimit ||
@@ -4179,13 +4297,25 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // separate billed row).
           if (result.outcome !== "success") {
             flushSuccess(job.lease_route_id);
+            // A reply the provider served and measured (a length-truncated route_max reply, an
+            // empty or invalid structured reply) consumed real tokens, often more than the
+            // reservation. Settle the token bucket to that measure, as a success does, so the
+            // next claim does not see capacity the call already used; the reply is still not
+            // stored.
+            const servedRoute = this._dispatchLimits()?.routes_by_id?.[job.lease_route_id];
+            const servedDelta =
+              !nonConsuming && observedTotal != null && Number(servedRoute?.tpm) > 0
+                ? reservation - observedTotal
+                : 0;
             sql.exec(
               `UPDATE routes SET
                  provisional_reservation = MAX(0, provisional_reservation - ?),
-                 settled_usage = settled_usage + ?
+                 settled_usage = settled_usage + ?,
+                 full_token_budget = full_token_budget + ?
                WHERE route_id = ?`,
               reservation,
               settledUsage,
+              servedDelta,
               job.lease_route_id
             );
           }

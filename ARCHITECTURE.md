@@ -408,12 +408,27 @@ total on `/admin/status`.
   `summarize`, `tag`, and `soundbite-select` verbs. Direct calls use LiteLLM's provider translation;
   rate-limited calls enqueue the same OpenAI-shaped payload through `workers/llm-dispatch-proxy` and
   reconcile its completed response into the normal `JobResult` shape. Provider API keys remain in
-  environment/secret storage and are never persisted in catalog records or logs. **Structured output**
-  (`_run_structured_direct`) uses Instructor for typed parsing + one corrective retry on every route
-  *except* Gemini, whose native schema-constrained JSON mode Instructor's pinned release has no
-  `(Provider.GEMINI, Mode.JSON_SCHEMA)` entry for — `gemini/*` routes call LiteLLM directly with the
-  same native `response_format` and replicate Instructor's parse/validate/retry contract by hand
-  (`_run_gemini_structured_direct`).
+  environment/secret storage and are never persisted in catalog records or logs. **Structured output
+  is shaped per route** (review/48 R10). Each route resolves one of four methods at compile time —
+  `json_schema`, `json_schema_relaxed` (size/range keywords stripped; Gemini), `json_object` (schema in
+  the prompt) or `prompt_only` (no `response_format`; schema in the prompt) — from its own verified
+  `structured_output_method`, else a method verified for the same model elsewhere, else its
+  provider's. A queued v2 job stores only `structured_output: {name, schema}`; the v2 Worker
+  (`workers/llm-dispatch-v2/src/structured_output.js`) shapes it for the route it dispatches to, and
+  fails a 200 whose content is empty or not JSON as `structured_output_empty`/`_invalid` (retried
+  on another route, the route cooled down, counted in `route_failures`). Direct calls shape the same
+  way (`citypods/compute/structured_shaping.py`) and validate locally with one corrective retry;
+  both implementations are asserted against `tests/fixtures/structured_output_shaping.json`. **Output budgets and reasoning are also decided per route.** `max_tokens` only truncates, it
+  never shortens an answer, so a job marked `max_tokens_mode: "route_max"` (agenda, locator, moments,
+  tagger) is sent the chosen route's own output limit, bounded by the input room of the messages
+  actually sent (in the route's tokenizer units) and capped at 65,536; the job's `max_tokens` is only the scheduling reservation. A lane may set a reasoning level
+  per model (`llm_lanes[...].reasoning`), which the route expresses through `reasoning_controls`
+  (e.g. NVIDIA DeepSeek v4.1's thinking switch); models without an entry keep their provider
+  default. A reply that stops at its output limit (`finish_reason: length`) is never stored: it is
+  `output_budget_exhausted`, retried without cooling the route, and counted. `llm-budget-monitor.yml`
+  turns those counts, empty/invalid JSON, own-rate 429s and oversized inputs -- plus `usage_today`
+  (per lane/route output percentiles, reservation, slow calls, computed from existing `attempts`
+  rows at read time) -- into one rolling issue that names the lane and the config key to change.
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
   private R2 queue, now multi-provider (review/41, extending R10/review/27 §9's original single-Mistral
   design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests
@@ -435,7 +450,9 @@ total on `/admin/status`.
   selection onto the next rather than blocking the model — this is what makes "key rotation" real rather
   than a first-match static pick. Every compiled route exposes both direct LiteLLM and Worker
   transports; `LLM_MODE=direct` is the synchronous GH Actions path, while `LLM_MODE=dispatch` is the
-  asynchronous Worker path. A direct-capable caller may explicitly opt into Worker overflow with
+  asynchronous Worker path. Direct LiteLLM calls default to a 720 s `timeout`
+  (`LLMBackendConfig.direct_timeout_seconds`, the Worker's `MAX_RESPONSE_SECONDS`) unless the job sets
+  its own. A direct-capable caller may explicitly opt into Worker overflow with
   `LLMRequestPolicy.allow_dispatch_overflow`; the Worker's
   transport is inherently always-asynchronous, and defaulting to it whenever a backend merely had
   `dispatch_url` configured previously broke city discovery's same-run-completion requirement (review/41

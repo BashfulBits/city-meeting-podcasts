@@ -2,6 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import DISPATCH_LIMITS from "../src/dispatch_limits.json" with { type: "json" };
+import LEGACY_MISTRAL from "./fixtures/legacy_mistral_routes.json" with { type: "json" };
+
+// The Mistral routes this suite was written against (Large/Medium pools across three accounts)
+// were removed from config/provider_limits.yml on 2026-09-24: the account's plan blocks them. The
+// suite exercises v1's dispatch mechanics, not the live catalog, so merge a frozen copy of those
+// routes into the in-memory catalog (test/fixtures/legacy_mistral_routes.json). The shipped
+// dispatch_limits.json is untouched.
+Object.assign(DISPATCH_LIMITS.routes_by_id, LEGACY_MISTRAL.routes_by_id);
+for (const [model, routeIds] of Object.entries(LEGACY_MISTRAL.model_routes_map)) {
+  DISPATCH_LIMITS.model_routes_map[model] = routeIds;
+}
+Object.assign(DISPATCH_LIMITS.model_aliases, LEGACY_MISTRAL.model_aliases);
+DISPATCH_LIMITS.providers.mistral.accounts = LEGACY_MISTRAL.mistral_accounts;
 
 // Ops hotfix (2026-08-18, config/provider_limits.yml): every Mistral route ships with `rpd: 0`
 // in the real compiled catalog above, pausing the provider account-wide because its monthly
@@ -3638,8 +3651,9 @@ test("a route's concurrency ceiling still holds without a durable reservation", 
   //     one request per batch (reserveRouteCapacity pushes requests_available_at a full interval
   //     ahead on the first reservation), so the assertion held whether or not the ceiling worked.
   //
-  // OrcaRouter's DeepSeek Flash route has a distinct concurrency ceiling of 2; with its NVIDIA
-  // sibling blocked, the ceiling remains observable in one batch.
+  // OrcaRouter's DeepSeek Flash route has a distinct concurrency ceiling of 2. Since 2026-09-24
+  // `deepseek/deepseek-v4-flash` is OrcaRouter-only (one pool name per DeepSeek version), so there
+  // may be no sibling to block; any that appears is blocked below.
   const ceilingRoute = "orcarouter_deepseek_v4_flash_free";
   const model = "deepseek/deepseek-v4-flash";
   const catalogRoutes = Object.keys(routeIdsForModel(model));
@@ -3658,7 +3672,6 @@ test("a route's concurrency ceiling still holds without a durable reservation", 
   // hard-coded, so the ceiling route is the only one selection can pick.
   const blocked = new Date(Date.now() + 3_600_000).toISOString();
   const alternatives = catalogRoutes.filter((id) => id !== ceilingRoute);
-  assert.ok(alternatives.length > 0, "the fixture must starve real catalog routes");
   const budget = { version: 1, routes: {}, providers: {} };
   for (const id of alternatives) {
     budget.routes[id] = { requests_minute: 0, inflight: {}, blocked_until: blocked };

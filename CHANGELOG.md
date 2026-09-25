@@ -17,6 +17,155 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Output budgets sent per route; per-lane reasoning levels; token-budget monitor**
+  (`workers/llm-dispatch-v2/src/{gateway,index,coordinator}.js`, `citypods/compute/{llm,llm_policy,
+  llm_lanes}.py`, `scripts/compile_llm_{limits,lanes}.py`, `scripts/llm_budget_monitor.py`,
+  `.github/workflows/llm-budget-monitor.yml`).
+  - `max_tokens` only truncates, so agenda, locator, moments and tagger jobs are sent the chosen
+    route's own output limit (bounded by its input room, capped at 65,536). Their `max_tokens`
+    becomes the scheduling reservation, lowered to observed needs (agenda and moments 16,384, tagger
+    12,288, locator 16,384), which keeps small-TPM routes schedulable. The input room is measured
+    on the messages actually sent (a schema added to the prompt, a corrective retry) in the
+    route's own tokenizer units, so input plus output always fits the window.
+    Deferred-dispatch capsules keep `max_tokens_mode`, so a rebuilt job still sends the route's
+    limit.
+  - Lanes can set a reasoning level per model (`llm_lanes[...].reasoning: {model: off|low}`); routes
+    say how their provider expresses it (`reasoning_controls`). NVIDIA DeepSeek v4.1's thinking
+    switch moves from a route-wide `request_params` override to `reasoning_controls.off`, so it
+    thinks by default again and a lane can turn thinking off for one job type only.
+  - A reply that stops at its output limit (`finish_reason: length`) is `output_budget_exhausted`:
+    never stored, retried on the upstream budget without cooling the route (the budget, not the
+    route, is at fault), and counted in `route_failures`. Because it was served, the route's token
+    bucket is settled to the measured usage, as a success is.
+  - A daily workflow reads those counts and keeps one rolling issue listing output-budget
+    cut-offs, empty/invalid structured replies, own-rate 429s and oversized inputs, each with the
+    lanes involved and the config key that would correct it. It never edits config.
+  - `/v2/stats?detail=1` adds `usage_today` per lane and route (calls, output p50/p90/max, mean
+    reservation, calls over their reservation, calls >= 600 s), computed at read time from the
+    `attempts` and `jobs` rows the executor already writes -- no added row writes. Attempts now
+    carry their lane and reservation (two columns on the row already written), so usage survives
+    the job row being retired; calls that returned no usage are counted but kept out of the
+    percentiles. The monitor flags reservations that are too small or far too large and calls near
+    the 720 s ceiling, and asks `/v2/stats` only for the failure classes it acts on
+    (`failure_class=`), so unrelated high-count rows cannot push them past the row limit.
+
+- **Moments and tagger output budgets raised to 32,768 tokens** (moments from 4,096,
+  `citypods/moments.py` `MOMENTS_OUTPUT_TOKEN_BUDGET`; tagger from 1,024, `citypods/tags.py`
+  `TAG_OUTPUT_TOKEN_BUDGET`, used for the request, batch fitting and the context/TPM gates). The
+  tagger case is the same failure: Kilo step-3.7-flash spent all 1,024 tokens reasoning over a
+  35k-token transcript and returned empty content (`finish_reason: length`). Reasoning models spent the whole 4,096 on
+  thinking and returned empty content: every GLM 5.3 Flash moments call on 2026-09-25 ended with
+  `finish_reason: length`, 4,096 reasoning tokens and no answer (AI Gateway logs), and kimi-k3 hit
+  the same limit on 3 of 8 calls. 32,768 matches the agenda lane; reasoning models wrote 12-22k
+  output tokens on these transcripts, so 16k would still truncate. The v2 Worker's new structured-output check caught these as
+  `structured_output_empty` and retried them elsewhere, so no bad result was stored. Every
+  r6-moments route allows at least 65,536 output tokens; the budget is not in the moments recipe
+  hash, so nothing re-extracts. `config/provider_limits.yml` also records OrcaRouter's published
+  free-tier limits and that `rpm: 10` / `concurrency: 2` are deliberate choices below them.
+
+- **Agenda extraction keeps grounded agendas instead of discarding them over one item**
+  (`citypods/chapter_titles.py`, `citypods/chapter_jobs.py`; evidence in `evals/chapter-agenda`).
+  A composed outline reference the agenda confirms (`3.a` under `3.`) is kept, and a contradicted
+  one falls back to the source's own label; quote marks no longer decide whether a quote is
+  grounded; a repeated item is dropped; other unverifiable items are dropped while they are at most
+  10% of a response (above that it still fails and is retried). Diagnostics record the counts. On
+  identical replies no previously valid episode changed, and chapters found per answered agenda
+  rose for every model on both the main set and a new holdout (e.g. Nemotron 0.52 -> 0.66 main,
+  0.55 -> 0.69 holdout). No pipeline version change: responses that failed before succeed on retry.
+- **Chapter-agenda eval: holdout split, stored replies, offline `--rescore`, and reference
+  matching** (`evals/chapter-agenda/holdout/`, `scripts/eval_chapter_agenda.py`). 24 more episodes
+  disjoint by meeting; position-only provider chapters ("Item 3A", 11% of all provider chapters,
+  all Swagit) are now matched by the item's reference instead of never matching.
+
+- **Structured output is shaped per route by the v2 Worker** (review/48 PR C;
+  `config/provider_limits.yml`, `scripts/compile_llm_limits.py`, `citypods/compute/structured_shaping.py`,
+  `citypods/compute/llm.py`, `workers/llm-dispatch-v2/src/structured_output.js`, `gateway.js`,
+  `index.js`, `coordinator.js`). Producers no longer choose how to ask for JSON: a queued job stores
+  only its response schema, and the Worker shapes the request for the route it actually dispatches
+  to. Before, the format was chosen at enqueue time for the pool's first model and forwarded
+  unchanged, so a pooled job could reach a route with the wrong shape -- NVIDIA's
+  `deepseek-v4.1-flash` answered every `response_format` with empty content, and Gemini backups of
+  Nemotron-primary lanes received the full, unsimplified schema.
+  - Four methods (`json_schema`, `json_schema_relaxed`, `json_object`, `prompt_only`) replace the
+    three profiles. A route's own verified method (`structured_output_verified_on`) wins, then one
+    verified for the same model elsewhere, then the provider's. Every provider now declares its
+    method explicitly (unchanged from before); NVIDIA v4.1 is `prompt_only`, OrcaRouter v4 and hy3
+    `json_object`, all verified live 2026-09-24.
+  - An empty or non-JSON 200 on a structured request is a retryable `structured_output_empty` /
+    `structured_output_invalid` failure: the job retries, the route cools down, and the class shows
+    in `route_failures`. It is never settled as a result.
+  - The Python direct path uses the same shaping and one local parse/validate/retry path; the
+    Instructor code path is retired. One shared fixture pins the Python and Worker shapes.
+  - Jobs already staged in B2 keep their pre-shaped `response_format` and are forwarded as before.
+    No pipeline version or recipe change.
+  - Routes may declare provider controls they always send (`request_params`, allowlisted:
+    `chat_template_kwargs`, `reasoning_effort`); NVIDIA v4.1 runs with thinking off.
+
+- **Moments: explicit pull-quote criteria and word-accurate quote timing** (`citypods/moments.py`,
+  `citypods/moment_judging.py`, `citypods/stages.py`; review/36). The extraction prompt now says
+  what a pull quote is for and what to avoid, derived from VISION, and the judge scores against the
+  same criteria (moments prompt 1 -> 2, judge prompt 1 -> 2: new calibration cells). Candidates
+  keep the exact spoken span (`quote_start`/`quote_end`) from the served-time words sidecar beside
+  the padded clip window, decisions carry word-accurate `start`/`end`, and a short quote is widened
+  to the 8 s clip minimum instead of dropped. Summary points record the real prompt version. Moments
+  re-extract through the recipe hash (folded into the council-moments backfill above).
+
+- **LLM lane capacity and route cleanup** (`config/provider_limits.yml`, `config/site_config.yml`,
+  `citypods/moments.py`, regenerated catalogs; 2026-09-24 capacity review under review/48).
+  - *DeepSeek:* one pool name per version. `deepseek/deepseek-v4-flash` is now OrcaRouter's v4
+    only and `deepseek/deepseek-v4.1-flash` NVIDIA's v4.1 only; the `deepseek-v4-pro` alias is
+    retired. The tournament scores v4 and v4.1 as separate contestants.
+  - *GLM 5.3 Flash (OrcaRouter; AA 41.8, 800/day, 1M context, ~5 s; `json_object` verified live)*
+    added to chapter-locator overflow (ahead of DeepSeek v4 and kimi-k3) and to r6-moments,
+    including the council list. It adds a responsive, strong general-purpose pool where the
+    Gemini Flash moments pools (20/day each) run out and locator overflow was latency-bound.
+    Lane write budgets are raised to keep the same daily job counts.
+  - *NVIDIA DeepSeek v4.1 kept out of production pools:* it returns empty content to any
+    `response_format` (json_schema or json_object; verified live) and the v2 Worker forwards the
+    job's format unchanged, so r6-moments and council-moments overflow go to OrcaRouter v4 instead.
+    The tournament keeps its v4.1 contestant as a documented gap. The fix -- the Worker shaping
+    structured output per route from verified methods -- is review/48 PR C.
+  - *Tagger:* Kilo `step-3.7-flash` and OrcaRouter v4 added as throughput models after the
+    pinned Gemini 3.1 Flash Lite (recipe/calibration key unchanged); they also take transcripts
+    above Gemini's input ceiling. Daily write budget raised to keep 930 jobs/day.
+  - *r6-moments:* Gemini 3.8/3.7 Flash and GLM 5.3 Flash added (independent pools; 3.6/3.5 ran
+    out by midday). The council model list is part of the moments recipe hash, so **council moments are
+    re-generated** (approved backfill).
+  - *r6-judge:* glm-4.7-flash and gpt-oss-120b removed; gemma-4-26b-a4b-it joins the panel as its
+    own calibrated judge. gemma-4-26b removed from `tournament:tag` and `r5-benchmark:tag` (its
+    10k-token ceiling cannot take tagging inputs).
+  - *Dead routes removed:* 22 Mistral routes -- the 21 routes of the seven plan-blocked models
+    (Medium latest/2508/2505, Large 2512, Small 2603, Devstral 2512, Labs Leanstral) on all three
+    accounts, plus the tertiary account's Codestral route, retiring that unused account (its key was
+    never set on the Workers) -- and the paused SambaNova Llama 3.3 route. The v1 Worker's advertised
+    default moves from Mistral Large to Codestral 2508.
+  - *chapter-agenda is a same-priority pool:* Nemotron 3 Ultra, tencent/hy3 (OrcaRouter) and
+    Gemini 3.1 Flash Lite are all in `models`, so the Worker sends each job to whichever route has
+    capacity (the ~3,700-job Nemotron backlog had left the former backups idle). On
+    `evals/chapter-agenda` (main + holdout, repaired validator) they are about equal (F1
+    0.750/0.840, 0.760/0.867, 0.750/0.830). Nemotron stays `models[0]`, the only model in the
+    agenda recipe hash, so nothing re-queues. hy3 and 3.1 Flash Lite are repeated in
+    `backup_models` solely to keep the Worker's extended retry budget, which applies only when
+    backups are declared; the lane parser now allows that overlap (the Worker de-duplicates
+    routes). Gemini 3.5 Flash Lite leaves the lane, so agenda artifacts it produced are
+    re-dispatched (deliberate backfill). 3.1 Flash Lite shares its daily quota with the tagger's
+    primary; tagging routes will be added if it congests.
+  - No pipeline version change; council moments re-run through their recipe hash.
+
+- **First committed per-task evaluation set: `evals/chapter-agenda/`** (GH#1852;
+  `scripts/eval_chapter_agenda.py`, `tests/test_eval_chapter_agenda.py`). 29 episodes whose meeting
+  providers (Granicus, Swagit, CivicClerk) publish their own chapters, used as model-independent
+  ground truth (376 chapters). Each model gets production's exact request and post-processing, runs
+  with its providers paused on the v2 Worker, and is scored with the original crosswalk matcher.
+  Provider errors are "unanswered" (retried, never counted as bad output); an empty or unparseable
+  reply is invalid output. Rejected responses keep per-item validation outcomes and the raw reply.
+  Results: `evals/chapter-agenda/results/2026-09-24.json`.
+
+- **Removed the Airforce `kimi-k2.7-code` route** (`config/provider_limits.yml`, regenerated
+  catalogs). It stopped being free: a canary under the v2 dispatch pause on 2026-09-24 returned 402
+  "requires an active subscription or a positive Pay-as-you-Go balance". No lane referenced it. No
+  pipeline version, recipe, or stored-artifact change.
+
 - **Unblocked the LLM Dispatch v2 deploy: back under Workers Free's 64-variable limit**
   (`workers/llm-dispatch-v2/wrangler.jsonc`, `tests/test_llm_dispatch_worker_limits.py`). #1846
   declared `DO_ROWS_ENQUEUE_STOP`/`_CLAIM_STOP`/`_OPTIONAL_STOP` and `MAX_QUEUED_JOBS` at exactly the
@@ -294,6 +443,21 @@ Phase R (Research-Tool Surface)._
   per-provider and per-route limits, recipe schema, and backfill behavior are unchanged.
 
 ### Fixed
+
+- **Direct LiteLLM calls now have a bounded 720 s default timeout** (`citypods/compute/llm.py`,
+  `tests/test_compute_llm.py`, `LLM_SETUP.md`). `LLMBackendConfig.timeout_seconds` (30 s,
+  `LLM_TIMEOUT_SECONDS`) only covered HTTP calls to the dispatch Worker; direct provider calls
+  (Instructor and native structured paths, and the unstructured direct path, with or without a
+  policy) got a `timeout` only when the job's `inputs` carried one, and only `audit_remedy` sets
+  one. Every other direct call fell back to LiteLLM's 6000 s `request_timeout`, and on 2026-09-24 a
+  chapter-agenda benchmark hung for about 40 minutes on NVIDIA `deepseek-v4.1-flash`. A new
+  `direct_timeout_seconds` (default 720 s, matching the v2 Worker's `MAX_RESPONSE_SECONDS`;
+  env `LLM_DIRECT_TIMEOUT_SECONDS`) is now applied by `_provider_options(direct=True)` via
+  `setdefault`, so a job-level `timeout` still wins. A blank env value keeps the default; zero,
+  negative or non-finite values fail at startup. Deferred-dispatch capsules (`llm_deferred.py`) now
+  persist the job's `timeout` and its `output_token_budget`, which were previously dropped, so a
+  rebuilt job fell back to 1,024 output tokens. Older capsules keep the old defaults. The dispatch
+  payload is unchanged. No pipeline version, recipe, or stored-artifact change.
 
 - **Gemini daily request-quota 429s now use the provider reset window** (`citypods/compute/
   llm_failure_class.py`, `workers/llm-dispatch-v2/src/classify.js`). Google AI Studio's

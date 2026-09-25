@@ -20,9 +20,12 @@
     // dispatch. That is entirely `dispatch_limits.json`'s `providers`/`routes_by_id` (compiled
     // from config/provider_limits.yml), keyed by whichever route `dispatchOne`'s ranked selection
     // actually chose for a given request's canonical model (review/41).
+    // Codestral since 2026-09-24: Mistral Large was removed from the catalog (this account's plan
+    // blocks it), and a default naming a route that no longer exists would reject every request
+    // that omits `model`.
     "PROVIDER_NAME": "mistral",
-    "UPSTREAM_MODEL": "mistral-large-2512",
-    "MODEL_ID": "mistral/mistral-large-2512",
+    "UPSTREAM_MODEL": "codestral-2508",
+    "MODEL_ID": "mistral/codestral-2508",
     "MAX_REQUEST_BYTES": "8388608",
     "MAX_RESPONSE_BYTES": "2097152",
     // AI Gateway first exhausts its own short retry sequence. One final 5xx then gets one

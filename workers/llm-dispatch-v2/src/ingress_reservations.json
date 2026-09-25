@@ -3,34 +3,39 @@
   "_source": "config/site_config.yml (llm_lanes)",
   "_readme": "Do not edit by hand. Keys are exact LLMRequestPolicy.purpose strings; a purpose absent from this map is rejected at ingress with purpose_not_registered rather than falling through to shared headroom.",
   "global_write_budget": 18000,
-  "reserved_total": 11720,
+  "reserved_total": 13966,
   "reservations": {
     "chapter-agenda": {
-      "reserved_write_units": 3720,
-      "daily_write_units": 6200,
+      "reserved_write_units": 5580,
+      "daily_write_units": 9300,
       "models": [
-        "nvidia/nemotron-3-ultra-550b-a55b:free"
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "tencent/hy3",
+        "gemini/gemini-3.1-flash-lite"
       ],
       "backup_models": [
-        "gemini/gemini-3.1-flash-lite",
-        "gemini/gemini-3.5-flash-lite"
+        "tencent/hy3",
+        "gemini/gemini-3.1-flash-lite"
       ],
       "backup_after_attempts": 12,
       "dispatch_shape": "pooled",
-      "write_units_per_job": 4
+      "reasoning": {},
+      "write_units_per_job": 6
     },
     "chapter-locator": {
-      "reserved_write_units": 1860,
-      "daily_write_units": 2790,
+      "reserved_write_units": 2170,
+      "daily_write_units": 3255,
       "models": [
         "gemini/gemini-3.5-flash-lite",
-        "deepseek/deepseek-v4-pro",
+        "zai/glm-5.3-flash",
+        "deepseek/deepseek-v4-flash",
         "moonshotai/kimi-k3"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
-      "write_units_per_job": 6
+      "reasoning": {},
+      "write_units_per_job": 7
     },
     "r5-benchmark:judge": {
       "reserved_write_units": 0,
@@ -41,6 +46,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 4
     },
     "r5-benchmark:tag": {
@@ -48,12 +54,12 @@
       "daily_write_units": 2480,
       "models": [
         "gemini/gemini-3.1-flash-lite",
-        "google/gemma-4-26b-a4b-it",
         "zai/glm-4.7-flash"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "per_model",
+      "reasoning": {},
       "write_units_per_job": 4
     },
     "r6-judge": {
@@ -61,30 +67,34 @@
       "daily_write_units": 1300,
       "models": [
         "qwen/qwen3.8-27b",
-        "zai/glm-4.7-flash",
         "gemini/gemini-3.6-flash",
-        "openai/gpt-oss-120b"
+        "google/gemma-4-26b-a4b-it"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
-      "write_units_per_job": 7
+      "reasoning": {},
+      "write_units_per_job": 6
     },
     "r6-moments": {
-      "reserved_write_units": 840,
-      "daily_write_units": 1680,
+      "reserved_write_units": 916,
+      "daily_write_units": 2232,
       "models": [
+        "gemini/gemini-3.8-flash",
+        "gemini/gemini-3.7-flash",
         "gemini/gemini-3.6-flash",
         "gemini/gemini-3.5-flash",
+        "zai/glm-5.3-flash",
         "gemini/gemini-3.5-flash-lite",
         "gemini/gemini-3.1-flash-lite",
-        "deepseek/deepseek-v4-pro",
+        "deepseek/deepseek-v4-flash",
         "moonshotai/kimi-k3"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
-      "write_units_per_job": 9
+      "reasoning": {},
+      "write_units_per_job": 12
     },
     "topic-tags:prelabeler": {
       "reserved_write_units": 1860,
@@ -95,6 +105,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 4
     },
     "topic-tags:prelabeler-shadow": {
@@ -106,18 +117,22 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 4
     },
     "topic-tags:tagger": {
       "reserved_write_units": 1860,
-      "daily_write_units": 3720,
+      "daily_write_units": 5580,
       "models": [
-        "gemini/gemini-3.1-flash-lite"
+        "gemini/gemini-3.1-flash-lite",
+        "kilo/stepfun/step-3.7-flash:free",
+        "deepseek/deepseek-v4-flash"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
-      "write_units_per_job": 4
+      "reasoning": {},
+      "write_units_per_job": 6
     },
     "tournament:tag": {
       "reserved_write_units": 310,
@@ -125,12 +140,13 @@
       "models": [
         "gemini/gemini-3.1-flash-lite",
         "deepseek/deepseek-v4.1-flash",
-        "zai/glm-4.7-flash",
-        "google/gemma-4-26b-a4b-it"
+        "deepseek/deepseek-v4-flash",
+        "zai/glm-4.7-flash"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "per_model",
+      "reasoning": {},
       "write_units_per_job": 4
     },
     "tournament:tag-judge": {
@@ -142,6 +158,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
+      "reasoning": {},
       "write_units_per_job": 4
     }
   }

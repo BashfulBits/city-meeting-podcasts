@@ -635,6 +635,44 @@ def test_enqueue_batch_mixed_accepted_and_rejected():
     assert "idempotency conflict" in str(results[1])
 
 
+def test_an_in_flight_job_rejected_as_a_conflict_keeps_its_existing_pending_handle():
+    # Across a payload-shape change (e.g. the schema-only v2 payload), a job still leased under
+    # its old payload is refused with idempotency_conflict. The item must keep following the
+    # handle it already has -- the running attempt completes and is polled -- not fail the run.
+    from citypods.compute.llm_deferred import write_deferred
+
+    storage = MockStorage()
+    pending = JobHandle(
+        task="tag", recipe_hash="r-inflight", backend="llm-dispatch-v2", ref="old-id"
+    )
+    write_deferred(storage, "r-inflight", pending)
+    mock_session = MagicMock()
+
+    def mock_post(url, json=None, headers=None, timeout=None):
+        jobs = json.get("jobs", [])
+        rejected = [{"id": job["id"], "reason": "idempotency_conflict"} for job in jobs]
+        return _mock_response(status_code=200, json_data={"accepted": [], "rejected": rejected})
+
+    mock_session.post.side_effect = mock_post
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=mock_session,
+        storage=storage,
+    )
+    job = InferenceJob(
+        task="tag",
+        inputs={"messages": [{"role": "user", "content": "x"}]},
+        recipe_hash="r-inflight",
+    )
+
+    [result] = backend.enqueue_batch([job])
+    assert isinstance(result, JobHandle)
+    assert result.ref == "old-id"
+
+
 def test_enqueue_batch_idempotent_replay_uses_canonical_id_as_ref():
     # The coordinator returns the ORIGINAL row's id on a replay, distinct from the fresh id this
     # client always generates -- enqueue_batch must match on submitted_id and use the returned
@@ -968,7 +1006,7 @@ def test_poll_batch_classifies_an_upstream_error_passthrough_distinctly():
     )
 
     config = LLMBackendConfig(
-        model="mistral/mistral-medium-latest",
+        model="mistral/codestral-2508",
         dispatch_v2_url="https://dispatch-v2.example.com",
     )
     backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)

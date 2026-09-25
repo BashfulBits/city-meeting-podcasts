@@ -110,7 +110,7 @@ def test_discovery_models_are_free_direct_native_and_large_context():
         assert routes
         assert all(route.free for route in routes)
         assert all("direct" in route.transports for route in routes)
-        assert all(route.structured_output_direct_handler == "native" for route in routes)
+        assert all(route.structured_output_method == "json_schema_relaxed" for route in routes)
         assert all(route.input_context_limit >= 1_000_000 for route in routes)
         assert all(route.output_context_limit >= 65_536 for route in routes)
 

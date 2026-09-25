@@ -62,6 +62,9 @@ from citypods.compute.llm_policy import (
     QuotaPolicy,
     canonical_model,
     estimate_tokens,
+    route_output_tokens,
+    route_reasoning_controls,
+    route_request_params,
 )
 from citypods.compute.llm_scheduler import (
     SelectionResult,
@@ -75,6 +78,7 @@ from citypods.compute.llm_submission_telemetry import (
     record_producer_observations,
 )
 from citypods.compute.structured import ResponseModel, parse_structured_json, response_model
+from citypods.compute.structured_shaping import messages_with_schema, shape_for_route
 from citypods.security import SecurityError, validate_source_url
 from citypods.storage.s3 import b2_from_env
 
@@ -388,45 +392,6 @@ def _safe_structured_failure_diagnostic(
     }
 
 
-def _strip_schema_keys(node: Any, keys: frozenset[str]) -> Any:
-    """Deep copy of a JSON Schema node with every occurrence of the given object keys removed."""
-    if isinstance(node, dict):
-        return {
-            key: _strip_schema_keys(value, keys) for key, value in node.items() if key not in keys
-        }
-    if isinstance(node, list):
-        return [_strip_schema_keys(item, keys) for item in node]
-    return node
-
-
-def _schema_variant_model(model: ResponseModel, strip_keys: frozenset[str]) -> ResponseModel:
-    """Return a same-named request-schema variant without changing response validation.
-
-    Instructor/LiteLLM derive the request schema by calling the response model's
-    ``model_json_schema`` classmethod, with no supported hook to hand them an already-built schema.
-    A same-named subclass is therefore the narrowest way to apply a configured profile while
-    retaining the original model's Pydantic validation for the provider response.
-
-    Response *validation* is unaffected: `model`'s fields and their min_length/max_length/ge/le
-    constraints are inherited unchanged, so a reply that violates them still fails local Pydantic
-    validation and still triggers the configured corrective retry. Built fresh per call rather than
-    cached: this is one cheap class-creation call per structured request, not a hot path.
-    """
-    if not strip_keys:
-        return model
-    base_schema = model.model_json_schema.__func__
-
-    def _relaxed_schema(cls: type, *args: Any, **kwargs: Any) -> dict[str, Any]:
-        schema = base_schema(cls, *args, **kwargs)
-        return _strip_schema_keys(schema, strip_keys)
-
-    return type(
-        model.__name__,
-        (model,),
-        {"model_json_schema": classmethod(_relaxed_schema), "__module__": model.__module__},
-    )
-
-
 @dataclass(frozen=True)
 class LLMBackendConfig:
     """Runtime routing configuration; secrets are read from the environment, never persisted."""
@@ -442,7 +407,14 @@ class LLMBackendConfig:
     # outright. Off -> the plain ack path (the Worker's scheduled cleanup deletes them later).
     dispatch_v2_client_retire: bool = True
     daily_ingest_cap: int | None = None
+    # HTTP timeout for calls to the dispatch Worker (submit/poll/ack), which return quickly.
     timeout_seconds: float = 30.0
+    # Default LiteLLM ``timeout`` for calls this process makes to a provider itself (``direct``
+    # routes). Without it LiteLLM falls back to ``litellm.request_timeout`` (6000 s), which let a
+    # stalled provider hang a run for ~40 minutes. 720 s matches the v2 Worker's
+    # ``MAX_RESPONSE_SECONDS`` ceiling; ``timeout_seconds`` is far too short for long structured
+    # generations. A job-level ``inputs["timeout"]`` still wins.
+    direct_timeout_seconds: float = 720.0
     # Extra routes a policy-bearing call may spill onto once ``model``'s own per-minute/daily quota
     # window fills -- e.g. tagging pins ``gemini-3.1-flash-lite`` as the recipe/calibration route
     # but lets the scheduler also draw on ``gemini-3.5-flash-lite``'s independent free-tier pool for
@@ -477,6 +449,9 @@ class LLMBackendConfig:
             or os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
             daily_ingest_cap=daily_cap,
             timeout_seconds=float(os.environ.get("LLM_TIMEOUT_SECONDS", cls.timeout_seconds)),
+            direct_timeout_seconds=_positive_seconds(
+                "LLM_DIRECT_TIMEOUT_SECONDS", cls.direct_timeout_seconds
+            ),
             dispatch_v2_client_retire=os.environ.get("CITYPODS_LLM_DISPATCH_V2_CLIENT_RETIRE", "1")
             .strip()
             .lower()
@@ -690,27 +665,53 @@ def _messages(job: InferenceJob) -> list[dict[str, Any]]:
     ]
 
 
+def _lane_reasoning_level(job: InferenceJob, route: Any) -> str | None:
+    """The reasoning level the job's lane sets for this route's model, if any."""
+    policy = job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+    purpose = getattr(policy, "purpose", "") or ""
+    if not purpose:
+        return None
+    from citypods.compute.llm_lanes import load_lanes
+
+    lane = load_lanes().get(purpose)
+    if lane is None:
+        return None
+    return lane.reasoning_levels.get(canonical_model(getattr(route, "model", "") or ""))
+
+
+def _job_timeout(job: InferenceJob) -> float | None:
+    """The job's own ``inputs["timeout"]``, kept on a deferred capsule so a rebuild restores it."""
+    value = job.inputs.get("timeout") if isinstance(job.inputs, Mapping) else None
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _job_max_tokens_mode(job: InferenceJob) -> str | None:
+    """The job's ``inputs["max_tokens_mode"]``, kept on a deferred capsule like the timeout."""
+    value = job.inputs.get("max_tokens_mode") if isinstance(job.inputs, Mapping) else None
+    return value if value == "route_max" else None
+
+
+def _positive_seconds(name: str, default: float) -> float:
+    """A finite, positive number of seconds from ``name`` (``default`` when unset or blank)."""
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    value = float(raw)
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be a finite number of seconds greater than 0, got {raw!r}")
+    return value
+
+
 def _messages_with_schema(
     messages: list[dict[str, Any]], model: ResponseModel
 ) -> list[dict[str, Any]]:
-    """Add the response contract to a JSON-mode provider's prompt.
+    """Add the response contract to the prompt (methods that put the schema there).
 
-    DeepSeek's ``json_object`` mode guarantees valid JSON syntax, not conformance to a schema.
-    Keeping the schema in the initial prompt makes that first attempt obey the same contract that
-    local Pydantic validation enforces, including when callers supplied a custom prompt.
+    JSON-object mode guarantees valid JSON syntax, not conformance to a schema, and ``prompt_only``
+    sends no format at all, so for both the schema rides in the prompt. The text is produced by
+    ``structured_shaping`` -- the same shape the v2 Worker produces for a queued job.
     """
-    schema = json.dumps(model.model_json_schema(), sort_keys=True)
-    instruction = (
-        "Return one JSON object only (no Markdown or commentary) matching this JSON Schema:\n"
-        f"{schema}"
-    )
-    enriched = [dict(message) for message in messages]
-    for message in enriched:
-        if message.get("role") == "system":
-            content = message.get("content", "")
-            message["content"] = f"{content}\n\n{instruction}"
-            return enriched
-    return [{"role": "system", "content": instruction}, *enriched]
+    return messages_with_schema(messages, model.model_json_schema())
 
 
 class LiteLLMBackend(Backend):
@@ -846,21 +847,6 @@ class LiteLLMBackend(Backend):
         name = self._structured_output(job)
         return (name, response_model(name)) if name else None
 
-    def _instructor_mode(self, resolved_model: str):
-        """Choose Instructor's provider-neutral structured-output mode for standard profiles.
-
-        Routes whose compiled profile requires native handling never reach this method. Keeping
-        the mode decision here profile-agnostic prevents provider/model naming conventions from
-        becoming a second source of structured-output behavior.
-        """
-        try:
-            from instructor import Mode
-        except ImportError as exc:
-            raise LLMBackendError("install the 'llm' extra to use structured LLM output") from exc
-        # The route's structured-output profile selects native JSON-object handling before this
-        # method is reached. Remaining Instructor routes use its schema mode.
-        return Mode.JSON_SCHEMA
-
     @staticmethod
     def _route_for_resolved_model(resolved_model: str, route=None):
         """Resolve route capabilities without interpreting provider/model naming conventions."""
@@ -881,20 +867,13 @@ class LiteLLMBackend(Backend):
 
     def _response_format_for_route(
         self, model: ResponseModel, *, resolved_model: str, route=None
-    ) -> dict[str, Any]:
-        """Build the configured structured-output format for a physical route."""
+    ) -> dict[str, Any] | None:
+        """The route method's ``response_format``; ``None`` for ``prompt_only`` (send none)."""
         route = self._route_for_resolved_model(resolved_model, route)
-        response_format = getattr(route, "structured_output_response_format", "json_schema")
-        if response_format == "json_object":
-            return {"type": "json_object"}
-        if response_format != "json_schema":
-            raise LLMBackendError(f"unsupported structured-output format: {response_format!r}")
-        strip_keys = frozenset(getattr(route, "structured_output_schema_strip_keys", ()) or ())
-        schema_model = _schema_variant_model(model, strip_keys)
-        return {
-            "type": "json_schema",
-            "json_schema": {"name": model.__name__, "schema": schema_model.model_json_schema()},
-        }
+        _messages_unused, response_format = shape_for_route(
+            [], name=model.__name__, schema=model.model_json_schema(), route=route
+        )
+        return response_format
 
     def _resolve_api_base_and_headers(
         self, route: LLMRoute | None, *, direct: bool
@@ -926,13 +905,19 @@ class LiteLLMBackend(Backend):
         return f"{gateway_base}/{gateway_slug}{_ai_gateway_path_prefix(route)}", extra_headers
 
     def _provider_options(
-        self, job: InferenceJob, resolved_model: str, *, route=None, direct: bool = False
+        self,
+        job: InferenceJob,
+        resolved_model: str,
+        *,
+        route=None,
+        direct: bool = False,
+        messages: list[Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Build the LiteLLM ``completion()`` kwargs for one route.
 
         ``direct`` marks a call this process makes to the provider itself. It defaults to False so
         the dispatch payload -- which shares this builder but is consumed by the Worker rather
-        than by LiteLLM -- never picks up gateway routing.
+        than by LiteLLM -- never picks up gateway routing or the direct-call timeout default.
         """
         options: dict[str, Any] = {"model": resolved_model}
         if route is not None:
@@ -945,6 +930,15 @@ class LiteLLMBackend(Backend):
                 api_key = os.environ.get(route.api_key_env)
                 if api_key:
                     options["api_key"] = api_key
+            request_params = route_request_params(route)
+            # The lane's reasoning level for this model, expressed the way this route does it --
+            # the same rule the v2 Worker applies at send time (index.js laneReasoningLevel).
+            request_params.update(
+                route_reasoning_controls(route, _lane_reasoning_level(job, route))
+            )
+            if request_params:
+                # Sent verbatim in the request body, exactly as the v2 Worker sends them.
+                options["extra_body"] = request_params
         for field in (
             "temperature",
             "max_tokens",
@@ -955,13 +949,22 @@ class LiteLLMBackend(Backend):
         ):
             if field in job.inputs:
                 options[field] = job.inputs[field]
+        if direct:
+            options.setdefault("timeout", self.config.direct_timeout_seconds)
+        if (
+            direct
+            and route is not None
+            and job.inputs.get("max_tokens_mode") == "route_max"
+            and isinstance(options.get("max_tokens"), int)
+        ):
+            # Direct calls send the route's own output limit; the job's max_tokens stays the
+            # scheduling reservation (queued jobs get the same rule in the Worker). ``messages``
+            # are the ones actually sent when a caller shapes them (schema in the prompt,
+            # corrective retries), so the input room is measured on what the route receives.
+            options["max_tokens"] = route_output_tokens(
+                route, options["max_tokens"], estimate_tokens(messages or _messages(job))
+            )
         return options
-
-    def _dispatch_response_format(
-        self, model: ResponseModel, resolved_model: str, *, route=None
-    ) -> Mapping[str, Any]:
-        """Serialize the configured structured-output profile for the R10 queue."""
-        return self._response_format_for_route(model, resolved_model=resolved_model, route=route)
 
     def _payload(
         self,
@@ -975,27 +978,47 @@ class LiteLLMBackend(Backend):
         output_token_budget: int | None = None,
         route=None,
         direct: bool = False,
+        schema_only: bool = False,
     ) -> dict[str, Any]:
         """Build the provider-neutral OpenAI-shaped request sent by the dispatch transport.
 
         The unstructured direct path reuses this builder to shape its own LiteLLM call, and passes
         ``direct=True`` so that call (and only that call) is routed via the AI Gateway.
+
+        ``schema_only`` (the v2 queue) stores the response schema instead of a pre-shaped request:
+        a pooled job may be served by any route in its pool, and only the Worker knows which, so
+        the Worker shapes it for that route's method (review/48 R10). The legacy v1 transport
+        still receives a request shaped for ``resolved_model``'s route.
         """
-        selected_route = self._route_for_resolved_model(resolved_model, route)
-        include_profile_schema = model is not None and bool(
-            getattr(selected_route, "structured_output_include_schema_in_prompt", False)
-        )
-        payload: dict[str, Any] = {
-            "model": resolved_model,
-            "messages": _messages_with_schema(_messages(job), model)
-            if include_profile_schema
-            else _messages(job),
-            "stream": False,
-        }
-        if model is not None:
-            payload["response_format"] = self._dispatch_response_format(
-                model, resolved_model, route=route
+        if model is not None and schema_only:
+            payload: dict[str, Any] = {
+                "model": resolved_model,
+                "messages": _messages(job),
+                "stream": False,
+            }
+            # The job's own max_tokens is folded in below by _provider_options, as for every
+            # payload; this is the schema the Worker shapes per route, not a job definition.
+            if job.inputs.get("max_tokens_mode") == "route_max":
+                # The Worker sends the chosen route's output limit; max_tokens stays the
+                # scheduling reservation (gateway.js outputTokensForRoute).
+                payload["max_tokens_mode"] = "route_max"
+            payload["structured_output"] = {
+                "name": model.__name__,
+                "schema": model.model_json_schema(),
+            }
+        elif model is not None:
+            selected_route = self._route_for_resolved_model(resolved_model, route)
+            messages, response_format = shape_for_route(
+                _messages(job),
+                name=model.__name__,
+                schema=model.model_json_schema(),
+                route=selected_route,
             )
+            payload = {"model": resolved_model, "messages": messages, "stream": False}
+            if response_format is not None:
+                payload["response_format"] = response_format
+        else:
+            payload = {"model": resolved_model, "messages": _messages(job), "stream": False}
         if policy is not None:
             payload["allow_paid"] = policy.allow_paid
             payload["allow_batch"] = policy.allow_batch
@@ -1066,57 +1089,15 @@ class LiteLLMBackend(Backend):
         route=None,
         completion: Callable[..., Any] | None = None,
     ) -> JobResult:
-        """Dispatch to whichever structured-output path this route actually works with.
+        """Run a structured direct call shaped by the route's method (review/48 R10).
 
-        Routes with a native structured-output profile use the local parse/validate/retry path;
-        standard profiles retain Instructor's typed parsing. The profile, not the provider/model
-        name, determines which branch runs.
+        Every method goes through the one local parse/validate/retry path; the route's compiled
+        method decides only the request shape, exactly as the v2 Worker does for queued jobs.
         """
         completion_fn = completion if completion is not None else self._completion_fn()
         route = self._route_for_resolved_model(resolved_model, route)
-        if getattr(route, "structured_output_direct_handler", "instructor") == "native":
-            return self._run_native_structured_direct(
-                job, model, resolved_model=resolved_model, route=route, completion=completion_fn
-            )
-        try:
-            import instructor
-            from instructor.core.exceptions import InstructorRetryException
-        except ImportError as exc:
-            raise LLMBackendError("install the 'llm' extra to use structured LLM output") from exc
-        try:
-            typed, raw = instructor.from_litellm(
-                completion_fn,
-                mode=self._instructor_mode(resolved_model),
-            ).create_with_completion(
-                response_model=model,
-                messages=_messages(job),
-                max_retries=1,
-                **self._provider_options(job, resolved_model, route=route, direct=True),
-            )
-        except InstructorRetryException as exc:
-            if os.environ.get(_SAFE_DIAGNOSTICS_ENV) == "1":
-                print(
-                    "llm-safe-diagnostic: "
-                    + json.dumps(
-                        _safe_structured_failure_diagnostic(exc, job, model, resolved_model),
-                        sort_keys=True,
-                    ),
-                    file=sys.stderr,
-                )
-            # Do not expose model text or validation feedback in workflow logs.  The caller safely
-            # defers and will obtain fresh evidence on its next scheduled run.
-            raise LLMStructuredOutputError(
-                "structured LLM response failed Pydantic validation",
-                diagnostic=_safe_structured_failure_diagnostic(exc, job, model, resolved_model),
-            ) from None
-        # Instructor returned a validated object; retain the normalized raw response contract so
-        # existing task parsers and result storage remain provider-neutral.
-        _ = typed
-        return JobResult(
-            task=job.task,
-            recipe_hash=job.recipe_hash,
-            output=_response_mapping(raw),
-            model=resolved_model,
+        return self._run_native_structured_direct(
+            job, model, resolved_model=resolved_model, route=route, completion=completion_fn
         )
 
     def _run_native_structured_direct(
@@ -1154,17 +1135,20 @@ class LiteLLMBackend(Backend):
         """
         from pydantic import ValidationError
 
-        messages = list(_messages(job))
-        if route is not None and route.structured_output_include_schema_in_prompt:
-            messages = _messages_with_schema(messages, model)
-        options = self._provider_options(job, resolved_model, route=route, direct=True)
-        response_format = response_format or self._response_format_for_route(
-            model, resolved_model=resolved_model, route=route
+        route = self._route_for_resolved_model(resolved_model, route)
+        messages, routed_format = shape_for_route(
+            list(_messages(job)), name=model.__name__, schema=model.model_json_schema(), route=route
         )
+        options = self._provider_options(
+            job, resolved_model, route=route, direct=True, messages=messages
+        )
+        response_format = response_format or routed_format
+        if response_format is not None:
+            options["response_format"] = response_format
         failed_attempts: list[_FailedAttempt] = []
         first_attempt_usage: Any = None
         for attempt in range(2):  # original attempt + exactly one corrective retry
-            raw = completion(messages=messages, response_format=response_format, **options)
+            raw = completion(messages=messages, **options)
             content = raw.choices[0].message.content
             try:
                 parsed = parse_structured_json(content, context="native structured response")
@@ -1192,6 +1176,12 @@ class LiteLLMBackend(Backend):
                             ),
                         },
                     ]
+                    # The retry carries the invalid reply too: re-measure the output room.
+                    retry_options = self._provider_options(
+                        job, resolved_model, route=route, direct=True, messages=messages
+                    )
+                    if "max_tokens" in retry_options:
+                        options["max_tokens"] = retry_options["max_tokens"]
                     continue
                 if os.environ.get(_SAFE_DIAGNOSTICS_ENV) == "1":
                     print(
@@ -1315,6 +1305,8 @@ class LiteLLMBackend(Backend):
                 messages=tuple(messages),
                 policy=policy,
                 output_token_budget=self._output_token_budget(job),
+                timeout=_job_timeout(job),
+                max_tokens_mode=_job_max_tokens_mode(job),
             ),
         )
 
@@ -1865,6 +1857,13 @@ class LiteLLMBackend(Backend):
         assert deferred is not None
         messages = [dict(message) for message in deferred.messages]
         inputs: dict[str, Any] = {"messages": messages, "max_tokens": deferred.output_token_budget}
+        if deferred.timeout is not None:
+            inputs["timeout"] = deferred.timeout
+        if deferred.max_tokens_mode is not None:
+            inputs["max_tokens_mode"] = deferred.max_tokens_mode
+        # The lane (policy.purpose) selects per-lane reasoning controls on the direct path, as it
+        # does for a job that was never deferred.
+        inputs["llm_policy"] = deferred.policy
         if handle.structured_output:
             inputs["structured_output"] = handle.structured_output
         job = InferenceJob(task=handle.task, inputs=inputs, recipe_hash=handle.recipe_hash)
@@ -2145,12 +2144,19 @@ class LiteLLMBackend(Backend):
 
         out: list[JobResult | JobHandle | None] = [None] * len(jobs)
         uncached_indices: list[int] = []
+        # A job that already has a pending handle is still resubmitted: the Worker replays an
+        # identical payload and supersedes a changed one (new payload and policy) on a queued row.
+        # Only an in-flight row refuses a changed payload (idempotency_conflict); the handle is
+        # kept for that case so the running attempt finishes and is polled normally.
+        prior_pending: dict[int, JobHandle] = {}
         for i, job in enumerate(jobs):
             cached = look_up_deferred(self.storage, job.recipe_hash)
             if isinstance(cached, JobResult):
                 out[i] = cached
                 telemetry_outcomes.append((job, "cached_completed", None))
             else:
+                if isinstance(cached, JobHandle):
+                    prior_pending[i] = cached
                 uncached_indices.append(i)
 
         if not uncached_indices:
@@ -2182,6 +2188,8 @@ class LiteLLMBackend(Backend):
                         messages=tuple(_messages(job)),
                         policy=policy or LLMRequestPolicy(),
                         output_token_budget=self._output_token_budget(job),
+                        timeout=_job_timeout(job),
+                        max_tokens_mode=_job_max_tokens_mode(job),
                     ),
                 )
                 telemetry_outcomes.append((job, "client_daily_cap", "client_daily_ingest_cap"))
@@ -2247,6 +2255,7 @@ class LiteLLMBackend(Backend):
                 job,
                 model,
                 resolved_model=logical_model,
+                schema_only=True,
             )
             canonical_payload_str = json.dumps(payload, sort_keys=True)
             request_digest = hashlib.sha256(canonical_payload_str.encode("utf-8")).hexdigest()
@@ -2362,6 +2371,8 @@ class LiteLLMBackend(Backend):
                         messages=tuple(_messages(job)),
                         policy=policy or LLMRequestPolicy(),
                         output_token_budget=self._output_token_budget(job),
+                        timeout=_job_timeout(job),
+                        max_tokens_mode=_job_max_tokens_mode(job),
                     ),
                 )
                 telemetry_outcomes.append((job, "deferred", "http_429"))
@@ -2494,10 +2505,17 @@ class LiteLLMBackend(Backend):
                             messages=tuple(_messages(job)),
                             policy=policy or LLMRequestPolicy(),
                             output_token_budget=self._output_token_budget(job),
+                            timeout=_job_timeout(job),
+                            max_tokens_mode=_job_max_tokens_mode(job),
                         ),
                     )
                     deferred_writes.append((job.recipe_hash, handle))
                     out[idx] = handle
+                elif reason == "idempotency_conflict" and idx in prior_pending:
+                    # In flight under its previous payload (e.g. across a payload-shape change):
+                    # keep following the existing handle rather than failing the item.
+                    telemetry_outcomes.append((job, "prior_pending", reason))
+                    out[idx] = prior_pending[idx]
                 elif reason == "idempotency_conflict":
                     rejected_count += 1
                     telemetry_outcomes.append((job, "rejected", reason))

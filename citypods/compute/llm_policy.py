@@ -79,6 +79,12 @@ class DeferredLLMRequest:
     messages: tuple[Mapping[str, Any], ...]
     policy: LLMRequestPolicy
     output_token_budget: int = DEFAULT_OUTPUT_TOKEN_MARGIN
+    # The job's own ``inputs["timeout"]`` (e.g. a deadline-aware budget), so a rebuilt job keeps
+    # it instead of falling back to the direct-call default. ``None`` when the job set none.
+    timeout: float | None = None
+    # ``"route_max"`` when the job asked for the route's own output limit (see
+    # ``route_output_tokens``); a rebuilt job must keep it or it truncates at its reservation.
+    max_tokens_mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -183,14 +189,19 @@ class LLMRoute:
     chat_path: str = "/v1/chat/completions"
     api_key_env: str = ""
     account_id: str = ""
-    # Structured-output behavior is compiled from the provider/route capability profile rather
-    # than inferred from a model or route name.  The profile's resolved fields are carried here
-    # so direct and queued transports make the same request-format decision.
-    structured_output_profile: str = "standard_json_schema"
-    structured_output_response_format: Literal["json_schema", "json_object"] = "json_schema"
-    structured_output_direct_handler: Literal["instructor", "native"] = "instructor"
+    # Structured-output METHOD (review/48 R10), resolved by the compiler per route: the route's own
+    # verified method, else one verified for the same model elsewhere, else the provider's.
+    # Direct calls shape requests from these fields exactly as the v2 Worker does.
+    structured_output_method: str = "json_schema"
+    structured_output_response_format: Literal["json_schema", "json_object", "none"] = "json_schema"
     structured_output_include_schema_in_prompt: bool = False
     structured_output_schema_strip_keys: tuple[str, ...] = ()
+    # Provider-specific request parameters this route always sends (compile-validated allowlist,
+    # e.g. `chat_template_kwargs: {enable_thinking: false}`). Stored as a JSON string so the frozen
+    # route stays hashable; `request_params` decodes it.
+    request_params_json: str = ""
+    # How this route expresses each reasoning level a lane may ask for (JSON, like request_params).
+    reasoning_controls_json: str = ""
     # Conservative defaults for hand-authored/test routes. Generated route catalogs materialize
     # provider- or route-specific values for every physical route.
     input_context_limit: int = 32768
@@ -326,14 +337,9 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                 chat_path=str(item.get("chat_path", "/v1/chat/completions")),
                 api_key_env=str(item.get("api_key_env", "")),
                 account_id=str(item.get("account_id", "")),
-                structured_output_profile=str(
-                    item.get("structured_output_profile", "standard_json_schema")
-                ),
+                structured_output_method=str(item.get("structured_output_method", "json_schema")),
                 structured_output_response_format=str(
                     item.get("structured_output_response_format", "json_schema")
-                ),
-                structured_output_direct_handler=str(
-                    item.get("structured_output_direct_handler", "instructor")
                 ),
                 structured_output_include_schema_in_prompt=bool(
                     item.get("structured_output_include_schema_in_prompt", False)
@@ -343,6 +349,16 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                 ),
                 input_context_limit=max(1, int(item.get("input_context_limit", 32768) or 32768)),
                 output_context_limit=max(1, int(item.get("output_context_limit", 1024) or 1024)),
+                request_params_json=(
+                    json.dumps(item["request_params"], sort_keys=True)
+                    if item.get("request_params")
+                    else ""
+                ),
+                reasoning_controls_json=(
+                    json.dumps(item["reasoning_controls"], sort_keys=True)
+                    if item.get("reasoning_controls")
+                    else ""
+                ),
                 hard_input_ceiling=(
                     int(item["hard_input_ceiling"])
                     if item.get("hard_input_ceiling") is not None
@@ -568,3 +584,41 @@ __all__ = [
     "estimate_tokens",
     "route_input_tokens",
 ]
+
+
+def route_request_params(route: object) -> dict[str, Any]:
+    """The provider-specific request parameters a compiled route always sends (may be empty)."""
+    raw = getattr(route, "request_params_json", "") or ""
+    return json.loads(raw) if raw else {}
+
+
+def route_reasoning_controls(route: object, level: str | None) -> dict[str, Any]:
+    """Request parameters that express ``level`` on this route (empty when unsupported/unset)."""
+    raw = getattr(route, "reasoning_controls_json", "") or ""
+    if not level or not raw:
+        return {}
+    return dict(json.loads(raw).get(level) or {})
+
+
+# The most output a "route_max" job is ever sent, whatever the route allows (a runaway reasoning
+# loop should stop at a length limit and be reported, not run to the Worker's 720 s ceiling).
+# Twin of gateway.js MAX_ROUTE_OUTPUT_TOKENS.
+MAX_ROUTE_OUTPUT_TOKENS = 65_536
+
+
+def route_output_tokens(route: object, requested: int, input_tokens: int) -> int:
+    """The route's output limit, bounded by the room its input leaves in the context window.
+
+    ``input_tokens`` is a raw ``estimate_tokens`` figure of the messages actually sent; it is
+    scaled to the route's tokenizer first. When the input leaves no room the request keeps
+    ``requested`` (the provider then rejects it as too large, as it did before route_max).
+    Mirrors workers/llm-dispatch-v2/src/gateway.js:outputTokensForRoute for direct calls.
+    """
+    output_limit = min(int(getattr(route, "output_context_limit", 0) or 0), MAX_ROUTE_OUTPUT_TOKENS)
+    if not output_limit:
+        return requested
+    input_limit = int(getattr(route, "input_context_limit", 0) or 0)
+    if not input_limit or not input_tokens:
+        return output_limit
+    room = input_limit - route_input_tokens(input_tokens, route)
+    return min(output_limit, room) if room > 0 else requested

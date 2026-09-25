@@ -756,7 +756,7 @@ def test_list_pending_deferred_returns_only_pending_records():
         recipe_hash="pending-2",
         backend="litellm",
         ref="/v1/requests/chatcmpl-1",
-        model="mistral/mistral-large-2512",
+        model="mistral/codestral-2508",
         owner="pending-2",
         input_per_token=0.0,
         output_per_token=0.0,
@@ -769,7 +769,7 @@ def test_list_pending_deferred_returns_only_pending_records():
     # A genuine in-flight dispatch handle has no deferred_request -- reconcile() must route it
     # through the real URL-polling path, not re-run selection.
     assert pending["pending-2"].deferred_request is None
-    assert pending["pending-2"].model == "mistral/mistral-large-2512"
+    assert pending["pending-2"].model == "mistral/codestral-2508"
     assert pending["pending-2"].owner == "pending-2"
 
 
@@ -880,7 +880,7 @@ def test_prune_releases_the_ledger_reservation_of_an_abandoned_dispatch_handle()
     from citypods.compute.llm_policy import ROUTES
 
     storage = MemStorage()
-    route = ROUTES["mistral/mistral-large-2512"]
+    route = ROUTES["mistral/codestral-2508"]
     mutate_llm_budget(
         storage,
         lambda budget, attempt_now: budget.reserve(
@@ -1003,3 +1003,48 @@ def _write_raw(storage: MemStorage, recipe_hash: str, record: dict) -> None:
         path = Path(tmp) / "record.json"
         path.write_text(json.dumps(record))
         storage.put_file(deferred_key(recipe_hash), path, "application/json")
+
+
+def test_a_deferred_capsule_keeps_the_jobs_output_budget_and_timeout():
+    # Without these a rebuilt job fell back to the 1,024-token margin and the direct-call default
+    # timeout, silently dropping the job's own budget and deadline.
+    handle = JobHandle(
+        task="tag",
+        recipe_hash="r-capsule",
+        backend="litellm",
+        ref="deferred",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "hi"},),
+            policy=LLMRequestPolicy(),
+            output_token_budget=16_384,
+            timeout=45.0,
+            max_tokens_mode="route_max",
+        ),
+    )
+    decoded = llm_deferred._decode_record(llm_deferred._record_for(handle))
+    assert decoded.deferred_request.output_token_budget == 16_384
+    assert decoded.deferred_request.timeout == 45.0
+    # A rebuilt route_max job must still send the route's limit, not truncate at its reservation.
+    assert decoded.deferred_request.max_tokens_mode == "route_max"
+
+
+def test_a_capsule_written_before_those_fields_existed_keeps_the_old_defaults():
+    record = llm_deferred._record_for(
+        JobHandle(
+            task="tag",
+            recipe_hash="r-old",
+            backend="litellm",
+            ref="deferred",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "hi"},), policy=LLMRequestPolicy()
+            ),
+        )
+    )
+    record.pop("output_token_budget")
+    decoded = llm_deferred._decode_record(record)
+    assert (
+        decoded.deferred_request.output_token_budget
+        == DeferredLLMRequest(messages=(), policy=LLMRequestPolicy()).output_token_budget
+    )
+    assert decoded.deferred_request.timeout is None
+    assert decoded.deferred_request.max_tokens_mode is None
