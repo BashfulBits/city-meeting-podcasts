@@ -942,10 +942,28 @@ def test_request_params_are_limited_to_provider_controls(params, match):
         compile_llm_limits._validate_request_params({"route_id": "r", "request_params": params})
 
 
-def test_request_params_are_compiled_for_the_worker():
+def test_reasoning_controls_are_compiled_for_the_worker_and_not_applied_by_default():
     compiled = compile_llm_limits.compile_limits()
     worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
-    assert worker["nvidia_deepseek_v4_1_flash_free"]["request_params"] == {
-        "chat_template_kwargs": {"enable_thinking": False}
+    v41 = worker["nvidia_deepseek_v4_1_flash_free"]
+    assert v41["request_params"] is None  # thinking is no longer switched off route-wide
+    assert v41["reasoning_controls"] == {
+        "off": {"chat_template_kwargs": {"enable_thinking": False}}
     }
-    assert worker["nvidia_nemotron_3_ultra_550b_a55b_free"]["request_params"] is None
+
+
+@pytest.mark.parametrize(
+    ("controls", "match"),
+    [
+        ({"medium": {"reasoning_effort": "medium"}}, "unknown level"),
+        ({False: {"reasoning_effort": "low"}}, "quote"),
+        ({"off": {"model": "x"}}, "unsupported keys"),
+        ({"off": None}, "non-empty mapping"),
+        ({"off": {}}, "non-empty mapping"),
+    ],
+)
+def test_reasoning_controls_are_validated(controls, match):
+    with pytest.raises(ValueError, match=match):
+        compile_llm_limits._validate_reasoning_controls(
+            {"route_id": "r", "reasoning_controls": controls}
+        )

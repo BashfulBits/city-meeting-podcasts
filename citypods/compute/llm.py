@@ -62,6 +62,8 @@ from citypods.compute.llm_policy import (
     QuotaPolicy,
     canonical_model,
     estimate_tokens,
+    route_output_tokens,
+    route_reasoning_controls,
     route_request_params,
 )
 from citypods.compute.llm_scheduler import (
@@ -663,10 +665,30 @@ def _messages(job: InferenceJob) -> list[dict[str, Any]]:
     ]
 
 
+def _lane_reasoning_level(job: InferenceJob, route: Any) -> str | None:
+    """The reasoning level the job's lane sets for this route's model, if any."""
+    policy = job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+    purpose = getattr(policy, "purpose", "") or ""
+    if not purpose:
+        return None
+    from citypods.compute.llm_lanes import load_lanes
+
+    lane = load_lanes().get(purpose)
+    if lane is None:
+        return None
+    return lane.reasoning_levels.get(canonical_model(getattr(route, "model", "") or ""))
+
+
 def _job_timeout(job: InferenceJob) -> float | None:
     """The job's own ``inputs["timeout"]``, kept on a deferred capsule so a rebuild restores it."""
     value = job.inputs.get("timeout") if isinstance(job.inputs, Mapping) else None
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _job_max_tokens_mode(job: InferenceJob) -> str | None:
+    """The job's ``inputs["max_tokens_mode"]``, kept on a deferred capsule like the timeout."""
+    value = job.inputs.get("max_tokens_mode") if isinstance(job.inputs, Mapping) else None
+    return value if value == "route_max" else None
 
 
 def _positive_seconds(name: str, default: float) -> float:
@@ -883,7 +905,13 @@ class LiteLLMBackend(Backend):
         return f"{gateway_base}/{gateway_slug}{_ai_gateway_path_prefix(route)}", extra_headers
 
     def _provider_options(
-        self, job: InferenceJob, resolved_model: str, *, route=None, direct: bool = False
+        self,
+        job: InferenceJob,
+        resolved_model: str,
+        *,
+        route=None,
+        direct: bool = False,
+        messages: list[Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Build the LiteLLM ``completion()`` kwargs for one route.
 
@@ -903,6 +931,11 @@ class LiteLLMBackend(Backend):
                 if api_key:
                     options["api_key"] = api_key
             request_params = route_request_params(route)
+            # The lane's reasoning level for this model, expressed the way this route does it --
+            # the same rule the v2 Worker applies at send time (index.js laneReasoningLevel).
+            request_params.update(
+                route_reasoning_controls(route, _lane_reasoning_level(job, route))
+            )
             if request_params:
                 # Sent verbatim in the request body, exactly as the v2 Worker sends them.
                 options["extra_body"] = request_params
@@ -918,6 +951,19 @@ class LiteLLMBackend(Backend):
                 options[field] = job.inputs[field]
         if direct:
             options.setdefault("timeout", self.config.direct_timeout_seconds)
+        if (
+            direct
+            and route is not None
+            and job.inputs.get("max_tokens_mode") == "route_max"
+            and isinstance(options.get("max_tokens"), int)
+        ):
+            # Direct calls send the route's own output limit; the job's max_tokens stays the
+            # scheduling reservation (queued jobs get the same rule in the Worker). ``messages``
+            # are the ones actually sent when a caller shapes them (schema in the prompt,
+            # corrective retries), so the input room is measured on what the route receives.
+            options["max_tokens"] = route_output_tokens(
+                route, options["max_tokens"], estimate_tokens(messages or _messages(job))
+            )
         return options
 
     def _payload(
@@ -952,6 +998,10 @@ class LiteLLMBackend(Backend):
             }
             # The job's own max_tokens is folded in below by _provider_options, as for every
             # payload; this is the schema the Worker shapes per route, not a job definition.
+            if job.inputs.get("max_tokens_mode") == "route_max":
+                # The Worker sends the chosen route's output limit; max_tokens stays the
+                # scheduling reservation (gateway.js outputTokensForRoute).
+                payload["max_tokens_mode"] = "route_max"
             payload["structured_output"] = {
                 "name": model.__name__,
                 "schema": model.model_json_schema(),
@@ -1089,7 +1139,9 @@ class LiteLLMBackend(Backend):
         messages, routed_format = shape_for_route(
             list(_messages(job)), name=model.__name__, schema=model.model_json_schema(), route=route
         )
-        options = self._provider_options(job, resolved_model, route=route, direct=True)
+        options = self._provider_options(
+            job, resolved_model, route=route, direct=True, messages=messages
+        )
         response_format = response_format or routed_format
         if response_format is not None:
             options["response_format"] = response_format
@@ -1124,6 +1176,12 @@ class LiteLLMBackend(Backend):
                             ),
                         },
                     ]
+                    # The retry carries the invalid reply too: re-measure the output room.
+                    retry_options = self._provider_options(
+                        job, resolved_model, route=route, direct=True, messages=messages
+                    )
+                    if "max_tokens" in retry_options:
+                        options["max_tokens"] = retry_options["max_tokens"]
                     continue
                 if os.environ.get(_SAFE_DIAGNOSTICS_ENV) == "1":
                     print(
@@ -1248,6 +1306,7 @@ class LiteLLMBackend(Backend):
                 policy=policy,
                 output_token_budget=self._output_token_budget(job),
                 timeout=_job_timeout(job),
+                max_tokens_mode=_job_max_tokens_mode(job),
             ),
         )
 
@@ -1800,6 +1859,11 @@ class LiteLLMBackend(Backend):
         inputs: dict[str, Any] = {"messages": messages, "max_tokens": deferred.output_token_budget}
         if deferred.timeout is not None:
             inputs["timeout"] = deferred.timeout
+        if deferred.max_tokens_mode is not None:
+            inputs["max_tokens_mode"] = deferred.max_tokens_mode
+        # The lane (policy.purpose) selects per-lane reasoning controls on the direct path, as it
+        # does for a job that was never deferred.
+        inputs["llm_policy"] = deferred.policy
         if handle.structured_output:
             inputs["structured_output"] = handle.structured_output
         job = InferenceJob(task=handle.task, inputs=inputs, recipe_hash=handle.recipe_hash)
@@ -2125,6 +2189,7 @@ class LiteLLMBackend(Backend):
                         policy=policy or LLMRequestPolicy(),
                         output_token_budget=self._output_token_budget(job),
                         timeout=_job_timeout(job),
+                        max_tokens_mode=_job_max_tokens_mode(job),
                     ),
                 )
                 telemetry_outcomes.append((job, "client_daily_cap", "client_daily_ingest_cap"))
@@ -2307,6 +2372,7 @@ class LiteLLMBackend(Backend):
                         policy=policy or LLMRequestPolicy(),
                         output_token_budget=self._output_token_budget(job),
                         timeout=_job_timeout(job),
+                        max_tokens_mode=_job_max_tokens_mode(job),
                     ),
                 )
                 telemetry_outcomes.append((job, "deferred", "http_429"))
@@ -2440,6 +2506,7 @@ class LiteLLMBackend(Backend):
                             policy=policy or LLMRequestPolicy(),
                             output_token_budget=self._output_token_budget(job),
                             timeout=_job_timeout(job),
+                            max_tokens_mode=_job_max_tokens_mode(job),
                         ),
                     )
                     deferred_writes.append((job.recipe_hash, handle))

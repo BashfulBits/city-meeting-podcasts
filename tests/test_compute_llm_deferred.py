@@ -1018,11 +1018,14 @@ def test_a_deferred_capsule_keeps_the_jobs_output_budget_and_timeout():
             policy=LLMRequestPolicy(),
             output_token_budget=16_384,
             timeout=45.0,
+            max_tokens_mode="route_max",
         ),
     )
     decoded = llm_deferred._decode_record(llm_deferred._record_for(handle))
     assert decoded.deferred_request.output_token_budget == 16_384
     assert decoded.deferred_request.timeout == 45.0
+    # A rebuilt route_max job must still send the route's limit, not truncate at its reservation.
+    assert decoded.deferred_request.max_tokens_mode == "route_max"
 
 
 def test_a_capsule_written_before_those_fields_existed_keeps_the_old_defaults():
@@ -1044,3 +1047,4 @@ def test_a_capsule_written_before_those_fields_existed_keeps_the_old_defaults():
         == DeferredLLMRequest(messages=(), policy=LLMRequestPolicy()).output_token_budget
     )
     assert decoded.deferred_request.timeout is None
+    assert decoded.deferred_request.max_tokens_mode is None

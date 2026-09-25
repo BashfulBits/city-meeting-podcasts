@@ -1061,13 +1061,13 @@ routes:
     # (reasoning only); with no response_format the model returns valid JSON.
     structured_output_method: prompt_only
     structured_output_verified_on: "2026-09-24"
-    # Thinking off (verified 2026-09-24): with thinking the model spends thousands of reasoning
-    # tokens before answering and full agendas ran past the Worker's 720 s ceiling; without it a
-    # median agenda took 205 s (~178 s to first token on NVIDIA's queue, then ~24 tokens/s) and
-    # returned valid JSON.
-    request_params:
-      chat_template_kwargs:
-        enable_thinking: false
+    # How this route turns thinking off when a lane asks for `reasoning: off` (verified
+    # 2026-09-24: no reasoning tokens, valid JSON). Not applied by default: the model keeps its
+    # default thinking unless a lane opts in for a job type (llm_lanes[...].reasoning).
+    reasoning_controls:
+      "off":  # quoted: bare `off` is YAML's boolean false
+        chat_template_kwargs:
+          enable_thinking: false
 
   - route_id: nvidia_gemma_4_31b_it_free
     model: google/gemma-4-31b-it

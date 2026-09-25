@@ -17,6 +17,38 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Output budgets sent per route; per-lane reasoning levels; token-budget monitor**
+  (`workers/llm-dispatch-v2/src/{gateway,index,coordinator}.js`, `citypods/compute/{llm,llm_policy,
+  llm_lanes}.py`, `scripts/compile_llm_{limits,lanes}.py`, `scripts/llm_budget_monitor.py`,
+  `.github/workflows/llm-budget-monitor.yml`).
+  - `max_tokens` only truncates, so agenda, locator, moments and tagger jobs are sent the chosen
+    route's own output limit (bounded by its input room, capped at 65,536). Their `max_tokens`
+    becomes the scheduling reservation, lowered to observed needs (agenda and moments 16,384, tagger
+    12,288, locator 16,384), which keeps small-TPM routes schedulable. The input room is measured
+    on the messages actually sent (a schema added to the prompt, a corrective retry) in the
+    route's own tokenizer units, so input plus output always fits the window.
+    Deferred-dispatch capsules keep `max_tokens_mode`, so a rebuilt job still sends the route's
+    limit.
+  - Lanes can set a reasoning level per model (`llm_lanes[...].reasoning: {model: off|low}`); routes
+    say how their provider expresses it (`reasoning_controls`). NVIDIA DeepSeek v4.1's thinking
+    switch moves from a route-wide `request_params` override to `reasoning_controls.off`, so it
+    thinks by default again and a lane can turn thinking off for one job type only.
+  - A reply that stops at its output limit (`finish_reason: length`) is `output_budget_exhausted`:
+    never stored, retried on the upstream budget without cooling the route (the budget, not the
+    route, is at fault), and counted in `route_failures`. Because it was served, the route's token
+    bucket is settled to the measured usage, as a success is.
+  - A daily workflow reads those counts and keeps one rolling issue listing output-budget
+    cut-offs, empty/invalid structured replies, own-rate 429s and oversized inputs, each with the
+    lanes involved and the config key that would correct it. It never edits config.
+  - `/v2/stats?detail=1` adds `usage_today` per lane and route (calls, output p50/p90/max, mean
+    reservation, calls over their reservation, calls >= 600 s), computed at read time from the
+    `attempts` and `jobs` rows the executor already writes -- no added row writes. Attempts now
+    carry their lane and reservation (two columns on the row already written), so usage survives
+    the job row being retired; calls that returned no usage are counted but kept out of the
+    percentiles. The monitor flags reservations that are too small or far too large and calls near
+    the 720 s ceiling, and asks `/v2/stats` only for the failure classes it acts on
+    (`failure_class=`), so unrelated high-count rows cannot push them past the row limit.
+
 - **Moments and tagger output budgets raised to 32,768 tokens** (moments from 4,096,
   `citypods/moments.py` `MOMENTS_OUTPUT_TOKEN_BUDGET`; tagger from 1,024, `citypods/tags.py`
   `TAG_OUTPUT_TOKEN_BUDGET`, used for the request, batch fitting and the context/TPM gates). The

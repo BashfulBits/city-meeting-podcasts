@@ -132,6 +132,8 @@ def compile_reservations(lanes: dict[str, LaneConfig], budget: int) -> dict[str,
                 # caller's own policy says they activate.
                 "backup_after_attempts": lane.backup_after_attempts,
                 "dispatch_shape": lane.dispatch_shape,
+                # Read at send time by index.js's laneReasoningLevel (route reasoning_controls).
+                "reasoning": lane.reasoning_levels,
                 "write_units_per_job": lane.ingress_write_units_per_job,
             }
             for purpose, lane in sorted(lanes.items())

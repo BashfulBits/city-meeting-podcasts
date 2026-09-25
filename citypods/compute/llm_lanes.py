@@ -90,6 +90,15 @@ class LaneConfig:
     # eligible immediately, since that failure mode is a model-output problem, not a capacity one.
     # Required (and only meaningful) together with backup_models.
     backup_after_attempts: int | None = None
+    # Per-model reasoning level for THIS lane's jobs (e.g. ``{"deepseek/deepseek-v4.1-flash":
+    # "off"}``), applied at send time through the route's ``reasoning_controls``. A model without
+    # an entry keeps its provider default, so a model can think in one job type and not another.
+    # Stored as sorted pairs to keep the frozen config hashable; see ``reasoning_levels``.
+    reasoning: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def reasoning_levels(self) -> dict[str, str]:
+        return dict(self.reasoning)
 
     @property
     def primary_model(self) -> str:
@@ -145,6 +154,31 @@ def _coerce_int(raw: Any, *, purpose: str, field: str) -> int:
     if raw < 0:
         raise ValueError(f"llm_lanes[{purpose!r}].{field} must be non-negative, got {raw}")
     return raw
+
+
+REASONING_LEVELS = frozenset({"off", "low"})
+
+
+def _parse_reasoning(raw: Any, purpose: str, lane_models: set[str]) -> tuple[tuple[str, str], ...]:
+    """Validate a lane's ``reasoning`` map: only this lane's models, only known levels."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict):
+        raise ValueError(f"llm_lanes[{purpose!r}].reasoning must be a mapping of model -> level")
+    pairs: list[tuple[str, str]] = []
+    for model, level in raw.items():
+        if model not in lane_models:
+            raise ValueError(
+                f"llm_lanes[{purpose!r}].reasoning names {model!r}, which is not one of the lane's "
+                "models or backup_models"
+            )
+        if level not in REASONING_LEVELS:
+            raise ValueError(
+                f"llm_lanes[{purpose!r}].reasoning[{model!r}] must be one of "
+                f'{sorted(REASONING_LEVELS)}, got {level!r} (quote "off": bare off is YAML false)'
+            )
+        pairs.append((model, level))
+    return tuple(sorted(pairs))
 
 
 def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
@@ -248,6 +282,7 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                     f"{backup_after_attempts}"
                 )
 
+        reasoning = _parse_reasoning(entry.get("reasoning"), purpose, {*models, *backup_models})
         lane = LaneConfig(
             purpose=purpose,
             models=models,
@@ -261,6 +296,7 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
             dispatch_shape=shape,
             backup_models=backup_models,
             backup_after_attempts=backup_after_attempts,
+            reasoning=reasoning,
         )
         if daily < lane.ingress_write_units_per_job:
             raise ValueError(

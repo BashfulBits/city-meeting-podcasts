@@ -521,6 +521,8 @@ def _record_for(result: JobResult | JobHandle) -> dict[str, Any]:
         record["output_token_budget"] = deferred.output_token_budget
         if deferred.timeout is not None:
             record["timeout"] = deferred.timeout
+        if deferred.max_tokens_mode is not None:
+            record["max_tokens_mode"] = deferred.max_tokens_mode
     return record
 
 
@@ -564,6 +566,9 @@ def _decode_record(data: Any) -> JobResult | JobHandle | None:
                     ),
                     timeout=float(timeout)
                     if isinstance(timeout, (int, float)) and not isinstance(timeout, bool)
+                    else None,
+                    max_tokens_mode="route_max"
+                    if data.get("max_tokens_mode") == "route_max"
                     else None,
                 )
             return JobHandle(

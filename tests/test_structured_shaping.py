@@ -126,8 +126,10 @@ def test_a_direct_call_on_a_prompt_only_route_sends_no_response_format():
     assert "matching this JSON Schema" in calls[0]["messages"][0]["content"]
 
 
-def test_a_routes_request_params_reach_the_direct_request():
-    # NVIDIA's deepseek-v4.1-flash runs with thinking off (see config/provider_limits.yml).
+def _direct_v41_call(monkeypatch, level):
+    from citypods.compute import llm as llm_module
+
+    monkeypatch.setattr(llm_module, "_lane_reasoning_level", lambda job, route: level)
     calls = []
 
     def completion(**kwargs):
@@ -150,8 +152,79 @@ def test_a_routes_request_params_reach_the_direct_request():
                 "messages": [{"role": "user", "content": "hi"}],
                 "structured_output": "structured-shaping-test",
                 "max_tokens": 64,
+                "max_tokens_mode": "route_max",
             },
-            recipe_hash="recipe-request-params",
+            recipe_hash=f"recipe-reasoning-{level}",
         )
     )
-    assert calls[0]["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+    return calls[0]
+
+
+def test_a_lanes_reasoning_level_reaches_the_direct_request_only_when_set(monkeypatch):
+    off = _direct_v41_call(monkeypatch, "off")
+    assert off["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+    default = _direct_v41_call(monkeypatch, None)
+    assert "extra_body" not in default  # the model keeps its default thinking
+
+
+def test_a_route_max_job_sends_the_routes_output_limit_capped(monkeypatch):
+    from citypods.compute.llm_policy import MAX_ROUTE_OUTPUT_TOKENS
+
+    call = _direct_v41_call(monkeypatch, None)
+    # NVIDIA v4.1 allows 384,000 output tokens; the send is capped, and never below the request.
+    assert call["max_tokens"] == MAX_ROUTE_OUTPUT_TOKENS
+
+
+def test_route_output_tokens_is_bounded_by_the_cap_the_route_and_the_input_room():
+    from types import SimpleNamespace
+
+    from citypods.compute.llm_policy import MAX_ROUTE_OUTPUT_TOKENS, route_output_tokens
+
+    big = SimpleNamespace(output_context_limit=384_000, input_context_limit=1_000_000)
+    assert route_output_tokens(big, 16_384, 20_000) == MAX_ROUTE_OUTPUT_TOKENS
+    small = SimpleNamespace(output_context_limit=32_768, input_context_limit=262_144)
+    assert route_output_tokens(small, 8_192, 20_000) == 32_768
+    tight = SimpleNamespace(output_context_limit=65_536, input_context_limit=262_144)
+    assert route_output_tokens(tight, 8_192, 240_000) == 22_144  # the input leaves 22,144
+    # The input room bounds even a reservation above it, so input + output fits the window.
+    assert route_output_tokens(tight, 30_000, 240_000) == 22_144
+    dense = SimpleNamespace(
+        output_context_limit=65_536, input_context_limit=262_144, input_token_ratio=1.05
+    )
+    assert route_output_tokens(dense, 8_192, 240_000) == 10_144  # measured in the route's units
+    assert route_output_tokens(tight, 8_192, 300_000) == 8_192  # no room: the provider rejects
+
+
+def test_a_queued_route_max_job_carries_the_flag_and_its_reservation(monkeypatch):
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.side_effect = _accept_all
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3.1-flash-lite",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+            dispatch_v2_auth_token="secret",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    backend.enqueue_batch(
+        [
+            InferenceJob(
+                task="tag",
+                inputs={
+                    "messages": [{"role": "user", "content": "hi"}],
+                    "structured_output": "structured-shaping-test",
+                    "max_tokens": 8192,
+                    "max_tokens_mode": "route_max",
+                    "llm_policy": LLMRequestPolicy(
+                        allowed_models=("gemini/gemini-3.1-flash-lite",), queue_only=True
+                    ),
+                },
+                recipe_hash="recipe-route-max",
+            )
+        ]
+    )
+    payload = json.loads(next(v for k, v in storage.files.items() if k.startswith("payloads/")))
+    assert payload["max_tokens"] == 8192  # the reservation
+    assert payload["max_tokens_mode"] == "route_max"  # the Worker sends the route's limit

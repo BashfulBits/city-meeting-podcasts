@@ -375,9 +375,15 @@ export async function handleRequest(request, env) {
   if (request.method === "GET" && path === "/v2/stats") {
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
     const detailed = url.searchParams.get("detail") === "1";
+    // `failure_class=a,b` restricts route_failures to those classes (at most 10 names).
+    const failureClasses = (url.searchParams.get("failure_class") || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter((name) => /^[a-z0-9_]{1,64}$/.test(name))
+      .slice(0, 10);
     try {
       const snapshot = detailed
-        ? await coordinator.detailedStats(Date.now(), limit)
+        ? await coordinator.detailedStats(Date.now(), limit, { failureClasses })
         : await coordinator.stats(Date.now());
       return jsonResponse(snapshot, 200);
     } catch (err) {
@@ -738,6 +744,12 @@ function b2ClientFromEnv(env) {
   });
 }
 
+/** A lane's configured reasoning level for this route's model (compiled from llm_lanes). */
+function laneReasoningLevel(purpose, route) {
+  const lane = purpose ? INGRESS_RESERVATIONS.reservations?.[purpose] : null;
+  return lane?.reasoning?.[route?.model] || null;
+}
+
 function routeForId(routeId, dispatchLimits) {
   const stored = dispatchLimits.routes_by_id?.[routeId];
   return stored ? { ...stored, route_id: routeId } : null;
@@ -778,7 +790,18 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
   const timeout = setTimeout(() => controller.abort(), maxResponseMs);
   let response;
   try {
-    response = await callAiGateway({ env, route, payload: job.payload, dispatchLimits, idempotencyKey, signal: controller.signal });
+    response = await callAiGateway({
+      env,
+      route,
+      payload: job.payload,
+      dispatchLimits,
+      idempotencyKey,
+      signal: controller.signal,
+      shaping: {
+        inputTokens: job.input_token_estimate || 0,
+        reasoningLevel: laneReasoningLevel(job.purpose, route),
+      },
+    });
   } catch (err) {
     return {
       result: {
@@ -826,6 +849,23 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
         gateway_correlation_id: response.correlationId,
         failure_class: "upstream_capacity",
         classify_rule_id: cls.rule_id,
+      },
+    };
+  }
+
+  if (response.ok && response.body?.choices?.[0]?.finish_reason === "length") {
+    // The reply stopped at its output-token limit: whatever it holds is cut off. Never stored as a
+    // result; retried, and counted per route as output_budget_exhausted so the token-budget
+    // monitor can tell a too-small lane budget from a model reasoning without end.
+    const usage = observedTokens(response.body);
+    return {
+      result: {
+        ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "retryable_error"),
+        observed_input_tokens: usage.input,
+        observed_output_tokens: usage.output,
+        provider_status_code: response.status,
+        gateway_correlation_id: response.correlationId,
+        failure_class: "output_budget_exhausted",
       },
     };
   }
