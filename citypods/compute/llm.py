@@ -2048,12 +2048,19 @@ class LiteLLMBackend(Backend):
 
         out: list[JobResult | JobHandle | None] = [None] * len(jobs)
         uncached_indices: list[int] = []
+        # A job that already has a pending handle is still resubmitted: the Worker replays an
+        # identical payload and supersedes a changed one (new payload and policy) on a queued row.
+        # Only an in-flight row refuses a changed payload (idempotency_conflict); the handle is
+        # kept for that case so the running attempt finishes and is polled normally.
+        prior_pending: dict[int, JobHandle] = {}
         for i, job in enumerate(jobs):
             cached = look_up_deferred(self.storage, job.recipe_hash)
             if isinstance(cached, JobResult):
                 out[i] = cached
                 telemetry_outcomes.append((job, "cached_completed", None))
             else:
+                if isinstance(cached, JobHandle):
+                    prior_pending[i] = cached
                 uncached_indices.append(i)
 
         if not uncached_indices:
@@ -2402,6 +2409,11 @@ class LiteLLMBackend(Backend):
                     )
                     deferred_writes.append((job.recipe_hash, handle))
                     out[idx] = handle
+                elif reason == "idempotency_conflict" and idx in prior_pending:
+                    # In flight under its previous payload (e.g. across a payload-shape change):
+                    # keep following the existing handle rather than failing the item.
+                    telemetry_outcomes.append((job, "prior_pending", reason))
+                    out[idx] = prior_pending[idx]
                 elif reason == "idempotency_conflict":
                     rejected_count += 1
                     telemetry_outcomes.append((job, "rejected", reason))

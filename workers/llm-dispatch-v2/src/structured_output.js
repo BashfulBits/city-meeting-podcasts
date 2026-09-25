@@ -90,8 +90,8 @@ export function isStructuredPayload(payload) {
 }
 
 const THOUGHT_BLOCK_RE = /^\s*<(think|thought)>[\s\S]*?<\/\1>/i;
-// Bounds the Worker's CPU on a long non-JSON reply; beyond this many candidate starts the reply is
-// left for Python's own parser to judge rather than flagged here.
+// Bounds the Worker's CPU on a long non-JSON reply. Past this many failed candidate starts the
+// reply is treated as invalid (fail closed), so it takes the same retry path as any other.
 const MAX_JSON_START_CANDIDATES = 32;
 
 function assistantText(body) {
@@ -106,8 +106,8 @@ function assistantText(body) {
 }
 
 /**
- * Why a 2xx reply to a structured request is not usable, or null when it is (or cannot be judged
- * cheaply). Mirrors citypods/compute/structured.py:parse_structured_json's tolerance -- a leading
+ * Why a 2xx reply to a structured request is not usable, or null when it is. Mirrors
+ * citypods/compute/structured.py:parse_structured_json's tolerance -- a leading
  * <think>/<thought> block, one Markdown fence, JSON starting at any `{`/`[` with nothing but
  * whitespace after it -- so a reply Python would accept is never failed here.
  *
@@ -133,7 +133,7 @@ export function structuredReplyProblem(body) {
   for (let index = 0; index < text.length; index++) {
     const char = text[index];
     if (char !== "{" && char !== "[" && char !== "]") continue;
-    if (++tried > MAX_JSON_START_CANDIDATES) return null;
+    if (++tried > MAX_JSON_START_CANDIDATES) return "structured_output_invalid";
     try {
       JSON.parse(text.slice(index));
       return null;
