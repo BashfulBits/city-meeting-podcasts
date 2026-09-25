@@ -17,6 +17,15 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Moments: explicit pull-quote criteria and word-accurate quote timing** (`citypods/moments.py`,
+  `citypods/moment_judging.py`, `citypods/stages.py`; review/36). The extraction prompt now says
+  what a pull quote is for and what to avoid, derived from VISION, and the judge scores against the
+  same criteria (moments prompt 1 -> 2, judge prompt 1 -> 2: new calibration cells). Candidates
+  keep the exact spoken span (`quote_start`/`quote_end`) from the served-time words sidecar beside
+  the padded clip window, decisions carry word-accurate `start`/`end`, and a short quote is widened
+  to the 8 s clip minimum instead of dropped. Summary points record the real prompt version. Moments
+  re-extract through the recipe hash (folded into the council-moments backfill above).
+
 - **LLM lane capacity and route cleanup** (`config/provider_limits.yml`, `config/site_config.yml`,
   `citypods/moments.py`, regenerated catalogs; 2026-09-24 capacity review under review/48).
   - *DeepSeek:* one pool name per version. `deepseek/deepseek-v4-flash` is now OrcaRouter's v4
