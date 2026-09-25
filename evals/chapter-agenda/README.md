@@ -74,7 +74,8 @@ the baselines, is re-run on this set.
   21 retries passed), so a single retry clears them, while the per-call floor keeps a chronically
   flaky model from quietly doubling its calls.
 - **Quality:** a candidate beats a baseline when its F1 is higher and its precision is not lower,
-  on both the main set and the holdout.
+  on both the main set and the holdout (the holdout split, `--split holdout`, and its results
+  arrive with PR #1856, which builds on this one).
 - **Models that are about equal share the work:** they go together in the lane's `models` pool,
   so dispatch uses whichever route has capacity.
 - **Prefer the lowest general score that does the task well:** between otherwise-equal choices,

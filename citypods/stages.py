@@ -1535,7 +1535,7 @@ class VideoClipsStage:
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
-        from citypods.moments import parse_transcript_segments
+        from citypods.moments import parse_transcript_segments, parse_words_sidecar
         from citypods.video_clips import render_video_clip
 
         stats = StageStats(self.name)
@@ -1561,6 +1561,10 @@ class VideoClipsStage:
             )
             raw = _read_storage_bytes(ctx.storage, ep.transcript_key or "")
             segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
+            # Word timing bounds the captions to speech inside the clip window.
+            words = parse_words_sidecar(
+                _read_storage_bytes(ctx.storage, ep.transcript_words_key or "")
+            )
             try:
                 source = _moment_source(provider, city, ep, selected)
             except Exception:  # noqa: BLE001 - provider resolution is a text-only failure.
@@ -1583,6 +1587,7 @@ class VideoClipsStage:
                     crop_anchor=selected.get("crop_anchor"),
                     caption_override=selected.get("caption"),
                     profile=str(selected.get("output_profile") or "vertical-9x16-square-pane-v1"),
+                    words=words,
                 )
             if clip.get("status") == "ready":
                 ep.moment_video_clip = {

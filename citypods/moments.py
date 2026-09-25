@@ -195,8 +195,14 @@ def parse_words_sidecar(data: bytes | None) -> list[dict[str, Any]]:
     except (UnicodeDecodeError, json.JSONDecodeError):
         return []
     words: list[dict[str, Any]] = []
-    for segment in payload.get("segments", []) if isinstance(payload, dict) else []:
-        for word in segment.get("words", []) if isinstance(segment, dict) else []:
+    # A malformed container is skipped, never raised: the stage parses this before its per-episode
+    # error handling, so one bad sidecar must not stop later episodes.
+    segments = payload.get("segments", []) if isinstance(payload, dict) else []
+    for segment in segments if isinstance(segments, list) else []:
+        segment_words = segment.get("words", []) if isinstance(segment, dict) else []
+        for word in segment_words if isinstance(segment_words, list) else []:
+            if not isinstance(word, dict):
+                continue
             text = str(word.get("w") or "").strip()
             start, end = word.get("s"), word.get("e")
             if text and isinstance(start, int | float) and isinstance(end, int | float):
@@ -209,9 +215,10 @@ def word_region(
 ) -> tuple[float, float] | None:
     """Exact spoken span of ``quote`` from word timing: first word's start, last word's end.
 
-    Words are compared as punctuation-free tokens. When the quote occurs more than once, the
-    occurrence inside ``near`` (the cue-level match) wins; an unresolvable repeat returns None so
-    the caller keeps the cue-level span rather than guessing.
+    Words are compared as punctuation-free tokens. With ``near`` (the cue-level match), only an
+    occurrence inside it counts -- even a single match elsewhere is rejected, so a sidecar that
+    disagrees with the cues falls back to the cue span instead of relocating the quote. An
+    unresolvable repeat also returns None rather than guessing.
     """
     target = [token for token in (_token(part) for part in str(quote).split()) if token]
     tokens = [_token(word.get("text")) for word in words]
@@ -222,7 +229,7 @@ def word_region(
         for index in range(len(tokens) - len(target) + 1)
         if tokens[index : index + len(target)] == target
     ]
-    if near is not None and len(hits) > 1:
+    if near is not None:
         hits = [i for i in hits if near[0] - 1.0 <= float(words[i]["start"]) <= near[1] + 1.0]
     if len(hits) != 1:
         return None

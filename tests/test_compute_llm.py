@@ -1709,7 +1709,7 @@ def test_reconcile_emits_warning_on_retrying_upstream_timeout(capsys):
                         "code": "upstream_timeout",
                         "duration_seconds": 720,
                         "model": "deepseek/deepseek-v4.1-flash",
-                        "route_id": "deepseek_v4_pro_primary",
+                        "route_id": "nvidia_deepseek_v4_1_flash_free",
                     },
                 }
             ).encode()
@@ -1739,7 +1739,7 @@ def test_reconcile_emits_warning_on_retrying_upstream_timeout(capsys):
     captured = capsys.readouterr()
     assert "::warning title=LLM Upstream Timeout Warning::" in captured.out
     assert "timed out after 720s" in captured.out
-    assert "deepseek_v4_pro_primary" in captured.out
+    assert "nvidia_deepseek_v4_1_flash_free" in captured.out
 
 
 def test_reconcile_emits_error_on_terminal_upstream_timeout(capsys):
@@ -1756,7 +1756,7 @@ def test_reconcile_emits_error_on_terminal_upstream_timeout(capsys):
                         ),
                         "duration_seconds": 720,
                         "attempts": 5,
-                        "route_id": "deepseek_v4_pro_primary",
+                        "route_id": "nvidia_deepseek_v4_1_flash_free",
                     }
                 }
             ).encode()
