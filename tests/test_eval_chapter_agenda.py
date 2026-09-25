@@ -282,3 +282,22 @@ def test_rescore_refuses_results_from_another_set_version(monkeypatch):
     )
     with pytest.raises(SystemExit, match="cannot be rescored"):
         ev.rescore({"split": "main", "eval_set_version": 1, "models": {}})
+
+
+def test_the_reference_pattern_rejects_pathological_input_quickly():
+    # CodeQL py/redos: many repeated dashes must not backtrack exponentially.
+    import time as _time
+
+    started = _time.monotonic()
+    assert ev._chapter_first_reference("Item-," + "--" * 5000 + "!") is None
+    assert _time.monotonic() - started < 1.0
+    for title, key in [
+        ("Items 3A - 3C", "3a"),
+        ("Items 3A-3C", "3a"),
+        ("Items 3A – 3C", "3a"),
+        ("Items 7, 8 and 9", "7"),
+        ("Items 4 & 5", "4"),
+        ("Item Z-24-17", "z2417"),
+        ("Item 16 (Part 1 of 2)", "16"),
+    ]:
+        assert ev._chapter_first_reference(title) == key, title

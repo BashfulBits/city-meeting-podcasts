@@ -80,8 +80,12 @@ def _load(name: str, split: str = "main") -> dict[str, Any]:
 # A provider chapter titled only by its agenda position ("Item 3A", "Items 3A - 3C", "Item 16
 # (Part 1 of 2)"): 19% of main-set and 13% of holdout chapters. Text similarity cannot match these
 # to an item titled "Approve minutes of April 2", so they are matched by reference instead.
+# Separators never overlap the reference characters (linear matching, no ReDoS): `,` and `&` are
+# not reference characters, and a word or dash separator needs surrounding whitespace, which a
+# reference cannot contain. An unspaced dash stays inside one reference (`3A-3C`, `Z-24-17`).
 _REFERENCE_CHAPTER_RE = re.compile(
-    r"^\s*(?:agenda\s+)?items?\s*#?\s*(?P<refs>[\w.\-]+(?:\s*(?:,|&|and|to|-|–)\s*[\w.\-]+)*)"
+    r"^\s*(?:agenda\s+)?items?\s*#?\s*"
+    r"(?P<refs>[\w.\-–]+(?:(?:\s*[,&]\s*|\s+(?:and|to|-|–)\s+)[\w.\-–]+)*)"
     r"\s*(?:\(part \d+ of \d+\))?\s*$",
     re.IGNORECASE,
 )
