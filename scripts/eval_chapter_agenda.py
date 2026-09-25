@@ -205,6 +205,9 @@ def _run_one(backend: Any, model: str, episode: Mapping[str, Any]) -> dict:
     # Evaluation pins exactly one model and calls it directly: without the production policy there
     # is no pool, no backup model and no Worker queue -- only the backend's configured model.
     inputs = {k: v for k, v in job.inputs.items() if k != "llm_policy"}
+    # The Worker's response ceiling, applied to the direct call itself: LiteLLM's own default is
+    # 6,000 s, and LLMBackendConfig.timeout_seconds only governs HTTP calls to the Worker.
+    inputs["timeout"] = WORKER_RESPONSE_SECONDS
     started = time.monotonic()
     # A busy or rate-limited provider says nothing about the model's output quality, so transport
     # and capacity errors are retried and, if they persist, recorded as "unanswered" -- never as
