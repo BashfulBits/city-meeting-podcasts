@@ -229,11 +229,11 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                 raise ValueError(
                     f"llm_lanes[{purpose!r}].backup_models contains duplicates: {backup_models}"
                 )
-            if set(backup_models) & set(models):
-                raise ValueError(
-                    f"llm_lanes[{purpose!r}].backup_models overlaps its own models: "
-                    f"{sorted(set(backup_models) & set(models))}"
-                )
+            # A backup may also be one of the lane's own `models`. That adds no routes -- the
+            # Worker de-duplicates them (routes.js routesEligibleFor) -- but a non-empty
+            # backup_models is what raises the Worker's per-class retry ceilings to
+            # backup_after_attempts + base (coordinator.js `_retryCeiling`), so a pooled lane can
+            # keep that retry budget without dedicating a weaker model as a fallback.
             if shape == "per_model":
                 raise ValueError(
                     f"llm_lanes[{purpose!r}] is dispatch_shape 'per_model' (a model comparison) "

@@ -3,13 +3,15 @@
   "_source": "config/site_config.yml (llm_lanes)",
   "_readme": "Do not edit by hand. Keys are exact LLMRequestPolicy.purpose strings; a purpose absent from this map is rejected at ingress with purpose_not_registered rather than falling through to shared headroom.",
   "global_write_budget": 18000,
-  "reserved_total": 12106,
+  "reserved_total": 13966,
   "reservations": {
     "chapter-agenda": {
-      "reserved_write_units": 3720,
-      "daily_write_units": 6200,
+      "reserved_write_units": 5580,
+      "daily_write_units": 9300,
       "models": [
-        "nvidia/nemotron-3-ultra-550b-a55b:free"
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "tencent/hy3",
+        "gemini/gemini-3.1-flash-lite"
       ],
       "backup_models": [
         "tencent/hy3",
@@ -17,7 +19,7 @@
       ],
       "backup_after_attempts": 12,
       "dispatch_shape": "pooled",
-      "write_units_per_job": 4
+      "write_units_per_job": 6
     },
     "chapter-locator": {
       "reserved_write_units": 2170,
