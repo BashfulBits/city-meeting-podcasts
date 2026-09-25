@@ -271,3 +271,14 @@ def test_pauses_are_renewed_while_a_long_run_is_in_progress(monkeypatch):
             raise RuntimeError("worker unreachable")
 
     assert ev._renew_while(lambda: _time.sleep(0.05) or [], [Broken()])["failed"] is True
+
+
+def test_rescore_refuses_results_from_another_set_version(monkeypatch):
+    manifest = {"version": 2, "episodes": []}
+    monkeypatch.setattr(
+        ev,
+        "_load",
+        lambda name, split="main": manifest if name == "manifest.json" else {"episodes": []},
+    )
+    with pytest.raises(SystemExit, match="cannot be rescored"):
+        ev.rescore({"split": "main", "eval_set_version": 1, "models": {}})

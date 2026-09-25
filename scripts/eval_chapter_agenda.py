@@ -513,6 +513,11 @@ def rescore(results: Mapping[str, Any]) -> dict[str, Any]:
     """
     split = results.get("split", "main")
     manifest, gold = _load("manifest.json", split), _load("gold.json", split)
+    if results.get("eval_set_version") not in (None, manifest.get("version")):
+        raise SystemExit(
+            f"results were scored on {split} v{results['eval_set_version']}, "
+            f"but the frozen set is now v{manifest.get('version')}; they cannot be rescored"
+        )
     episodes = {episode["uid"]: episode for episode in manifest["episodes"]}
     out = {**results, "rescored_at": datetime.now(UTC).isoformat(timespec="seconds"), "models": {}}
     for model, entry in results["models"].items():

@@ -173,7 +173,14 @@ def finalize_agenda_job(
         item for item in assessment.unrecovered if item.reason == _DUPLICATE_EVIDENCE_REASON
     ]
     dropped = [item for item in assessment.unrecovered if item.reason != _DUPLICATE_EVIDENCE_REASON]
-    total_items = len(assessment.items) + len(assessment.recovered) + len(assessment.unrecovered)
+    # Repeats are excluded from the denominator: padding a reply with copies of one good item must
+    # not let an ungrounded item slip under the share.
+    total_items = (
+        len(assessment.items)
+        + len(assessment.recovered)
+        + len(assessment.unrecovered)
+        - len(duplicates)
+    )
     if dropped and len(dropped) > MAX_DROPPED_AGENDA_ITEM_SHARE * total_items:
         raise ValueError(dropped[0].reason)
     lines = agenda_text.splitlines()

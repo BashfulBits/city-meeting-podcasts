@@ -265,11 +265,15 @@ def _evidence_comparison_text(value: str) -> str:
     )
     value = re.sub(r"\s*([,.;:!?])\s*", r"\1 ", value)
     value = re.sub(r"(?<=\d)\.\s+(?=[A-Za-z]\b)", ".", value)
-    value = re.sub(r"(?<=\w)\s*([’'])\s*(?=\w)", r"\1", value)
+    # Re-join a PDF-split apostrophe (`City  ’s`) only before a contraction ending, so a closing
+    # single quote before the next word (`'MU-1' Low`) is not glued onto it.
+    value = re.sub(r"(?<=\w)\s*([’'])\s*(?=(?:s|t|d|m|ll|re|ve)\b)", r"\1", value)
     value = re.sub(r"(?<=\w)\s*-\s*(?=\w)", "-", value)
     value = re.sub(r"\(\s*", "(", value)
     value = re.sub(r"\s*\)", ")", value)
-    # Last, after the rules above have re-joined PDF-split apostrophes (`City  ’s`).
+    # Last, after the rules above have re-joined PDF-split apostrophes: an apostrophe inside a word
+    # is dropped (`Today’s` == `Todays` == `Today's`), every other quote mark becomes a space.
+    value = re.sub(r"(?<=\w)[’'‘‛`](?=\w)", "", value)
     return _normalized_source_text(value.translate(_QUOTE_MARKS))
 
 
@@ -278,6 +282,10 @@ def _evidence_span(
 ) -> tuple[int, int, bool]:
     """Return the declared span or a uniquely exact nearby correction for LLM line-number drift."""
     quote = _evidence_comparison_text(evidence_quote).casefold()
+    if not quote:
+        # A quote made only of quote marks/punctuation normalizes to "", which is "in" any line;
+        # untrusted model output must never ground an item that way.
+        raise ValueError("agenda item evidence quote is empty after normalization")
     declared = _evidence_comparison_text(" ".join(lines[line_start - 1 : line_end])).casefold()
     if quote in declared:
         return line_start, line_end, False
@@ -811,6 +819,23 @@ def _outline_marker_at(line: str, segment: str) -> bool:
     return bool(re.match(rf"^\s*\(?{re.escape(segment)}\s*[.):]", line, flags=re.IGNORECASE))
 
 
+_OUTLINE_MARKER_RE = re.compile(r"^\s*\(?([0-9]{1,3}|[ivxlcdm]{1,6}|[a-z])\s*[.):]", re.IGNORECASE)
+
+
+def _outline_marker(line: str) -> str | None:
+    match = _OUTLINE_MARKER_RE.match(line)
+    return match.group(1) if match else None
+
+
+def _outline_kind(marker: str) -> str:
+    """`number`, `roman` (II, xiv) or `letter` (a, B); a lone roman letter counts as a letter."""
+    if marker.isdigit():
+        return "number"
+    if len(marker) > 1 and all(ch in "ivxlcdm" for ch in marker.casefold()):
+        return "roman"
+    return "letter"
+
+
 def _outline_reference_in_source(
     reference: object, lines: Sequence[str], *, line_start: int, line_end: int
 ) -> bool:
@@ -834,12 +859,22 @@ def _outline_reference_in_source(
     if position is None:
         return False
     for segment in reversed(segments[:-1]):
-        position = next(
-            (n for n in range(position - 1, 0, -1) if _outline_marker_at(lines[n - 1], segment)),
-            None,
-        )
-        if position is None:
+        kind = _outline_kind(segment)
+        found = None
+        for n in range(position - 1, 0, -1):
+            marker = _outline_marker(lines[n - 1])
+            if marker is None:
+                continue
+            if marker.casefold() == segment.casefold():
+                found = n
+                break
+            if _outline_kind(marker) == kind:
+                # A different marker at the ancestor's level (`4.` while looking for `3.`) closes
+                # the section: the item is not under the named ancestor.
+                return False
+        if found is None:
             return False
+        position = found
     return True
 
 
@@ -919,6 +954,8 @@ def recover_agenda_item_extractor_response(
         declared_end = min(len(lines), int(raw_item.line_end))
         if declared_start > declared_end or not lines:
             continue
+        if not _evidence_comparison_text(raw_item.evidence_quote):
+            continue  # an empty normalized quote grounds nothing (see _evidence_span)
         exact = _recovery_tightest_spans(_recovery_exact_spans(lines, raw_item.evidence_quote))
         spans = exact
         method = ""
@@ -948,6 +985,14 @@ def recover_agenda_item_extractor_response(
             line_start=line_start,
             line_end=line_end,
         )
+        if (
+            resolved
+            and matched_prefix_lines
+            and not (line_start - 1 <= matched_prefix_lines[-1] <= line_end)
+        ):
+            # The hierarchical match must end on THIS item's own marker; `3.` then the first `A.`
+            # of section 3 does not confirm `3.A` for an `A.` under `4.` further down.
+            resolved, matched_prefix_lines = False, []
         if not resolved:
             # The evidence is uniquely grounded but the model's reference is not in the source.
             # For an OUTLINE position (`4.A`, `II.D.1`, `III.`) that is a label the model composed

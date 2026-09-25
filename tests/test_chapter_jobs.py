@@ -659,3 +659,63 @@ def test_a_few_ungrounded_items_are_dropped_but_a_mostly_ungrounded_reply_still_
     ]
     with pytest.raises(ValueError, match="absent from cited lines"):
         _finalize(agenda, three_bad)
+
+
+def test_an_omitted_word_internal_apostrophe_still_grounds_the_quote():
+    agenda = "Review of cases on Today’s Agenda\nThe City  ’s attorneys report\n"
+    artifact = _finalize(
+        agenda,
+        [
+            {
+                "title": "Cases",
+                "evidence_quote": "Review of cases on Todays Agenda",
+                "line_start": 1,
+                "line_end": 1,
+            },
+            {
+                "title": "Attorneys",
+                "evidence_quote": "The City's attorneys report",
+                "line_start": 2,
+                "line_end": 2,
+            },
+        ],
+    )
+    assert len(artifact.items) == 2
+
+
+def test_a_quote_that_is_only_quote_marks_grounds_nothing():
+    # Normalizes to "", which would be "in" any line: untrusted output must not ground a title so.
+    with pytest.raises(ValueError):
+        _finalize(
+            "1. Consider approval of contract number 1001\n",
+            [_numbered_item(1, evidence_quote='"')],
+        )
+
+
+def test_repeated_items_do_not_dilute_the_dropped_share():
+    agenda = _numbered_agenda(2)
+    stitched = {"evidence_quote": "Consider approval of contract number 9999"}
+    padded = [_numbered_item(1)] * 9 + [_numbered_item(2, **stitched)]
+    # 1 ungrounded of 2 distinct items is 50%, whatever the padding.
+    with pytest.raises(ValueError, match="absent from cited lines"):
+        _finalize(agenda, padded)
+
+
+def test_an_outline_reference_is_not_confirmed_across_a_peer_section():
+    agenda = (
+        "3. Consent items\n  A. Approve minutes\n  B. Approve contract\n"
+        "4. Discussion items\n  A. Outdoor burning in the county\n"
+    )
+    item = {
+        "display_ref": "3.A",
+        "title": "Outdoor burning",
+        "evidence_quote": "Outdoor burning in the county",
+        "line_start": 5,
+        "line_end": 5,
+    }
+    artifact = _finalize(agenda, [item])
+    # `4.` closes section 3, so `3.A` is contradicted and the source's own label is used.
+    assert [i.display_ref for i in artifact.items] == ["A."]
+    assert [i.display_ref for i in _finalize(agenda, [{**item, "display_ref": "4.A"}]).items] == [
+        "4.A"
+    ]
