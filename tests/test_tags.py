@@ -1361,6 +1361,92 @@ def test_prelabeler_sizes_gemma_batches_to_the_ai_studio_ceiling():
     assert not limits.fits_reservation(limits.max_raw_input_tokens, 60)
 
 
+def test_prelabeler_sizes_to_the_workers_learned_ratio_with_margin():
+    """The Worker checks the ceiling at its learned ratio; batches sized at the prior alone were
+    refused on every ceilinged route once that ratio rose above it (2026-09-25)."""
+    import pytest
+
+    from citypods.tags import (
+        PRELABELER_LEARNED_RATIO_MARGIN,
+        prelabeler_batch_limits,
+        prelabeler_sizing_route,
+    )
+
+    route = prelabeler_sizing_route("google/gemma-4-31b-it")
+    prior = prelabeler_batch_limits(route)
+    learned = prelabeler_batch_limits(route, 1.56)
+    assert learned.input_token_ratio == pytest.approx(1.56 * PRELABELER_LEARNED_RATIO_MARGIN)
+    assert learned.max_raw_input_tokens < prior.max_raw_input_tokens
+    # A full-size batch now fits the Worker's own check at the learned ratio.
+    assert learned.max_raw_input_tokens * 1.56 <= route.hard_input_ceiling
+    # A learned ratio below the prior never loosens sizing past the prior.
+    low = prelabeler_batch_limits(route, 1.0)
+    assert low.input_token_ratio == pytest.approx(
+        route.input_token_ratio * PRELABELER_LEARNED_RATIO_MARGIN
+    )
+
+
+def test_prelabeler_batches_use_the_learned_ratio(monkeypatch):
+    from citypods.compute import llm
+    from citypods.compute.base import JobHandle
+    from citypods.compute.llm_policy import estimate_tokens
+    from citypods.tags import (
+        llm_prelabel_candidates,
+        prelabeler_batch_limits,
+        prelabeler_sizing_route,
+    )
+
+    asked = []
+
+    def fake_ratio(route_id, family, *, backend=None):
+        asked.append((route_id, family))
+        return 1.56
+
+    monkeypatch.setattr(llm, "dispatch_v2_learned_input_ratio", fake_ratio)
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["example"], "rules": {"include": ["x"]}}],
+        }
+    )
+    candidates = [
+        {
+            "candidate_id": f"subject-{i}",
+            "id": "housing",
+            "source_kind": "llm",
+            "scope": "chapter",
+            "chapter_id": "ch-1",
+            "evidence": [{"where": "transcript", "quote": "housing " * 400}],
+            "explanation": "The chapter discusses housing.",
+        }
+        for i in range(40)
+    ]
+    jobs = []
+
+    class _Backend:
+        storage = None
+
+        def run_inference(self, job):
+            jobs.append(job)
+            return JobHandle(task=job.task, recipe_hash=job.recipe_hash, backend="x", ref="r")
+
+    llm_prelabel_candidates(
+        _Backend(),
+        candidates=candidates,
+        taxonomy=taxonomy,
+        chapters=[{"chapter_id": "ch-1", "title": "Housing", "transcript_text": "housing " * 5000}],
+        recipe_hash="r",
+        model="google/gemma-4-31b-it",
+    )
+    route = prelabeler_sizing_route("google/gemma-4-31b-it")
+    assert asked == [(route.route_id, "tag")]
+    limits = prelabeler_batch_limits(route, 1.56)
+    assert jobs
+    for job in jobs:
+        assert estimate_tokens(job.inputs["messages"]) <= limits.max_raw_input_tokens
+
+
 def test_prelabeler_sizing_ignores_paused_routes():
     from citypods.compute.llm_policy import ROUTE_CANDIDATES
     from citypods.tags import prelabeler_sizing_route

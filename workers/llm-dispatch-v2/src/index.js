@@ -406,6 +406,24 @@ export async function handleRequest(request, env) {
     }
   }
 
+  // Producer preflight: the input ratio the claim applies to a route and prompt family.
+  if (request.method === "GET" && path === "/v2/calibration") {
+    const routeId = url.searchParams.get("route_id") || "";
+    const promptFamily = url.searchParams.get("prompt_family") || "";
+    if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(routeId) || promptFamily.length > 128) {
+      return errorResponse(400, "bad_request", "route_id and prompt_family are required");
+    }
+    try {
+      const status = await coordinator.calibrationStatus(routeId, promptFamily);
+      if (!status) return errorResponse(404, "unknown_route", `Unknown route_id ${routeId}`);
+      return jsonResponse(status, 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`calibration failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
   // Operator dispatch pause (see LLMSchedulerDO's "Dispatch pause" block). A probe pauses one
   // provider or route, waits for pause-status `in_flight` to reach 0, runs, reserves what it
   // spent against the route's ledger, and resumes; every pause also expires by itself.

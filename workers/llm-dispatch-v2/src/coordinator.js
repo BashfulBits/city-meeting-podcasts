@@ -3225,6 +3225,30 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return result;
   }
 
+  /**
+   * Read-only producer preflight (`GET /v2/calibration`): the input ratio the claim will use for
+   * this route and prompt family, so a producer can size jobs to the Worker's own ceiling check.
+   * One estimates row read; writes nothing. Null for a route the catalog does not know.
+   */
+  async calibrationStatus(routeId, promptFamily) {
+    const stored = this._dispatchLimits()?.routes_by_id?.[routeId];
+    if (!stored) return null;
+    const model = this._modelForRoute(routeId);
+    const route = { ...stored, route_id: routeId, model };
+    const effective = this._calibration(route, String(promptFamily || ""));
+    return {
+      route_id: routeId,
+      model,
+      prompt_family: String(promptFamily || ""),
+      input_ratio_prior: routeInputTokenRatio(route),
+      input_ratio_p95: effective.inputRatioP95,
+      input_ratio_samples: effective.inputRatioSamples,
+      input_ratio_effective: effective.inputRatio,
+      hard_input_ceiling: Number(route.hard_input_ceiling) || null,
+      hard_input_ceiling_tolerance: Number(route.hard_input_ceiling_tolerance) || 0,
+    };
+  }
+
   _recordClaimOutcome(
     now, result, reason, diagnostics, bundlesClaimed = 0, leasesClaimed = 0, queuedDelta = 0
   ) {

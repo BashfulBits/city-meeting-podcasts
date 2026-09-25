@@ -5,6 +5,7 @@ import {
   CALIBRATION_WINDOW,
   MIN_OUTPUT_RESERVE,
   calibrationFor,
+  hardInputCeilingLimit,
   outputReserveFor,
   parseCalibrationSummary,
   recordCalibrationSample,
@@ -20,6 +21,14 @@ test("routeInputTokenRatio uses the catalog prior and falls back to 1 when unset
   assert.equal(routeInputTokenRatio({ input_token_ratio: 50 }), 1);
   assert.equal(scaledInputTokens(1000, 1.16), 1160);
   assert.equal(scaledInputTokens(null, 2), 0);
+});
+
+test("hardInputCeilingLimit adds a bounded tolerance, and is unbounded without a ceiling", () => {
+  assert.equal(hardInputCeilingLimit({ hard_input_ceiling: 14400 }), 14400);
+  assert.equal(hardInputCeilingLimit({ hard_input_ceiling: 14400, hard_input_ceiling_tolerance: 0.1 }), 15840);
+  assert.equal(hardInputCeilingLimit({ hard_input_ceiling: 14400, hard_input_ceiling_tolerance: 2 }), 14400);
+  assert.equal(hardInputCeilingLimit({ hard_input_ceiling: 14400, hard_input_ceiling_tolerance: null }), 14400);
+  assert.equal(hardInputCeilingLimit({}), Number.POSITIVE_INFINITY);
 });
 
 test("a legacy high-water summary (bare array of totals) starts an empty window", () => {

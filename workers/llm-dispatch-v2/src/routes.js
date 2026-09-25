@@ -11,7 +11,7 @@
  * build-time dependency on v1's directory continuing to exist past its Phase 3 retirement.
  */
 
-import { routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
+import { hardInputCeilingLimit, routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
 
 /** Follow model_aliases until a non-aliased (canonical) model name is reached. */
 export function canonicalModelName(model, dispatchLimits) {
@@ -82,8 +82,7 @@ export function routeFitsContext(route, inputTokens, outputTokens) {
   inputTokens = scaledInputTokens(inputTokens, routeInputTokenRatio(route));
   const contextLimit = route.input_context_limit || 32768;
   const outputLimit = route.output_context_limit || 1024;
-  const hardCeiling = Number(route?.hard_input_ceiling);
-  if (Number.isFinite(hardCeiling) && hardCeiling > 0 && inputTokens > hardCeiling) {
+  if (inputTokens > hardInputCeilingLimit(route)) {
     return false;
   }
   return (

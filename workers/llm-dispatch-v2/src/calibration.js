@@ -51,6 +51,20 @@ export function routeInputTokenRatio(route) {
   return Number.isFinite(ratio) && ratio >= MIN_RATIO && ratio <= MAX_RATIO ? ratio : 1;
 }
 
+/**
+ * The largest input, in the route's tokenizer units, the Worker will still try on this route:
+ * `hard_input_ceiling` plus its optional `hard_input_ceiling_tolerance` fraction. The scaled input
+ * is itself an estimate, so a ceiling authored with slack below the provider's real limit may
+ * admit a near miss rather than strand it. Infinity when the route has no ceiling.
+ */
+export function hardInputCeilingLimit(route) {
+  const ceiling = Number(route?.hard_input_ceiling);
+  if (!Number.isFinite(ceiling) || ceiling <= 0) return Number.POSITIVE_INFINITY;
+  const tolerance = Number(route?.hard_input_ceiling_tolerance);
+  const slack = Number.isFinite(tolerance) && tolerance > 0 && tolerance <= 0.5 ? tolerance : 0;
+  return Math.floor(ceiling * (1 + slack));
+}
+
 /** A raw chars/4 estimate expressed in the route's own tokenizer units. */
 export function scaledInputTokens(rawInput, ratio) {
   const raw = Math.max(0, Number(rawInput) || 0);

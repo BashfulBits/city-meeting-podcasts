@@ -419,6 +419,7 @@ _WORKER_ROUTE_FIELDS = (
     "input_context_limit",
     "output_context_limit",
     "hard_input_ceiling",
+    "hard_input_ceiling_tolerance",
     "input_token_ratio",
     "account_id",
     "rpm",
@@ -984,6 +985,27 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"({route['input_context_limit']}); it can never bind and should be removed"
                 )
             route["hard_input_ceiling"] = int(hard_ceiling)
+        # Optional fraction the Worker may exceed `hard_input_ceiling` by before refusing a job
+        # outright. Only for a ceiling authored with known slack below the provider's real limit:
+        # a provider input-limit rejection stands the whole route down.
+        tolerance = route.get("hard_input_ceiling_tolerance")
+        if tolerance is not None:
+            if (
+                isinstance(tolerance, bool)
+                or not isinstance(tolerance, (int, float))
+                or not math.isfinite(tolerance)
+                or not 0 <= tolerance <= 0.5
+            ):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"hard_input_ceiling_tolerance: {tolerance!r} (expected 0 to 0.5)"
+                )
+            if hard_ceiling is None:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} sets "
+                    "hard_input_ceiling_tolerance without a hard_input_ceiling"
+                )
+            route["hard_input_ceiling_tolerance"] = float(tolerance)
         # Provider tokens per estimate unit (`estimate_tokens`' chars/4). Our estimate is one
         # tokenizer-agnostic heuristic; each model family's real tokenizer diverges from it by a
         # measured, model-specific ratio (2026-09-23, 1,727 paired B2 payload/result samples:

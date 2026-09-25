@@ -928,6 +928,35 @@ test("lookahead uses the calibrated ratio, not the static prior, to skip unserva
   assert.deepEqual(plan.jobs.map((job) => job.id), ["fits"]);
 });
 
+test("a near-miss job over the calibrated ceiling is still tried within the route's tolerance", async () => {
+  // 2026-09-25: producer-sized 10,000-token Gemma batches (14,000 at the 1.4 prior) met a learned
+  // 1.3 x 1.2 = 1.56 ratio (15,600) at claim time and were refused forever on a strict 14,400.
+  const route = (tolerance) => ({
+    ...CEILING_CATALOG.routes_by_id["gemma-ai-studio"],
+    hard_input_ceiling: 14400,
+    hard_input_ceiling_tolerance: tolerance,
+    input_token_ratio: 1.4,
+  });
+  const claimWith = async (tolerance) => {
+    const { coordinator, sql } = makeCoordinator({
+      DISPATCH_LIMITS_OVERRIDE: {
+        ...CEILING_CATALOG,
+        routes_by_id: { "gemma-ai-studio": route(tolerance) },
+      },
+    });
+    sql.exec(
+      `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+       VALUES (?, 0, 16, ?, 0)`,
+      "gemma-ai-studio:google/gemma-4-31b-it:tags",
+      JSON.stringify({ r: Array(16).fill(1.3), o: Array(16).fill(200) })
+    );
+    await coordinator.enqueueBatch([gemmaJob("near-miss", 10_000)]);
+    return (await coordinator.claimDispatchWindow(Date.now(), 30)).jobs.map((job) => job.id);
+  };
+  assert.deepEqual(await claimWith(null), []);
+  assert.deepEqual(await claimWith(0.1), ["near-miss"]);
+});
+
 test("claims stop at MAX_LEASES_PER_UTC_DAY and resume on the next UTC day", async () => {
   const { coordinator, sql } = makeCoordinator({ MAX_LEASES_PER_UTC_DAY: "3", MAX_BUNDLE_JOBS: "4" });
   await coordinator.enqueueBatch(Array.from({ length: 6 }, (_, i) => makeJob(`lease-${i}`)));
