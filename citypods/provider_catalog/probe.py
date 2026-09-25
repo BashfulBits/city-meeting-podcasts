@@ -61,8 +61,16 @@ def fetch_catalog(
             if not response.ok:
                 return Catalog(error=f"catalog HTTP {response.status_code}")
             payload = response.json()
+            # A malformed body is this provider's error, never an exception that aborts the run
+            # (and with it every later provider and the issue update).
+            if not isinstance(payload, dict) and not (
+                spec.style != "google" and isinstance(payload, list)
+            ):
+                return Catalog(error="catalog malformed response")
             if spec.style == "google":
                 for item in payload.get("models") or []:
+                    if not isinstance(item, dict):
+                        continue
                     name = str(item.get("name") or "").removeprefix("models/")
                     if name:
                         models[name] = item
@@ -72,6 +80,8 @@ def fetch_catalog(
                 params = {"pageSize": 1000, "pageToken": token}
                 continue
             items = payload if isinstance(payload, list) else payload.get("data") or []
+            if not isinstance(items, list):
+                return Catalog(error="catalog malformed response")
             for item in items:
                 if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"]:
                     models[item["id"]] = item

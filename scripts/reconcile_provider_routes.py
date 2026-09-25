@@ -189,6 +189,11 @@ def main(argv: list[str] | None = None) -> int:
 
     today = datetime.now(UTC).date()
     existing = find_issue() if args.sync_issues else None
+    previous_state = decode_state((existing or {}).get("body") or "")
+    if args.due_only and not previous_state.get("deferred"):
+        # The daily run: nothing is waiting on a quota reset, so no network calls at all.
+        print("due-only: no deferred checks; nothing to do")
+        return 0
     session = requests.Session()
     quality = fetch_quality_index(session)
     report = reconcile(
@@ -196,7 +201,7 @@ def main(argv: list[str] | None = None) -> int:
         load_lanes(),
         load_decisions(),
         quality,
-        decode_state((existing or {}).get("body") or ""),
+        previous_state,
         session=session,
         control=control,
         today=today,

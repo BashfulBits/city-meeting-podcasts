@@ -309,6 +309,9 @@ def reconcile(
             report.observations.append(f"{provider}: no plugin or no config; skipped")
             continue
         provider_routes = [r for r in routes if r.get("provider") == provider]
+        # A due-only run exists to re-check deferred routes; a provider with none is not called.
+        if due_only and not any(str(r.get("route_id")) in deferred for r in provider_routes):
+            continue
         catalog = fetch_catalog(rules, cfg, session)
         if catalog.error:
             report.anomalies.append(

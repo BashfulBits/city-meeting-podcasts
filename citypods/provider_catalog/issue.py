@@ -138,26 +138,35 @@ def render_body(report: Report, *, run_date: str, previous_body: str = "") -> st
         ]
     else:
         lines.append("None.")
+    # The decision block must survive truncation whole: the next weekly update reads ticks back
+    # from it (checked_decisions), so a cut block would silently reset them. Only the report above
+    # it is truncated; observations are dropped to a stub before the block is touched.
+    decisions = ""
     if choices:
-        lines += [
-            "",
-            "## Decisions",
-            "",
-            "Tick what you want, then comment `/apply` to get one curated PR with exactly those "
-            "changes (review/48 Slice 2). Ticks are kept across weekly updates. A free route that "
-            "became paid is never removed automatically: remove it, or keep it as a paid route.",
-            "",
-            _render_decision_block(choices, checked),
-        ]
-    lines += [
-        "",
-        f"<details><summary>Observations ({len(report.observations)})</summary>",
-        "",
-        *[f"- {o}" for o in report.observations],
-        "",
-        "</details>",
-    ]
-    human, _ = bounded_body("\n".join(lines) + "\n", limit=_HUMAN_BODY_LIMIT)
+        decisions = "\n".join(
+            [
+                "",
+                "## Decisions",
+                "",
+                "Tick what you want, then comment `/apply` to get one curated PR with exactly "
+                "those changes (review/48 Slice 2). Ticks are kept across weekly updates. A free "
+                "route that became paid is never removed automatically: remove it, or keep it as "
+                "a paid route.",
+                "",
+                _render_decision_block(choices, checked),
+            ]
+        )
+    summary = f"<details><summary>Observations ({len(report.observations)})</summary>"
+    observations = "\n".join(
+        ["", summary, "", *[f"- {o}" for o in report.observations], "", "</details>", ""]
+    )
+    room = _HUMAN_BODY_LIMIT - len(decisions.encode("utf-8"))
+    if len(observations.encode("utf-8")) > room // 2:
+        observations = f"\n{summary}\n\nOmitted: the issue body limit was reached.\n\n</details>\n"
+    report_text, _ = bounded_body(
+        "\n".join(lines) + "\n", limit=max(0, room - len(observations.encode("utf-8")))
+    )
+    human = report_text.rstrip("\n") + "\n" + decisions + "\n" + observations
     return f"{human}\n{_encode_state(report.state)}\n"
 
 

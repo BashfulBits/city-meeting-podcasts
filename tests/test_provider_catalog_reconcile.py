@@ -608,3 +608,60 @@ def test_a_free_route_turned_paid_is_a_decision_with_its_lane_impact(monkeypatch
     assert "used by `moments`; still served by: `meta/llama-keep`" in body
     assert "used by `solo`; still served by: **nothing else -- the lane stalls**" in body
     assert body.index("## Decisions") > body.index("## Configured-route anomalies")
+
+
+def test_a_due_only_run_calls_only_providers_with_deferred_checks(monkeypatch):
+    full, _, _ = _run(monkeypatch, control=FakeControl(quota={"or_scarce": {"rpd_remaining": 0}}))
+    requested = []
+
+    class RecordingSession(FakeSession):
+        def get(self, url, headers=None, params=None, timeout=None):
+            requested.append(url)
+            return super().get(url, headers=headers, params=params, timeout=timeout)
+
+    reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        full.state,
+        session=RecordingSession(CATALOGS),
+        control=FakeControl(quota={"or_scarce": {"rpd_remaining": 3}}),
+        today=TODAY,
+        canary_fn=lambda *args: OK,
+        due_only=True,
+    )
+    assert requested and all(url.startswith("https://or.test") for url in requested)
+
+
+@pytest.mark.parametrize("payload", ["oops", 7, {"data": "oops"}])
+def test_a_malformed_catalog_is_that_providers_error_not_a_crash(monkeypatch, payload):
+    from citypods.provider_catalog.probe import fetch_catalog
+    from citypods.provider_catalog.registry import all_rules
+
+    monkeypatch.setenv("K", "test-key")
+    catalog = fetch_catalog(
+        all_rules()["groq"],
+        LIMITS["providers"]["groq"],
+        FakeSession({"https://groq.test": payload}),
+    )
+    assert catalog.error == "catalog malformed response"
+
+
+def test_the_decision_block_survives_a_truncated_body(monkeypatch):
+    import citypods.provider_catalog.issue as issue
+
+    report, _, _ = _run(monkeypatch)
+    choice = "`groq/meta-llama/llama-new`: add as backup to `tagger`"
+    ticked = render_body(report, run_date="2026-09-24").replace(
+        f"- [ ] {choice}", f"- [x] {choice}"
+    )
+    report.observations.extend(f"observation {i} " + "x" * 200 for i in range(200))
+    monkeypatch.setattr(issue, "_HUMAN_BODY_LIMIT", 2_500)
+    body = render_body(report, run_date="2026-10-01", previous_body=ticked)
+    assert "Truncated" in body or "Omitted" in body
+    assert f"- [x] {choice}" in body  # the tick survives, so the next update keeps it
+    assert set(decision_choices(report)) <= {
+        line.split("] ", 1)[1] for line in body.splitlines() if line.startswith("- [")
+    }
+    assert decode_state(body) == json.loads(json.dumps(report.state))
