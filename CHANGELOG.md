@@ -17,8 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
-- **Moments output budget raised from 4,096 to 16,384 tokens** (`citypods/moments.py`
-  `MOMENTS_OUTPUT_TOKEN_BUDGET`, `citypods/stages.py`). Reasoning models spent the whole 4,096 on
+- **Moments and tagger output budgets raised to 16,384 tokens** (moments from 4,096,
+  `citypods/moments.py` `MOMENTS_OUTPUT_TOKEN_BUDGET`; tagger from 1,024, `citypods/tags.py`
+  `TAG_OUTPUT_TOKEN_BUDGET`, used for the request, batch fitting and the context/TPM gates). The
+  tagger case is the same failure: Kilo step-3.7-flash spent all 1,024 tokens reasoning over a
+  35k-token transcript and returned empty content (`finish_reason: length`). Reasoning models spent the whole 4,096 on
   thinking and returned empty content: every GLM 5.3 Flash moments call on 2026-09-25 ended with
   `finish_reason: length`, 4,096 reasoning tokens and no answer (AI Gateway logs), and kimi-k3 hit
   the same limit on 3 of 8 calls. The v2 Worker's new structured-output check caught these as

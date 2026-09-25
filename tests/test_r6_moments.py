@@ -452,3 +452,24 @@ def test_the_moments_output_budget_leaves_room_for_reasoning_on_every_route():
         for route_id in catalog["model_routes_map"][model]:
             route = catalog["routes_by_id"][route_id]
             assert route["output_context_limit"] >= _moments.MOMENTS_OUTPUT_TOKEN_BUDGET, route_id
+
+
+def test_the_tagger_output_budget_leaves_room_for_reasoning_on_every_route():
+    # At 1,024 Kilo step-3.7-flash spent the whole budget reasoning and returned empty content.
+    import json as _json
+    from pathlib import Path as _Path
+
+    from citypods.compute.llm_lanes import lane_for
+    from citypods.tags import TAG_OUTPUT_TOKEN_BUDGET
+
+    assert TAG_OUTPUT_TOKEN_BUDGET >= 16_384
+    catalog = _json.loads(
+        (
+            _Path(__file__).resolve().parents[1]
+            / "workers/llm-dispatch-v2/src/dispatch_limits.json"
+        ).read_text()
+    )
+    for model in lane_for("topic-tags:tagger").models:
+        for route_id in catalog["model_routes_map"][model]:
+            route = catalog["routes_by_id"][route_id]
+            assert route["output_context_limit"] >= TAG_OUTPUT_TOKEN_BUDGET, route_id
