@@ -44,11 +44,13 @@ compiled into `workers/llm-dispatch-proxy/src/dispatch_limits.json` (review/41).
 plain Worker secret matching the client token.
 
 `LLM_MODE=direct` calls LiteLLM directly and prefers the direct transport. `LLM_MODE=dispatch` submits
-to the Cloudflare Worker and never relies on runner provider credentials. A direct-capable caller can
-set `LLMRequestPolicy(allow_dispatch_overflow=True)` to reach the Worker’s independent provider/account
-pool; otherwise it remains direct. `ROUTES` is the logical-model view, while the generated physical
-route registry preserves duplicate models across providers and accounts for selection and CAS ledger
-keys.
+to the Cloudflare Worker and never relies on runner provider credentials. Direct provider calls
+time out after `LLM_DIRECT_TIMEOUT_SECONDS` (default 720, the v2 Worker's response ceiling) unless
+the job sets its own `timeout`; `LLM_TIMEOUT_SECONDS` (default 30) covers only HTTP calls to the
+dispatch Worker. A direct-capable caller can set `LLMRequestPolicy(allow_dispatch_overflow=True)`
+to reach the Worker’s independent provider/account pool; otherwise it remains direct. `ROUTES` is
+the logical-model view, while the generated physical route registry preserves duplicate models
+across providers and accounts for selection and CAS ledger keys.
 
 Account and secret checklist (performed by the maintainer, never pasted into chat or committed):
 

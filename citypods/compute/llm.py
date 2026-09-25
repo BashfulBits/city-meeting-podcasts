@@ -442,7 +442,14 @@ class LLMBackendConfig:
     # outright. Off -> the plain ack path (the Worker's scheduled cleanup deletes them later).
     dispatch_v2_client_retire: bool = True
     daily_ingest_cap: int | None = None
+    # HTTP timeout for calls to the dispatch Worker (submit/poll/ack), which return quickly.
     timeout_seconds: float = 30.0
+    # Default LiteLLM ``timeout`` for calls this process makes to a provider itself (``direct``
+    # routes). Without it LiteLLM falls back to ``litellm.request_timeout`` (6000 s), which let a
+    # stalled provider hang a run for ~40 minutes. 720 s matches the v2 Worker's
+    # ``MAX_RESPONSE_SECONDS`` ceiling; ``timeout_seconds`` is far too short for long structured
+    # generations. A job-level ``inputs["timeout"]`` still wins.
+    direct_timeout_seconds: float = 720.0
     # Extra routes a policy-bearing call may spill onto once ``model``'s own per-minute/daily quota
     # window fills -- e.g. tagging pins ``gemini-3.1-flash-lite`` as the recipe/calibration route
     # but lets the scheduler also draw on ``gemini-3.5-flash-lite``'s independent free-tier pool for
@@ -477,6 +484,9 @@ class LLMBackendConfig:
             or os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
             daily_ingest_cap=daily_cap,
             timeout_seconds=float(os.environ.get("LLM_TIMEOUT_SECONDS", cls.timeout_seconds)),
+            direct_timeout_seconds=float(
+                os.environ.get("LLM_DIRECT_TIMEOUT_SECONDS", cls.direct_timeout_seconds)
+            ),
             dispatch_v2_client_retire=os.environ.get("CITYPODS_LLM_DISPATCH_V2_CLIENT_RETIRE", "1")
             .strip()
             .lower()
@@ -932,7 +942,7 @@ class LiteLLMBackend(Backend):
 
         ``direct`` marks a call this process makes to the provider itself. It defaults to False so
         the dispatch payload -- which shares this builder but is consumed by the Worker rather
-        than by LiteLLM -- never picks up gateway routing.
+        than by LiteLLM -- never picks up gateway routing or the direct-call timeout default.
         """
         options: dict[str, Any] = {"model": resolved_model}
         if route is not None:
@@ -955,6 +965,8 @@ class LiteLLMBackend(Backend):
         ):
             if field in job.inputs:
                 options[field] = job.inputs[field]
+        if direct:
+            options.setdefault("timeout", self.config.direct_timeout_seconds)
         return options
 
     def _dispatch_response_format(
