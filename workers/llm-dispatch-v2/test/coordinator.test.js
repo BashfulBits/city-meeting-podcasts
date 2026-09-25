@@ -1688,7 +1688,7 @@ test("an empty structured reply requeues the job, stands the route down and is c
       lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
       payload_key, created_at, updated_at, transient_retry_count
     ) VALUES (
-      'j-empty-json', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
+      'j-empty-json', 'idem-1', 'digest-1', '{"allowed_models":["google/gemma-4-31b-it"]}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
       'ltok', 'tags', 100, 50, 'payloads/j-empty-json/request.json', ?, ?, 0
     )`,
     now, now
@@ -1710,6 +1710,9 @@ test("an empty structured reply requeues the job, stands the route down and is c
 
   const job = [...sql.exec("SELECT state FROM jobs WHERE id = 'j-empty-json'")][0];
   assert.equal(job.state, "queued", "the job must retry, not complete with a non-answer or fail");
+  // Requeued under a model a route can actually claim, not the __unroutable__ sentinel.
+  const indexed = [...sql.exec("SELECT model FROM job_models WHERE job_id = 'j-empty-json'")];
+  assert.deepEqual(indexed.map((row) => row.model), ["google/gemma-4-31b-it"]);
   const route = [...sql.exec("SELECT upstream_capacity_streak, blocked_until FROM routes WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")][0];
   assert.equal(route.upstream_capacity_streak, 1);
   assert.ok(route.blocked_until >= now + 15_000, "the route cools down so the job can move elsewhere");

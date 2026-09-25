@@ -111,3 +111,10 @@ test("a route's request_params are sent with every request to it", () => {
   const plain = upstreamRequestForRoute({ messages: [] }, { ...PROMPT_ONLY_ROUTE, request_params: null });
   assert.equal("chat_template_kwargs" in plain, false);
 });
+
+test("a reply with too many unparseable JSON starts fails closed", () => {
+  // Past the candidate cap the Worker cannot afford to keep trying, so the reply takes the same
+  // retry path as any other invalid structured reply instead of being stored as a result.
+  const junk = "[x] ".repeat(40) + '{"a": 1} trailing prose';
+  assert.equal(structuredReplyProblem(reply(junk)), "structured_output_invalid");
+});
