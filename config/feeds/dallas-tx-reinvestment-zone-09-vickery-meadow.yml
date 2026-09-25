@@ -1,0 +1,16 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Reinvestment Zone 09 Vickery Meadow has 6 observed meetings spanning from 2016 to 2018, meeting the threshold of at least three observed meetings for a new recurring feed.
+slug: dallas-tx-reinvestment-zone-09-vickery-meadow
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Reinvestment Zone 09 Vickery Meadow
+lifecycle:
+  status: retired
+  reason: latest observed meeting was 2018-10-30 (2879 days ago)
+podcast_title: 'Dallas: Reinvestment Zone 09 Vickery Meadow'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Reinvestment Zone 09 Vickery Meadow board of
+  directors.
