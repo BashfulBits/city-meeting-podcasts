@@ -35,12 +35,14 @@ MOMENTS_PIPELINE_VERSION = "2"
 # re-runs moments for every council episode. 2026-09-24 (approved backfill): gemini-3.8/3.7-flash
 # added for capacity (independent 20/day pools, AA 40.9/39.1), and the retired
 # `deepseek/deepseek-v4-pro` alias (which pointed at NVIDIA's v4.1) replaced by OrcaRouter's v4:
-# NVIDIA's v4.1 returns empty content to any `response_format` (verified live 2026-09-24).
+# NVIDIA's v4.1 returns empty content to any `response_format` (verified live 2026-09-24). GLM 5.3
+# Flash (OrcaRouter, AA 41.8, 800/day, 1M context) added the same day for capacity.
 COUNCIL_MOMENT_MODELS = (
     "gemini/gemini-3.8-flash",
     "gemini/gemini-3.7-flash",
     "gemini/gemini-3.6-flash",
     "gemini/gemini-3.5-flash",
+    "zai/glm-5.3-flash",
     "deepseek/deepseek-v4-flash",
     "moonshotai/kimi-k3",
 )
