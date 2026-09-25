@@ -31,6 +31,20 @@ Phase R (Research-Tool Surface)._
   hash, so nothing re-extracts. `config/provider_limits.yml` also records OrcaRouter's published
   free-tier limits and that `rpm: 10` / `concurrency: 2` are deliberate choices below them.
 
+- **Agenda extraction keeps grounded agendas instead of discarding them over one item**
+  (`citypods/chapter_titles.py`, `citypods/chapter_jobs.py`; evidence in `evals/chapter-agenda`).
+  A composed outline reference the agenda confirms (`3.a` under `3.`) is kept, and a contradicted
+  one falls back to the source's own label; quote marks no longer decide whether a quote is
+  grounded; a repeated item is dropped; other unverifiable items are dropped while they are at most
+  10% of a response (above that it still fails and is retried). Diagnostics record the counts. On
+  identical replies no previously valid episode changed, and chapters found per answered agenda
+  rose for every model on both the main set and a new holdout (e.g. Nemotron 0.52 -> 0.66 main,
+  0.55 -> 0.69 holdout). No pipeline version change: responses that failed before succeed on retry.
+- **Chapter-agenda eval: holdout split, stored replies, offline `--rescore`, and reference
+  matching** (`evals/chapter-agenda/holdout/`, `scripts/eval_chapter_agenda.py`). 24 more episodes
+  disjoint by meeting; position-only provider chapters ("Item 3A", 11% of all provider chapters,
+  all Swagit) are now matched by the item's reference instead of never matching.
+
 - **Structured output is shaped per route by the v2 Worker** (review/48 PR C;
   `config/provider_limits.yml`, `scripts/compile_llm_limits.py`, `citypods/compute/structured_shaping.py`,
   `citypods/compute/llm.py`, `workers/llm-dispatch-v2/src/structured_output.js`, `gateway.js`,

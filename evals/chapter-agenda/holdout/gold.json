@@ -1,0 +1,1344 @@
+{
+ "version": 1,
+ "frozen_on": "2026-09-24",
+ "per_provider": 12,
+ "split": "holdout",
+ "episodes": [
+  {
+   "uid": "8577385da9f4aa7d",
+   "chapters": [
+    {
+     "title": "I. CALL TO ORDER",
+     "start": 25.0
+    },
+    {
+     "title": "IV. CONSIDERATION OF MINUTES OF REGULAR MEETING OF TUESDAY, OCTOBER 21, 2008",
+     "start": 164.0
+    },
+    {
+     "title": "V. SPECIAL PRESENTATIONS, INTRODUCTIONS, ETC.",
+     "start": 177.0
+    },
+    {
+     "title": "1. Presentation by Partners for Sacred Places",
+     "start": 179.0
+    },
+    {
+     "title": "2. Presentation by Imagination Celebration",
+     "start": 186.0
+    },
+    {
+     "title": "3. Council Member Espino Presented a Proclamation for Texas Motor Speedway Full Throttle Fan Days to Eddie Gossage.",
+     "start": 193.0
+    },
+    {
+     "title": "VI. ANNOUNCEMENTS BY CITY COUNCIL MEMBERS AND STAFF",
+     "start": 442.0
+    },
+    {
+     "title": "VII. ITEMS TO BE WITHDRAWN FROM THE CONSENT AGENDA",
+     "start": 749.0
+    },
+    {
+     "title": "VIII. ITEMS TO BE CONTINUED OR WITHDRAWN BY STAFF",
+     "start": 768.0
+    },
+    {
+     "title": "IX. CONSENT AGENDA",
+     "start": 809.0
+    },
+    {
+     "title": "X. PRESENTATIONS BY THE CITY COUNCIL",
+     "start": 870.0
+    },
+    {
+     "title": "XI. PRESENTATIONS AND/OR COMMUNICATIONS FROM BOARDS, COMMISSIONS AND/OR CITY COUNCIL COMMITTEES",
+     "start": 878.0
+    },
+    {
+     "title": "1. A Resolution Urging Legislative Action to Permit Greater Local Regulatory Oversight of Intrastate Pipeline Facilities and Intrastate Pipeline Transportation; and Providing an Effective Date (Continued from a Previous Meeting)",
+     "start": 886.0
+    },
+    {
+     "title": "2. A Resolution of the City Council of the City of Fort Worth, Texas, Canceling the City Council Meeting of Tuesday, November 4, 2008; Moving the Zoning Hearing Scheduled for November 4, 2008, at 7:00 P.M. to the City Council Meeting Scheduled for Tuesday, November 11, 2008, at 10:00 A.M.; Setting Tuesday, November 4, 2008, at 8:30 A.M. for a Called - Special Workshop Session for Review and Discussion on Gas Drilling Task Force and City Staff Recommendations; and Setting Monday, November 17, 2008, at 10:00 A.M. for a Called - Special Meeting to Canvass Election Returns and Declare the Results of the Special Election Held on November 4, 2008",
+     "start": 909.0
+    },
+    {
+     "title": "1. M&C G-16325 - Authorization to Amend Contract with Deloitte and Touche, LLP, to Increase the Fee by $795,126.00 for an Independent Audit of the Financial Records of the City of Fort Worth for Fiscal Year 2007, for a Total Amount not to Exceed $1,110,000.00 (Continued from October 21, 2008).",
+     "start": 956.0
+    },
+    {
+     "title": "5. M&C G-16330 - Authorize Reimbursement of Outside Bond Counsel for $22,680.50 for Representation of the City Regarding Internal Revenue Service Audit of Water and Sewer Revenue Refunding Bonds, Series 2003A, in the Amount of $11,793.00 to Kelly, Hart and Hallman, L.L.P.; and in the Amount of $10,887.50 to McCall, Parkhurst and Horton, L.L.P.",
+     "start": 995.0
+    },
+    {
+     "title": "6. It was the Consensus of the City Council that Mayor and Council Communication No. G-16331 - Adopt Resolution Increasing the Maximum Amount to be Paid to Cantey and Hanger by $200,000.00 for Assisting the City with Legal Issues Including, but not Limited to, Real Estate Concerning Southwest Parkway (State Highway 121T), be Continued Until the November 11, 2008, Council Meeting.",
+     "start": 1020.0
+    },
+    {
+     "title": "7. M&C G-16332 - Authorize a $250,000.00 Payment to the Retired Employees\u2019 Group Death Benefit Fund.",
+     "start": 1027.0
+    },
+    {
+     "title": "8. M&C G-16333 - Approve the Proposed Settlement of the Claims in a Lawsuit Entitled City of Fort Worth v. West Fork Partners, L.P., a Texas Limited Partnership, et al; Case No. 2007-054266-1 in the amount of $175,000.00 Arising from the Condemnation of Two Permanent Easements to Install a Pipeline and Junction Boxes to Serve the City\u2019s Village Creek Treatment Plant; Authorize the Additional Payment of $172,000.00, with the Check made Payable to West Fork Partners, L.P., in Addition to the $2,800.00 Previously Deposited with the County Court at Law; and Authorize the Appropriate City Representatives to Execute the Documents Necessary to Complete the Settlement.",
+     "start": 1045.0
+    },
+    {
+     "title": "9. M&C G-16334 - Adopt an Ordinance Denying the Rate Schedule Proposed by Oncor Electric Delivery Company LLC, as Reflected in the \u201cApplication of Oncor Electric Delivery Company LLC for Authority to Change Rates\u201d Filed by Oncor Electric Delivery Company LLC on June 27, 2008; Authorizing the Continued Participation in a Consortium of Other Municipalities Served by Oncor Electric Delivery LLC and the Hiring of Consultants and Attorneys to Assist in Any Appeal or Litigation Arising Out of Such Rate Filing or this Ordinance; Directing that Oncor Electric Delivery Company LLC Reimburse the City for all Previous and Future Reasonable Expenses Related to Such Rate Case (PUBLIC HEARING).",
+     "start": 1072.0
+    },
+    {
+     "title": "1. M&C P-10872 - Authorize Purchase Agreements with Fort Worth Star-Telegram, La Vida News - The Black Voice, and La En Casa for the City of Fort Worth for the Printing of the City Page for a Projected Cost Not to Exceed $185,846.00 (Continued from October 21, 2008).",
+     "start": 1216.0
+    },
+    {
+     "title": "1. M&C PZ-2800 \u2013 Adopt an Ordinance Changing the Name of a Portion of \u201cStonegate Boulevard\u201d to \u201cClearfork Main Street\u201d from its Intersection with South Hulen Street to Approximately 200 Feet West (PUBLIC HEARING).",
+     "start": 1245.0
+    },
+    {
+     "title": "2. M&C PZ-2801 - Adopt an Ordinance Changing the Name of a Portion of \u201cStayton Street\u201d to \u201cMuseum Way\u201d Located Adjacent to Lot 1, Block 1, SO7 Addition from its Intersection with West 7th Street to its Terminus in Museum Way (PUBLIC HEARING).",
+     "start": 1343.0
+    },
+    {
+     "title": "6. M&C C-23145 - Authorize the City Manager to Execute a Memorandum of Agreement Between the City of Fort Worth and Chesapeake Operating, Inc., Suspending the \"Lease Use Only\" Provisions of Fort Worth Ordinance No. 16986-06-2006, Section 15-42 A. 26, to Conduct a Disposal Pilot Project for the Management of Saltwater Within the Brentwood Pilot Corridor Area.",
+     "start": 1408.0
+    },
+    {
+     "title": "8. M&C C-23147 - Authorize the Transfer of $1,500,000.00 from the Storm Water Capital Fund to the Storm Water Operating Fund; Adopt a Supplemental Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the Storm Water Operating Fund in the Amount of $1,500,000.00 for the Purpose of Funding Integrated Program Management Phase 2; Adopt Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the Park Gas Well Leases Fund in the Amount of $100,000.00 from Available Funds, for the Purpose of Funding Integrated Program Management Phase 2; and Authorize the City Manager to Execute a Professional Services Agreement with CH2MHill in the Amount of $4,321,000.00 for Integrated Program Management, Phase 2.",
+     "start": 1474.0
+    },
+    {
+     "title": "9. M&C C-23148 - Authorize the City Manager to Execute a Public Right-of-Way Use Agreement with Crosstex North Texas Gathering, LP, to Grant a License to Use Certain Portions of Wagley Robertson Road and Public Right-of-Way for the Purpose of Constructing, Maintaining and Operating a Natural Gas Pipeline Across Wagley Robertson Road South of Bonds Ranch Road.",
+     "start": 1503.0
+    },
+    {
+     "title": "10. M&C C-23149 - Authorize the City Manager to Authorize the Acquisition of Improved Residential Property from Mr. Pete L. Reyes, Known as 3154 Hardy Street, Lot 2B-6, Block 4, an Addition to the City of Fort Worth, Tarrant County, Texas for the Lebow Channel Drainage Project; Find that the Price Offered in the Amount of $185,000.00 for the Residence Plus an Estimated Closing Cost of $3,000.00 is Just Compensation; and Authorize the Acceptance and Recording of Appropriate Instruments.",
+     "start": 1529.0
+    },
+    {
+     "title": "11. M&C C-23150 - Authorize the City Manager to Execute a Construction Contract with Northstar Construction, Inc., in an Amount Not to Exceed $247,750.00 for Infrastructure Construction, Lighting, Site Work and Installation of the Lancaster Avenue Median Lighting Project (Avenue of Light).",
+     "start": 1556.0
+    },
+    {
+     "title": "12. M&C C-23151 - Declare the Necessity of Taking an Interest in a Portion of Land Known as Tract 12D01, William McCowan Survey, Abstract No. 999, Tarrant County, Texas, Owned by David Riddel, O. R. Riddel and Hazel Riddel, Required for the Construction of Drainage Infrastructure Improvements; and Authorize the City Attorney to Institute Condemnation Proceedings to Acquire the Interest in the Land.",
+     "start": 1610.0
+    },
+    {
+     "title": "13. M&C C-23152 - Authorize the City Manager to Execute an Interlocal Agreement with the Fort Worth Independent School District for the City to Provide a School Attendance Court to Adjudicate Fort Worth Independent School District Truancy Cases; and Authorize the City Manager to Accept Reimbursement from the Fort Worth Independent School District in the Amount of $680,905.00 for Personnel and Other Costs Related to the Operation of the School Attendance Court in Fiscal Year 2008-2009.",
+     "start": 1633.0
+    },
+    {
+     "title": "14. M&C C-23153 - Authorize the City Manager to Execute Change Order No. 1 in the Amount of $242,857.78 to City Secretary Contract No. 35906 with Oscar Renda Contracting, Inc., for Southside II Water Transmission Main, Part 1, from South of Alta Mesa Boulevard to Rolling Hills Treatment Plant to Provide for Increased and Additional Pay Item Quantities on the Project, thereby Increasing the Contract Amount to $4,750,907.78 (City Project No. 00303).",
+     "start": 1692.0
+    },
+    {
+     "title": "15. M&C C-23154 - Authorize the City Manager to Execute an Interlocal Agreement with Fort Worth Independent School District for the Development and Use of Kingswood Park in Conjunction with Southwest Elementary School.",
+     "start": 1721.0
+    },
+    {
+     "title": "1. First Public Hearing for a Proposed City-Initiated Annexation of Approximately 424.7 Acres of Land in Tarrant County, Located South of Cleburne Crowley Road and West of West Cleburne Road (AX-08-010 SH 121/FM 1187 Mixed-Use Growth Center).",
+     "start": 1780.0
+    },
+    {
+     "title": "a. Report of City Staff",
+     "start": 1801.0
+    },
+    {
+     "title": "b. Citizen Comments",
+     "start": 1890.0
+    },
+    {
+     "title": "XVI. CITIZEN PRESENTATIONS",
+     "start": 2068.0
+    },
+    {
+     "title": "XVIII. ADJOURNMENT",
+     "start": 2243.0
+    }
+   ]
+  },
+  {
+   "uid": "f2af1113ddfa5e8b",
+   "chapters": [
+    {
+     "title": "I. Call to Order and Announce a Quorum is Present.",
+     "start": 71.0
+    },
+    {
+     "title": "II. Canvass Report of the Election Returns for the Special Elections for the Purpose of Submitting to the Qualified Voters of Said City the Questions of Whether or Not to Permit:",
+     "start": 79.0
+    },
+    {
+     "title": "a. The Legal Sale of Beer and Wine for Off-Premise Consumption Only within the City of Fort Worth; and",
+     "start": 120.0
+    },
+    {
+     "title": "b. The Legal Sale of Mixed Beverages in Restaurants by Food and Beverage Certificate Holders Only within the City of Fort Worth.",
+     "start": 141.0
+    },
+    {
+     "title": "III. Resolution of the City Council of the City of Fort Worth, Texas, Canvassing the Returns and Declaring the Results of the Special Election Held on November 4, 2008, for the Purpose of Submitting to the Qualified Voters of Said City the Question of Whether or Not to Permit the Legal Sale of Beer and Wine for Off-Premises Consumption Only within the City of Fort Worth.",
+     "start": 187.0
+    },
+    {
+     "title": "IV. Resolution of the City Council of the City of Fort Worth, Texas, Canvassing the Returns and Declaring the Results of the Special Election Held on November 4, 2008, for the Purpose of Submitting to the Qualified Voters of Said City the Question of Whether or Not to Permit the Legal Sale of Mixed Beverages in Restaurants by Food and Beverage Certificate Holders Only within the City of Fort Worth.",
+     "start": 209.0
+    },
+    {
+     "title": "VI. Adjourn.",
+     "start": 236.0
+    }
+   ]
+  },
+  {
+   "uid": "06dbd38048a1aba6",
+   "chapters": [
+    {
+     "title": "I. Call to Order - Mayor Mike Moncrief",
+     "start": 57.0
+    },
+    {
+     "title": "II. Overview of FY 2010 Budget - Dale Fisseler, P.E., City Manager",
+     "start": 701.0
+    },
+    {
+     "title": "IV. Debt Service Fund Discussion - Karen Montgomery, Assistant City Manager",
+     "start": 5564.0
+    },
+    {
+     "title": "VI. Closing Comments and Adjournment - Mayor Mike Moncrief",
+     "start": 7304.0
+    }
+   ]
+  },
+  {
+   "uid": "078d5af726de3f87",
+   "chapters": [
+    {
+     "title": "I. CALL TO ORDER",
+     "start": 11.0
+    },
+    {
+     "title": "IV. CONSIDERATION OF MINUTES OF REGULAR MEETING OF JUNE 9, 2009",
+     "start": 135.0
+    },
+    {
+     "title": "V. SPECIAL PRESENTATIONS, INTRODUCTIONS, ETC.",
+     "start": 146.0
+    },
+    {
+     "title": "1. Recognition of Vital Link Program of Fort Worth Independent School District",
+     "start": 148.0
+    },
+    {
+     "title": "VI. ANNOUNCEMENTS BY CITY COUNCIL MEMBERS AND STAFF",
+     "start": 287.0
+    },
+    {
+     "title": "VII. ITEMS TO BE WITHDRAWN FROM THE CONSENT AGENDA",
+     "start": 1069.0
+    },
+    {
+     "title": "VIII. ITEMS TO BE CONTINUED OR WITHDRAWN BY STAFF",
+     "start": 1103.0
+    },
+    {
+     "title": "IX. PRESENTATIONS BY THE CITY COUNCIL",
+     "start": 1109.0
+    },
+    {
+     "title": "X. PRESENTATIONS AND/OR COMMUNICATIONS FROM BOARDS, COMMISSIONS AND/OR CITY COUNCIL COMMITTEES",
+     "start": 1113.0
+    },
+    {
+     "title": "XI. CONSENT AGENDA",
+     "start": 1120.0
+    },
+    {
+     "title": "1. M&C P-10980 - Authorize the Purchase of Five (5) Chevrolet Trucks from Caldwell Country Chevrolet Using Texas Procurement and Support Services Contract No. 072-A1 for a Total Cost of $96,116.00.",
+     "start": 1135.0
+    },
+    {
+     "title": "2. M&C L-14787 - Declare the Necessity to Condemn a Permanent Drainage Easement and a Temporary Construction Easement from David Bonner and Thomas Martin Bonner, et al, Located at 933 East Powell Avenue, Described as a Portion of Lot 22, Block 30, Southland Subdivision, Fort Worth, Tarrant County, Texas, which is Required for the Construction of the East Davis Storm Drain System Improvements; and Authorize the City Attorney to Institute Condemnation Proceedings to Acquire the Interests in the Land.",
+     "start": 1155.0
+    },
+    {
+     "title": "XIII. REPORT OF THE CITY MANAGER",
+     "start": 1177.0
+    },
+    {
+     "title": "1. M&C G-16598 - Authorize a One (1) Year Contract Extension with Additional Compensation in the Amount of $1,150,000.00 to Deloitte and Touche, LLP, for Independent Audit Services for the Fiscal Year 2009 Comprehensive Annual Financial Report and Single Audit.",
+     "start": 1179.0
+    },
+    {
+     "title": "2. M&C G-16599 - Authorize the City Manager to Apply for and Accept, if Awarded, Funds Totaling $65,000.00 from the Amon G. Carter Foundation, the Sid W. Richardson Foundation and the Goff Family Foundation for the 2009 Como Community Center Summer Day Camp Program ; and Authorizing the Execution of Agreements with the Amon G. Carter Foundation, the Sid W. Richardson Foundation and the Goff Family Foundation for the 2009 Como Community Center Summer Day Camp Program if Funding is Awarded.",
+     "start": 1200.0
+    },
+    {
+     "title": "3. M&C G-16600 - Rescind the Previously Authorized M&C G-16513 that was Approved by the City Council on April 7, 2009; Conduct a Public Hearing to Allow Citizen Input and Consideration of the City\u2019s Revised 2009-2010 Action Plan for Use of Federal Grant Funds Totaling $11,417,713.00 from the United States Department of Housing and Urban Development (HUD) Under the Community Development Block Grant, HOME Investments Partnerships Grant, Emergency Shelter Grant and Housing Opportunities for Persons with AIDS Programs; Approve the City\u2019s Revised 2009-2010 Action Plan for Submission to HUD, Including Allocations of Grant Funds to Particular Programs and Activities in Accordance with the Listing; Authorize the Use of $170,000.00 in Estimated Program Income from Community Development Block Grant Funds; Authorize the Use of $100,000.00 in Estimated Program Income from HOME Investments Partnerships Grant Funds; Apply Indirect Cost Rates as Applicable for the Grants Fund in Accordance with the City\u2019s Administrative Regulations; and Adopt an Appropriation Ordinance Increasing the Estimated Receipts and Appropriation to the Grants Fund in the Total Amount of $11,417,713.00 ($6,743,925.00 in Community Development Block Grant Funds, $170,000.00 in Community Development Block Grant Program Income, $3,216,778.00 in HOME Investments Partnerships Grant Funds, $100,000.00 in HOME Investments Partnerships Grant Program Income, $294,481.00 in Emergency Shelter Grant Funds and $892,529.00 in Housing Opportunities for Persons with AIDS Funds), All Subject to Receipt of These Grants (PUBLIC HEARING).",
+     "start": 1235.0
+    },
+    {
+     "title": "a. Report of City Staff",
+     "start": 1256.0
+    },
+    {
+     "title": "4. M&C G-16601 - Find that the Petition Requesting the Establishment of Fort Worth Public Improvement District No. 14, Trinity Bluff, Meets the Requirements Necessary for the City Council to Designate the Proposed Area as a Public Improvement District Pursuant to Chapter 372 of the Texas Local Government Code, Based on the Petition Summary Hereto; Hold a Public Hearing to Consider the Following Matters: The Advisability of Establishing the Proposed Public Improvement District for a Term of Approximately 20 Years, Expiring September 30, 2029; The General Nature of the Proposed Improvements and/or Services to be Undertaken in the Public Improvement District (Section 1.3 of the Resolution); The Estimated Costs of the Improvements and/or Services (Attachment 1 of the Resolution); The Proposed Boundaries of the Public Improvement District (Attachment 2 of the Resolution); and The Proposed Method of Assessments; Adopt a Resolution Establishing Fort Worth Public Improvement District No. 14 (Trinity Buff PID) and Taking Certain Other Actions Concerning the District; Direct the City Secretary to Publish Notice of the Establishment of the District as Required by Chapter 372 of the Texas Local Government Code; and Authorize the City Manager to Execute a Contract with Downtown Fort Worth, Inc., to Provide Management Services to the Public Improvement District (PUBLIC HEARING).",
+     "start": 1396.0
+    },
+    {
+     "title": "a. Report of City Staff",
+     "start": 1415.0
+    },
+    {
+     "title": "b. Citizen Presentations",
+     "start": 1490.0
+    },
+    {
+     "title": "c. Council Action",
+     "start": 1546.0
+    },
+    {
+     "title": "1. M&C P-10984 - Adopt an Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the Cable Communications Section of the Special Trust Fund in the Amount of $75,470.70, from Available Funds, for the Purpose of Purchasing Camera and Cable Equipment; and Authorize the Purchase from Tri-State Video Services, Inc., Troxtrell Communications, Video Tape Products, Inc., and Videotex Systems, Inc.",
+     "start": 1554.0
+    },
+    {
+     "title": "2. M&C P-10985 - Authorize the Purchase of Two (2) Chevrolet Vehicles for the Fire Department, from Caldwell County Chevrolet Using Texas Procurement and Support Services Contract No. 071-A1 for a Total Cost of $62,616.00.",
+     "start": 1600.0
+    },
+    {
+     "title": "3. M&C P-10986 - Authorize the Annual Citywide Purchase Agreement for Copy Paper and Envelope Products for the Reprographics Division, with Western Paper Company for up to $330,425.00.",
+     "start": 1612.0
+    },
+    {
+     "title": "4. M&C P-10987 - Authorize a Purchase Agreement for Fire Alarm Services at City-Owned Facilities with C&N Fire Systems, Inc., for an Annual Amount up to $400,000.00.",
+     "start": 1628.0
+    },
+    {
+     "title": "5. M&C P-10988 - Authorize the Purchase of Two (2) New Light Duty Service Trucks from Sam Pack\u2019s Five Star Ford for the Parks and Community Service and Code Compliance Departments using Texas Procurement and Support Services Term Contract No. 072-A1 for a Total Cost of $79,346.00.",
+     "start": 1642.0
+    },
+    {
+     "title": "6. M&C P-10989 - Authorize the Purchase of a New Caterpillar 313DQ Wheel Loader Using Texas Association of School Boards BuyBoard Cooperative Contract with Holt Cat for the Environmental Management Department for a Total Amount of $176,250.00.",
+     "start": 1658.0
+    },
+    {
+     "title": "1. M&C L-14791 - Authorize the Direct Sale of City-Owned Properties Located at 901, 909 and 1013 Evans Avenue and 708 and 911 Rosedale Street to the Fort Worth Local Development Corporation in Accordance with Section 272.001(i) of the Texas Local Government Code for a Total Sales Price of $101,000.00; Authorize the City Manager, or His Designee, to Execute and Record the Appropriate Instruments Conveying the Properties to Complete the Sale; Adopt a Resolution for the Conveyance of Property to the Fort Worth Local Development Corporation Pursuant to Section 272.001(i) of the Texas Local Government Code for the Public Purpose of Creating Jobs and Commercial Opportunities in a Blighted Area in Need of Revitalization; Authorize the Acceptance of $101,000.00 in Community Development Block Grant Program Income from the Proceeds of the Sale; Adopt an Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the CD Revolving Loan Fund, from Available Funds, for the Purpose of Returning Proceeds from the Sale of Property to the Community Development Block Grant as Program Income; Authorize the Transfer of $101,000.00 from the Revolving Loan Fund to the Grants Fund; and Adopt an Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the Grants Fund, from Available Funds, for the Purpose of Returning Proceeds from the Sale of Property to the Community Development Block Grant as Program Income.",
+     "start": 1671.0
+    },
+    {
+     "title": "2. M&C L-14792 - Authorize Fee Acquisition of Right-of-Way from Lighthouse Assembly of God Located at 4101 Golden Triangle Boulevard, in North Fort Worth, Described as a Portion of Lot 1 Block 1, Lighthouse Addition, Fort Worth, Tarrant County, Texas, for $135,000.00 for the Widening of Golden Triangle Boulevard; Find that the $135,000.00 Settlement Offer Plus Estimated Closing Costs of $5,000.00 is Just Compensation; and Authorize the Appropriate City Representative to Execute the Documents Necessary to Complete the Settlement as Well as Acceptance and Recording of Appropriate Instruments.",
+     "start": 1692.0
+    },
+    {
+     "title": "1. M&C PZ-2829 - Consider the Waiver of $20,367.00 in Temporary Encroachment Fees Assessed to Cook Children\u2019s Medical Center for the Temporary Closure of 7 th Avenue Between Cooper Street and Pennsylvania Avenue from March 5, 2009, Through April 4, 2009.",
+     "start": 1707.0
+    },
+    {
+     "title": "2. M&C PZ-2830 - Institute and Consider the Adoption of an Ordinance Declaring Certain Findings; Providing for the Extension of Certain Boundary Limits of the City of Fort Worth; Providing for the Annexation of Future Right-of-Way for Hulen Street, East of Summer Creek Drive and South of McPherson Boulevard, an Approximate 3.6 Acre Tract of Land Situated in the Antonio Castillo Survey, Abstract Number 272 and in the R. J. Ware Survey, Abstract 2008, Situated About 11.4 Mile South, 30 Degrees West of the Courthouse, Tarrant County, Texas, (Case No. AX-09-003) Which Said Territory Lies Adjacent to and Adjoins the Present Corporate Boundary Limits of Fort Worth , Texas ; Providing that the Territory Annexed Shall Bear its Pro Rata Part of Taxes; Providing that the Inhabitants Thereof Shall Have All the Privileges of All the Citizens of Fort Worth , Texas .",
+     "start": 1741.0
+    },
+    {
+     "title": "3. M&C PZ-2831 - Authorize the Sale of a Portion of City Right-of-Way Located at the Intersection of Ninth Street and Throckmorton Street, Fort Worth, Texas, to the Fort Worth Transportation Authority for a Sales Price of $600,000.00; Authorize the Purchase of a Parcel of Land Located at the Intersection of Ninth Street and Throckmorton Street, Fort Worth, Texas, from the Fort Worth Transportation Authority for a Purchase Price of $600,000.00; and Authorize the City Manager, or His Designee, to Execute and Record the Appropriate Instruments to Complete the Sales.",
+     "start": 1790.0
+    },
+    {
+     "title": "4. M&C PZ-2832 - Adopt an Ordinance Changing the Name of Fitzhugh Avenue to Richard Legacy Lane from Mitchell Boulevard to its Eastern Terminus, Located Adjacent to Blocks Four (4) Through Ten (10), Southport No. 3 Addition (PUBLIC HEARING).",
+     "start": 1805.0
+    },
+    {
+     "title": "a. Report of City Staff",
+     "start": 1817.0
+    },
+    {
+     "title": "c. Council Action",
+     "start": 1863.0
+    },
+    {
+     "title": "5. M&C PZ-2833 - Adopt an Ordinance Changing the Name of Oakdale Drive to Good Shepherd Way from Nelms Drive to East Interstate 820 South Located Adjacent to Blocks 4-8, Village Garden Addition, Fort Worth, Texas (PUBLIC HEARING).",
+     "start": 1873.0
+    },
+    {
+     "title": "a. Report of City Staff",
+     "start": 1881.0
+    },
+    {
+     "title": "1. M&C C-23596 - Authorize the City Manager to Execute an Engineering Services Agreement with Kennedy Consulting, Ltd., in the Amount of $1,465,379.00 for the Design of Dirks Road from Bryant Irvin Road to Granbury Road .",
+     "start": 1945.0
+    },
+    {
+     "title": "2. M&C C-23597 - Authorize the City Manager to Execute a Communications Systems Agreement with the Fort Worth Independent School District for Participation in the City of Fort Worth \u2019s Two-Way Public Safety Radio System. The Fort Worth Independent School District will Reimburse their Share of Operations and Maintenance to Ensure No Cost to the City of Fort Worth and for Fiscal Year 2009 the Reimbursement is Estimated to be Approximately $9,800.00.",
+     "start": 2038.0
+    },
+    {
+     "title": "4. M&C C-23599 - Authorize the Transfer of $44,917.55 from the Water and Sewer Operating Fund to the Water Capital Projects Fund in the Amount of $36,156.77 and Sewer Capital Projects Fund in the Amount of $8,760.78; Adopt an Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the Water Capital Projects Fund and in the Sewer Capital Projects Fund, from Available Funds, for the Purpose of Funding Pavement Reconstruction and Water and Sewer Main Replacements on Collinwood Avenue, Penticost Street and Sanguinet Street (Project 7C-01268); and Authorize the City Manager to Execute an Engineering Agreement with Burgess and Niple, Inc., in the Amount of $108,206.00.",
+     "start": 2089.0
+    },
+    {
+     "title": "5. M&C C-23600 - Authorize the Transfer of $66,621.00 from the Water and Sewer Operating Fund to the Water Capital Projects Fund; Adopt an Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the Water Capital Projects Fund from Available Funds, for the Purpose of Executing an Engineering Agreement with Brown & Gay Engineers, Inc., for the Design of Pavement Reconstruction and Water Main Adjustments on Robertson Road; and Authorize the City Manager to Execute the Engineering Agreement in the Amount of $384,468.00.",
+     "start": 2107.0
+    },
+    {
+     "title": "6. M&C C-23601 - Authorize the City Manager to Execute Amendment No. 1 in the Amount of $216,466.00 to City Secretary Contract No. 31045 with Carter and Burgess, Inc., for the 2004 Capital Improvements Project \u2013 Trinity Boulevard Culvert Improvements, Thereby Revising the Total Contract Amount to $312,588.56.",
+     "start": 2154.0
+    },
+    {
+     "title": "7. M&C C-23602 - Authorize the Transfer of $456,587.00 from the Contract Street Maintenance Fund to the General Fund; Adopt a Supplemental Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the General Fund from Available Funds, for the Purpose of Executing a Contract with Vendigm Construction, LLC, for Bridge Repair and Repainting at Nine (9) Locations; and Authorize the City Manager to Execute the Contract.",
+     "start": 2213.0
+    },
+    {
+     "title": "8. M&C C-23603 - Authorize the City Manager to Execute a Contract with JLB Contracting, L.P., in the Amount of $975,658.00 for 150 Working Days for Hot Mix Asphaltic Concrete Surface Overlay 2009-6 at Thirty-Five (35) Locations.",
+     "start": 2231.0
+    },
+    {
+     "title": "9. M&C C-23604 - Authorize the City Manager to Execute an Agreement with Dunaway Associates, LP, in the Amount of $193,900.00 for the Stream WF-1 Open Channel Study.",
+     "start": 2249.0
+    },
+    {
+     "title": "10. M&C C-23605 - Authorize the City Manager to Authorize the Use of General Fund in the Amount of $176,000.00 for the Estimated Total Project Cost and to Execute a Work Order in the Amount of $148,872.19 with Job Order Contractor, Alpha Building Corporation, to Disassemble, Transport and Prepare for Storage the Prefabricated Apparatus Building and Restore the Site of the Temporary Fire Station No. 34 Located at 824 West Blue Mound Road.",
+     "start": 2265.0
+    },
+    {
+     "title": "11. M&C C-23606 - Authorize the City Manager to Execute the Texas Commission on Environmental Quality Federally Funded Grant Agreement with the Texas Commission on Environmental Quality for Air Pollution Control Services by the City with a Maximum Amount of $308,856.00 for a Two (2) Year Term of September 1, 2009, Through August 31, 2011; Authorize a Non-Interest Bearing Interfund Loan from the Environmental Management Operation Fund to the Grants Fund in the Amount of $25,480.50 for Interim Financing for this Grant Pending Contract Execution; Authorize the Use of $101,922.00 from the General Fund as an In-Kind Match for the Two (2) Year Term; Adopt an Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the Grants Fund Subject to Receipt of an Executed Contract with the Texas Commission on Environmental Quality; and Apply Indirect Costs at the Most Recently Approved Rate of 21.48 Percent for the Environmental Management Department.",
+     "start": 2343.0
+    },
+    {
+     "title": "12. M&C C-23607 - Authorize the Transfer of $1,031,538.00 from the Water and Sewer Operating Fund to the Water Capital Projects Fund in the Amount of $717,577.00 and Sewer Capital Projects Fund in the Amount of $313,961.00; Adopt an Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the Water Capital Projects Fund and in the Sewer Capital Projects Fund from Available Funds, for the Purpose of Funding Water and Sewer Main Replacement Contract 2005 WSM-K, Part 2, on Chilton Street, Milam Street, Major Street, Mims Street, Kerr Street and East Lancaster Avenue; and Authorize the City Manager to Execute a Contract in the Amount of $949,302.00 with Tri-Tech Construction, Inc.",
+     "start": 2360.0
+    },
+    {
+     "title": "XIV. CITIZEN PRESENTATIONS",
+     "start": 2394.0
+    },
+    {
+     "title": "1. Mr. Robert Snoke, 3826 6th Avenue - Rosemont Park",
+     "start": 2396.0
+    },
+    {
+     "title": "2. Mr. Joe Don Brandon, P.O. Box 1155 - Operation of The T Bus System by the City",
+     "start": 2428.0
+    },
+    {
+     "title": "XVI. ADJOURNMENT",
+     "start": 2691.0
+    }
+   ]
+  },
+  {
+   "uid": "21560a3df09d3055",
+   "chapters": [
+    {
+     "title": "1) Welcome - Mike Moncrief, Mayor",
+     "start": 8.0
+    },
+    {
+     "title": "2) Overview of Day - Dale Fisseler, City Manager",
+     "start": 263.32129299999997
+    },
+    {
+     "title": "3) Review of FY2011 Proposed Budget and Responses - Horatio Porter, Budget Officer",
+     "start": 475.321293
+    },
+    {
+     "title": "4) City Manager\u2019s Pension Recommendations - Karen Montgomery, Asst. City Manager",
+     "start": 733.0312710000001
+    },
+    {
+     "title": "6) Review of Culture and Tourism Fund - Kirk Slaughter, Director",
+     "start": 5764.031271
+    },
+    {
+     "title": "9) Debt Capacity Model/Infrastructure - James Mauldin, Treasurer; Randle Harwood, Director",
+     "start": 7010.031271
+    },
+    {
+     "title": "7) Mayor\u2019s Blue Ribbon Task Force on Transportation Infrastructure Funding Recommendations - Bob Herchert, Committee Chairman",
+     "start": 9409.138549
+    }
+   ]
+  },
+  {
+   "uid": "6c2ef399e25000e0",
+   "chapters": [
+    {
+     "title": "1) Call to Order - Mike Moncrief, Mayor",
+     "start": 3.0
+    },
+    {
+     "title": "2) Opening Comments - Dale Fisseler, City Manager",
+     "start": 75.0
+    },
+    {
+     "title": "3) Budget Retreat Recap - Horatio Porter, Budget Officer",
+     "start": 143.0
+    },
+    {
+     "title": "5) City Manager's Healthcare Recommendations - Karen Marshall, Director",
+     "start": 297.0
+    },
+    {
+     "title": "6) General Fund Departmental Budgets - Neighborhood Services",
+     "start": 3747.0
+    },
+    {
+     "title": "a. Library and Parks Community Services - Gleniece Robinson, Director",
+     "start": 3753.0
+    }
+   ]
+  },
+  {
+   "uid": "fc27fd0307a5ade6",
+   "chapters": [
+    {
+     "title": "1) Call to Order - Mike Moncrief, Mayor",
+     "start": 4.0
+    },
+    {
+     "title": "3) Discussion of Retirement Plan Modification Options - Karen L. Montgomery Assistant City Manager",
+     "start": 140.0
+    },
+    {
+     "title": "4) Executive Session - The City Council may conduct a closed meeting as authorized by Section 551.071 of the Texas Government Code to seek the advice of its attorneys on legal issues regarding any matter listed on this Agenda",
+     "start": 2171.0
+    }
+   ]
+  },
+  {
+   "uid": "fa1bd4b597d99fba",
+   "chapters": [
+    {
+     "title": "II. P U B L I C H E A R I N G: 1:30 PM Council Chamber",
+     "start": 0.0
+    },
+    {
+     "title": "A. Approval of Previous Month\u2019s Minutes",
+     "start": 250.0
+    },
+    {
+     "title": "B. Approval of Previously Recorded Final Plats",
+     "start": 276.0
+    },
+    {
+     "title": "1. PP-011-026 Arborlawn Drive Right-of-Way and Bellaire Drive South Right-of-Way in the Edwards Ranch Riverhills Addition: 17.384 Acres - Public Street Right-of-Way. Council District 3.",
+     "start": 303.0
+    },
+    {
+     "title": "2. FP-011-028 Parr Trust: 49 Single-Family Detached Lots, 2 Open Space Lots, and 1 Private Street Lot (Waiver Request). Council District 2.",
+     "start": 560.0
+    },
+    {
+     "title": "3. FS-012-020 Lots 6R3A-3 and 6R3A-4, Block D, Chamberlin Arlington Heights Addition. Council District 7",
+     "start": 1878.0
+    }
+   ]
+  },
+  {
+   "uid": "a4ebc391f6f7848d",
+   "chapters": [
+    {
+     "title": "II. 10:00 A.M. PUBLIC HEARING Council Chamber",
+     "start": 4.0
+    },
+    {
+     "title": "A. Approval of Minutes of June 6th 2012 Hearing __________",
+     "start": 217.0
+    },
+    {
+     "title": "1. BAC-12-045 Bailey Apartments LTD by Alliance Residential Co. 150 & 160 St Donovan St CD7",
+     "start": 382.0
+    },
+    {
+     "title": "a. Request a VARIANCE in a \"MU-1\" Low Intensity Mixed-Use District to permit the construction of new residential buildings with four (4) stories in height where a maximum of three (3) story building height is allowed, excessive by one (1) story.",
+     "start": 383.0
+    },
+    {
+     "title": "b. Request a VARIANCE in a \"MU-1\" Low Intensity Mixed-Use District to permit the construction of new residential buildings with fifty eight (58) dwelling units per acre where a maximum of forty (40) dwelling units per acre are allowed, excessive by eighteen (18) dwelling units per acre.",
+     "start": 385.0
+    },
+    {
+     "title": "a. Request a SPECIAL EXCEPTION in a \"E\" Neighborhood Commercial District to permit the construction of a telecommunications tower.",
+     "start": 4278.0
+    },
+    {
+     "title": "b. Request a VARIANCE in a \"E\" Neighborhood Commercial District to permit the construction of a telecommunications tower one hundred and eighty (180) feet in height where a maximum of forty five (45) feet height is allowed, excessive by one hundred and thirty five (135) feet.",
+     "start": 4283.0
+    },
+    {
+     "title": "1. BAC-12-059 Chesapeake Land Development Company, LLC 11538 Old Weatherford Rd CD7",
+     "start": 4287.0
+    },
+    {
+     "title": "c. Request a VARIANCE in a \"E\" Neighborhood Commercial District to permit the construction of a telecommunications tower within two hundred and fifty (250) feet of Multifamily district to the east side of the property line.",
+     "start": 4288.0
+    },
+    {
+     "title": "d. Request a VARIANCE in a \"E\" Neighborhood Commercial District to permit the construction of a telecommunications tower within five hundred (500) feet of One-Family district to the south side of the property line.",
+     "start": 4289.0
+    },
+    {
+     "title": "3. BAC-12-061 Kommana Vongphakdy 7105 Marvin Brown St CD7",
+     "start": 6182.0
+    },
+    {
+     "title": "b. Request a VARIANCE in a \"A-5\" One-Family District to permit the installation of a new carport encroaching approximately six (6) feet into the required ten (10) foot side yard setback, creating an approximate four (4) foot side yard setback along Hereford Dr.",
+     "start": 6183.0
+    },
+    {
+     "title": "4. BAC-12-062 Maria Duran 3912 E.1ST St CD8",
+     "start": 7101.0
+    },
+    {
+     "title": "a. Request a VARIANCE in an \"I\" Light Industrial District to permit the construction of a new building providing ten (10) parking spaces where a minimum of fifteen (15) parking spaces are required, deficient by five (5) parking spaces.",
+     "start": 7104.0
+    },
+    {
+     "title": "5. BAC-12-063 Amy Schuster & Arthur Ruben by Kevin Gaston 4224 W. Vickery Blvd CD9",
+     "start": 7164.0
+    },
+    {
+     "title": "a. Request a VARIANCE in an \"E\" Neighborhood Commercial District to permit a commercial business providing forty six (46) parking spaces where a minimum of sixty five (65) parking spaces are required, deficient by nineteen (19) parking spaces.",
+     "start": 7167.0
+    },
+    {
+     "title": "5. BAC-12-063 Amy Schuster & Arthur Ruben by Kevin Gaston 4224 W. Vickery Blvd CD9",
+     "start": 7704.0
+    },
+    {
+     "title": "6. BAC-12-064 Gryphon Acquisitions Ltd. by Alex Veigel 2832 Forest Park Blvd CD9",
+     "start": 8296.0
+    },
+    {
+     "title": "b. Request a VARIANCE in a \"B\" Two-Family District to permit the installation of an auxiliary parking lot without providing the chained and locked facility at night.",
+     "start": 8301.0
+    },
+    {
+     "title": "a. Request a SPECIAL EXCEPTION in a \"B\" Two-Family District to permit the installation of an auxiliary parking lot for an apartment.",
+     "start": 8302.0
+    },
+    {
+     "title": "c. Request a VARIANCE in a \"B\" Two-Family District to permit the installation of an auxiliary parking lot without providing the required screening fence.",
+     "start": 8303.0
+    },
+    {
+     "title": "d. Request a VARIANCE in a \"B\" Two-Family District to permit the installation of an auxiliary parking lot without providing the required landscaped buferyard.",
+     "start": 8304.0
+    },
+    {
+     "title": "7. BAC-12-065 Hulen Risinger Ltd. by Tommy Bell 8533 S. Hulen St CD6",
+     "start": 9849.0
+    },
+    {
+     "title": "a. Request a SPECIAL EXCEPTION in a \"E\" Neighborhood Commercial District to permit the installation of an electronic changeable copy sign on a monument sign along west side of the property line.",
+     "start": 9856.0
+    },
+    {
+     "title": "b. Request a SPECIAL EXCEPTION in a \"E\" Neighborhood Commercial District to permit the installation of an electronic changeable copy sign on a monument sign along south side of the property line.",
+     "start": 9857.0
+    },
+    {
+     "title": "d. Request a VARIANCE for the installation of monument signs encroaching approximately nineteen (19) feet into the required twenty (20) foot front yard setback creating an approximate one (1) foot front yard setback along West Risinger Rd.",
+     "start": 9858.0
+    },
+    {
+     "title": "8. BAC-12-066 Tommy Bell 3700 Basswood Blvd CD4",
+     "start": 10335.0
+    },
+    {
+     "title": "a. Request a SPECIAL EXCEPTION in a \"E\" Neighborhood Commercial District to permit the installation of an electronic changeable copy sign on a monument sign along west side of the property line.",
+     "start": 10337.0
+    },
+    {
+     "title": "b. Request a SPECIAL EXCEPTION in a \"E\" Neighborhood Commercial District to permit the installation of an electronic changeable copy sign on a monument sign along north side of the property line.",
+     "start": 10338.0
+    },
+    {
+     "title": "c. Request a VARIANCE for the installation of monument signs encroaching approximately fifteen (15) feet into the required twenty (20) foot front yard setback creating an approximate five (5) foot front yard setback along Basswood Blvd.",
+     "start": 10339.0
+    },
+    {
+     "title": "d. Request a VARIANCE for the installation of monument signs encroaching approximately fifteen (15) feet into the required twenty (20) foot front yard setback creating an approximate five (5) foot front yard setback along North Riverside Dr.",
+     "start": 10340.0
+    },
+    {
+     "title": "9. BAC-12-067 Macy's Retail Holdings, Inc. by Brian E. Fetz 4620 S. Hulen St CD3",
+     "start": 11120.0
+    },
+    {
+     "title": "a. Request a VARIANCE in a \"F\" General Commercial District to permit the installation of an illuminated detached sign providing approximately five hundred and eight four (584) square feet signage area where a maximum of approximate four hundred and twenty three (423) square feet signage area is allowed, excessive by approximately one hundred and sixty one (161) square feet.",
+     "start": 11121.0
+    },
+    {
+     "title": "c. Request a VARIANCE in a \"F\" General Commercial District to permit the installation of an illuminated detached sign providing approximately ninety three (93) square feet non-illuminated materials in the sign face area where a minimum of one hundred and ten (110) square feet area of non-illuminated materials is required in the sign face area, deficient by approximately seventeen (17) square feet.",
+     "start": 11122.0
+    },
+    {
+     "title": "10. BAC-12-068 Zero Twelve Point Four, LP by JLB Contracting LLC 11508 Alta Vista Rd CD2",
+     "start": 11408.0
+    },
+    {
+     "title": "a. Request a SPECIAL EXCEPTION in a \"E\" Neighborhood Commercial District to permit the portable concrete batch plant for a period of approximately twenty (20) months.",
+     "start": 11409.0
+    },
+    {
+     "title": "b. Request a VARIANCE in a \"E\" Neighborhood Commercial District to permit to locate the portable concrete batch plant within six hundred (600) feet of residential homes.",
+     "start": 11411.0
+    },
+    {
+     "title": "11. BAC-12-069 YMCA Assn. Metropolitan FW by Capital Telecom Acquisition, LLC 6200 Sand Springs Rd CD7",
+     "start": 12237.0
+    },
+    {
+     "title": "a. Request a SPECIAL EXCEPTION in a \"A-5\" One-Family District to permit the construction of a stealth telecommunications tower.",
+     "start": 12238.0
+    },
+    {
+     "title": "b. Request a VARIANCE in a \"A-5\" One-Family District to permit the construction of a stealth telecommunications tower of one hundred (100) feet in height where a maximum of thirty five (35) feet height is allowed, excessive by sixty five (65) feet.",
+     "start": 12239.0
+    },
+    {
+     "title": "c. Request a VARIANCE in a \"A-5\" One-Family District to permit the construction of a stealth telecommunications tower without providing the required landscaping.",
+     "start": 12240.0
+    },
+    {
+     "title": "12. BAC-12-070 LT Sports by Scott Ford 251 Settlement Plaza Rd CD7",
+     "start": 14122.0
+    },
+    {
+     "title": "a. Request a VARIANCE in a \"PD-410 (G)\" Planned Development District to permit the construction of a new metal building providing zero (0) percent non-metal materials on the exterior building fa\u00e7ade where a minimum of fifty (50) percent non-metal materials are required, deficient by fifty (50) percent.",
+     "start": 14123.0
+    },
+    {
+     "title": "13. BAC-12-071 GNL Ridglea, LLC by Signs MFG & Maint Co. 6300 Ridglea Pl CD3",
+     "start": 14415.0
+    },
+    {
+     "title": "a. Request a VARIANCE in a \"MU-2\" High Intensity Mixed-Use District to permit the installation of an illuminated attached sign providing approximately three hundred and eleven (311) square feet signage area where a maximum of approximate two hundred and sixty four (264) square feet signage area is allowed, excessive by approximately forty seven (47) square feet.",
+     "start": 14417.0
+    },
+    {
+     "title": "14. BAC-12-072 Mental Health Mental Retardation of Tarrant County by John McBride 2400 NW 24th St CD2",
+     "start": 14636.0
+    },
+    {
+     "title": "a. Request a VARIANCE in a \"CF\" Community Facilities District to permit the installation of a monument sign twelve (12) feet in height where a maximum of eight (8) feet height is allowed, excessive by four (4) feet.",
+     "start": 14637.0
+    },
+    {
+     "title": "b. Request a VARIANCE in a \"CF\" Community Facilities District to permit the installation of a monument sign encroaching approximately eighteen (18) feet into the required twenty (20) foot front yard setback, creating an approximate two (2) foot front yard setback.",
+     "start": 14638.0
+    },
+    {
+     "title": "15. BAC-12-073 Belknap-Beach Ltd by Teague Nall & Perkins, Inc. 3812 E. Belknap St CD4",
+     "start": 14731.0
+    },
+    {
+     "title": "a. Request a VARIANCE in a \"E\" Neighborhood Commercial District to permit the construction of a dumpster pad and screening wall encroaching approximately eight (8) feet into the required ten (10) foot rear yard setback, creating an approximate two (2) foot rear yard setback.",
+     "start": 14732.0
+    },
+    {
+     "title": "16. BAC-12-074 D R Horton-Texas Ltd. 1416 Twisting Star Dr CD7",
+     "start": 15044.0
+    },
+    {
+     "title": "a. Request a VARIANCE in a \"PD-564\" Planned Development District to permit continued use of a model home within three hundred (300) feet of an occupied residence for a period of three years.",
+     "start": 15045.0
+    },
+    {
+     "title": "17. BAC-12-075 Kingdom Manifesters 2401 McCurdy St CD8",
+     "start": 15153.0
+    },
+    {
+     "title": "a. Request a VARIANCE in a \"I\" Light Industrial District to permit the installation of an illuminated monument sign encroaching approximately eighteen (18) feet into the required twenty (20) foot front yard setback, creating an approximate two (2) foot front yard setback.",
+     "start": 15154.0
+    },
+    {
+     "title": "18. BAC-12-076 Impression Homes LLC 5617 Thunder Bay Dr CD5",
+     "start": 15408.0
+    },
+    {
+     "title": "a. Request a VARIANCE in a \"PD-518\" Planned Development District to permit the construction of a model home within three hundred (300) feet of an occupied residence for a period of three years.",
+     "start": 15409.0
+    },
+    {
+     "title": "19. BAC-12-077 White Settlement ISD by Identify Management 9850 Legacy Dr CD7",
+     "start": 15721.0
+    },
+    {
+     "title": "a. Request a SPECIAL EXCEPTION in a \"CF\" Community Facilities District to permit the installation of an electronic changeable copy sign on a monument sign.",
+     "start": 15722.0
+    },
+    {
+     "title": "b. Request a VARIANCE in a \"CF\" Community Facilities District to permit the installation of an illuminated monument sign adjacent to a residential district.",
+     "start": 15723.0
+    }
+   ]
+  },
+  {
+   "uid": "51d65991e6f1213c",
+   "chapters": [
+    {
+     "title": "1) Welcome - Honorable Betsy Price, Mayor",
+     "start": 294.90018100000003
+    },
+    {
+     "title": "3) Review of FY2013 Proposed Budget Book and Decision Packages - Horatio Porter, Budget Officer",
+     "start": 371.90018100000003
+    },
+    {
+     "title": "5) Post Employment Benefits & Healthcare Strategies - Susan Alanis, Asst. City Manager",
+     "start": 493.90018100000003
+    },
+    {
+     "title": "6) Enterprise Fund & Special Revenue Fund",
+     "start": 3574.900181
+    },
+    {
+     "title": "B. Culture & Tourism - Kirk Slaughter, Director",
+     "start": 3579.900181
+    },
+    {
+     "title": "A. Water Department - Frank Crumb, Director",
+     "start": 4701.900181
+    },
+    {
+     "title": "7) Wrap up discussion - Honorable Betsy Price, Mayor",
+     "start": 7169.900181
+    },
+    {
+     "title": "9) Adjourn",
+     "start": 7534.900181
+    }
+   ]
+  },
+  {
+   "uid": "8b37ca9f1725e24b",
+   "chapters": [
+    {
+     "title": "I. CALL TO ORDER",
+     "start": 26.0
+    },
+    {
+     "title": "II. PLEDGE",
+     "start": 30.0
+    },
+    {
+     "title": "III. APPROVAL OF MINUTES",
+     "start": 54.0
+    },
+    {
+     "title": "A. Minutes of August 7, 2013 P&Z Meeting",
+     "start": 56.0
+    },
+    {
+     "title": "IV. PLAT CONSENT AGENDA AND PUBLIC HEARING FOR PLATS",
+     "start": 93.0
+    },
+    {
+     "title": "A. Preliminary Plat - Fannin Farm West Addition - Phase III, Section C (Zoned R and R2); generally located north of Hardisty Drive and west of Weaver Drive with the approximate address of 6399 South Cooper Street",
+     "start": 97.0
+    },
+    {
+     "title": "V. PUBLIC HEARING FOR ZONING CASES",
+     "start": 151.0
+    },
+    {
+     "title": "A. Zoning Case PD13-9 (1010 N. Collins - 801 East Randol Mill Road) Application to change the zoning on approximately 4.31 acres from Entertainment District-Community Services (ED-CS) and Entertainment District-Neighborhood Services (ED-NS) to Planned Development (PD) for Entertainment District-Community Services (ED-CS) uses plus Night Club, with a Concept Brief; generally located north of East Randol Mill Road and west of North Collins Street.",
+     "start": 158.0
+    },
+    {
+     "title": "B. Zoning Case PD13-11 (Express Care Pharmacy - 905 Medical Centre Drive, Suite B) Application to change the zoning on approximately 2.92 acres from Office (O) to Planned Development (PD) for all Office (O) uses, plus a Pharmacy use, limited to 1,800 square feet, with a Concept Brief; generally located north of Medical Centre Drive and east of Magnolia Street.",
+     "start": 198.0
+    },
+    {
+     "title": "A. Reports from Boards/Commissions Liaisons",
+     "start": 413.0
+    },
+    {
+     "title": "VII. ADJOURN",
+     "start": 415.0
+    }
+   ]
+  },
+  {
+   "uid": "d85f9a9b71dee9e6",
+   "chapters": [
+    {
+     "title": "I. Call to Order",
+     "start": 0.0
+    },
+    {
+     "title": "II. Action Items",
+     "start": 5.0
+    },
+    {
+     "title": "B. Consideration and Adoption of Resolution Canvassing Votes and Making Findings Concerning the Results of the Election Held on Saturday, May 10, 2014, on the Continuation of the Fort Worth Crime Control and Prevention District for Five Years and Continuation of the District's One-Half Cent Sales Tax for Five Years - Ron Gonzales, Assistant CCPD Board Secretary",
+     "start": 68.0
+    },
+    {
+     "title": "III. Adjourn",
+     "start": 70.0
+    }
+   ]
+  },
+  {
+   "uid": "239398addde9b694",
+   "chapters": [
+    {
+     "title": "1. Clarification of agenda items listed in the Regular Session agenda for this meeting, and discussion of issues not briefed in the written backup materials.",
+     "start": 6.0
+    },
+    {
+     "title": "REGULAR MEETING",
+     "start": 1002.213175
+    },
+    {
+     "title": "1. PLEDGE OF ALLEGIANCE:",
+     "start": 1017.929184
+    },
+    {
+     "title": "B. Texas Flag \"Honor the Texas Flag - I pledge allegiance to thee, Texas one state under God, one and indivisible.\"",
+     "start": 1034.929184
+    },
+    {
+     "title": "2. CONSIDER APPROVAL OF THE PLANNING AND ZONING COMMISSION MINUTES FOR:",
+     "start": 1056.929184
+    },
+    {
+     "title": "A. March 10, 2010",
+     "start": 1129.929184
+    },
+    {
+     "title": "4. ITEMS FOR INDIVIDUAL CONSIDERATION:",
+     "start": 1152.929184
+    },
+    {
+     "title": "A. Alternative Development Plan (ADP) for a gas station and convenience store. The approximately 2.32-acre property is located at the southwest corner of West University Drive (U.S. 380) and I-35. The property is located within an Industrial Center Employment (IC-E) zoning district. (ADP09-0008, Texas Blue Saddle/QT #192, Erica Marohnic)",
+     "start": 1157.929184
+    },
+    {
+     "title": "3. CONSENT AGENDA: Staff recommends approval of the following items because they meet the requirements of the Denton Development Code. Approval of the Consent Agenda includes staff recommendations for approval and authorizes staff to proceed. The Planning and Zoning Commission has reviewed the applications and has had an opportunity to raise questions regarding the items prior to consideration:",
+     "start": 1725.929184
+    },
+    {
+     "title": "5. PUBLIC HEARINGS: Hold a public hearing and consider making a recommendation to the Denton City Council on the following items:",
+     "start": 1767.929184
+    },
+    {
+     "title": "A. Detailed Plan amendment to allow a 1,799 square foot addition to an existing 11,144 square foot office within a Planned Development Zoning District (PD-12, I-35/State School). The subject site is generally located on the south side of Interstate 35 East (I-35E), north of the City of Corinth city limit line. (Z10-0001, Classic Chrysler Jeep, Nana Appiah)",
+     "start": 1771.929184
+    },
+    {
+     "title": "6. FUTURE AGENDA ITEMS: Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Planning and Zoning Commission or the public with specific factual information or recitation of policy, or accept a proposal to place the matter on the agenda for an upcoming meeting.",
+     "start": 3289.9291839999996
+    }
+   ]
+  },
+  {
+   "uid": "e65b938bd028c6b5",
+   "chapters": [
+    {
+     "title": "Introduction",
+     "start": 0.0
+    },
+    {
+     "title": "Airport Subcommittee",
+     "start": 527.04
+    },
+    {
+     "title": "Community Amenities Subcommittee",
+     "start": 1846.144
+    },
+    {
+     "title": "Infrastructure Subcommittee",
+     "start": 4337.12
+    },
+    {
+     "title": "Next Great Ideas Subcommittee",
+     "start": 5121.984
+    },
+    {
+     "title": "Public Safety Subcommittee",
+     "start": 6154.592000000001
+    },
+    {
+     "title": "Final Comments",
+     "start": 7177.8240000000005
+    }
+   ]
+  },
+  {
+   "uid": "036e5f84ac2c41cd",
+   "chapters": [
+    {
+     "title": "Executive Session",
+     "start": 0.0
+    },
+    {
+     "title": "Introduction",
+     "start": 79.296
+    },
+    {
+     "title": "Budget Consent (Part 1 of 6)",
+     "start": 240.95999999999998
+    },
+    {
+     "title": "Budget Consent (Part 2 of 6)",
+     "start": 2021.28
+    },
+    {
+     "title": "Budget Consent (Part 3 of 6)",
+     "start": 4828.32
+    },
+    {
+     "title": "Budget Consent (Part 4 of 6)",
+     "start": 7421.536
+    },
+    {
+     "title": "Budget Consent (Part 5 of 6)",
+     "start": 9877.92
+    },
+    {
+     "title": "Budget Consent (Part 6 of 6)",
+     "start": 12881.696
+    },
+    {
+     "title": "Budget Consent (Part 1 of 6)",
+     "start": 15401.376
+    },
+    {
+     "title": "Budget Consent (Part 2 of 6)",
+     "start": 17830.464
+    },
+    {
+     "title": "Budget Consent (Part 3 of 6)",
+     "start": 19994.816
+    },
+    {
+     "title": "Budget Consent (Part 4 of 6)",
+     "start": 23132.48
+    },
+    {
+     "title": "Budget Consent (Part 5 of 6)",
+     "start": 25669.472
+    },
+    {
+     "title": "Budget Consent (Part 6 of 6)",
+     "start": 28383.712
+    },
+    {
+     "title": "Mueller Local Government Corporation Meeting",
+     "start": 30961.984
+    },
+    {
+     "title": "Austin Housting Finance",
+     "start": 31023.296000000002
+    },
+    {
+     "title": "Conclusion",
+     "start": 31104.224000000002
+    }
+   ]
+  },
+  {
+   "uid": "d921a9aa9d4386a9",
+   "chapters": [
+    {
+     "title": "Call to Order",
+     "start": 0.0
+    },
+    {
+     "title": "Items 3A - 3C",
+     "start": 669.568
+    },
+    {
+     "title": "Item 4",
+     "start": 1588.768
+    },
+    {
+     "title": "Item 5A",
+     "start": 3350.976
+    },
+    {
+     "title": "Item 5B",
+     "start": 4880.384
+    },
+    {
+     "title": "Item 5C",
+     "start": 7735.616
+    },
+    {
+     "title": "Item 5D",
+     "start": 9547.04
+    },
+    {
+     "title": "Items 6 - 8",
+     "start": 14355.328000000001
+    }
+   ]
+  },
+  {
+   "uid": "d7236adc8412fff8",
+   "chapters": [
+    {
+     "title": "Items 1 \\u0026 2",
+     "start": 0.0
+    },
+    {
+     "title": "Item 3",
+     "start": 75.6000625
+    },
+    {
+     "title": "Item 4 (Part 1 of 2)",
+     "start": 182.592125
+    },
+    {
+     "title": "Item 4 (Part 2 of 2)",
+     "start": 3328.768125
+    },
+    {
+     "title": "Item 9 (Part 1 of 2)",
+     "start": 4229.856125
+    },
+    {
+     "title": "Item 5 (Part 1 of 2)",
+     "start": 6225.984125
+    },
+    {
+     "title": "Item 5 (Part 2 of 2)",
+     "start": 8907.616125
+    },
+    {
+     "title": "Item 6",
+     "start": 10802.848125
+    },
+    {
+     "title": "Item 7",
+     "start": 12037.216125
+    },
+    {
+     "title": "Item 8",
+     "start": 13130.944125000002
+    },
+    {
+     "title": "Items 9 (Part 2 of 2) \\u0026 10",
+     "start": 14551.872125000002
+    },
+    {
+     "title": "Items 11 - 14",
+     "start": 15171.168125000002
+    }
+   ]
+  },
+  {
+   "uid": "13a7ccd6cec16a73",
+   "chapters": [
+    {
+     "title": "Call to Order",
+     "start": 0.0
+    },
+    {
+     "title": "Item 1",
+     "start": 11.211201814058956
+    },
+    {
+     "title": "Item 2",
+     "start": 31.76501133786848
+    },
+    {
+     "title": "Item 3",
+     "start": 1038.5708163265306
+    },
+    {
+     "title": "Item 4",
+     "start": 1698.1630158730159
+    },
+    {
+     "title": "Item 6",
+     "start": 3453.416507936508
+    },
+    {
+     "title": "Item 5",
+     "start": 5308.503015873016
+    },
+    {
+     "title": "Item 7",
+     "start": 6367.8279138322
+    },
+    {
+     "title": "Item 8",
+     "start": 9111.435419501133
+    }
+   ]
+  },
+  {
+   "uid": "480e4f4f68a4951f",
+   "chapters": [
+    {
+     "title": "Item 1",
+     "start": 0.0
+    },
+    {
+     "title": "Item 2",
+     "start": 29.896507936507938
+    },
+    {
+     "title": "Item 3",
+     "start": 248.28131519274376
+    },
+    {
+     "title": "Items 4 \\u0026 5",
+     "start": 456.1222222222222
+    }
+   ]
+  },
+  {
+   "uid": "78c1b7882e4ef6bb",
+   "chapters": [
+    {
+     "title": "Call to Order",
+     "start": 0.0
+    },
+    {
+     "title": "Item 1",
+     "start": 51.18439909297052
+    },
+    {
+     "title": "Item 2",
+     "start": 59.72619047619048
+    },
+    {
+     "title": "Item 3A",
+     "start": 80.28
+    },
+    {
+     "title": "Item 3B",
+     "start": 3353.8168934240366
+    },
+    {
+     "title": "Item 3C",
+     "start": 5205.099591836735
+    },
+    {
+     "title": "Item 3D",
+     "start": 12684.538185941045
+    },
+    {
+     "title": "Item 4A",
+     "start": 13091.84507936508
+    },
+    {
+     "title": "Item 4B",
+     "start": 14108.360589569162
+    },
+    {
+     "title": "Items 4C \\u0026 5",
+     "start": 14151.536984126984
+    },
+    {
+     "title": "Item 6",
+     "start": 14168.053492063493
+    }
+   ]
+  },
+  {
+   "uid": "903005afe8542810",
+   "chapters": [
+    {
+     "title": "Call to Order",
+     "start": 0.0
+    },
+    {
+     "title": "Item 1 (Part 1 of 2)",
+     "start": 81.84839002267573
+    },
+    {
+     "title": "Item 3",
+     "start": 127.62739229024942
+    },
+    {
+     "title": "Item 4",
+     "start": 3642.1383900226756
+    },
+    {
+     "title": "Items 5 \\u0026 6",
+     "start": 4733.595396825396
+    },
+    {
+     "title": "Item 1 (Part 2 of 2)",
+     "start": 4905.166802721088
+    }
+   ]
+  },
+  {
+   "uid": "4bce4427390b385e",
+   "chapters": [
+    {
+     "title": "Consider the approval of the Traffic Safety Commission meeting minutes of July 1, 2019.",
+     "start": 12.884785
+    },
+    {
+     "title": "Receive a report and hold a discussion regarding Article III of the City Code which governs boards, commissions, and committees and vote on the absence report code for Daniel Krutka for the July 1, 2019 meeting date.",
+     "start": 54.884785
+    },
+    {
+     "title": "Receive a report regarding the installation of NO PARKING signs along Duchess Drive.",
+     "start": 395.884785
+    },
+    {
+     "title": "Receive a report and hold a discussion about pedestrian, bicycle, and motor vehicle accident statistics in the City of Denton.",
+     "start": 593.884785
+    },
+    {
+     "title": "Receive a report, hold a discussion and provide direction to staff regarding the Highland Street protected bike lane demonstration project.",
+     "start": 3093.884785
+    },
+    {
+     "title": "Receive a report and hold a discussion regarding the treatment of uncontrolled intersections within the City of Denton.",
+     "start": 4223.884785
+    },
+    {
+     "title": "Receive a report and hold a discussion regarding the Bond Committee ballot proposal package inclusions.",
+     "start": 4840.884785
+    },
+    {
+     "title": "Receive nominations and hold an election for a new Chair of the Traffic Safety Commission. If necessary, receive nominations and hold an election for a new Vice-Chair of the Traffic Safety Commission.",
+     "start": 6243.8279600000005
+    },
+    {
+     "title": "Staff Reports 1. Street Construction Report 2. Matrix",
+     "start": 6289.8279600000005
+    }
+   ]
+  },
+  {
+   "uid": "ab1cfb601c5c94f0",
+   "chapters": [
+    {
+     "title": "SPECIAL MEETING OF THE CITY COUNCIL September 3, 2019 ADDISON TOWN HALL 5300 BELT LINE RD., DALLAS, TX 75254 5:00 PM",
+     "start": 0.0
+    },
+    {
+     "title": "Hold A Public Hearing, Present, and Discuss the Town of Addison\\u0026#39;s Proposed Property Tax Rate for the Fiscal Year Commencing October 1, 2019 and Ending September 30, 2020.",
+     "start": 55.22179138321995
+    },
+    {
+     "title": "Hold a Public Hearing, Present, and Discuss the Town of Addison\\u0026#39;s Annual Budget for the Fiscal Year Commencing October 1, 2019 and Ending September 30, 2020.",
+     "start": 6511.571700680272
+    }
+   ]
+  },
+  {
+   "uid": "3d4dfc142dd4e2a7",
+   "chapters": [
+    {
+     "title": "A. Receive a report, hold a discussion, and provide recommendations to staff regarding potential options/models for civilian oversight of the City of Denton Police Department.",
+     "start": 0.0
+    },
+    {
+     "title": "2. CONCLUDING ITEMS",
+     "start": 7974.123695
+    }
+   ]
+  }
+ ]
+}

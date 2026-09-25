@@ -251,7 +251,13 @@ def test_finalize_agenda_job_valid_and_invalid_responses():
     assert artifact.items[0].line_end == 1
     assert artifact.items[0].kind == "substantive_action"
     assert artifact.items[0].source == "strict"
-    assert artifact.diagnostics == {"source_line_count": 2, "recovered_item_count": 0}
+    assert artifact.diagnostics == {
+        "source_line_count": 2,
+        "recovered_item_count": 0,
+        "duplicate_item_count": 0,
+        "dropped_item_count": 0,
+        "dropped_item_reasons": [],
+    }
 
     # Malformed JSON raises ValueError
     invalid_json_result = JobResult(
@@ -534,3 +540,182 @@ def test_finalize_locator_job_valid_and_invalid_responses():
             transcript_hash="trans-sha",
             units=units,
         )
+
+
+def _agenda_result(items):
+    return JobResult(
+        task="agenda-item-extract",
+        recipe_hash="recipe",
+        output=json.dumps({"items": items}),
+        model="nvidia/nemotron-3-ultra-550b-a55b:free",
+    )
+
+
+def _finalize(agenda_text, items):
+    return finalize_agenda_job(
+        _agenda_result(items),
+        episode_uid="e1",
+        agenda_text=agenda_text,
+        agenda_source_hash="sha",
+    )
+
+
+def _numbered_agenda(count):
+    return "\n".join(
+        f"{n}. Consider approval of contract number {1000 + n}" for n in range(1, count + 1)
+    )
+
+
+def _numbered_item(n, **overrides):
+    return {
+        "display_ref": f"{n}.",
+        "title": f"Contract {1000 + n}",
+        "evidence_quote": f"Consider approval of contract number {1000 + n}",
+        "line_start": n,
+        "line_end": n,
+        **overrides,
+    }
+
+
+def _outline_item(display_ref):
+    return {
+        "display_ref": display_ref,
+        "title": "Outdoor burning",
+        "evidence_quote": "Outdoor burning in the county",
+        "line_start": 2,
+        "line_end": 2,
+    }
+
+
+def test_a_composed_outline_reference_the_agenda_confirms_is_kept():
+    # The line reads `A.` under section `4.`; the model's `4.A` is the item's real position --
+    # and how providers name the chapter ("Item 4A") -- so it is kept, not rejected.
+    agenda = "4. Items from the Commissioners Court\n  A. Outdoor burning in the county\n"
+    artifact = _finalize(agenda, [_outline_item("4.A")])
+    assert [item.display_ref for item in artifact.items] == ["4.A"]
+    assert artifact.items[0].source == "recovery"
+
+
+def test_an_outline_reference_the_agenda_contradicts_falls_back_to_the_source_label():
+    agenda = "4. Items from the Commissioners Court\n  A. Outdoor burning in the county\n"
+    artifact = _finalize(agenda, [_outline_item("7.A")])  # no `7.` anywhere above
+    assert [item.display_ref for item in artifact.items] == ["A."]
+
+
+def test_quote_marks_do_not_decide_whether_a_quote_is_grounded():
+    agenda = (
+        'Review of cases on Today\u2019s Agenda\nInstall 8" round wooden columns\n'
+        'Rezone from: "MU-1" Low Intensity Mixed Use\n'
+    )
+    artifact = _finalize(
+        agenda,
+        [
+            {
+                "title": "Case review",
+                "evidence_quote": "Review of cases on Today's Agenda",
+                "line_start": 1,
+                "line_end": 1,
+            },
+            {
+                "title": "Columns",
+                "evidence_quote": "Install 8 round wooden columns",
+                "line_start": 2,
+                "line_end": 2,
+            },
+            {
+                # A closing single quote next to a word must not glue the words together.
+                "title": "Rezoning",
+                "evidence_quote": "Rezone from: 'MU-1' Low Intensity Mixed Use",
+                "line_start": 3,
+                "line_end": 3,
+            },
+        ],
+    )
+    assert len(artifact.items) == 3
+    assert artifact.diagnostics["dropped_item_count"] == 0
+
+
+def test_a_repeated_item_is_dropped_not_fatal():
+    artifact = _finalize(
+        _numbered_agenda(3), [_numbered_item(1), _numbered_item(1), _numbered_item(2)]
+    )
+    assert len(artifact.items) == 2
+    assert artifact.diagnostics["duplicate_item_count"] == 1
+
+
+def test_a_few_ungrounded_items_are_dropped_but_a_mostly_ungrounded_reply_still_fails():
+    agenda = _numbered_agenda(20)
+    stitched = {"evidence_quote": "Consider approval of contract number 9999 (Commissioner X)"}
+    one_bad = [_numbered_item(n) for n in range(1, 20)] + [_numbered_item(20, **stitched)]
+    artifact = _finalize(agenda, one_bad)
+    assert len(artifact.items) == 19
+    assert artifact.diagnostics["dropped_item_count"] == 1
+    assert artifact.diagnostics["dropped_item_reasons"] == [
+        "agenda item evidence quote is absent from cited lines"
+    ]
+
+    three_bad = [_numbered_item(n) for n in range(1, 18)] + [
+        _numbered_item(n, **stitched) for n in (18, 19, 20)
+    ]
+    with pytest.raises(ValueError, match="absent from cited lines"):
+        _finalize(agenda, three_bad)
+
+
+def test_an_omitted_word_internal_apostrophe_still_grounds_the_quote():
+    agenda = "Review of cases on Today’s Agenda\nThe City  ’s attorneys report\n"
+    artifact = _finalize(
+        agenda,
+        [
+            {
+                "title": "Cases",
+                "evidence_quote": "Review of cases on Todays Agenda",
+                "line_start": 1,
+                "line_end": 1,
+            },
+            {
+                "title": "Attorneys",
+                "evidence_quote": "The City's attorneys report",
+                "line_start": 2,
+                "line_end": 2,
+            },
+        ],
+    )
+    assert len(artifact.items) == 2
+
+
+def test_a_quote_that_is_only_quote_marks_grounds_nothing():
+    # Normalizes to "", which would be "in" any line: untrusted output must not ground a title so.
+    with pytest.raises(ValueError):
+        _finalize(
+            "1. Consider approval of contract number 1001\n",
+            [_numbered_item(1, evidence_quote='"')],
+        )
+
+
+def test_repeated_items_do_not_dilute_the_dropped_share():
+    agenda = _numbered_agenda(2)
+    stitched = {"evidence_quote": "Consider approval of contract number 9999"}
+    padded = [_numbered_item(1)] * 9 + [_numbered_item(2, **stitched)]
+    # 1 ungrounded of 2 distinct items is 50%, whatever the padding.
+    with pytest.raises(ValueError, match="absent from cited lines"):
+        _finalize(agenda, padded)
+
+
+def test_an_outline_reference_is_not_confirmed_across_a_peer_section():
+    agenda = (
+        "3. Consent items\n  A. Approve minutes\n  B. Approve contract\n"
+        "4. Discussion items\n  A. Outdoor burning in the county\n"
+    )
+    item = {
+        "display_ref": "3.A",
+        "title": "Outdoor burning",
+        "evidence_quote": "Outdoor burning in the county",
+        "line_start": 5,
+        "line_end": 5,
+    }
+    artifact = _finalize(agenda, [item])
+    # `4.` closes section 3, so `3.A` is contradicted and the source's own label is used.
+    assert [i.display_ref for i in artifact.items] == ["A."]
+    assert [i.display_ref for i in _finalize(agenda, [{**item, "display_ref": "4.A"}]).items] == [
+        "4.A"
+    ]
