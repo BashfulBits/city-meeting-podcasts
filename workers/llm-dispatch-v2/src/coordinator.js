@@ -2136,8 +2136,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
       attempts.push(row);
     }
     const jobs = new Map();
-    // Only attempts written before the attempt carried its own lane need the job row.
-    const jobIds = [...new Set(attempts.filter((row) => !row.purpose).map((row) => row.job_id))];
+    // An attempt written before it carried its own lane needs the job row for `purpose`; one
+    // migrated before `input_token_estimate` existed (a zero estimate on an attempt that already
+    // has `purpose`) still needs it for the input-ratio fallback below.
+    const jobIds = [...new Set(
+      attempts.filter((row) => !row.purpose || !row.input_token_estimate).map((row) => row.job_id)
+    )];
     for (const chunk of this._chunks(jobIds)) {
       const placeholders = chunk.map(() => "?").join(",");
       for (const row of sql.exec(

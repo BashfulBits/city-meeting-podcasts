@@ -801,8 +801,9 @@ test("calibration follows recent output sizes instead of ratcheting on one large
   );
   await coordinator.enqueueBatch([gemmaJob("g1", 5000)]);
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
-  // 5000 * 1.0 learned ratio + ceil(200 * 1.25) forecast; the 15000 margin no longer applies.
-  assert.equal(plan.jobs[0].token_reservation, 5250);
+  // The learned ratio (1.0 * 1.2 gemma headroom) never drops below the 1.2 route prior, so
+  // 5000 * 1.2 input + ceil(200 * 1.25) forecast; the 15000 margin no longer applies.
+  assert.equal(plan.jobs[0].token_reservation, 6250);
 
   await succeed(coordinator, plan, plan.jobs[0], 5100, 180, "a1");
   const row = [...sql.exec("SELECT margin_tokens, recent_observed_summary FROM estimates WHERE key = ?", key)][0];
@@ -910,18 +911,19 @@ test("lookahead uses the calibrated ratio, not the static prior, to skip unserva
     MAX_BUNDLE_JOBS: "2",
     MAX_JOBS_PER_MODEL_CLAIM: "2",
   });
-  // Learned ratio 1.4 is above the route's 1.2 prior.
+  // Learned ratio 1.4 is above the route's 1.2 prior, and this route's model carries the
+  // "google/gemma-4-" gemma headroom, so the effective ratio is 1.4 * 1.2 = 1.68.
   sql.exec(
     `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
      VALUES (?, 0, 16, ?, 0)`,
     "gemma-ai-studio:google/gemma-4-31b-it:tags",
     JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
   );
-  // 7,500 raw fits the ceiling at the 1.2 prior (9,000) but not at the learned 1.4 (10,500).
+  // 7,500 raw fits the ceiling at the 1.2 prior (9,000) but not at the effective 1.68 (12,600).
   // A static-ratio SQL prefilter would return only these and stall the model.
   const headOfLine = Array.from({ length: 4 }, (_, i) => gemmaJob(`mid-${i}`, 7500));
   await coordinator.enqueueBatch(headOfLine);
-  await coordinator.enqueueBatch([gemmaJob("fits", 6000)]); // 8,400 at 1.4
+  await coordinator.enqueueBatch([gemmaJob("fits", 5000)]); // 8,400 at 1.68
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
   assert.deepEqual(plan.jobs.map((job) => job.id), ["fits"]);
 });
