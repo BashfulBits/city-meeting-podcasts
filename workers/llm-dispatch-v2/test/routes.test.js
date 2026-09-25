@@ -268,3 +268,23 @@ test("the compiled catalog has one pool per DeepSeek version (2026-09-24)", () =
     ["nvidia_deepseek_v4_1_flash_free"]
   );
 });
+
+test("a pooled model repeated as a backup adds no duplicate routes once backups activate", () => {
+  // chapter-agenda lists hy3 / Gemini 3.1 Flash Lite in both models and backup_models so the
+  // Worker's extended retry budget applies; routing must be identical before and after.
+  const policy = {
+    allowed_models: ["tencent/hy3", "gemini/gemini-3.1-flash-lite"],
+    backup_models: ["tencent/hy3", "gemini/gemini-3.1-flash-lite"],
+    backup_after_attempts: 12,
+    allow_paid: false,
+  };
+  const job = (attempts) => ({
+    policy_json: JSON.stringify(policy),
+    attempts,
+    input_token_estimate: 1000,
+    max_output_token_estimate: 1000,
+  });
+  const ids = (attempts) => routesEligibleFor(job(attempts), DISPATCH_LIMITS).map((r) => r.route_id);
+  assert.deepEqual(ids(12), ids(0));
+  assert.equal(new Set(ids(12)).size, ids(12).length);
+});
