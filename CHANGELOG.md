@@ -286,8 +286,11 @@ Phase R (Research-Tool Surface)._
   chapter-agenda benchmark hung for about 40 minutes on NVIDIA `deepseek-v4.1-flash`. A new
   `direct_timeout_seconds` (default 720 s, matching the v2 Worker's `MAX_RESPONSE_SECONDS`;
   env `LLM_DIRECT_TIMEOUT_SECONDS`) is now applied by `_provider_options(direct=True)` via
-  `setdefault`, so a job-level `timeout` still wins. The dispatch payload is unchanged. No pipeline
-  version, recipe, or stored-artifact change.
+  `setdefault`, so a job-level `timeout` still wins. A blank env value keeps the default; zero,
+  negative or non-finite values fail at startup. Deferred-dispatch capsules (`llm_deferred.py`) now
+  persist the job's `timeout` and its `output_token_budget`, which were previously dropped, so a
+  rebuilt job fell back to 1,024 output tokens. Older capsules keep the old defaults. The dispatch
+  payload is unchanged. No pipeline version, recipe, or stored-artifact change.
 
 - **Gemini daily request-quota 429s now use the provider reset window** (`citypods/compute/
   llm_failure_class.py`, `workers/llm-dispatch-v2/src/classify.js`). Google AI Studio's

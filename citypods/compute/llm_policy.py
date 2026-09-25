@@ -79,6 +79,9 @@ class DeferredLLMRequest:
     messages: tuple[Mapping[str, Any], ...]
     policy: LLMRequestPolicy
     output_token_budget: int = DEFAULT_OUTPUT_TOKEN_MARGIN
+    # The job's own ``inputs["timeout"]`` (e.g. a deadline-aware budget), so a rebuilt job keeps
+    # it instead of falling back to the direct-call default. ``None`` when the job set none.
+    timeout: float | None = None
 
 
 @dataclass(frozen=True)

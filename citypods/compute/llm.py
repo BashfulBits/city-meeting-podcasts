@@ -484,8 +484,8 @@ class LLMBackendConfig:
             or os.environ.get("LLM_DISPATCH_AUTH_TOKEN"),
             daily_ingest_cap=daily_cap,
             timeout_seconds=float(os.environ.get("LLM_TIMEOUT_SECONDS", cls.timeout_seconds)),
-            direct_timeout_seconds=float(
-                os.environ.get("LLM_DIRECT_TIMEOUT_SECONDS", cls.direct_timeout_seconds)
+            direct_timeout_seconds=_positive_seconds(
+                "LLM_DIRECT_TIMEOUT_SECONDS", cls.direct_timeout_seconds
             ),
             dispatch_v2_client_retire=os.environ.get("CITYPODS_LLM_DISPATCH_V2_CLIENT_RETIRE", "1")
             .strip()
@@ -698,6 +698,23 @@ def _messages(job: InferenceJob) -> list[dict[str, Any]]:
         {"role": "system", "content": TASK_PROMPTS[job.task]},
         {"role": "user", "content": content},
     ]
+
+
+def _job_timeout(job: InferenceJob) -> float | None:
+    """The job's own ``inputs["timeout"]``, kept on a deferred capsule so a rebuild restores it."""
+    value = job.inputs.get("timeout") if isinstance(job.inputs, Mapping) else None
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def _positive_seconds(name: str, default: float) -> float:
+    """A finite, positive number of seconds from ``name`` (``default`` when unset or blank)."""
+    raw = (os.environ.get(name) or "").strip()
+    if not raw:
+        return default
+    value = float(raw)
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be a finite number of seconds greater than 0, got {raw!r}")
+    return value
 
 
 def _messages_with_schema(
@@ -1327,6 +1344,7 @@ class LiteLLMBackend(Backend):
                 messages=tuple(messages),
                 policy=policy,
                 output_token_budget=self._output_token_budget(job),
+                timeout=_job_timeout(job),
             ),
         )
 
@@ -1877,6 +1895,8 @@ class LiteLLMBackend(Backend):
         assert deferred is not None
         messages = [dict(message) for message in deferred.messages]
         inputs: dict[str, Any] = {"messages": messages, "max_tokens": deferred.output_token_budget}
+        if deferred.timeout is not None:
+            inputs["timeout"] = deferred.timeout
         if handle.structured_output:
             inputs["structured_output"] = handle.structured_output
         job = InferenceJob(task=handle.task, inputs=inputs, recipe_hash=handle.recipe_hash)
@@ -2194,6 +2214,7 @@ class LiteLLMBackend(Backend):
                         messages=tuple(_messages(job)),
                         policy=policy or LLMRequestPolicy(),
                         output_token_budget=self._output_token_budget(job),
+                        timeout=_job_timeout(job),
                     ),
                 )
                 telemetry_outcomes.append((job, "client_daily_cap", "client_daily_ingest_cap"))
@@ -2374,6 +2395,7 @@ class LiteLLMBackend(Backend):
                         messages=tuple(_messages(job)),
                         policy=policy or LLMRequestPolicy(),
                         output_token_budget=self._output_token_budget(job),
+                        timeout=_job_timeout(job),
                     ),
                 )
                 telemetry_outcomes.append((job, "deferred", "http_429"))
@@ -2506,6 +2528,7 @@ class LiteLLMBackend(Backend):
                             messages=tuple(_messages(job)),
                             policy=policy or LLMRequestPolicy(),
                             output_token_budget=self._output_token_budget(job),
+                            timeout=_job_timeout(job),
                         ),
                     )
                     deferred_writes.append((job.recipe_hash, handle))

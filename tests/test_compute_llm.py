@@ -2417,3 +2417,15 @@ def test_validate_reconciled_propagates_upstream_passthrough_uncaught():
     airforce_524 = {"error": {"message": "the provider refused this request (HTTP 524)"}}
     with pytest.raises(LLMUpstreamPassthroughError):
         backend._validate_reconciled(airforce_524, "test-output")
+
+
+@pytest.mark.parametrize("raw", ["0", "-5", "nan", "inf"])
+def test_the_direct_timeout_must_be_a_finite_positive_number(monkeypatch, raw):
+    monkeypatch.setenv("LLM_DIRECT_TIMEOUT_SECONDS", raw)
+    with pytest.raises(ValueError, match="LLM_DIRECT_TIMEOUT_SECONDS"):
+        LLMBackendConfig.from_env()
+
+
+def test_a_blank_direct_timeout_keeps_the_default(monkeypatch):
+    monkeypatch.setenv("LLM_DIRECT_TIMEOUT_SECONDS", " ")
+    assert LLMBackendConfig.from_env().direct_timeout_seconds == 720.0
