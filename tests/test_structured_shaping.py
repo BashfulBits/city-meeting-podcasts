@@ -186,7 +186,13 @@ def test_route_output_tokens_is_bounded_by_the_cap_the_route_and_the_input_room(
     assert route_output_tokens(small, 8_192, 20_000) == 32_768
     tight = SimpleNamespace(output_context_limit=65_536, input_context_limit=262_144)
     assert route_output_tokens(tight, 8_192, 240_000) == 22_144  # the input leaves 22,144
-    assert route_output_tokens(tight, 30_000, 240_000) == 30_000  # never below the request
+    # The input room bounds even a reservation above it, so input + output fits the window.
+    assert route_output_tokens(tight, 30_000, 240_000) == 22_144
+    dense = SimpleNamespace(
+        output_context_limit=65_536, input_context_limit=262_144, input_token_ratio=1.05
+    )
+    assert route_output_tokens(dense, 8_192, 240_000) == 10_144  # measured in the route's units
+    assert route_output_tokens(tight, 8_192, 300_000) == 8_192  # no room: the provider rejects
 
 
 def test_a_queued_route_max_job_carries_the_flag_and_its_reservation(monkeypatch):

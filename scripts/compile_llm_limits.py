@@ -261,6 +261,12 @@ def _validate_reasoning_controls(route: dict[str, Any]) -> None:
                 f"route {route['route_id']!r} reasoning_controls has unknown level {level!r}; "
                 f'allowed: {sorted(_REASONING_LEVELS)} (quote "off": bare off is YAML false)'
             )
+        # A null or empty level would compile to "send nothing", silently ignoring the lane.
+        if not isinstance(params, dict) or not params:
+            raise ValueError(
+                f"route {route['route_id']!r} reasoning_controls[{level!r}] must be a non-empty "
+                "mapping of provider parameters"
+            )
         _validate_request_params(
             {"route_id": f"{route['route_id']}.{level}", "request_params": params}
         )

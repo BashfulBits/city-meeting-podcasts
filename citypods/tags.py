@@ -50,9 +50,10 @@ PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrec
 # The SCHEDULING RESERVATION for one tagger call (TPM admission and batch fitting), not a cap on
 # the answer: the job is sent with ``max_tokens_mode: "route_max"``, so the route's own output
 # limit (bounded by MAX_ROUTE_OUTPUT_TOKENS) reaches the provider. A fixed cap only truncates -- at
-# 1,024 Kilo step-3.7-flash spent every token reasoning and returned EMPTY content. 8,192 covers
-# the observed tagger outputs (Gemini 3.1 Flash Lite up to ~8.4k, AI Gateway 2026-09-25).
-TAG_OUTPUT_TOKEN_BUDGET = 8_192
+# 1,024 Kilo step-3.7-flash spent every token reasoning and returned EMPTY content. 12,288 covers
+# the largest observed tagger output (Gemini 3.1 Flash Lite ~8.4k, AI Gateway 2026-09-25) with
+# about 45% headroom; the budget monitor flags a lane whose calls outgrow their reservation.
+TAG_OUTPUT_TOKEN_BUDGET = 12_288
 PRELABELER_OUTPUT_TOKENS_PER_ITEM = 200
 PRELABELER_OUTPUT_TOKEN_OVERHEAD = 200
 # Keep a full megabyte beneath the Worker's 8 MiB JSON-body ceiling for the structured-output

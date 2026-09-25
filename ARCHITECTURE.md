@@ -408,8 +408,8 @@ total on `/admin/status`.
   way (`citypods/compute/structured_shaping.py`) and validate locally with one corrective retry;
   both implementations are asserted against `tests/fixtures/structured_output_shaping.json`. **Output budgets and reasoning are also decided per route.** `max_tokens` only truncates, it
   never shortens an answer, so a job marked `max_tokens_mode: "route_max"` (agenda, locator, moments,
-  tagger) is sent the chosen route's own output limit, bounded by its input room and capped at
-  65,536; the job's `max_tokens` is only the scheduling reservation. A lane may set a reasoning level
+  tagger) is sent the chosen route's own output limit, bounded by the input room of the messages
+  actually sent (in the route's tokenizer units) and capped at 65,536; the job's `max_tokens` is only the scheduling reservation. A lane may set a reasoning level
   per model (`llm_lanes[...].reasoning`), which the route expresses through `reasoning_controls`
   (e.g. NVIDIA DeepSeek v4.1's thinking switch); models without an entry keep their provider
   default. A reply that stops at its output limit (`finish_reason: length`) is never stored: it is

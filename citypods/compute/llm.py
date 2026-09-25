@@ -905,7 +905,13 @@ class LiteLLMBackend(Backend):
         return f"{gateway_base}/{gateway_slug}{_ai_gateway_path_prefix(route)}", extra_headers
 
     def _provider_options(
-        self, job: InferenceJob, resolved_model: str, *, route=None, direct: bool = False
+        self,
+        job: InferenceJob,
+        resolved_model: str,
+        *,
+        route=None,
+        direct: bool = False,
+        messages: list[Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Build the LiteLLM ``completion()`` kwargs for one route.
 
@@ -952,9 +958,11 @@ class LiteLLMBackend(Backend):
             and isinstance(options.get("max_tokens"), int)
         ):
             # Direct calls send the route's own output limit; the job's max_tokens stays the
-            # scheduling reservation (queued jobs get the same rule in the Worker).
+            # scheduling reservation (queued jobs get the same rule in the Worker). ``messages``
+            # are the ones actually sent when a caller shapes them (schema in the prompt,
+            # corrective retries), so the input room is measured on what the route receives.
             options["max_tokens"] = route_output_tokens(
-                route, options["max_tokens"], estimate_tokens(_messages(job))
+                route, options["max_tokens"], estimate_tokens(messages or _messages(job))
             )
         return options
 
@@ -1131,7 +1139,9 @@ class LiteLLMBackend(Backend):
         messages, routed_format = shape_for_route(
             list(_messages(job)), name=model.__name__, schema=model.model_json_schema(), route=route
         )
-        options = self._provider_options(job, resolved_model, route=route, direct=True)
+        options = self._provider_options(
+            job, resolved_model, route=route, direct=True, messages=messages
+        )
         response_format = response_format or routed_format
         if response_format is not None:
             options["response_format"] = response_format
@@ -1166,6 +1176,12 @@ class LiteLLMBackend(Backend):
                             ),
                         },
                     ]
+                    # The retry carries the invalid reply too: re-measure the output room.
+                    retry_options = self._provider_options(
+                        job, resolved_model, route=route, direct=True, messages=messages
+                    )
+                    if "max_tokens" in retry_options:
+                        options["max_tokens"] = retry_options["max_tokens"]
                     continue
                 if os.environ.get(_SAFE_DIAGNOSTICS_ENV) == "1":
                     print(
@@ -1845,6 +1861,9 @@ class LiteLLMBackend(Backend):
             inputs["timeout"] = deferred.timeout
         if deferred.max_tokens_mode is not None:
             inputs["max_tokens_mode"] = deferred.max_tokens_mode
+        # The lane (policy.purpose) selects per-lane reasoning controls on the direct path, as it
+        # does for a job that was never deferred.
+        inputs["llm_policy"] = deferred.policy
         if handle.structured_output:
             inputs["structured_output"] = handle.structured_output
         job = InferenceJob(task=handle.task, inputs=inputs, recipe_hash=handle.recipe_hash)

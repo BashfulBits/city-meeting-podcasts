@@ -2418,3 +2418,39 @@ def test_the_direct_timeout_must_be_a_finite_positive_number(monkeypatch, raw):
 def test_a_blank_direct_timeout_keeps_the_default(monkeypatch):
     monkeypatch.setenv("LLM_DIRECT_TIMEOUT_SECONDS", " ")
     assert LLMBackendConfig.from_env().direct_timeout_seconds == 720.0
+
+
+def test_a_rebuilt_deferred_job_keeps_its_lane_timeout_and_output_mode(monkeypatch):
+    # The lane (policy.purpose) picks per-lane reasoning controls on the direct path; a rebuild
+    # without it would send the provider's default for that model.
+    from citypods.compute.llm_policy import DeferredLLMRequest
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(LLMBackendConfig(model="gemini/gemini-3.5-flash"), storage=storage)
+    seen = {}
+
+    def fake_paced(job, policy, structured, messages):
+        seen["inputs"] = dict(job.inputs)
+        return JobResult(task=job.task, recipe_hash=job.recipe_hash, output={}, model="m")
+
+    monkeypatch.setattr(backend, "_run_policy_job_paced", fake_paced)
+    policy = LLMRequestPolicy(purpose="chapter-agenda")
+    backend._reconcile_deferred(
+        JobHandle(
+            task="tag",
+            recipe_hash="r-rebuild",
+            backend="litellm",
+            ref="deferred:r-rebuild",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "hi"},),
+                policy=policy,
+                output_token_budget=16_384,
+                timeout=45.0,
+                max_tokens_mode="route_max",
+            ),
+        )
+    )
+    assert seen["inputs"]["llm_policy"] is policy
+    assert seen["inputs"]["max_tokens"] == 16_384
+    assert seen["inputs"]["timeout"] == 45.0
+    assert seen["inputs"]["max_tokens_mode"] == "route_max"

@@ -67,7 +67,9 @@ SLOW_CALLS = 3  # calls at or past 600 s (the Worker's ceiling is 720 s)
 def fetch_stats(url: str, token: str) -> dict[str, Any]:
     response = requests.get(
         urljoin(url.rstrip("/") + "/", "v2/stats"),
-        params={"detail": "1", "limit": "100"},
+        # Only the classes this report acts on, so unrelated high-count rows cannot crowd them out
+        # of the Worker's row limit.
+        params={"detail": "1", "limit": "100", "failure_class": ",".join(sorted(THRESHOLDS))},
         headers={"Authorization": f"Bearer {token}"},
         timeout=60,
     )
@@ -80,6 +82,8 @@ def usage_findings(usage: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
     findings = []
     for row in usage:
         calls = int(row.get("calls") or 0)
+        # Calls that returned a usage figure; older Workers did not report it separately.
+        measured = int(row.get("measured_calls", calls) or 0)
         lane, route_id = row.get("purpose"), row.get("route_id")
         reserved = int(row.get("reserved_output_mean") or 0)
         p90 = int(row.get("output_tokens_p90") or 0)
@@ -101,15 +105,15 @@ def usage_findings(usage: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
                     "(`llm_lanes[<lane>].reasoning`) or move the lane off this route.",
                 }
             )
-        if calls < MIN_USAGE_CALLS or not reserved:
+        if measured < MIN_USAGE_CALLS or not reserved:
             continue
         over = int(row.get("over_reservation_calls") or 0)
-        if over >= OVER_RESERVATION_SHARE * calls:
+        if over >= OVER_RESERVATION_SHARE * measured:
             findings.append(
                 {
                     **base,
                     "kind": "reservation_too_small",
-                    "detail": f"{over} of {calls} calls wrote more than the {reserved}-token "
+                    "detail": f"{over} of {measured} calls wrote more than the {reserved}-token "
                     f"reservation (p90 {p90})",
                     "suggestion": f"Raise `{lane}`'s output reservation toward its p90 ({p90}) so "
                     "TPM admission reflects real use.",

@@ -2477,3 +2477,88 @@ test("detailedStats reports today's usage per lane and route from existing attem
   const tagger = usage.find((row) => row.purpose === "topic-tags:tagger");
   assert.deepEqual([tagger.calls, tagger.output_tokens_p90, tagger.slow_calls], [1, 500, 0]);
 });
+
+test("a length-truncated reply settles the token bucket to its measured usage", async () => {
+  // A route_max reply can use far more than its reservation; leaving the bucket at the
+  // reservation would admit the next claim against capacity already spent.
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const routeId = "gemini_3_5_flash_primary"; // a real route with tpm configured
+  coordinator._getOrCreateRouteLedger(routeId, now, {});
+  sql.exec("UPDATE routes SET full_token_budget = 100000 WHERE route_id = ?", routeId);
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, transient_retry_count, token_reservation, purpose
+    ) VALUES (
+      'j-long', 'idem-long', 'digest-long', '{"purpose":"chapter-agenda"}', 'leased', 'b1', ?,
+      'ltok', 'agenda', 1000, 16384, 'payloads/j-long/request.json', ?, ?, 0, 17384, 'chapter-agenda'
+    )`,
+    routeId, now, now
+  );
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-long",
+      lease_token: "ltok",
+      attempt_id: "att-long",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "retryable_error",
+      provider_status_code: 200,
+      failure_class: "output_budget_exhausted",
+      observed_input_tokens: 1000,
+      observed_output_tokens: 65536,
+    },
+  ]);
+  const route = sql.exec("SELECT full_token_budget FROM routes WHERE route_id = ?", routeId)[0];
+  assert.equal(route.full_token_budget, 100000 + 17384 - 66536);
+  // The attempt keeps the lane and reservation for usage_today after the job row is retired.
+  const attempt = sql.exec("SELECT purpose, reserved_output_tokens FROM attempts WHERE attempt_id = 'att-long'")[0];
+  assert.deepEqual([attempt.purpose, attempt.reserved_output_tokens], ["chapter-agenda", 16384]);
+});
+
+test("usage_today keeps a retired job's lane and leaves unmeasured calls out of the percentiles", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const insertAttempt = (id, output, purpose, reserved) => sql.exec(
+    `INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, actual_start_at, actual_end_at,
+       observed_output_tokens, start_state, outcome, created_at, purpose, reserved_output_tokens)
+     VALUES (?, 'gone', 'route-a', ?, ?, ?, ?, 'started', 'success', ?, ?, ?)`,
+    id, now - 1000, now - 1000, now - 500, output, now - 1000, purpose, reserved
+  );
+  // No jobs row at all: the job was retired after its result was consumed.
+  insertAttempt("m1", 12000, "chapter-agenda", 16384);
+  insertAttempt("m2", null, "chapter-agenda", 16384); // failed before usage came back
+  insertAttempt("m3", null, "chapter-agenda", 16384);
+  const [row] = (await coordinator.detailedStats(now, 50)).usage_today;
+  assert.equal(row.purpose, "chapter-agenda");
+  assert.equal(row.calls, 3);
+  assert.equal(row.measured_calls, 1);
+  assert.equal(row.output_tokens_p50, 12000);
+  assert.equal(row.reserved_output_mean, 16384);
+});
+
+test("detailedStats can restrict route_failures to named classes past the row limit", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const insert = (route, cls, count) => sql.exec(
+    `INSERT INTO route_failures (utc_day, route_id, failure_class, count, last_status, last_seen_at)
+     VALUES (?, ?, ?, ?, 429, ?)`,
+    today, route, cls, count, now
+  );
+  for (let i = 0; i < 5; i++) insert(`busy-${i}`, "upstream_capacity", 1000 + i);
+  insert("cut", "output_budget_exhausted", 3);
+  const unfiltered = (await coordinator.detailedStats(now, 2)).route_failures;
+  assert.equal(unfiltered.some((row) => row.failure_class === "output_budget_exhausted"), false);
+  const filtered = (
+    await coordinator.detailedStats(now, 2, { failureClasses: ["output_budget_exhausted"] })
+  ).route_failures;
+  assert.deepEqual(filtered.map((row) => row.route_id), ["cut"]);
+});

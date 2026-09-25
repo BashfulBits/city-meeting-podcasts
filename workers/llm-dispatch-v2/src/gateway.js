@@ -7,6 +7,7 @@
  * re-keyed off v2's own route/job shapes instead of v1's queue record.
  */
 
+import { routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
 import { shapeForRoute } from "./structured_output.js";
 
 // Every real, provider-facing chat-completions field this Worker forwards -- everything else on
@@ -73,8 +74,15 @@ export function outputTokensForRoute(payload, route, inputTokens) {
   const outputLimit = Math.min(Number(route?.output_context_limit) || 0, MAX_ROUTE_OUTPUT_TOKENS);
   if (!outputLimit) return requested || undefined;
   const inputLimit = Number(route?.input_context_limit) || 0;
-  const room = inputLimit && inputTokens ? inputLimit - Number(inputTokens) : outputLimit;
-  return Math.max(requested, Math.min(outputLimit, room > 0 ? room : outputLimit));
+  if (!inputLimit || !inputTokens) return outputLimit;
+  // `inputTokens` is a raw chars/4 estimate of the messages sent; the room is in the route's units.
+  const room = inputLimit - scaledInputTokens(inputTokens, routeInputTokenRatio(route));
+  // No room left: keep the job's own figure and let the provider reject the oversized request.
+  return room > 0 ? Math.min(outputLimit, room) : requested || undefined;
+}
+
+function contentChars(messages) {
+  return (messages || []).reduce((sum, message) => sum + String(message?.content ?? "").length, 0);
 }
 
 export function upstreamRequestForRoute(payload, route, { inputTokens = 0, reasoningLevel = null } = {}) {
@@ -84,7 +92,17 @@ export function upstreamRequestForRoute(payload, route, { inputTokens = 0, reaso
       request[field] = payload[field];
     }
   }
-  const maxTokens = outputTokensForRoute(payload, route, inputTokens);
+  let sentInputTokens = Number(inputTokens) || 0;
+  if (payload?.structured_output) {
+    const shaped = shapeForRoute(payload.messages, payload.structured_output, route);
+    request.messages = shaped.messages;
+    delete request.response_format;
+    if (shaped.responseFormat) request.response_format = shaped.responseFormat;
+    // A route that takes the schema in its prompt receives more input than the job estimated.
+    const added = contentChars(shaped.messages) - contentChars(payload.messages);
+    if (sentInputTokens && added > 0) sentInputTokens += Math.ceil(added / 4);
+  }
+  const maxTokens = outputTokensForRoute(payload, route, sentInputTokens);
   if (maxTokens) request.max_tokens = maxTokens;
   // A lane can set a reasoning level per model (llm_lanes[...].reasoning); the route says how its
   // provider expresses that level (reasoning_controls). No level, or a level the route does not
@@ -98,12 +116,6 @@ export function upstreamRequestForRoute(payload, route, { inputTokens = 0, reaso
   // DeepSeek v4.1's thinking on NVIDIA). The route owns these, so they win over the payload.
   if (route?.request_params && typeof route.request_params === "object") {
     Object.assign(request, route.request_params);
-  }
-  if (payload?.structured_output) {
-    const shaped = shapeForRoute(payload.messages, payload.structured_output, route);
-    request.messages = shaped.messages;
-    delete request.response_format;
-    if (shaped.responseFormat) request.response_format = shaped.responseFormat;
   }
   return request;
 }

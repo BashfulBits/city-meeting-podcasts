@@ -99,3 +99,28 @@ def test_usage_findings_appear_in_the_report_even_without_failures():
     report, findings = mon.build_report([], ROUTES, LANES, [_usage(output_tokens_p90=2000)])
     assert [f["kind"] for f in findings] == ["reservation_too_large"]
     assert "reservation_too_large" in report and "Reservations and latency" in report
+
+
+def test_unmeasured_calls_do_not_make_a_lane_look_over_reserved():
+    # 30 calls, but only 5 returned usage: too few measurements to judge the reservation.
+    row = _usage(calls=30, measured_calls=5, output_tokens_p90=10)
+    assert mon.usage_findings([row]) == []
+
+
+def test_the_stats_request_names_only_the_classes_the_report_acts_on(monkeypatch):
+    seen = {}
+
+    class _Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {}
+
+    def fake_get(url, params, headers, timeout):
+        seen.update(params)
+        return _Response()
+
+    monkeypatch.setattr(mon.requests, "get", fake_get)
+    mon.fetch_stats("https://dispatch.example.com", "token")
+    assert seen["failure_class"].split(",") == sorted(mon.THRESHOLDS)

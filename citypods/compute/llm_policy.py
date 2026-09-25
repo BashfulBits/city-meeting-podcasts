@@ -607,13 +607,18 @@ MAX_ROUTE_OUTPUT_TOKENS = 65_536
 
 
 def route_output_tokens(route: object, requested: int, input_tokens: int) -> int:
-    """The route's output limit, bounded by its input room -- never below ``requested``.
+    """The route's output limit, bounded by the room its input leaves in the context window.
 
+    ``input_tokens`` is a raw ``estimate_tokens`` figure of the messages actually sent; it is
+    scaled to the route's tokenizer first. When the input leaves no room the request keeps
+    ``requested`` (the provider then rejects it as too large, as it did before route_max).
     Mirrors workers/llm-dispatch-v2/src/gateway.js:outputTokensForRoute for direct calls.
     """
     output_limit = min(int(getattr(route, "output_context_limit", 0) or 0), MAX_ROUTE_OUTPUT_TOKENS)
     if not output_limit:
         return requested
     input_limit = int(getattr(route, "input_context_limit", 0) or 0)
-    room = input_limit - input_tokens if input_limit and input_tokens else output_limit
-    return max(requested, min(output_limit, room if room > 0 else output_limit))
+    if not input_limit or not input_tokens:
+        return output_limit
+    room = input_limit - route_input_tokens(input_tokens, route)
+    return min(output_limit, room) if room > 0 else requested

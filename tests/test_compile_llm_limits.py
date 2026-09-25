@@ -958,6 +958,8 @@ def test_reasoning_controls_are_compiled_for_the_worker_and_not_applied_by_defau
         ({"medium": {"reasoning_effort": "medium"}}, "unknown level"),
         ({False: {"reasoning_effort": "low"}}, "quote"),
         ({"off": {"model": "x"}}, "unsupported keys"),
+        ({"off": None}, "non-empty mapping"),
+        ({"off": {}}, "non-empty mapping"),
     ],
 )
 def test_reasoning_controls_are_validated(controls, match):
