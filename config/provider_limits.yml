@@ -292,6 +292,14 @@ providers:
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
+    # OrcaRouter publishes free-tier limits live at GET api.orcarouter.ai/api/free-package/public
+    # (`free_tier.tiers`, per model): lifetime spend $0 -> 10 rpm / 50 rpd plus a small unpublished
+    # per-request prompt cap; >= $20 -> 20 rpm / 800 rpd. This account is on the $20 tier (topped
+    # up; confirmed by the maintainer 2026-09-25). No concurrency or in-flight limit is published
+    # anywhere (docs, pricing, model pages, the endpoint), and free traffic carries no
+    # X-RateLimit-* headers. rpm 10 and concurrency 2 are deliberate choices below the tier, not
+    # provider limits: at ~40 s (hy3), ~10 s (DeepSeek v4) and ~5 s (GLM 5.3) per call, three
+    # models at 800/day use ~25% of two shared slots, so 800/day per model is reachable as is.
     rpm: 10
     concurrency: 2
     structured_output_method: json_object

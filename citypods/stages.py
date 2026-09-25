@@ -1072,6 +1072,7 @@ class MomentsStage:
             COUNCIL_MOMENT_MODELS,
             DEFAULT_MOMENT_MODELS,
             MOMENTS_CONTRACT,
+            MOMENTS_OUTPUT_TOKEN_BUDGET,
             MOMENTS_PROMPT_VERSION,
             MOMENTS_SYSTEM_PROMPT,
             candidate_matrix_key,
@@ -1169,7 +1170,7 @@ class MomentsStage:
             inputs: dict[str, Any] = {
                 "messages": messages,
                 "structured_output": MOMENTS_CONTRACT,
-                "max_tokens": 4096,
+                "max_tokens": MOMENTS_OUTPUT_TOKEN_BUDGET,
             }
             inputs["llm_policy"] = LLMRequestPolicy(
                 allowed_models=allowed_models,
