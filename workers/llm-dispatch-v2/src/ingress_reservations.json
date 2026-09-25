@@ -3,7 +3,7 @@
   "_source": "config/site_config.yml (llm_lanes)",
   "_readme": "Do not edit by hand. Keys are exact LLMRequestPolicy.purpose strings; a purpose absent from this map is rejected at ingress with purpose_not_registered rather than falling through to shared headroom.",
   "global_write_budget": 18000,
-  "reserved_total": 11720,
+  "reserved_total": 12106,
   "reservations": {
     "chapter-agenda": {
       "reserved_write_units": 3720,
@@ -20,17 +20,18 @@
       "write_units_per_job": 4
     },
     "chapter-locator": {
-      "reserved_write_units": 1860,
-      "daily_write_units": 2790,
+      "reserved_write_units": 2170,
+      "daily_write_units": 3255,
       "models": [
         "gemini/gemini-3.5-flash-lite",
+        "zai/glm-5.3-flash",
         "deepseek/deepseek-v4-flash",
         "moonshotai/kimi-k3"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
-      "write_units_per_job": 6
+      "write_units_per_job": 7
     },
     "r5-benchmark:judge": {
       "reserved_write_units": 0,
@@ -69,13 +70,14 @@
       "write_units_per_job": 6
     },
     "r6-moments": {
-      "reserved_write_units": 840,
-      "daily_write_units": 2046,
+      "reserved_write_units": 916,
+      "daily_write_units": 2232,
       "models": [
         "gemini/gemini-3.8-flash",
         "gemini/gemini-3.7-flash",
         "gemini/gemini-3.6-flash",
         "gemini/gemini-3.5-flash",
+        "zai/glm-5.3-flash",
         "gemini/gemini-3.5-flash-lite",
         "gemini/gemini-3.1-flash-lite",
         "deepseek/deepseek-v4-flash",
@@ -84,7 +86,7 @@
       "backup_models": [],
       "backup_after_attempts": null,
       "dispatch_shape": "pooled",
-      "write_units_per_job": 11
+      "write_units_per_job": 12
     },
     "topic-tags:prelabeler": {
       "reserved_write_units": 1860,
