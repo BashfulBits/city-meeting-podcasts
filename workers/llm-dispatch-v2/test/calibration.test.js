@@ -52,7 +52,13 @@ test("the sample window is bounded and ignores template-dominated tiny prompts",
 test("calibrationFor keeps the prior until enough samples, then follows the recent p95", () => {
   const route = { input_token_ratio: 1.2 };
   const few = { r: [1.5, 1.5], o: [100, 100] };
-  assert.deepEqual(calibrationFor(route, few), { inputRatio: 1.2, outputForecast: null });
+  assert.deepEqual(calibrationFor(route, few), {
+    inputRatio: 1.2,
+    outputForecast: null,
+    inputRatioP95: null,
+    inputRatioSamples: 2,
+    outputSamples: 2,
+  });
 
   // 16 recent samples: ratios mostly 1.0 with one 1.4 outlier; outputs ~300 with one 600.
   const r = Array(CALIBRATION_MIN_SAMPLES - 1).fill(1.0).concat([1.4]);
@@ -62,9 +68,10 @@ test("calibrationFor keeps the prior until enough samples, then follows the rece
   assert.equal(result.inputRatio, 1.4);
   assert.equal(result.outputForecast, 750); // ceil(600 * 1.25)
 
-  // It can also fall BELOW the prior -- unlike the old margin, it tracks recent reality.
+  // The effective ratio never drops below the route's own catalog prior -- it can only add to
+  // it, so a well-behaved recent window (here, below the prior) still reserves at the prior.
   const low = calibrationFor(route, { r: Array(20).fill(0.98), o: Array(20).fill(10) });
-  assert.equal(low.inputRatio, 0.98);
+  assert.equal(low.inputRatio, 1.2);
   assert.equal(low.outputForecast, MIN_OUTPUT_RESERVE);
 });
 

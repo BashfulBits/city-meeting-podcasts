@@ -385,20 +385,13 @@ routes:
 
   # Gemma 4 Massive Free Quota Pools (14.4k RPD / 30 RPM each)
   #
-  # hard_input_ceiling re-measured 2026-09-12 (was 8000, dated 2026-09-09 -- from BEFORE that
-  # day's array-wrapped-error-body fix to classify.js/llm_failure_class.py/
-  # provider_reported_token_limit(); Gemini's real error body is `[{"error": {...}}]`, not
-  # `{"error": {...}}`, so the old search was reading genuine quota-exceeded 429s as
-  # gateway_limit and narrowing on them as if they were size rejections -- an artificially low
-  # floor, not a real boundary). Re-run with the fix, on the secondary key only (primary is
-  # shared with the in-production v2 worker; see the account-diversity note elsewhere in this
-  # file) -- conclusive, contention_detected: false, provider_reported_tpm: 16000 (matches the
-  # configured tpm exactly, confirming Google publishes 16000 TPM for this tier). Applied to both
-  # primary and secondary per that same account-diversity convention. A same-day, single clean
-  # Google Gemma routes enforce a strict 16k TPM quota at the provider. With structured
-  # meeting/JSON transcripts tokenizing at ~2.8-3.2 chars/token, a char/4 client estimate will
-  # underestimate real token count. A conservative hard_input_ceiling: 10000 ensures requests
-  # exceeding this limit are kicked over to NVIDIA NIM or OpenRouter before hitting Gemini 429s.
+  # Google quota probe (2026-09-12, secondary key): provider_reported_tpm 16000, with no observed
+  # contention. This is an aggregate per-model input-token/minute quota, not a per-request size
+  # boundary. Keep 10% headroom by setting hard_input_ceiling to 14400; the scheduler's rolling
+  # TPM reservation accounts for aggregate input plus output use. This replaces the earlier
+  # 10000 stopgap, which unnecessarily sent otherwise admissible jobs to fallback routes.
+  # observed_input_ceiling below remains the historical probe observation; it is not promoted to
+  # the new hard ceiling because this quota probe did not measure a per-request maximum.
   - route_id: gemma_4_26b_primary
     model: google/gemma-4-26b-a4b-it
     provider: gemini
@@ -406,12 +399,13 @@ routes:
     input_context_limit: 262144
     output_context_limit: 32768
     # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
-    input_token_ratio: 1.2
+    # Prior covers the measured upper tail within the 10% TPM safety margin.
+    input_token_ratio: 1.4
     account_id: project_primary
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 10000
+    hard_input_ceiling: 14400
     free: true
     observed_on: "2026-09-12"
     observed_input_ceiling: 10000
@@ -424,12 +418,13 @@ routes:
     input_context_limit: 262144
     output_context_limit: 32768
     # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
-    input_token_ratio: 1.2
+    # Prior covers the measured upper tail within the 10% TPM safety margin.
+    input_token_ratio: 1.4
     account_id: project_secondary
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 10000
+    hard_input_ceiling: 14400
     free: true
     observed_on: "2026-09-12"
     observed_input_ceiling: 10000
@@ -442,12 +437,13 @@ routes:
     input_context_limit: 262144
     output_context_limit: 32768
     # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
-    input_token_ratio: 1.2
+    # Prior covers the measured upper tail within the 10% TPM safety margin.
+    input_token_ratio: 1.4
     account_id: project_primary
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 10000
+    hard_input_ceiling: 14400
     free: true
     observed_on: "2026-09-12"
     observed_input_ceiling: 10000
@@ -460,12 +456,13 @@ routes:
     input_context_limit: 262144
     output_context_limit: 32768
     # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
-    input_token_ratio: 1.2
+    # Prior covers the measured upper tail within the 10% TPM safety margin.
+    input_token_ratio: 1.4
     account_id: project_secondary
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 10000
+    hard_input_ceiling: 14400
     free: true
     observed_on: "2026-09-12"
     observed_input_ceiling: 10000

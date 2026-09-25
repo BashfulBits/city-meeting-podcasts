@@ -1014,14 +1014,14 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner(
 
 
 def test_select_route_compares_ceilings_in_the_routes_tokenizer_units():
-    """A Gemma AI Studio route's 10,000-token ceiling is in Gemma tokens. 9,000 chars/4 tokens is
-    10,800 Gemma tokens at its measured 1.2 ratio, so that route must be skipped even though the
+    """A Gemma AI Studio route's 14,400-token ceiling is in Gemma tokens. 10,500 chars/4 tokens is
+    14,700 Gemma tokens at its measured 1.4 ratio, so that route must be skipped even though the
     raw estimate is under the ceiling -- the Worker makes the same call (calibration.js)."""
     from citypods.compute.llm_policy import ROUTE_CANDIDATES
 
     gemini = [r for r in ROUTE_CANDIDATES["google/gemma-4-31b-it"] if r.provider == "gemini"]
     routes = {route.route_id: route for route in gemini}
-    assert all(route.input_token_ratio == 1.2 for route in gemini)
+    assert all(route.input_token_ratio == 1.4 for route in gemini)
 
     def pick(input_tokens):
         return select_route(
@@ -1035,7 +1035,7 @@ def test_select_route_compares_ceilings_in_the_routes_tokenizer_units():
             now=datetime(2026, 9, 23, 18, tzinfo=UTC),
         )
 
-    assert pick(8_000).route is not None
-    rejected = pick(9_000)
+    assert pick(10_000).route is not None
+    rejected = pick(10_500)
     assert rejected.route is None
     assert {reason for _, reason in rejected.rejected} == {"hard input ceiling"}
