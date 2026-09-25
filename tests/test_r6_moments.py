@@ -305,3 +305,94 @@ def test_video_renderer_keeps_audio_and_uses_the_ffprobe_binary(monkeypatch):
     assert commands[0][0] == "ffmpeg-custom"
     assert "-an" not in commands[0]
     assert commands[0][commands[0].index("-c:a") + 1] == "aac"
+
+
+# --- pull-quote criteria and word-accurate timing (2026-09-24) ---------------------------------
+
+from citypods import moment_judging as _judging  # noqa: E402
+from citypods import moments as _moments  # noqa: E402
+
+_SEGMENTS = [
+    {
+        "start": 100.0,
+        "end": 115.0,
+        "text": "Thank you. Parking minimums blocked my bakery expansion.",
+    },
+    {"start": 115.0, "end": 130.0, "text": "We need a vote tonight."},
+]
+_WORDS = [
+    {"text": w, "start": s, "end": s + 0.4}
+    for w, s in [
+        ("Thank", 100.0),
+        ("you.", 100.5),
+        ("Parking", 106.0),
+        ("minimums", 106.5),
+        ("blocked", 107.0),
+        ("my", 107.5),
+        ("bakery", 108.0),
+        ("expansion.", 108.5),
+        ("We", 115.0),
+        ("need", 115.5),
+        ("a", 116.0),
+        ("vote", 116.5),
+        ("tonight.", 117.0),
+    ]
+]
+
+
+def test_a_quote_keeps_its_exact_spoken_span_from_word_timing():
+    quote = "Parking minimums blocked my bakery expansion."
+    assert _moments.quote_timing(quote, _SEGMENTS, _WORDS) == (106.0, 108.9, "words")
+    # Without a words sidecar the cue-level span is the fallback, and says so.
+    assert _moments.quote_timing(quote, _SEGMENTS, None) == (100.0, 115.0, "cues")
+
+
+def test_a_short_quote_is_widened_to_the_minimum_clip_not_dropped():
+    candidate = _moments.normalize_quote_candidate(
+        {"quote": "Parking minimums blocked my bakery expansion.", "quality_score": 0.8},
+        episode_uid="ep",
+        provider_model="m",
+        recipe="r",
+        meeting_family="council",
+        transcript_segments=_SEGMENTS,
+        transcript_words=_WORDS,
+    )
+    assert candidate is not None
+    assert (candidate["quote_start"], candidate["quote_end"], candidate["timing_source"]) == (
+        106.0,
+        108.9,
+        "words",
+    )
+    assert candidate["end"] - candidate["start"] == _moments.MOMENTS_MIN_SECONDS
+    assert (
+        candidate["start"] <= candidate["quote_start"] < candidate["quote_end"] <= candidate["end"]
+    )
+
+
+def test_a_repeated_phrase_resolves_to_the_occurrence_inside_the_matched_cue():
+    words = _WORDS + [{"text": "vote", "start": 300.0, "end": 300.4}]
+    assert _moments.word_region("vote", words, near=(115.0, 130.0)) == (116.5, 116.9)
+    assert _moments.word_region("vote", words) is None  # ambiguous without the cue
+
+
+def test_decisions_carry_word_accurate_timing():
+    decision = _moments.normalize_decision_candidate(
+        {"quote": "We need a vote tonight.", "decision_type": "deferred"},
+        provider_model="m",
+        transcript_segments=_SEGMENTS,
+        transcript_words=_WORDS,
+    )
+    assert (decision["start"], decision["end"], decision["timing_source"]) == (
+        115.0,
+        117.4,
+        "words",
+    )
+
+
+def test_extraction_and_judge_share_the_pull_quote_criteria():
+    for prompt in (_moments.MOMENTS_SYSTEM_PROMPT, _judging.JUDGE_SYSTEM_PROMPT):
+        assert _moments.PULL_QUOTE_CRITERIA in prompt
+    criteria = _moments.PULL_QUOTE_CRITERIA
+    assert "Any civic topic qualifies" in criteria  # emphasis, not a restriction
+    assert "never name a member of the public" in criteria
+    assert (_moments.MOMENTS_PROMPT_VERSION, _judging.JUDGE_PROMPT_VERSION) == ("2", "2")

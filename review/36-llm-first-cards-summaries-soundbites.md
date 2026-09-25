@@ -54,6 +54,21 @@ This shared collector contract applies to the other producer lanes too; direct
 `dispatch_job_batch` callers retain their immediate reconciliation. No limits, recipes, retry caps,
 or stored artifacts change, and no backfill or failure-marker reset is needed.
 
+**Pull-quote criteria and exact timing (2026-09-24, prompt version 2, judge prompt version 2).**
+The extraction prompt now states what a pull quote is for, derived from VISION: help a resident who
+missed the meeting understand what was at stake and how people argued it, in a clip that stands
+alone. Criteria (`citypods/moments.py:PULL_QUOTE_CRITERIA`): self-contained; substantive about a
+public decision (any civic topic, with particular attention to land use, housing, zoning, parking,
+streets, budgets, taxes, debt, and maintenance); clear and memorable, including heartfelt lines when
+the feeling conveys stakes; the range of voices, with each side's strongest statement and
+opposition quoted without framing; one to three sentences. Excluded: procedure (outcomes belong in
+decisions), pleasantries, crosstalk, lines chosen to mock or provoke, and members of the public's
+personal details; `why` never names a member of the public. The judge scores against the same
+text. Both version bumps start new calibration cells. Each candidate also keeps its exact spoken
+span (`quote_start`/`quote_end`, word-accurate from the served-time words sidecar when available,
+`timing_source: words|cues`) beside the padded clip window (`start`/`end`), and a short quote is
+widened to the 8 s minimum instead of dropped, so later video framing never has to re-find a quote.
+
 The OpenCV face/mouth-motion analyzer is pinned and versioned behind the framing recipe; it tracks a
 confident active speaker, otherwise uses a stable group crop, honors a manual anchor, and never upscales
 below the 720-pixel square-pane policy. Redirected media is first resolved through the SSRF gate before
