@@ -765,6 +765,7 @@ function baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, outcome) 
     actual_end_at: actualEndAt,
     observed_input_tokens: null,
     observed_output_tokens: null,
+    reserved_output_tokens: Number(job.reserved_output_tokens) || 0,
     outcome,
     provider_status_code: null,
     gateway_correlation_id: null,

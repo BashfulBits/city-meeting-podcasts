@@ -22,8 +22,8 @@
  * This module replaces that with two bounded, decaying signals kept per estimates key (a ring of
  * the most recent CALIBRATION_WINDOW completions):
  *
- *   input ratio    = p95(observed_input / input_token_estimate), else the route's catalog
- *                    `input_token_ratio` prior until CALIBRATION_MIN_SAMPLES exist.
+ *   input ratio    = max(route prior, p95(observed_input / input_token_estimate) * headroom),
+ *                    else the route's catalog `input_token_ratio` prior until the sample gate.
  *   output reserve = min(max_tokens, ceil(p95(observed_output) * OUTPUT_RESERVE_HEADROOM)), else
  *                    the job's full max_tokens until CALIBRATION_MIN_SAMPLES exist.
  *
@@ -34,6 +34,11 @@
 
 export const CALIBRATION_WINDOW = 32;
 export const CALIBRATION_MIN_SAMPLES = 16;
+// The route-wide TPM budget already includes a 10% safety margin. Add a separate headroom to
+// the learned input ratio so a p95-calibrated prompt does not spend that same margin twice.
+// Gemma's paired corpus had p95 1.16 but a 1.48 maximum; 1.2x headroom plus the existing 0.9
+// TPM multiplier keeps that measured tail within Google's 16k input-token/minute quota.
+export const INPUT_RATIO_HEADROOM = 1.2;
 export const OUTPUT_RESERVE_HEADROOM = 1.25;
 // Guards against a single tiny completion (e.g. "ok") ever producing a near-zero reserve.
 export const MIN_OUTPUT_RESERVE = 64;
@@ -103,13 +108,27 @@ export function recordCalibrationSample(summary, { inputEstimate, observedInput,
 /** The effective input ratio and output-reserve forecast for one route/model/prompt family. */
 export function calibrationFor(route, summary) {
   const parsed = summary || { r: [], o: [] };
-  const inputRatio =
-    parsed.r.length >= CALIBRATION_MIN_SAMPLES ? percentile(parsed.r, 0.95) : routeInputTokenRatio(route);
+  const inputRatioP95 =
+    parsed.r.length >= CALIBRATION_MIN_SAMPLES ? percentile(parsed.r, 0.95) : null;
+  const inputHeadroom =
+    route?.provider === "gemini" && String(route?.model || "").startsWith("google/gemma-4-")
+      ? INPUT_RATIO_HEADROOM
+      : 1;
+  const inputRatio = Math.max(
+    routeInputTokenRatio(route),
+    inputRatioP95 == null ? 0 : inputRatioP95 * inputHeadroom
+  );
   const outputForecast =
     parsed.o.length >= CALIBRATION_MIN_SAMPLES
       ? Math.max(MIN_OUTPUT_RESERVE, Math.ceil(percentile(parsed.o, 0.95) * OUTPUT_RESERVE_HEADROOM))
       : null;
-  return { inputRatio, outputForecast };
+  return {
+    inputRatio,
+    outputForecast,
+    inputRatioP95,
+    inputRatioSamples: parsed.r.length,
+    outputSamples: parsed.o.length,
+  };
 }
 
 /** Output tokens to reserve for a job: its forecast, never above the request's own max_tokens. */
