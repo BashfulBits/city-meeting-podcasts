@@ -70,3 +70,32 @@ def test_route_max_lanes_match_the_job_builders_that_set_the_flag():
     for path in set(flagged.values()):
         assert '"max_tokens_mode": "route_max"' in path.read_text(), path
     assert set(flagged) == mon.ROUTE_MAX_LANES
+
+
+def _usage(**over):
+    row = {
+        "purpose": "chapter-agenda",
+        "route_id": "nemotron",
+        "calls": 40,
+        "reserved_output_mean": 16384,
+        "output_tokens_p90": 12000,
+        "over_reservation_calls": 0,
+        "slow_calls": 0,
+        "max_duration_ms": 90_000,
+    }
+    return {**row, **over}
+
+
+def test_usage_flags_reservations_that_are_too_small_or_too_large_and_slow_calls():
+    kinds = lambda rows: sorted(f["kind"] for f in mon.usage_findings(rows))  # noqa: E731
+    assert kinds([_usage()]) == []  # a healthy reservation
+    assert kinds([_usage(over_reservation_calls=10)]) == ["reservation_too_small"]
+    assert kinds([_usage(output_tokens_p90=2000)]) == ["reservation_too_large"]
+    assert kinds([_usage(slow_calls=3, max_duration_ms=700_000)]) == ["slow_calls"]
+    assert kinds([_usage(calls=5, output_tokens_p90=10)]) == []  # too few calls to judge
+
+
+def test_usage_findings_appear_in_the_report_even_without_failures():
+    report, findings = mon.build_report([], ROUTES, LANES, [_usage(output_tokens_p90=2000)])
+    assert [f["kind"] for f in findings] == ["reservation_too_large"]
+    assert "reservation_too_large" in report and "Reservations and latency" in report

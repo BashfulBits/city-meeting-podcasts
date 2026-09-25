@@ -35,6 +35,10 @@ Phase R (Research-Tool Surface)._
   - A daily workflow reads those counts and keeps one rolling issue listing output-budget
     cut-offs, empty/invalid structured replies, own-rate 429s and oversized inputs, each with the
     lanes involved and the config key that would correct it. It never edits config.
+  - `/v2/stats?detail=1` adds `usage_today` per lane and route (calls, output p50/p90/max, mean
+    reservation, calls over their reservation, calls >= 600 s), computed at read time from the
+    `attempts` and `jobs` rows the executor already writes -- no added row writes. The monitor
+    flags reservations that are too small or far too large and calls near the 720 s ceiling.
 
 - **Moments and tagger output budgets raised to 32,768 tokens** (moments from 4,096,
   `citypods/moments.py` `MOMENTS_OUTPUT_TOKEN_BUDGET`; tagger from 1,024, `citypods/tags.py`

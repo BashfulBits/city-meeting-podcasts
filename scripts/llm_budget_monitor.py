@@ -14,6 +14,10 @@ that a maintainer can correct in config, and are otherwise only visible as retri
 * ``own_tpm`` -- our own token-rate 429s: batches or reservations sized past the route's TPM.
 * ``route_input_limit`` -- requests larger than the route accepts: re-batch or record the ceiling.
 
+It also reads ``usage_today`` (per lane and route, computed by the Worker from rows it already
+writes): output above the job's reservation, output far below it (over-reservation that wastes
+TPM admission), and calls near the Worker's 720 s response ceiling.
+
 The report maps each route to the lanes that can send it work (``llm_lanes``), so a finding names
 the lane and the config key to change. It never changes config itself. The workflow runs it near
 the end of each UTC day, because the Worker's counters reset at 00:00 UTC.
@@ -53,7 +57,14 @@ THRESHOLDS = {
 }
 
 
-def fetch_route_failures(url: str, token: str) -> list[dict[str, Any]]:
+# usage_today thresholds: judged only once a lane/route pair has this many calls in the day.
+MIN_USAGE_CALLS = 10
+OVER_RESERVATION_SHARE = 0.20  # >= 20% of calls wrote more than their reservation
+UNDER_USE_RATIO = 0.25  # the p90 output is below a quarter of the reservation
+SLOW_CALLS = 3  # calls at or past 600 s (the Worker's ceiling is 720 s)
+
+
+def fetch_stats(url: str, token: str) -> dict[str, Any]:
     response = requests.get(
         urljoin(url.rstrip("/") + "/", "v2/stats"),
         params={"detail": "1", "limit": "100"},
@@ -61,7 +72,60 @@ def fetch_route_failures(url: str, token: str) -> list[dict[str, Any]]:
         timeout=60,
     )
     response.raise_for_status()
-    return list(response.json().get("route_failures") or [])
+    return response.json()
+
+
+def usage_findings(usage: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Reservation and latency findings from the Worker's per lane/route usage for the day."""
+    findings = []
+    for row in usage:
+        calls = int(row.get("calls") or 0)
+        lane, route_id = row.get("purpose"), row.get("route_id")
+        reserved = int(row.get("reserved_output_mean") or 0)
+        p90 = int(row.get("output_tokens_p90") or 0)
+        base = {
+            "lane": lane,
+            "route_id": route_id,
+            "calls": calls,
+            "reserved": reserved,
+            "p90": p90,
+        }
+        if int(row.get("slow_calls") or 0) >= SLOW_CALLS:
+            findings.append(
+                {
+                    **base,
+                    "kind": "slow_calls",
+                    "detail": f"{row['slow_calls']} calls took >= 600 s (max "
+                    f"{int(row.get('max_duration_ms') or 0) // 1000} s; ceiling 720 s)",
+                    "suggestion": f"Lower this model's reasoning for `{lane}` "
+                    "(`llm_lanes[<lane>].reasoning`) or move the lane off this route.",
+                }
+            )
+        if calls < MIN_USAGE_CALLS or not reserved:
+            continue
+        over = int(row.get("over_reservation_calls") or 0)
+        if over >= OVER_RESERVATION_SHARE * calls:
+            findings.append(
+                {
+                    **base,
+                    "kind": "reservation_too_small",
+                    "detail": f"{over} of {calls} calls wrote more than the {reserved}-token "
+                    f"reservation (p90 {p90})",
+                    "suggestion": f"Raise `{lane}`'s output reservation toward its p90 ({p90}) so "
+                    "TPM admission reflects real use.",
+                }
+            )
+        elif p90 < UNDER_USE_RATIO * reserved:
+            findings.append(
+                {
+                    **base,
+                    "kind": "reservation_too_large",
+                    "detail": f"p90 output {p90} vs a {reserved}-token reservation",
+                    "suggestion": f"Lower `{lane}`'s output reservation toward {max(p90, 1024)} "
+                    "to free TPM for other jobs (the route's own limit is still what is sent).",
+                }
+            )
+    return findings
 
 
 def _lanes_for_model(model: str, lanes: Mapping[str, Any]) -> list[str]:
@@ -115,6 +179,7 @@ def build_report(
     failures: list[Mapping[str, Any]],
     routes: Mapping[str, Mapping[str, Any]],
     lanes: Mapping[str, Any],
+    usage: list[Mapping[str, Any]] | None = None,
 ) -> tuple[str, list[dict[str, Any]]]:
     findings = []
     for row in failures:
@@ -137,8 +202,11 @@ def build_report(
             }
         )
     findings.sort(key=lambda f: (f["failure_class"], -f["count"]))
-    if not findings:
+    usage_rows = usage_findings(usage or [])
+    if not findings and not usage_rows:
         return "No token-budget or request-shape findings today.\n", []
+    if not findings:
+        return _usage_section(usage_rows), usage_rows
     lines = [
         f"Findings for UTC day {findings[0]['utc_day']} from the v2 Worker's `route_failures` "
         "(thresholds: " + ", ".join(f"{k} ≥ {v}" for k, v in THRESHOLDS.items()) + ").",
@@ -151,13 +219,30 @@ def build_report(
             f"| `{f['failure_class']}` | `{f['route_id']}` | `{f['model']}` | {f['count']} | "
             f"{', '.join(f['lanes']) or '-'} | {f['suggestion']} |"
         )
+    if usage_rows:
+        lines += ["", _usage_section(usage_rows)]
     lines += [
         "",
         "Evidence for a finding: the AI Gateway logs for the route's model on this day show the "
         "reply's `finish_reason`, output tokens and reasoning tokens. Corrections are config "
         "changes made by a maintainer; this report never edits config.",
     ]
-    return "\n".join(lines) + "\n", findings
+    return "\n".join(lines) + "\n", findings + usage_rows
+
+
+def _usage_section(rows: list[Mapping[str, Any]]) -> str:
+    lines = [
+        "**Reservations and latency** (the Worker's `usage_today`, from rows it already writes):",
+        "",
+        "| Finding | Lane | Route | Calls | Detail | Suggested correction |",
+        "|---|---|---|---|---|---|",
+    ]
+    for f in rows:
+        lines.append(
+            f"| `{f['kind']}` | `{f['lane']}` | `{f['route_id']}` | {f['calls']} | "
+            f"{f['detail']} | {f['suggestion']} |"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -166,13 +251,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--stats-json", type=Path, help="read /v2/stats output from a file")
     args = parser.parse_args(argv)
     if args.stats_json:
-        failures = list(json.loads(args.stats_json.read_text()).get("route_failures") or [])
+        stats = json.loads(args.stats_json.read_text())
     else:
-        failures = fetch_route_failures(
+        stats = fetch_stats(
             os.environ["LLM_DISPATCH_V2_URL"], os.environ["LLM_DISPATCH_V2_AUTH_TOKEN"]
         )
+    failures = list(stats.get("route_failures") or [])
     routes = json.loads(WORKER_CATALOG.read_text())["routes_by_id"]
-    report, findings = build_report(failures, routes, load_lanes())
+    report, findings = build_report(
+        failures, routes, load_lanes(), list(stats.get("usage_today") or [])
+    )
     print(report)
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)

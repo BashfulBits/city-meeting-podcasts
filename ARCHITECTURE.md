@@ -414,8 +414,9 @@ total on `/admin/status`.
   (e.g. NVIDIA DeepSeek v4.1's thinking switch); models without an entry keep their provider
   default. A reply that stops at its output limit (`finish_reason: length`) is never stored: it is
   `output_budget_exhausted`, retried without cooling the route, and counted. `llm-budget-monitor.yml`
-  turns those counts, empty/invalid JSON, own-rate 429s and oversized inputs into one rolling issue
-  that names the lane and the config key to change.
+  turns those counts, empty/invalid JSON, own-rate 429s and oversized inputs -- plus `usage_today`
+  (per lane/route output percentiles, reservation, slow calls, computed from existing `attempts`
+  rows at read time) -- into one rolling issue that names the lane and the config key to change.
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
   private R2 queue, now multi-provider (review/41, extending R10/review/27 §9's original single-Mistral
   design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests

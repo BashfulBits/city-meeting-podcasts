@@ -1427,6 +1427,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
   // parameter count scales with caller-supplied batch size (e.g. POLL_BATCH_MAX up to 1000) into
   // multiple queries of at most this many ids each.
   static MAX_SQL_BOUND_PARAMS = 100;
+  // _usageToday: a day's attempts are a few thousand; the cap only bounds a pathological day.
+  static USAGE_SCAN_LIMIT = 20000;
+  // A call at or past this share of MAX_RESPONSE_SECONDS (720 s) counts as slow: 600 s.
+  static SLOW_CALL_MS = 600_000;
 
   *_chunks(items, size = LLMSchedulerDO.MAX_SQL_BOUND_PARAMS) {
     for (let offset = 0; offset < items.length; offset += size) {
@@ -2094,6 +2098,75 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * history and is intentionally never called by scheduled producer telemetry; use stats()
    * for recurring observation. The HTTP route requires `?detail=1` to reach this method.
    */
+  /**
+   * Per (lane, route) usage for the current UTC day, computed at read time from rows the executor
+   * already writes -- `attempts` (actual output tokens, start/end) joined to `jobs` (lane via
+   * policy, reserved output) -- so this telemetry adds no row writes. Attempts carry no time index
+   * (it would cost a billed write per attempt), so today's rows are read newest-first by rowid and
+   * the scan stops at the first earlier row, capped at USAGE_SCAN_LIMIT.
+   *
+   * Feeds scripts/llm_budget_monitor.py: output far below the reservation (over-reservation that
+   * wastes TPM admission), output above it (reservation too small), and calls near the Worker's
+   * response ceiling (a slow route or runaway reasoning).
+   */
+  _usageToday(sql, now) {
+    const dayStart = Date.parse(`${new Date(now).toISOString().slice(0, 10)}T00:00:00Z`);
+    const attempts = [];
+    for (const row of sql.exec(
+      `SELECT job_id, route_id, actual_start_at, actual_end_at, observed_output_tokens, created_at
+         FROM attempts ORDER BY rowid DESC LIMIT ?`,
+      LLMSchedulerDO.USAGE_SCAN_LIMIT
+    )) {
+      if (row.created_at < dayStart) break;
+      if (row.actual_start_at == null) continue; // planned but never sent
+      attempts.push(row);
+    }
+    const jobs = new Map();
+    const jobIds = [...new Set(attempts.map((row) => row.job_id))];
+    for (const chunk of this._chunks(jobIds)) {
+      const placeholders = chunk.map(() => "?").join(",");
+      for (const row of sql.exec(
+        `SELECT id, purpose, policy_json, max_output_token_estimate FROM jobs WHERE id IN (${placeholders})`,
+        ...chunk
+      )) {
+        jobs.set(row.id, row);
+      }
+    }
+    const byKey = new Map();
+    for (const row of attempts) {
+      const job = jobs.get(row.job_id);
+      const purpose = job ? this._purposeForJob(job) : "unknown";
+      const key = `${purpose}\u0000${row.route_id}`;
+      let agg = byKey.get(key);
+      if (!agg) {
+        agg = { purpose, route_id: row.route_id, calls: 0, outputs: [], reserved_sum: 0,
+          over_reservation_calls: 0, slow_calls: 0, max_duration_ms: 0 };
+        byKey.set(key, agg);
+      }
+      agg.calls += 1;
+      const output = Number(row.observed_output_tokens) || 0;
+      const reserved = Number(job?.max_output_token_estimate) || 0;
+      agg.outputs.push(output);
+      agg.reserved_sum += reserved;
+      if (reserved && output > reserved) agg.over_reservation_calls += 1;
+      const duration = row.actual_end_at != null ? row.actual_end_at - row.actual_start_at : 0;
+      if (duration >= LLMSchedulerDO.SLOW_CALL_MS) agg.slow_calls += 1;
+      agg.max_duration_ms = Math.max(agg.max_duration_ms, duration);
+    }
+    return [...byKey.values()]
+      .map(({ outputs, reserved_sum, ...agg }) => {
+        outputs.sort((a, b) => a - b);
+        return {
+          ...agg,
+          output_tokens_p50: outputs[Math.floor((outputs.length - 1) * 0.5)] || 0,
+          output_tokens_p90: outputs[Math.floor((outputs.length - 1) * 0.9)] || 0,
+          output_tokens_max: outputs[outputs.length - 1] || 0,
+          reserved_output_mean: agg.calls ? Math.round(reserved_sum / agg.calls) : 0,
+        };
+      })
+      .sort((a, b) => b.calls - a.calls);
+  }
+
   async detailedStats(now, limit = 20) {
     this._ensureQueuedJobCounter();
     const sql = this._getSql();
@@ -2243,6 +2316,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         all: routes.slice(0, limit),
       },
       route_failures: routeFailures,
+      usage_today: this._usageToday(sql, now),
       bundles: {
         active: one("SELECT COUNT(*) AS n FROM bundles WHERE state = 'active'").n,
         active_call_count: one(

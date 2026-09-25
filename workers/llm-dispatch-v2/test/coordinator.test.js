@@ -2440,3 +2440,40 @@ test("the drain signal ignores expired leases, which a global pause never reaps"
   assert.equal(dead.in_flight, 0);
   assert.equal((await coordinator.stats(later)).in_flight.by_provider.gemini, undefined);
 });
+
+
+test("detailedStats reports today's usage per lane and route from existing attempt rows", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const dayStart = Date.parse(`${new Date(now).toISOString().slice(0, 10)}T00:00:00Z`);
+  const insertJob = (id, purpose, reserved) => sql.exec(
+    `INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, prompt_family,
+       input_token_estimate, max_output_token_estimate, payload_key, created_at, updated_at, purpose)
+     VALUES (?, ?, 'd', ?, 'completed', 'x', 100, ?, ?, ?, ?, ?)`,
+    id, `idem-${id}`, JSON.stringify({ purpose }), reserved, `payloads/${id}.json`, now, now, purpose
+  );
+  const insertAttempt = (id, jobId, route, output, durationMs, createdAt) => sql.exec(
+    `INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, actual_start_at, actual_end_at,
+       observed_output_tokens, start_state, outcome, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'started', 'success', ?)`,
+    id, jobId, route, createdAt, createdAt, createdAt + durationMs, output, createdAt
+  );
+  insertJob("j1", "chapter-agenda", 16384);
+  insertJob("j2", "chapter-agenda", 16384);
+  insertJob("j3", "topic-tags:tagger", 8192);
+  insertAttempt("old", "j1", "route-a", 99999, 1000, dayStart - 1000); // yesterday: excluded
+  insertAttempt("a1", "j1", "route-a", 2000, 30_000, now - 3000);
+  insertAttempt("a2", "j2", "route-a", 20000, 650_000, now - 2000); // over reservation, slow
+  insertAttempt("a3", "j3", "route-b", 500, 5_000, now - 1000);
+
+  const usage = (await coordinator.detailedStats(now, 50)).usage_today;
+  const agenda = usage.find((row) => row.purpose === "chapter-agenda");
+  assert.equal(agenda.route_id, "route-a");
+  assert.equal(agenda.calls, 2);
+  assert.equal(agenda.reserved_output_mean, 16384);
+  assert.equal(agenda.over_reservation_calls, 1);
+  assert.equal(agenda.slow_calls, 1);
+  assert.equal(agenda.output_tokens_max, 20000);
+  const tagger = usage.find((row) => row.purpose === "topic-tags:tagger");
+  assert.deepEqual([tagger.calls, tagger.output_tokens_p90, tagger.slow_calls], [1, 500, 0]);
+});
