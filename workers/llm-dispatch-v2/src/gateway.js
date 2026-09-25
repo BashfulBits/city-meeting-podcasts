@@ -65,6 +65,11 @@ export function upstreamRequestForRoute(payload, route) {
   // A schema-only job (review/48 R10) is shaped here for THIS route's method: the producer could
   // not know which route in the pool would serve it. A legacy payload that already carries a
   // response_format (jobs staged before this change) is forwarded as it always was.
+  // Provider controls this route always sends (compile-validated allowlist, e.g. disabling
+  // DeepSeek v4.1's thinking on NVIDIA). The route owns these, so they win over the payload.
+  if (route?.request_params && typeof route.request_params === "object") {
+    Object.assign(request, route.request_params);
+  }
   if (payload?.structured_output) {
     const shaped = shapeForRoute(payload.messages, payload.structured_output, route);
     request.messages = shaped.messages;

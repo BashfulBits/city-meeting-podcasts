@@ -97,3 +97,17 @@ test("a non-JSON structured reply is flagged invalid", () => {
   assert.equal(structuredReplyProblem(reply('{"a": 1} and more prose')), "structured_output_invalid");
   assert.equal(structuredReplyProblem(reply('```json\n{"a": 1}')), "structured_output_invalid");
 });
+
+test("a route's request_params are sent with every request to it", () => {
+  const route = {
+    ...PROMPT_ONLY_ROUTE,
+    request_params: { chat_template_kwargs: { enable_thinking: false } },
+  };
+  const request = upstreamRequestForRoute(
+    { messages: [{ role: "user", content: "hi" }], structured_output: { name: "Out", schema: SCHEMA } },
+    route
+  );
+  assert.deepEqual(request.chat_template_kwargs, { enable_thinking: false });
+  const plain = upstreamRequestForRoute({ messages: [] }, { ...PROMPT_ONLY_ROUTE, request_params: null });
+  assert.equal("chat_template_kwargs" in plain, false);
+});

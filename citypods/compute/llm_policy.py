@@ -190,6 +190,10 @@ class LLMRoute:
     structured_output_response_format: Literal["json_schema", "json_object", "none"] = "json_schema"
     structured_output_include_schema_in_prompt: bool = False
     structured_output_schema_strip_keys: tuple[str, ...] = ()
+    # Provider-specific request parameters this route always sends (compile-validated allowlist,
+    # e.g. `chat_template_kwargs: {enable_thinking: false}`). Stored as a JSON string so the frozen
+    # route stays hashable; `request_params` decodes it.
+    request_params_json: str = ""
     # Conservative defaults for hand-authored/test routes. Generated route catalogs materialize
     # provider- or route-specific values for every physical route.
     input_context_limit: int = 32768
@@ -337,6 +341,11 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                 ),
                 input_context_limit=max(1, int(item.get("input_context_limit", 32768) or 32768)),
                 output_context_limit=max(1, int(item.get("output_context_limit", 1024) or 1024)),
+                request_params_json=(
+                    json.dumps(item["request_params"], sort_keys=True)
+                    if item.get("request_params")
+                    else ""
+                ),
                 hard_input_ceiling=(
                     int(item["hard_input_ceiling"])
                     if item.get("hard_input_ceiling") is not None
@@ -562,3 +571,9 @@ __all__ = [
     "estimate_tokens",
     "route_input_tokens",
 ]
+
+
+def route_request_params(route: object) -> dict[str, Any]:
+    """The provider-specific request parameters a compiled route always sends (may be empty)."""
+    raw = getattr(route, "request_params_json", "") or ""
+    return json.loads(raw) if raw else {}

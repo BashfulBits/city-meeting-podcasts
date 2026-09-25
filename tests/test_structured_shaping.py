@@ -124,3 +124,34 @@ def test_a_direct_call_on_a_prompt_only_route_sends_no_response_format():
     assert "response_format" not in calls[0]
     assert calls[0]["messages"][0]["role"] == "system"
     assert "matching this JSON Schema" in calls[0]["messages"][0]["content"]
+
+
+def test_a_routes_request_params_reach_the_direct_request():
+    # NVIDIA's deepseek-v4.1-flash runs with thinking off (see config/provider_limits.yml).
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        message = MagicMock(content='{"answer": "ok"}')
+        return MagicMock(
+            choices=[MagicMock(message=message)],
+            model_dump=lambda: {
+                "choices": [{"message": {"role": "assistant", "content": '{"answer": "ok"}'}}]
+            },
+        )
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="deepseek/deepseek-v4.1-flash"), completion=completion
+    )
+    backend.run_inference(
+        InferenceJob(
+            task="tag",
+            inputs={
+                "messages": [{"role": "user", "content": "hi"}],
+                "structured_output": "structured-shaping-test",
+                "max_tokens": 64,
+            },
+            recipe_hash="recipe-request-params",
+        )
+    )
+    assert calls[0]["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
