@@ -62,6 +62,7 @@ from citypods.compute.llm_policy import (
     QuotaPolicy,
     canonical_model,
     estimate_tokens,
+    route_request_params,
 )
 from citypods.compute.llm_scheduler import (
     SelectionResult,
@@ -874,6 +875,10 @@ class LiteLLMBackend(Backend):
                 api_key = os.environ.get(route.api_key_env)
                 if api_key:
                     options["api_key"] = api_key
+            request_params = route_request_params(route)
+            if request_params:
+                # Sent verbatim in the request body, exactly as the v2 Worker sends them.
+                options["extra_body"] = request_params
         for field in (
             "temperature",
             "max_tokens",

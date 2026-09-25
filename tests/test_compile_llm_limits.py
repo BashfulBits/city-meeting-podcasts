@@ -927,3 +927,25 @@ def test_also_serves_rejects_an_alias_instead_of_a_canonical_pool():
         compile_llm_limits._validated_routes(
             [aliased, _also_serves_route(also_serves=["orcarouter/ds-v4-flash"])]
         )
+
+
+@pytest.mark.parametrize(
+    ("params", "match"),
+    [
+        ({"model": "other"}, "unsupported keys"),
+        ({}, "non-empty mapping"),
+        ("enable_thinking=false", "non-empty mapping"),
+    ],
+)
+def test_request_params_are_limited_to_provider_controls(params, match):
+    with pytest.raises(ValueError, match=match):
+        compile_llm_limits._validate_request_params({"route_id": "r", "request_params": params})
+
+
+def test_request_params_are_compiled_for_the_worker():
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
+    assert worker["nvidia_deepseek_v4_1_flash_free"]["request_params"] == {
+        "chat_template_kwargs": {"enable_thinking": False}
+    }
+    assert worker["nvidia_nemotron_3_ultra_550b_a55b_free"]["request_params"] is None

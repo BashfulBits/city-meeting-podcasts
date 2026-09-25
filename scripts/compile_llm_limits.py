@@ -236,6 +236,27 @@ def _normalize_structured_output_methods(raw_methods: Any) -> dict[str, dict[str
     return methods
 
 
+# Provider-specific request parameters a route may always send. Deliberately small: each key is
+# a documented provider control (thinking/reasoning), never a way to override what the pipeline
+# sends (model, messages, response_format, max_tokens ...), which the Worker owns.
+_ALLOWED_REQUEST_PARAMS = frozenset({"chat_template_kwargs", "reasoning_effort"})
+
+
+def _validate_request_params(route: dict[str, Any]) -> None:
+    params = route.get("request_params")
+    if params is None:
+        return
+    if not isinstance(params, dict) or not params:
+        raise ValueError(f"route {route['route_id']!r} request_params must be a non-empty mapping")
+    unknown = set(params) - _ALLOWED_REQUEST_PARAMS
+    if unknown:
+        raise ValueError(
+            f"route {route['route_id']!r} request_params has unsupported keys {sorted(unknown)}; "
+            f"allowed: {sorted(_ALLOWED_REQUEST_PARAMS)}"
+        )
+    json.dumps(params)  # must be plain JSON
+
+
 def _resolve_structured_output_methods(
     routes: list[dict[str, Any]], providers: dict[str, Any]
 ) -> dict[str, tuple[str, str, str | None]]:
@@ -395,6 +416,8 @@ _WORKER_ROUTE_FIELDS = (
     "structured_output_response_format",
     "structured_output_include_schema_in_prompt",
     "structured_output_schema_strip_keys",
+    # Merged into the provider request by gateway.js's upstreamRequestForRoute.
+    "request_params",
 )
 
 _WORKER_PROVIDER_FIELDS = (
@@ -1054,6 +1077,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         obs_on = route.get("observed_on")
         if obs_on is not None:
             route["observed_on"] = str(obs_on)
+        _validate_request_params(route)
         method_name, method_source, verified_on = resolved_methods[route["route_id"]]
         method = structured_output_methods[method_name]
         route.update(
