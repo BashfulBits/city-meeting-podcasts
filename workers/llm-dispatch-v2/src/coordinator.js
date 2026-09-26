@@ -2855,6 +2855,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * rejection is recorded per candidate route (`job_unroutable`) for the budget monitor -- mirrors
    * how the claim loop's own oversize-ceiling failure (`input_over_route_ceiling`) is recorded.
    * A job here was never claimed and never reserved capacity, so there is nothing to release.
+   *
+   * `dispatchLimits` must be the FULL catalog (`this._dispatchLimits()`), never the pause-filtered
+   * one `claimDispatchWindow` admits against (`_claimDispatchLimits`): that one drops a paused
+   * route's id from `model_routes_map` entirely, and this is a structural size-fit check, not an
+   * admission decision -- a route that is merely cooling down still structurally fits the job
+   * once it un-pauses, and must not be misread as absent.
    */
   _reconcileUnroutableJobs(sql, now, dispatchLimits) {
     const limit = this._maxUnroutableReconcilePerTick();
@@ -3582,8 +3588,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // Same deferrability as retention pruning: a job stuck under __unroutable__ has already
       // waited indefinitely (see _reconcileUnroutableJobs), so one more day is never the
       // difference that matters, and normal admission always wins the row budget over cleanup.
+      // Deliberately the FULL catalog (`_dispatchLimits()`), not the pause-filtered
+      // `dispatchLimits` this claim admits against: `_claimDispatchLimits` drops a paused route's
+      // id from `model_routes_map` entirely, and a size-fit check run against that filtered map
+      // would misread a route that is merely cooling down as structurally too small, permanently
+      // failing a job that only needed to wait -- the exact bug this whole sweep exists to fix.
       if (rowsToday < this._enqueueRowStop()) {
-        const { reindexed, failed } = this._reconcileUnroutableJobs(sql, now, dispatchLimits);
+        const { reindexed, failed } = this._reconcileUnroutableJobs(
+          sql,
+          now,
+          this._dispatchLimits()
+        );
         diagnostics.unroutable_reindexed = reindexed;
         diagnostics.unroutable_failed = failed;
         // Each failure here removes one row this tier's own queued_job_count already counted;

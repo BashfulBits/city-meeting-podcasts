@@ -70,15 +70,22 @@ def test_jobs_failed_over_the_route_ceiling_name_the_ceiling_and_the_lanes():
     assert "`input_over_route_ceiling`" in report
 
 
-def test_jobs_failed_as_unroutable_name_the_context_limits_and_the_lanes():
-    """The Worker's __unroutable__ sweep failures name both context limits and the lanes."""
+def test_jobs_failed_as_unroutable_name_every_static_check_and_the_lanes():
+    """The Worker's __unroutable__ sweep failures name every static check, not just size."""
     routes = {
-        "gemma": {**ROUTES["gemma"], "input_context_limit": 2000, "output_context_limit": 1000}
+        "gemma": {
+            **ROUTES["gemma"],
+            "input_context_limit": 2000,
+            "output_context_limit": 1000,
+            "hard_input_ceiling": 1800,
+        }
     }
     report, [finding] = mon.build_report([_row("gemma", "job_unroutable", 1)], routes, LANES)
     assert finding["lanes"] == ["topic-tags:prelabeler"]
     assert "`input_context_limit` (2000)" in finding["suggestion"]
     assert "`output_context_limit` (1000)" in finding["suggestion"]
+    assert "`hard_input_ceiling` (1800)" in finding["suggestion"]
+    assert "allow_paid" in finding["suggestion"]
     assert "`job_unroutable`" in report
 
 

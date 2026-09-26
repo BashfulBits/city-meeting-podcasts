@@ -2878,3 +2878,72 @@ test("MAX_UNROUTABLE_RECONCILE_PER_TICK=0 pauses the sweep without touching admi
   assert.equal(plan.claim_diagnostics.unroutable_reindexed, 0);
   assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'huge'")][0].state, "queued");
 });
+
+test("reconciliation checks the full catalog, not the pause-filtered one, so a paused new route still reindexes", async () => {
+  // The bug this guards: _claimDispatchLimits drops a paused route's id from model_routes_map
+  // entirely. If reconciliation used that filtered catalog, a route added (or merely paused)
+  // between enqueue and this tick would look absent, permanently failing a job that only needed
+  // to wait -- the exact class of bug this whole sweep exists to fix.
+  const catalog = {
+    model_aliases: {},
+    model_routes_map: { "acme/two-route-model": ["small-route"] },
+    routes_by_id: {
+      "small-route": {
+        provider: "acme",
+        upstream_model: "two-route-model",
+        rpm: 30,
+        rpd: 1000,
+        tpm: 50000,
+        free: true,
+        input_context_limit: 500,
+        output_context_limit: 200,
+      },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  const job = makeJob("grows-in", {
+    policy_json: JSON.stringify({ allowed_models: ["acme/two-route-model"], allow_paid: false }),
+    input_token_estimate: 2000, // over small-route's 500-token context
+    max_output_token_estimate: 200,
+  });
+  await coordinator.enqueueBatch([job]);
+  assert.deepEqual(
+    [...sql.exec("SELECT model FROM job_models WHERE job_id = 'grows-in'")].map((r) => r.model),
+    ["__unroutable__"]
+  );
+
+  // A bigger route is added for the same model, and paused immediately (e.g. babysitting a
+  // rollout) -- present in the catalog, but not one claimDispatchWindow would currently admit to.
+  coordinator.env.DISPATCH_LIMITS_OVERRIDE = {
+    ...catalog,
+    model_routes_map: { "acme/two-route-model": ["small-route", "big-route"] },
+    routes_by_id: {
+      ...catalog.routes_by_id,
+      "big-route": {
+        provider: "acme",
+        upstream_model: "two-route-model",
+        rpm: 30,
+        rpd: 1000,
+        tpm: 500000,
+        free: true,
+        input_context_limit: 5000,
+        output_context_limit: 2000,
+      },
+    },
+  };
+  const now = Date.now();
+  const paused = await coordinator.pauseDispatch(
+    { scope: "route", target: "big-route", seconds: 600 },
+    now
+  );
+  assert.equal(paused.ok, true);
+
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.equal(plan.claim_diagnostics.unroutable_reindexed, 1);
+  assert.equal(plan.claim_diagnostics.unroutable_failed, 0);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'grows-in'")][0].state, "queued");
+  assert.deepEqual(
+    [...sql.exec("SELECT model FROM job_models WHERE job_id = 'grows-in'")].map((r) => r.model),
+    ["acme/two-route-model"]
+  );
+});

@@ -543,13 +543,20 @@ with that tolerance (and with any uncapped route's daily quota spent) is failed 
 as `input_over_route_ceiling`, so it cannot hold the claim's bounded lookahead and the producer re-plans
 it into batches that fit; producers read the same ratio from the read-only `GET /v2/calibration`
 (one row) and size prelabeler batches to it with a 5% margin. A job whose model has zero
-configured routes at all, or is too large for every one of them even at the coarser static ratio
-(`routeFitsContext`, checked once at enqueue), is indexed under the `__unroutable__` sentinel
-instead — never a key in `model_routes_map`, so the claim loop's per-model scan never reads it,
-however long it waits. `_reconcileUnroutableJobs` re-checks a small bounded batch of these each
-claim tick against the *current* catalog: one that now fits (a route was added or widened since
-enqueue) is reindexed under its real model; one that still doesn't is failed and recorded as
-`job_unroutable`, the same way as `input_over_route_ceiling` above. One physical route
+configured routes at all is instead indexed under that model's own (unconfigured) name, so a later
+catalog addition makes it searchable with no sweep needed (`scripts/reconcile_stuck_chapter_agenda.py
+--lane any` reaches a job stuck this way permanently, e.g. one pinned to a model retired from its
+panel). Only a job whose computed model set comes back empty entirely —
+every one of its allowed models has configured routes, but none fits it via the coarser static
+check (`routeFitsContext`: context/output limits, `hard_input_ceiling`, and paid-route eligibility,
+checked once at enqueue) — is indexed under the `__unroutable__` sentinel: never a key in
+`model_routes_map`, so the claim loop's per-model scan never reads it, however long it waits.
+`_reconcileUnroutableJobs` re-checks a small bounded batch of these each claim tick against the
+*current, unfiltered* catalog (`_dispatchLimits()`, not the pause-filtered one `claimDispatchWindow`
+admits against, so a merely paused route still counts as a fit): one that now fits (a route was
+added or widened since enqueue, or a paused one just needed the full catalog to be seen) is
+reindexed under its real model; one that still doesn't is failed and recorded as `job_unroutable`,
+the same way as `input_over_route_ceiling` above. One physical route
 may serve several logical pools via `also_serves` (one `route_id`, one ledger — e.g. NVIDIA's
 `deepseek-v4.1-flash` is the only route in `deepseek/deepseek-v4.1-flash` and `deepseek/deepseek-v4-pro`
 and pools with OrcaRouter in `deepseek/deepseek-v4-flash`); the compiled Worker catalog records each
