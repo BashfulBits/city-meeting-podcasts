@@ -17,6 +17,13 @@ that a maintainer can correct in config, and are otherwise only visible as retri
   because at its learned input ratio they were over every usable route's ``hard_input_ceiling``
   even with its tolerance. The producer re-plans them; a steady count means it sizes batches
   larger than the Worker will send.
+* ``job_unroutable`` -- queued jobs the Worker's bounded ``__unroutable__`` sweep failed because
+  every route configured for their allowed models rejected them on a static, size- or
+  policy-independent-of-live-capacity check (too large for context/output limits or
+  ``hard_input_ceiling`` at the catalog's loose static ratio, or every such route is paid while
+  the job disallows paid). Coarser and rarer than ``input_over_route_ceiling`` (every configured
+  route, not just the ones a learned ratio later tightens). A steady count means a lane is
+  enqueuing work no currently configured route can ever serve.
 
 It also reads ``usage_today`` (per lane and route, computed by the Worker from rows it already
 writes): output above the job's reservation, output far below it (over-reservation that wastes
@@ -59,6 +66,7 @@ THRESHOLDS = {
     "own_tpm": 20,
     "route_input_limit": 3,
     "input_over_route_ceiling": 1,
+    "job_unroutable": 1,
 }
 
 
@@ -188,6 +196,18 @@ def _suggestion(failure_class: str, route: Mapping[str, Any], lanes: list[str]) 
             f"({route.get('hard_input_ceiling')}) at the Worker's learned input ratio and were "
             "failed for the producer to re-plan: size the lane's batches from "
             "`GET /v2/calibration` or lower them."
+        )
+    if failure_class == "job_unroutable":
+        return (
+            "Queued jobs failed every static eligibility check on every route configured for "
+            "their model: too large for `input_context_limit` "
+            f"({route.get('input_context_limit')}) or `output_context_limit` "
+            f"({route.get('output_context_limit')}), over "
+            f"`hard_input_ceiling` ({route.get('hard_input_ceiling')}) at the catalog's static "
+            "ratio, or every such route is paid while the lane sends `allow_paid: false`. Check "
+            "which one applies before changing anything: shrink the lane's batches, add/widen a "
+            "route for this model, or allow paid routes for the lane, in "
+            "`config/provider_limits.yml` / `config/site_config.yml`."
         )
     return ""
 

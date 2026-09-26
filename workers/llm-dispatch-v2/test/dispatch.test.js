@@ -2773,3 +2773,177 @@ test("a mid-day deploy seeds the new row counter from today's recorded work, nev
   new LLMSchedulerDO({ storage }, env);
   assert.equal([...sql.exec("SELECT rows_written_today FROM scheduler")][0].rows_written_today, 5);
 });
+
+const TINY_CATALOG = {
+  model_aliases: {},
+  model_routes_map: { "acme/tiny-model": ["tiny-route"] },
+  routes_by_id: {
+    "tiny-route": {
+      provider: "acme",
+      upstream_model: "tiny-model",
+      rpm: 30,
+      rpd: 1000,
+      tpm: 50000,
+      free: true,
+      input_context_limit: 2000,
+      output_context_limit: 1000,
+    },
+  },
+};
+
+function tinyJob(id, input, overrides = {}) {
+  return makeJob(id, {
+    policy_json: JSON.stringify({ allowed_models: ["acme/tiny-model"], allow_paid: false }),
+    input_token_estimate: input,
+    max_output_token_estimate: 200,
+    ...overrides,
+  });
+}
+
+test("a job too big for every configured route is indexed __unroutable__ at enqueue time", async () => {
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: TINY_CATALOG });
+  await coordinator.enqueueBatch([tinyJob("huge", 5000)]); // > 2,000-token context, every route
+  const indexed = [...sql.exec("SELECT model FROM job_models WHERE job_id = 'huge'")];
+  assert.deepEqual(
+    indexed.map((row) => row.model),
+    ["__unroutable__"]
+  );
+  // "__unroutable__" is never a key in model_routes_map, so no claim ever reads this row directly
+  // -- only _reconcileUnroutableJobs's own bounded sweep does (see the next two tests).
+  assert.equal("__unroutable__" in TINY_CATALOG.model_routes_map, false);
+});
+
+test("an unroutable job still too big today fails, recording the route it could never fit", async () => {
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: TINY_CATALOG });
+  await coordinator.enqueueBatch([tinyJob("huge", 5000)]);
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.deepEqual(plan.jobs, []);
+  assert.equal(plan.claim_diagnostics.unroutable_failed, 1);
+  assert.equal(plan.claim_diagnostics.unroutable_reindexed, 0);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'huge'")][0].state, "failed");
+  assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id = 'huge'")][0].n, 0);
+  const failures = [...sql.exec(
+    "SELECT route_id, failure_class, count FROM route_failures"
+  )].map((row) => ({ ...row }));
+  assert.deepEqual(failures, [
+    { route_id: "tiny-route", failure_class: "job_unroutable", count: 1 },
+  ]);
+  const queued = [...sql.exec("SELECT queued_job_count FROM scheduler WHERE id = 1")][0];
+  assert.equal(queued.queued_job_count, 0);
+});
+
+test("an unroutable job that now fits a grown catalog is reindexed, not failed, and dispatches", async () => {
+  const { coordinator } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: TINY_CATALOG });
+  await coordinator.enqueueBatch([tinyJob("huge", 5000)]); // indexed __unroutable__ at enqueue
+
+  // The catalog grows a bigger route for the same model, before this job is ever reconciled --
+  // exactly what a compile-time route addition looks like from the coordinator's own perspective
+  // (env.DISPATCH_LIMITS_OVERRIDE is read fresh on every call, matching how a real deploy
+  // replaces dispatch_limits.json). A job only ever gets one reconcile pass (reindexed or
+  // failed), so this must land before the first claim, not between two.
+  coordinator.env.DISPATCH_LIMITS_OVERRIDE = {
+    ...TINY_CATALOG,
+    model_routes_map: { "acme/tiny-model": ["tiny-route", "big-route"] },
+    routes_by_id: {
+      ...TINY_CATALOG.routes_by_id,
+      "big-route": {
+        provider: "acme",
+        upstream_model: "tiny-model",
+        rpm: 30,
+        rpd: 1000,
+        tpm: 500000,
+        free: true,
+        input_context_limit: 200000,
+        output_context_limit: 65536,
+      },
+    },
+  };
+
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.claim_diagnostics.unroutable_reindexed, 1);
+  assert.equal(plan.claim_diagnostics.unroutable_failed, 0);
+  assert.deepEqual(plan.jobs.map((job) => job.id), ["huge"]);
+  assert.equal(plan.jobs[0].route_id, "big-route");
+});
+
+test("MAX_UNROUTABLE_RECONCILE_PER_TICK=0 pauses the sweep without touching admission", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    DISPATCH_LIMITS_OVERRIDE: TINY_CATALOG,
+    MAX_UNROUTABLE_RECONCILE_PER_TICK: "0",
+  });
+  await coordinator.enqueueBatch([tinyJob("huge", 5000)]);
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(plan.claim_diagnostics.unroutable_failed, 0);
+  assert.equal(plan.claim_diagnostics.unroutable_reindexed, 0);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'huge'")][0].state, "queued");
+});
+
+test("reconciliation checks the full catalog, not the pause-filtered one, so a paused new route still reindexes", async () => {
+  // The bug this guards: _claimDispatchLimits drops a paused route's id from model_routes_map
+  // entirely. If reconciliation used that filtered catalog, a route added (or merely paused)
+  // between enqueue and this tick would look absent, permanently failing a job that only needed
+  // to wait -- the exact class of bug this whole sweep exists to fix.
+  const catalog = {
+    model_aliases: {},
+    model_routes_map: { "acme/two-route-model": ["small-route"] },
+    routes_by_id: {
+      "small-route": {
+        provider: "acme",
+        upstream_model: "two-route-model",
+        rpm: 30,
+        rpd: 1000,
+        tpm: 50000,
+        free: true,
+        input_context_limit: 500,
+        output_context_limit: 200,
+      },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
+  const job = makeJob("grows-in", {
+    policy_json: JSON.stringify({ allowed_models: ["acme/two-route-model"], allow_paid: false }),
+    input_token_estimate: 2000, // over small-route's 500-token context
+    max_output_token_estimate: 200,
+  });
+  await coordinator.enqueueBatch([job]);
+  assert.deepEqual(
+    [...sql.exec("SELECT model FROM job_models WHERE job_id = 'grows-in'")].map((r) => r.model),
+    ["__unroutable__"]
+  );
+
+  // A bigger route is added for the same model, and paused immediately (e.g. babysitting a
+  // rollout) -- present in the catalog, but not one claimDispatchWindow would currently admit to.
+  coordinator.env.DISPATCH_LIMITS_OVERRIDE = {
+    ...catalog,
+    model_routes_map: { "acme/two-route-model": ["small-route", "big-route"] },
+    routes_by_id: {
+      ...catalog.routes_by_id,
+      "big-route": {
+        provider: "acme",
+        upstream_model: "two-route-model",
+        rpm: 30,
+        rpd: 1000,
+        tpm: 500000,
+        free: true,
+        input_context_limit: 5000,
+        output_context_limit: 2000,
+      },
+    },
+  };
+  const now = Date.now();
+  const paused = await coordinator.pauseDispatch(
+    { scope: "route", target: "big-route", seconds: 600 },
+    now
+  );
+  assert.equal(paused.ok, true);
+
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.equal(plan.claim_diagnostics.unroutable_reindexed, 1);
+  assert.equal(plan.claim_diagnostics.unroutable_failed, 0);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'grows-in'")][0].state, "queued");
+  assert.deepEqual(
+    [...sql.exec("SELECT model FROM job_models WHERE job_id = 'grows-in'")].map((r) => r.model),
+    ["acme/two-route-model"]
+  );
+});
