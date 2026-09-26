@@ -1208,6 +1208,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._envInt("MAX_ATTEMPT_PRUNE_PER_TICK", 50);
   }
 
+  /** Per-tick budget for _reconcileUnroutableJobs. Each row costs a fresh routeFitsContext
+   * re-check (more CPU than a bare delete), so this stays smaller than the prune budgets above;
+   * a job handled once never needs handling again (reindexed under a real model or failed), so a
+   * backlog drains across a few ticks rather than being re-read on every one. Zero pauses it. */
+  _maxUnroutableReconcilePerTick() {
+    return this._envInt("MAX_UNROUTABLE_RECONCILE_PER_TICK", 20);
+  }
+
   /** Return an exponential route cooldown with randomized jitter for a final Gateway 5xx. */
   _5xxBlockedUntil(retryCount, now) {
     const baseMs = 60_000;
@@ -2800,8 +2808,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
   _indexQueuedJobModels(job, priority = job.priority, createdAt = job.created_at, models) {
     const sql = this._getSql();
-    // Preserve one sentinel for an unrouteable policy so rollout backfill does not reconsider the
-    // same malformed/unknown job on every cron tick. It is never present in model_routes_map.
+    // Preserve one sentinel for an unrouteable policy at INDEX time. It is never present in
+    // model_routes_map, so claimDispatchWindow's per-model scan never reads it -- a job here is
+    // invisible to every claim regardless of live route state, not merely paused, until
+    // _reconcileUnroutableJobs (below) periodically re-checks it against the current catalog.
     for (const model of models || this._modelsToIndex(job)) {
       sql.exec(
         `INSERT OR IGNORE INTO job_models (job_id, model, priority, created_at)
@@ -2812,6 +2822,84 @@ export class LLMSchedulerDO extends DurableObjectBase {
         createdAt
       );
     }
+  }
+
+  /** Every route configured for any of `job`'s allowed models, per the current catalog -- used
+   * only to attribute a genuinely unroutable job's failure (every one of these rejected it via
+   * routeFitsContext), never to select a route for dispatch. */
+  _routesForUnroutableJob(job, dispatchLimits) {
+    let policy;
+    try {
+      policy = typeof job.policy_json === "string" ? JSON.parse(job.policy_json) : job.policy_json;
+    } catch {
+      return [];
+    }
+    const routesByModel = dispatchLimits?.model_routes_map || {};
+    const routeIds = new Set();
+    for (const rawModel of modelsForJob(job, policy)) {
+      if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
+      const canonical = canonicalModelName(rawModel.trim(), dispatchLimits);
+      for (const routeId of routesByModel[canonical] || []) routeIds.add(routeId);
+    }
+    return [...routeIds];
+  }
+
+  /**
+   * Bounded per-tick sweep of jobs indexed under the `__unroutable__` sentinel (see
+   * `_modelsToIndex`). That sentinel is assigned once, at enqueue time, against the catalog as it
+   * stood then -- never revisited afterwards -- so a job stays invisible to every claim forever
+   * even once a later catalog change (a bigger route added, a route's ceiling relaxed) would let
+   * it fit. Re-runs the exact same `_modelsForQueuedJob` check enqueue used, against today's
+   * catalog: a job that now fits is reindexed under its real model(s); one that still doesn't is
+   * failed, so it stops holding this bounded scan's row budget on every future tick, and its
+   * rejection is recorded per candidate route (`job_unroutable`) for the budget monitor -- mirrors
+   * how the claim loop's own oversize-ceiling failure (`input_over_route_ceiling`) is recorded.
+   * A job here was never claimed and never reserved capacity, so there is nothing to release.
+   */
+  _reconcileUnroutableJobs(sql, now, dispatchLimits) {
+    const limit = this._maxUnroutableReconcilePerTick();
+    if (limit <= 0) return { reindexed: 0, failed: 0 };
+    // ORDER BY matches (model, priority, created_at) -- the clustered table's own key prefix
+    // under the model = ? equality filter -- so this is an index-order walk, not a sort; ordering
+    // by created_at alone would mix the two priority buckets and force a temp B-tree (caught by
+    // rows-read.test.js's "no full scan" guard).
+    const rows = [...sql.exec(
+      `SELECT jobs.* FROM job_models
+       JOIN jobs ON jobs.id = job_models.job_id
+       WHERE job_models.model = '__unroutable__' AND jobs.state = 'queued'
+       ORDER BY job_models.priority ASC, job_models.created_at ASC LIMIT ?`,
+      limit
+    )];
+    const reindexedIds = [];
+    const failedIds = [];
+    for (const job of rows) {
+      const models = this._modelsForQueuedJob(job, dispatchLimits);
+      if (models.length > 0) {
+        sql.exec(
+          "DELETE FROM job_models WHERE job_id = ? AND model = '__unroutable__'",
+          job.id
+        );
+        this._indexQueuedJobModels(job, job.priority, job.created_at, models);
+        reindexedIds.push(job.id);
+        continue;
+      }
+      sql.exec("UPDATE jobs SET state = 'failed', updated_at = ? WHERE id = ?", now, job.id);
+      sql.exec("DELETE FROM job_models WHERE job_id = ?", job.id);
+      for (const routeId of this._routesForUnroutableJob(job, dispatchLimits)) {
+        this._recordRouteFailure(sql, now, routeId, "job_unroutable", null);
+      }
+      failedIds.push(job.id);
+    }
+    if (reindexedIds.length > 0 || failedIds.length > 0) {
+      console.warn(
+        JSON.stringify({
+          event: "reconcile_unroutable_jobs",
+          reindexed: reindexedIds,
+          failed: failedIds,
+        })
+      );
+    }
+    return { reindexed: reindexedIds.length, failed: failedIds.length };
   }
 
   /**
@@ -3345,6 +3433,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         orphan_bundles_reaped: 0,
         drained_jobs: 0,
         oversize_failed_jobs: 0,
+        unroutable_reindexed: 0,
+        unroutable_failed: 0,
         in_flight_calls: 0,
         candidate_jobs: 0,
         chosen_jobs: 0,
@@ -3488,6 +3578,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // _pruneTerminalRecords.
       // Retention pruning is deferrable: past the enqueue threshold it waits for tomorrow.
       if (rowsToday < this._enqueueRowStop()) this._pruneTerminalRecords(now);
+
+      // Same deferrability as retention pruning: a job stuck under __unroutable__ has already
+      // waited indefinitely (see _reconcileUnroutableJobs), so one more day is never the
+      // difference that matters, and normal admission always wins the row budget over cleanup.
+      if (rowsToday < this._enqueueRowStop()) {
+        const { reindexed, failed } = this._reconcileUnroutableJobs(sql, now, dispatchLimits);
+        diagnostics.unroutable_reindexed = reindexed;
+        diagnostics.unroutable_failed = failed;
+        // Each failure here removes one row this tier's own queued_job_count already counted;
+        // a reindex only moves a row between models and leaves the total unchanged.
+        reapedToQueued -= failed;
+      }
 
       const activeBundles = [...sql.exec("SELECT active_call_count FROM bundles WHERE state='active'")];
       diagnostics.active_bundles = activeBundles.length;

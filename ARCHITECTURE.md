@@ -542,7 +542,14 @@ instead of stranding at the head of the queue. A queued job over every usable ro
 with that tolerance (and with any uncapped route's daily quota spent) is failed at claim time, recorded
 as `input_over_route_ceiling`, so it cannot hold the claim's bounded lookahead and the producer re-plans
 it into batches that fit; producers read the same ratio from the read-only `GET /v2/calibration`
-(one row) and size prelabeler batches to it with a 5% margin. One physical route
+(one row) and size prelabeler batches to it with a 5% margin. A job whose model has zero
+configured routes at all, or is too large for every one of them even at the coarser static ratio
+(`routeFitsContext`, checked once at enqueue), is indexed under the `__unroutable__` sentinel
+instead — never a key in `model_routes_map`, so the claim loop's per-model scan never reads it,
+however long it waits. `_reconcileUnroutableJobs` re-checks a small bounded batch of these each
+claim tick against the *current* catalog: one that now fits (a route was added or widened since
+enqueue) is reindexed under its real model; one that still doesn't is failed and recorded as
+`job_unroutable`, the same way as `input_over_route_ceiling` above. One physical route
 may serve several logical pools via `also_serves` (one `route_id`, one ledger — e.g. NVIDIA's
 `deepseek-v4.1-flash` is the only route in `deepseek/deepseek-v4.1-flash` and `deepseek/deepseek-v4-pro`
 and pools with OrcaRouter in `deepseek/deepseek-v4-flash`); the compiled Worker catalog records each

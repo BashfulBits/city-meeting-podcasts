@@ -17,6 +17,20 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **The v2 Worker self-heals its own `__unroutable__` jobs instead of leaving them stuck forever**
+  (`workers/llm-dispatch-v2/src/coordinator.js`, `scripts/llm_budget_monitor.py`). Like a job
+  pinned to a retired model (see the reconciler entry below), a job too large for every route
+  configured for its model, even at the catalog's loose static ratio, is indexed under the
+  `__unroutable__` sentinel at enqueue time and never revisited — not a key in `model_routes_map`,
+  so the claim loop's per-model scan never reads it, however long it waits (found live: 60 such
+  jobs alongside the retired-model ones during the 2026-09-25/26 stall).
+  - `_reconcileUnroutableJobs` now re-checks a small bounded batch of these every claim tick
+    against the *current* catalog, reusing the exact same check enqueue used. One that now fits (a
+    route was added or widened since enqueue) is reindexed under its real model and dispatches
+    normally; one that still doesn't is failed, so it stops holding the sweep's row budget, and
+    recorded per candidate route as `job_unroutable` for the budget monitor.
+  - `MAX_UNROUTABLE_RECONCILE_PER_TICK` (default 20) bounds the per-tick cost; 0 pauses it.
+
 - **The stuck-job reconciler can classify every lane, not just chapter-agenda/prelabeler**
   (`scripts/reconcile_stuck_chapter_agenda.py`, `.github/workflows/reconcile-stuck-chapter-agenda.yml`).
   On 2026-09-26, 10 r6-judge handles pinned to `meta-llama/llama-4-maverick` (retired from that

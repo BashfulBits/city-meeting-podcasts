@@ -70,6 +70,18 @@ def test_jobs_failed_over_the_route_ceiling_name_the_ceiling_and_the_lanes():
     assert "`input_over_route_ceiling`" in report
 
 
+def test_jobs_failed_as_unroutable_name_the_context_limits_and_the_lanes():
+    """The Worker's __unroutable__ sweep failures name both context limits and the lanes."""
+    routes = {
+        "gemma": {**ROUTES["gemma"], "input_context_limit": 2000, "output_context_limit": 1000}
+    }
+    report, [finding] = mon.build_report([_row("gemma", "job_unroutable", 1)], routes, LANES)
+    assert finding["lanes"] == ["topic-tags:prelabeler"]
+    assert "`input_context_limit` (2000)" in finding["suggestion"]
+    assert "`output_context_limit` (1000)" in finding["suggestion"]
+    assert "`job_unroutable`" in report
+
+
 def test_route_max_lanes_match_the_job_builders_that_set_the_flag():
     # The monitor's advice depends on which lanes send the route's limit; keep it in step with code.
     flagged = {
