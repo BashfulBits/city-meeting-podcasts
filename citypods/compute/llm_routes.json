@@ -56,8 +56,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3.5-flash-lite",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -98,8 +97,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3.5-flash-lite",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -140,8 +138,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3.1-flash-lite",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -182,8 +179,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3.1-flash-lite",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -225,8 +221,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemma-4-26b-a4b-it",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -268,8 +263,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemma-4-26b-a4b-it",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -311,8 +305,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemma-4-31b-it",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -354,8 +347,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemma-4-31b-it",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -395,8 +387,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3-flash-preview",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -436,8 +427,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3-flash-preview",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -478,8 +468,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3.8-flash",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -520,8 +509,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3.8-flash",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -561,8 +549,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3.7-flash",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -602,8 +589,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3.7-flash",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -644,8 +630,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3.6-flash",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -686,8 +671,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3.6-flash",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -727,8 +711,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3.5-flash",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -768,8 +751,7 @@
         "maxItems"
       ],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "gemini/gemini-3.5-flash",
       "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -804,8 +786,7 @@
       "structured_output_schema_strip_keys": [],
       "ai_gateway_max_attempts": 1,
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "sambanova/gemma-4-31B-it",
       "api_base": "https://api.sambanova.ai/v1",
@@ -839,8 +820,7 @@
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "groq/openai/gpt-oss-120b",
       "api_base": "https://api.groq.com/openai/v1",
@@ -873,8 +853,7 @@
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "groq/qwen/qwen3.6-27b",
       "api_base": "https://api.groq.com/openai/v1",
@@ -907,8 +886,7 @@
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "groq/qwen/qwen3.8-27b",
       "api_base": "https://api.groq.com/openai/v1",
@@ -940,8 +918,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "mistral/codestral-2508",
       "api_base": "https://api.mistral.ai",
@@ -974,8 +951,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "mistral/codestral-2508",
       "api_base": "https://api.mistral.ai",
@@ -1010,8 +986,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "zai/glm-4.7-flash",
       "api_base": "https://api.z.ai/api/paas/v4",
@@ -1045,8 +1020,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "zai/glm-4.5-flash",
       "api_base": "https://api.z.ai/api/paas/v4",
@@ -1078,8 +1052,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openrouter/google/gemma-4-31b-it:free",
       "api_base": "https://openrouter.ai/api/v1",
@@ -1111,8 +1084,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openrouter/google/gemma-4-26b-a4b-it:free",
       "api_base": "https://openrouter.ai/api/v1",
@@ -1147,8 +1119,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
       "api_base": "https://openrouter.ai/api/v1",
@@ -1182,8 +1153,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
       "api_base": "https://openrouter.ai/api/v1",
@@ -1218,8 +1188,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openai/stepfun/step-3.7-flash:free",
       "api_base": "https://api.kilo.ai/api/gateway",
@@ -1255,8 +1224,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openai/nvidia/nemotron-3-ultra-550b-a55b:free",
       "api_base": "https://api.kilo.ai/api/gateway",
@@ -1291,8 +1259,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openai/moonshotai/kimi-k3",
       "api_base": "https://integrate.api.nvidia.com/v1",
@@ -1334,8 +1301,7 @@
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openai/deepseek-ai/deepseek-v4.1-flash",
       "api_base": "https://integrate.api.nvidia.com/v1",
@@ -1374,8 +1340,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openai/google/gemma-4-31b-it",
       "api_base": "https://integrate.api.nvidia.com/v1",
@@ -1415,8 +1380,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openai/nvidia/nemotron-3-ultra-550b-a55b",
       "api_base": "https://integrate.api.nvidia.com/v1",
@@ -1454,8 +1418,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openai/nvidia/nemotron-3-super-120b-a12b",
       "api_base": "https://integrate.api.nvidia.com/v1",
@@ -1494,8 +1457,7 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openai/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
       "api_base": "https://integrate.api.nvidia.com/v1",
@@ -1532,8 +1494,7 @@
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openai/deepseek/deepseek-v4-flash-free",
       "api_base": "https://api.orcarouter.ai/v1",
@@ -1569,8 +1530,7 @@
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openai/tencent/hy3-free",
       "api_base": "https://api.orcarouter.ai/v1",
@@ -1606,8 +1566,7 @@
       "structured_output_include_schema_in_prompt": true,
       "structured_output_schema_strip_keys": [],
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openai/z-ai/glm-5.3-flash-free",
       "api_base": "https://api.orcarouter.ai/v1",
@@ -1647,8 +1606,7 @@
       "structured_output_schema_strip_keys": [],
       "ai_gateway_max_attempts": 1,
       "transports": [
-        "direct",
-        "llm-dispatch"
+        "direct"
       ],
       "direct_model": "openai/codestral-latest",
       "api_base": "https://api.airforce/v1",

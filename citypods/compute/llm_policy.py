@@ -29,10 +29,11 @@ class LLMRequestPolicy:
     # dispatch payload for forward compatibility only; nothing currently reads it to change
     # routing behavior.
     allow_batch: bool = True
-    # Explicit, caller-opted-in permission to dispatch a route that also offers `direct` (today
-    # only Gemini) over the Worker's `llm-dispatch` transport instead of calling the provider
-    # directly. Default False: a route that can be reached directly always is, matching
-    # review/33 §7's decision that Gemini's own free tier needs no Worker ("only build a
+    # Explicit, caller-opted-in permission to dispatch a route that also offers `direct` over a
+    # synchronous Worker transport instead of calling the provider directly. No route offers one
+    # since the v1 `llm-dispatch` Worker was retired, so this is inert until a route lists a
+    # non-direct transport again. Default False: a route that can be reached directly always is,
+    # matching review/33 §7's decision that Gemini's own free tier needs no Worker ("only build a
     # dedicated Gemini Worker later, and only if real usage shows it's needed"). This flag is the
     # sanctioned way for a future caller to reach *additional* capacity a direct call can't see --
     # concretely, a second configured account (`GEMINI_API_KEY_SECONDARY`) the Worker's per-route
@@ -160,7 +161,7 @@ class QuotaPolicy:
 @dataclass(frozen=True)
 class LLMRoute:
     model: str
-    transport: Literal["direct", "mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"]
+    transport: Literal["direct", "llm-dispatch-v2"]
     free: bool
     quota: QuotaPolicy
     pricing: PricingPolicy
@@ -169,9 +170,7 @@ class LLMRoute:
     # exactly one upstream request and must reserve only that one, even when the caller's
     # structured-output contract is present.
     max_provider_attempts: int | None = None
-    transports: tuple[
-        Literal["direct", "mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"], ...
-    ] = ("direct",)
+    transports: tuple[Literal["direct", "llm-dispatch-v2"], ...] = ("direct",)
     # Physical route identity and direct LiteLLM adapter metadata.  Empty defaults preserve the
     # small hand-built routes used by unit tests and old callers; generated routes always fill all
     # fields and use ``route_id`` as their shared-ledger key.
@@ -453,7 +452,7 @@ if not _GENERATED_ROUTES:
         "gemini/gemini-3-flash-preview": LLMRoute(
             model="gemini/gemini-3-flash-preview",
             transport="direct",
-            transports=("direct", "llm-dispatch"),
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(
                 rpm=5,
@@ -466,7 +465,7 @@ if not _GENERATED_ROUTES:
         "gemini/gemini-3.1-flash-lite": LLMRoute(
             model="gemini/gemini-3.1-flash-lite",
             transport="direct",
-            transports=("direct", "llm-dispatch"),
+            transports=("direct",),
             free=True,
             # Real free-tier allowance for this route (raised from the initial rpd=20 safety ceiling
             # now that the tag lane paces within its per-minute budget rather than bursting and
@@ -478,7 +477,7 @@ if not _GENERATED_ROUTES:
         "gemini/gemini-3.5-flash-lite": LLMRoute(
             model="gemini/gemini-3.5-flash-lite",
             transport="direct",
-            transports=("direct", "llm-dispatch"),
+            transports=("direct",),
             free=True,
             # Independent free-tier pool from 3.1-flash-lite (separate model = separate provider
             # quota), so the tag lane can spill onto it once 3.1's per-minute/day window fills --
@@ -489,8 +488,8 @@ if not _GENERATED_ROUTES:
         ),
         "mistral/mistral-large-2512": LLMRoute(
             model="mistral/mistral-large-2512",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
+            transport="direct",
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(rpm=4, tpm=250_000),
             pricing=PricingPolicy(),
@@ -498,11 +497,8 @@ if not _GENERATED_ROUTES:
         ),
         "mistral/mistral-medium-latest": LLMRoute(
             model="mistral/mistral-medium-latest",
-            # Production agenda extraction is submitted through the shared deferred Worker so a
-            # GitHub runner never holds a Mistral pacing sleep and the same job registry can
-            # retry or finalize it later.
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
+            transport="direct",
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(rpm=50, tpm=25_000),
             pricing=PricingPolicy(),
@@ -510,8 +506,8 @@ if not _GENERATED_ROUTES:
         ),
         "kilo/stepfun/step-3.7-flash:free": LLMRoute(
             model="kilo/stepfun/step-3.7-flash:free",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
+            transport="direct",
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
             pricing=PricingPolicy(),
@@ -519,8 +515,8 @@ if not _GENERATED_ROUTES:
         ),
         "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": LLMRoute(
             model="kilo/nvidia/nemotron-3-ultra-550b-a55b:free",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
+            transport="direct",
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
             pricing=PricingPolicy(),
@@ -528,8 +524,8 @@ if not _GENERATED_ROUTES:
         ),
         "opencode/mimo-v2.5-free": LLMRoute(
             model="opencode/mimo-v2.5-free",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
+            transport="direct",
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(rpm=30, rpd=500, tpm=100_000),
             pricing=PricingPolicy(),
@@ -537,8 +533,8 @@ if not _GENERATED_ROUTES:
         ),
         "opencode/nemotron-3-ultra-free": LLMRoute(
             model="opencode/nemotron-3-ultra-free",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
+            transport="direct",
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
             pricing=PricingPolicy(),

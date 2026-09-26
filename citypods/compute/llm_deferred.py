@@ -378,7 +378,6 @@ def discard_terminal_failure(
     handle: JobHandle,
     error: BaseException,
     *,
-    backend=None,
     exhausted: bool = False,
     now: datetime | None = None,
 ) -> int:
@@ -431,11 +430,6 @@ def discard_terminal_failure(
         deferred_failure_key(handle.recipe_hash),
         (json.dumps(marker, indent=2, sort_keys=True) + "\n").encode(),
     )
-    if backend is not None and handle.ref:
-        try:
-            backend.delete_dispatched_ref(handle.ref)
-        except Exception:  # noqa: BLE001 -- stale Worker state must not retain the B2 handle
-            pass
     storage.delete(entry.key)
     _best_effort_delete_index(storage, entry.data, handle.recipe_hash)
     return count
@@ -1142,14 +1136,8 @@ def prune_expired_deferred_snapshot(
     *,
     now: datetime | None = None,
     ttl_days: float = DEFAULT_TTL_DAYS,
-    backend=None,
 ) -> int:
-    """Prune records using an already-loaded snapshot, without a second registry traversal.
-
-    If *backend* is supplied (a ``LiteLLMBackend`` instance), any expired handle whose ``ref``
-    points to a Cloudflare Worker dispatch object is deleted from R2 via a best-effort
-    ``DELETE /v1/requests/{id}`` call (Layer 3 sweep orphan reaping).
-    """
+    """Prune records using an already-loaded snapshot, without a second registry traversal."""
     now = now or datetime.now(UTC)
     deleted = 0
     for entry in snapshot.entries:
@@ -1182,14 +1170,6 @@ def prune_expired_deferred_snapshot(
             if _read_json(storage, key) != data:
                 continue
             _release_abandoned_reservation(storage, data, now=now)
-            # Layer 3 sweep orphan reaping: purge the R2 object for orphaned dispatch handles
-            if backend is not None:
-                ref = data.get("ref")
-                if ref and isinstance(ref, str):
-                    try:
-                        backend.delete_dispatched_ref(ref)
-                    except Exception:
-                        pass
             storage.delete(key)
             _best_effort_delete_index(storage, data, key[len(DEFERRED_PREFIX) : -len(".json")])
             entry.deleted = True

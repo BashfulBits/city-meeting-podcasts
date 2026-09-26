@@ -107,9 +107,8 @@ def test_sweep_reconciles_pending_records_and_prunes(monkeypatch, capsys):
     assert '"event": "llm_deferred_snapshot_load_started"' in out.out
     assert '"snapshot": {"deadline_reached": false' in out.out
     assert "recipe-3" in out.err
-    # Verify the active backend was propagated to prune_expired_deferred_snapshot.
-    assert "backend" in prune_kwargs
-    assert isinstance(prune_kwargs["backend"], FakeBackend)
+    # Pruning is storage-only now that there are no v1 Worker records to purge alongside it.
+    assert "backend" not in prune_kwargs
 
 
 def test_sweep_requests_detailed_v2_scheduler_diagnostics(monkeypatch, capsys):
@@ -285,9 +284,6 @@ def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, cap
                 model=handle.model,
             )
 
-        def delete_dispatched_ref(self, _ref):
-            events.append("delete")
-
         def ack_dispatched_ref(self, _handle):
             events.append("ack")
 
@@ -298,7 +294,7 @@ def test_sweep_recovers_terminal_and_malformed_dispatch_records(monkeypatch, cap
     assert recovered == [("recipe-502", "LLMDispatchTerminalError")]
     assert corrections == ["recipe-malformed"]
     assert rewritten == [("recipe-malformed", "corrected:recipe-malformed")]
-    assert events == ["write", "marker", "ack", "delete"]
+    assert events == ["write", "marker", "ack"]
     assert "2 failed (1 terminally recovered)" in out.out
     assert "submitted one schema correction" in out.err
 

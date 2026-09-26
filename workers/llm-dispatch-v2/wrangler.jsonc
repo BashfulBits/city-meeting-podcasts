@@ -154,7 +154,7 @@
     // MAX_RESPONSE_SECONDS inside the lease. The remaining 2s absorbs claim-to-receipt skew so a
     // job planned at the window's very edge is not routinely deferred_late.
     "ESTIMATED_CALL_DURATION_CEILING_SECONDS": "2",
-    // Not secret -- a gateway slug, not a credential. Matches workers/llm-dispatch-proxy's own
+    // Not secret -- a gateway slug, not a credential. Matched the retired v1 Worker's
     // wrangler.jsonc exactly. gateway.js's resolveProviderCredentials() only routes a call through
     // AI Gateway when both this and the CLOUDFLARE_ACCOUNT_ID secret are present; omitted, it
     // falls back to calling each provider directly with no error, no log line, and no other
@@ -166,7 +166,7 @@
     "AI_GATEWAY_BASE_URL": ""
   }
   // Secrets (never plain vars -- set with `wrangler secret put <NAME>`, one time, matching
-  // workers/llm-dispatch-proxy's existing pattern): BEARER_TOKEN (ingress auth), every provider's
+  // the retired v1 Worker's pattern): BEARER_TOKEN (ingress auth), every provider's
   // API_KEY_ENV from config/provider_limits.yml (e.g. GEMINI_API_KEY, MISTRAL_API_KEY --
   // whichever routes this deployment actually dispatches to), AI_GATEWAY_AUTH_TOKEN (Cloudflare
   // AI Gateway's own "Authenticated Gateway" token, independent of provider keys), CLOUDFLARE_

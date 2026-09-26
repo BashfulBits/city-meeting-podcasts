@@ -196,20 +196,15 @@ def test_pairwise_judge_uses_durable_queue_policy():
 
 
 def test_backend_wires_dispatch_v2_url_from_env(monkeypatch):
-    """Regression test for the 2026-08-18 incident: _backend() used to hand-roll only
-    dispatch_url/dispatch_auth_token, leaving dispatch_v2_url/dispatch_v2_auth_token at
-    LLMBackendConfig's None default regardless of the environment -- so pairwise_judge's own
-    queue_only=True policy (see test_pairwise_judge_uses_durable_queue_policy above) always fell
-    through to the legacy v1 dispatch branch. Building from LLMBackendConfig.from_env() fixes
-    this and any future field added there."""
-    monkeypatch.setenv("LLM_DISPATCH_URL", "https://dispatch-v1.example.com")
-    monkeypatch.setenv("LLM_DISPATCH_AUTH_TOKEN", "v1-token")
+    """Regression test for the 2026-08-18 incident: _backend() used to hand-roll its dispatch
+    config, leaving dispatch_v2_url/dispatch_v2_auth_token at LLMBackendConfig's None default
+    regardless of the environment. Building from LLMBackendConfig.from_env() fixes this and any
+    future field added there."""
     monkeypatch.setenv("LLM_DISPATCH_V2_URL", "https://dispatch-v2.example.com")
     monkeypatch.setenv("LLM_DISPATCH_V2_AUTH_TOKEN", "v2-token")
 
     backend = tournament._backend("gemini/gemini-3-flash-preview", storage=None)
 
-    assert backend.config.dispatch_url == "https://dispatch-v1.example.com"
     assert backend.config.dispatch_v2_url == "https://dispatch-v2.example.com"
     assert backend.config.dispatch_v2_auth_token == "v2-token"
     assert backend.config.model == "gemini/gemini-3-flash-preview"

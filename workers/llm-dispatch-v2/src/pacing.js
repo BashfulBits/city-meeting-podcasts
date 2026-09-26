@@ -80,7 +80,7 @@ export function minInterRequestGapMs(route) {
  * A daily quota resets on the provider's clock, not 24 hours after we first used it. Gemini's free
  * tier rolls at midnight America/Los_Angeles; treating it as a rolling 24h window anchored on our
  * first request holds a route exhausted for up to a further ~14 hours after the provider has
- * already refilled it. v1 (`llm-dispatch-proxy`'s zonedDateKey/routeResetTimezone) has always keyed
+ * already refilled it. The retired v1 Worker (`llm-dispatch-proxy`'s zonedDateKey/routeResetTimezone) keyed
  * on this; v2 shipped without it, which is the divergence this restores. Duplicated rather than
  * shared, per this repo's convention of each Worker directory being self-contained.
  */

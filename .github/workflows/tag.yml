@@ -58,8 +58,6 @@ jobs:
         timeout-minutes: 165
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}
-          LLM_DISPATCH_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
           LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}

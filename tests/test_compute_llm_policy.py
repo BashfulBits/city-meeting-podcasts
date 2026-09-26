@@ -54,7 +54,7 @@ def test_generated_catalog_deduplicates_logical_models_across_direct_routes():
         "nvidia",
     }
     assert len({candidate.route_id for candidate in candidates}) == len(candidates)
-    assert all(set(candidate.transports) == {"direct", "llm-dispatch"} for candidate in candidates)
+    assert all(set(candidate.transports) == {"direct"} for candidate in candidates)
     assert all(candidate.route_id and candidate.direct_model for candidate in candidates)
 
 

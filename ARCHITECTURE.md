@@ -394,7 +394,7 @@ total on `/admin/status`.
   + an import-time/test guard fails if a coordination prefix isn't declared ephemeral).
 - **LLM inference** → `citypods/compute/llm.py` is the LiteLLM-backed adapter for the reserved
   `summarize`, `tag`, and `soundbite-select` verbs. Direct calls use LiteLLM's provider translation;
-  rate-limited calls enqueue the same OpenAI-shaped payload through `workers/llm-dispatch-proxy` and
+  rate-limited calls enqueue the same OpenAI-shaped payload through `workers/llm-dispatch-v2` and
   reconcile its completed response into the normal `JobResult` shape. Provider API keys remain in
   environment/secret storage and are never persisted in catalog records or logs. **Structured output
   is shaped per route** (review/48 R10). Each route resolves one of four methods at compile time —
@@ -417,52 +417,21 @@ total on `/admin/status`.
   turns those counts, empty/invalid JSON, own-rate 429s and oversized inputs -- plus `usage_today`
   (per lane/route output percentiles, reservation, slow calls, computed from existing `attempts`
   rows at read time) -- into one rolling issue that names the lane and the config key to change.
-- **Rate-limited LLM dispatch** → `workers/llm-dispatch-proxy` is a separate Cloudflare Worker and
-  private R2 queue, now multi-provider (review/41, extending R10/review/27 §9's original single-Mistral
-  design). Its authenticated OpenAI-shaped **asynchronous** enqueue/poll API persists pending requests
-  plus a compact date-ordered `ready/` marker; a per-minute Free-plan Cron Trigger lists a bounded
-  lookahead of compact markers and reads canonical requests only for viable candidates (constant in
-  queue depth) before claiming one request per scheduled run,
-  ranks each request's canonical model's candidate routes (free before paid, then cheapest,
-  optionally expanded with a configured cross-model overflow target from `model_routing` --
-  2026-08-21; a job pinned to one model becomes eligible for its target model too once its own
-  routes are exhausted/paused, ties still favoring the caller's own model) against
-  a **per-route/per-account ledger** (`state/dispatch_coordinator.json`, R2, mirroring
-  `llm_budget.py`'s versioned minute/day window, cost, `blocked_until`, and `inflight` shape
-  alongside the single-runner cron lease),
-  **commits** capacity on the first route with room, resolves that route's own provider config
-  (`config/provider_limits.yml` → compiled `dispatch_limits.json`: `api_base`/`chat_path`/account
-  `api_key_env`) for the upstream call, and persists either the response or a bounded retry/failure
-  state. Multiple accounts of one provider (e.g. `GEMINI_API_KEY`/`GEMINI_API_KEY_SECONDARY`) compile to
-  separate `route_id`s with independent ledger entries, so exhausting one account's window rolls
-  selection onto the next rather than blocking the model — this is what makes "key rotation" real rather
-  than a first-match static pick. Every compiled route exposes both direct LiteLLM and Worker
-  transports; `LLM_MODE=direct` is the synchronous GH Actions path, while `LLM_MODE=dispatch` is the
-  asynchronous Worker path. Direct LiteLLM calls default to a 720 s `timeout`
-  (`LLMBackendConfig.direct_timeout_seconds`, the Worker's `MAX_RESPONSE_SECONDS`) unless the job sets
-  its own. A direct-capable caller may explicitly opt into Worker overflow with
-  `LLMRequestPolicy.allow_dispatch_overflow`; the Worker's
-  transport is inherently always-asynchronous, and defaulting to it whenever a backend merely had
-  `dispatch_url` configured previously broke city discovery's same-run-completion requirement (review/41
-  §incident). The implemented Python LLM backend uses this as its `JobHandle` path; direct provider
-  translation remains LiteLLM's responsibility, either in Python or in an explicitly configured LiteLLM
-  Proxy upstream. **Free-plan CPU contract (review/43, 2026-08-14).** The cron's 10 ms CPU limit is spent on **R2
-  operation count**, not payload bytes — the Worker's own JavaScript is ~`0.4` ms of an ~`8` ms
-  invocation, and a 4.8x range in canonical record size produced no measurable CPU difference. The
-  scheduled path is therefore budgeted in operations: a dispatching invocation performs 10 and an
-  idle tick 4. Durable rate usage is committed **before** the upstream call at every batch size —
-  the cron lease already guarantees a single dispatching invocation, so a route's concurrency
-  ceiling is counted in memory for the batch and no `inflight` reservation is written or released.
-  A crash therefore over-counts against a provider rather than under-counting, and any `inflight`
-  entry left by an older Worker version is reaped on load. Finished `ready/` markers are removed in
-  one keyed delete per batch, and a queue head whose route is merely pacing is skipped in memory
-  rather than rewritten (rewriting one cost four operations — more than dispatching a request).
-  R2 Class A operations bill **per account**, so this Worker's bucket shares the 1M/month free tier
-  with the H17 coordination plane; the phased relief in
-  [`review/43`](review/43-llm-dispatch-cpu-reduction-plan.md) moves prompts, results and markers to
-  B2 and keeps only compare-and-swap state on R2, per `citypods/storage/routing.py`'s rule.
-  `scripts/compile_llm_limits.py`'s default invocation (used by the deploy workflow) is a
-  pure, network-free YAML→JSON compile; a provider's live model/pricing discovery endpoint (OpenRouter
+- **Rate-limited LLM dispatch** → `workers/llm-dispatch-v2` is a separate Cloudflare Worker whose
+  SQLite Durable Object coordinator holds the queue, the per-route/per-account pacing ledger and the
+  lease state ([`review/44`](review/44-bounded-bundled-llm-dispatch.md)). Producers enqueue through
+  its authenticated OpenAI-shaped **asynchronous** API (`LLM_MODE=dispatch` or a `queue_only` lane
+  policy) and reconcile completed results into the normal `JobResult` shape. Routes, provider
+  configs and multiple accounts of one provider (e.g. `GEMINI_API_KEY`/`GEMINI_API_KEY_SECONDARY`)
+  compile from `config/provider_limits.yml` into `dispatch_limits.json`, each account a separate
+  `route_id` with its own ledger entry. `LLM_MODE=direct` is the synchronous GH Actions path;
+  direct LiteLLM calls default to a 720 s `timeout` (`LLMBackendConfig.direct_timeout_seconds`, the
+  Worker's `MAX_RESPONSE_SECONDS`) unless the job sets its own. Callers that must finish in the
+  same run (city discovery, audit remedies) set `require_direct` and never queue (review/41
+  §incident). The original R2-queue Worker (`workers/llm-dispatch-proxy`, review/41/review/43) was
+  retired in 2026-09 and removed along with its queue maintenance scripts; handles it issued
+  reconcile as terminal failures. `scripts/compile_llm_limits.py`'s default invocation is a pure,
+  network-free YAML→JSON compile; a provider's live model/pricing discovery endpoint (OpenRouter
   today) is fetched only via an explicit, maintainer-run `--discover` flag, never in CI. The queue and
   ledger are ephemeral/derivable and are not part of the B2-backed catalog records or the Python
   `RoutingStorage` control-plane prefixes.
@@ -538,10 +507,10 @@ at enqueue time — it only ever activates on an already-queued job's later leas
 
 The pipeline routes LLM jobs across 12 independent providers via
 [`config/provider_limits.yml`](config/provider_limits.yml) (compiled to both
-`workers/llm-dispatch-proxy/src/dispatch_limits.json` and the Python
+`workers/llm-dispatch-v2/src/dispatch_limits.json` and the Python
 `citypods/compute/llm_routes.json`). The generated catalog contains 62 physical provider/account
 routes representing 33 logical model pools; every route supports direct LiteLLM and
-asynchronous dispatch. Structured-output profiles in the same YAML declare each route's JSON mode,
+asynchronous v2 dispatch. Structured-output profiles in the same YAML declare each route's JSON mode,
 direct handler, schema relaxation, and prompt-schema behavior; runtime code consumes those
 materialized capabilities rather than inferring them from model or route names. Input/output
 context ceilings are mandatory on each physical route, because model families and gateways can
@@ -758,7 +727,7 @@ switch for a gateway outage. A call falls back to the provider's own upstream �
 an error — whenever `LLM_AI_GATEWAY=0` is set, `CLOUDFLARE_ACCOUNT_ID`/`AI_GATEWAY_BASE_URL` is
 unset, or a route has no `ai_gateway_slug`; the dispatch transport is always excluded (below).
 
-The rewrite is scoped to the **direct** transport. `llm-dispatch` requests are unaffected: the
+The rewrite is scoped to the **direct** transport. Dispatch v2 requests are unaffected: the
 Worker already fronts its own provider calls with the gateway on its side, and the payload sent to
 it is a provider-neutral job description rather than a LiteLLM call, so injecting an `api_base`
 there would double-proxy the request. `_provider_options(..., direct=…)` in
@@ -865,14 +834,11 @@ When implementing or tuning LLM pipeline verbs, select candidate models based on
   `modal-deploy.yml` (path-scoped deploy of the
   Modal pull worker from `main`, protected by the `modal-production` GitHub Environment),
   `beam-deploy.yml` (same path-scoped deploy for the Beam pull worker, protected by `beam-production`),
-  `llm-dispatch-worker-deploy.yml` (path-scoped test/deploy for the Cron-paced LLM Worker),
   `llm-provider-shim-deploy.yml` (path-scoped test/deploy for `workers/llm-provider-shim/`, the
   URL-rewriting shim described under "AI Gateway custom-provider routing" below),
   `llm-dispatch-v2-worker-deploy.yml` (path-scoped test/deploy for `workers/llm-dispatch-v2/`, the
-  parallel SQLite-Durable-Object-coordinator successor from
-  [`review/44`](review/44-bounded-bundled-llm-dispatch.md); Phase 1 only as of
-  [PR #1253](https://github.com/BashfulBits/city-meeting-podcasts/pull/1253) — v1's Worker above
-  remains the sole production dispatch transport until v2's later phases land),
+  SQLite-Durable-Object-coordinator dispatch Worker from
+  [`review/44`](review/44-bounded-bundled-llm-dispatch.md) and the only LLM dispatch transport),
   and its authenticated `GET /v2/stats` probe records the last scheduled-claim outcome in the
   coordinator's single `scheduler` row. The probe reports bounded daily reason counts, candidate
   rejection counters, route/provider concurrency rejections, and current leased counts, while an

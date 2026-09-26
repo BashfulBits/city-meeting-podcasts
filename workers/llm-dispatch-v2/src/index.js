@@ -330,7 +330,7 @@ async function hasValidBearer(request, env) {
 
   // Hash both unconditionally, and fold the length difference into the diff accumulator below,
   // rather than returning early on a byteLength mismatch -- an early return leaks the expected
-  // token's exact length to a timing attacker (matches workers/llm-dispatch-proxy's approach).
+  // token's exact length to a timing attacker (the retired v1 Worker's approach).
   const expectedHash = await crypto.subtle.digest("SHA-256", expectedEncoder);
   const tokenHash = await crypto.subtle.digest("SHA-256", tokenEncoder);
 
