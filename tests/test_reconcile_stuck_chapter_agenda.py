@@ -1,3 +1,4 @@
+import json
 import threading
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -560,3 +561,91 @@ def test_prelabeler_model_comes_from_the_selected_site_config(tmp_path):
         )
         is None
     )
+
+
+def _judge_handle(recipe_hash: str, *, model: str, ref: str = "ref", age_hours: float = 1):
+    """An r6-judge handle: a task/purpose no scoped lane (chapter-agenda, prelabeler) recognizes."""
+    return _entry(
+        JobHandle(
+            task="moment-judge",
+            recipe_hash=recipe_hash,
+            backend="llm-dispatch-v2",
+            ref=ref,
+            model=model,
+        ),
+        age_hours=age_hours,
+    )
+
+
+def test_any_lane_flags_a_retired_model_regardless_of_task_purpose_or_age():
+    current_models = frozenset({"qwen/qwen3.8-27b", "gemini/gemini-3.6-flash"})
+
+    retired = _classify_entry(
+        _judge_handle("retired", model="meta-llama/llama-4-maverick", age_hours=1),
+        now=NOW,
+        older_than_hours=24,
+        lane="any",
+        current_models=current_models,
+    )
+    assert retired is not None
+    assert retired["reasons"] == ["legacy-model"]
+    assert retired["remote_v2"]
+
+
+def test_any_lane_ignores_a_live_model_even_when_old():
+    current_models = frozenset({"qwen/qwen3.8-27b", "gemini/gemini-3.6-flash"})
+
+    # This is exactly the shape #1864 fixed: a live model's backlog waiting on capacity, not a
+    # dead job. The 'any' lane must never flag it on age alone (see module docstring).
+    live_but_old = _classify_entry(
+        _judge_handle("live", model="gemini/gemini-3.6-flash", age_hours=1000),
+        now=NOW,
+        older_than_hours=24,
+        lane="any",
+        current_models=current_models,
+    )
+    assert live_but_old is None
+
+
+def test_any_lane_resolves_aliases_on_both_sides():
+    from citypods.compute.llm_policy import MODEL_ALIASES, canonical_model
+
+    aliased = next(iter(MODEL_ALIASES))
+    current_models = frozenset({canonical_model(aliased)})
+
+    assert (
+        _classify_entry(
+            _judge_handle("aliased", model=aliased, age_hours=1),
+            now=NOW,
+            older_than_hours=24,
+            lane="any",
+            current_models=current_models,
+        )
+        is None
+    )
+
+
+def test_any_lane_requires_the_current_model_set():
+    with pytest.raises(ValueError, match="current catalog"):
+        _classify_entry(
+            _judge_handle("no-set", model="meta-llama/llama-4-maverick"),
+            now=NOW,
+            older_than_hours=24,
+            lane="any",
+        )
+
+
+def test_current_catalog_models_reads_the_compiled_catalog_and_canonicalizes(tmp_path):
+    from citypods.compute.llm_policy import MODEL_ALIASES, canonical_model
+
+    aliased = next(iter(MODEL_ALIASES))
+    catalog = tmp_path / "dispatch_limits.json"
+    catalog.write_text(
+        json.dumps({"model_routes_map": {aliased: ["r1"], "already/canonical": ["r2"]}})
+    )
+    models = reconcile_module.current_catalog_models(catalog)
+    assert models == frozenset({canonical_model(aliased), "already/canonical"})
+
+
+def test_lane_choices_include_any():
+    assert reconcile_module.LANE_CHOICES == (*reconcile_module.LANES, "any")

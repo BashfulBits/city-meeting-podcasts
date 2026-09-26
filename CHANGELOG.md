@@ -17,6 +17,25 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **The stuck-job reconciler can classify every lane, not just chapter-agenda/prelabeler**
+  (`scripts/reconcile_stuck_chapter_agenda.py`, `.github/workflows/reconcile-stuck-chapter-agenda.yml`).
+  On 2026-09-26, 10 r6-judge handles pinned to `meta-llama/llama-4-maverick` (retired from that
+  panel for `qwen3.8-27b`) were found permanently invisible to every v2 claim — `claimDispatchWindow`
+  only ever iterates models present in the compiled catalog's `model_routes_map`, so a model with
+  zero configured routes is never even read, no matter how long its jobs wait. The existing
+  reconciler couldn't reach them: its two lanes are hardcoded to `agenda-item-extract`/prelabeler
+  task shapes and never look at r6-judge (`moment-judge`) or any other lane.
+  - `--lane any` drops all task/purpose scoping and classifies every handle in the registry by one
+    signal: its model has no route in the current compiled catalog (`current_catalog_models()`,
+    aliases resolved on both sides). It deliberately never applies the age threshold — unlike the
+    two scoped lanes, "any" has no narrow, validated population to apply that heuristic to, and
+    applying it unscoped would just as readily flag a lane's legitimate backlog (the very kind of
+    jobs #1864 fixed) as something actually dead.
+  - Does not reach the Worker's own `__unroutable__` bucket (a model *with* routes, but oversized
+    for all of them even at the catalog's loose static ratio) — that needs Worker-side sizing
+    state the client registry doesn't carry, so a Worker-side maintenance pass would be the fix
+    there, not this script.
+
 - **Oversized queued jobs fail instead of blocking the v2 claim lookahead**
   (`workers/llm-dispatch-v2/src/coordinator.js`, `scripts/llm_budget_monitor.py`). On 2026-09-26
   the drain pass sent the 12 near-miss Gemma batches and then stopped: the oldest 32 batches, sized
