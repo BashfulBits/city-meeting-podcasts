@@ -1176,7 +1176,7 @@ def test_chapter_tagger_admits_a_batch_that_fits_an_additional_allowed_route(mon
     fallback = "test/fallback"
     primary_route = LLMRoute(
         model=primary,
-        transport="llm-dispatch",
+        transport="llm-dispatch-v2",
         free=True,
         quota=QuotaPolicy(tpm=10_000),
         pricing=PricingPolicy(),
@@ -1185,7 +1185,7 @@ def test_chapter_tagger_admits_a_batch_that_fits_an_additional_allowed_route(mon
     )
     fallback_route = LLMRoute(
         model=fallback,
-        transport="llm-dispatch",
+        transport="llm-dispatch-v2",
         free=True,
         quota=QuotaPolicy(tpm=100_000),
         pricing=PricingPolicy(),

@@ -17,6 +17,22 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **The v1 LLM dispatch Worker is removed; v2 is the only dispatch transport**
+  (`workers/llm-dispatch-proxy/` deleted, `citypods/compute/{llm,llm_policy,llm_scheduler,llm_deferred}.py`,
+  `scripts/compile_llm_limits.py`, `.github/workflows/`). Nothing had reached v1 since the lanes
+  moved to `queue_only` v2 admission, and the deferred sweep reported no v1 handles left.
+  - Deleted the Worker and its deploy, queue-report, reindex, orphan-reconcile and recovery-import
+    workflows, and the R2-queue scripts they ran (`reconcile_v1_llm_jobs`,
+    `recover_v1_llm_dispatch_results`, `reindex_llm_dispatch_queue`, `requeue_failed_llm_dispatch`,
+    `report_pending_dispatch_queue`, `retire_legacy_prelabeler_dispatch`) with their tests.
+    `reclaim-transcript.yml` keeps only `reclaim-transcript` and `requeue-failed-work-leases`.
+  - `LLM_DISPATCH_URL`/`LLM_DISPATCH_AUTH_TOKEN` are gone from `LLMBackendConfig` and every
+    workflow; `LLM_MODE=dispatch` now requires `LLM_DISPATCH_V2_URL`, and dispatch-mode calls
+    without `require_direct` enqueue to v2 instead of posting to v1. Routes compile with the
+    `direct` transport only, and the compiler no longer writes the v1 catalog.
+  - A leftover v1 handle reconciles as a terminal failure, so any stale snapshot fails and re-plans
+    rather than polling a Worker that no longer exists.
+
 - **Gemma prelabeler batches no longer strand in the v2 queue**
   (`workers/llm-dispatch-v2/src/{calibration,pacing,routes,coordinator,index}.js`,
   `citypods/{tags,compute/llm}.py`, `config/provider_limits.yml`, `scripts/compile_llm_limits.py`).

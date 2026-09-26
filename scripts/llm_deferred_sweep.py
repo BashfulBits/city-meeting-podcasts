@@ -259,14 +259,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    # A backend able to reach every transport a pending record might need: `dispatch_url` (from
-    # LLM_DISPATCH_URL/LLM_DISPATCH_AUTH_TOKEN) makes mistral-dispatch reachable alongside direct,
-    # regardless of LLM_MODE -- this is exactly the caller `_available_transports()` was built for
-    # (see citypods/compute/llm.py), since the sweep services a mixed bag of records regardless of
-    # which route originally claimed them.
-    # This workflow services a mix of direct and dispatch records.  Tag records are explicitly
-    # upgraded to queue_only above; that path posts to LLM_DISPATCH_URL itself, while every other
-    # deferred record preserves its original policy-selected behavior.
+    # This workflow services a mix of direct and v2 dispatch records. Tag records are explicitly
+    # upgraded to queue_only above and go to the v2 Worker; every other deferred record preserves
+    # its original policy-selected behavior.
     backend = LiteLLMBackend(LLMBackendConfig.from_env(), storage=storage)
     _register_known_contracts()
 
@@ -305,7 +300,7 @@ def main(argv: list[str] | None = None) -> int:
             should_stop=lambda: stop_state.requested,
             include_ineligible=True,
         )
-        pruned = prune_expired_deferred_snapshot(storage, snapshot, backend=backend)
+        pruned = prune_expired_deferred_snapshot(storage, snapshot)
         print(
             json.dumps(
                 {
@@ -416,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(exc, LLMStructuredOutputError):
             if schema_correction_attempted(storage, handle.recipe_hash):
                 marker_count = discard_terminal_failure(
-                    storage, target_snapshot, handle, exc, backend=backend, exhausted=True
+                    storage, target_snapshot, handle, exc, exhausted=True
                 )
                 recovered_terminal_failures += 1
                 print(
@@ -433,7 +428,6 @@ def main(argv: list[str] | None = None) -> int:
                 # marker-write failure must leave the original intact, not permit a second retry.
                 record_schema_correction(storage, handle, exc)
                 backend.ack_dispatched_ref(handle)
-                backend.delete_dispatched_ref(handle.ref)
                 print(
                     f"llm-deferred-sweep: {handle.recipe_hash} submitted one schema correction",
                     file=sys.stderr,
@@ -447,9 +441,7 @@ def main(argv: list[str] | None = None) -> int:
             return
 
         assert isinstance(exc, LLMDispatchTerminalError)
-        marker_count = discard_terminal_failure(
-            storage, target_snapshot, handle, exc, backend=backend
-        )
+        marker_count = discard_terminal_failure(storage, target_snapshot, handle, exc)
         recovered_terminal_failures += 1
         print(
             f"llm-deferred-sweep: {handle.recipe_hash} terminal failure recovered "
@@ -679,7 +671,7 @@ def main(argv: list[str] | None = None) -> int:
     # immediate pass would only re-poll/re-log the same remaining handles; the next scheduled run
     # gets a fresh registry snapshot.
 
-    pruned = prune_expired_deferred_snapshot(storage, snapshot, backend=backend)
+    pruned = prune_expired_deferred_snapshot(storage, snapshot)
     remaining = sum(
         1
         for entry in snapshot.entries

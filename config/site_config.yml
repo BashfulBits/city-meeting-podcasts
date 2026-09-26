@@ -33,7 +33,8 @@ tagging:
   # constants; one registry keeps every dispatching lane's route choice in one place.
   # direct | dispatch. Tags do not need a same-run response, so keep provider calls off the
   # Actions runner and let the asynchronous dispatch Worker pace and retry them. The tag workflow
-  # must provide LLM_DISPATCH_URL/LLM_DISPATCH_AUTH_TOKEN; provider keys remain Worker secrets.
+  # must provide LLM_DISPATCH_V2_URL/LLM_DISPATCH_V2_AUTH_TOKEN; provider keys remain Worker
+  # secrets.
   llm_mode: "dispatch"
   taxonomy_path: "config/taxonomy.yml"
   evaluation:

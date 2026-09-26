@@ -1,7 +1,7 @@
 /**
  * Route catalog selection for LLM Dispatch v2.
  *
- * Pure extraction of workers/llm-dispatch-proxy/src/index.js's model-alias-resolution and
+ * Pure extraction of the retired v1 Worker's (llm-dispatch-proxy) model-alias-resolution and
  * route-eligibility pattern (per review/44 Phase 1's "extract only pure route-catalog selection
  * and response-normalization helpers from v1; do not fork provider credential logic without
  * tests") -- adapted here for v2's own claimDispatchWindow admission pass rather than v1's

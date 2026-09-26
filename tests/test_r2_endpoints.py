@@ -5,19 +5,13 @@ from __future__ import annotations
 import boto3
 import pytest
 
-from scripts import reindex_llm_dispatch_queue, requeue_failed_llm_dispatch, spike_r2_cas
+from scripts import spike_r2_cas
 
 
 @pytest.mark.parametrize(
     ("factory", "access_key", "secret_key"),
     [
         (spike_r2_cas._make_client, "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"),
-        (reindex_llm_dispatch_queue._client, "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"),
-        (
-            requeue_failed_llm_dispatch._client,
-            "R2_RECLAIM_ACCESS_KEY",
-            "R2_RECLAIM_SECRET_ACCESS_KEY",
-        ),
     ],
 )
 def test_r2_script_clients_use_account_default_for_blank_endpoint(

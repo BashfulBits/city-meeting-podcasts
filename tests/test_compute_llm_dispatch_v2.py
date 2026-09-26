@@ -2078,3 +2078,75 @@ def test_dispatch_v2_ingress_open_reports_closed_and_fails_open():
         LLMBackendConfig(model="gemini/gemini-3-flash-preview"), http_session=MagicMock()
     )
     assert dispatch_v2_ingress_open("chapter-agenda", backend=no_v2) == (True, None)
+
+
+def test_dispatch_mode_requires_the_v2_worker_url():
+    with pytest.raises(ValueError, match="dispatch mode requires LLM_DISPATCH_V2_URL"):
+        LiteLLMBackend(
+            LLMBackendConfig(model="gemini/gemini-3-flash-preview", mode="dispatch"),
+            http_session=MagicMock(),
+        )
+
+
+def _dispatch_mode_backend(monkeypatch):
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=MagicMock(),
+        storage=MockStorage(),
+        completion=lambda **_kwargs: pytest.fail("dispatch mode called a provider directly"),
+    )
+    enqueued = []
+
+    def fake_enqueue(jobs):
+        enqueued.extend(jobs)
+        return [
+            JobHandle(task=j.task, recipe_hash=j.recipe_hash, backend="llm-dispatch-v2", ref="j1")
+            for j in jobs
+        ]
+
+    monkeypatch.setattr(backend, "enqueue_batch", fake_enqueue)
+    return backend, enqueued
+
+
+def test_dispatch_mode_policy_job_goes_to_the_v2_worker(monkeypatch):
+    backend, enqueued = _dispatch_mode_backend(monkeypatch)
+    job = InferenceJob(
+        task="summarize",
+        recipe_hash="recipe-dispatch",
+        inputs={
+            "content": "hello",
+            "llm_policy": LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",)),
+        },
+    )
+    result = backend.run_inference(job)
+    assert isinstance(result, JobHandle) and result.backend == "llm-dispatch-v2"
+    assert [j.recipe_hash for j in enqueued] == ["recipe-dispatch"]
+
+
+def test_dispatch_mode_job_without_a_policy_goes_to_the_v2_worker(monkeypatch):
+    backend, enqueued = _dispatch_mode_backend(monkeypatch)
+    job = InferenceJob(task="summarize", recipe_hash="recipe-plain", inputs={"content": "hello"})
+    result = backend.run_inference(job)
+    assert isinstance(result, JobHandle) and result.backend == "llm-dispatch-v2"
+    assert [j.recipe_hash for j in enqueued] == ["recipe-plain"]
+
+
+def test_a_retired_v1_worker_handle_is_terminal_and_not_schema_corrected():
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=MagicMock(),
+    )
+    legacy = JobHandle(
+        task="tag", recipe_hash="recipe-v1", backend=backend.name, ref="/v1/requests/chatcmpl-1"
+    )
+    with pytest.raises(LLMDispatchTerminalError, match="retired v1 dispatch Worker"):
+        backend.reconcile(legacy)
+    with pytest.raises(LLMBackendError, match="not supported"):
+        backend.retry_malformed_dispatched(legacy)

@@ -1,6 +1,7 @@
 # Centralized Provider & Model Rate Limits Configuration
 # Replaces config/mistral_model_limits.yml.
-# Used by scripts/compile_llm_limits.py to generate workers/llm-dispatch-proxy/src/dispatch_limits.json
+# Used by scripts/compile_llm_limits.py to generate workers/llm-dispatch-v2/src/dispatch_limits.json
+# and citypods/compute/llm_routes.json
 
 source: Centralized provider limits registry
 observed_on: 2026-08-29
@@ -9,10 +10,9 @@ observed_on: 2026-08-29
 # compilation to safeguard against token estimation drift and prevent 429 rate limit spikes.
 token_estimate_buffer: 0.90
 
-# Split-cap multiplier applied during Phase 2/3 coexistence (review/44) so that aggregate usage
-# across both v1 and v2 dispatchers does not exceed 100% of underlying provider rate limits.
-# Halves RPM, RPD, TPM, and monthly_tpm across all shared routes. Set to 1.0 (or omitted) to
-# restore full 1x capacity once legacy v1 backlog is drained (Phase 3).
+# Split-cap multiplier from the v1/v2 coexistence phase (review/44): scales RPM, RPD, TPM and
+# monthly_tpm across all routes. The v1 Worker is retired, so v2 is the only dispatcher and this
+# stays at 1.0 (full capacity).
 split_cap_multiplier: 1.0
 
 # Context ceilings are required on every physical route below. They are not provider defaults:
@@ -64,7 +64,7 @@ structured_output_methods:
 # capacity for a job pinned to one model (`allowed_models=(source,)`), without editing the job or
 # caller at all. The compiler resolves both sides through `model_aliases` the same way a route's
 # own `model` selector does, and fails the compile if either side is unknown. Both the Python
-# scheduler (`select_route`) and the `llm-dispatch-proxy` Worker (`normalizeChatRequest`) expand a
+# scheduler (`select_route`) and the `llm-dispatch-v2` Worker (`routes.js`) expand a
 # request's allowed models with this map, so it takes effect for every transport uniformly.
 #
 # Mistral Medium jobs route strictly to native Mistral routes.
@@ -958,12 +958,12 @@ routes:
   # Each route ALSO declares its own `rpm: 12`, matching the provider-wide cap, even though
   # Python's LLMBudget already enforces that cap correctly at the shared-provider level
   # (`provider_rpm`/`ProviderLedger`) regardless of any route-level value. This is a defense-in-
-  # depth stopgap for `workers/llm-dispatch-v2`: unlike v1 (`llm-dispatch-proxy`, which ports
-  # `providerRpm`/`providerAvailable`/`reserveProviderCapacity`), v2's pacing engine
+  # depth stopgap for `workers/llm-dispatch-v2`: unlike the retired v1 Worker
+  # (`llm-dispatch-proxy`, which ported `providerRpm`/`providerAvailable`/
+  # `reserveProviderCapacity`), v2's pacing engine
   # (`workers/llm-dispatch-v2/src/pacing.js`) has no cross-route, provider-level concept at all --
   # `earliestSafeStart`/`routeHasCapacityFor` only see one route's own rpm/rpd/tpm. Without a
-  # route-level rpm, v2 would treat these routes as unbounded, and v1/v2 are actively coexisting
-  # right now (`split_cap_multiplier: 0.50` above), not a future migration. This does not restore
+  # route-level rpm, v2 would treat these routes as unbounded. This does not restore
   # true shared pooling in v2 -- in the worst case (many different NVIDIA models dispatched
   # concurrently) v2's aggregate could still exceed the provider-wide rpm in total -- but it bounds each
   # individual route rather than leaving it uncapped. A real fix ports provider-level pacing into

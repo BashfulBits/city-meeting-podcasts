@@ -109,16 +109,18 @@ def _backend(
     model: str = "mistral/mistral-large-latest", *, direct_mistral: bool = False
 ) -> LiteLLMBackend:
     dispatch = model.startswith("mistral/") and not direct_mistral
-    dispatch_url = os.environ.get("LLM_DISPATCH_URL") if dispatch else None
-    dispatch_token = os.environ.get("LLM_DISPATCH_AUTH_TOKEN") if dispatch else None
+    dispatch_url = os.environ.get("LLM_DISPATCH_V2_URL") if dispatch else None
+    dispatch_token = os.environ.get("LLM_DISPATCH_V2_AUTH_TOKEN") if dispatch else None
     if dispatch and (not dispatch_url or not dispatch_token):
-        raise RuntimeError("LLM_DISPATCH_URL and LLM_DISPATCH_AUTH_TOKEN are required for Mistral")
+        raise RuntimeError(
+            "LLM_DISPATCH_V2_URL and LLM_DISPATCH_V2_AUTH_TOKEN are required for Mistral"
+        )
     return LiteLLMBackend(
         LLMBackendConfig(
             model=model,
             mode="dispatch" if dispatch else "direct",
-            dispatch_url=dispatch_url,
-            dispatch_auth_token=dispatch_token,
+            dispatch_v2_url=dispatch_url,
+            dispatch_v2_auth_token=dispatch_token,
             timeout_seconds=30,
         )
     )

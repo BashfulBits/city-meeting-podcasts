@@ -2823,17 +2823,11 @@ def _build_impl(
             primary_model = tagger_lane.primary_model
             additional_models = tagger_lane.additional_models
             # Start from LLMBackendConfig.from_env() -- the complete, single source of truth for
-            # every dispatch-relevant environment variable (dispatch_url/dispatch_auth_token,
-            # dispatch_v2_url/dispatch_v2_auth_token, daily_ingest_cap) -- and override only the
-            # fields site_config.yml's tagging block actually owns. This construction used to
-            # hand-roll only dispatch_url/dispatch_auth_token, which meant tags.py's
-            # queue_only=True calls (tagger and prelabeler) always fell through to
-            # _enqueue_durable_policy_job's legacy v1 branch, regardless of LLM_DISPATCH_V2_URL
-            # being set: LLMBackendConfig has no env-reading __post_init__, so an omitted field
-            # is None, not auto-filled. That's why the tag lane kept dispatching straight to
-            # citypods-llm-dispatch-proxy after v2 activation -- see the 2026-08-18 incident
-            # notes in review/44. Building from .from_env() instead of copying its fields by hand
-            # means a future field added there can't silently miss this call site again.
+            # every dispatch-relevant environment variable (dispatch_v2_url/dispatch_v2_auth_token,
+            # daily_ingest_cap) -- and override only the fields site_config.yml's tagging block
+            # actually owns. LLMBackendConfig has no env-reading __post_init__, so a hand-copied
+            # config silently leaves any omitted field None (the 2026-08-18 incident in
+            # review/44); building from .from_env() means a future field can't miss this site.
             tag_backend = LiteLLMBackend(
                 _dc_replace(
                     LLMBackendConfig.from_env(),
@@ -2850,7 +2844,7 @@ def _build_impl(
                 storage=storage,
             )
         except ValueError as exc:
-            # A misconfigured LLM route (e.g. dispatch mode with no LLM_DISPATCH_URL) must not
+            # A misconfigured LLM route (e.g. dispatch mode with no LLM_DISPATCH_V2_URL) must not
             # take down the whole build: fall back to rule-based tags only, same as any other
             # "LLM unavailable" outcome.
             print(
