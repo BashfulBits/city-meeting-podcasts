@@ -538,7 +538,10 @@ completion then settles the route's token bucket to the provider's reported usag
 `hard_input_ceiling` at that learned ratio. A route may add `hard_input_ceiling_tolerance` (0.1 on the
 Gemma AI Studio routes, still under Google's 16,000/minute quota): a job refused only for being within
 it is tried when a claim finds nothing else to dispatch, one per route per claim, so near misses drain
-instead of stranding at the head of the queue; producers read the same ratio from the read-only `GET /v2/calibration`
+instead of stranding at the head of the queue. A queued job over every usable route's ceiling even
+with that tolerance (and with any uncapped route's daily quota spent) is failed at claim time, recorded
+as `input_over_route_ceiling`, so it cannot hold the claim's bounded lookahead and the producer re-plans
+it into batches that fit; producers read the same ratio from the read-only `GET /v2/calibration`
 (one row) and size prelabeler batches to it with a 5% margin. One physical route
 may serve several logical pools via `also_serves` (one `route_id`, one ledger — e.g. NVIDIA's
 `deepseek-v4.1-flash` is the only route in `deepseek/deepseek-v4.1-flash` and `deepseek/deepseek-v4-pro`
