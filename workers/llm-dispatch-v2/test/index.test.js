@@ -391,6 +391,45 @@ test("GET /v2/ingress-status requires auth and reports the admission preflight",
   assert.ok(body.row_budget && Number.isFinite(body.row_budget.rows_written_today));
 });
 
+test("GET /v2/calibration reports the ratio the claim applies to a route and prompt family", async () => {
+  const env = createMockEnv();
+  const get = (qs, auth = true) =>
+    worker.fetch(
+      new Request(`http://localhost/v2/calibration?${qs}`, {
+        headers: auth ? { authorization: "Bearer secret-token" } : {},
+      }),
+      env
+    );
+  assert.equal((await get("route_id=gemma_4_31b_primary&prompt_family=tag", false)).status, 401);
+  assert.equal((await get("prompt_family=tag")).status, 400);
+  assert.equal((await get("route_id=no_such_route&prompt_family=tag")).status, 404);
+
+  const env2 = createMockEnv();
+  const coordinator = env2.LLM_SCHEDULER.get();
+  coordinator._getSql().exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 16, ?, 0)`,
+    "gemma_4_31b_primary:google/gemma-4-31b-it:tag",
+    JSON.stringify({ r: Array(16).fill(1.3), o: Array(16).fill(200) })
+  );
+  const res = await worker.fetch(
+    new Request("http://localhost/v2/calibration?route_id=gemma_4_31b_primary&prompt_family=tag", {
+      headers: { authorization: "Bearer secret-token" },
+    }),
+    env2
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.model, "google/gemma-4-31b-it");
+  assert.equal(body.input_ratio_prior, 1.4);
+  assert.equal(body.input_ratio_p95, 1.3);
+  assert.equal(body.input_ratio_samples, 16);
+  // Gemma's 1.2x headroom on the learned p95 lifts it above the 1.4 prior.
+  assert.ok(Math.abs(body.input_ratio_effective - 1.56) < 1e-9);
+  assert.equal(body.hard_input_ceiling, 14400);
+  assert.equal(body.hard_input_ceiling_tolerance, 0.1);
+});
+
 test("GET /v2/stats makes historical diagnostics explicit and clamps their limit", async () => {
   const env = createMockEnv();
   const call = async (qs) =>

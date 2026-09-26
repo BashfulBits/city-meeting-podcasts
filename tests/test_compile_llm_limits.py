@@ -174,6 +174,42 @@ def test_route_limits_cannot_fall_back_to_provider_defaults():
             compile_llm_limits.compile_limits()
 
 
+@pytest.mark.parametrize(
+    ("route_extra", "match"),
+    [
+        ({"hard_input_ceiling": 500, "hard_input_ceiling_tolerance": 0.6}, "expected 0 to 0.5"),
+        ({"hard_input_ceiling": 500, "hard_input_ceiling_tolerance": True}, "expected 0 to 0.5"),
+        ({"hard_input_ceiling_tolerance": 0.1}, "without a hard_input_ceiling"),
+    ],
+)
+def test_hard_input_ceiling_tolerance_is_bounded_and_needs_a_ceiling(route_extra, match):
+    raw = {
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
+        "providers": {"example": {}},
+        "routes": [_route("example", "example/model", **route_extra)],
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        with pytest.raises(ValueError, match=match):
+            compile_llm_limits.compile_limits()
+
+
+def test_gemma_ai_studio_routes_carry_a_ceiling_tolerance_under_googles_quota():
+    routes = compile_llm_limits.compile_limits()["routes_by_id"]
+    for route_id in (
+        "gemma_4_31b_primary",
+        "gemma_4_31b_secondary",
+        "gemma_4_26b_primary",
+        "gemma_4_26b_secondary",
+    ):
+        route = routes[route_id]
+        assert route["hard_input_ceiling_tolerance"] == 0.1
+        # 14,400 x 1.1 = 15,840 stays under Google's 16,000 input tokens/minute.
+        assert route["hard_input_ceiling"] * (1 + route["hard_input_ceiling_tolerance"]) < 16000
+
+
 def test_compiled_routes_resolve_a_structured_output_method_per_route():
     # review/48 R10: a route's own verified method wins; otherwise its provider's method.
     compiled = compile_llm_limits.compile_limits()

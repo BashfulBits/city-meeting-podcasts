@@ -3027,6 +3027,37 @@ class LiteLLMBackend(Backend):
             raise LLMBackendError("LLM dispatch v2 ingress status returned a malformed response")
         return data
 
+    def dispatch_v2_calibration(self, route_id: str, prompt_family: str) -> Mapping[str, Any]:
+        """Return the input ratio the v2 claim applies to ``route_id`` and ``prompt_family``.
+
+        Read-only on the Worker (one calibration row). ``input_ratio_effective`` is what the
+        claim multiplies a job's chars/4 estimate by before comparing it with the route's
+        ``hard_input_ceiling``.
+        """
+        if not self.config.dispatch_v2_url:
+            raise LLMBackendError("LLM dispatch v2 calibration requires LLM_DISPATCH_V2_URL")
+        headers = {}
+        if self.config.dispatch_v2_auth_token:
+            headers["authorization"] = f"Bearer {self.config.dispatch_v2_auth_token}"
+        query = urlencode({"route_id": route_id, "prompt_family": prompt_family})
+        url = urljoin(self.config.dispatch_v2_url.rstrip("/") + "/", f"v2/calibration?{query}")
+        try:
+            response = self._session.get(url, headers=headers, timeout=self.config.timeout_seconds)
+        except requests.RequestException as exc:
+            raise LLMBackendError("LLM dispatch v2 calibration request failed") from exc
+        if response.status_code != 200:
+            raise LLMBackendError(
+                f"LLM dispatch v2 calibration returned HTTP {response.status_code}"
+            )
+        try:
+            data = response.json()
+        except (TypeError, ValueError) as exc:
+            raise LLMBackendError("LLM dispatch v2 calibration returned malformed JSON") from exc
+        ratio = data.get("input_ratio_effective") if isinstance(data, Mapping) else None
+        if isinstance(ratio, bool) or not isinstance(ratio, (int, float)) or not ratio > 0:
+            raise LLMBackendError("LLM dispatch v2 calibration returned a malformed response")
+        return data
+
     def _settle_dispatched_reservation(self, handle: JobHandle, output: Mapping[str, Any]) -> None:
         """Settle a Worker-owned reservation from its terminal raw response.
 
@@ -3740,3 +3771,39 @@ def dispatch_v2_ingress_open(
         print(f"llm ingress preflight for {purpose!r} failed ({exc}); assuming open", flush=True)
         return True, None
     return bool(status.get("open")), status
+
+
+_V2_LEARNED_INPUT_RATIOS: dict[tuple[str, str], float | None] = {}
+
+
+def dispatch_v2_learned_input_ratio(
+    route_id: str, prompt_family: str, *, backend: Any = None
+) -> float | None:
+    """The v2 Worker's claim-time input ratio for a route and prompt family, once per process.
+
+    None when no v2 Worker is configured or the lookup fails; the caller then sizes with the
+    route's catalog prior, as before. The result (including a failure) is cached for the process
+    so a run makes at most one request per (route, family).
+    """
+    key = (route_id, prompt_family)
+    if key in _V2_LEARNED_INPUT_RATIOS:
+        return _V2_LEARNED_INPUT_RATIOS[key]
+    client = backend if hasattr(backend, "dispatch_v2_calibration") else None
+    if client is None:
+        try:
+            client = LiteLLMBackend(LLMBackendConfig.from_env())
+        except ValueError:
+            client = None
+    ratio: float | None = None
+    if client is not None and client.config.dispatch_v2_url:
+        try:
+            status = client.dispatch_v2_calibration(route_id, prompt_family)
+            ratio = float(status["input_ratio_effective"])
+        except LLMBackendError as exc:
+            print(
+                f"llm calibration lookup for {route_id}:{prompt_family} failed ({exc}); "
+                "sizing with the catalog prior",
+                flush=True,
+            )
+    _V2_LEARNED_INPUT_RATIOS[key] = ratio
+    return ratio

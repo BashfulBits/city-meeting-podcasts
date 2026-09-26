@@ -5,6 +5,7 @@ import {
   CALIBRATION_WINDOW,
   MIN_OUTPUT_RESERVE,
   calibrationFor,
+  hardInputCeilingLimit,
   outputReserveFor,
   parseCalibrationSummary,
   recordCalibrationSample,
@@ -20,6 +21,16 @@ test("routeInputTokenRatio uses the catalog prior and falls back to 1 when unset
   assert.equal(routeInputTokenRatio({ input_token_ratio: 50 }), 1);
   assert.equal(scaledInputTokens(1000, 1.16), 1160);
   assert.equal(scaledInputTokens(null, 2), 0);
+});
+
+test("hardInputCeilingLimit is strict by default and adds a bounded tolerance on request", () => {
+  const gemma = { hard_input_ceiling: 14400, hard_input_ceiling_tolerance: 0.1 };
+  const tolerant = { tolerant: true };
+  assert.equal(hardInputCeilingLimit(gemma), 14400);
+  assert.equal(hardInputCeilingLimit(gemma, tolerant), 15840);
+  assert.equal(hardInputCeilingLimit({ ...gemma, hard_input_ceiling_tolerance: 2 }, tolerant), 14400);
+  assert.equal(hardInputCeilingLimit({ ...gemma, hard_input_ceiling_tolerance: null }, tolerant), 14400);
+  assert.equal(hardInputCeilingLimit({}, tolerant), Number.POSITIVE_INFINITY);
 });
 
 test("a legacy high-water summary (bare array of totals) starts an empty window", () => {

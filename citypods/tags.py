@@ -56,6 +56,7 @@ PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrec
 TAG_OUTPUT_TOKEN_BUDGET = 12_288
 PRELABELER_OUTPUT_TOKENS_PER_ITEM = 200
 PRELABELER_OUTPUT_TOKEN_OVERHEAD = 200
+PRELABELER_LEARNED_RATIO_MARGIN = 1.05
 # Keep a full megabyte beneath the Worker's 8 MiB JSON-body ceiling for the structured-output
 # schema and future envelope fields. This is a transport guard, separate from model context.
 TAGGER_MAX_REQUEST_BYTES = 7 * 1024 * 1024
@@ -1543,8 +1544,19 @@ class PrelabelerBatchLimits:
         return scaled + output <= self.max_reserved_tokens
 
 
-def prelabeler_batch_limits(route: Any) -> PrelabelerBatchLimits:
+def prelabeler_batch_limits(
+    route: Any, learned_input_ratio: float | None = None
+) -> PrelabelerBatchLimits:
+    """Batch limits for ``route``, at the v2 Worker's learned input ratio when one is known.
+
+    The Worker checks the ceiling with its learned ratio, which can sit above the catalog prior;
+    sizing with the prior alone produced batches the Worker then refused on every ceilinged route
+    (2026-09-25). A learned ratio is taken with PRELABELER_LEARNED_RATIO_MARGIN of slack, since it
+    keeps moving between sizing and claim.
+    """
     ratio = float(getattr(route, "input_token_ratio", 1.0) or 1.0)
+    if learned_input_ratio is not None and learned_input_ratio > 0:
+        ratio = max(ratio, float(learned_input_ratio)) * PRELABELER_LEARNED_RATIO_MARGIN
     context = int(getattr(route, "input_context_limit", 32768))
     ceiling = getattr(route, "hard_input_ceiling", None)
     provider_cap = min(context, int(ceiling)) if ceiling else context
@@ -1639,7 +1651,14 @@ def llm_prelabel_candidates(
         )
     backend_storage = getattr(backend, "storage", None)
     route = prelabeler_sizing_route(model, allow_paid=allow_paid) or ROUTES.get(model)
-    limits = prelabeler_batch_limits(route)
+    from citypods.compute.llm import dispatch_v2_learned_input_ratio
+
+    learned_ratio = (
+        dispatch_v2_learned_input_ratio(route.route_id, "tag", backend=backend)
+        if getattr(route, "hard_input_ceiling", None)
+        else None
+    )
+    limits = prelabeler_batch_limits(route, learned_ratio)
     input_context_limit = limits.max_raw_input_tokens
     output_context_limit = int(getattr(route, "output_context_limit", 1024))
     # Keep a response/output reserve. The evaluator may receive many candidates, but it must

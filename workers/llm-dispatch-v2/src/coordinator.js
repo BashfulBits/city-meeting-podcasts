@@ -3225,6 +3225,30 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return result;
   }
 
+  /**
+   * Read-only producer preflight (`GET /v2/calibration`): the input ratio the claim will use for
+   * this route and prompt family, so a producer can size jobs to the Worker's own ceiling check.
+   * One estimates row read; writes nothing. Null for a route the catalog does not know.
+   */
+  async calibrationStatus(routeId, promptFamily) {
+    const stored = this._dispatchLimits()?.routes_by_id?.[routeId];
+    if (!stored) return null;
+    const model = this._modelForRoute(routeId);
+    const route = { ...stored, route_id: routeId, model };
+    const effective = this._calibration(route, String(promptFamily || ""));
+    return {
+      route_id: routeId,
+      model,
+      prompt_family: String(promptFamily || ""),
+      input_ratio_prior: routeInputTokenRatio(route),
+      input_ratio_p95: effective.inputRatioP95,
+      input_ratio_samples: effective.inputRatioSamples,
+      input_ratio_effective: effective.inputRatio,
+      hard_input_ceiling: Number(route.hard_input_ceiling) || null,
+      hard_input_ceiling_tolerance: Number(route.hard_input_ceiling_tolerance) || 0,
+    };
+  }
+
   _recordClaimOutcome(
     now, result, reason, diagnostics, bundlesClaimed = 0, leasesClaimed = 0, queuedDelta = 0
   ) {
@@ -3294,6 +3318,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const diagnostics = {
         active_bundles: 0,
         orphan_bundles_reaped: 0,
+        drained_jobs: 0,
         in_flight_calls: 0,
         candidate_jobs: 0,
         chosen_jobs: 0,
@@ -3514,6 +3539,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const chosen = [];
       const chosenJobIds = new Set();
       const seenRoutes = new Set();
+      const drainCandidates = [];
+      const drainJobIds = new Set();
       const modelPlans = this._rankModelsByCapacity(now, windowSeconds, dispatchLimits);
       const modelPlansByModel = new Map(modelPlans.map((plan) => [plan.model, plan]));
       for (const modelPlan of modelPlans) {
@@ -3614,10 +3641,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
             }
 
             const merged = getMergedRoute(route);
-            if (
-              !routeHasCapacityFor(merged, job, now, windowSeconds, capacityOptions(route, job))
-            ) {
+            const options = capacityOptions(route, job);
+            if (!routeHasCapacityFor(merged, job, now, windowSeconds, options)) {
               diagnostics.rejections.route_capacity += 1;
+              // A near miss over the route's ceiling, within its tolerance: kept aside and tried
+              // only if this claim finds nothing else to dispatch (see the drain pass below).
+              if (
+                !drainJobIds.has(job.id) &&
+                routeHasCapacityFor(merged, job, now, windowSeconds, {
+                  ...options,
+                  ceilingTolerance: true,
+                })
+              ) {
+                drainCandidates.push({ job, route });
+                drainJobIds.add(job.id);
+              }
               continue;
             }
             chosen.push({ job, route });
@@ -3627,6 +3665,36 @@ export class LLMSchedulerDO extends DurableObjectBase {
             break;
           }
         }
+      }
+
+      // Drain pass. Nothing else is dispatchable, so try the near misses rather than leave them
+      // stranded at the head of the queue (2026-09-25: 32 such Gemma batches filled the lookahead
+      // for hours). At most one per route per claim: a provider input-limit rejection stands the
+      // route down, which bounds the cost of a wrong guess to one call.
+      if (chosen.length === 0 && drainCandidates.length > 0) {
+        const drainedByProvider = new Map();
+        for (const { job, route } of drainCandidates) {
+          if (chosen.length >= bundleJobLimit) break;
+          if (seenRoutes.has(route.route_id)) continue;
+          if (seenRoutes.size >= maxConcurrentLanes) break;
+          const providerCfg = dispatchLimits.providers?.[route.provider];
+          const providerConcurrency = Number(
+            providerCfg?.concurrency ?? route.provider_concurrency
+          );
+          const providerDrained = drainedByProvider.get(route.provider) || 0;
+          if (
+            Number.isFinite(providerConcurrency) &&
+            providerConcurrency > 0 &&
+            (inFlightByProvider.get(route.provider) || 0) + providerDrained >= providerConcurrency
+          ) {
+            continue;
+          }
+          chosen.push({ job, route, drain: true });
+          chosenJobIds.add(job.id);
+          seenRoutes.add(route.route_id);
+          drainedByProvider.set(route.provider, providerDrained + 1);
+        }
+        diagnostics.drained_jobs = chosen.length;
       }
 
       if (chosen.length === 0) {
@@ -3665,9 +3733,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // the window deadline -- the eligibility passes above checked each route independently, not
       // lane-sequenced; this final pass is the authoritative one (Unit 4 step 4/6).
       const byRoute = new Map();
-      for (const { job, route } of chosen) {
+      const drainedJobIds = new Set();
+      for (const { job, route, drain } of chosen) {
         if (!byRoute.has(route.route_id)) byRoute.set(route.route_id, { route, jobs: [] });
         byRoute.get(route.route_id).jobs.push(job);
+        if (drain) drainedJobIds.add(job.id);
       }
 
       const bundleId = crypto.randomUUID();
@@ -3694,6 +3764,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             outputForecast,
             providerConfig: providerCfg,
             providerLedger,
+            ceilingTolerance: drainedJobIds.has(job.id),
           });
           if (waitResult === null) {
             diagnostics.rejections.dispatch_window_capacity += 1;

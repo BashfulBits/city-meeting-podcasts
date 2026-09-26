@@ -99,6 +99,24 @@ test("earliestSafeStart compares hard_input_ceiling in the provider's token unit
   assert.equal(earliestSafeStart(route, { input_token_estimate: 9000 }, now, now), null);
 });
 
+test("earliestSafeStart allows the ceiling tolerance only when the caller asks for it", () => {
+  const now = Date.now();
+  const route = {
+    rpm: 30,
+    tpm: 14400,
+    hard_input_ceiling: 14400,
+    hard_input_ceiling_tolerance: 0.1,
+    input_token_ratio: 1.4,
+  };
+  const at = (raw, extra = {}) =>
+    earliestSafeStart(route, { input_token_estimate: raw }, now, now, { inputRatio: 1.56, ...extra });
+  // At a learned 1.56, 10,000 raw is 15,600 provider tokens: over 14,400 but inside 15,840.
+  assert.equal(at(10_000), null);
+  assert.notEqual(at(10_000, { ceilingTolerance: true }), null);
+  // 10,200 raw is 15,912: beyond the tolerance too.
+  assert.equal(at(10_200, { ceilingTolerance: true }), null);
+});
+
 test("earliestSafeStart admits immediately when a fresh route has full headroom", () => {
   const route = freshRoute();
   const result = earliestSafeStart(route, job(), NOW, NOW);

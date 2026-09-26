@@ -553,19 +553,24 @@ real usable ceiling can sit well below both `tpm` and the model's advertised con
 others genuinely tolerate a request several times their configured `tpm` (confirmed live against
 NVIDIA's free tier). This field is therefore never derived from `tpm` automatically; it is set
 only where a provider's hard-reject behavior has actually been verified (today, every direct Google
-AI Studio Gemini/Gemma route, capped at 10,000 tokens for Gemma 26B/31B — the same Gemma models fronted by
+AI Studio Gemini/Gemma route, capped at 14,400 tokens for Gemma 26B/31B — the same Gemma models fronted by
 OpenRouter's or NVIDIA's free gateways remain `null` pending their own verification), and is enforced
 both in `select_route` (`citypods/compute/llm_scheduler.py`) and in the Cloudflare dispatch Worker's
 admission filtering (`routeFitsContext` in `workers/llm-dispatch-v2/src/routes.js` and
 `workers/llm-dispatch-v2/src/pacing.js`). Ceilings, context windows, and `tpm` are in the provider's
 own tokenizer units, while every job carries one tokenizer-agnostic `chars/4` estimate
 (`estimate_tokens`); a route's optional `input_token_ratio` (measured from paired B2 payload/result
-samples — Gemma 1.2, Nemotron 3 Ultra 1.75, Gemini 3.1/3.5 Flash Lite 1.6/2.15) scales that estimate
+samples — Gemma 1.4, Nemotron 3 Ultra 1.75, Gemini 3.1/3.5 Flash Lite 1.6/2.15) scales that estimate
 before every such comparison (`route_input_tokens` in Python, `workers/llm-dispatch-v2/src/calibration.js`
 in the Worker). The v2 Worker additionally learns, per route × model × prompt family, the p95 input
 ratio and p95 output size of the last 32 completions (after 16 samples) and reserves
 `scaled input + min(max_tokens, 1.25 × p95 output)` rather than the full `max_tokens`; each successful
-completion then settles the route's token bucket to the provider's reported usage. One physical route
+completion then settles the route's token bucket to the provider's reported usage. The Worker checks
+`hard_input_ceiling` at that learned ratio. A route may add `hard_input_ceiling_tolerance` (0.1 on the
+Gemma AI Studio routes, still under Google's 16,000/minute quota): a job refused only for being within
+it is tried when a claim finds nothing else to dispatch, one per route per claim, so near misses drain
+instead of stranding at the head of the queue; producers read the same ratio from the read-only `GET /v2/calibration`
+(one row) and size prelabeler batches to it with a 5% margin. One physical route
 may serve several logical pools via `also_serves` (one `route_id`, one ledger — e.g. NVIDIA's
 `deepseek-v4.1-flash` is the only route in `deepseek/deepseek-v4.1-flash` and `deepseek/deepseek-v4-pro`
 and pools with OrcaRouter in `deepseek/deepseek-v4-flash`); the compiled Worker catalog records each

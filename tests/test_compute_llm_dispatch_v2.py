@@ -1994,6 +1994,65 @@ def test_dispatch_v2_ingress_status_encodes_purpose_and_validates_shape():
         backend.dispatch_v2_ingress_status("topic-tags:tagger")
 
 
+def test_dispatch_v2_calibration_encodes_route_and_validates_shape():
+    session = MagicMock()
+    session.get.return_value = _mock_response(
+        status_code=200,
+        json_data={"route_id": "gemma_4_31b_primary", "input_ratio_effective": 1.56},
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+            dispatch_v2_auth_token="tok",
+        ),
+        http_session=session,
+    )
+    assert backend.dispatch_v2_calibration("gemma_4_31b_primary", "tag")[
+        "input_ratio_effective"
+    ] == pytest.approx(1.56)
+    assert session.get.call_args.args[0] == (
+        "https://dispatch-v2.example.com/v2/calibration"
+        "?route_id=gemma_4_31b_primary&prompt_family=tag"
+    )
+    assert session.get.call_args.kwargs["headers"]["authorization"] == "Bearer tok"
+
+    session.get.return_value = _mock_response(status_code=200, json_data={"route_id": "x"})
+    with pytest.raises(LLMBackendError):
+        backend.dispatch_v2_calibration("gemma_4_31b_primary", "tag")
+
+
+def test_dispatch_v2_learned_input_ratio_caches_and_fails_open(monkeypatch):
+    from citypods.compute import llm
+
+    monkeypatch.setattr(llm, "_V2_LEARNED_INPUT_RATIOS", {})
+    session = MagicMock()
+    session.get.return_value = _mock_response(
+        status_code=200, json_data={"input_ratio_effective": 1.56}
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+    )
+    assert llm.dispatch_v2_learned_input_ratio("r1", "tag", backend=backend) == pytest.approx(1.56)
+    assert llm.dispatch_v2_learned_input_ratio("r1", "tag", backend=backend) == pytest.approx(1.56)
+    assert session.get.call_count == 1
+
+    # A broken Worker leaves sizing on the catalog prior, and is not retried within the run.
+    session.get.return_value = _mock_response(status_code=503, json_data={})
+    assert llm.dispatch_v2_learned_input_ratio("r2", "tag", backend=backend) is None
+    assert llm.dispatch_v2_learned_input_ratio("r2", "tag", backend=backend) is None
+    assert session.get.call_count == 2
+
+    no_v2 = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"), http_session=MagicMock()
+    )
+    assert llm.dispatch_v2_learned_input_ratio("r3", "tag", backend=no_v2) is None
+
+
 def test_dispatch_v2_ingress_open_reports_closed_and_fails_open():
     from citypods.compute.llm import dispatch_v2_ingress_open
 

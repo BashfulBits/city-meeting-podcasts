@@ -17,6 +17,22 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Gemma prelabeler batches no longer strand in the v2 queue**
+  (`workers/llm-dispatch-v2/src/{calibration,pacing,routes,coordinator,index}.js`,
+  `citypods/{tags,compute/llm}.py`, `config/provider_limits.yml`, `scripts/compile_llm_limits.py`).
+  On 2026-09-25 the Worker claimed nothing for hours with 340 jobs queued: producers sized prelabeler
+  batches at the catalog's 1.4 ratio, the Worker checked the 14,400 ceiling at its learned ratio
+  (up to 1.2 × p95), and once SambaNova's 20/day were spent the 32 oldest Gemma 31B batches were
+  refused on both AI Studio routes every minute, filling the claim lookahead.
+  - A route may declare `hard_input_ceiling_tolerance` (0 to 0.5). The claim stays strict, but a
+    job refused only for being within `ceiling × (1 + tolerance)` is set aside, and tried when the
+    claim finds nothing else to dispatch, one per route per claim (`drained_jobs` in the claim
+    diagnostics). The four Gemma AI Studio routes set 0.1 (15,840, under Google's 16,000/minute).
+    Other routes are unchanged: a provider input-limit rejection stands the whole route down.
+  - New read-only `GET /v2/calibration?route_id=&prompt_family=` returns the ratio the claim
+    applies (one estimates row read). Prelabeler sizing uses it with a 5% margin, cached once per
+    process, and falls back to the catalog prior when no v2 Worker answers.
+
 - **Output budgets sent per route; per-lane reasoning levels; token-budget monitor**
   (`workers/llm-dispatch-v2/src/{gateway,index,coordinator}.js`, `citypods/compute/{llm,llm_policy,
   llm_lanes}.py`, `scripts/compile_llm_{limits,lanes}.py`, `scripts/llm_budget_monitor.py`,

@@ -35,7 +35,12 @@
  * long the bucket needs, once admitted.
  */
 
-import { outputReserveFor, routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
+import {
+  hardInputCeilingLimit,
+  outputReserveFor,
+  routeInputTokenRatio,
+  scaledInputTokens,
+} from "./calibration.js";
 
 const MS_PER_MINUTE = 60_000;
 const MS_PER_DAY = 24 * 60 * 60_000;
@@ -225,15 +230,18 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   // ONE absolute admissibility gate (2026-09-13 redesign, see module docstring): does this
   // route's own measured per-request ceiling admit this job's INPUT, at all -- not a timing
   // question, and not compared against `reservation` (which also carries the output-token
-  // budget): mirrors the Python scheduler's `select_route` contract (`llm_scheduler.py`) exactly,
-  // so the two never disagree about which jobs a route can serve. `input_context_limit` is a
-  // separate, coarser, earlier filter (routes.js); a route with no `hard_input_ceiling` measured
-  // gets no extra restriction here at all -- it simply waits, however long, once admitted.
+  // budget), as in the Python scheduler's `select_route` (`llm_scheduler.py`). With
+  // `options.ceilingTolerance` (the claim's drain pass, only when nothing else is dispatchable) it
+  // also allows the route's optional `hard_input_ceiling_tolerance` above the ceiling, since the
+  // scaled input here uses a learned ratio producers can only approximate.
+  // `input_context_limit` is a separate, coarser, earlier filter (routes.js); a route with no
+  // `hard_input_ceiling` measured gets no extra restriction here at all -- it simply waits,
+  // however long, once admitted.
   // Compared in the provider's units: the ceiling was measured against real provider token
   // counts, while the job carries a tokenizer-agnostic chars/4 estimate (see calibration.js).
-  const hardCeiling = Number(route?.hard_input_ceiling);
   const inputEstimate = scaledInputTokens(job?.input_token_estimate, inputRatio);
-  if (Number.isFinite(hardCeiling) && hardCeiling > 0 && inputEstimate > hardCeiling) {
+  const tolerant = Boolean(options?.ceilingTolerance);
+  if (inputEstimate > hardInputCeilingLimit(route, { tolerant })) {
     return null;
   }
 
