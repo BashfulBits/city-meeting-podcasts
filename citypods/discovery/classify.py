@@ -283,11 +283,11 @@ def classify(
     review/27 §9.3), so a policy that let this call dispatch could never complete within this same
     process even when the target route has ample quota. A prior version of this code relied on
     `allow_dispatch_overflow` defaulting to False rather than stating the requirement here
-    directly; that left the workflow's `LLM_DISPATCH_URL` env var (set for a different reason) free
-    to silently flip this call onto the Worker the moment a future change made overflow opt-in the
-    default somewhere upstream. Stating `require_direct=True` here means this call can never
-    dispatch regardless of what the backend's transport configuration or global defaults do. If
-    nothing free is eligible right now (today that's just Gemini; a future free+direct route
+    directly; that left the workflow's dispatch Worker configuration (set for a different reason)
+    free to silently flip this call onto the Worker the moment a future change made overflow
+    opt-in the default somewhere upstream. Stating `require_direct=True` here means this call can
+    never dispatch regardless of what the backend's transport configuration or global defaults do.
+    If nothing free is eligible right now (today that's just Gemini; a future free+direct route
     would also qualify with no code change here), `run_inference` returns a `JobHandle` the same
     as it would for a genuinely in-flight dispatch -- this defers the *whole* discovery cycle to
     the next scheduled run, exactly as it already did before R13.

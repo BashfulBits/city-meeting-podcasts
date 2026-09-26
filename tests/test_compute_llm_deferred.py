@@ -243,13 +243,6 @@ def test_terminal_failure_removes_pending_handle_and_keeps_bounded_retry_audit()
     write_deferred(storage, handle.recipe_hash, handle, now=NOW)
     snapshot = load_deferred_snapshot(storage, now=NOW)
 
-    class Backend:
-        deleted = []
-
-        def delete_dispatched_ref(self, ref):
-            self.deleted.append(ref)
-
-    backend = Backend()
     from citypods.compute.llm import LLMDispatchTerminalError
 
     for attempt in range(1, 4):
@@ -262,7 +255,6 @@ def test_terminal_failure_removes_pending_handle_and_keeps_bounded_retry_audit()
                 snapshot,
                 handle,
                 LLMDispatchTerminalError("LLM dispatch poll returned HTTP 502 (upstream_error)"),
-                backend=backend,
                 now=NOW,
             )
             == attempt
@@ -270,7 +262,6 @@ def test_terminal_failure_removes_pending_handle_and_keeps_bounded_retry_audit()
         assert look_up_deferred(storage, handle.recipe_hash) is None
         assert list(snapshot.pending()) == []
 
-    assert backend.deleted == [handle.ref, handle.ref, handle.ref]
     assert terminal_failure_retry_allowed(storage, handle.recipe_hash) is False
     assert storage.keys(DEFERRED_FAILURE_PREFIX) == [deferred_failure_key(handle.recipe_hash)]
 

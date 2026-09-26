@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile config/provider_limits.yml into workers/llm-dispatch-proxy/src/dispatch_limits.json.
+"""Compile config/provider_limits.yml into the v2 Worker and Python route catalogs.
 
 Statically parses provider accounts, models, and rate limits into pre-indexed lookup maps for
 sub-10ms Cloudflare Worker execution. The default invocation (no flags) touches only the local
@@ -29,11 +29,6 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INPUT_YAML = REPO_ROOT / "config" / "provider_limits.yml"
-OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-proxy" / "src" / "dispatch_limits.json"
-# Same catalog shape as OUTPUT_JSON, for review/44's v2 executor Worker (Unit 4's
-# routeHasCapacityFor/routesEligibleFor need the same physical route/provider data v1 has). Kept
-# as a second write of the same compiled catalog, not a cross-Worker-directory import, so v2 has
-# no build/deploy dependency on v1's directory continuing to exist past its Phase 3 retirement.
 V2_OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "dispatch_limits.json"
 PYTHON_OUTPUT_JSON = REPO_ROOT / "citypods" / "compute" / "llm_routes.json"
 
@@ -372,7 +367,7 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
         route = dict(source)
         route.update(
             {
-                "transports": ["direct", "llm-dispatch"],
+                "transports": ["direct"],
                 "direct_model": _direct_model(
                     str(source.get("provider", "")), str(source.get("upstream_model", ""))
                 ),
@@ -1190,20 +1185,16 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     compiled = compile_limits(discover=args.discover)
     worker_catalog = _worker_catalog(compiled)
-    OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
-    with OUTPUT_JSON.open("w", encoding="utf-8") as f:
-        json.dump(worker_catalog, f, indent=2, default=_json_default)
     V2_OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     with V2_OUTPUT_JSON.open("w", encoding="utf-8") as f:
         json.dump(worker_catalog, f, indent=2, default=_json_default)
     with PYTHON_OUTPUT_JSON.open("w", encoding="utf-8") as f:
         json.dump(_python_routes(compiled), f, indent=2, default=_json_default)
-    rel_out = OUTPUT_JSON.relative_to(REPO_ROOT)
     rel_v2_out = V2_OUTPUT_JSON.relative_to(REPO_ROOT)
     print(
         f"Successfully compiled {compiled['_metadata']['routes_count']} routes "
-        f"across {compiled['_metadata']['providers_count']} providers to {rel_out}, "
-        f"{rel_v2_out}, and {PYTHON_OUTPUT_JSON.relative_to(REPO_ROOT)}"
+        f"across {compiled['_metadata']['providers_count']} providers to {rel_v2_out} and "
+        f"{PYTHON_OUTPUT_JSON.relative_to(REPO_ROOT)}"
     )
 
 

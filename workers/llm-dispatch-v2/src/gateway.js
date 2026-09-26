@@ -1,6 +1,6 @@
 /**
  * Provider credential resolution and AI Gateway request construction for LLM Dispatch v2's
- * executor. Adapted from workers/llm-dispatch-proxy/src/index.js's resolveProviderCredentials/
+ * executor. Adapted from the retired v1 Worker's (llm-dispatch-proxy) resolveProviderCredentials/
  * upstreamRequestForRoute (per review/44 Phase 1's "extract only pure route-catalog selection and
  * response-normalization helpers from v1; do not fork provider credential logic without tests")
  * -- the account/API-key/Gateway-URL resolution here is the SAME logic, not a rewrite, just
@@ -11,8 +11,8 @@ import { routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
 import { shapeForRoute } from "./structured_output.js";
 
 // Every real, provider-facing chat-completions field this Worker forwards -- everything else on
-// the stored payload is dropped, not spread. Mirrors workers/llm-dispatch-proxy/src/index.js's
-// own COPY_FIELDS exactly (that Worker's normalizeChatRequest() rebuilds its request object this
+// the stored payload is dropped, not spread. Mirrors the retired v1 Worker's (llm-dispatch-proxy)
+// own COPY_FIELDS exactly (that Worker's normalizeChatRequest() rebuilt its request object this
 // same way, field-by-field, from the raw incoming HTTP body -- this module's own header comment
 // claimed to share that logic without actually including this step, which is how the 2026-08-26
 // incident below happened). `messages` is handled separately below since it's required, not
@@ -265,8 +265,7 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
  * model, and 422 schema. A provider that returns a genuine 400 for a malformed request says
  * nothing of the sort, and still fails terminally as it should.
  *
- * Kept byte-identical in behaviour to v1's copy in workers/llm-dispatch-proxy: the two dispatchers
- * face the same providers, and a body that costs a job in one must not cost it in the other.
+ * Ported unchanged in behaviour from the retired v1 Worker (llm-dispatch-proxy).
  */
 export function upstreamCapacityFailure(status, body) {
   if (status === 404) {

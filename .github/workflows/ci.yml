@@ -94,10 +94,6 @@ jobs:
         working-directory: workers/swagit-list-proxy
         run: npm test
 
-      - name: Test LLM Dispatch v1 Worker
-        working-directory: workers/llm-dispatch-proxy
-        run: npm test
-
       - name: Test LLM Dispatch v2 Worker
         working-directory: workers/llm-dispatch-v2
         run: npm test

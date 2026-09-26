@@ -2,8 +2,7 @@ name: Reclaim Transcript
 
 # Manual-only recovery tool (GH#833/#834): re-adopts an ASR artifact already uploaded to storage
 # whose record `transcript` block was lost, without re-transcribing. It also reopens terminal failed
-# Stage-2 transcript leases after a transient provider incident, or requeues terminal LLM dispatch
-# records for a selected model family. Dry-run unless `write` is explicitly set to "true" -- defaults
+# Stage-2 transcript leases after a transient provider incident. Dry-run unless `write` is explicitly set to "true" -- defaults
 # to dry-run so an accidental manual trigger never writes.
 
 on:
@@ -16,8 +15,6 @@ on:
         options:
           - reclaim-transcript
           - requeue-failed-work-leases
-          - requeue-failed-llm-dispatch
-          - retire-legacy-prelabeler-dispatch
         default: reclaim-transcript
       source_key:
         description: "Source key owning the episode (e.g. 0134e94361a5)"
@@ -36,14 +33,6 @@ on:
           - provider-transcript-align
           - provider-transcript-diarize
         default: provider-transcript-align
-      llm_model_prefix:
-        description: "Comma-separated failed LLM model prefix(es) to requeue"
-        required: false
-        default: google/gemma-4-
-      legacy_created_before:
-        description: "Retire only legacy pre-labeler requests created before this RFC 3339 timestamp"
-        required: false
-        default: "2026-08-15T00:00:00Z"
       write:
         description: "Actually push the reclaimed record (anything other than 'true' stays dry-run)"
         required: false
@@ -85,12 +74,8 @@ jobs:
           SOURCE_KEY: ${{ github.event.inputs.source_key }}
           EPISODE_UID: ${{ github.event.inputs.episode_uid }}
           WORK_CLASS: ${{ inputs.work_class }}
-          LLM_MODEL_PREFIX: ${{ inputs.llm_model_prefix }}
-          LEGACY_CREATED_BEFORE: ${{ inputs.legacy_created_before }}
           WRITE: ${{ github.event.inputs.write }}
           GIT_REF: ${{ github.ref }}
-          R2_RECLAIM_ACCESS_KEY: ${{ secrets.R2_RECLAIM_ACCESS_KEY }}
-          R2_RECLAIM_SECRET_ACCESS_KEY: ${{ secrets.R2_RECLAIM_SECRET_ACCESS_KEY }}
         run: |
           if [ "$OPERATION" = "requeue-failed-work-leases" ]; then
             args=(--work-class "$WORK_CLASS")
@@ -103,42 +88,6 @@ jobs:
               args+=(--write)
             fi
             python -m citypods.cli compute requeue-failed-work-leases "${args[@]}"
-            exit 0
-          fi
-
-          if [ "$OPERATION" = "requeue-failed-llm-dispatch" ]; then
-            args=(--bucket citypods-llm-dispatch --model-prefix "$LLM_MODEL_PREFIX" --workers 4)
-            if [ "$WRITE" = "true" ]; then
-              # A mutating dispatch may only change production queue records from main.
-              if [ "$GIT_REF" != "refs/heads/main" ]; then
-                echo "::error::write can only mutate LLM dispatch records from main"
-                exit 1
-              fi
-            else
-              args+=(--dry-run)
-            fi
-            python -u scripts/requeue_failed_llm_dispatch.py "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          if [ "$OPERATION" = "retire-legacy-prelabeler-dispatch" ]; then
-            args=(
-              --bucket citypods-llm-dispatch
-              --model-prefix "$LLM_MODEL_PREFIX"
-              --created-before "$LEGACY_CREATED_BEFORE"
-              --workers 4
-            )
-            if [ "$WRITE" = "true" ]; then
-              # Retirement is a recoverable state transition, but it still changes production
-              # queue state and must only run from main (MR-GH-01).
-              if [ "$GIT_REF" != "refs/heads/main" ]; then
-                echo "::error::write can only retire production LLM dispatch records from main"
-                exit 1
-              fi
-            else
-              args+=(--dry-run)
-            fi
-            python -u scripts/retire_legacy_prelabeler_dispatch.py "${args[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
 

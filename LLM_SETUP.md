@@ -37,18 +37,20 @@ its LiteLLM model selector, `api_base`, and environment-keyed credential to Lite
 in YAML, source, or episode records. Re-run `python scripts/compile_llm_limits.py` after changing
 `config/provider_limits.yml`.
 
-For the paced dispatch path (and multi-provider routing), deploy the Worker and set `LLM_MODE=dispatch`,
-`LLM_DISPATCH_URL=https://<worker-domain>`, and `LLM_DISPATCH_AUTH_TOKEN`. The Worker's own provider
-credentials and routing policies are defined in [`config/provider_limits.yml`](config/provider_limits.yml) and
-compiled into `workers/llm-dispatch-proxy/src/dispatch_limits.json` (review/41). `DISPATCH_AUTH_TOKEN` is a
-plain Worker secret matching the client token.
+For the paced dispatch path (and multi-provider routing), deploy the v2 Worker
+(`workers/llm-dispatch-v2/`) and set `LLM_MODE=dispatch`, `LLM_DISPATCH_V2_URL=https://<worker-domain>`,
+and `LLM_DISPATCH_V2_AUTH_TOKEN`. The Worker's own provider credentials and routing policies are
+defined in [`config/provider_limits.yml`](config/provider_limits.yml) and compiled into
+`workers/llm-dispatch-v2/src/dispatch_limits.json`. `BEARER_TOKEN` is a plain Worker secret matching
+the client token. (The v1 `llm-dispatch-proxy` Worker and its `LLM_DISPATCH_URL`/`LLM_DISPATCH_AUTH_TOKEN`
+settings are retired.)
 
-`LLM_MODE=direct` calls LiteLLM directly and prefers the direct transport. `LLM_MODE=dispatch` submits
-to the Cloudflare Worker and never relies on runner provider credentials. Direct provider calls
+`LLM_MODE=direct` calls LiteLLM directly. `LLM_MODE=dispatch` enqueues to the v2 Worker (unless a
+call's policy sets `require_direct`) and never relies on runner provider credentials. Direct provider calls
 time out after `LLM_DIRECT_TIMEOUT_SECONDS` (default 720, the v2 Worker's response ceiling) unless
 the job sets its own `timeout`; `LLM_TIMEOUT_SECONDS` (default 30) covers only HTTP calls to the
-dispatch Worker. A direct-capable caller can set `LLMRequestPolicy(allow_dispatch_overflow=True)`
-to reach the Worker’s independent provider/account pool; otherwise it remains direct. `ROUTES` is
+dispatch Worker. A lane that should always use the Worker queue sets
+`LLMRequestPolicy(queue_only=True)`. `ROUTES` is
 the logical-model view, while the generated physical route registry preserves duplicate models
 across providers and accounts for selection and CAS ledger keys.
 
@@ -58,11 +60,9 @@ Account and secret checklist (performed by the maintainer, never pasted into cha
 2. For local testing, export the corresponding keys in your shell.
 3. For GitHub Actions, add the keys as repository/environment secrets (e.g., `gh secret set GROQ_API_KEY`,
    `gh secret set NVIDIA_API_KEY`, `gh secret set ORCAROUTER_API_KEY`).
-4. For the Cloudflare Worker, from `workers/llm-dispatch-proxy/`, run `npx wrangler secret put DISPATCH_AUTH_TOKEN`
+4. For the Cloudflare Worker, from `workers/llm-dispatch-v2/`, run `npx wrangler secret put BEARER_TOKEN`
    plus `npx wrangler secret put <NAME>` for every `api_key_env` declared in [`config/provider_limits.yml`](config/provider_limits.yml)
    (`GEMINI_API_KEY`, `GEMINI_API_KEY_SECONDARY`, `GROQ_API_KEY`, `SAMBANOVA_API_KEY`,
    `MISTRAL_API_KEY`, `MISTRAL_API_KEY_SECONDARY`, `ZAI_API_KEY`,
    `SILICONFLOW_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, `KILO_API_KEY`, `OPENCODE_API_KEY`,
-   `NVIDIA_API_KEY`, `ORCAROUTER_API_KEY`). The same `npx wrangler secret put NVIDIA_API_KEY` (and `ORCAROUTER_API_KEY`)
-   must also be run from `workers/llm-dispatch-v2/` (review/44's coexisting v2 executor Worker reads the same `api_key_env`
-   names from its own copy of the compiled catalog).
+   `NVIDIA_API_KEY`, `ORCAROUTER_API_KEY`) that this deployment dispatches to.

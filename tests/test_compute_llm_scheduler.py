@@ -27,7 +27,7 @@ from tests._cas_fake import MemCAS
 
 NOW = datetime(2026, 7, 16, 12, tzinfo=UTC)
 DIRECT = frozenset({"direct"})
-BOTH_TRANSPORTS = frozenset({"direct", "mistral-dispatch", "llm-dispatch"})
+BOTH_TRANSPORTS = frozenset({"direct", "llm-dispatch-v2"})
 
 
 def _all_free_direct_routes_exhausted() -> LLMBudget:
@@ -329,8 +329,8 @@ def test_direct_transport_selects_a_direct_capable_route():
 def test_transport_gate_rejects_a_dispatch_only_route_from_a_direct_caller():
     route = LLMRoute(
         model="example/dispatch-only",
-        transport="llm-dispatch",
-        transports=("llm-dispatch",),
+        transport="llm-dispatch-v2",
+        transports=("llm-dispatch-v2",),
         free=True,
         quota=QuotaPolicy(rpm=1),
         pricing=PricingPolicy(),
@@ -354,13 +354,13 @@ def test_mistral_codestral_policy_matches_the_deployed_dispatch_worker_ceiling()
     blocks it.)"""
     route = ROUTES["mistral/codestral-2508"]
     assert route.transport == "direct"
-    assert set(route.transports) == {"direct", "llm-dispatch"}
+    assert set(route.transports) == {"direct"}
     assert route.quota.rpm == 124
 
 
 def test_owner_for_keys_off_the_selected_transport_not_route_capability():
     """The owner must key off the *actually selected* transport for this call, not merely whether
-    the route is capable of dispatch -- a Gemini route can dispatch over `llm-dispatch`, but a
+    the route is capable of dispatch -- a route may dispatch over `llm-dispatch-v2`, but a
     *direct* call to that same route (the default, `allow_dispatch_overflow=False`) has no
     server-side dedup and must reserve its own unique slot. Keying off route capability alone was
     a real bug (CodeRabbit, review/41): it deduped two genuinely concurrent direct calls sharing a
@@ -368,8 +368,7 @@ def test_owner_for_keys_off_the_selected_transport_not_route_capability():
     original double-reservation bug this whole mechanism exists to prevent."""
     from citypods.compute.llm_scheduler import _owner_for
 
-    assert _owner_for("abc123", "llm-dispatch") == "abc123"
-    assert _owner_for("abc123", "mistral-dispatch") == "abc123"
+    assert _owner_for("abc123", "llm-dispatch-v2") == "abc123"
     owner = _owner_for("abc123", "direct")
     assert owner != "abc123"
     assert owner.startswith("abc123:")
@@ -380,59 +379,33 @@ def test_owner_for_keys_off_the_selected_transport_not_route_capability():
 def test_selected_transport_prefers_direct_unless_overflow_is_explicit():
     from citypods.compute.llm_scheduler import _selected_transport
 
-    gemini_route = ROUTES["gemini/gemini-3-flash-preview"]
-    both = frozenset({"direct", "llm-dispatch"})
-    assert _selected_transport(gemini_route, both, allow_dispatch_overflow=False) == "direct"
-    assert _selected_transport(gemini_route, both, allow_dispatch_overflow=True) == "llm-dispatch"
+    dual_route = LLMRoute(
+        model="example/dual",
+        transport="direct",
+        transports=("direct", "llm-dispatch-v2"),
+        free=True,
+        quota=QuotaPolicy(rpm=1),
+        pricing=PricingPolicy(),
+    )
+    both = frozenset({"direct", "llm-dispatch-v2"})
+    assert _selected_transport(dual_route, both, allow_dispatch_overflow=False) == "direct"
+    assert _selected_transport(dual_route, both, allow_dispatch_overflow=True) == "llm-dispatch-v2"
     # Overflow requested but the Worker isn't actually reachable -- direct is all there is.
-    assert _selected_transport(gemini_route, DIRECT, allow_dispatch_overflow=True) == "direct"
-
-    mistral_route = ROUTES["mistral/codestral-2508"]
-    dispatch_only = frozenset({"llm-dispatch"})
-    assert _selected_transport(mistral_route, dispatch_only, allow_dispatch_overflow=False) == (
-        "llm-dispatch"
+    assert _selected_transport(dual_route, DIRECT, allow_dispatch_overflow=True) == "direct"
+    dispatch_only = frozenset({"llm-dispatch-v2"})
+    assert _selected_transport(dual_route, dispatch_only, allow_dispatch_overflow=False) == (
+        "llm-dispatch-v2"
     )
 
-    direct_only_route = ROUTES["deepseek/deepseek-v4-flash"]
-    assert _selected_transport(direct_only_route, DIRECT, allow_dispatch_overflow=True) == "direct"
+    # Compiled routes are direct-only: overflow never moves them onto a dispatch transport.
+    gemini_route = ROUTES["gemini/gemini-3-flash-preview"]
+    assert _selected_transport(gemini_route, both, allow_dispatch_overflow=True) == "direct"
 
     # Nothing reachable at all.
-    assert _selected_transport(gemini_route, frozenset(), allow_dispatch_overflow=True) is None
+    assert _selected_transport(dual_route, frozenset(), allow_dispatch_overflow=True) is None
 
 
-def test_select_and_reserve_dual_transport_direct_vs_overflow_owner():
-    """End-to-end through `select_and_reserve`, both Gemini paths: a plain direct selection
-    reserves under a unique owner (no policy opt-in), while `allow_dispatch_overflow=True`
-    reserves under `recipe_hash` -- matching the Worker's own idempotency-key dedup."""
-    storage = MemCAS()
-    both_transports = frozenset({"direct", "llm-dispatch"})
-
-    direct_selection = select_and_reserve(
-        storage,
-        "recipe-direct",
-        LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",)),
-        available_transports=both_transports,
-        estimated_tokens=1024,
-        now=NOW,
-    )
-    assert direct_selection.transport == "direct"
-    assert direct_selection.owner != "recipe-direct"
-    assert direct_selection.owner.startswith("recipe-direct:")
-
-    overflow_selection = select_and_reserve(
-        storage,
-        "recipe-overflow",
-        LLMRequestPolicy(
-            allowed_models=("gemini/gemini-3-flash-preview",),
-            allow_dispatch_overflow=True,
-        ),
-        available_transports=both_transports,
-        estimated_tokens=1024,
-        now=NOW,
-    )
-    assert overflow_selection.transport == "llm-dispatch"
-    assert overflow_selection.owner == "recipe-overflow"
-
+def test_select_route_resolves_a_model_alias_to_its_canonical_pool():
     model = "orcarouter/deepseek-v4-flash"  # an alias of the canonical pool name
     canonical = "deepseek/deepseek-v4-flash"
     direct = select_route(
@@ -969,8 +942,11 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner(
     resolve to the model it originally reserved, even if a fresh selection pass, run against
     updated ledger state, would now pick differently (e.g. a previously-exhausted free route
     recovering)."""
+    from dataclasses import replace
+
     gemini = ROUTES["gemini/gemini-3-flash-preview"]
-    mistral = ROUTES["mistral/codestral-2508"]
+    # Compiled routes are direct-only; reuse only applies to a route that advertises dispatch.
+    mistral = replace(ROUTES["mistral/codestral-2508"], transports=("direct", "llm-dispatch-v2"))
     routes = {
         gemini.route_id or gemini.model: gemini,
         mistral.route_id or mistral.model: mistral,

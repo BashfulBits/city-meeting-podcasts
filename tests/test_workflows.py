@@ -855,7 +855,6 @@ def test_ci_runs_granicus_worker_unit_tests():
     expected_workers = {
         "Test Granicus Cloudflare Worker": "workers/granicus-media-proxy",
         "Test Swagit List Proxy Worker": "workers/swagit-list-proxy",
-        "Test LLM Dispatch v1 Worker": "workers/llm-dispatch-proxy",
         "Test LLM Dispatch v2 Worker": "workers/llm-dispatch-v2",
         "Test City Request Intake Worker": "workers/city-request-intake",
     }
@@ -887,8 +886,9 @@ def test_tag_lane_uses_async_llm_dispatch_and_keeps_provider_key_off_runner():
         if step.get("name") == "Produce bounded LLM topic-tag candidates"
     )
     env = step["env"]
-    assert env["LLM_DISPATCH_URL"] == "${{ secrets.LLM_DISPATCH_URL }}"
-    assert env["LLM_DISPATCH_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}"
+    assert env["LLM_DISPATCH_V2_URL"] == "${{ secrets.LLM_DISPATCH_V2_URL }}"
+    assert env["LLM_DISPATCH_V2_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}"
+    assert "LLM_DISPATCH_URL" not in env  # the v1 dispatch Worker is retired
     for key in ("GEMINI_API_KEY", "KILO_API_KEY", "ORCAROUTER_API_KEY"):
         assert key not in env  # every tagger model is dispatched by the Worker, never the runner
 
@@ -1344,18 +1344,15 @@ def test_reclaim_transcript_workflow_guards_write_to_main():
     inputs = _on(wf)["workflow_dispatch"]["inputs"]
     assert inputs["operation"]["type"] == "choice"
     assert inputs["operation"]["default"] == "reclaim-transcript"
-    assert "requeue-failed-llm-dispatch" in inputs["operation"]["options"]
-    assert "retire-legacy-prelabeler-dispatch" in inputs["operation"]["options"]
-    assert inputs["llm_model_prefix"]["default"] == "google/gemma-4-"
-    assert inputs["legacy_created_before"]["default"] == "2026-08-15T00:00:00Z"
+    assert inputs["operation"]["options"] == ["reclaim-transcript", "requeue-failed-work-leases"]
+    assert "llm_model_prefix" not in inputs
+    assert "legacy_created_before" not in inputs
     assert inputs["source_key"]["required"] is False
     assert inputs["episode_uid"]["required"] is False
     assert inputs["work_class"]["default"] == "provider-transcript-align"
     assert 'python -m citypods.cli compute requeue-failed-work-leases "${args[@]}"' in run
-    assert "R2_RECLAIM_ACCESS_KEY" in step["env"]
-    assert "R2_RECLAIM_SECRET_ACCESS_KEY" in step["env"]
-    assert "scripts/requeue_failed_llm_dispatch.py" in run
-    assert "scripts/retire_legacy_prelabeler_dispatch.py" in run
+    assert "R2_RECLAIM_ACCESS_KEY" not in step["env"]
+    assert "llm-dispatch" not in run
     assert '"$GIT_REF" != "refs/heads/main"' in run
     assert "source_key and episode_uid are required" in run
     assert job["env"]["AUDIO_STORAGE_BACKEND"] == "routing"

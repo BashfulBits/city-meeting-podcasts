@@ -297,11 +297,10 @@ def _utilization(route: LLMRoute, ledger_entry) -> float:
     return max(fractions, default=0.0)
 
 
-# Transports that dedupe server-side on `idempotency-key: recipe_hash`. "llm-dispatch-v2" fits
-# this criterion too (coordinator.js derives its idempotency_key from job.recipe_hash), even
-# though no compiled route currently selects it via this scheduler's normal path -- see the
-# matching note on citypods/compute/llm.py's is_dispatch.
-_DISPATCH_TRANSPORTS = frozenset({"mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"})
+# Transports that dedupe server-side on `idempotency-key: recipe_hash` (coordinator.js derives its
+# idempotency_key from job.recipe_hash). No compiled route currently selects it through this
+# scheduler -- see the matching note on citypods/compute/llm.py's is_dispatch.
+_DISPATCH_TRANSPORTS = frozenset({"llm-dispatch-v2"})
 
 
 def _selected_transport(
@@ -336,7 +335,7 @@ def _selected_transport(
 def _owner_for(recipe_hash: str, transport: str | None) -> str:
     """Owner uniqueness depends on the *selected* transport for this call, not a route's
     capabilities:
-    - dispatch (`mistral-dispatch`/`llm-dispatch`): the Worker dedupes on
+    - dispatch (`llm-dispatch-v2`): the Worker dedupes on
       `idempotency-key: recipe_hash`, so a retry before this reservation settles is the *same*
       underlying provider request -- owner must be that same deterministic recipe_hash, or it would
       double-reserve quota for a call the Worker holds.
@@ -364,10 +363,7 @@ def select_route(
     """Select one eligible route from a read-only ledger snapshot.
 
     ``available_transports`` is the set of transports *this backend instance* can physically
-    reach right now (e.g. ``{"direct"}``, or ``{"direct", "mistral-dispatch"}`` when a dispatch
-    Worker is configured) -- not a single fixed mode. A caller able to reach both transports (the
-    deferred-request sweep, in particular) needs the scheduler to pick freely among every eligible
-    route regardless of which transport backs it.
+    reach right now (e.g. ``{"direct"}``) -- not a single fixed mode.
 
     ``requests``/``estimated_tokens`` should already reflect the *worst-case* number of provider
     attempts a single logical dispatch can make -- e.g. 2 for a structured call, since Instructor's
