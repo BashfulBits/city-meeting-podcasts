@@ -90,6 +90,16 @@ class LaneConfig:
     # eligible immediately, since that failure mode is a model-output problem, not a capacity one.
     # Required (and only meaningful) together with backup_models.
     backup_after_attempts: int | None = None
+    # Whether the provider-catalog reconciler (review/48) may offer newly discovered models as
+    # backup_models candidates for this lane. Default on, so a new lane is eligible with no edit;
+    # set false for a lane whose model set must stay fixed. A ``per_model`` lane is never eligible
+    # (it cannot declare backup_models at all) -- see ``accepts_catalog_backups``.
+    catalog_backup_candidates: bool = True
+
+    @property
+    def accepts_catalog_backups(self) -> bool:
+        return self.catalog_backup_candidates and self.dispatch_shape == "pooled"
+
     # Per-model reasoning level for THIS lane's jobs (e.g. ``{"deepseek/deepseek-v4.1-flash":
     # "off"}``), applied at send time through the route's ``reasoning_controls``. A model without
     # an entry keeps its provider default, so a model can think in one job type and not another.
@@ -153,6 +163,12 @@ def _coerce_int(raw: Any, *, purpose: str, field: str) -> int:
         raise ValueError(f"llm_lanes[{purpose!r}].{field} must be an integer, got {raw!r}")
     if raw < 0:
         raise ValueError(f"llm_lanes[{purpose!r}].{field} must be non-negative, got {raw}")
+    return raw
+
+
+def _coerce_bool(raw: Any, *, purpose: str, field: str) -> bool:
+    if not isinstance(raw, bool):
+        raise ValueError(f"llm_lanes[{purpose!r}].{field} must be true or false, got {raw!r}")
     return raw
 
 
@@ -296,6 +312,11 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
             dispatch_shape=shape,
             backup_models=backup_models,
             backup_after_attempts=backup_after_attempts,
+            catalog_backup_candidates=_coerce_bool(
+                entry.get("catalog_backup_candidates", True),
+                purpose=purpose,
+                field="catalog_backup_candidates",
+            ),
             reasoning=reasoning,
         )
         if daily < lane.ingress_write_units_per_job:

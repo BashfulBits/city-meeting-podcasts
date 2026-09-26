@@ -321,6 +321,24 @@ Phase R (Research-Tool Surface)._
   Worker would refuse, while the run still applies already-completed results. Fails open. `daily_row_budget`/`queue_full` rejections defer like the
   daily cap. Cleanup runs every 10 minutes (was 12). `/v2/stats` reports `row_budget`.
 
+- **Weekly provider-catalog reconciliation (observe and propose)** (`citypods/provider_catalog/`,
+  `scripts/reconcile_provider_routes.py`, `provider-catalog-reconcile.yml`,
+  `config/provider_catalog_decisions.yml`, review/48 Slice 1). Lists every provider's catalog
+  (paginated), health-checks one live route per configured upstream model, and canaries up to three
+  free-marked candidates per provider, each provider inside a drained v2 dispatch pause; scarce
+  daily-quota routes are checked every four weeks, only with quota left, and charged to the Worker's
+  ledger. Each provider is a plugin whose response signals are pinned against responses recorded
+  under the pause on 2026-09-24. Findings go to one rolling issue: proven candidates with Artificial
+  Analysis scores (informational; the GPT-OSS-120B / Nemotron-3 Super floor is a flag) and
+  lane-backup checkboxes from the lane registry, unacknowledged anomalies on configured routes, and
+  collapsed observations; it closes when nothing is actionable and reopens when something is. Lanes
+  gain an optional `catalog_backup_candidates: false` opt-out. It changes no config and needs only
+  `issues: write`. Every weekly run also reports a discovery self-check (`--backtest`): replaying the
+  candidate gates against the configured routes re-finds 34/39 (the misses are three retired models
+  and z.ai's free models, which its catalog omits). #1841's Gemini rate-probe header change is reverted (the OpenAI-compatible
+  endpoint rejects `x-goog-api-key` and accepts Bearer). No pipeline version, recipe, or
+  stored-artifact change.
+
 - **Terminal-job cleanup drains as fast as dispatch can finish jobs**
   (`workers/llm-dispatch-v2/wrangler.jsonc`, `src/index.js`, `src/write_budget.js`).
   `CLEANUP_INTERVAL_MINUTES` 60 -> 12: 5 runs/hour x `PURGE_BATCH_LIMIT` 15 = 1,800 jobs/day, just

@@ -178,12 +178,11 @@ there is only one place the decision is made.
 
 `scripts/compile_llm_limits.py`'s default invocation (what the deploy workflow runs) is pure
 YAML→JSON, no network call — deterministic, and the deployed artifact can never differ from the
-reviewed one. `--discover [provider ...]` (maintainer-run only, bare form covers every provider with a
-`discovery.endpoint` in its YAML block) fetches and appends newly discovered routes, then rewrites
-`provider_limits.yml` for the maintainer to review and commit. The gate and the fetcher/transform
-registry (`DISCOVERY_FETCHERS`/`DISCOVERY_TRANSFORMS`) are provider-name-keyed, not OpenRouter-specific
-— a future provider that gains a real discovery endpoint (Mistral/Gemini/DeepSeek `GET /models`-style)
-plugs in the same way, gated identically.
+reviewed one. `--discover [provider ...]` remains a maintainer-run, append-only command. **Superseded
+for scheduled catalog maintenance** by [review/48](48-provider-catalog-reconciliation.md): a weekly
+reconciler reads every provider's authenticated catalog, proves models with canaries under the v2
+dispatch pause, and proposes changes through one rolling issue. Catalog visibility alone never adds
+or removes a route, and the deploy compiler keeps its network-free contract.
 
 ## §4. Known, accepted limitations (not fixed in this pass)
 

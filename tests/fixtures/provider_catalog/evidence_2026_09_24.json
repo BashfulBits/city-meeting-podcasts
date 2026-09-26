@@ -1,0 +1,926 @@
+{
+ "_about": "Recorded 2026-09-24 under provider-scoped v2 dispatch pauses (review/48 Slice 1 step 0). status, rate-limit headers and <=160-char error snippets only; no keys, account ids or completions.",
+ "providers": {
+  "airforce": {
+   "canaries": [
+    {
+     "body": "{\"error\":{\"message\":\"The model 'codestral-latest' is currently unavailable \u2014 every channel behind it is switched off on our side. This is not a billing problem ",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "codestral-latest",
+     "status": 503
+    },
+    {
+     "body": "{\"error\":{\"message\":\"This model requires an active subscription or a positive Pay-as-you-Go balance. Subscribe or top up at https://api.airforce/dashboard, or u",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "kimi-k2.7-code",
+     "status": 402
+    },
+    {
+     "body": "{\"error\":{\"message\":\"The model 'ministral-14b-2512' is currently unavailable \u2014 every channel behind it is switched off on our side. This is not a billing proble",
+     "first_event_error": false,
+     "group": "tier_free",
+     "headers": {},
+     "model": "ministral-14b-2512",
+     "status": 503
+    },
+    {
+     "body": "{\"error\":{\"message\":\"Global rate limit exceeded (1 requests per second). Try again in 1.0 seconds. Your next guaranteed response is in 119 seconds. Or upgrade a",
+     "first_event_error": false,
+     "group": "tier_free",
+     "headers": {},
+     "model": "ministral-14b-latest",
+     "status": 429
+    },
+    {
+     "body": "{\"error\":{\"message\":\"Model 'nano-banana-2' requires an active subscription or a positive Pay-As-You-Go balance. Subscribe or top up at https://api.airforce/dash",
+     "first_event_error": false,
+     "group": "tier_paid",
+     "headers": {},
+     "model": "nano-banana-2",
+     "status": 402
+    },
+    {
+     "body": "{\"error\":{\"message\":\"Model 'kimi-k3' requires an active subscription or a positive Pay-As-You-Go balance. Subscribe or top up at https://api.airforce/dashboard,",
+     "first_event_error": false,
+     "group": "tier_paid",
+     "headers": {},
+     "model": "kimi-k3",
+     "status": 402
+    }
+   ],
+   "catalog": {
+    "configured_absent": [],
+    "count": 625,
+    "error": null,
+    "tier_free": 24
+   },
+   "pause": {
+    "contended": false,
+    "drained": true,
+    "expired": false,
+    "in_flight_at_start": 0,
+    "waited_seconds": 0.2
+   }
+  },
+  "deepseek": {
+   "canaries": [],
+   "catalog": {
+    "configured_absent": [],
+    "count": 2,
+    "error": null
+   }
+  },
+  "gemini": {
+   "canaries": [
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "gemini-3.5-flash-lite",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "gemini-3.1-flash-lite",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "gemma-4-26b-a4b-it",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "gemma-4-31b-it",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "gemini-3-flash-preview",
+     "status": 200
+    },
+    {
+     "body": "[{ \"error\": { \"code\": 503, \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.\", \"stat",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "gemini-3.8-flash",
+     "status": 503
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "gemini-3.7-flash",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "gemini-3.6-flash",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "gemini-3.5-flash",
+     "status": 200
+    },
+    {
+     "body": "[{ \"error\": { \"code\": 404, \"message\": \"This model models/gemini-2.5-pro is no longer available to new users. Please update your code to use models/gemini-3.1-pr",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "gemini-2.5-pro",
+     "status": 404
+    },
+    {
+     "body": "[{ \"error\": { \"code\": 429, \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to:",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "gemini-pro-latest",
+     "quota_violations": [
+      {
+       "quotaId": "GenerateContentInputTokensPerModelPerMinute-FreeTier",
+       "quotaValue": null
+      },
+      {
+       "quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",
+       "quotaValue": null
+      },
+      {
+       "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+       "quotaValue": null
+      },
+      {
+       "quotaId": "GenerateContentInputTokensPerModelPerDay-FreeTier",
+       "quotaValue": null
+      }
+     ],
+     "status": 429
+    },
+    {
+     "body": "[{ \"error\": { \"code\": 429, \"message\": \"You exceeded your current quota, please check your plan and billing details. For more information on this error, head to:",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "gemini-3.1-pro-preview",
+     "quota_violations": [
+      {
+       "quotaId": "GenerateContentInputTokensPerModelPerDay-FreeTier",
+       "quotaValue": null
+      },
+      {
+       "quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+       "quotaValue": null
+      },
+      {
+       "quotaId": "GenerateRequestsPerMinutePerProjectPerModel-FreeTier",
+       "quotaValue": null
+      },
+      {
+       "quotaId": "GenerateContentInputTokensPerModelPerMinute-FreeTier",
+       "quotaValue": null
+      }
+     ],
+     "status": 429
+    },
+    {
+     "body": "[{ \"error\": { \"code\": 404, \"message\": \"This model models/gemini-2.5-flash is no longer available to new users. Please update your code to use models/gemini-3.6-",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "gemini-2.5-flash",
+     "status": 404
+    },
+    {
+     "body": "[{ \"error\": { \"code\": 503, \"message\": \"This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later.\", \"stat",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "gemini-flash-latest",
+     "status": 503
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "gemini-flash-lite-latest",
+     "status": 200
+    }
+   ],
+   "catalog": {
+    "configured_absent": [],
+    "count": 61,
+    "error": null
+   },
+   "pause": {
+    "contended": false,
+    "drained": true,
+    "expired": false,
+    "in_flight_at_start": 0,
+    "waited_seconds": 0.2
+   }
+  },
+  "groq": {
+   "canaries": [
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {
+      "x-ratelimit-limit-requests": "1000",
+      "x-ratelimit-limit-tokens": "8000",
+      "x-ratelimit-reset-requests": "1m26.4s",
+      "x-ratelimit-reset-tokens": "592ms"
+     },
+     "model": "openai/gpt-oss-120b",
+     "status": 200
+    },
+    {
+     "body": "{\"error\":{\"message\":\"The model `qwen/qwen3.6-27b` does not exist or you do not have access to it.\",\"type\":\"invalid_request_error\",\"code\":\"model_not_found\"}} ",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "qwen/qwen3.6-27b",
+     "status": 404
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {
+      "x-ratelimit-limit-requests": "1000",
+      "x-ratelimit-limit-tokens": "8000",
+      "x-ratelimit-reset-requests": "1m26.4s",
+      "x-ratelimit-reset-tokens": "150ms"
+     },
+     "model": "qwen/qwen3.8-27b",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {
+      "x-ratelimit-limit-requests": "7000",
+      "x-ratelimit-limit-tokens": "6000",
+      "x-ratelimit-reset-requests": "12.342s",
+      "x-ratelimit-reset-tokens": "150ms"
+     },
+     "model": "allam-2-7b",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {
+      "x-ratelimit-limit-requests": "1000",
+      "x-ratelimit-limit-tokens": "8000",
+      "x-ratelimit-reset-requests": "1m26.4s",
+      "x-ratelimit-reset-tokens": "592ms"
+     },
+     "model": "openai/gpt-oss-20b",
+     "status": 200
+    }
+   ],
+   "catalog": {
+    "configured_absent": [
+     "qwen/qwen3.6-27b"
+    ],
+    "count": 11,
+    "error": null
+   },
+   "pause": {
+    "contended": false,
+    "drained": true,
+    "expired": false,
+    "in_flight_at_start": 0,
+    "waited_seconds": 0.2
+   }
+  },
+  "kilo": {
+   "canaries": [
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "stepfun/step-3.7-flash:free",
+     "status": 200
+    },
+    {
+     "body": "data: {\"id\":\"<id>\",\"object\":\"chat.completion.chunk\",\"created\":1790233989,\"model\":\"nvidia/nemotron-3-ultra-550b-a55b:free\",\"provid",
+     "first_event_error": true,
+     "group": "configured",
+     "headers": {},
+     "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+     "status": 200
+    },
+    {
+     "body": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"z-ai/glm-5.2:free is temporarily rate-limited upstream. Please retry shortly, or add",
+     "first_event_error": false,
+     "group": "free_marked",
+     "headers": {},
+     "model": "z-ai/glm-5.2:free",
+     "status": 429
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "free_marked",
+     "headers": {},
+     "model": "nex-agi/nex-n2.5-pro:free",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "free_marked",
+     "headers": {},
+     "model": "nvidia/nemotron-3-super-120b-a12b:free",
+     "status": 200
+    }
+   ],
+   "catalog": {
+    "configured_absent": [],
+    "count": 394,
+    "error": null,
+    "free_marked": 15
+   },
+   "pause": {
+    "contended": false,
+    "drained": true,
+    "expired": false,
+    "in_flight_at_start": 1,
+    "waited_seconds": 251.2
+   }
+  },
+  "mistral": {
+   "canaries": [
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "codestral-2508",
+     "status": 200
+    },
+    {
+     "body": "{\"object\":\"error\",\"message\":\"Rate limit exceeded\",\"type\":\"rate_limited\",\"param\":null,\"code\":\"1300\",\"raw_status_code\":429}",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {
+      "x-ratelimit-limit-req-minute": "0"
+     },
+     "model": "devstral-2512",
+     "status": 429
+    },
+    {
+     "body": "{\"object\":\"error\",\"message\":\"Rate limit exceeded\",\"type\":\"rate_limited\",\"param\":null,\"code\":\"1300\",\"raw_status_code\":429}",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {
+      "x-ratelimit-limit-req-minute": "0"
+     },
+     "model": "mistral-small-2603",
+     "status": 429
+    },
+    {
+     "body": "{\"object\":\"error\",\"message\":\"Rate limit exceeded\",\"type\":\"rate_limited\",\"param\":null,\"code\":\"1300\",\"raw_status_code\":429}",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {
+      "x-ratelimit-limit-req-minute": "0"
+     },
+     "model": "mistral-medium-latest",
+     "status": 429
+    },
+    {
+     "body": "{\"object\":\"error\",\"message\":\"This model is not available in your subscription tier\",\"type\":\"tier_not_allowed\",\"param\":null,\"code\":\"1910\",\"raw_status_code\":403}",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "mistral-large-2512",
+     "status": 403
+    },
+    {
+     "body": "{\"object\":\"error\",\"message\":\"Model labs-leanstral-1-5-1 is a Labs model. To use Labs models, an admin must enable them in your organization settings at https://",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "labs-leanstral-1-5-1",
+     "status": 403
+    },
+    {
+     "body": "{\"object\":\"error\",\"message\":\"Rate limit exceeded\",\"type\":\"rate_limited\",\"param\":null,\"code\":\"1300\",\"raw_status_code\":429}",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {
+      "x-ratelimit-limit-req-minute": "0"
+     },
+     "model": "mistral-medium",
+     "status": 429
+    },
+    {
+     "body": "{\"object\":\"error\",\"message\":\"Rate limit exceeded\",\"type\":\"rate_limited\",\"param\":null,\"code\":\"1300\",\"raw_status_code\":429}",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {
+      "x-ratelimit-limit-req-minute": "0"
+     },
+     "model": "mistral-vibe-cli-fast",
+     "status": 429
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "ministral-14b-latest",
+     "status": 200
+    }
+   ],
+   "catalog": {
+    "configured_absent": [
+     "devstral-2512",
+     "mistral-large-2512"
+    ],
+    "count": 46,
+    "error": null
+   },
+   "pause": {
+    "contended": false,
+    "drained": true,
+    "expired": false,
+    "in_flight_at_start": 0,
+    "waited_seconds": 0.2
+   }
+  },
+  "nvidia": {
+   "canaries": [
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "moonshotai/kimi-k3",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "deepseek-ai/deepseek-v4.1-flash",
+     "status": 504
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "nvidia/nemotron-3-ultra-550b-a55b",
+     "status": 200
+    },
+    {
+     "body": "data: {\"error\":{\"message\":\"Service temporarily overloaded\",\"type\":\"service_unavailable\",\"code\":503}} data: [DONE] ",
+     "first_event_error": true,
+     "group": "configured",
+     "headers": {},
+     "model": "nvidia/nemotron-3-super-120b-a12b",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "free_card",
+     "headers": {},
+     "model": "z-ai/glm-5.3",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "free_card",
+     "headers": {},
+     "model": "mistralai/mistral-nemotron",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "free_card",
+     "headers": {},
+     "model": "google/diffusiongemma-26b-a4b-it",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "free_card",
+     "headers": {},
+     "model": "nvidia/riva-translate-4b-instruct-v1.1",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "free_card",
+     "headers": {},
+     "model": "openai/gpt-oss-20b",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "free_card",
+     "headers": {},
+     "model": "meta/llama-3.2-11b-vision-instruct",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "free_card",
+     "headers": {},
+     "model": "poolside/laguna-xs-2.1",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "free_card",
+     "headers": {},
+     "model": "z-ai/glm-5.3-flash",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "nonfree_card",
+     "headers": {},
+     "model": "nvidia/llama-3.1-nemoguard-8b-content-safety",
+     "status": 200
+    },
+    {
+     "body": "{\"type\":\"about:blank\",\"title\":\"Bad Gateway\",\"status\":502,\"detail\":\"Upstream request failed.\"} ",
+     "first_event_error": false,
+     "group": "nonfree_card",
+     "headers": {},
+     "model": "nvidia/llama-3.1-nemoguard-8b-topic-control",
+     "status": 502
+    },
+    {
+     "body": "404 page not found ",
+     "first_event_error": false,
+     "group": "nonfree_card",
+     "headers": {},
+     "model": "nvidia/llama-nemotron-embed-vl-1b-v2",
+     "status": 404
+    },
+    {
+     "body": "{\"object\":\"error\",\"message\":\"Content cannot be a plain string. The model does not support text input. Content cannot be a plain string. The model does not suppo",
+     "first_event_error": false,
+     "group": "nonfree_card",
+     "headers": {},
+     "model": "nvidia/nemotron-parse",
+     "status": 400
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "nonfree_card",
+     "headers": {},
+     "model": "nvidia/nemotron-parse-2.0",
+     "status": 200
+    },
+    {
+     "body": "{\"status\":404,\"title\":\"Not Found\",\"detail\":\"Function '<id>': Not found for account '<id>'\"}",
+     "first_event_error": false,
+     "group": "no_card",
+     "headers": {},
+     "model": "google/gemma-3-12b-it",
+     "status": 404
+    },
+    {
+     "body": "{\"status\":404,\"title\":\"Not Found\",\"detail\":\"Function '<id>': Not found for account '<id>'\"}",
+     "first_event_error": false,
+     "group": "no_card",
+     "headers": {},
+     "model": "nvidia/llama-3.1-nemotron-51b-instruct",
+     "status": 404
+    },
+    {
+     "body": "{\"status\":404,\"title\":\"Not Found\",\"detail\":\"Function '<id>': Not found for account '<id>'\"}",
+     "first_event_error": false,
+     "group": "no_card",
+     "headers": {},
+     "model": "nv-mistralai/mistral-nemo-12b-instruct",
+     "status": 404
+    },
+    {
+     "body": "{\"status\":404,\"title\":\"Not Found\",\"detail\":\"Function '<id>': Not found for account '<id>'\"}",
+     "first_event_error": false,
+     "group": "no_card",
+     "headers": {},
+     "model": "microsoft/kosmos-2",
+     "status": 404
+    },
+    {
+     "body": "{\"status\":404,\"title\":\"Not Found\",\"detail\":\"Function '<id>': Not found for account '<id>'\"}",
+     "first_event_error": false,
+     "group": "no_card",
+     "headers": {},
+     "model": "writer/palmyra-med-70b-32k",
+     "status": 404
+    },
+    {
+     "body": "{\"status\":404,\"title\":\"Not Found\",\"detail\":\"Function '<id>': Not found for account '<id>'\"}",
+     "first_event_error": false,
+     "group": "no_card",
+     "headers": {},
+     "model": "databricks/dbrx-instruct",
+     "status": 404
+    },
+    {
+     "body": "{\"status\":404,\"title\":\"Not Found\",\"detail\":\"Function '<id>': Not found for account '<id>'\"}",
+     "first_event_error": false,
+     "group": "no_card",
+     "headers": {},
+     "model": "ibm/granite-8b-code-instruct",
+     "status": 404
+    },
+    {
+     "body": "{\"status\":404,\"title\":\"Not Found\",\"detail\":\"Function '<id>': Not found for account '<id>'\"}",
+     "first_event_error": false,
+     "group": "no_card",
+     "headers": {},
+     "model": "zyphra/zamba2-7b-instruct",
+     "status": 404
+    }
+   ],
+   "catalog": {
+    "configured_absent": [],
+    "count": 82,
+    "error": null,
+    "groups": {
+     "free_card": 23,
+     "no_card": 54,
+     "nonfree_card": 5
+    },
+    "ngc_total": 106
+   },
+   "pause": {
+    "contended": false,
+    "drained": true,
+    "expired": false,
+    "in_flight_at_start": 3,
+    "waited_seconds": 251.4
+   }
+  },
+  "openrouter": {
+   "canaries": [
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "nvidia/nemotron-3-super-120b-a12b:free",
+     "status": 200
+    },
+    {
+     "body": "{\"error\":{\"message\":\"thinkingmachines/inkling:free is only available on agentic harnesses. Try plugging it into a coding agent or productivity app listed on htt",
+     "first_event_error": false,
+     "group": "free_marked",
+     "headers": {},
+     "model": "thinkingmachines/inkling:free",
+     "status": 403
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "free_marked",
+     "headers": {},
+     "model": "nex-agi/nex-n2.5-pro:free",
+     "status": 200
+    },
+    {
+     "body": "{\"error\":{\"message\":\"Provider returned error\",\"code\":429,\"metadata\":{\"raw\":\"poolside/laguna-xs-2.1:free is temporarily rate-limited upstream. Please retry short",
+     "first_event_error": false,
+     "group": "free_marked",
+     "headers": {},
+     "model": "poolside/laguna-xs-2.1:free",
+     "status": 429
+    }
+   ],
+   "catalog": {
+    "configured_absent": [],
+    "count": 458,
+    "error": null,
+    "free_marked": 15
+   },
+   "pause": {
+    "contended": false,
+    "drained": true,
+    "expired": false,
+    "in_flight_at_start": 1,
+    "waited_seconds": 251.4
+   }
+  },
+  "orcarouter": {
+   "canaries": [
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "deepseek/deepseek-v4-flash-free",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "tencent/hy3-free",
+     "status": 200
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "z-ai/glm-5.3-flash-free",
+     "status": 200
+    }
+   ],
+   "catalog": {
+    "configured_absent": [],
+    "count": 8,
+    "error": null,
+    "free_marked": 0
+   },
+   "pause": {
+    "contended": false,
+    "drained": true,
+    "expired": false,
+    "in_flight_at_start": 0,
+    "waited_seconds": 0.2
+   }
+  },
+  "sambanova": {
+   "canaries": [
+    {
+     "group": "configured",
+     "model": "gemma-4-31B-it",
+     "skipped": "rpd exhausted until 1790294431956"
+    },
+    {
+     "body": "{\"error\":{\"code\":null,\"message\":\"DeepSeek-V3.2-16k is currently experiencing high demand. Please try again later!\",\"param\":null,\"type\":\"\"},\"request_id\":\"f1e3286",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "DeepSeek-V3.2",
+     "status": 429
+    },
+    {
+     "body": "{\"error\":{\"code\":null,\"message\":\"gpt-oss-120b-8k is currently experiencing high demand. Please try again later!\",\"param\":null,\"type\":\"\"},\"request_id\":\"d6eae1af-",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "gpt-oss-120b",
+     "status": 429
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "MiniMax-M2.7",
+     "status": 200
+    }
+   ],
+   "catalog": {
+    "configured_absent": [],
+    "count": 7,
+    "error": null
+   },
+   "pause": {
+    "contended": false,
+    "drained": true,
+    "expired": false,
+    "in_flight_at_start": 0,
+    "waited_seconds": 0.2
+   }
+  },
+  "siliconflow": {
+   "canaries": [],
+   "catalog": {
+    "configured_absent": [],
+    "count": 78,
+    "error": null
+   }
+  },
+  "zai": {
+   "canaries": [
+    {
+     "body": "{\"error\":{\"code\":\"1305\",\"message\":\"The service may be temporarily overloaded, please try again later\"}}",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "glm-4.7-flash",
+     "status": 429
+    },
+    {
+     "body": "",
+     "first_event_error": false,
+     "group": "configured",
+     "headers": {},
+     "model": "glm-4.5-flash",
+     "status": 200
+    },
+    {
+     "body": "{\"error\":{\"code\":\"1113\",\"message\":\"Insufficient balance or no resource package. Please recharge.\"}}",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "glm-4.5",
+     "status": 429
+    },
+    {
+     "body": "{\"error\":{\"code\":\"1113\",\"message\":\"Insufficient balance or no resource package. Please recharge.\"}}",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "glm-4.5-air",
+     "status": 429
+    },
+    {
+     "body": "{\"error\":{\"code\":\"1113\",\"message\":\"Insufficient balance or no resource package. Please recharge.\"}}",
+     "first_event_error": false,
+     "group": "unconfigured",
+     "headers": {},
+     "model": "glm-4.6",
+     "status": 429
+    }
+   ],
+   "catalog": {
+    "configured_absent": [
+     "glm-4.5-flash",
+     "glm-4.7-flash"
+    ],
+    "count": 11,
+    "error": null
+   },
+   "pause": {
+    "contended": false,
+    "drained": true,
+    "expired": false,
+    "in_flight_at_start": 0,
+    "waited_seconds": 0.2
+   }
+  }
+ }
+}

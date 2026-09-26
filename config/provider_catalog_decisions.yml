@@ -1,0 +1,49 @@
+# Maintainer decisions for provider-catalog reconciliation (review/48 R7).
+#
+# The weekly reconciler reads this file so a decision is made once, not re-litigated every week:
+#
+#   ignored       Candidates never to propose again (until `revisit_after`, if set).
+#                 provider + exact catalog model ID.
+#   acknowledged  Known states of CONFIGURED routes that are not news. A matching anomaly moves to
+#                 the issue's collapsed "Observations" instead of keeping the issue open. It
+#                 reappears if the verdict changes. `model_glob` uses fnmatch syntax.
+#
+# `/apply` on the rolling issue (Slice 2) appends to this file in its curated PR; hand edits are
+# fine too. Every entry needs a reason and a date.
+
+ignored: []
+
+acknowledged:
+  # Verified 2026-09-12 on all three keys and again 2026-09-24 under a dispatch pause: the
+  # account's plan provisions 0 rpm for these (429, x-ratelimit-limit-req-minute: 0). See the
+  # ACCOUNT-TIER MAP comment in config/provider_limits.yml.
+  - provider: mistral
+    model_glob: "devstral-*"
+    verdict: account_blocked
+    reason: Mistral account tier provisions 0 rpm (not a model retirement)
+    decided_on: "2026-09-24"
+  - provider: mistral
+    model_glob: "mistral-small-*"
+    verdict: account_blocked
+    reason: Mistral account tier provisions 0 rpm (not a model retirement)
+    decided_on: "2026-09-24"
+  - provider: mistral
+    model_glob: "mistral-medium*"
+    verdict: account_blocked
+    reason: Mistral account tier provisions 0 rpm (not a model retirement)
+    decided_on: "2026-09-24"
+  - provider: mistral
+    model_glob: "magistral-*"
+    verdict: account_blocked
+    reason: Mistral account tier provisions 0 rpm (not a model retirement)
+    decided_on: "2026-09-24"
+  - provider: mistral
+    model_glob: "mistral-large-*"
+    verdict: not_entitled
+    reason: 403 tier_not_allowed on this account's plan
+    decided_on: "2026-09-24"
+  - provider: mistral
+    model_glob: "labs-*"
+    verdict: account_blocked
+    reason: Labs models are an admin preference toggle, currently off
+    decided_on: "2026-09-24"
