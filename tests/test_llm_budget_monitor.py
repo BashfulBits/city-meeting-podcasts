@@ -60,6 +60,7 @@ def test_own_tpm_names_the_route_tpm_and_the_lanes():
 
 
 def test_jobs_failed_over_the_route_ceiling_name_the_ceiling_and_the_lanes():
+    """The Worker's claim-time oversize failures name the route ceiling and the affected lanes."""
     routes = {"gemma": {**ROUTES["gemma"], "hard_input_ceiling": 14400}}
     report, [finding] = mon.build_report(
         [_row("gemma", "input_over_route_ceiling", 1)], routes, LANES

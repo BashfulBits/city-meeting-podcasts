@@ -1024,6 +1024,46 @@ test("jobs over every live route ceiling fail instead of holding the lookahead",
   assert.deepEqual(second.jobs.map((job) => job.id), ["tail-fits"]);
 });
 
+test("an oversized job fails even when the model's live uncapped route cannot fit it", async () => {
+  // The uncapped leg is live for the model, so the model is not ceiling-bound, but its context
+  // limit makes it ineligible for this job: only the ceilinged route is left, and the job is over it.
+  const catalog = {
+    ...CEILING_CATALOG,
+    model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio", "gemma-small-uncapped"] },
+    routes_by_id: {
+      ...CEILING_CATALOG.routes_by_id,
+      "gemma-small-uncapped": {
+        provider: "sambanova",
+        upstream_model: "gemma-4-31b-it",
+        rpm: 20,
+        rpd: 20,
+        tpm: 90000,
+        input_token_ratio: 1.2,
+        concurrency: 1,
+        free: true,
+        input_context_limit: 4000,
+        output_context_limit: 2000,
+      },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    DISPATCH_LIMITS_OVERRIDE: catalog,
+    MAX_BUNDLE_JOBS: "2",
+    MAX_JOBS_PER_MODEL_CLAIM: "2",
+  });
+  sql.exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 16, ?, 0)`,
+    "gemma-ai-studio:google/gemma-4-31b-it:tags",
+    JSON.stringify({ r: Array(16).fill(1.4), o: Array(16).fill(200) })
+  );
+  await coordinator.enqueueBatch([gemmaJob("big", 7500)]); // 12,600 at 1.68; 9,000 > 4,000 context
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.deepEqual(plan.jobs, []);
+  assert.equal(plan.claim_diagnostics.oversize_failed_jobs, 1);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'big'")][0].state, "failed");
+});
+
 test("an oversized job fails only once its uncapped route has spent its daily quota", async () => {
   const catalog = {
     ...CEILING_CATALOG,

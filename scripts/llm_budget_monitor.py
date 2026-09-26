@@ -144,6 +144,7 @@ def _lanes_for_model(model: str, lanes: Mapping[str, Any]) -> list[str]:
 
 
 def _suggestion(failure_class: str, route: Mapping[str, Any], lanes: list[str]) -> str:
+    """The config change a maintainer can make for one failure class on one route."""
     model = route.get("model", "?")
     if failure_class == "output_budget_exhausted":
         levels = sorted((route.get("reasoning_controls") or {}).keys())

@@ -3694,8 +3694,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
             acceptedForModel += 1;
             break;
           }
+          // Decided per job, not by the model's ceilingBound: an uncapped route that scores live
+          // for the model may still be ineligible for this job (e.g. its context limit is too small).
           if (
-            ceilingBound &&
             !chosenJobIds.has(job.id) &&
             !drainJobIds.has(job.id) &&
             !oversizeJobIds.has(job.id) &&
