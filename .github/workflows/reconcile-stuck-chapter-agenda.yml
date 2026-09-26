@@ -1,18 +1,21 @@
 name: Reconcile stuck chapter-agenda jobs
 
-# Manual, dry-run-first maintenance for legacy chapter-agenda handles. The command reads the B2
+# Manual, dry-run-first maintenance for legacy deferred handles. The command reads the B2
 # deferred registry and only cancels v2 refs that it can identify there; it never scans arbitrary
-# Durable Object rows or mutates a record whose coordinator lease is still in flight.
+# Durable Object rows or mutates a record whose coordinator lease is still in flight. 'any' checks
+# every lane against one signal (its model has zero configured routes in the current catalog),
+# never age -- see scripts/reconcile_stuck_chapter_agenda.py's module docstring.
 on:
   workflow_dispatch:
     inputs:
       lane:
-        description: "Lane whose deferred handles to classify"
+        description: "Lane whose deferred handles to classify ('any': every lane, legacy-model only)"
         required: true
         type: choice
         options:
           - chapter-agenda
           - topic-tags:prelabeler
+          - any
         default: chapter-agenda
       apply:
         description: "Cancel/supersede the classified handles (leave false for a report only)"
