@@ -170,7 +170,7 @@ def test_full_prune_mode_lists_canonical_registry_without_reconciling(monkeypatc
     assert llm_deferred_sweep.main(["--full-prune-only"]) == 0
     assert snapshot_kwargs["include_ineligible"] is True
     assert "should_stop" in snapshot_kwargs
-    assert isinstance(prune_kwargs["backend"], FakeBackend)
+    assert "backend" not in prune_kwargs
     out = capsys.readouterr().out
     assert '"event": "llm_deferred_full_prune_started"' in out
     assert '"event": "llm_deferred_full_prune_end"' in out
