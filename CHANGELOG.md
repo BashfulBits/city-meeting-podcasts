@@ -17,6 +17,18 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Oversized queued jobs fail instead of blocking the v2 claim lookahead**
+  (`workers/llm-dispatch-v2/src/coordinator.js`, `scripts/llm_budget_monitor.py`). On 2026-09-26
+  the drain pass sent the 12 near-miss Gemma batches and then stopped: the oldest 32 batches, sized
+  at the catalog's 1.4 ratio before producers used the learned one, were over the 14,400 ceiling
+  even with the 10% tolerance, and they filled the claim's 32-row lookahead on every tick, so the
+  fitting batches queued behind them were never read.
+  - A claim now fails a queued job that is over every ceilinged route's `hard_input_ceiling` plus
+    tolerance at the learned ratio, when each uncapped route that could take it has spent its daily
+    quota. A cooling or blocked uncapped route still counts as able to take it.
+  - The failure is counted per route as `input_over_route_ceiling` and reported by the budget
+    monitor. The producer sees a terminal failure and re-plans the work into batches that fit.
+
 - **Gemma prelabeler batches no longer strand in the v2 queue**
   (`workers/llm-dispatch-v2/src/{calibration,pacing,routes,coordinator,index}.js`,
   `citypods/{tags,compute/llm}.py`, `config/provider_limits.yml`, `scripts/compile_llm_limits.py`).

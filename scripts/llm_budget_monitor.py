@@ -13,6 +13,10 @@ that a maintainer can correct in config, and are otherwise only visible as retri
   route's structured-output method may be wrong, or the output budget was cut first.
 * ``own_tpm`` -- our own token-rate 429s: batches or reservations sized past the route's TPM.
 * ``route_input_limit`` -- requests larger than the route accepts: re-batch or record the ceiling.
+* ``input_over_route_ceiling`` -- queued jobs the Worker failed without calling a provider,
+  because at its learned input ratio they were over every usable route's ``hard_input_ceiling``
+  even with its tolerance. The producer re-plans them; a steady count means it sizes batches
+  larger than the Worker will send.
 
 It also reads ``usage_today`` (per lane and route, computed by the Worker from rows it already
 writes): output above the job's reservation, output far below it (over-reservation that wastes
@@ -54,6 +58,7 @@ THRESHOLDS = {
     "structured_output_invalid": 3,
     "own_tpm": 20,
     "route_input_limit": 3,
+    "input_over_route_ceiling": 1,
 }
 
 
@@ -176,6 +181,13 @@ def _suggestion(failure_class: str, route: Mapping[str, Any], lanes: list[str]) 
         )
     if failure_class == "route_input_limit":
         return "Requests exceed what the route accepts: re-batch the lane or record the ceiling."
+    if failure_class == "input_over_route_ceiling":
+        return (
+            f"Queued jobs were over this route's `hard_input_ceiling` "
+            f"({route.get('hard_input_ceiling')}) at the Worker's learned input ratio and were "
+            "failed for the producer to re-plan: size the lane's batches from "
+            "`GET /v2/calibration` or lower them."
+        )
     return ""
 
 

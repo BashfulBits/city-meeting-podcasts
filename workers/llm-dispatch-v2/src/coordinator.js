@@ -39,10 +39,12 @@ import {
 import {
   CALIBRATION_WINDOW,
   calibrationFor,
+  hardInputCeilingLimit,
   outputReserveFor,
   parseCalibrationSummary,
   recordCalibrationSample,
   routeInputTokenRatio,
+  scaledInputTokens,
 } from "./calibration.js";
 
 /** Persist calibration for 1 in this many completions once a key's window is full. */
@@ -1069,6 +1071,29 @@ export class LLMSchedulerDO extends DurableObjectBase {
       live += 1;
     }
     return live > 0;
+  }
+
+  /**
+   * True when no route in `eligibleRoutes` can take `job` today: it is over every ceilinged
+   * route's `hard_input_ceiling` even with that route's tolerance, at the same learned input ratio
+   * the claim's capacity check uses, and every uncapped route has spent its daily quota
+   * (`uncappedRouteSpent`). A merely blocked or cooling uncapped route still counts as able to
+   * take the job, so a short cooldown never fails work that route would serve minutes later.
+   */
+  _exceedsEveryLiveCeiling(job, eligibleRoutes, uncappedRouteSpent, calibrationCache) {
+    if (!eligibleRoutes || eligibleRoutes.length === 0) return false;
+    let ceilinged = 0;
+    for (const route of eligibleRoutes) {
+      const limit = hardInputCeilingLimit(route, { tolerant: true });
+      if (!Number.isFinite(limit)) {
+        if (!uncappedRouteSpent(route)) return false;
+        continue;
+      }
+      const { inputRatio } = this._calibration(route, job.prompt_family, calibrationCache);
+      if (scaledInputTokens(job.input_token_estimate, inputRatio) <= limit) return false;
+      ceilinged += 1;
+    }
+    return ceilinged > 0;
   }
 
   _maxJobsPerRoutePerBundle() {
@@ -3319,6 +3344,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         active_bundles: 0,
         orphan_bundles_reaped: 0,
         drained_jobs: 0,
+        oversize_failed_jobs: 0,
         in_flight_calls: 0,
         candidate_jobs: 0,
         chosen_jobs: 0,
@@ -3516,6 +3542,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       };
 
       const calibrationCache = new Map();
+      const uncappedRouteSpent = (route) => dailyQuotaReadyAt(getMergedRoute(route), now) > now;
       const capacityOptions = (route, job) => {
         const providerCfg = dispatchLimits.providers?.[route.provider];
         const providerLedger = route.provider
@@ -3541,6 +3568,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const seenRoutes = new Set();
       const drainCandidates = [];
       const drainJobIds = new Set();
+      // Jobs too large for every route that can serve them now, even with the ceiling tolerance.
+      const oversizeJobs = [];
+      const oversizeJobIds = new Set();
       const modelPlans = this._rankModelsByCapacity(now, windowSeconds, dispatchLimits);
       const modelPlansByModel = new Map(modelPlans.map((plan) => [plan.model, plan]));
       for (const modelPlan of modelPlans) {
@@ -3664,7 +3694,48 @@ export class LLMSchedulerDO extends DurableObjectBase {
             acceptedForModel += 1;
             break;
           }
+          if (
+            ceilingBound &&
+            !chosenJobIds.has(job.id) &&
+            !drainJobIds.has(job.id) &&
+            !oversizeJobIds.has(job.id) &&
+            this._exceedsEveryLiveCeiling(job, eligibleRoutes, uncappedRouteSpent, calibrationCache)
+          ) {
+            // A job indexed under several models can be read once per model; fail it once.
+            oversizeJobs.push({ job, eligibleRoutes });
+            oversizeJobIds.add(job.id);
+          }
         }
+      }
+
+      // A job over every live route's ceiling even with its tolerance can never be claimed while
+      // that holds, and left queued it holds a slot in the bounded lookahead above on every tick:
+      // on 2026-09-26 the oldest 32 Gemma prelabeler batches (sized at the catalog's 1.4 ratio
+      // before producers used the learned one) sat there after the drain pass had taken the near
+      // misses, so the ~300 fitting jobs behind them were never read. Fail them instead. The
+      // producer sees a terminal failure and re-plans the work at today's learned ratio, which
+      // splits it into batches that fit.
+      for (const { job, eligibleRoutes } of oversizeJobs) {
+        // Read as 'queued' inside this same transaction, so the transition is safe unconditionally.
+        sql.exec("UPDATE jobs SET state = 'failed', updated_at = ? WHERE id = ?", now, job.id);
+        sql.exec("DELETE FROM job_models WHERE job_id = ?", job.id);
+        for (const route of eligibleRoutes) {
+          if (Number.isFinite(hardInputCeilingLimit(route))) {
+            this._recordRouteFailure(sql, now, route.route_id, "input_over_route_ceiling", null);
+          }
+        }
+        // The scheduler's queued counter is settled from this delta when the claim is recorded.
+        reapedToQueued -= 1;
+        diagnostics.oversize_failed_jobs += 1;
+      }
+      if (diagnostics.oversize_failed_jobs > 0) {
+        console.warn(
+          JSON.stringify({
+            event: "claim_failed_oversize_jobs",
+            jobs: oversizeJobs.map(({ job }) => job.id),
+            failed: diagnostics.oversize_failed_jobs,
+          })
+        );
       }
 
       // Drain pass. Nothing else is dispatchable, so try the near misses rather than leave them

@@ -59,6 +59,16 @@ def test_own_tpm_names_the_route_tpm_and_the_lanes():
     assert "tpm 14400" in finding["suggestion"]
 
 
+def test_jobs_failed_over_the_route_ceiling_name_the_ceiling_and_the_lanes():
+    routes = {"gemma": {**ROUTES["gemma"], "hard_input_ceiling": 14400}}
+    report, [finding] = mon.build_report(
+        [_row("gemma", "input_over_route_ceiling", 1)], routes, LANES
+    )
+    assert finding["lanes"] == ["topic-tags:prelabeler"]
+    assert "`hard_input_ceiling` (14400)" in finding["suggestion"]
+    assert "`input_over_route_ceiling`" in report
+
+
 def test_route_max_lanes_match_the_job_builders_that_set_the_flag():
     # The monitor's advice depends on which lanes send the route's limit; keep it in step with code.
     flagged = {
