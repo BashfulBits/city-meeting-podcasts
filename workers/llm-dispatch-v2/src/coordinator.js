@@ -167,6 +167,75 @@ const JOB_PRIORITY_SYNC_TRIGGER = `
         UPDATE job_models SET priority = NEW.priority WHERE job_id = NEW.id;
       END;`;
 
+const CURRENT_SCHEMA_TABLES = [
+  "jobs",
+  "job_models",
+  "routes",
+  "providers",
+  "bundles",
+  "attempts",
+  "estimates",
+  "scheduler",
+  "ingress_purpose",
+  "route_failures",
+  "dispatch_pause",
+];
+
+// Columns added after the initial table definitions. Keep this list aligned with the
+// _ensureColumn calls below: a current-schema fast path is safe only when all of these exist.
+const CURRENT_SCHEMA_ADDED_COLUMNS = {
+  routes: [
+    "rpd_window_start",
+    "rpd_count",
+    "rpd_day_key",
+    "payment_required_streak",
+    "upstream_capacity_streak",
+    "last_failure_class",
+    "buffer_updated_at",
+  ],
+  jobs: [
+    "token_reservation",
+    "purpose",
+    "schema_retry_count",
+    "transient_retry_count",
+    "reservation_rpm_window_start",
+    "reservation_rpd_day_key",
+    "reservation_tpm_window_start",
+  ],
+  attempts: ["purpose", "reserved_output_tokens", "input_token_estimate"],
+  scheduler: [
+    "ingress_write_units_today",
+    "queued_job_count",
+    "queued_job_count_initialized",
+    "claim_empty_count_today",
+    "lease_count_today",
+    "rows_written_today",
+    "claim_reason_counts_json",
+    "last_claim_at",
+    "last_claim_result",
+    "last_claim_reason",
+    "last_claim_diagnostics_json",
+    "mistral_latest_migrated",
+  ],
+};
+
+const CURRENT_SCHEMA_OBJECTS = [
+  ["index", "idx_jobs_state_updated_id"],
+  ["index", "idx_job_models_job_model"],
+  ["index", "idx_bundles_state_created"],
+  ["trigger", "trg_jobs_priority_sync"],
+];
+
+const RETIRED_SCHEMA_OBJECTS = [
+  ["index", "idx_jobs_state_updated"],
+  ["index", "idx_jobs_state_priority_created"],
+  ["index", "idx_jobs_purpose_state_created"],
+  ["index", "idx_attempts_created"],
+  ["trigger", "trg_jobs_queued_count_insert"],
+  ["trigger", "trg_jobs_queued_count_delete"],
+  ["trigger", "trg_jobs_queued_count_state"],
+];
+
 export class LLMSchedulerDO extends DurableObjectBase {
   constructor(ctx, env) {
     super(ctx, env);
@@ -174,7 +243,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this.env = env || {};
     this.sql = ctx?.storage?.sql || ctx?.sql;
 
-    this._initSchema();
+    let readiness;
+    try {
+      readiness = this._inspectCurrentSchema();
+    } catch (error) {
+      const detail = error instanceof Error
+        ? `${error.name}: ${error.message}${error.stack ? `\n${error.stack}` : ""}`
+        : String(error);
+      console.error(`LLMSchedulerDO schema readiness check failed: ${detail}`);
+      throw error;
+    }
+    if (readiness.current) {
+      console.info("LLMSchedulerDO schema is current; skipped startup DDL and data migrations");
+    } else {
+      if (readiness.existingTables > 0) {
+        console.warn(
+          `LLMSchedulerDO schema needs initialization: ${readiness.missing.join(", ")}`
+        );
+      }
+      this._initSchema();
+    }
   }
 
   /**
@@ -367,11 +455,84 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._envInt("MAX_QUEUED_JOBS", 20000);
   }
 
+  /**
+   * Read-only cold-start check. Durable Object constructors run after eviction, so repeating
+   * schema DDL and compatibility migrations on every activation can spend billed writes before
+   * an RPC has a chance to apply its daily write guard. Only skip initialization when the live
+   * schema, its one-time data migration, and its query-critical indexes/triggers are current.
+   */
+  _inspectCurrentSchema() {
+    const sql = this._getSql();
+    if (!sql) return { current: false, existingTables: 0, missing: ["SQL storage"] };
+
+    const objects = new Map(
+      [...sql.exec("SELECT type, name, sql FROM sqlite_master")].map((row) => [
+        `${row.type}:${row.name}`,
+        row,
+      ])
+    );
+    const existingTables = CURRENT_SCHEMA_TABLES.filter((name) =>
+      objects.has(`table:${name}`)
+    ).length;
+    const missing = [];
+
+    for (const table of CURRENT_SCHEMA_TABLES) {
+      if (!objects.has(`table:${table}`)) missing.push(`table:${table}`);
+    }
+    const tableColumns = new Map();
+    for (const [table, columns] of Object.entries(CURRENT_SCHEMA_ADDED_COLUMNS)) {
+      if (!objects.has(`table:${table}`)) continue;
+      const present = new Set([...sql.exec(`PRAGMA table_info(${table})`)].map((row) => row.name));
+      tableColumns.set(table, present);
+      for (const column of columns) {
+        if (!present.has(column)) missing.push(`column:${table}.${column}`);
+      }
+    }
+
+    for (const [type, name] of CURRENT_SCHEMA_OBJECTS) {
+      if (!objects.has(`${type}:${name}`)) missing.push(`${type}:${name}`);
+    }
+    for (const [type, name] of RETIRED_SCHEMA_OBJECTS) {
+      if (objects.has(`${type}:${name}`)) missing.push(`retired-${type}:${name}`);
+    }
+
+    const jobModels = objects.get("table:job_models");
+    if (jobModels && !/WITHOUT\s+ROWID/i.test(String(jobModels.sql))) {
+      missing.push("table-shape:job_models WITHOUT ROWID");
+    }
+    const bundles = objects.get("table:bundles");
+    if (bundles && !/WITHOUT\s+ROWID/i.test(String(bundles.sql))) {
+      missing.push("table-shape:bundles WITHOUT ROWID");
+    }
+
+    const schedulerColumns = tableColumns.get("scheduler");
+    const scheduler = schedulerColumns?.has("mistral_latest_migrated")
+      ? [...sql.exec("SELECT mistral_latest_migrated FROM scheduler WHERE id = 1")][0]
+      : null;
+    if (scheduler?.mistral_latest_migrated !== 1) {
+      missing.push("migration:mistral_latest_migrated");
+    }
+
+    return { current: missing.length === 0, existingTables, missing };
+  }
+
+  _runSchemaInitStep(label, work) {
+    try {
+      return work();
+    } catch (error) {
+      const detail = error instanceof Error
+        ? `${error.name}: ${error.message}${error.stack ? `\n${error.stack}` : ""}`
+        : String(error);
+      console.error(`LLMSchedulerDO schema initialization failed at ${label}: ${detail}`);
+      throw error;
+    }
+  }
+
   _initSchema() {
     const sql = this._getSql();
     if (!sql) return;
 
-    sql.exec(`
+    this._runSchemaInitStep("create base tables, indexes, and trigger", () => sql.exec(`
       CREATE TABLE IF NOT EXISTS jobs (
         id                          TEXT PRIMARY KEY,
         idempotency_key             TEXT NOT NULL UNIQUE,
@@ -585,17 +746,17 @@ export class LLMSchedulerDO extends DurableObjectBase {
       -- it either. A no-op UPDATE (0 rows matched) when the job isn't currently indexed -- e.g.
       -- already claimed -- is expected and harmless.
       ${JOB_PRIORITY_SYNC_TRIGGER}
-    `);
+    `));
 
     // CREATE TABLE IF NOT EXISTS only creates the table on its first-ever run for this DO
     // instance; it does not retroactively add a column introduced later (rpd_window_start/
     // rpd_count, added alongside Phase 2's claimDispatchWindow) to a `routes` table an earlier
     // deploy already created. Defensive, cheap, and a no-op on a fresh instance.
-    this._migrateJobModelsClustered();
-    this._migrateBundlesClustered();
-    sql.exec(
+    this._runSchemaInitStep("cluster job_models", () => this._migrateJobModelsClustered());
+    this._runSchemaInitStep("cluster bundles", () => this._migrateBundlesClustered());
+    this._runSchemaInitStep("create job_models unique index", () => sql.exec(
       "CREATE UNIQUE INDEX IF NOT EXISTS idx_job_models_job_model ON job_models (job_id, model)"
-    );
+    ));
     this._ensureColumn("routes", "rpd_window_start", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "rpd_count", "INTEGER NOT NULL DEFAULT 0");
     // Daily quotas reset on the provider's calendar day, not 24h after first use.
@@ -612,6 +773,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Backup-model gating (routes.js's backupModelsActive) reads this alongside `attempts`; an
     // already-provisioned DO's existing rows get 0, same as a freshly-created job.
     this._ensureColumn("jobs", "schema_retry_count", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("jobs", "transient_retry_count", "INTEGER NOT NULL DEFAULT 0");
     // usage_today groups attempts by lane and compares output with the reservation; a completed
     // job's row is retired once its result is consumed, so the attempt keeps both itself.
     this._ensureColumn("attempts", "purpose", "TEXT NOT NULL DEFAULT ''");
@@ -637,7 +799,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // attempts are pruned oldest-first by rowid (insertion order) -- see _pruneTerminalRecords.
       "idx_attempts_created",
     ]) {
-      sql.exec(`DROP INDEX IF EXISTS ${index}`);
+      this._runSchemaInitStep(`drop retired index ${index}`, () =>
+        sql.exec(`DROP INDEX IF EXISTS ${index}`)
+      );
     }
     this._ensureColumn("scheduler", "ingress_write_units_today", "INTEGER NOT NULL DEFAULT 0");
     // A recurring producer snapshot needs the queue depth, but COUNT(*) over a retained queue
@@ -669,7 +833,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       "trg_jobs_queued_count_delete",
       "trg_jobs_queued_count_state",
     ]) {
-      sql.exec(`DROP TRIGGER IF EXISTS ${trigger}`);
+      this._runSchemaInitStep(`drop retired trigger ${trigger}`, () =>
+        sql.exec(`DROP TRIGGER IF EXISTS ${trigger}`)
+      );
     }
     // The job_models_backfill_*/legacy_retryable_recovery_*/migration_*_today columns that used to
     // be retrofitted here were the one-time compatibility migration's own bookkeeping (review/44's
@@ -681,18 +847,22 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // benefit.
 
     const today = new Date().toISOString().slice(0, 10);
-    const existing = [...sql.exec("SELECT id FROM scheduler WHERE id = 1")];
+    const existing = this._runSchemaInitStep("inspect scheduler row", () =>
+      [...sql.exec("SELECT id FROM scheduler WHERE id = 1")]
+    );
     if (existing.length === 0) {
-      sql.exec(
+      this._runSchemaInitStep("create scheduler row", () => sql.exec(
         `INSERT INTO scheduler (id, utc_day, bundle_count_today, jobs_ingested_today)
          VALUES (1, ?, 0, 0)`,
         today
-      );
+      ));
     } else if (addedRowCounter) {
-      this._seedRowCounter(today);
+      this._runSchemaInitStep("seed daily row counter", () => this._seedRowCounter(today));
     }
     this._ensureColumn("scheduler", "mistral_latest_migrated", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureMigratedJobModels();
+    this._runSchemaInitStep("migrate queued Mistral model aliases", () =>
+      this._ensureMigratedJobModels()
+    );
   }
 
   /**
@@ -844,11 +1014,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
     if (!ALLOWED_TABLES.has(table) || ALLOWED_COLUMNS.get(column) !== definition) {
       throw new Error(`_ensureColumn rejected unallowed schema mutation: ${table}.${column} ${definition}`);
     }
-    const sql = this._getSql();
-    const columns = [...sql.exec(`PRAGMA table_info(${table})`)];
-    if (columns.some((c) => c.name === column)) return false;
-    sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-    return true;
+    return this._runSchemaInitStep(`ensure column ${table}.${column}`, () => {
+      const sql = this._getSql();
+      const columns = [...sql.exec(`PRAGMA table_info(${table})`)];
+      if (columns.some((c) => c.name === column)) return false;
+      sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+      return true;
+    });
   }
 
   /**
