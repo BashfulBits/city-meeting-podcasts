@@ -1323,9 +1323,13 @@ integration testing.
 ### Unit 1 — SQL schema (`src/coordinator.js`, DO constructor; Phase 1 creates `jobs`+`scheduler`, Phase 2 adds the rest)
 
 All tables are created with `CREATE TABLE IF NOT EXISTS` in the DO constructor, guarded by
-`migrations` with `new_sqlite_classes` per the wrangler config. Timestamps are Unix milliseconds
-(`INTEGER`), not ISO strings — comparisons and arithmetic must stay in integer ms throughout every
-unit below. No table stores payload or response bytes.
+`migrations` with `new_sqlite_classes` per the wrangler config. On cold start, the constructor first
+checks the required tables, compatibility columns, one-time model migration, clustered table
+shapes, and query-critical indexes/triggers through read-only catalog queries. A current schema
+skips DDL and data migrations; an incomplete schema uses the initializer below, which logs the
+specific phase if a storage operation fails. Timestamps are Unix milliseconds (`INTEGER`), not
+ISO strings — comparisons and arithmetic must stay in integer ms throughout every unit below. No
+table stores payload or response bytes.
 
 ```sql
 CREATE TABLE IF NOT EXISTS jobs (

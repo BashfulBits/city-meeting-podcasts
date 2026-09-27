@@ -17,6 +17,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **The v2 Durable Object skips startup schema writes once its schema is current**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). A read-only catalog check now verifies the
+  required tables, compatibility columns, one-time model migration, clustered tables, and active
+  indexes/triggers before running initialization. A current DO avoids replaying startup DDL and
+  data migration work on cold starts; incomplete schemas still take the existing initializer,
+  which now logs the failing initialization phase.
+
 - **The v2 Worker self-heals its own `__unroutable__` jobs instead of leaving them stuck forever**
   (`workers/llm-dispatch-v2/src/coordinator.js`, `scripts/llm_budget_monitor.py`). Like a job
   pinned to a retired model (see the reconciler entry below), a job too large for every route
