@@ -2053,7 +2053,7 @@ def test_dispatch_v2_learned_input_ratio_caches_and_fails_open(monkeypatch):
     assert llm.dispatch_v2_learned_input_ratio("r3", "tag", backend=no_v2) is None
 
 
-def test_dispatch_v2_ingress_open_reports_closed_and_fails_open():
+def test_dispatch_v2_ingress_open_reports_closed_and_fails_closed_if_unavailable():
     from citypods.compute.llm import dispatch_v2_ingress_open
 
     session = MagicMock()
@@ -2070,9 +2070,15 @@ def test_dispatch_v2_ingress_open_reports_closed_and_fails_open():
     is_open, status = dispatch_v2_ingress_open("chapter-agenda", backend=backend)
     assert is_open is False and status["reasons"] == ["queue_full"]
 
-    # An unreachable or broken Worker must not idle a lane: enqueue still enforces every limit.
+    # A configured but unreachable Worker closes only this lane until preflight recovers.
     session.get.return_value = _mock_response(status_code=503, json_data={})
-    assert dispatch_v2_ingress_open("chapter-agenda", backend=backend) == (True, None)
+    is_open, status = dispatch_v2_ingress_open("chapter-agenda", backend=backend)
+    assert is_open is False
+    assert status == {
+        "open": False,
+        "purpose": "chapter-agenda",
+        "reasons": ["preflight_unavailable"],
+    }
 
     no_v2 = LiteLLMBackend(
         LLMBackendConfig(model="gemini/gemini-3-flash-preview"), http_session=MagicMock()
