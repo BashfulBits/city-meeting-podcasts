@@ -2634,16 +2634,16 @@ test("the coordinator tallies the rows its RPCs write and persists them on the c
   assert.equal(stats.row_budget.enqueue_open, true);
 });
 
-test("past the enqueue threshold new work is refused but an exact replay still succeeds", async () => {
+test("at the account safe stop, replays remain write-free and new work is deferred", async () => {
   const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1")]);
   setRowsWrittenToday(sql, 90_000);
   const result = await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
   assert.deepEqual(result.accepted.map((row) => row.id), ["j1"]);
   assert.deepEqual(result.rejected, [{ id: "j2", reason: "daily_row_budget" }]);
-  // Dispatch keeps going between the enqueue and claim thresholds.
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
-  assert.equal(plan.jobs.length, 1);
+  assert.equal(plan.bundle_id, null);
+  assert.equal(plan.claim_reason, "daily_row_budget");
   // Scheduled cleanup waits for tomorrow.
   assert.deepEqual(await coordinator.purgePendingBatch(15), { jobs: [] });
 });
@@ -2732,7 +2732,7 @@ test("ingressStatus reports why ingress is closed without writing anything", asy
   assert.equal(closed.open, false);
   assert.deepEqual(closed.reasons, ["daily_row_budget", "queue_full"]);
   assert.equal(closed.row_budget.enqueue_open, false);
-  assert.equal(closed.row_budget.claims_open, true);
+  assert.equal(closed.row_budget.claims_open, false);
   assert.deepEqual(snapshot(), before);
 
   const unknown = await coordinator.ingressStatus("not-a-lane");

@@ -21,6 +21,9 @@
 /** The platform's account-wide limit; every threshold must stay below it. */
 export const DO_ROWS_WRITTEN_PLATFORM_LIMIT = 100000;
 
+/** Rows left unused for other account Durable Objects and billing-counter drift. */
+export const DO_ROWS_ACCOUNT_RESERVE = 10000;
+
 /** Rows written per ingress write unit admitted: a job writes 4 + 2 x models billed rows
  * (job row + two unique keys + state index; a clustered model-index row + its unique index each)
  * for 3 + models units -- 1.5 per unit at 1 model, 1.67 at 3, approaching 2 as models grow. 2 is

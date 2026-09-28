@@ -579,6 +579,21 @@ def package_ticket(*, site_config_path: str, config_dir: str, output_dir: str, o
 
 
 def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int) -> int:
+    from citypods.compute.llm import dispatch_v2_ingress_open
+
+    # This weekly producer owns two independent ingress lanes. Check both before restoring the
+    # catalog or building chapter prompts so a closed/unavailable budget endpoint cannot turn
+    # into a full run of rejected submissions.
+    for purpose in ("tournament:tag", "tournament:tag-judge"):
+        is_open, status = dispatch_v2_ingress_open(purpose)
+        if not is_open:
+            reasons = ", ".join((status or {}).get("reasons") or []) or "closed"
+            print(
+                f"llm-tournament: {purpose} ingress closed ({reasons}); skipping new samples",
+                flush=True,
+            )
+            return 0
+
     # Unlike the enrichment stages in stages.py, this CLI never goes through
     # citypods.run.Pipeline.accumulate_stats/record_stage_activity -- it has had no
     # llm_submission_stage telemetry at all, a blind spot in the same CI dashboard used to

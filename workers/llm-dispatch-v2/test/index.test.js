@@ -455,8 +455,8 @@ test("the committed wrangler.jsonc vars pass validateConfig", async () => {
     .join("\n");
   const { vars } = JSON.parse(stripped);
   assert.equal(vars.DISPATCH_WINDOW_SECONDS, "30");
-  // The daily row thresholds rise enqueue <= claim <= optional, under the platform limit, and a
-  // full day of admitted ingress fits under the enqueue threshold on its own.
+  // The configured upper bounds are ordered, the effective stops preserve the account reserve,
+  // and a full day of admitted ingress fits under the enqueue threshold on its own.
   const { DO_ROWS_WRITTEN_PLATFORM_LIMIT, ROWS_PER_INGRESS_WRITE_UNIT } = await import(
     "../src/write_budget.js"
   );
@@ -467,8 +467,9 @@ test("the committed wrangler.jsonc vars pass validateConfig", async () => {
   const { createMockSqlStorage } = await import("./helpers.js");
   const effective = new LLMSchedulerDO({ storage: createMockSqlStorage().storage }, { ...vars });
   assert.equal(effective._enqueueRowStop(), 90000);
-  assert.equal(effective._claimRowStop(), 97000);
-  assert.equal(effective._optionalRowStop(), 99000);
+  assert.equal(effective._claimRowStop(), 90000);
+  assert.equal(effective._optionalRowStop(), 90000);
+  assert.equal(effective._accountRowsStop(), 90000);
   assert.equal(effective._maxQueuedJobs(), 20000);
   assert.ok(effective._optionalRowStop() < DO_ROWS_WRITTEN_PLATFORM_LIMIT);
   assert.ok(
