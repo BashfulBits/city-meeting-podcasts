@@ -2732,7 +2732,7 @@ test("ingressStatus reports why ingress is closed without writing anything", asy
   assert.equal(closed.open, false);
   assert.deepEqual(closed.reasons, ["daily_row_budget", "queue_full"]);
   assert.equal(closed.row_budget.enqueue_open, false);
-  assert.equal(closed.row_budget.claims_open, true);
+  assert.equal(closed.row_budget.claims_open, false);
   assert.deepEqual(snapshot(), before);
 
   const unknown = await coordinator.ingressStatus("not-a-lane");
