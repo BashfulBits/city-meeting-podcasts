@@ -20,7 +20,11 @@ import { B2Client } from "./b2.js";
 import { callAiGateway, observedTokens, upstreamCapacityFailure, upstreamEmptyCompletion } from "./gateway.js";
 import { isStructuredPayload, structuredReplyProblem } from "./structured_output.js";
 import { classifyProviderFailure } from "./classify.js";
-import { DO_ROWS_WRITTEN_PLATFORM_LIMIT, ROWS_PER_INGRESS_WRITE_UNIT } from "./write_budget.js";
+import {
+  DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
+  DO_ROWS_WRITTEN_PLATFORM_LIMIT,
+  ROWS_PER_INGRESS_WRITE_UNIT,
+} from "./write_budget.js";
 
 export { LLMSchedulerDO };
 
@@ -112,13 +116,26 @@ export function validateConfig(env) {
   }
 
   // The account-wide DO row-write budget (Free plan: 100,000 billed rows/day) is enforced at
-  // runtime against the rows the coordinator actually writes (coordinator.js _rowsWrittenToday):
-  // enqueues and cleanup stop at DO_ROWS_ENQUEUE_STOP, new leases at DO_ROWS_CLAIM_STOP, and
-  // acks/retires/cancels at DO_ROWS_OPTIONAL_STOP, leaving the rest for in-flight completions.
-  // The thresholds must rise in that order and stay under the platform limit.
+  // runtime against the rows the coordinator actually writes. Configured thresholds remain
+  // ordered upper bounds; the coordinator clamps them to the account reserve and also projects
+  // the remaining cost of active leases before admitting another bundle.
   const enqueueRowStop = Number(env.DO_ROWS_ENQUEUE_STOP ?? 90000);
   const claimRowStop = Number(env.DO_ROWS_CLAIM_STOP ?? 97000);
   const optionalRowStop = Number(env.DO_ROWS_OPTIONAL_STOP ?? 99000);
+  const accountReserveRows = Number(
+    env.DO_ROWS_ACCOUNT_RESERVE ?? DO_ROWS_ACCOUNT_RESERVE_DEFAULT
+  );
+  if (
+    !Number.isInteger(accountReserveRows) ||
+    accountReserveRows < 1 ||
+    accountReserveRows >= DO_ROWS_WRITTEN_PLATFORM_LIMIT
+  ) {
+    throw new Error(
+      `Invalid config: DO_ROWS_ACCOUNT_RESERVE (${accountReserveRows}) must be a positive ` +
+      `integer below ${DO_ROWS_WRITTEN_PLATFORM_LIMIT}`
+    );
+  }
+  const accountSafeStop = DO_ROWS_WRITTEN_PLATFORM_LIMIT - accountReserveRows;
   if (
     ![enqueueRowStop, claimRowStop, optionalRowStop].every(Number.isInteger) ||
     !(enqueueRowStop > 0 && enqueueRowStop <= claimRowStop && claimRowStop <= optionalRowStop) ||
@@ -128,6 +145,12 @@ export function validateConfig(env) {
       `Invalid config: DO_ROWS_ENQUEUE_STOP (${enqueueRowStop}) <= DO_ROWS_CLAIM_STOP ` +
       `(${claimRowStop}) <= DO_ROWS_OPTIONAL_STOP (${optionalRowStop}) must hold, all positive ` +
       `integers below the platform's ${DO_ROWS_WRITTEN_PLATFORM_LIMIT} rows/day`
+    );
+  }
+  if (enqueueRowStop > accountSafeStop) {
+    throw new Error(
+      `Invalid config: DO_ROWS_ENQUEUE_STOP (${enqueueRowStop}) must not exceed the account ` +
+      `safety stop (${accountSafeStop})`
     );
   }
   // A full day of admitted ingress must fit under the enqueue threshold on its own.

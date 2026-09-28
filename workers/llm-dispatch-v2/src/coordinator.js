@@ -9,6 +9,8 @@ import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 // about which purposes exist or what each may spend. Drift-checked in the deploy workflow.
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
 import {
+  DO_ROWS_ACCOUNT_RESERVE,
+  DO_ROWS_WRITTEN_PLATFORM_LIMIT,
   ROWS_PER_BUNDLE,
   ROWS_PER_CLEANUP_JOB,
   ROWS_PER_INGRESS_WRITE_UNIT,
@@ -297,7 +299,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /** Fold the rows written by every statement since the last drain into the in-memory tally. */
   _drainRowCount() {
     const cursors = this._openCursors;
-    if (!cursors || cursors.length === 0) return;
+    if (!cursors || cursors.length === 0) return 0;
     let written = 0;
     for (const cursor of cursors) {
       try {
@@ -311,6 +313,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
     cursors.length = 0;
     this._rowsUnflushed = (this._rowsUnflushed || 0) + written;
+    return written;
   }
 
   /** Rows written but not yet added to scheduler.rows_written_today; reset when persisted. */
@@ -343,28 +346,42 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._rowsWrittenToday(sched);
   }
 
-  // Daily row thresholds (billed rows written; the account-wide platform limit is 100,000).
-  // Below the enqueue threshold everything runs. Above it, new enqueues, schema retries,
-  // scheduled cleanup and retention pruning stop, so the remaining rows fund dispatch. Above the
-  // claim threshold no new leases are claimed. Above the optional threshold acks, retires and
-  // cancels are refused as well (all safe to skip: the client already holds the result).
-  // In-flight completions, attempt fencing, retry authorization and polls are never refused.
+  // Effective row thresholds are clamped to the account-safe stop, leaving rows for account
+  // peers and counter drift. The claim path applies an additional projection for already-active
+  // work and the next bundle. Optional row-writing operations stop at the same safe boundary;
+  // in-flight completions, attempt fencing, retries, and safety pauses remain allowed.
   _enqueueRowStop() {
-    return this._envInt("DO_ROWS_ENQUEUE_STOP", 90000);
+    return Math.min(
+      this._envInt("DO_ROWS_ENQUEUE_STOP", 90000),
+      this._accountRowsStop()
+    );
   }
 
   _claimRowStop() {
-    return this._envInt("DO_ROWS_CLAIM_STOP", 97000);
+    return Math.min(
+      this._envInt("DO_ROWS_CLAIM_STOP", 97000),
+      this._accountRowsStop()
+    );
   }
 
   _optionalRowStop() {
-    return this._envInt("DO_ROWS_OPTIONAL_STOP", 99000);
+    return Math.min(
+      this._envInt("DO_ROWS_OPTIONAL_STOP", 99000),
+      this._accountRowsStop()
+    );
+  }
+
+  _accountRowsStop() {
+    return DO_ROWS_WRITTEN_PLATFORM_LIMIT -
+      this._envInt("DO_ROWS_ACCOUNT_RESERVE", DO_ROWS_ACCOUNT_RESERVE);
   }
 
   _rowBudgetSnapshot(sched) {
     const rows = this._rowsWrittenToday(sched);
     return {
       rows_written_today: rows,
+      account_reserve_rows: DO_ROWS_WRITTEN_PLATFORM_LIMIT - this._accountRowsStop(),
+      account_safe_stop: this._accountRowsStop(),
       enqueue_stop: this._enqueueRowStop(),
       claim_stop: this._claimRowStop(),
       optional_stop: this._optionalRowStop(),
@@ -1614,6 +1631,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
   async reserveRouteRequests({ route_id: routeId, requests = 1 }, now = Date.now()) {
     const invalid = this._validatePauseTarget("route", routeId);
     if (invalid) return { ok: false, error: "unknown_target", detail: invalid };
+    // Out-of-band canary/probe reservations are optional bookkeeping. Stop these writes with the
+    // other optional operations so they cannot spend the completion reserve near the hard limit.
+    if (this._readRowsWrittenToday() >= this._optionalRowStop()) {
+      return { ok: false, error: "daily_row_budget" };
+    }
     const catalog = this._dispatchLimits();
     const catalogRoute = catalog.routes_by_id[routeId];
     return this.ctx.storage.transactionSync(() => {
@@ -3682,13 +3704,45 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
       const sched = this._rollUtcDayIfNeeded(now);
       const rowsToday = this._rowsWrittenToday(sched);
+      const activeBundleCount = Number([...sql.exec(
+        "SELECT COUNT(*) AS n FROM bundles WHERE state='active'"
+      )][0]?.n) || 0;
+      const activeLeasedJobs = Number([...sql.exec(
+        "SELECT COUNT(*) AS n FROM jobs WHERE state='leased'"
+      )][0]?.n) || 0;
+      const leasesRemaining = Math.max(
+        0,
+        this._maxLeasesPerUtcDay() - (Number(sched.lease_count_today) || 0)
+      );
+      const nextBundleJobs = Math.min(this._maxBundleJobs(), leasesRemaining);
+      const inFlightReserveRows =
+        activeLeasedJobs * ROWS_PER_LEASE_WORST + activeBundleCount * ROWS_PER_BUNDLE;
+      const nextBundleReserveRows = nextBundleJobs > 0
+        ? ROWS_PER_BUNDLE + nextBundleJobs * ROWS_PER_LEASE_WORST
+        : 0;
+      const projectedRowsWithClaim =
+        rowsToday + inFlightReserveRows + nextBundleReserveRows;
+      const accountSafeStop = this._accountRowsStop();
+      const rowBudgetDetails = {
+        rows_written_today: rowsToday,
+        account_safe_stop: accountSafeStop,
+        account_reserve_rows: DO_ROWS_WRITTEN_PLATFORM_LIMIT - accountSafeStop,
+        active_leased_jobs: activeLeasedJobs,
+        active_bundles: activeBundleCount,
+        in_flight_reserve_rows: inFlightReserveRows,
+        next_bundle_reserve_rows: nextBundleReserveRows,
+        projected_rows_with_claim: projectedRowsWithClaim,
+      };
       // The daily brake. Past the claim threshold no new lease is claimed, and the empty result
       // is not recorded -- every row left belongs to completing what is already in flight. The
       // row counter is still persisted when rows are pending (completions, acks and retires keep
       // writing), since nothing else flushes it past the enqueue threshold and an eviction would
       // otherwise drop them and reopen the optional-write gate. One row, only when more than one
       // is pending, so an idle braked tick writes nothing.
-      if (rowsToday >= this._claimRowStop()) {
+      if (
+        rowsToday >= this._claimRowStop() ||
+        projectedRowsWithClaim >= accountSafeStop
+      ) {
         if ((this._rowsUnflushed || 0) > 1) {
           sql.exec(
             "UPDATE scheduler SET rows_written_today = rows_written_today + ? WHERE id = 1",
@@ -3701,7 +3755,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           claim_reason: "daily_row_budget",
           claim_diagnostics: {
             ...diagnostics,
-            rows_written_today: rowsToday,
+            ...rowBudgetDetails,
             claim_row_stop: this._claimRowStop(),
           },
         };
@@ -3716,7 +3770,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // ~40 billed rows through retirement. Bundles alone did not bound it -- 1,400 bundles of 5
       // jobs could write ~280k rows against the account's 100,000/day.
       const maxLeasesPerDay = this._maxLeasesPerUtcDay();
-      const leasesRemaining = Math.max(0, maxLeasesPerDay - (Number(sched.lease_count_today) || 0));
       if (leasesRemaining <= 0) {
         return recordEmpty("daily_lease_limit", {
           leases_today: Number(sched.lease_count_today) || 0,
@@ -5373,7 +5426,26 @@ for (const name of Object.getOwnPropertyNames(LLMSchedulerDO.prototype)) {
         try {
           return await original.apply(this, args);
         } finally {
-          this._drainRowCount();
+          const rowsWritten = this._drainRowCount();
+          if (rowsWritten > 0) {
+            let rowsWrittenToday = null;
+            try {
+              rowsWrittenToday = this._readRowsWrittenToday();
+            } catch {
+              // Preserve the RPC result if telemetry cannot read the scheduler row.
+            }
+            this._drainRowCount();
+            console.log(JSON.stringify({
+              event: "do_row_write_budget",
+              rpc_method: name,
+              rows_written_delta: rowsWritten,
+              rows_written_today: rowsWrittenToday,
+              enqueue_stop: this._enqueueRowStop(),
+              claim_stop: this._claimRowStop(),
+              optional_stop: this._optionalRowStop(),
+              account_safe_stop: this._accountRowsStop(),
+            }));
+          }
         }
       },
     }[name],

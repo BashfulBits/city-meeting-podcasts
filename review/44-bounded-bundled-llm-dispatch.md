@@ -2139,10 +2139,28 @@ results; the weekly tournament and manual R5 benchmark preflight their registere
 preparing new samples. This does not claim protection from writes made through Cloudflare Data
 Studio or other account-level tooling, which the coordinator cannot observe.
 
-Historical Workers Observability logs were not available to this investigation: the configured
-Cloudflare API token received HTTP 403 from the telemetry query API, and `wrangler tail` only
-provided a live stream. The production error response and the batch admission path above are the
-available evidence; query access is needed to attribute any additional account-level row writers.
+## Rollover log follow-up (2026-09-28)
+
+The supplied Workers traces show the same outage from 2026-09-27 23:49:54Z through 2026-09-28
+00:59:54Z: 97 requests failed before an RPC method ran, all with the free-tier row-limit error
+during Durable Object schema readiness. The first successful RPC was at 01:01:07Z on the same
+Worker version. This confirms a platform quota lockout that self-cleared after about 71 minutes;
+it does not identify which RPCs consumed the billed rows because the export contains method names
+but no `rowsWritten` values or budget snapshots.
+
+The fixed 97,000 claim stop left only 3,000 rows for already-admitted work, and the account-wide
+limit can also include writers the scheduler cannot count. The follow-up therefore preserves a
+10,000-row account reserve and, before each claim, projects the worst-case write cost of every
+active leased job and bundle plus the next bundle. It closes claim admission when the projection
+reaches the 90,000 safe stop. The same safe stop clamps optional writes, including out-of-band
+route-probe reservations; completions, retry fencing, and safety pauses remain allowed. A
+`do_row_write_budget` structured log records each RPC's billed-row delta and the running counter,
+so future traces can compare the local tally with account-level usage.
+
+The historical telemetry API was unavailable during the initial investigation (HTTP 403), so the
+account-wide contribution of other Durable Objects remains unverified. The 10,000-row reserve is
+the mitigation for that unknown; compare the new per-RPC logs against Cloudflare's account usage
+before changing the reserve or throughput thresholds.
 
 ## Consequences and rejected alternatives
 

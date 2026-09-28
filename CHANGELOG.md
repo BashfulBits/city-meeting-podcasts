@@ -23,18 +23,18 @@ Phase R (Research-Tool Surface)._
   indexes/triggers before running initialization. A current DO avoids replaying startup DDL and
   data migration work on cold starts; incomplete schemas still take the existing initializer,
   which now logs the failing initialization phase.
-- **The v2 row-write brake now applies inside an enqueue batch, and producer preflights fail closed**
-  (`workers/llm-dispatch-v2/src/coordinator.js`, `citypods/compute/llm.py`). Production's
-  `/v2/stats` and `/v2/ingress-status` returned Cloudflare's `Exceeded allowed rows written in
-  Durable Objects free tier` error after the account hit its daily limit. The 90k enqueue brake
-  was checked once per request, while one request could carry 1,000 jobs; it could therefore begin
-  below the stop and commit an entire large batch past it. Superseding a stale job also performed
-  job/model-index writes without consuming ingress units. Enqueue now reserves conservative billed
-  row headroom per new job and per supersede, plus shared batch bookkeeping, and rejects the
-  remainder of a batch when that headroom closes. When the configured v2 status endpoint is
-  unavailable, only that lane stops building/submitting new LLM work; builds and completed-result
-  reconciliation continue. The weekly tournament and manual R5 benchmark also preflight their
-  registered lanes before preparing samples. No pipeline recipe or stored artifact changes.
+- **The v2 row-write brake reserves account and in-flight drain headroom**
+  (`workers/llm-dispatch-v2/src/coordinator.js`, `workers/llm-dispatch-v2/src/write_budget.js`,
+  `citypods/compute/llm.py`). Production logs show Cloudflare's free-tier row-limit exception
+  during Durable Object initialization, preventing all RPC methods for about 70 minutes before
+  service recovered. Enqueue still reserves billed-row headroom per job and supersede inside each
+  transaction. The coordinator now preserves 10,000 account rows and dynamically reserves
+  worst-case completion/retry rows for active leases and the next bundle before admitting another
+  claim. Out-of-band route probes stop writing their optional reservation ledger at the same safe
+  stop. Per-RPC Worker logs report row-write deltas and the running counter for attribution. A
+  configured status preflight error closes only that producer lane; builds and completed-result
+  reconciliation continue. The weekly tournament and manual R5 benchmark preflight their
+  registered lanes. No pipeline recipe or stored artifact changes.
 
 - **The v2 Worker self-heals its own `__unroutable__` jobs instead of leaving them stuck forever**
   (`workers/llm-dispatch-v2/src/coordinator.js`, `scripts/llm_budget_monitor.py`). Like a job

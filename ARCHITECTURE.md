@@ -462,15 +462,19 @@ task is a deliberate config edit; a sub-purpose (`topic-tags:prelabeler`) does n
 prefix's (`topic-tags:tagger`) budget. **The binding daily limit is the account's Durable Object
 row-write budget** (Free plan: 100,000 billed rows/day; every index entry and trigger write is a
 billed row), enforced at **runtime against the rows the coordinator actually writes**: every SQL
-cursor's `rowsWritten` (the figure Cloudflare bills) is summed per RPC and persisted on scheduler
-writes the claim and enqueue paths already make. At `DO_ROWS_ENQUEUE_STOP` (90,000) new enqueues,
-schema retries, scheduled cleanup and retention pruning stop, so the rest of the day funds
-dispatch; at `DO_ROWS_CLAIM_STOP` (97,000) no new lease is claimed; at `DO_ROWS_OPTIONAL_STOP`
-(99,000) acks, retires and cancels are refused too. In-flight completions and polls are never
-refused. There is no working daily lease cap (`MAX_LEASES_PER_UTC_DAY` is a 7,000 backstop), so a
-cheap day dispatches until the budget, not until a worst-case projection. Ingress is bounded by a
-daily quota near real drain (`MAX_JOBS_PER_UTC_DAY` 4,000, `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`
-18,000, divided by the lane budgets above) and a pending cap (`MAX_QUEUED_JOBS` 20,000).
+cursor's `rowsWritten` is summed per RPC and persisted on scheduler writes. A 10,000-row account
+reserve caps enqueue and optional-write admission at 90,000. Before each claim, the coordinator
+reserves 24 rows per active leased job, 6 per active bundle, and worst-case headroom for the next
+bundle; it refuses the claim if that projection reaches the 90,000 safe stop. Dispatch can
+therefore stop below the configured `DO_ROWS_CLAIM_STOP` maximum (97,000) when outstanding work
+needs more drain capacity. In-flight completions and retries remain allowed, and their worst-case
+writes are included in the reserve. Structured `do_row_write_budget` Worker logs record the method,
+per-RPC billed-row delta, running total, and effective stops. External account writers can spend
+the 10,000-row reserve. There is no working daily lease cap (`MAX_LEASES_PER_UTC_DAY` is a 7,000
+backstop), so a cheap day dispatches until the safe projection closes admission. Ingress is bounded
+by a daily quota near real drain (`MAX_JOBS_PER_UTC_DAY` 4,000,
+`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 18,000, divided by the lane budgets above) and a pending cap
+(`MAX_QUEUED_JOBS` 20,000).
 `enqueueBatch` reserves conservative row headroom for each new job and each supersede inside the
 batch transaction, plus shared batch bookkeeping, so a request that starts below the stop cannot
 commit a 1,000-job batch past it. Exact idempotent replays stay write-free. `build()` preflights
