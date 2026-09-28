@@ -2118,6 +2118,32 @@ rather than skipping unchanged ones. `push_state`/`pull_state` were both given a
 for exactly this latency-bound cost; `push_records_merged` never was. The duty-cycle bound contains
 the impact by checkpointing less often, which widens the loss window rather than reducing the cost.
 
+## Row-write brake follow-up (2026-09-27/28)
+
+Two consecutive production days exhausted the Free-plan 100,000 billed DO-row limit. A live
+read-only probe of `/v2/stats` and `/v2/ingress-status` returned Cloudflare's
+`Exceeded allowed rows written in Durable Objects free tier` error. The code review found a
+concrete gap in the progressive brake: `enqueueBatch` checked the 90,000-row threshold only once
+at request entry, then accepted up to `ENQUEUE_BATCH_MAX=1000` jobs in the same transaction. A
+large batch starting just below the stop could commit past it before the next claim tick observed
+the new total. Superseding a stale job also rewrote the job and model indexes without consuming
+ingress units, so those writes were absent from the per-purpose and global ingress quotas (though
+they did honor the threshold as sampled at batch entry).
+
+The implementation now reserves conservative billed-row headroom per new job and supersede,
+plus shared batch bookkeeping, inside the transaction. Once the reservation reaches the enqueue
+stop, remaining items are rejected for that request. Exact idempotent replays stay write-free.
+Producer preflight errors now close only the affected lane for new submissions, preventing a
+status outage from being interpreted as unlimited capacity. The build still reconciles completed
+results; the weekly tournament and manual R5 benchmark preflight their registered lanes before
+preparing new samples. This does not claim protection from writes made through Cloudflare Data
+Studio or other account-level tooling, which the coordinator cannot observe.
+
+Historical Workers Observability logs were not available to this investigation: the configured
+Cloudflare API token received HTTP 403 from the telemetry query API, and `wrangler tail` only
+provided a live stream. The production error response and the batch admission path above are the
+available evidence; query access is needed to attribute any additional account-level row writers.
+
 ## Consequences and rejected alternatives
 
 - **B2 queue-manifest claim:** rejected. Object invalidation is not the atomic scheduler claim and

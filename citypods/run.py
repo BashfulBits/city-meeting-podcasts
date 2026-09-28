@@ -2778,7 +2778,8 @@ def _build_impl(
     # skip building its prompts instead of doing the work only to have every job rejected. The
     # run itself still goes ahead: the same stages apply already-completed deferred results to
     # episodes, and a closed lane (a full queue can stay closed for days) must not stall that.
-    # Fails open; enqueue still enforces every limit. Same URL precedence as
+    # A failed preflight closes only the affected dispatch lanes; render, enrichment, and polling
+    # of already-completed results continue. Same URL precedence as
     # LLMBackendConfig.from_env().
     v2_url = os.environ.get("CITYPODS_LLM_DISPATCH_V2_URL") or os.environ.get("LLM_DISPATCH_V2_URL")
     if not dry_run and phase != "render" and v2_url:
@@ -2790,6 +2791,7 @@ def _build_impl(
                 "chapter-agenda": True,
                 "chapter-locator": True,
                 "r6-moments": moments_config.get("enabled"),
+                "r6-judge": moments_config.get("enabled"),
             }
         )
         if "topic-tags:tagger" in closed:
@@ -2802,7 +2804,7 @@ def _build_impl(
             chapter_agenda_max_dispatches = 0
         if "chapter-locator" in closed:
             chapter_locator_max_dispatches = 0
-        if "r6-moments" in closed:
+        if {"r6-moments", "r6-judge"} & closed:
             moment_max_dispatches = 0
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)

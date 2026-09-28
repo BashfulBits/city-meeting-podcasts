@@ -19,7 +19,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from citypods.compute.llm import PerModelBatchingBackends
+from citypods.compute.llm import PerModelBatchingBackends, dispatch_v2_ingress_open
 from citypods.compute.llm_lanes import lane_for
 from citypods.config import load_city_configs, load_site_config
 from citypods.records import load_records, record_to_episode, source_key
@@ -1095,6 +1095,18 @@ def run(
         raise ValueError(
             "pairwise benchmark judging requires a judge_model outside the candidate models"
         )
+    purposes = ["r5-benchmark:tag"]
+    if pairwise_samples:
+        purposes.append("r5-benchmark:judge")
+    for purpose in purposes:
+        is_open, status = dispatch_v2_ingress_open(purpose)
+        if not is_open:
+            reasons = ", ".join((status or {}).get("reasons") or []) or "closed"
+            print(
+                f"r5-benchmark: {purpose} ingress closed ({reasons}); skipping new benchmark work",
+                flush=True,
+            )
+            return 0
     site = load_site_config(site_config_path)
     prelabeler_llm_schema_version = str(
         ((site.get("tagging") or {}).get("prelabeler") or {}).get("llm_schema_version") or "1"

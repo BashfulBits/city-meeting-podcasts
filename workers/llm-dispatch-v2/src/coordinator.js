@@ -1758,9 +1758,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const rejected = [];
 
       const sched = this._rollUtcDayIfNeeded(now);
+      // Count schema/day-roll writes from this RPC before reserving capacity for its batch.
+      // The method-level tally runs in the wrapper's finally block, too late to protect one
+      // atomic batch from crossing the daily stop in a single request.
+      this._drainRowCount();
       // Past the enqueue threshold the day's remaining rows are dispatch's: nothing new is
       // admitted (an exact idempotent replay still is -- it writes nothing).
       const rowBudgetClosed = this._rowsWrittenToday(sched) >= this._enqueueRowStop();
+      const rowBudgetBase = this._rowsWrittenToday(sched);
+      // Shared per-batch writes: purpose-ledger upserts and the scheduler summary update.
+      const batchWriteReserve = 64;
+      let rowBudgetReserved = 0;
+      const canReserveRows = (rows) =>
+        rowBudgetBase + rowBudgetReserved + rows + batchWriteReserve < this._enqueueRowStop();
       const maxQueued = this._maxQueuedJobs();
       const queuedNow = Number(sched.queued_job_count) || 0;
       let jobsIngestedToday = sched.jobs_ingested_today;
@@ -1881,6 +1891,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
               rejected.push({ id: job.id, reason: "queue_full" });
               continue;
             }
+            const supersedeUnits = this._ingressWriteUnitsFor({
+              ...job,
+              policy_json: policyJson,
+            });
+            // Superseding does not consume admission quota, but it rewrites the job indexes and
+            // rebuilds its model indexes. Four rows per write unit conservatively bounds that
+            // real write load so a stale payload cannot bypass the daily row brake.
+            const supersedeRows = 4 * supersedeUnits;
+            if (!canReserveRows(supersedeRows)) {
+              rejected.push({ id: job.id, reason: "daily_row_budget" });
+              continue;
+            }
             if (row.state !== "queued") queuedAdded += 1;
             sql.exec(
               `UPDATE jobs SET
@@ -1912,6 +1934,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
               priority,
               now
             );
+            rowBudgetReserved += supersedeRows;
             // Superseding replaces a row that already existed; it is not new admission and must
             // not consume today's cap, for the same reason an idempotent replay doesn't.
             accepted.push({ id: row.id, submitted_id: job.id, superseded: true });
@@ -2005,6 +2028,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
           continue;
         }
 
+        // Re-check row headroom for every job. Checking only at batch entry allowed one
+        // ENQUEUE_BATCH_MAX-sized request to start just below the stop and commit thousands of
+        // jobs before the next claim observed the limit.
+        const estimatedRows = ROWS_PER_INGRESS_WRITE_UNIT * writeUnits;
+        if (!canReserveRows(estimatedRows)) {
+          rejected.push({ id: job.id, reason: "daily_row_budget" });
+          continue;
+        }
+
         sql.exec(
           `INSERT INTO jobs (
             id, idempotency_key, request_digest, provider_idempotency_key,
@@ -2035,6 +2067,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         newlyInsertedCount++;
         queuedAdded += 1;
         newlyAdmittedWriteUnits += writeUnits;
+        rowBudgetReserved += estimatedRows;
         purposeUsage.set(purpose, {
           jobs_ingested: purposeUsageRow.jobs_ingested + 1,
           write_units: purposeUsageRow.write_units + writeUnits,

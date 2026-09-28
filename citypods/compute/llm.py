@@ -3366,10 +3366,10 @@ def dispatch_v2_ingress_open(
 ) -> tuple[bool, Mapping[str, Any] | None]:
     """Whether the v2 coordinator would admit new work for ``purpose`` right now.
 
-    Fails OPEN: with no v2 Worker configured, or when the preflight itself errors, returns
-    ``(True, None)``. The check only saves a producer from building work the Worker would refuse;
-    enqueue still enforces every limit, so a missed "closed" costs a rejected submission, while a
-    spurious "closed" would idle a lane for no reason.
+    With no v2 Worker configured, returns ``(True, None)`` for direct-mode compatibility. When a
+    configured v2 preflight errors, fails closed for this lane: otherwise an outage of the budget
+    endpoint would make every producer assume unlimited headroom and continue building/submitting
+    work while the coordinator is already rejecting it.
     """
     try:
         client = backend or LiteLLMBackend(LLMBackendConfig.from_env())
@@ -3380,8 +3380,8 @@ def dispatch_v2_ingress_open(
     try:
         status = client.dispatch_v2_ingress_status(purpose)
     except LLMBackendError as exc:
-        print(f"llm ingress preflight for {purpose!r} failed ({exc}); assuming open", flush=True)
-        return True, None
+        print(f"llm ingress preflight for {purpose!r} failed ({exc}); closing lane", flush=True)
+        return False, {"open": False, "purpose": purpose, "reasons": ["preflight_unavailable"]}
     return bool(status.get("open")), status
 
 
