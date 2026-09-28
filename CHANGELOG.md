@@ -32,7 +32,9 @@ Phase R (Research-Tool Surface)._
   worst-case completion/retry rows for active leases and the next bundle before admitting another
   claim. Out-of-band route probes stop writing their optional reservation ledger at the same safe
   stop. Per-RPC Worker logs report row-write deltas and the running counter for attribution. A
-  configured status preflight error closes only that producer lane; builds and completed-result
+  rate-limited `do_row_budget_stop` event identifies which soft gate deferred work and reports
+  tracked headroom plus the claim projection. A configured status preflight error closes only that
+  producer lane; builds and completed-result
   reconciliation continue. The weekly tournament and manual R5 benchmark preflight their
   registered lanes. No pipeline recipe or stored artifact changes.
 

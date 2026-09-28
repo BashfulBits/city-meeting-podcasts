@@ -469,8 +469,11 @@ bundle; it refuses the claim if that projection reaches the 90,000 safe stop. Di
 therefore stop below the configured `DO_ROWS_CLAIM_STOP` maximum (97,000) when outstanding work
 needs more drain capacity. In-flight completions and retries remain allowed, and their worst-case
 writes are included in the reserve. Structured `do_row_write_budget` Worker logs record the method,
-per-RPC billed-row delta, running total, and effective stops. External account writers can spend
-the 10,000-row reserve. There is no working daily lease cap (`MAX_LEASES_PER_UTC_DAY` is a 7,000
+per-RPC billed-row delta, running total, and effective stops. A separate, rate-limited
+`do_row_budget_stop` log records the gate that deferred work, remaining headroom, and claim
+projection; it is emitted at most once per gate per five minutes per DO instance. External account
+writers can spend the 10,000-row reserve. There is no working daily lease cap
+(`MAX_LEASES_PER_UTC_DAY` is a 7,000
 backstop), so a cheap day dispatches until the safe projection closes admission. Ingress is bounded
 by a daily quota near real drain (`MAX_JOBS_PER_UTC_DAY` 4,000,
 `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 18,000, divided by the lane budgets above) and a pending cap

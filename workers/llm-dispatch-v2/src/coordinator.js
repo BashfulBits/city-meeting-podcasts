@@ -376,6 +376,42 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._envInt("DO_ROWS_ACCOUNT_RESERVE", DO_ROWS_ACCOUNT_RESERVE);
   }
 
+  /** Emit a rate-limited breadcrumb when a soft row cap actually defers work. */
+  _logRowBudgetStop(gate, details = {}) {
+    const now = Date.now();
+    const lastByGate = this._rowBudgetStopLogAt || (this._rowBudgetStopLogAt = new Map());
+    const last = lastByGate.get(gate) || 0;
+    if (now - last < 5 * 60_000) return;
+    lastByGate.set(gate, now);
+
+    let rowsWrittenToday = details.rows_written_today;
+    if (rowsWrittenToday === undefined) {
+      try {
+        rowsWrittenToday = this._readRowsWrittenToday();
+      } catch {
+        rowsWrittenToday = null;
+      }
+    }
+    const accountSafeStop = this._accountRowsStop();
+    console.warn(JSON.stringify({
+      event: "do_row_budget_stop",
+      gate,
+      rows_written_today: rowsWrittenToday,
+      rows_to_account_limit: rowsWrittenToday === null
+        ? null
+        : DO_ROWS_WRITTEN_PLATFORM_LIMIT - rowsWrittenToday,
+      rows_to_account_safe_stop: rowsWrittenToday === null
+        ? null
+        : accountSafeStop - rowsWrittenToday,
+      account_reserve_rows: DO_ROWS_WRITTEN_PLATFORM_LIMIT - accountSafeStop,
+      enqueue_stop: this._enqueueRowStop(),
+      claim_stop: this._claimRowStop(),
+      optional_stop: this._optionalRowStop(),
+      account_safe_stop: accountSafeStop,
+      ...details,
+    }));
+  }
+
   _rowBudgetSnapshot(sched) {
     const rows = this._rowsWrittenToday(sched);
     return {
@@ -414,7 +450,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const maxQueued = this._maxQueuedJobs();
     const maxJobs = this._maxJobsPerUtcDay();
     const reasons = [];
-    if (!rowBudget.enqueue_open) reasons.push("daily_row_budget");
+    if (!rowBudget.enqueue_open) {
+      reasons.push("daily_row_budget");
+      this._logRowBudgetStop("ingress_preflight", rowBudget);
+    }
     if (queued >= maxQueued) reasons.push("queue_full");
     if (jobsToday >= maxJobs) reasons.push("daily_cap_exceeded");
 
@@ -1634,6 +1673,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Out-of-band canary/probe reservations are optional bookkeeping. Stop these writes with the
     // other optional operations so they cannot spend the completion reserve near the hard limit.
     if (this._readRowsWrittenToday() >= this._optionalRowStop()) {
+      this._logRowBudgetStop("route_probe_reservation");
       return { ok: false, error: "daily_row_budget" };
     }
     const catalog = this._dispatchLimits();
@@ -1832,6 +1872,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // a fresh id locally before learning the original was already accepted).
             accepted.push({ id: row.id, submitted_id: job.id });
           } else if (rowBudgetClosed) {
+            this._logRowBudgetStop("enqueue", {
+              rows_written_today: rowBudgetBase,
+              rejected_batch_size: jobs.length,
+            });
             rejected.push({ id: job.id, reason: "daily_row_budget" });
           } else if (row.state === "leased" || row.state === "unknown_attempt") {
             // A genuinely in-flight attempt is the one case superseding cannot safely cover: its
@@ -1922,6 +1966,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
             // real write load so a stale payload cannot bypass the daily row brake.
             const supersedeRows = 4 * supersedeUnits;
             if (!canReserveRows(supersedeRows)) {
+              this._logRowBudgetStop("enqueue_supersede_reservation", {
+                rows_written_today: rowBudgetBase,
+                rows_reserved_in_batch: rowBudgetReserved,
+                supersede_estimated_rows: supersedeRows,
+                shared_batch_reserve_rows: batchWriteReserve,
+                projected_rows: rowBudgetBase + rowBudgetReserved + supersedeRows + batchWriteReserve,
+                batch_size: jobs.length,
+              });
               rejected.push({ id: job.id, reason: "daily_row_budget" });
               continue;
             }
@@ -1965,6 +2017,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
 
         if (rowBudgetClosed) {
+          this._logRowBudgetStop("enqueue", {
+            rows_written_today: rowBudgetBase,
+            rejected_batch_size: jobs.length,
+          });
           rejected.push({ id: job.id, reason: "daily_row_budget" });
           continue;
         }
@@ -2055,6 +2111,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // jobs before the next claim observed the limit.
         const estimatedRows = ROWS_PER_INGRESS_WRITE_UNIT * writeUnits;
         if (!canReserveRows(estimatedRows)) {
+          this._logRowBudgetStop("enqueue_batch_reservation", {
+            rows_written_today: rowBudgetBase,
+            rows_reserved_in_batch: rowBudgetReserved,
+            next_job_estimated_rows: estimatedRows,
+            shared_batch_reserve_rows: batchWriteReserve,
+            projected_rows: rowBudgetBase + rowBudgetReserved + estimatedRows + batchWriteReserve,
+            batch_size: jobs.length,
+          });
           rejected.push({ id: job.id, reason: "daily_row_budget" });
           continue;
         }
@@ -2186,6 +2250,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         sched.jobs_ingested_today >= maxJobsToday ||
         this._rowsWrittenToday(sched) >= this._enqueueRowStop()
       ) {
+        if (this._rowsWrittenToday(sched) >= this._enqueueRowStop()) {
+          this._logRowBudgetStop("schema_retry", {
+            rows_written_today: this._rowsWrittenToday(sched),
+          });
+        }
         return { status: "daily_cap_exceeded" };
       }
 
@@ -2807,6 +2876,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Past the optional threshold a cancel is deferred: report every job as still in flight so
     // the caller keeps it and retries after the reset.
     if (this._readRowsWrittenToday() >= this._optionalRowStop()) {
+      this._logRowBudgetStop("cancel");
       return { cancelled: [], in_flight: [...jobIds], not_found: [] };
     }
     return this.ctx.storage.transactionSync(() => {
@@ -3743,6 +3813,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         rowsToday >= this._claimRowStop() ||
         projectedRowsWithClaim >= accountSafeStop
       ) {
+        this._logRowBudgetStop("claim_admission", {
+          ...rowBudgetDetails,
+          claim_row_stop: this._claimRowStop(),
+          claim_stop_reached: rowsToday >= this._claimRowStop(),
+        });
         if ((this._rowsUnflushed || 0) > 1) {
           sql.exec(
             "UPDATE scheduler SET rows_written_today = rows_written_today + ? WHERE id = 1",
@@ -5200,7 +5275,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
    */
   async recountQueuedJobs() {
     const sql = this._getSql();
-    if (this._readRowsWrittenToday() >= this._enqueueRowStop()) return { queued: null, skipped: true };
+    if (this._readRowsWrittenToday() >= this._enqueueRowStop()) {
+      this._logRowBudgetStop("queued_recount");
+      return { queued: null, skipped: true };
+    }
     return this.ctx.storage.transactionSync(() => {
       this._ensureQueuedJobCounter();
       const actual = [...sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'")][0]?.n || 0;
@@ -5216,7 +5294,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
   async purgePendingBatch(limit) {
     const sql = this._getSql();
     // Cleanup is deferrable: past the enqueue threshold the backlog waits for tomorrow.
-    if (this._readRowsWrittenToday() >= this._enqueueRowStop()) return { jobs: [] };
+    if (this._readRowsWrittenToday() >= this._enqueueRowStop()) {
+      this._logRowBudgetStop("retention_cleanup");
+      return { jobs: [] };
+    }
     const retentionDays = this._envInt("COMPLETED_RETENTION_DAYS", 38);
     const cutoff = Date.now() - retentionDays * 86_400_000;
     return this.ctx.storage.transactionSync(() => {
@@ -5304,6 +5385,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Optional: the client already persisted these results; refusing only defers the row's
     // release to retention cleanup.
     if (this._readRowsWrittenToday() >= this._optionalRowStop()) {
+      this._logRowBudgetStop("result_ack");
       return { acked: [], ignored: [...jobIds] };
     }
     return this.ctx.storage.transactionSync(() => {
@@ -5346,6 +5428,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     if (!Array.isArray(items) || items.length === 0) return { retired: [], ignored: [] };
     const sql = this._getSql();
     if (this._readRowsWrittenToday() >= this._optionalRowStop()) {
+      this._logRowBudgetStop("result_retire");
       return { retired: [], ignored: items.map((item) => item.id) };
     }
     return this.ctx.storage.transactionSync(() => {

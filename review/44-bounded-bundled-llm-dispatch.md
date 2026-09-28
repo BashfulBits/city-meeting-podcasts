@@ -2155,12 +2155,17 @@ active leased job and bundle plus the next bundle. It closes claim admission whe
 reaches the 90,000 safe stop. The same safe stop clamps optional writes, including out-of-band
 route-probe reservations; completions, retry fencing, and safety pauses remain allowed. A
 `do_row_write_budget` structured log records each RPC's billed-row delta and the running counter,
-so future traces can compare the local tally with account-level usage.
+so future traces can compare the local tally with account-level usage. When an operation is
+actually deferred, a separate `do_row_budget_stop` event names the gate and records remaining
+headroom and its projection. It is rate-limited to one event per gate every five minutes per DO
+instance to keep repeated cron ticks from flooding logs. The 10,000-row reserve is a conservative
+initial setting, not an incident-derived estimate; tune it after comparing these logs with
+account-level usage.
 
 The historical telemetry API was unavailable during the initial investigation (HTTP 403), so the
-account-wide contribution of other Durable Objects remains unverified. The 10,000-row reserve is
-the mitigation for that unknown; compare the new per-RPC logs against Cloudflare's account usage
-before changing the reserve or throughput thresholds.
+account-wide contribution of other Durable Objects remains unverified. The reserve protects
+against that unknown until per-RPC and gate-hit logs can be compared with Cloudflare's account
+usage.
 
 ## Consequences and rejected alternatives
 
