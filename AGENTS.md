@@ -28,6 +28,21 @@ Read this first, then the doc it points you to for your task.
 3. **Update the docs per the lifecycle contract** (below + in CONTRIBUTING) — this is mandatory, because
    stale design docs are how this project's earlier reviews went out of date.
 
+## Implementing from a breakout doc: stop and ask
+
+When you implement from an L3 `review/NN` doc:
+
+1. **Do exactly what the doc specifies**; its "Do not modify" list is binding. Do not invent new code paths, files, config keys, schemas, endpoints, workflow steps or
+   dependencies the doc does not name.
+2. **Stop and ask the maintainer** (a comment on the GitHub issue or PR, or in chat, stating the question and what you found) instead of assuming, when any of these happen:
+   - the code does not match what the doc describes (a function moved or was renamed, a field is missing, a signature differs);
+   - the doc is silent or ambiguous about something you need to decide;
+   - a needed change touches a file on the "Do not modify" list, or a file/module the doc does not mention;
+   - a test the doc specifies cannot pass as written, or a golden value differs from what the code produces;
+   - a result is surprising (live data, limits, costs) or a step would change production behaviour, spend quota, or touch credentials.
+3. Do not widen scope to fix unrelated problems you notice; record them in the PR description as follow-ups.
+4. Finish with the doc-update contract (below): update `review/11`, `CHANGELOG.md`, and `ARCHITECTURE.md` as the doc lists.
+
 ## GitHub execution metadata
 
 [`review/11`](review/11-technical-design-roadmap.md) owns scope and strategic sequence. The public
