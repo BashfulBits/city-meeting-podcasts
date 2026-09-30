@@ -66,8 +66,6 @@ structured_output_methods:
 # own `model` selector does, and fails the compile if either side is unknown. Both the Python
 # scheduler (`select_route`) and the `llm-dispatch-v2` Worker (`routes.js`) expand a
 # request's allowed models with this map, so it takes effect for every transport uniformly.
-#
-# Mistral Medium jobs route strictly to native Mistral routes.
 model_routing:
   gemini/gemini-3.7-flash:
     - gemini/gemini-3.6-flash
@@ -76,33 +74,8 @@ model_routing:
 
 
 # `api_base`/`chat_path` are the OpenAI-shaped upstream every account of that provider is called
-# through -- required for every provider, not just Mistral.
+# through -- required for every provider.
 providers:
-  mistral:
-    structured_output_method: json_schema
-    api_base: https://api.mistral.ai
-    ai_gateway_slug: mistral
-    ai_gateway_chat_path: /v1/chat/completions
-    chat_path: /v1/chat/completions
-    # Mistral's account-wide limit is 60 RPM (one submission per second), shared by every model.
-    rpm: 60
-    # Mistral meters tokens account-wide per month. The 2026-08-18 hotfix zeroed this to stop
-    # consumption; that stopgap is reverted here (2026-09-09) because it never actually gated
-    # anything -- `monthly_tpm` has no consumer in either the Worker or the Python scheduler, and
-    # compile_llm_limits.py drops it from the compiled provider block entirely, so it only ever
-    # scaled itself. What genuinely stops consumption is the billing-signal path: an "insufficient
-    # budget"/"out of credits" response now classifies as `payment_required`
-    # (workers/llm-dispatch-v2/src/classify.js, rule `insufficient-budget`), which drives
-    # pacing.js's paymentRequiredBackoffUntil day -> week -> month cooldown ladder and pins the
-    # route until the allowance actually rolls over. Restored to Mistral's published free-tier
-    # monthly allowance, the pre-hotfix value.
-    monthly_tpm: 1000000000
-    reset_day: 1
-    accounts:
-      - id: primary
-        api_key_env: MISTRAL_API_KEY
-      - id: secondary
-        api_key_env: MISTRAL_API_KEY_SECONDARY
   # Airforce custom provider: provides free OpenAI-compatible endpoints.
   # At 1 RPM account-wide, more than one in-flight request cannot increase sustainable throughput
   # and can race the upstream limiter. Live 429 error responses report 1 RPM (plan_rpm: 1),
@@ -729,55 +702,6 @@ routes:
     observed_on: "2026-09-12"
     observed_burst: 30
     observed_input_ceiling: 7000
-
-  # ==========================================
-  # MISTRAL ROUTES (Audited Exact Quotas)
-  # ==========================================
-  # Only Codestral is configured: it is the one model family this account's plan provisions.
-  # Codestral 2508: 2.08 RPS (124 RPM), 625k TPM
-  - route_id: mistral_codestral_2508_primary
-    model: mistral/codestral-2508
-    provider: mistral
-    upstream_model: codestral-2508
-    input_context_limit: 256000
-    output_context_limit: 256000
-    account_id: primary
-    rpm: 124
-    tpm: 625000
-    hard_input_ceiling: 249027
-    free: true
-    observed_on: "2026-09-12"
-    observed_burst: 40
-    observed_input_ceiling: 249027
-
-  # ACCOUNT-TIER MAP (verified 2026-09-12 on all three keys, re-verified 2026-09-24 under a v2
-  # dispatch pause -- an account/organization-tier restriction shared by every key, not a per-key
-  # billing state):
-  #   WORKS: Ministral (3b/8b/14b, dated and -latest), Codestral (-2508/-latest), mistral-embed,
-  #     voxtral-*, mistral-ocr-*, mistral-code-*, mistral-vibe-cli-*, mistral-moderation-2603.
-  #   BLOCKED (429, x-ratelimit-limit-req-minute: 0 -- no allowance at all): devstral-2512,
-  #     mistral-small-2603/-latest, every mistral-medium variant, magistral-medium/-small.
-  #   BLOCKED (403 "not available in your subscription tier"): mistral-large-2512.
-  #   BLOCKED (403 "is a Labs model"): labs-leanstral-* -- an admin preference toggle.
-  # The 21 routes for the blocked models (and the unused tertiary account, whose key was never
-  # set on the dispatch Workers) were removed 2026-09-24: they could never serve a request. If
-  # the plan changes, the provider-catalog reconciler (review/48) proposes them again.
-  #
-  # Secondary account: same per-model limits, an independent quota.
-  - route_id: mistral_codestral_2508_secondary
-    model: mistral/codestral-2508
-    provider: mistral
-    upstream_model: codestral-2508
-    input_context_limit: 256000
-    output_context_limit: 256000
-    account_id: secondary
-    rpm: 124
-    tpm: 625000
-    hard_input_ceiling: 249027
-    free: true
-    observed_on: "2026-09-12"
-    observed_burst: 40
-    observed_input_ceiling: 249027
 
   # ==========================================
   # Z.AI ROUTES (Zhipu AI Global GLM Series)

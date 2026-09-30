@@ -8,7 +8,6 @@ LiteLLM and multi-provider routes:
 | **Google AI Studio** | `GEMINI_API_KEY`, `GEMINI_API_KEY_SECONDARY` | [aistudio.google.com](https://aistudio.google.com) | Direct & Dispatch | Gemma 4 26B/31B (29k Free RPD), Gemini 3.5/3.1 Flash Lite (1k Free RPD), Flash Burst |
 | **Groq** | `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) | Direct & Dispatch | Llama 3.3 70B (30 RPM / 1,000 Free RPD) |
 | **SambaNova** | `SAMBANOVA_API_KEY` | [cloud.sambanova.ai](https://cloud.sambanova.ai) | Direct & Dispatch | Llama 3.3 70B & Qwen 2.5 72B (20 RPM / 1,000 Free RPD) |
-| **Mistral AI** | `MISTRAL_API_KEY`, `MISTRAL_API_KEY_SECONDARY` | [console.mistral.ai](https://console.mistral.ai) | Direct & Dispatch | Mistral Large, Mistral Small 2603, Codestral, Devstral, Medium (account-specific monthly pools) |
 | **Z.AI (Zhipu AI)** | `ZAI_API_KEY` | [z.ai](https://z.ai) | Direct & Dispatch | GLM-4.7-Flash & GLM-4.5-Flash (15 RPM / 500 Free RPD) |
 | **SiliconFlow** | `SILICONFLOW_API_KEY` | [cloud.siliconflow.com](https://cloud.siliconflow.com) (**global site — not `.cn`**, see note below) | Direct & Dispatch | **Paid only for us:** DeepSeek-V4-Flash ($0.049/M promo) & Qwen 2.5 72B ($0.07/M). No free route — the routes stop working at a zero balance |
 | **DeepSeek Direct** | `DEEPSEEK_API_KEY` | [platform.deepseek.com](https://platform.deepseek.com) | Direct & Dispatch | DeepSeek-V4-Flash ($0.14/M base, $0.0028 cache, $0.07 off-peak), DeepSeek-V4-Pro |
@@ -56,13 +55,13 @@ across providers and accounts for selection and CAS ledger keys.
 
 Account and secret checklist (performed by the maintainer, never pasted into chat or committed):
 
-1. Create API keys in Google AI Studio, Groq, SambaNova, Mistral Console, Z.AI, SiliconFlow, DeepSeek, OpenRouter, Kilo Code, OpenCode, NVIDIA build.nvidia.com, and/or OrcaRouter.
+1. Create API keys in Google AI Studio, Groq, SambaNova, Z.AI, SiliconFlow, DeepSeek, OpenRouter, Kilo Code, OpenCode, NVIDIA build.nvidia.com, and/or OrcaRouter.
 2. For local testing, export the corresponding keys in your shell.
 3. For GitHub Actions, add the keys as repository/environment secrets (e.g., `gh secret set GROQ_API_KEY`,
    `gh secret set NVIDIA_API_KEY`, `gh secret set ORCAROUTER_API_KEY`).
 4. For the Cloudflare Worker, from `workers/llm-dispatch-v2/`, run `npx wrangler secret put BEARER_TOKEN`
    plus `npx wrangler secret put <NAME>` for every `api_key_env` declared in [`config/provider_limits.yml`](config/provider_limits.yml)
    (`GEMINI_API_KEY`, `GEMINI_API_KEY_SECONDARY`, `GROQ_API_KEY`, `SAMBANOVA_API_KEY`,
-   `MISTRAL_API_KEY`, `MISTRAL_API_KEY_SECONDARY`, `ZAI_API_KEY`,
+   `ZAI_API_KEY`,
    `SILICONFLOW_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, `KILO_API_KEY`, `OPENCODE_API_KEY`,
    `NVIDIA_API_KEY`, `ORCAROUTER_API_KEY`) that this deployment dispatches to.

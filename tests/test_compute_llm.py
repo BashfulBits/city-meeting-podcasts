@@ -1167,10 +1167,12 @@ def test_direct_call_uses_ai_gateway_base_url_override(monkeypatch):
     monkeypatch.setenv("AI_GATEWAY_BASE_URL", "https://custom-gw.example.com/v1/custom-gw")
     monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
     monkeypatch.delenv("AI_GATEWAY_AUTH_TOKEN", raising=False)
-    backend, calls = _recording_backend("mistral/codestral-2508")
+    backend, calls = _recording_backend("gemini/gemini-3.6-flash")
 
     assert isinstance(backend.run_inference(job(content="test")), JobResult)
-    assert calls[0]["api_base"] == "https://custom-gw.example.com/v1/custom-gw/mistral/v1"
+    assert calls[0]["api_base"] == (
+        "https://custom-gw.example.com/v1/custom-gw/google-ai-studio/v1beta"
+    )
     assert not calls[0].get("extra_headers")
 
 

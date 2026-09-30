@@ -17,6 +17,22 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **The v2 Worker's numeric tunables moved out of Cloudflare variables, and native Mistral was
+  removed.** The 36 non-secret tunables (window sizes, retry budgets, retention, daily caps, the ingress
+  budget) now live in `config/dispatch_tuning.yml`, compiled to `workers/llm-dispatch-v2/src/dispatch_tuning.json`
+  by `scripts/compile_dispatch_tuning.py` (drift-checked in `llm-dispatch-v2-worker-deploy.yml`) and applied
+  by `src/tuning.js` at the `fetch`/`scheduled` entry points and in the Durable Object constructor. A
+  Cloudflare variable or secret of the same name still overrides a compiled value, so an incident override
+  is unchanged. The Worker's only declared variable is now `AI_GATEWAY_ID`; the dead
+  `UNKNOWN_ATTEMPT_POLICY` and the empty `AI_GATEWAY_BASE_URL` were dropped, taking the deployed Worker
+  from 39 variables to 1 (Workers Free caps variables plus secrets at 64). `scripts/compile_llm_lanes.py`
+  now reads the ingress budget from the tuning YAML. The native Mistral provider and its two Codestral
+  routes (account-tier restricted, monthly metered, used by no lane) were removed from
+  `config/provider_limits.yml` and the compiled catalogs, and the `MISTRAL_*` secrets were dropped from the
+  workflows that passed them. The `mistral/codestral-latest` route served by Airforce is unchanged.
+  Deploy removes the old dashboard variables automatically; the Mistral, `DISPATCH_AUTH_TOKEN` and other
+  orphan Worker *secrets* must be deleted by hand (`wrangler secret delete`). See review/49.
+
 - **The v2 Durable Object skips startup schema writes once its schema is current**
   (`workers/llm-dispatch-v2/src/coordinator.js`). A read-only catalog check now verifies the
   required tables, compatibility columns, one-time model migration, clustered tables, and active

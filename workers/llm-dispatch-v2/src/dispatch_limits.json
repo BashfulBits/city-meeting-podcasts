@@ -1,29 +1,12 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 42,
-    "providers_count": 12,
+    "routes_count": 40,
+    "providers_count": 11,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
   },
   "providers": {
-    "mistral": {
-      "api_base": "https://api.mistral.ai",
-      "ai_gateway_slug": "mistral",
-      "ai_gateway_chat_path": "/v1/chat/completions",
-      "chat_path": "/v1/chat/completions",
-      "rpm": 60,
-      "accounts": [
-        {
-          "id": "primary",
-          "api_key_env": "MISTRAL_API_KEY"
-        },
-        {
-          "id": "secondary",
-          "api_key_env": "MISTRAL_API_KEY_SECONDARY"
-        }
-      ]
-    },
     "airforce": {
       "api_base": "https://api.airforce/v1",
       "ai_gateway_slug": "custom-airforce",
@@ -1079,76 +1062,6 @@
       "request_params": null,
       "reasoning_controls": null
     },
-    "mistral_codestral_2508_primary": {
-      "route_id": "mistral_codestral_2508_primary",
-      "model": "mistral/codestral-2508",
-      "provider": "mistral",
-      "upstream_model": "codestral-2508",
-      "input_context_limit": 256000,
-      "output_context_limit": 256000,
-      "hard_input_ceiling": 249027,
-      "hard_input_ceiling_tolerance": null,
-      "input_token_ratio": null,
-      "account_id": "primary",
-      "rpm": 124,
-      "rpd": null,
-      "tpm": 562500,
-      "concurrency": null,
-      "request_start_margin_seconds": null,
-      "free": true,
-      "input_per_token": null,
-      "output_per_token": null,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": "2026-09-12",
-      "observed_rpm": null,
-      "observed_burst": 40,
-      "observed_input_ceiling": 249027,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_method": "json_schema",
-      "structured_output_response_format": "json_schema",
-      "structured_output_include_schema_in_prompt": false,
-      "structured_output_schema_strip_keys": [],
-      "request_params": null,
-      "reasoning_controls": null
-    },
-    "mistral_codestral_2508_secondary": {
-      "route_id": "mistral_codestral_2508_secondary",
-      "model": "mistral/codestral-2508",
-      "provider": "mistral",
-      "upstream_model": "codestral-2508",
-      "input_context_limit": 256000,
-      "output_context_limit": 256000,
-      "hard_input_ceiling": 249027,
-      "hard_input_ceiling_tolerance": null,
-      "input_token_ratio": null,
-      "account_id": "secondary",
-      "rpm": 124,
-      "rpd": null,
-      "tpm": 562500,
-      "concurrency": null,
-      "request_start_margin_seconds": null,
-      "free": true,
-      "input_per_token": null,
-      "output_per_token": null,
-      "pricing": null,
-      "reset_timezone": null,
-      "observed_on": "2026-09-12",
-      "observed_rpm": null,
-      "observed_burst": 40,
-      "observed_input_ceiling": 249027,
-      "observed_recovery_seconds": null,
-      "retry_after_trustworthy": null,
-      "upstream_429_default": null,
-      "structured_output_method": "json_schema",
-      "structured_output_response_format": "json_schema",
-      "structured_output_include_schema_in_prompt": false,
-      "structured_output_schema_strip_keys": [],
-      "request_params": null,
-      "reasoning_controls": null
-    },
     "zai_glm_4_7_flash_primary": {
       "route_id": "zai_glm_4_7_flash_primary",
       "model": "zai/glm-4.7-flash",
@@ -1836,11 +1749,6 @@
     "qwen/qwen3.8-27b": [
       "groq_qwen_3_8_27b_primary"
     ],
-    "mistral/codestral-2508": [
-      "mistral_codestral_2508_primary",
-      "mistral_codestral_2508_secondary",
-      "mistral_codestral_airforce_primary"
-    ],
     "zai/glm-4.7-flash": [
       "zai_glm_4_7_flash_primary"
     ],
@@ -1876,6 +1784,9 @@
     ],
     "zai/glm-5.3-flash": [
       "orcarouter_zai_glm_5_3_flash_free"
+    ],
+    "mistral/codestral-2508": [
+      "mistral_codestral_airforce_primary"
     ]
   },
   "model_aliases": {
@@ -1914,8 +1825,6 @@
     "groq/qwen/qwen3.6-27b": "qwen/qwen3.6-27b",
     "qwen/qwen3.8-27b": "qwen/qwen3.8-27b",
     "groq/qwen/qwen3.8-27b": "qwen/qwen3.8-27b",
-    "codestral-2508": "mistral/codestral-2508",
-    "mistral/codestral-2508": "mistral/codestral-2508",
     "glm-4.7-flash": "zai/glm-4.7-flash",
     "zai/glm-4.7-flash": "zai/glm-4.7-flash",
     "glm-4.5-flash": "zai/glm-4.5-flash",

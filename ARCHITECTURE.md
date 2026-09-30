@@ -477,7 +477,9 @@ writers can spend the 10,000-row reserve. There is no working daily lease cap
 backstop), so a cheap day dispatches until the safe projection closes admission. Ingress is bounded
 by a daily quota near real drain (`MAX_JOBS_PER_UTC_DAY` 4,000,
 `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 18,000, divided by the lane budgets above) and a pending cap
-(`MAX_QUEUED_JOBS` 20,000).
+(`MAX_QUEUED_JOBS` 20,000). These tunables are compiled from `config/dispatch_tuning.yml`
+into `src/dispatch_tuning.json` (a same-named Cloudflare variable still overrides), not declared as
+Worker variables, to stay under Workers Free's 64 variable-plus-secret limit.
 `enqueueBatch` reserves conservative row headroom for each new job and each supersede inside the
 batch transaction, plus shared batch bookkeeping, so a request that starts below the stop cannot
 commit a 1,000-job batch past it. Exact idempotent replays stay write-free. `build()` preflights

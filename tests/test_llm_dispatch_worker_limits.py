@@ -9,6 +9,12 @@ Secrets are set out of band (`wrangler secret put`), so they are derived from wh
 needs: its fixed infrastructure secrets plus every provider account's `api_key_env` in
 config/provider_limits.yml (gateway.js reads `env[account.api_key_env]`). Adding a provider
 account therefore spends one variable too, and this test sees it.
+
+The numeric tunables are NOT Cloudflare variables: they live in config/dispatch_tuning.yml and are
+compiled into the Worker bundle (scripts/compile_dispatch_tuning.py), which is what took this Worker
+from 63 of 64 items to a handful. A dashboard variable named like a tuning key is still honored
+as an
+override, so the names must never collide with a secret.
 """
 
 from __future__ import annotations
@@ -77,3 +83,14 @@ def test_jsonc_loader_keeps_comment_markers_inside_strings(tmp_path):
     sample = tmp_path / "sample.jsonc"
     sample.write_text('{\n  // c\n  "a": "http://x", /* b */ "b": [1,],\n}\n', encoding="utf-8")
     assert _load_jsonc(sample) == {"a": "http://x", "b": [1]}
+
+
+def test_tuning_names_never_collide_with_secrets_or_declared_vars():
+    tuning = yaml.safe_load(
+        (REPO_ROOT / "config" / "dispatch_tuning.yml").read_text(encoding="utf-8")
+    )
+    declared = set(_load_jsonc(WRANGLER).get("vars") or {})
+    assert not set(tuning) & _derived_secrets(), "a tuning key must never share a secret's name"
+    assert not set(tuning) & declared, (
+        "a tunable belongs in dispatch_tuning.yml, not in wrangler vars"
+    )

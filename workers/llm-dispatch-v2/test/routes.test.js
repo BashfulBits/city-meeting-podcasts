@@ -8,32 +8,14 @@ import {
   routesEligibleFor,
 } from "../src/routes.js";
 
-function eligibleMistralRoutes(inputTokens, outputTokens) {
-  return routesEligibleFor(
-    {
-      policy_json: JSON.stringify({
-        allowed_models: ["mistral/codestral-2508"],
-        allow_paid: false,
-      }),
-      input_token_estimate: inputTokens,
-      max_output_token_estimate: outputTokens,
-    },
-    DISPATCH_LIMITS,
-  ).filter((route) => route.provider === "mistral");
-}
-
-// Codestral is the one Mistral family this account's plan provisions (Medium/Large/Small were
-// removed 2026-09-24); its native routes span the primary and secondary accounts.
-test("all native Mistral Codestral routes admit a request within its input ceiling", () => {
-  const routes = eligibleMistralRoutes(120000, 8000);
-  assert.deepEqual(
-    routes.map((route) => route.route_id),
-    ["mistral_codestral_2508_primary", "mistral_codestral_2508_secondary"],
+// Native Mistral (Codestral-only, account-tier restricted and monthly metered) was removed from the
+// catalog on 2026-09-30. A `mistral/*` model name may still be served by another provider's route.
+test("no native Mistral provider, account or route remains in the catalog", () => {
+  assert.equal(DISPATCH_LIMITS.providers.mistral, undefined);
+  const native = (DISPATCH_LIMITS.routes || Object.values(DISPATCH_LIMITS.routes_by_id || {})).filter(
+    (route) => route.provider === "mistral",
   );
-});
-
-test("native Mistral Codestral routes reject input above their hard input ceiling", () => {
-  assert.deepEqual(eligibleMistralRoutes(249028, 1000), []);
+  assert.deepEqual(native, []);
 });
 
 test("paused rpd:0 routes are excluded before free/paid admission", () => {

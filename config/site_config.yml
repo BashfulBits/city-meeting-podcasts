@@ -113,7 +113,7 @@ tournament:
 # Ingress write units are the Worker's own pessimistic admission currency, not requests:
 # `3 + len(models)` per admitted job (job row + model-index rows + purpose ledger + scheduler
 # counter). `daily_write_units` is that lane's hard daily ceiling; `reserved_write_units` is the
-# slice no other lane may consume. Reserved must sum to <= MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY;
+# slice no other lane may consume. Reserved must sum to <= MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY (config/dispatch_tuning.yml);
 # `compile_llm_lanes.py` enforces that and the per-lane arithmetic below.
 # Rescaled 2026-09-23 to the MEASURED DO row-write budget, then raised 2026-09-24 when the
 # Worker moved to runtime row thresholds (workers/llm-dispatch-v2/src/write_budget.js): the daily

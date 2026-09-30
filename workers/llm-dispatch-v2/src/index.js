@@ -5,6 +5,7 @@
 
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
+import { withTuning } from "./tuning.js";
 import { LLMSchedulerDO } from "./coordinator.js";
 import {
   validateEnqueueBatchRequest,
@@ -1250,7 +1251,8 @@ async function runScheduledCleanup(env, scheduledTime) {
 
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, rawEnv, ctx) {
+    const env = withTuning(rawEnv);
     try {
       validateConfig(env);
     } catch (err) {
@@ -1259,7 +1261,8 @@ export default {
     return handleRequest(request, env, ctx);
   },
 
-  async scheduled(event, env, ctx) {
+  async scheduled(event, rawEnv, ctx) {
+    const env = withTuning(rawEnv);
     try {
       validateConfig(env);
     } catch (err) {
