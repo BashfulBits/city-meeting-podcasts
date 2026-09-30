@@ -536,6 +536,7 @@ Status against `review/11` L3 (concrete file/function changes, test plan, sequen
 | Phase DAG | P0 → P1 judgment ledger and JEV route in shadow → P2 scoring, probes, stability → P3 tags consensus → P4 moments → P5 blind audit → P6 leagues → P7 retire old lanes |
 | Eval lane | [`evals/judge`](../evals/judge/README.md) with `scripts/eval_judge.py` (PR #1966): bundling, question types, context ladder, adjudicator; re-runnable |
 | Facts gathered | catalog scan complete; rule vs LLM candidate counts measured; JEV limits, `choice`, packing and question-bundled evidence verified; Qwen limits, thinking mode and a 30/30 quality check; `gh` attach and CI token behaviour; Worker variable and secret audit (PR 1965 implements the cleanup) |
+| BeatAPI provider registration | [#1967](https://github.com/BashfulBits/city-meeting-podcasts/issues/1967): secret, discovery plugin, contract tests; prerequisite for P1 |
 | P1 breakout | next: adds the generalized task-spec registry of section 3a and the `context_tier` field to the judgment record; needs the judgment-record schema, the `beatapi` provider entry (`rpm: 1`, `concurrency: 1`), the `structured.py` mapping and oversize-503 classification, and the JEV real-response fixtures (captured in the spike) |
 | P2-P7 | stay L2 until P1 shadow data exists: thresholds, league scoring and the graduation comparison need measured judge behaviour; specifying them now would invent numbers |
 | Open decisions | second adjudicator, shadow and switch-over shape, graduation wording (above) |

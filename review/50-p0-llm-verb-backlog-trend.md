@@ -1,7 +1,7 @@
 # review/50 — P0: per-verb LLM backlog trend (read-only)
 
 **Maturity: L3 dev-ready · authored 2026-09-30 · parent: [review/49](49-judge-consensus-admission.md) phase P0 ·
-GitHub issues to be cut on merge (PR1, PR2 below)**
+GitHub issues: PR1 [#1968](https://github.com/BashfulBits/city-meeting-podcasts/issues/1968), PR2 [#1969](https://github.com/BashfulBits/city-meeting-podcasts/issues/1969)**
 
 ## Goal
 
@@ -187,7 +187,7 @@ The shadow prelabeler is correctly flagged: its lane is closed by its own daily 
 | `tests/fixtures/backlog_trend/run_events_2026_09_22_30.json` | **already committed** with this doc |
 | `config/site_config.yml` | optional `llm_backlog:` block with the five defaults, commented (PR1) |
 | `.github/workflows/backlog-trend.yml` | **new** (PR2) |
-| `ARCHITECTURE.md` (Ops/QA row), `CHANGELOG.md`, `review/11` | doc-update contract |
+| `ARCHITECTURE.md` (the `Ops / QA` row), `CHANGELOG.md`, `review/11` | doc-update contract |
 
 **Do not modify:** `citypods/stages.py`, `citypods/run.py`, `citypods/cli.py`, anything under `workers/`, `citypods/statesync.py`, any durable-state schema. If an implementation seems to need one of these, stop and raise it.
 
@@ -256,7 +256,7 @@ None: read-only over existing events. Rollback is deleting the workflow; the mod
 
 Read [AGENTS.md](../AGENTS.md) "Implementing from a breakout doc: stop and ask" first. Everything above is the spec; this section is the procedure.
 
-**Branching and PRs.** Branch `feat/backlog-trend-module` (PR1) then `feat/backlog-trend-workflow` (PR2); merge commits, never squash (CONTRIBUTING). One PR per section of "Sequencing"; do not combine them.
+**Branching and PRs.** Branch `feat/1968-backlog-trend-module` (PR1) then `feat/1969-backlog-trend-workflow` (PR2) (CONTRIBUTING: `feat/<issue>-slug`); merge commits, never squash. One PR per section of "Sequencing"; do not combine them.
 
 **Before writing code (report results, then continue only if all match):**
 1. Confirm `RUN_EVENTS_DIR_NAME = "run_events"` and the event shape at `citypods/run.py::_record_run_history` (keys `ts`, `phase`, `lane`, `outcome`, `stages[name].{ran,reused,backlog,defer_reasons}`).
@@ -269,7 +269,7 @@ Read [AGENTS.md](../AGENTS.md) "Implementing from a breakout doc: stop and ask" 
 3. Write `tests/test_backlog_trend.py` with the 13 tests named in "Test plan". Test 1 must reproduce the golden table: if a value differs from the table, **stop and ask**; do not change the algorithm or the expected values to make it pass.
 4. Add the optional `llm_backlog:` block to `config/site_config.yml` with the five `BacklogParams` defaults and a short comment; reject unknown keys in `params_from_config`.
 5. Run `ruff check .`, `ruff format --check .`, `python -m pytest -q`; note any pre-existing failure explicitly (`test_llm_evaluation_cli_is_importable_outside_checkout` fails on `main`; do not touch it).
-6. Doc-update contract: `CHANGELOG.md` entry, the `ARCHITECTURE.md` Ops/QA row, and `review/11` status for this doc.
+6. Doc-update contract: `CHANGELOG.md` entry, the `ARCHITECTURE.md` `Ops / QA` row (the table row beginning `| **Ops / QA** |`), and `review/11` status for this doc.
 
 **PR2 steps:** add `.github/workflows/backlog-trend.yml` exactly per "Workflow", pinning action SHAs to the same versions the neighbouring workflows use (copy from `tag.yml`). Run it once with `workflow_dispatch`. If it fails on an unclassified token, **stop and ask** before adding any token to `STAGE_TOKENS`; do not add tokens unprompted.
 
