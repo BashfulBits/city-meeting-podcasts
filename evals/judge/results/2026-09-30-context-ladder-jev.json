@@ -1,0 +1,237 @@
+{
+ "experiment": "context-ladder",
+ "judge": "jev",
+ "generated_at": "2026-09-30T17:06:44.554162+00:00",
+ "set_version": 1,
+ "prompt_version": "1",
+ "git_sha": "fa522ec9",
+ "calls_asked": 4,
+ "calls_answered": 4,
+ "unanswered_fraction": 0.0,
+ "inconclusive": false,
+ "errors": [],
+ "plan": {
+  "T0": {
+   "batches": 1,
+   "est_tokens_per_item": 162.7,
+   "items_per_call_at_ceiling": 344,
+   "projected_calls_for_backfill": 372
+  },
+  "T1": {
+   "batches": 1,
+   "est_tokens_per_item": 427.5,
+   "items_per_call_at_ceiling": 131,
+   "projected_calls_for_backfill": 975
+  },
+  "T2": {
+   "batches": 2,
+   "est_tokens_per_item": 2061.8,
+   "items_per_call_at_ceiling": 27,
+   "projected_calls_for_backfill": 4731
+  }
+ },
+ "usage": {
+  "T0": [
+   {
+    "input_tokens": 7480,
+    "output_tokens": 786
+   }
+  ],
+  "T1": [
+   {
+    "input_tokens": 18704,
+    "output_tokens": 786
+   }
+  ],
+  "T2": [
+   {
+    "input_tokens": 53492,
+    "output_tokens": 462
+   },
+   {
+    "input_tokens": 36084,
+    "output_tokens": 328
+   }
+  ]
+ },
+ "metrics": {
+  "T0": {
+   "auc_real_vs_controls": 0.9632,
+   "controls": 10,
+   "controls_accepted_at_0.5": 0,
+   "control_max": 0.09,
+   "control_mean": 0.043,
+   "real_items": 34,
+   "real_items_accepted_at_0.5": 9,
+   "real_mean": 0.396
+  },
+  "T1": {
+   "auc_real_vs_controls": 0.9559,
+   "controls": 10,
+   "controls_accepted_at_0.5": 0,
+   "control_max": 0.07,
+   "control_mean": 0.036,
+   "real_items": 34,
+   "real_items_accepted_at_0.5": 12,
+   "real_mean": 0.424
+  },
+  "T2": {
+   "auc_real_vs_controls": 0.9279,
+   "controls": 10,
+   "controls_accepted_at_0.5": 0,
+   "control_max": 0.17,
+   "control_mean": 0.044,
+   "real_items": 34,
+   "real_items_accepted_at_0.5": 12,
+   "real_mean": 0.408
+  },
+  "T0_vs_T2_real_items": {
+   "verdict_flips": 5,
+   "mean_abs_dp": 0.1462
+  },
+  "T1_vs_T2_real_items": {
+   "verdict_flips": 4,
+   "mean_abs_dp": 0.0947
+  }
+ },
+ "answers": {
+  "T0": {
+   "i0": 0.19,
+   "i1": 0.17,
+   "i10": 0.3,
+   "i11": 0.88,
+   "i12": 0.71,
+   "i13": 0.27,
+   "i14": 0.15,
+   "i15": 0.13,
+   "i16": 0.27,
+   "i17": 0.1,
+   "i18": 0.82,
+   "i19": 0.39,
+   "i2": 0.37,
+   "i20": 0.65,
+   "i21": 0.85,
+   "i22": 0.1,
+   "i23": 0.22,
+   "i24": 0.09,
+   "i25": 0.45,
+   "i26": 0.08,
+   "i27": 0.86,
+   "i28": 0.49,
+   "i29": 0.04,
+   "i3": 0.95,
+   "i30": 0.29,
+   "i31": 0.93,
+   "i32": 0.06,
+   "i33": 0.06,
+   "i34": 0.08,
+   "i35": 0.09,
+   "i36": 0.02,
+   "i37": 0.02,
+   "i38": 0.05,
+   "i39": 0.02,
+   "i4": 0.23,
+   "i40": 0.07,
+   "i41": 0.04,
+   "i42": 0.02,
+   "i43": 0.02,
+   "i5": 0.26,
+   "i6": 0.96,
+   "i7": 0.35,
+   "i8": 0.31,
+   "i9": 0.47
+  },
+  "T1": {
+   "i0": 0.06,
+   "i1": 0.25,
+   "i10": 0.27,
+   "i11": 0.78,
+   "i12": 0.87,
+   "i13": 0.2,
+   "i14": 0.09,
+   "i15": 0.51,
+   "i16": 0.5,
+   "i17": 0.12,
+   "i18": 0.32,
+   "i19": 0.37,
+   "i2": 0.39,
+   "i20": 0.84,
+   "i21": 0.96,
+   "i22": 0.1,
+   "i23": 0.22,
+   "i24": 0.06,
+   "i25": 0.67,
+   "i26": 0.11,
+   "i27": 0.85,
+   "i28": 0.38,
+   "i29": 0.04,
+   "i3": 0.92,
+   "i30": 0.3,
+   "i31": 0.9,
+   "i32": 0.02,
+   "i33": 0.32,
+   "i34": 0.07,
+   "i35": 0.03,
+   "i36": 0.03,
+   "i37": 0.02,
+   "i38": 0.03,
+   "i39": 0.02,
+   "i4": 0.25,
+   "i40": 0.05,
+   "i41": 0.07,
+   "i42": 0.01,
+   "i43": 0.03,
+   "i5": 0.13,
+   "i6": 0.98,
+   "i7": 0.22,
+   "i8": 0.93,
+   "i9": 0.49
+  },
+  "T2": {
+   "i0": 0.08,
+   "i1": 0.07,
+   "i10": 0.05,
+   "i11": 0.87,
+   "i12": 0.89,
+   "i13": 0.07,
+   "i14": 0.08,
+   "i15": 0.33,
+   "i16": 0.3,
+   "i17": 0.12,
+   "i18": 0.44,
+   "i19": 0.68,
+   "i2": 0.39,
+   "i20": 0.92,
+   "i21": 0.97,
+   "i22": 0.26,
+   "i23": 0.13,
+   "i24": 0.06,
+   "i25": 0.66,
+   "i3": 0.97,
+   "i4": 0.25,
+   "i5": 0.13,
+   "i6": 0.98,
+   "i7": 0.04,
+   "i8": 0.82,
+   "i9": 0.13,
+   "i26": 0.1,
+   "i27": 0.94,
+   "i28": 0.62,
+   "i29": 0.04,
+   "i30": 0.12,
+   "i31": 0.88,
+   "i32": 0.03,
+   "i33": 0.46,
+   "i34": 0.03,
+   "i35": 0.02,
+   "i36": 0.03,
+   "i37": 0.02,
+   "i38": 0.02,
+   "i39": 0.02,
+   "i40": 0.17,
+   "i41": 0.08,
+   "i42": 0.02,
+   "i43": 0.03
+  }
+ }
+}

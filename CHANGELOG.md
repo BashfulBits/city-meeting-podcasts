@@ -17,6 +17,17 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **A judge evaluation lane (`evals/judge/`, `scripts/eval_judge.py`).** The pilot harness for the review/49
+  judge stack, in the `evals/chapter-agenda` layout: a frozen `manifest.json` (inputs) and `gold.json` (truth),
+  dated `results/`, and one script with `freeze`, `run` and `report`. Four experiments: `bundling` (evidence in each
+  question versus in the shared state), `question-types` (validate, grade and choose on real pull quotes, JEV and
+  Qwen), `context-ladder` (matched span, window, whole chapter on real rule-matched tag candidates with planted
+  wrong-tag controls, including the projected backfill cost of each tier) and `adjudicator`. The harness enforces
+  the limits found while building it: JEV's 64k total and 32k state-plus-largest-question ceilings, its
+  one-call-a-minute pacing, never retrying the misleading `503 processing_failed` near a ceiling, Groq Qwen's
+  6k input and 1,000-output-tokens-a-minute limits, whitespace-stripped keys, and inconclusive runs above 10%
+  unanswered. `tests/test_eval_judge.py` covers it with no network.
+
 - **The v2 Worker's numeric tunables moved out of Cloudflare variables, and native Mistral was
   removed.** The 36 non-secret tunables (window sizes, retry budgets, retention, daily caps, the ingress
   budget) now live in `config/dispatch_tuning.yml`, compiled to `workers/llm-dispatch-v2/src/dispatch_tuning.json`
