@@ -3,6 +3,10 @@
 **Maturity: L2-partial (approach chosen, risks and capacity worked out; not L3 dev-ready) · authored 2026-09-29, revised 2026-09-30.
 The gap to L3 is listed in "Path to L3" at the bottom; this doc is not yet in `review/11`.**
 
+**Document map.** This document is the umbrella design: why, what, decisions, capacity and evidence. Each implementation phase gets its own build spec
+(one agent can be handed one short, exact document): [review/50](50-p0-llm-verb-backlog-trend.md) is P0 (L3); P1 onward are specified when their predecessors have produced data. The pilots live in the eval lane
+[`evals/judge`](../evals/judge/README.md) and are re-run, not re-described here.
+
 ## Goal (from the maintainer)
 
 1. Take the human maintainer out of the approve/rate loop for LLM tags and moments (or shrink it to a
@@ -67,6 +71,45 @@ Subjects that do not fit get the normal `payload-too-large` deferral, never trun
   fingerprint so a change re-projects display without recalling vendors (same as review/42).
 - Failed, deferred, or malformed judge calls never admit and never suppress (existing invariant).
 - The tagger/moment route and the judges must be different families; enforce it at policy load.
+
+### 3a. One framework for every additive producer task (tags, moments, and what comes next)
+
+The judge stack is not a tag feature. Any producer LLM task whose output is either **valid or invalid** or **one of several to pick from** plugs in by registering a task spec; nothing in the judges, the consensus code, the probe set, the audit or the leagues is tag-specific.
+
+**Vocabulary.**
+- **Subject:** one producer output (a tag candidate, a pull quote, a decision candidate, a summary, a chapter title) with an id, the task name, an optional **group** (for example the meeting) and its evidence.
+- **Question kinds** (logical, backend-neutral):
+  - `validate`: is the subject supported and correct? Answer is a probability.
+  - `gate`: is it safe to publish (no PII, no mocking, not procedural filler)? Answer is a probability; **any** judge that flags it holds the subject.
+  - `grade`: how good is it on an ordered scale? Answer is a level.
+  - `choose`: which of these N subjects from the same group is best? Answer is a winner with probabilities.
+- **Backend mapping:** JEV: `validate` and `gate` are `noul`, `grade` is `score` with a `criteria` array, `choose` is `choice` with an options object (all verified live). LLM judges (Qwen via Groq, Gemma) get the same question compiled to a JSON schema (`{supported: boolean, quote}`, `{level: integer, reason}`, `{best: enum, reason}`). Both return the same normalized **judgment**: `{judge, task, subject_id, question_id, kind, value, confidence or probabilities, context_tier, prompt_version, evidence_digest}`.
+- **Task spec** (a registry entry, one per task): subject kinds, group key, the ordered list of questions, how evidence is built at each context tier, the **consensus policy** per question kind, the **selection policy**, the probe set location, and the audit-item renderer.
+- **Consensus per kind:** `validate`: admit when the JEV and sibling probabilities are both high enough, reject when both are low enough, otherwise contested; `gate`: any judge above the flag level holds the subject; `grade`: admit on agreement of levels within one step, contested when they differ by more; `choose`: winners agree is decided, otherwise contested, and order-flips are treated as contested. **Contested goes to the adjudicator, then the weekly audit.** Thresholds are calibrated from probes and adjudicator agreement (section 4), never from human labels.
+- **Selection policy:** `all_admitted` (tags: every admitted tag is visible) or `top_k_per_group` (moments: at most K admitted subjects per meeting, chosen by the `choose` result with `grade` as the tie-break).
+
+**Evidence (committed lane [`evals/judge`](../evals/judge/README.md), `question-types`, run 2026-09-30 on six real council meetings with four real pull quotes each; all 390 real candidates are currently shadow and manual-only).**
+- **`choose` (best of 4) on JEV** picked the same winner under two shuffled option orders in **6 of 6** meetings (5 of 6 in an earlier exploratory run on a different sample).
+- **The question kinds are not interchangeable:** the `choose` winner equalled the top `grade` in 2 of 6 and the top publish probability in 2 of 6 meetings. They measure different things, so a moments
+  gate must not substitute one for another; `choose` selects among survivors of the `gate` and `validate` questions.
+- **Cross-family agreement is sample-dependent:** Qwen3.8-27B picked the same winner as JEV in **3 of 6** meetings in the committed run and in 5 to 6 of 6 in the earlier exploratory run. At six meetings this cannot
+  set a threshold; it says agreement on `choose` is somewhere between half and most, which is exactly the contested band the adjudicator exists for. Growing this sample is listed under "Path to L3".
+- **Stability and spread:** `validate`(publishable) and `grade` moved at most 0.06 and 0.16 between orders; publish probabilities ranged 0.40 to 0.835 across real candidates, so a gate can discriminate.
+  `grade` returns low confidence on JEV (0.09 to 0.3), so it is a tie-break, not a gate.
+- **The producer's own `quality_score` is an unreliable signal:** it matched the JEV `choose` winner in 4 of 6 meetings in the committed run and 1 of 6 in the exploratory run; it is not used for admission.
+- **Rate limits to design around:** Groq's Qwen route has an **output-token limit of 1,000 per minute**, which reasoning answers of 450 to 730 tokens hit after two requests; the harness spaces and packs sibling calls for this reason.
+
+**How this maps to each task.**
+
+| Task | Questions | Consensus and selection |
+|---|---|---|
+| Tag candidate (rule or LLM) | `validate` (evidence: matched span, window or chapter per the context study); deterministic checks first | admit when validated; `all_admitted` |
+| Pull quote | deterministic verbatim and timing check, then `validate` (does the quote say what the reason claims), `gate` (PII, mocking, procedural), `grade` (usefulness, readiness), then `choose` among the meeting's survivors | admitted = passes gate and validate; selected = best `top_k_per_group` by `choose`; replaces the human-calibrated threshold in `moment-admission` and reuses the existing `moment_judging.py` rubric text as a sibling-judge prompt |
+| Decision candidate | `validate` (is the stated outcome supported by the quote; the "AI interpretation" label stays) | `all_admitted` |
+| Summaries, titles, other generated text (future) | `validate` (faithful to the source), `choose` between producer models' outputs for the same agenda item | replaces `tournament:tag` pairwise comparison; `choose` both orders |
+| Anything later with valid/invalid or pick-best | declare its questions and evidence builder in a task spec | no change to judges, leagues or audit |
+
+Tasks with external ground truth (chapter-agenda, chapter-locator) stay out, as decided.
 
 ### 4. Judge reliability without trusting human labels
 
@@ -168,6 +211,34 @@ human only where a skim is genuinely informative.
   that batch are used.
 - Delivered as one item stream per week (existing `review_issues.py` ingestion), rendered as a mobile-friendly
 page with embedded media; the exact vehicle (issue vs artifact/page) is an implementation choice.
+
+### 4b. Context ladder: how much evidence should a judge see?
+
+More context should raise accuracy and lower speed: a larger prompt carries fewer judgments per call, costs more tokens and, for the sibling judge, more Durable Object rows. The plan measures this instead of guessing.
+
+**Tiers (per task, built by the task spec's evidence builder).** Always included (they are cheap): the tag definition and the chapter or agenda title.
+- **T0:** the matched span or the quote itself only.
+- **T1:** a window around it (about 90 seconds, capped at 400 words).
+- **T2:** the whole chapter or surrounding section (capped at 1,800 words).
+- **T3 (where it exists):** T2 plus the agenda or document text.
+
+**Method.** (a) **The lane** ([`evals/judge`](../evals/judge/README.md), `scripts/eval_judge.py run context-ladder`) judges real rule-matched tag candidates at each tier, with planted wrong-tag controls with
+known truth and, as labels accumulate, adjudicated labels. (b) **Continuous:** from P1 on every judgment records its `context_tier`, and a stratified 5% sample is judged at **all** tiers and by the adjudicator at the largest, which keeps
+measuring the trade-off as tasks, routes and prompts change. The free-tier JEV cap (about 1,440 calls a day) and Durable Object rows make this sample small on purpose.
+
+**Results (committed, 2026-09-30; 34 real candidates plus 10 controls).**
+
+| Tier | Tokens per item | Items per JEV call | JEV calls to backfill 127,719 candidates | Accuracy on 15 adjudicated items |
+|---|---|---|---|---|
+| T0 matched span | 163 | 344 | 372 | 10/15 (0.67) |
+| T1 +-45 s window | 428 | 131 | 975 | 11/15 (0.73) |
+| T2 whole chapter | 2,062 | 27 | 4,731 | 13/15 (0.87) |
+
+No tier accepted any control (largest control score 0.09, 0.07, 0.17). T0 against T2 flipped 5 of the 34 real verdicts and T1 against T2 flipped 4. **Judging at T1 and re-judging at T2 when the T1 probability is between 0.3 and 0.7
+escalated 10 of 34 items (29%) and reached T2's 13/15**, at roughly 975 + 0.29 x 4,731, about **2,350 calls instead of 4,731**; a wider band escalated 50% for no gain. Caveats that matter: the 15 labels are Claude's (not the maintainer's) and 7 of them were chosen
+because the tiers disagreed, so accuracies are lower bounds; the real candidates have no other truth yet.
+
+**Initial rule for P1/P2: judge at T1, escalate to T2 when p is between 0.3 and 0.7, and let the continuous 5% sample confirm or move both the tier and the band.** T0 is too error-prone on its own; T2 on everything costs twice the calls for no measured gain over escalation.
 
 ### 5. Route league (European-cup model)
 
@@ -398,7 +469,7 @@ human-calibrated admission (711 hidden today); R6 moments never auto-publish (`m
 
 **The rule after switch-over (P3), for rule and LLM tags alike: a tag is visible if and only if the judge stack has admitted it.** Unjudged, contested-and-unresolved and rejected candidates are hidden
 (in the display projection only; every candidate row is kept, as review/42 already does for suppression). There are no per-source exceptions.
-**Moments (P4)** stay manual: consensus admission becomes a recommendation in the existing review flow while `moments.mode` remains `manual`.
+**Moments (P4)** use the same stack through the generalized framework (section 3a): consensus admission, with per-meeting top-K selection by `choose`, replaces the human-calibrated threshold in the `moment-admission` stage. `moments.mode` (`manual` or `auto`) stays as the global kill switch; P4 is shadow-scored first, exactly like tags, before `moments.mode` is set to `auto`.
 
 **Shadow phase (P2) is everything before the switch.** The judges score every candidate as it is produced and every existing candidate in a recent-first backfill, and the current gates keep deciding what is visible, so nothing
 the public sees changes. It exists to measure the stack (probes, stability, adjudicator agreement) before it has authority, and to do the backfill so the switch does not leave the site empty.
@@ -450,6 +521,8 @@ Two separate decisions, each stated relative to a measured baseline rather than 
 1. **Second adjudicator route:** decided after the locator verdict (expected Wednesday evening).
 2. **Shadow and switch-over:** the rule is now "visible only once judged good" for all tags; please confirm the worked example above matches what you meant.
 3. **Graduation wording:** confirm the two relative rules above.
+4. **Initial context rule:** confirm "judge at T1, escalate to T2 when p is 0.3 to 0.7" as the P1/P2 starting point (section 4b), to be confirmed or moved by the continuous sample.
+5. **More labels:** the context result rests on 15 labels that are Claude's, not yours; the weekly audit promotes clear-cut items into `gold.json`, and a larger, maintainer-reviewed set would firm up the tier choice.
 
 ## Path to L3
 
@@ -459,7 +532,8 @@ Status against `review/11` L3 (concrete file/function changes, test plan, sequen
 |---|---|
 | **P0 per-verb backlog trend** | **L3 done: [review/50](50-p0-llm-verb-backlog-trend.md)** (file list, exact algorithm, golden results from real data, tests, workflow, acceptance) |
 | Phase DAG | P0 → P1 judgment ledger and JEV route in shadow → P2 scoring, probes, stability → P3 tags consensus → P4 moments → P5 blind audit → P6 leagues → P7 retire old lanes |
+| Eval lane | [`evals/judge`](../evals/judge/README.md) with `scripts/eval_judge.py` (PR #1966): bundling, question types, context ladder, adjudicator; re-runnable |
 | Facts gathered | catalog scan complete; rule vs LLM candidate counts measured; JEV limits, `choice`, packing and question-bundled evidence verified; Qwen limits, thinking mode and a 30/30 quality check; `gh` attach and CI token behaviour; Worker variable and secret audit (PR 1965 implements the cleanup) |
-| P1 breakout | next: needs the judgment-record schema, the `beatapi` provider entry (`rpm: 1`, `concurrency: 1`), the `structured.py` mapping and oversize-503 classification, and the JEV real-response fixtures (captured in the spike) |
+| P1 breakout | next: adds the generalized task-spec registry of section 3a and the `context_tier` field to the judgment record; needs the judgment-record schema, the `beatapi` provider entry (`rpm: 1`, `concurrency: 1`), the `structured.py` mapping and oversize-503 classification, and the JEV real-response fixtures (captured in the spike) |
 | P2-P7 | stay L2 until P1 shadow data exists: thresholds, league scoring and the graduation comparison need measured judge behaviour; specifying them now would invent numbers |
 | Open decisions | second adjudicator, shadow and switch-over shape, graduation wording (above) |
