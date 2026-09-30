@@ -46,7 +46,6 @@ jobs:
           INPUT_PHASES: ${{ inputs.phases }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_API_KEY_SECONDARY: ${{ secrets.GEMINI_API_KEY_SECONDARY }}
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
           AIRFORCE_API_KEY: ${{ secrets.AIRFORCE_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}

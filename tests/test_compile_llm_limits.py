@@ -121,11 +121,10 @@ def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
 
     codestral_key = "mistral/codestral-2508"
     codestral_routes = compiled["model_routes_map"][codestral_key]
-    # primary + secondary Mistral accounts + airforce codestral-latest route (the tertiary
-    # account was removed 2026-09-24: its key was never set on the dispatch Workers).
-    assert len(codestral_routes) == 3
+    # Native Mistral accounts were removed 2026-09-30 (metered, account-tier restricted); only the
+    # airforce codestral-latest route still serves this model key.
+    assert len(codestral_routes) == 1
     assert {compiled["routes_by_id"][route_id]["provider"] for route_id in codestral_routes} == {
-        "mistral",
         "airforce",
     }
     assert compiled["model_aliases"]["mistral/codestral-latest"] == codestral_key
@@ -152,10 +151,10 @@ def test_compiled_routes_materialize_route_specific_input_and_output_limits():
         and route["output_context_limit"] > 0
         for route in compiled["routes"]
     )
-    codestral = compiled["routes_by_id"]["mistral_codestral_2508_primary"]
+    codestral = compiled["routes_by_id"]["mistral_codestral_airforce_primary"]
     assert (codestral["input_context_limit"], codestral["output_context_limit"]) == (
         256000,
-        256000,
+        8192,
     )
 
 
@@ -352,8 +351,6 @@ def test_model_routing_compiles_from_the_committed_yaml_and_resolves_aliases():
         ]
     }
     assert compiled["model_routes_map"]["mistral/codestral-2508"] == [
-        "mistral_codestral_2508_primary",
-        "mistral_codestral_2508_secondary",
         "mistral_codestral_airforce_primary",
     ]
     worker = compile_llm_limits._worker_catalog(compiled)
@@ -574,12 +571,10 @@ def test_token_estimate_buffer_scales_route_and_provider_token_budgets():
     assert gemini["input_context_limit"] == 1048576
     assert gemini["output_context_limit"] == 65536
 
-    # Provider monthly_tpm scaling. The 2026-08-18 `monthly_tpm: 0` hotfix was reverted on
-    # 2026-09-09: it gated nothing (no consumer reads monthly_tpm, and the compiled provider block
-    # drops it), so what actually stops consumption is now the `insufficient-budget` ->
-    # payment_required cooldown ladder. Scaled by token_estimate_buffer like any token budget.
-    mistral = compiled["providers"]["mistral"]
-    assert mistral["monthly_tpm"] == 900_000_000
+    # `monthly_tpm` gated nothing (no consumer reads it, and the compiled provider block drops it);
+    # its only user, the native Mistral provider, was removed 2026-09-30. Consumption is stopped by
+    # the `insufficient-budget` -> payment_required cooldown ladder instead.
+    assert all("monthly_tpm" not in provider for provider in compiled["providers"].values())
 
 
 def test_validate_token_buffer_accepts_valid_formats():

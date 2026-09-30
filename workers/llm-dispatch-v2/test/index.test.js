@@ -21,6 +21,8 @@ function createMockEnv(overrides = {}) {
     CRON_EXECUTION_LIMIT_SECONDS: "900",
     CRON_TICK_SECONDS: "60",
     MAX_BUNDLES_PER_UTC_DAY: "1000",
+    MAX_BUNDLE_JOBS: "4",
+    MAX_LEASES_PER_UTC_DAY: "4000",
     MAX_CONCURRENT_ROUTE_LANES: "5",
     MAX_JOBS_PER_UTC_DAY: "5000",
     MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "18000",
@@ -445,7 +447,7 @@ test("GET /v2/stats makes historical diagnostics explicit and clamps their limit
   assert.equal(await call("limit=notanumber"), 200);
 });
 
-test("the committed wrangler.jsonc vars pass validateConfig", async () => {
+test("the committed wrangler.jsonc vars plus compiled tuning pass validateConfig", async () => {
   const { readFile } = await import("node:fs/promises");
   const raw = await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8");
   // Strip // line comments that are not inside a string, then parse as JSON.
@@ -453,7 +455,14 @@ test("the committed wrangler.jsonc vars pass validateConfig", async () => {
     .split("\n")
     .map((line) => line.replace(/^(\s*)\/\/.*$/, "$1").replace(/("(?:[^"\\]|\\.)*"\s*[,:]?\s*)\/\/.*$/, "$1"))
     .join("\n");
-  const { vars } = JSON.parse(stripped);
+  const declared = JSON.parse(stripped).vars;
+  // Tunables now come from src/dispatch_tuning.json (config/dispatch_tuning.yml), surfaced as
+  // strings exactly like dashboard vars, with any declared var winning.
+  const { default: tuning } = await import("../src/dispatch_tuning.json", { with: { type: "json" } });
+  const vars = {
+    ...Object.fromEntries(Object.entries(tuning.values).map(([k, v]) => [k, String(v)])),
+    ...declared,
+  };
   assert.equal(vars.DISPATCH_WINDOW_SECONDS, "30");
   // The configured upper bounds are ordered, the effective stops preserve the account reserve,
   // and a full day of admitted ingress fits under the enqueue threshold on its own.

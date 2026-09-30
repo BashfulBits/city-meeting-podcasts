@@ -10,8 +10,10 @@ on:
       - "workers/llm-dispatch-v2/package-lock.json"
       - "config/provider_limits.yml"
       - "config/site_config.yml"
+      - "config/dispatch_tuning.yml"
       - "scripts/compile_llm_limits.py"
       - "scripts/compile_llm_lanes.py"
+      - "scripts/compile_dispatch_tuning.py"
       - ".github/workflows/llm-dispatch-v2-worker-deploy.yml"
   workflow_dispatch:
 
@@ -54,6 +56,9 @@ jobs:
       # lanes; this gate is what keeps the two halves of that contract in step.
       - name: Compile ingress purpose reservations
         run: python scripts/compile_llm_lanes.py --check
+
+      - name: Check for dispatch_tuning.json drift
+        run: python scripts/compile_dispatch_tuning.py --check
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:

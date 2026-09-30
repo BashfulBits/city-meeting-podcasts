@@ -8,6 +8,7 @@ import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 // the same block citypods/compute/llm_lanes.py reads, so client and Worker cannot disagree
 // about which purposes exist or what each may spend. Drift-checked in the deploy workflow.
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
+import { withTuning } from "./tuning.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE,
   DO_ROWS_WRITTEN_PLATFORM_LIMIT,
@@ -242,7 +243,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
   constructor(ctx, env) {
     super(ctx, env);
     this.ctx = ctx;
-    this.env = env || {};
+    this.env = withTuning(env);
     this.sql = ctx?.storage?.sql || ctx?.sql;
 
     let readiness;

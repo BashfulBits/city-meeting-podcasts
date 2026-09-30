@@ -347,15 +347,14 @@ def test_transport_gate_rejects_a_dispatch_only_route_from_a_direct_caller():
     assert (route.model, "transport gate") in result.rejected
 
 
-def test_mistral_codestral_policy_matches_the_deployed_dispatch_worker_ceiling():
-    """Codestral matches the upstream 2.08-RPS (124 RPM) ceiling with split-cap lifted.
+def test_codestral_policy_is_paced_at_the_airforce_ceiling():
+    """Codestral is served only by the Airforce route (1 RPM, one request in flight).
 
-    (Mistral Large, this test's former subject, was removed 2026-09-24: this account's plan
-    blocks it.)"""
+    (Native Mistral, this test's former subject, was removed 2026-09-30.)"""
     route = ROUTES["mistral/codestral-2508"]
     assert route.transport == "direct"
     assert set(route.transports) == {"direct"}
-    assert route.quota.rpm == 124
+    assert route.quota.rpm == 1
 
 
 def test_owner_for_keys_off_the_selected_transport_not_route_capability():

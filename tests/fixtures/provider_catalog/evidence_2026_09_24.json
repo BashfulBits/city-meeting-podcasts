@@ -1,5 +1,5 @@
 {
- "_about": "Recorded 2026-09-24 under provider-scoped v2 dispatch pauses (review/48 Slice 1 step 0). status, rate-limit headers and <=160-char error snippets only; no keys, account ids or completions.",
+ "_about": "Recorded 2026-09-24 under provider-scoped v2 dispatch pauses (review/48 Slice 1 step 0). status, rate-limit headers and <=160-char error snippets only; no keys, account ids or completions. (The native `mistral` provider was removed from the catalog on 2026-09-30 and dropped from this fixture.)",
  "providers": {
   "airforce": {
    "canaries": [
@@ -379,107 +379,6 @@
     "expired": false,
     "in_flight_at_start": 1,
     "waited_seconds": 251.2
-   }
-  },
-  "mistral": {
-   "canaries": [
-    {
-     "body": "",
-     "first_event_error": false,
-     "group": "configured",
-     "headers": {},
-     "model": "codestral-2508",
-     "status": 200
-    },
-    {
-     "body": "{\"object\":\"error\",\"message\":\"Rate limit exceeded\",\"type\":\"rate_limited\",\"param\":null,\"code\":\"1300\",\"raw_status_code\":429}",
-     "first_event_error": false,
-     "group": "configured",
-     "headers": {
-      "x-ratelimit-limit-req-minute": "0"
-     },
-     "model": "devstral-2512",
-     "status": 429
-    },
-    {
-     "body": "{\"object\":\"error\",\"message\":\"Rate limit exceeded\",\"type\":\"rate_limited\",\"param\":null,\"code\":\"1300\",\"raw_status_code\":429}",
-     "first_event_error": false,
-     "group": "configured",
-     "headers": {
-      "x-ratelimit-limit-req-minute": "0"
-     },
-     "model": "mistral-small-2603",
-     "status": 429
-    },
-    {
-     "body": "{\"object\":\"error\",\"message\":\"Rate limit exceeded\",\"type\":\"rate_limited\",\"param\":null,\"code\":\"1300\",\"raw_status_code\":429}",
-     "first_event_error": false,
-     "group": "configured",
-     "headers": {
-      "x-ratelimit-limit-req-minute": "0"
-     },
-     "model": "mistral-medium-latest",
-     "status": 429
-    },
-    {
-     "body": "{\"object\":\"error\",\"message\":\"This model is not available in your subscription tier\",\"type\":\"tier_not_allowed\",\"param\":null,\"code\":\"1910\",\"raw_status_code\":403}",
-     "first_event_error": false,
-     "group": "configured",
-     "headers": {},
-     "model": "mistral-large-2512",
-     "status": 403
-    },
-    {
-     "body": "{\"object\":\"error\",\"message\":\"Model labs-leanstral-1-5-1 is a Labs model. To use Labs models, an admin must enable them in your organization settings at https://",
-     "first_event_error": false,
-     "group": "configured",
-     "headers": {},
-     "model": "labs-leanstral-1-5-1",
-     "status": 403
-    },
-    {
-     "body": "{\"object\":\"error\",\"message\":\"Rate limit exceeded\",\"type\":\"rate_limited\",\"param\":null,\"code\":\"1300\",\"raw_status_code\":429}",
-     "first_event_error": false,
-     "group": "unconfigured",
-     "headers": {
-      "x-ratelimit-limit-req-minute": "0"
-     },
-     "model": "mistral-medium",
-     "status": 429
-    },
-    {
-     "body": "{\"object\":\"error\",\"message\":\"Rate limit exceeded\",\"type\":\"rate_limited\",\"param\":null,\"code\":\"1300\",\"raw_status_code\":429}",
-     "first_event_error": false,
-     "group": "unconfigured",
-     "headers": {
-      "x-ratelimit-limit-req-minute": "0"
-     },
-     "model": "mistral-vibe-cli-fast",
-     "status": 429
-    },
-    {
-     "body": "",
-     "first_event_error": false,
-     "group": "unconfigured",
-     "headers": {},
-     "model": "ministral-14b-latest",
-     "status": 200
-    }
-   ],
-   "catalog": {
-    "configured_absent": [
-     "devstral-2512",
-     "mistral-large-2512"
-    ],
-    "count": 46,
-    "error": null
-   },
-   "pause": {
-    "contended": false,
-    "drained": true,
-    "expired": false,
-    "in_flight_at_start": 0,
-    "waited_seconds": 0.2
    }
   },
   "nvidia": {

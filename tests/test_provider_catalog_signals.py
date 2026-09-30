@@ -36,13 +36,6 @@ EXPECTED = {
     ("gemini", "gemini-flash-latest"): "inconclusive",
     ("groq", "qwen/qwen3.6-27b"): "retired",  # 404 does not exist (and gone from /models)
     ("kilo", "z-ai/glm-5.2:free"): "inconclusive",  # 429 upstream rate-limited
-    ("mistral", "devstral-2512"): "account_blocked",  # 429 + limit-req-minute 0
-    ("mistral", "mistral-small-2603"): "account_blocked",
-    ("mistral", "mistral-medium-latest"): "account_blocked",
-    ("mistral", "mistral-medium"): "account_blocked",
-    ("mistral", "mistral-vibe-cli-fast"): "account_blocked",
-    ("mistral", "mistral-large-2512"): "not_entitled",  # 403 tier_not_allowed
-    ("mistral", "labs-leanstral-1-5-1"): "account_blocked",  # 403 Labs toggle
     ("nvidia", "deepseek-ai/deepseek-v4.1-flash"): "inconclusive",  # 504 after 302 s
     ("nvidia", "nvidia/llama-3.1-nemoguard-8b-topic-control"): "inconclusive",  # 502
     ("nvidia", "nvidia/llama-nemotron-embed-vl-1b-v2"): "inconclusive",  # bare 404 page

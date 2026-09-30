@@ -103,8 +103,9 @@ def test_generated_catalog_includes_observed_characterization_fields() -> None:
     assert groq.observed_input_ceiling == 7125
     assert groq.hard_input_ceiling == 7125
 
-    codestral = next((r for r in routes if r.route_id == "mistral_codestral_2508_primary"), None)
+    codestral = next(
+        (r for r in routes if r.route_id == "mistral_codestral_airforce_primary"), None
+    )
     assert codestral is not None
-    assert codestral.observed_on == "2026-09-12"
-    assert codestral.observed_burst == 40
-    assert codestral.observed_input_ceiling == 249027
+    assert codestral.observed_on == "2026-09-16"
+    assert codestral.observed_recovery_seconds == 111
