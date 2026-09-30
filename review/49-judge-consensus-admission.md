@@ -227,11 +227,16 @@ body `{model, state, questions}`. Verified live (3 successful calls, about a min
 - **Packing works:** 14 evidence windows with one `noul` question each in one call (11,579 input tokens, 330 output tokens, 2.2 s): the window
   containing the planted fact scored 0.96, the other thirteen scored 0.02–0.03.
 - Latency 0.7–2.2 s, so one call per minute is the real limit, not response time.
-- **Input limit (bisected 2026-09-30, random common words at about 1.01 tokens/word):** 30,326 and **32,925 input tokens succeeded**; 33,525 words
-  (about 33.9k tokens), 34,450, 36,300, 40,000 and 64,000 words all failed. So the cap is about 33k tokens for state plus questions combined (documented as 32k), and the
-  "64k" figure is not reachable. **The failure is misleading:** oversize requests return `HTTP 503 {"code":"processing_failed","retryable":true}`, not a 4xx context error.
-  The Worker must enforce a client-side size ceiling (plan for 30k estimated tokens, calibrated against the returned `usage.input_tokens`) and must classify this
-  503 as non-retryable when the request is near or above the ceiling, or the existing 5xx retry budget will re-send a request that can never succeed.
+- **Input limits (maintainer rule, verified 2026-09-30 with random common words at about 1.01 tokens/word):** the total input is capped near
+  64k tokens, and the **state plus the single largest question** must stay under about 32k. Tested: state 28k + 10 questions of about 2.5k each
+  (53,576 input tokens) succeeded with 10 answers; state 28k + 14 questions (62,296 tokens) succeeded with 14 answers in 1.8 s; state 28k + 16
+  questions (about 66k) failed; state 29k + one 2.5k question (31,815) succeeded; state 29k + one 5k question (about 34k) failed. Earlier
+  tests with a large state and one tiny question confirm the same state-side ceiling (32,925 ok, 33.9k fail). **Design consequence:** a call can carry
+  about 30k tokens of shared state plus about 30k more in the questions themselves, so evidence windows can live in the questions (each under a few thousand
+  tokens), roughly doubling what one call judges. At about 25 to 60 evidence windows per call, 500 episodes/day of judging fits in tens of JEV calls, not hundreds.
+  **The failure is misleading:** oversize requests return `HTTP 503 {"code":"processing_failed","retryable":true}`, not a 4xx. The Worker must enforce
+  both ceilings client-side (plan for 28k state-plus-largest-question and 58k total estimated tokens, calibrated against the returned `usage.input_tokens`) and
+  classify that 503 as non-retryable when the request is near either limit, or the existing 5xx retry budget will re-send a request that can never succeed.
 - Caveat: a keyword-stuffed random text still scored 0.92 for "is this about zoning", so JEV is sensitive to surface terms; the stability and
   planted-probe checks in section 4 matter.
 - Errors seen: `503 processing_failed` (oversize, above), `401 invalid_api_key` (a trailing carriage return in the secret; fixed), `400 bad_request` with a clear message for the `score` criteria.
@@ -240,19 +245,26 @@ body `{model, state, questions}`. Verified live (3 successful calls, about a min
   There is no `wrangler.toml` in the repo. `BEATAPI_API_KEY` joins that count when the `beatapi` provider entry is added (now 39 vars + 21 secrets = 60; 61 after
   BeatAPI, against a limit of 64 with 2 headroom, leaving one spare slot). Add the name to the closing "Secrets" comment in the same change.
 
-**Worker variable survey (2026-09-30; the Cloudflare token available here cannot list deployed secrets, so this is from config and source).**
-- *Dead variable:* `UNKNOWN_ATTEMPT_POLICY` ("hold") appears only in `wrangler.jsonc` and the review/44 table; nothing in `workers/llm-dispatch-v2/src` reads it. Remove it.
-- *Redundant variables (20):* these declare the same value as the in-code default: `ATTEMPT_RETENTION_DAYS`, `BUNDLE_RETENTION_DAYS`, `CLEANUP_INTERVAL_MINUTES`,
-  `COMPLETED_RETENTION_DAYS`, `LEASE_DURATION_SECONDS`, `MAX_429_BACKOFF_SECONDS`, `MAX_429_RETRIES`, `MAX_5XX_BACKOFF_SECONDS`, `MAX_5XX_RETRIES`,
-  `MAX_ATTEMPT_PRUNE_PER_TICK`, `MAX_BUNDLE_PRUNE_PER_TICK`, `MAX_CANDIDATE_LOOKAHEAD`, `MAX_CONCURRENT_ROUTE_LANES`, `MAX_LEASES_PER_UTC_DAY`,
-  `MAX_ROUTE_BUFFER_SECONDS`, `MAX_UPSTREAM_CAPACITY_RETRIES`, `PURGE_BATCH_LIMIT`, `ROUTE_UNAVAILABLE_BLOCK_SECONDS`, `UPSTREAM_CAPACITY_COOLDOWN_SECONDS`,
-  `UPSTREAM_CAPACITY_MAX_COOLDOWN_SECONDS`. The match is a pattern search; verify each default at its call site before deleting (some are documented on purpose).
-  Removing them frees up to 20 variable slots, at the cost of pinning those values only in code.
-- *Secrets with no current lane route:* `MISTRAL_API_KEY`, `MISTRAL_API_KEY_SECONDARY` (only Codestral routes exist, none in a lane), `AIRFORCE_API_KEY` (one route, none in a lane),
-  `DEEPSEEK_API_KEY` and `SILICONFLOW_API_KEY` (no routes at all in `provider_limits.yml`). After the prelabeler, tournament and benchmark lanes retire, `SAMBANOVA_API_KEY`
-  (only Gemma 4 31B) and `ZAI_API_KEY` (only `glm-4.7-flash`) follow. Lane model names differ from route names for OrcaRouter (for example `deepseek/deepseek-v4-flash` is served by
-  `orcarouter/deepseek-v4-flash`), so confirm before deleting anything. The test counts every account's `api_key_env` in `provider_limits.yml`, so the slots come back only when the
-  provider entry is removed from that file and the secret is deleted in Cloudflare.
+**Worker variable survey (2026-09-30, deployed list supplied by the maintainer).** The deployed Worker has **39 variables + 24 secrets = 63 of the 64-item
+free-plan limit**, not the 61 the test predicts: the 39 variables match `wrangler.jsonc` exactly, but three deployed secrets are invisible to
+`tests/test_llm_dispatch_worker_limits.py` because no `provider_limits.yml` account names them (`BEATAPI_API_KEY` today, plus two orphans below).
+- *Delete orphan secrets (inert today):* `DISPATCH_AUTH_TOKEN` (zero references anywhere in the repo; a leftover of the retired v1 proxy naming) and `OPENCODE_API_KEY`
+  (no `opencode` provider block or routes; OpenCode Zen's free models are listed in `LLM_SETUP.md` but not wired; re-add with a route).
+- *Mistral (maintainer is fine removing):* `MISTRAL_API_KEY` and `MISTRAL_API_KEY_SECONDARY`; only Codestral routes exist and no lane uses them. Remove the two accounts from
+  `provider_limits.yml` in the same change, or the test keeps counting them.
+- *Inert direct-API secrets with no routes:* `DEEPSEEK_API_KEY` (the DeepSeek models in lanes are served by OrcaRouter/NVIDIA, not api.deepseek.com) and `SILICONFLOW_API_KEY` (the free
+  models need identity verification and paid routes are deliberately absent). No free capacity is lost by removing them from the Worker; the GitHub secrets for the probe workflows can stay.
+- *Keep (active free capacity):* `GEMINI_API_KEY` and `_SECONDARY`, `GROQ_API_KEY` (Qwen3.8), `KILO_API_KEY`, `NVIDIA_API_KEY`, `OPENROUTER_API_KEY`, `ORCAROUTER_API_KEY`,
+  `ZAI_API_KEY` (`glm-4.7-flash`/`4.5-flash`, 500 RPD), `SAMBANOVA_API_KEY` (Gemma 4 31B), `AIRFORCE_API_KEY` (one route), the fixed infrastructure secrets, and `BEATAPI_API_KEY`.
+- *Variables:* remove the dead `UNKNOWN_ATTEMPT_POLICY`; the empty `AI_GATEWAY_BASE_URL` is removable if the code treats unset and empty alike (verify); 20 variables
+  equal their in-code defaults (`ATTEMPT_RETENTION_DAYS`, `BUNDLE_RETENTION_DAYS`, `CLEANUP_INTERVAL_MINUTES`, `COMPLETED_RETENTION_DAYS`, `LEASE_DURATION_SECONDS`,
+  `MAX_429_BACKOFF_SECONDS`, `MAX_429_RETRIES`, `MAX_5XX_BACKOFF_SECONDS`, `MAX_5XX_RETRIES`, `MAX_ATTEMPT_PRUNE_PER_TICK`, `MAX_BUNDLE_PRUNE_PER_TICK`, `MAX_CANDIDATE_LOOKAHEAD`,
+  `MAX_CONCURRENT_ROUTE_LANES`, `MAX_LEASES_PER_UTC_DAY`, `MAX_ROUTE_BUFFER_SECONDS`, `MAX_UPSTREAM_CAPACITY_RETRIES`, `PURGE_BATCH_LIMIT`, `ROUTE_UNAVAILABLE_BLOCK_SECONDS`,
+  `UPSTREAM_CAPACITY_COOLDOWN_SECONDS`, `UPSTREAM_CAPACITY_MAX_COOLDOWN_SECONDS`), verify each at its call site first.
+- *Structural option (separate chore):* the remaining numeric tunables could move from dashboard variables into a compiled `src/dispatch_tuning.json`, following the existing
+  `dispatch_limits.json` / `ingress_reservations.json` pattern (drift-checked in `llm-dispatch-v2-worker-deploy.yml`), which frees about 25 more slots and makes changes reviewable PRs.
+- Net effect: deleting the orphans, Mistral, the inert direct keys and the dead variable takes 63 to 56; the redundant 20 would take it to 36. Fix the test to count deployed secrets
+  by listing them in a documented constant, including `BEATAPI_API_KEY`, so the next provider cannot silently hit 64.
 
 ## Risks
 
