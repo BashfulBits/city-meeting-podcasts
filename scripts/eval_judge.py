@@ -64,7 +64,9 @@ RESULTS_DIR = EVAL_DIR / "results"
 TAXONOMY_PATH = REPO_ROOT / "config" / "taxonomy.yml"
 
 SET_VERSION = 1
-PROMPT_VERSION = "1"
+PROMPT_VERSION = (
+    "2"  # 2: tag question encodes the maintainer rubric (specific project or policy counts)
+)
 
 JEV_URL = "https://api.beatapi.io/v1/systemone"
 JEV_MODEL = "jev-1.13-free"
@@ -410,8 +412,12 @@ def tag_question(item: Mapping[str, Any], tier: str) -> str:
         f"Topic tag: {item['label']}. Definition: {item['desc']}\n"
         f"Meeting agenda item (chapter) title: {item['chapter']}\n"
         f"Transcript excerpt ({tier}): {item[tier]}\n\n"
-        "Is this agenda item substantively about the topic as defined (a passing or incidental "
-        "mention does not count)? Probability the tag is correct."
+        "Is this the right tag for this agenda item? Count it when the discussion or action "
+        "involves a specific project, contract, program or policy on the topic, even if it is "
+        "approved routinely (for example on a consent agenda). Do not count a generic mention, a "
+        "passing reference in a list or summary, a read-back of past items, or a general-purpose "
+        "services contract that is not tied to a specific project or policy on the topic. "
+        "Probability the tag is correct."
     )
 
 
@@ -1182,10 +1188,10 @@ def freeze(state_dir: Path, *, force: bool, fetch_text=None) -> dict[str, Any]:
 def tier_accuracy_on_labels(
     answers: Mapping[str, Mapping[str, float]], labels: Mapping[str, bool], threshold: float = 0.5
 ) -> dict[str, dict[str, Any]]:
-    """Accuracy of each tier on the items that have an adjudicated label."""
+    """Accuracy of each tier on adjudicated items; a ``None`` label is Uncertain and is excluded."""
     out: dict[str, dict[str, Any]] = {}
     for tier, by_item in answers.items():
-        ids = [k for k in labels if k in by_item]
+        ids = [k for k in labels if k in by_item and labels[k] is not None]
         correct = sum((by_item[k] >= threshold) == labels[k] for k in ids)
         out[tier] = {
             "labeled_items": len(ids),
@@ -1215,7 +1221,7 @@ def simulate_escalation(
     ids = [k for k in real_ids if k in first_ans and k in then_ans]
     escalated = {k for k in ids if low <= first_ans[k] <= high}
     final = {k: (then_ans[k] if k in escalated else first_ans[k]) for k in ids}
-    labeled = [k for k in labels if k in final]
+    labeled = [k for k in labels if k in final and labels[k] is not None]
     correct = sum((final[k] >= threshold) == labels[k] for k in labeled)
     return {
         "policy": f"{first}, escalate to {then} when p in [{low}, {high}]",
@@ -1282,7 +1288,8 @@ def summarize(result: Mapping[str, Any], gold: Mapping[str, Any] | None = None) 
 def result_path(experiment: str, judge: str, out: str | None) -> Path:
     if out:
         return Path(out)
-    return RESULTS_DIR / f"{datetime.now(UTC).date().isoformat()}-{experiment}-{judge}.json"
+    suffix = "" if PROMPT_VERSION == "1" else f"-p{PROMPT_VERSION}"
+    return RESULTS_DIR / f"{datetime.now(UTC).date().isoformat()}-{experiment}-{judge}{suffix}.json"
 
 
 def main(argv: list[str] | None = None) -> int:

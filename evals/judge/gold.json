@@ -79,11 +79,11 @@
   ],
   "adjudicated": {
    "i8": true,
-   "i15": true,
+   "i15": null,
    "i16": false,
-   "i18": false,
+   "i18": true,
    "i19": true,
-   "i25": false,
+   "i25": null,
    "i28": true,
    "i12": true,
    "i20": true,
@@ -94,7 +94,8 @@
    "i2": false,
    "i0": false
   },
-  "adjudicated_provenance": "Read in full context by Claude (claude-sonnet-5-5) on 2026-09-30 and NOT reviewed by the maintainer: the 7 real items on which the three tiers disagreed (i8, i15, i16, i18, i19, i25, i28; decided from the +-45 s window, and the whole chapter excerpt for i19) plus 8 of the 27 items on which all tiers agreed, drawn at random with seed 3 (i12, i20, i27, i6 yes; i22, i29, i2, i0 no). The disagreement items are the hard ones, so accuracy on this subset is a lower bound on general accuracy, not an estimate of it. i15 is a judgment call (a stormwater drainage concern raised at a rezoning hearing). Replace or extend with maintainer-verified labels as they exist."
+  "adjudicated_provenance": "Read in full context by Claude (claude-sonnet-5-5) on 2026-09-30, then corrected by the maintainer's rulings the same day; NOT otherwise reviewed by the maintainer. Sample: the 7 real items on which the three tiers disagreed (i8, i15, i16, i18, i19, i25, i28) plus 8 of the 27 items on which all tiers agreed, drawn at random with seed 3 (i12, i20, i27, i6 yes; i22, i29, i2, i0 no). Null means Uncertain and is excluded from accuracy: i15 (a stormwater drainage concern at a rezoning hearing; maintainer: marginal, does not reach the policy of stormwater, not an automatic yes) and i25 (a named zoning case continued on a procedural item; by the maintainer's rubric this may be a yes, pending confirmation). i18 was changed to yes: the consent agenda includes a specific drainage project (Glasgow and Paisley drainage improvements) although the matched phrase sits in a generic services contract. The disagreement items are the hard ones, so accuracy on this subset is a lower bound, not an estimate of general accuracy. Replace or extend with audit-verified labels as they exist.",
+  "rubric": "Maintainer policy 2026-09-30: a tag is correct when the chapter involves a SPECIFIC project, contract, program or policy on the topic, even when it is approved routinely (for example on a consent agenda); it is not correct for a generic mention, a passing reference in a list or summary, a read-back of past items, or a general-purpose services contract not tied to a specific project or policy on the topic. Project exposure, not only contested debate, is what the tags are for."
  },
  "notes": "Controls are real excerpts paired with a tag from an unrelated taxonomy group; they must be rejected. No ground truth exists for pull-quote quality; that experiment measures consistency only."
 }

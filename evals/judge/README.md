@@ -48,6 +48,13 @@ These were each learned the hard way while building the lane; the harness refuse
 - **Keys** are stripped of whitespace (a trailing carriage return once made a valid key read as invalid).
 - A run with more than 10% unanswered calls is **inconclusive**, not a result (exit code 2), and errors are recorded, never hidden.
 
+## Rubric policy (maintainer, 2026-09-30)
+
+A tag is correct when the chapter involves a **specific project, contract, program or policy** on the topic, **even when it is approved routinely** (for example on a consent agenda). It is not correct for a generic
+mention, a passing reference in a list or summary, a read-back of past items, or a **general-purpose services contract** not tied to a specific project or policy on the topic. Exposing specific projects and policies, not only
+contested debate, is what the tags are for. The rubric lives in `tag_question` (prompt version 2); a change to it bumps `PROMPT_VERSION`, and non-default prompt versions are recorded in the result file name (`-p2`).
+Items the maintainer calls marginal are Uncertain (`null` in `gold.json`) and excluded from accuracy, matching the audit's Uncertain option.
+
 ## Decision rules these results feed
 
 - **Bundling:** use evidence-in-the-question for small, non-overlapping evidence and the shared state for shared or overlapping
@@ -75,7 +82,7 @@ a dozen calls and takes roughly fifteen minutes because of the one-a-minute paci
 Adding a task to the framework (a new question kind or evidence builder) means adding an experiment here first, so the lane grows
 with the judge stack instead of being replaced by ad hoc scripts.
 
-## Results (2026-09-30, set version 1, git `fa522ec9`; raw files in `results/`)
+## Results (2026-09-30, set version 1; raw files in `results/`)
 
 **bundling (JEV).** Evidence carried in each question (5.2k input tokens) and evidence in the shared state (5.4k): both
 scored accuracy 1.00 and AUC 1.000, with no verdict flipping between option orders or between layouts (largest probability change 0.01
@@ -90,22 +97,26 @@ winner as JEV in **3 of 6** (both orders). The producer's own score matched the 
 (not committed) gave Qwen-JEV agreement of 5 of 6 and 6 of 6 and producer-winner agreement of 1 of 6, so agreement varies a lot with the sample at this size:
 treat the kinds as measuring different things, not as interchangeable, and size the next sample before drawing a threshold from it.
 
-**context-ladder (JEV).** No tier accepted any of the 10 planted wrong-tag controls (largest control score 0.09, 0.07, 0.17 for T0, T1, T2), and
-real-versus-control separation was high at every tier (AUC 0.963, 0.956, 0.928). Real items accepted at 0.5: 9, 12, 12 of 34. Tiers disagree on real items:
-T0 against T2 flipped 5 verdicts (mean probability change 0.146), T1 against T2 flipped 4 (0.095). On the 15 adjudicated items (the 7 disagreements plus 8
-random unanimous ones; labels are Claude's, unreviewed by the maintainer; see `gold.json`), accuracy was **T0 10/15 (0.67), T1 11/15 (0.73), T2 13/15 (0.87)**.
-The disagreement items are the hard ones, so these are lower bounds, not estimates of general accuracy.
+**context-ladder (JEV).** Two prompt versions on the same 34 real items plus 10 controls. **Prompt 1** asked whether the item is "substantively about" the topic; **prompt 2** encodes the
+maintainer's rubric (see below: a specific project, contract, program or policy counts even when approved routinely; generic mentions, list items, read-backs and general-purpose services
+contracts do not). No tier accepted any control under either prompt (largest control score 0.09 and 0.17 at most for prompt 1, 0.06 to 0.17 for prompt 2), and real-versus-control separation was high (AUC 0.90 to 0.98).
 
-| Tier | Tokens per item | Items per call (58k ceiling) | JEV calls to backfill 127,719 candidates |
-|---|---|---|---|
-| T0 matched span | 163 | 344 | 372 |
-| T1 +-45 s window | 428 | 131 | 975 |
-| T2 whole chapter | 2,062 | 27 | 4,731 |
+Accuracy on the **13 adjudicated items** (labels are Claude's, corrected by the maintainer's rulings; two items are Uncertain and excluded; 6 of the 13 were chosen because tiers disagreed, so these are
+lower bounds for hard items, not general estimates):
 
-Escalation simulation on the same items: judging at **T1 and re-judging at T2 when the T1 probability is between 0.3 and 0.7** escalated 10 of 34
-real items (29%) and scored 13/15 on the adjudicated subset, the same as T2 for every item; the wider 0.2 to 0.8 band escalated 17 (50%) for no gain. At 29%
-escalation the cost is about 975 + 0.29 x 4,731, roughly **2,350 calls against 4,731** for T2 on everything (and against a 1,440-call daily JEV cap). Caveat: 15 labels,
-chosen where the tiers disagree.
+| Tier | Prompt 1 | Prompt 2 (rubric) | Tokens per item (prompt 2) | Items per call (58k) | JEV calls to backfill 127,719 |
+|---|---|---|---|---|---|
+| T0 matched span | 10/13 | **12/13** | 241 | 232 | 551 |
+| T1 +-45 s window | 9/13 | 10/13 | 506 | 110 | 1,162 |
+| T2 whole chapter | 12/13 | **13/13** | 2,140 | 26 | 4,913 |
+
+The rubric fixed the two items the maintainer ruled on (the consent agenda naming a specific drainage project, and a park master plan whose design goal is ADA access) at every tier. Tiers still disagree on real items
+(5 verdict flips T0 against T2 and 5 T1 against T2 under prompt 2). **Escalation simulation, prompt 2:** judging at T1 and re-judging at T2 when the T1 probability is between 0.3 and 0.7 escalated 9 of 34 items (26%)
+and scored 13/13, the same as T2 for everything, at about 1,162 + 0.26 x 4,913, roughly **2,450 calls instead of 4,913**; under prompt 1 the same policy escalated 29% and matched T2's 12/13.
+
+**Read these results with two cautions.** (1) **Prompt 2 was written after seeing these items and the maintainer's rulings on two of them, so its gain on this set is optimistic** (the rubric was tuned on the test items); it must be
+confirmed on items it has not seen, which means a holdout split like `evals/chapter-agenda/holdout/` (next freeze, version 2: new items drawn disjoint by meeting, never inspected while editing a prompt). (2) At 13 labels the tiers cannot
+be separated statistically; T0's 12/13 does not show it is as good as T2, only that it was not shown to be worse, which is why the initial rule stays "judge at T1, escalate to T2" until more labels exist.
 
 **adjudicator (Qwen).** 30 of 30 synthetic items correct, in six packs of five (about 760 prompt tokens, 400 to 800 reasoning tokens each).
 

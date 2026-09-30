@@ -696,3 +696,26 @@ def test_report_with_gold_and_compare_command(tmp_path, monkeypatch, capsys):
     assert ej.main(["compare", str(tmp_path / "j.json"), str(tmp_path / "q.json")]) == 0
     out = json.loads(capsys.readouterr().out)
     assert out == {"qwen_equals_jev_winner_by_order": [1], "meetings": 1}
+
+
+def test_uncertain_labels_are_excluded_and_the_rubric_is_in_the_tag_question():
+    answers = {"T1": {"a": 0.9, "b": 0.9}, "T2": {"a": 0.9, "b": 0.1}}
+    labels = {"a": True, "b": None}  # None = Uncertain
+    accuracy = ej.tier_accuracy_on_labels(answers, labels)
+    assert accuracy["T1"] == {"labeled_items": 1, "correct": 1, "accuracy": 1.0}
+    sim = ej.simulate_escalation(
+        answers, labels, ["a", "b"], first="T1", then="T2", low=0.3, high=0.7
+    )
+    assert sim["labeled_items"] == 1
+    item = {"label": "L", "desc": "D", "chapter": "C", "T0": "t0", "T1": "t1", "T2": "t2"}
+    text = ej.tag_question(item, "T1")
+    assert "specific project, contract, program or policy" in text and "t1" in text
+    assert "general-purpose services contract" in text
+
+
+def test_result_path_records_a_non_default_prompt_version(monkeypatch):
+    monkeypatch.setattr(ej, "PROMPT_VERSION", "1")
+    assert ej.result_path("bundling", "jev", None).name.endswith("-bundling-jev.json")
+    monkeypatch.setattr(ej, "PROMPT_VERSION", "2")
+    assert ej.result_path("bundling", "jev", None).name.endswith("-bundling-jev-p2.json")
+    assert ej.result_path("bundling", "jev", "x.json") == Path("x.json")
