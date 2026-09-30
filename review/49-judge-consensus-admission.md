@@ -418,5 +418,8 @@ criteria. This doc has the approach, the data on capacity and cost, and the risk
    how it fits `provider_limits.yml` (`rpm: 1`, `concurrency: 1`) and the Worker route; needs a live key.
 4. **File/function plan and tests** per phase, written against the real modules (`llm_evaluation.py`, `moment_evaluation.py`,
    `moment_judging.py`, `tags.py`, `llm_lanes.py`, the Worker), plus acceptance criteria and migration/backfill for each phase.
-5. **Open decisions:** second adjudicator route (after the locator verdict), audit clip authentication (above), a fuller catalog scan, and a
-   small Qwen adjudication-quality run.
+5. **Open decisions and facts:** second adjudicator route (after the locator verdict); the **graduation rule** for moving a task from shadow to enforced consensus
+   (no fixed numbers were wanted, so it must be stated relative to something measurable, for example "judged false-accept on probes no worse than the incumbent route and stable
+   for two league cycles"); what visible tags/moments do while a task is in shadow and at switch-over; a fuller catalog scan (114 of 156 sources unscanned, rule candidates per
+   episode assumed at about 4); a small Qwen adjudication-quality run; a mobile check of the meeting-page `#t=` deep link; real-response fixtures for JEV (captured in the 2026-09-30 spike).
+6. **Correct the variable-count test** to include the deployed secrets it cannot see (63 of 64 today), and apply the orphan/Mistral/redundant-variable cleanup above before adding the `beatapi` provider.
