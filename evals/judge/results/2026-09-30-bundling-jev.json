@@ -1,0 +1,240 @@
+{
+ "experiment": "bundling",
+ "judge": "jev",
+ "generated_at": "2026-09-30T16:59:59.083194+00:00",
+ "set_version": 1,
+ "prompt_version": "1",
+ "git_sha": "fa522ec9",
+ "calls_asked": 4,
+ "calls_answered": 4,
+ "unanswered_fraction": 0.0,
+ "inconclusive": false,
+ "errors": [],
+ "sizes": {
+  "question-order1": {
+   "state": 24,
+   "questions": 5963,
+   "largest_question": 214,
+   "total": 5987,
+   "state_plus_largest": 238
+  },
+  "question-order2": {
+   "state": 24,
+   "questions": 5963,
+   "largest_question": 214,
+   "total": 5987,
+   "state_plus_largest": 238
+  },
+  "state-order1": {
+   "state": 4898,
+   "questions": 1060,
+   "largest_question": 38,
+   "total": 5958,
+   "state_plus_largest": 4936
+  },
+  "state-order2": {
+   "state": 4898,
+   "questions": 1060,
+   "largest_question": 38,
+   "total": 5958,
+   "state_plus_largest": 4936
+  }
+ },
+ "usage": {
+  "question-order1": {
+   "input_tokens": 5203,
+   "output_tokens": 534
+  },
+  "question-order2": {
+   "input_tokens": 5203,
+   "output_tokens": 534
+  },
+  "state-order1": {
+   "input_tokens": 5461,
+   "output_tokens": 534
+  },
+  "state-order2": {
+   "input_tokens": 5461,
+   "output_tokens": 534
+  }
+ },
+ "metrics": {
+  "question-order1": {
+   "accuracy_at_0.5": 1.0,
+   "auc": 1.0,
+   "mean_true": 0.981,
+   "mean_false": 0.012,
+   "max_false": 0.02,
+   "min_true": 0.98
+  },
+  "question-order2": {
+   "accuracy_at_0.5": 1.0,
+   "auc": 1.0,
+   "mean_true": 0.985,
+   "mean_false": 0.013,
+   "max_false": 0.02,
+   "min_true": 0.98
+  },
+  "state-order1": {
+   "accuracy_at_0.5": 1.0,
+   "auc": 1.0,
+   "mean_true": 0.977,
+   "mean_false": 0.017,
+   "max_false": 0.06,
+   "min_true": 0.96
+  },
+  "state-order2": {
+   "accuracy_at_0.5": 1.0,
+   "auc": 1.0,
+   "mean_true": 0.977,
+   "mean_false": 0.018,
+   "max_false": 0.07,
+   "min_true": 0.96
+  },
+  "question-order1_vs_question-order2": {
+   "mean_abs_dp": 0.0017,
+   "max_abs_dp": 0.01,
+   "verdict_flips": 0
+  },
+  "state-order1_vs_state-order2": {
+   "mean_abs_dp": 0.002,
+   "max_abs_dp": 0.01,
+   "verdict_flips": 0
+  },
+  "question-order1_vs_state-order1": {
+   "mean_abs_dp": 0.0063,
+   "max_abs_dp": 0.05,
+   "verdict_flips": 0
+  }
+ },
+ "answers": {
+  "question-order1": {
+   "e0": 0.98,
+   "e1": 0.98,
+   "e10": 0.01,
+   "e11": 0.01,
+   "e12": 0.01,
+   "e13": 0.01,
+   "e14": 0.01,
+   "e15": 0.01,
+   "e16": 0.01,
+   "e17": 0.01,
+   "e18": 0.01,
+   "e19": 0.01,
+   "e2": 0.98,
+   "e20": 0.01,
+   "e21": 0.02,
+   "e22": 0.01,
+   "e23": 0.01,
+   "e24": 0.02,
+   "e25": 0.02,
+   "e26": 0.01,
+   "e27": 0.01,
+   "e28": 0.01,
+   "e29": 0.02,
+   "e3": 0.98,
+   "e4": 0.98,
+   "e5": 0.98,
+   "e6": 0.98,
+   "e7": 0.99,
+   "e8": 0.98,
+   "e9": 0.98
+  },
+  "question-order2": {
+   "e0": 0.99,
+   "e1": 0.98,
+   "e10": 0.01,
+   "e11": 0.01,
+   "e12": 0.01,
+   "e13": 0.01,
+   "e14": 0.01,
+   "e15": 0.01,
+   "e16": 0.01,
+   "e17": 0.01,
+   "e18": 0.01,
+   "e19": 0.01,
+   "e2": 0.98,
+   "e20": 0.01,
+   "e21": 0.02,
+   "e22": 0.01,
+   "e23": 0.01,
+   "e24": 0.02,
+   "e25": 0.02,
+   "e26": 0.02,
+   "e27": 0.01,
+   "e28": 0.01,
+   "e29": 0.02,
+   "e3": 0.99,
+   "e4": 0.98,
+   "e5": 0.98,
+   "e6": 0.98,
+   "e7": 0.99,
+   "e8": 0.99,
+   "e9": 0.99
+  },
+  "state-order1": {
+   "e0": 0.98,
+   "e1": 0.98,
+   "e10": 0.01,
+   "e11": 0.02,
+   "e12": 0.01,
+   "e13": 0.02,
+   "e14": 0.01,
+   "e15": 0.01,
+   "e16": 0.02,
+   "e17": 0.02,
+   "e18": 0.01,
+   "e19": 0.03,
+   "e2": 0.97,
+   "e20": 0.01,
+   "e21": 0.01,
+   "e22": 0.01,
+   "e23": 0.01,
+   "e24": 0.02,
+   "e25": 0.01,
+   "e26": 0.01,
+   "e27": 0.06,
+   "e28": 0.02,
+   "e29": 0.01,
+   "e3": 0.98,
+   "e4": 0.96,
+   "e5": 0.98,
+   "e6": 0.98,
+   "e7": 0.98,
+   "e8": 0.98,
+   "e9": 0.98
+  },
+  "state-order2": {
+   "e0": 0.98,
+   "e1": 0.98,
+   "e10": 0.01,
+   "e11": 0.03,
+   "e12": 0.01,
+   "e13": 0.01,
+   "e14": 0.01,
+   "e15": 0.02,
+   "e16": 0.01,
+   "e17": 0.02,
+   "e18": 0.02,
+   "e19": 0.03,
+   "e2": 0.97,
+   "e20": 0.01,
+   "e21": 0.01,
+   "e22": 0.01,
+   "e23": 0.01,
+   "e24": 0.02,
+   "e25": 0.01,
+   "e26": 0.01,
+   "e27": 0.07,
+   "e28": 0.02,
+   "e29": 0.01,
+   "e3": 0.98,
+   "e4": 0.96,
+   "e5": 0.98,
+   "e6": 0.98,
+   "e7": 0.98,
+   "e8": 0.98,
+   "e9": 0.98
+  }
+ }
+}

@@ -1,0 +1,1390 @@
+{
+ "experiment": "question-types",
+ "judge": "jev",
+ "generated_at": "2026-09-30T17:02:14.123668+00:00",
+ "set_version": 1,
+ "prompt_version": "1",
+ "git_sha": "fa522ec9",
+ "calls_asked": 2,
+ "calls_answered": 2,
+ "unanswered_fraction": 0.0,
+ "inconclusive": false,
+ "errors": [],
+ "metrics": {
+  "meetings": 6,
+  "winner_stable_across_orders": 6,
+  "winner_equals_top_grade": 2,
+  "winner_equals_top_publish_probability": 2,
+  "winner_equals_producer_top_score": 4,
+  "publish_probability_max_abs_diff": 0.06,
+  "grade_max_abs_diff": 0.16,
+  "publish_probability_range": [
+   0.4,
+   0.835
+  ],
+  "first_order_winners": {
+   "32911f2064da1723": "m3q1",
+   "41b2c58a6d7767b6": "m0q0",
+   "59646234b4a138f9": "m2q0",
+   "657e0912c48af4f8": "m5q1",
+   "8358c58b44bf3ee2": "m4q2",
+   "b8894534c463f6ef": "m1q3"
+  },
+  "all_order_winners": {
+   "32911f2064da1723": [
+    "m3q1",
+    "m3q1"
+   ],
+   "41b2c58a6d7767b6": [
+    "m0q0",
+    "m0q0"
+   ],
+   "59646234b4a138f9": [
+    "m2q0",
+    "m2q0"
+   ],
+   "657e0912c48af4f8": [
+    "m5q1",
+    "m5q1"
+   ],
+   "8358c58b44bf3ee2": [
+    "m4q2",
+    "m4q2"
+   ],
+   "b8894534c463f6ef": [
+    "m1q3",
+    "m1q3"
+   ]
+  }
+ },
+ "runs": [
+  {
+   "answers": {
+    "best_32911f2064da1723": {
+     "choice": "D",
+     "confidence": 0.21,
+     "probabilities": {
+      "A": 0.35,
+      "B": 0.02,
+      "C": 0.22,
+      "D": 0.41
+     },
+     "type": "choice"
+    },
+    "best_41b2c58a6d7767b6": {
+     "choice": "B",
+     "confidence": 0.43,
+     "probabilities": {
+      "A": 0.14,
+      "B": 0.57,
+      "C": 0.1,
+      "D": 0.19
+     },
+     "type": "choice"
+    },
+    "best_59646234b4a138f9": {
+     "choice": "A",
+     "confidence": 0.3,
+     "probabilities": {
+      "A": 0.48,
+      "B": 0.46,
+      "C": 0.01,
+      "D": 0.05
+     },
+     "type": "choice"
+    },
+    "best_657e0912c48af4f8": {
+     "choice": "B",
+     "confidence": 0.46,
+     "probabilities": {
+      "A": 0.28,
+      "B": 0.6,
+      "C": 0.09,
+      "D": 0.03
+     },
+     "type": "choice"
+    },
+    "best_8358c58b44bf3ee2": {
+     "choice": "B",
+     "confidence": 0.98,
+     "probabilities": {
+      "A": 0.01,
+      "B": 0.99,
+      "C": 0,
+      "D": 0
+     },
+     "type": "choice"
+    },
+    "best_b8894534c463f6ef": {
+     "choice": "A",
+     "confidence": 0.41,
+     "probabilities": {
+      "A": 0.56,
+      "B": 0.41,
+      "C": 0.01,
+      "D": 0.02
+     },
+     "type": "choice"
+    },
+    "pub_m0q0": {
+     "noul": 0.55,
+     "type": "noul"
+    },
+    "pub_m0q1": {
+     "noul": 0.55,
+     "type": "noul"
+    },
+    "pub_m0q2": {
+     "noul": 0.62,
+     "type": "noul"
+    },
+    "pub_m0q3": {
+     "noul": 0.56,
+     "type": "noul"
+    },
+    "pub_m1q0": {
+     "noul": 0.54,
+     "type": "noul"
+    },
+    "pub_m1q1": {
+     "noul": 0.73,
+     "type": "noul"
+    },
+    "pub_m1q2": {
+     "noul": 0.7,
+     "type": "noul"
+    },
+    "pub_m1q3": {
+     "noul": 0.63,
+     "type": "noul"
+    },
+    "pub_m2q0": {
+     "noul": 0.78,
+     "type": "noul"
+    },
+    "pub_m2q1": {
+     "noul": 0.66,
+     "type": "noul"
+    },
+    "pub_m2q2": {
+     "noul": 0.75,
+     "type": "noul"
+    },
+    "pub_m2q3": {
+     "noul": 0.81,
+     "type": "noul"
+    },
+    "pub_m3q0": {
+     "noul": 0.74,
+     "type": "noul"
+    },
+    "pub_m3q1": {
+     "noul": 0.61,
+     "type": "noul"
+    },
+    "pub_m3q2": {
+     "noul": 0.74,
+     "type": "noul"
+    },
+    "pub_m3q3": {
+     "noul": 0.61,
+     "type": "noul"
+    },
+    "pub_m4q0": {
+     "noul": 0.41,
+     "type": "noul"
+    },
+    "pub_m4q1": {
+     "noul": 0.6,
+     "type": "noul"
+    },
+    "pub_m4q2": {
+     "noul": 0.77,
+     "type": "noul"
+    },
+    "pub_m4q3": {
+     "noul": 0.44,
+     "type": "noul"
+    },
+    "pub_m5q0": {
+     "noul": 0.74,
+     "type": "noul"
+    },
+    "pub_m5q1": {
+     "noul": 0.83,
+     "type": "noul"
+    },
+    "pub_m5q2": {
+     "noul": 0.71,
+     "type": "noul"
+    },
+    "pub_m5q3": {
+     "noul": 0.79,
+     "type": "noul"
+    },
+    "score_m0q0": {
+     "confidence": 0.21,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.28,
+      "2": 0.32,
+      "3": 0.36,
+      "4": 0.03
+     },
+     "score": 2.11,
+     "type": "score"
+    },
+    "score_m0q1": {
+     "confidence": 0,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.13,
+      "1": 0.26,
+      "2": 0.21,
+      "3": 0.28,
+      "4": 0.12
+     },
+     "score": 2,
+     "type": "score"
+    },
+    "score_m0q2": {
+     "confidence": 0.4,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.03,
+      "1": 0.12,
+      "2": 0.15,
+      "3": 0.45,
+      "4": 0.25
+     },
+     "score": 2.79,
+     "type": "score"
+    },
+    "score_m0q3": {
+     "confidence": 0.28,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.02,
+      "1": 0.4,
+      "2": 0.32,
+      "3": 0.25,
+      "4": 0.01
+     },
+     "score": 1.82,
+     "type": "score"
+    },
+    "score_m1q0": {
+     "confidence": 0.23,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.2,
+      "1": 0.27,
+      "2": 0.27999999999999997,
+      "3": 0.23,
+      "4": 0.02
+     },
+     "score": 1.61,
+     "type": "score"
+    },
+    "score_m1q1": {
+     "confidence": 0.54,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.02,
+      "1": 0.04,
+      "2": 0.12,
+      "3": 0.54,
+      "4": 0.27
+     },
+     "score": 2.99,
+     "type": "score"
+    },
+    "score_m1q2": {
+     "confidence": 0.44,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.14,
+      "2": 0.34,
+      "3": 0.47,
+      "4": 0.04
+     },
+     "score": 2.4,
+     "type": "score"
+    },
+    "score_m1q3": {
+     "confidence": 0.38,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.04,
+      "1": 0.13,
+      "2": 0.14,
+      "3": 0.45,
+      "4": 0.24
+     },
+     "score": 2.74,
+     "type": "score"
+    },
+    "score_m2q0": {
+     "confidence": 0.63,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.02,
+      "2": 0.07,
+      "3": 0.59,
+      "4": 0.31
+     },
+     "score": 3.17,
+     "type": "score"
+    },
+    "score_m2q1": {
+     "confidence": 0.01,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.17,
+      "1": 0.18,
+      "2": 0.27,
+      "3": 0.33,
+      "4": 0.05
+     },
+     "score": 1.91,
+     "type": "score"
+    },
+    "score_m2q2": {
+     "confidence": 0.61,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.04,
+      "2": 0.11,
+      "3": 0.58,
+      "4": 0.26
+     },
+     "score": 3.05,
+     "type": "score"
+    },
+    "score_m2q3": {
+     "confidence": 0.54,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0,
+      "1": 0.02,
+      "2": 0.05,
+      "3": 0.47,
+      "4": 0.46
+     },
+     "score": 3.36,
+     "type": "score"
+    },
+    "score_m3q0": {
+     "confidence": 0.55,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0,
+      "1": 0.01,
+      "2": 0.04,
+      "3": 0.42,
+      "4": 0.53
+     },
+     "score": 3.46,
+     "type": "score"
+    },
+    "score_m3q1": {
+     "confidence": 0.23,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.1,
+      "1": 0.14,
+      "2": 0.22,
+      "3": 0.39999999999999997,
+      "4": 0.14
+     },
+     "score": 2.35,
+     "type": "score"
+    },
+    "score_m3q2": {
+     "confidence": 0.37,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.04,
+      "2": 0.07,
+      "3": 0.43,
+      "4": 0.45
+     },
+     "score": 3.24,
+     "type": "score"
+    },
+    "score_m3q3": {
+     "confidence": 0.45,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.02,
+      "1": 0.11,
+      "2": 0.13,
+      "3": 0.48,
+      "4": 0.26
+     },
+     "score": 2.86,
+     "type": "score"
+    },
+    "score_m4q0": {
+     "confidence": 0.17,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.14,
+      "1": 0.33,
+      "2": 0.23,
+      "3": 0.26,
+      "4": 0.04
+     },
+     "score": 1.71,
+     "type": "score"
+    },
+    "score_m4q1": {
+     "confidence": 0.21,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.02,
+      "1": 0.37,
+      "2": 0.32,
+      "3": 0.27,
+      "4": 0.02
+     },
+     "score": 1.91,
+     "type": "score"
+    },
+    "score_m4q2": {
+     "confidence": 0.6,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.04,
+      "2": 0.1,
+      "3": 0.57,
+      "4": 0.28
+     },
+     "score": 3.08,
+     "type": "score"
+    },
+    "score_m4q3": {
+     "confidence": 0.08,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.04,
+      "1": 0.33,
+      "2": 0.25,
+      "3": 0.32,
+      "4": 0.06
+     },
+     "score": 2.03,
+     "type": "score"
+    },
+    "score_m5q0": {
+     "confidence": 0.54,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.07,
+      "2": 0.15,
+      "3": 0.56,
+      "4": 0.21
+     },
+     "score": 2.88,
+     "type": "score"
+    },
+    "score_m5q1": {
+     "confidence": 0.73,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0,
+      "1": 0,
+      "2": 0.01,
+      "3": 0.28,
+      "4": 0.71
+     },
+     "score": 3.68,
+     "type": "score"
+    },
+    "score_m5q2": {
+     "confidence": 0.05,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.08,
+      "1": 0.31,
+      "2": 0.19,
+      "3": 0.32,
+      "4": 0.1
+     },
+     "score": 2.07,
+     "type": "score"
+    },
+    "score_m5q3": {
+     "confidence": 0.62,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.04,
+      "2": 0.12,
+      "3": 0.61,
+      "4": 0.22
+     },
+     "score": 2.99,
+     "type": "score"
+    }
+   },
+   "maps": {
+    "best_41b2c58a6d7767b6": {
+     "A": "m0q3",
+     "B": "m0q0",
+     "C": "m0q2",
+     "D": "m0q1"
+    },
+    "best_b8894534c463f6ef": {
+     "A": "m1q3",
+     "B": "m1q1",
+     "C": "m1q0",
+     "D": "m1q2"
+    },
+    "best_59646234b4a138f9": {
+     "A": "m2q0",
+     "B": "m2q2",
+     "C": "m2q1",
+     "D": "m2q3"
+    },
+    "best_32911f2064da1723": {
+     "A": "m3q2",
+     "B": "m3q3",
+     "C": "m3q0",
+     "D": "m3q1"
+    },
+    "best_8358c58b44bf3ee2": {
+     "A": "m4q3",
+     "B": "m4q2",
+     "C": "m4q1",
+     "D": "m4q0"
+    },
+    "best_657e0912c48af4f8": {
+     "A": "m5q3",
+     "B": "m5q1",
+     "C": "m5q2",
+     "D": "m5q0"
+    }
+   },
+   "usage": {
+    "input_tokens": 9830,
+    "output_tokens": 1240
+   }
+  },
+  {
+   "answers": {
+    "best_32911f2064da1723": {
+     "choice": "A",
+     "confidence": 0.23,
+     "probabilities": {
+      "A": 0.42,
+      "B": 0.01,
+      "C": 0.4,
+      "D": 0.17
+     },
+     "type": "choice"
+    },
+    "best_41b2c58a6d7767b6": {
+     "choice": "D",
+     "confidence": 0.34,
+     "probabilities": {
+      "A": 0.36,
+      "B": 0.07,
+      "C": 0.06,
+      "D": 0.51
+     },
+     "type": "choice"
+    },
+    "best_59646234b4a138f9": {
+     "choice": "B",
+     "confidence": 0.52,
+     "probabilities": {
+      "A": 0.03,
+      "B": 0.65,
+      "C": 0.08,
+      "D": 0.24
+     },
+     "type": "choice"
+    },
+    "best_657e0912c48af4f8": {
+     "choice": "B",
+     "confidence": 0.72,
+     "probabilities": {
+      "A": 0.1,
+      "B": 0.79,
+      "C": 0.06,
+      "D": 0.05
+     },
+     "type": "choice"
+    },
+    "best_8358c58b44bf3ee2": {
+     "choice": "C",
+     "confidence": 0.97,
+     "probabilities": {
+      "A": 0.01,
+      "B": 0.01,
+      "C": 0.98,
+      "D": 0
+     },
+     "type": "choice"
+    },
+    "best_b8894534c463f6ef": {
+     "choice": "A",
+     "confidence": 0.49,
+     "probabilities": {
+      "A": 0.62,
+      "B": 0.35,
+      "C": 0.01,
+      "D": 0.02
+     },
+     "type": "choice"
+    },
+    "pub_m0q0": {
+     "noul": 0.53,
+     "type": "noul"
+    },
+    "pub_m0q1": {
+     "noul": 0.61,
+     "type": "noul"
+    },
+    "pub_m0q2": {
+     "noul": 0.63,
+     "type": "noul"
+    },
+    "pub_m0q3": {
+     "noul": 0.57,
+     "type": "noul"
+    },
+    "pub_m1q0": {
+     "noul": 0.54,
+     "type": "noul"
+    },
+    "pub_m1q1": {
+     "noul": 0.73,
+     "type": "noul"
+    },
+    "pub_m1q2": {
+     "noul": 0.71,
+     "type": "noul"
+    },
+    "pub_m1q3": {
+     "noul": 0.63,
+     "type": "noul"
+    },
+    "pub_m2q0": {
+     "noul": 0.77,
+     "type": "noul"
+    },
+    "pub_m2q1": {
+     "noul": 0.66,
+     "type": "noul"
+    },
+    "pub_m2q2": {
+     "noul": 0.74,
+     "type": "noul"
+    },
+    "pub_m2q3": {
+     "noul": 0.81,
+     "type": "noul"
+    },
+    "pub_m3q0": {
+     "noul": 0.73,
+     "type": "noul"
+    },
+    "pub_m3q1": {
+     "noul": 0.61,
+     "type": "noul"
+    },
+    "pub_m3q2": {
+     "noul": 0.76,
+     "type": "noul"
+    },
+    "pub_m3q3": {
+     "noul": 0.56,
+     "type": "noul"
+    },
+    "pub_m4q0": {
+     "noul": 0.39,
+     "type": "noul"
+    },
+    "pub_m4q1": {
+     "noul": 0.57,
+     "type": "noul"
+    },
+    "pub_m4q2": {
+     "noul": 0.77,
+     "type": "noul"
+    },
+    "pub_m4q3": {
+     "noul": 0.47,
+     "type": "noul"
+    },
+    "pub_m5q0": {
+     "noul": 0.74,
+     "type": "noul"
+    },
+    "pub_m5q1": {
+     "noul": 0.84,
+     "type": "noul"
+    },
+    "pub_m5q2": {
+     "noul": 0.7,
+     "type": "noul"
+    },
+    "pub_m5q3": {
+     "noul": 0.79,
+     "type": "noul"
+    },
+    "score_m0q0": {
+     "confidence": 0.15,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.02,
+      "1": 0.34,
+      "2": 0.31,
+      "3": 0.31,
+      "4": 0.02
+     },
+     "score": 1.98,
+     "type": "score"
+    },
+    "score_m0q1": {
+     "confidence": 0.03,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.16,
+      "1": 0.28,
+      "2": 0.2,
+      "3": 0.26,
+      "4": 0.1
+     },
+     "score": 1.84,
+     "type": "score"
+    },
+    "score_m0q2": {
+     "confidence": 0.4,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.03,
+      "1": 0.12,
+      "2": 0.14,
+      "3": 0.45,
+      "4": 0.26
+     },
+     "score": 2.79,
+     "type": "score"
+    },
+    "score_m0q3": {
+     "confidence": 0.3,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.02,
+      "1": 0.42,
+      "2": 0.32,
+      "3": 0.23,
+      "4": 0.01
+     },
+     "score": 1.8,
+     "type": "score"
+    },
+    "score_m1q0": {
+     "confidence": 0.17,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.21,
+      "1": 0.27,
+      "2": 0.28,
+      "3": 0.22,
+      "4": 0.02
+     },
+     "score": 1.57,
+     "type": "score"
+    },
+    "score_m1q1": {
+     "confidence": 0.52,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.02,
+      "1": 0.04,
+      "2": 0.1,
+      "3": 0.5,
+      "4": 0.34
+     },
+     "score": 3.09,
+     "type": "score"
+    },
+    "score_m1q2": {
+     "confidence": 0.47,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.12,
+      "2": 0.33,
+      "3": 0.5,
+      "4": 0.04
+     },
+     "score": 2.44,
+     "type": "score"
+    },
+    "score_m1q3": {
+     "confidence": 0.39,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.03,
+      "1": 0.13,
+      "2": 0.14,
+      "3": 0.45,
+      "4": 0.25
+     },
+     "score": 2.77,
+     "type": "score"
+    },
+    "score_m2q0": {
+     "confidence": 0.61,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.04,
+      "2": 0.11,
+      "3": 0.59,
+      "4": 0.25
+     },
+     "score": 3.04,
+     "type": "score"
+    },
+    "score_m2q1": {
+     "confidence": 0,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.16,
+      "1": 0.2,
+      "2": 0.29,
+      "3": 0.31,
+      "4": 0.04
+     },
+     "score": 1.88,
+     "type": "score"
+    },
+    "score_m2q2": {
+     "confidence": 0.59,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.04,
+      "2": 0.1,
+      "3": 0.56,
+      "4": 0.28
+     },
+     "score": 3.07,
+     "type": "score"
+    },
+    "score_m2q3": {
+     "confidence": 0.49,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0,
+      "1": 0.02,
+      "2": 0.05,
+      "3": 0.44,
+      "4": 0.49
+     },
+     "score": 3.38,
+     "type": "score"
+    },
+    "score_m3q0": {
+     "confidence": 0.58,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0,
+      "1": 0.01,
+      "2": 0.04,
+      "3": 0.4,
+      "4": 0.55
+     },
+     "score": 3.49,
+     "type": "score"
+    },
+    "score_m3q1": {
+     "confidence": 0.21,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.11,
+      "1": 0.14,
+      "2": 0.21,
+      "3": 0.4,
+      "4": 0.14
+     },
+     "score": 2.33,
+     "type": "score"
+    },
+    "score_m3q2": {
+     "confidence": 0.38,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.04,
+      "2": 0.08,
+      "3": 0.42,
+      "4": 0.45
+     },
+     "score": 3.26,
+     "type": "score"
+    },
+    "score_m3q3": {
+     "confidence": 0.46,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.02,
+      "1": 0.09,
+      "2": 0.12,
+      "3": 0.49,
+      "4": 0.28
+     },
+     "score": 2.91,
+     "type": "score"
+    },
+    "score_m4q0": {
+     "confidence": 0.12,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.13,
+      "1": 0.32,
+      "2": 0.22,
+      "3": 0.28,
+      "4": 0.05
+     },
+     "score": 1.8,
+     "type": "score"
+    },
+    "score_m4q1": {
+     "confidence": 0.27,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.03,
+      "1": 0.4,
+      "2": 0.31,
+      "3": 0.24,
+      "4": 0.02
+     },
+     "score": 1.82,
+     "type": "score"
+    },
+    "score_m4q2": {
+     "confidence": 0.59,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.03,
+      "2": 0.1,
+      "3": 0.56,
+      "4": 0.3
+     },
+     "score": 3.11,
+     "type": "score"
+    },
+    "score_m4q3": {
+     "confidence": 0.18,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.03,
+      "1": 0.28,
+      "2": 0.25,
+      "3": 0.37,
+      "4": 0.07
+     },
+     "score": 2.16,
+     "type": "score"
+    },
+    "score_m5q0": {
+     "confidence": 0.53,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.08,
+      "2": 0.16,
+      "3": 0.55,
+      "4": 0.2
+     },
+     "score": 2.84,
+     "type": "score"
+    },
+    "score_m5q1": {
+     "confidence": 0.72,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0,
+      "1": 0,
+      "2": 0.01,
+      "3": 0.3,
+      "4": 0.6900000000000001
+     },
+     "score": 3.66,
+     "type": "score"
+    },
+    "score_m5q2": {
+     "confidence": 0.07,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.07,
+      "1": 0.31,
+      "2": 0.2,
+      "3": 0.32,
+      "4": 0.1
+     },
+     "score": 2.08,
+     "type": "score"
+    },
+    "score_m5q3": {
+     "confidence": 0.62,
+     "legend": {
+      "0": "1 unusable or procedural",
+      "1": "2 weak",
+      "2": "3 acceptable",
+      "3": "4 good",
+      "4": "5 excellent standalone quote"
+     },
+     "probabilities": {
+      "0": 0.01,
+      "1": 0.04,
+      "2": 0.11,
+      "3": 0.61,
+      "4": 0.23
+     },
+     "score": 3,
+     "type": "score"
+    }
+   },
+   "maps": {
+    "best_41b2c58a6d7767b6": {
+     "A": "m0q1",
+     "B": "m0q2",
+     "C": "m0q3",
+     "D": "m0q0"
+    },
+    "best_b8894534c463f6ef": {
+     "A": "m1q3",
+     "B": "m1q1",
+     "C": "m1q0",
+     "D": "m1q2"
+    },
+    "best_59646234b4a138f9": {
+     "A": "m2q1",
+     "B": "m2q0",
+     "C": "m2q3",
+     "D": "m2q2"
+    },
+    "best_32911f2064da1723": {
+     "A": "m3q1",
+     "B": "m3q3",
+     "C": "m3q2",
+     "D": "m3q0"
+    },
+    "best_8358c58b44bf3ee2": {
+     "A": "m4q0",
+     "B": "m4q1",
+     "C": "m4q2",
+     "D": "m4q3"
+    },
+    "best_657e0912c48af4f8": {
+     "A": "m5q0",
+     "B": "m5q1",
+     "C": "m5q3",
+     "D": "m5q2"
+    }
+   },
+   "usage": {
+    "input_tokens": 9830,
+    "output_tokens": 1240
+   }
+  }
+ ]
+}
