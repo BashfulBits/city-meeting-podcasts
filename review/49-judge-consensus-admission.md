@@ -515,14 +515,12 @@ Two separate decisions, each stated relative to a measured baseline rather than 
 - `audit-remedy` and `city-onboarding` are outside leagues.
 - Audit audio is a link to the meeting page at `#t=`; no clip uploads, no PAT.
 - The mobile check of the `#t=` link is deferred to the website redesign.
+- Approved 2026-09-30: the worked shadow and switch-over example (a tag is visible only once judged good), the two relative graduation rules, and the initial context rule (judge at T1, escalate to T2 when p is 0.3 to 0.7).
+- The 15 adjudicated context labels are Claude's and were shown to the maintainer for a sanity check; they are replaced over time by audit-verified labels, not by a separate labeling exercise.
 
 ## Open questions (remaining)
 
-1. **Second adjudicator route:** decided after the locator verdict (expected Wednesday evening).
-2. **Shadow and switch-over:** the rule is now "visible only once judged good" for all tags; please confirm the worked example above matches what you meant.
-3. **Graduation wording:** confirm the two relative rules above.
-4. **Initial context rule:** confirm "judge at T1, escalate to T2 when p is 0.3 to 0.7" as the P1/P2 starting point (section 4b), to be confirmed or moved by the continuous sample.
-5. **More labels:** the context result rests on 15 labels that are Claude's, not yours; the weekly audit promotes clear-cut items into `gold.json`, and a larger, maintainer-reviewed set would firm up the tier choice.
+1. **Second adjudicator route:** decided after the locator verdict (expected late 2026-09-30).
 
 ## Path to L3
 
