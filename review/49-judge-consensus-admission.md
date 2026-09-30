@@ -109,7 +109,7 @@ tags attach to; this design does not judge chapter discovery (that stays with th
      packets of about 6k input tokens (roughly 4–6 questions with evidence windows); the ceiling is an account tier limit, so the
      Groq Dev tier (paid) would lift it, which is not planned. The second adjudicator route should be whichever
      locator-target model falls out of contention once the locator verdict is final, using its long context for large packets;
-     `gemini-3.8/3.7/3.6-flash` (40 RPD each) are small overflow. Sharing a model with the locator is acceptable because adjudicators
+     `gemini-3.8/3.7/3.6-flash` (40 RPD each) are small overflow. **Quality check (2026-09-30):** on the same 30 known-truth items packed 5 per request (about 760 prompt tokens, 400–800 reasoning tokens, about 2 s each, `reasoning_effort: high`, `json_schema`) Qwen3.8-27B was 30/30 correct with quoted evidence; the set is easy, so this confirms it can do the job within its 7k-token packets, not its accuracy on hard cases. Sharing a model with the locator is acceptable because adjudicators
      are rarely called (it only shares RPD).
    - *Volume and packing.* Judging is per (tag, chapter) pair, not per call: at about 25 pairs per episode, 1,000 episodes
      is about 25,000 pairs/day, and 10% contested is 2,500 pairs/day (not 10% of the roughly 1,750 tagger and moment calls). Adjudication
@@ -237,6 +237,12 @@ body `{model, state, questions}`. Verified live (3 successful calls, about a min
   **The failure is misleading:** oversize requests return `HTTP 503 {"code":"processing_failed","retryable":true}`, not a 4xx. The Worker must enforce
   both ceilings client-side (plan for 28k state-plus-largest-question and 58k total estimated tokens, calibrated against the returned `usage.input_tokens`) and
   classify that 503 as non-retryable when the request is near either limit, or the existing 5xx retry budget will re-send a request that can never succeed.
+- **Evidence in the questions versus in the state (2026-09-30, 30 items with ground truth: 10 supported, 10 near-miss "tabled/denied", 10 off-topic; about 0.6 KB of evidence each; two shuffled orders each):**
+  bundling each item's evidence into its own question with a 100-byte state (5,203 input tokens) and putting all evidence in the state with 30 small questions (5,439 tokens) both scored
+  accuracy 1.00 and AUC 1.000 (true items 0.96–0.99, false items at most 0.05), with no verdict flips between orders (max probability change 0.01 within a mode, 0.04 between modes). So JEV **does** answer
+  questions from evidence carried in the question text, not only from the state. Limits of this test: the items were easy and synthetic (the near-misses were clearly worded), so it shows the mode is valid and order-stable, not that
+  the two are equally accurate on hard real text. Cost consequence: question-bundled evidence is repeated per question, so it suits **small, non-overlapping evidence** (a rule candidate's matched phrase plus a
+  window); the state is better for **shared or overlapping evidence** (one chapter judged against many tags). A call can mix both inside the 32k (state plus largest question) and 64k (total) limits.
 - Caveat: a keyword-stuffed random text still scored 0.92 for "is this about zoning", so JEV is sensitive to surface terms; the stability and
   planted-probe checks in section 4 matter.
 - Errors seen: `503 processing_failed` (oversize, above), `401 invalid_api_key` (a trailing carriage return in the secret; fixed), `400 bad_request` with a clear message for the `score` criteria.
@@ -295,8 +301,8 @@ allowance of 3.0 rows. Ingress admits `3 + N` write units per job. Both the ingr
 
 ### Measured inputs (episode-record scan, 2026-09-30)
 
-Scanned the durable state for the 42 sources whose `episodes.json` exist in storage (26,537 episodes; the other configured feeds share
-source keys or have no record file, so **this is a sample, not the whole catalog**; re-run when convenient):
+Scanned the durable state for all 42 unique source keys (the 156 configured feeds share them; one `episodes.json` each; 26,537 episodes), so
+**this is the whole catalog**, not a sample:
 
 | Quantity | Measured |
 |---|---|
@@ -305,13 +311,13 @@ source keys or have no record file, so **this is a sample, not the whole catalog
 | Without provider chapters but with an agenda | 77% overall, about 99% of the last 30 days |
 | Episodes with a transcript | 12,231 (46%); last 30 days 112 of 165 (68%) |
 | Provider chapters per episode | mean 11.6, median 9, p90 26 |
-| LLM tag candidates per tagged episode (non-historical) | mean 8.3, median 5, p90 20 |
+| Tag candidates per candidate-bearing episode (non-historical) | mean 8.3, median 5, p90 20, **99% deterministic rule candidates**: 127,719 rule (62,456 episode-scope, 65,263 chapter-scope, all displayed) vs 934 LLM (all legacy episode-scope, shadow, hidden, on 458 episodes) |
 | Candidates per chapter | mean 1.8, median 1, p90 3 |
-| New episodes/day in this sample | about 5 (165 in 30 days); the maintainer's full-catalog figure is about 10 |
+| New episodes/day (by `published` date, last 30 days) | about 5.5 (165 in 30 days); the maintainer's figure is about 10 |
 
 Provider chapters are **less common in recent episodes** than in the backlog, so `f` (share needing agenda+locator jobs) is 32% for backlog
 and about 60% for new episodes; I use 0.60 as the conservative steady state. Tagging needs a transcript and chapters, so I use 0.75 of episodes as tag-eligible.
-Earlier drafts assumed 25 judged pairs per episode; the data says about 12 (8.3 LLM candidates plus an assumed ~4 rule candidates), which shrinks judging by half.
+Earlier drafts assumed 25 judged pairs per episode. The measured 8.3 per episode is almost entirely **rule** candidates, and chapter-scoped LLM candidates do not exist in storage yet, so judged pairs are about 8.4 (rule) plus the future LLM tagger's output, which I assume at about 3 per episode: **about 12 pairs per tagged episode**, unchanged from the accounting below.
 
 ### Accounting at 500 episodes/day (f = 0.60, 12 pairs per tagged episode, 10% contested)
 
@@ -385,41 +391,50 @@ Route promotions/demotions are opened as config PRs for the maintainer to merge,
 When the system is unsure or needs direction (audit/adjudicator disagreement, a judge tripping its
 reliability floor, a new route with contradictory results), it files a ticket instead of acting.
 
+## Shadow and switch-over (proposal, needs a decision)
+
+What a person can see today: deterministic **rule** tags are displayed immediately (all 127,719 rule candidates have `display: true`); LLM tags are hidden shadow candidates until a tag/route row earns the 12/90%
+human-calibrated admission (711 hidden today); R6 moments never auto-publish (`moments.mode: manual`).
+
+- **Shadow phase (P2, no visible change):** the judges score every rule and LLM candidate (and moment candidate) as it is produced and the existing gates keep deciding visibility. Output is observation rows only; probes and stability checks run. The point is to measure the stack before it has any authority.
+- **Switch-over for tags (P3), recommended:** visibility becomes `consensus admitted and not audit-overturned`. For **rule** tags, which are visible today, the switch is non-destructive suppression: every visible rule candidate gets judged over a bounded backfill (in the same recent-first-then-backfill order as other work), and one the judges reject is hidden in the display projection (the candidate row is kept, as review/42 already does for pre-labeler suppression). Until a visible rule candidate has been judged it **stays visible** (so the switch hides nothing by absence of a verdict). For **LLM** tags, which are hidden today, unjudged stays hidden and consensus-admitted becomes visible, replacing the 12/90% matrix. A per-tag kill switch (config) returns any tag to the old behaviour.
+- **Switch-over for moments (P4):** consensus admission first feeds the existing manual gate as a recommendation (a pre-checked suggestion in the review flow) while `moments.mode` stays `manual`; `auto` is a separate, explicit later change.
+- **The alternative** (hide every rule tag until it has been judged) is safer against a bad judge but hides about 127k visible tags during the backfill; I do not recommend it.
+
+## Graduation rules (restated; the earlier "stable for two league cycles" was the wrong shape)
+
+Two separate decisions, each stated relative to a measured baseline rather than a fixed number:
+
+1. **Task graduation (shadow to enforced) measures the judge stack, not any tagger route.** Graduate a task when, on the same sample of judged items, the stack's decisions agree with the adjudicator
+   **at least as often as the current gate's decisions do** (the 12/90% matrix plus pre-labeler overlay for tags; the manual gate for moments), and the stack's false-accept on the human-verified probe set is not worse than that of its best single judge. Routes that are not in the mix do not affect this.
+2. **League promotion (a route that is not currently in the mix) uses its trial slot, not time.** A challenger with no record runs at the trial share (about 10%, capped by its own quota) until it has a minimum number of judged outputs (sized by the league, for example 100); it is promoted when its score interval's **lower bound exceeds the lowest incumbent's point estimate**, and a formerly demoted route is treated as a fresh challenger with its old record as a prior. "Stable" applies only to incumbents: an incumbent is relegated when its **upper bound** falls below the challenger's point estimate in two consecutive evaluations, never on one noisy evaluation.
+
 ## Decisions recorded 2026-09-30
 
 - League cadence at most once per two weeks; new challengers get about 10% trial share.
 - League sizing follows capacity, not model count. The firm throughput target is **500 episodes/day** until the $5 plan.
-- Backlog trend is the constraint metric, counted in episodes for every verb; the per-verb rollup is the first work item.
+- Backlog trend (in episodes, same unit for every verb) is the constraint metric; P0 is specified at L3 in [review/50](50-p0-llm-verb-backlog-trend.md), reading the existing per-run `run_events`, with no producer changes.
 - Existing human reviews are archived; probes are a small human-verified list.
-- JEV packing by evidence window; no paid JEV tier.
+- JEV packing by evidence window; no paid JEV tier. JEV answers from evidence in the questions as well as the state (above).
 - `audit-remedy` and `city-onboarding` are outside leagues.
-- Audio clips only when needed, as a tiny mp4 via `gh issue create --attach`.
+- Audit audio is a link to the meeting page at `#t=`; no clip uploads, no PAT.
+- The mobile check of the `#t=` link is deferred to the website redesign.
 
 ## Open questions (remaining)
 
-1. **Full-catalog scan:** the 2026-09-30 scan covered 42 of 156 sources (26.5k episodes). Re-run for the rest once the state layout for the other sources is clear (many feeds share a source key).
-2. **Audit clips and authentication (canary failed for `GITHUB_TOKEN`):** accept a classic PAT secret with `repo` scope just for the audit job, render moment clips outside GitHub, or keep the audit text-only and open the clip-bearing items from the maintainer's machine.
-3. **Second adjudicator route:** decided once the locator verdict is final.
-4. **Qwen quality:** the probe covered limits, thinking mode and structured output, not adjudication quality; that needs a small run on real contested items.
+1. **Second adjudicator route:** decided after the locator verdict (expected Wednesday evening).
+2. **Shadow and switch-over:** confirm the recommended shape above (rule tags stay visible until judged, then are suppressed if rejected; LLM tags hidden until consensus admits; moments stay manual).
+3. **Graduation wording:** confirm the two relative rules above.
 
-## Path to L3 (what is missing; nothing here is decided yet)
+## Path to L3
 
-Per `review/11`, L3 needs concrete file/function changes, a test plan, a sequencing DAG, migration/backfill and acceptance
-criteria. This doc has the approach, the data on capacity and cost, and the risks. It does **not** yet have:
+Status against `review/11` L3 (concrete file/function changes, test plan, sequencing DAG, migration/backfill, acceptance criteria):
 
-1. **Phase split.** One L3 for the whole design is too large for safe implementation. Proposed DAG, each phase its own breakout/issue set:
-   P0 per-verb episode-backlog rollup and quota re-sizing (no behaviour change) → P1 unified judgment ledger and a judge lane with the
-   JEV route (shadow only) → P2 shadow scoring, probes, stability checks → P3 consensus admission for tags → P4 moments → P5 blind audit →
-   P6 route leagues → P7 retire prelabeler/tournament/benchmark.
-2. **Data model.** Exact schema for the judgment record, the league/scoreboard state, the backlog rollup, and the probe set (`evals/tag-judge`,
-   `evals/moment-judge`), including how it coexists with `llm_tag_candidates`, `moment_*_candidates`, `llm_evaluation.json` and
-   `r6_moment_evaluation.json`, and the archive step for old human reviews.
-3. **JEV integration spike (API shape, `choice`, packing and the 33k input cap are verified above; the Worker route, `structured.py` mapping and oversize-503 classification remain).** BeatAPI request/response format (shared state plus typed questions), structured-output mapping, error classes,
-   how it fits `provider_limits.yml` (`rpm: 1`, `concurrency: 1`) and the Worker route; needs a live key.
-4. **File/function plan and tests** per phase, written against the real modules (`llm_evaluation.py`, `moment_evaluation.py`,
-   `moment_judging.py`, `tags.py`, `llm_lanes.py`, the Worker), plus acceptance criteria and migration/backfill for each phase.
-5. **Open decisions and facts:** second adjudicator route (after the locator verdict); the **graduation rule** for moving a task from shadow to enforced consensus
-   (no fixed numbers were wanted, so it must be stated relative to something measurable, for example "judged false-accept on probes no worse than the incumbent route and stable
-   for two league cycles"); what visible tags/moments do while a task is in shadow and at switch-over; a fuller catalog scan (114 of 156 sources unscanned, rule candidates per
-   episode assumed at about 4); a small Qwen adjudication-quality run; a mobile check of the meeting-page `#t=` deep link; real-response fixtures for JEV (captured in the 2026-09-30 spike).
-6. **Correct the variable-count test** to include the deployed secrets it cannot see (63 of 64 today), and apply the orphan/Mistral/redundant-variable cleanup above before adding the `beatapi` provider.
+| Item | Status |
+|---|---|
+| **P0 per-verb backlog trend** | **L3 done: [review/50](50-p0-llm-verb-backlog-trend.md)** (file list, exact algorithm, golden results from real data, tests, workflow, acceptance) |
+| Phase DAG | P0 → P1 judgment ledger and JEV route in shadow → P2 scoring, probes, stability → P3 tags consensus → P4 moments → P5 blind audit → P6 leagues → P7 retire old lanes |
+| Facts gathered | catalog scan complete; rule vs LLM candidate counts measured; JEV limits, `choice`, packing and question-bundled evidence verified; Qwen limits, thinking mode and a 30/30 quality check; `gh` attach and CI token behaviour; Worker variable and secret audit (PR 1965 implements the cleanup) |
+| P1 breakout | next: needs the judgment-record schema, the `beatapi` provider entry (`rpm: 1`, `concurrency: 1`), the `structured.py` mapping and oversize-503 classification, and the JEV real-response fixtures (captured in the spike) |
+| P2-P7 | stay L2 until P1 shadow data exists: thresholds, league scoring and the graduation comparison need measured judge behaviour; specifying them now would invent numbers |
+| Open decisions | second adjudicator, shadow and switch-over shape, graduation wording (above) |
