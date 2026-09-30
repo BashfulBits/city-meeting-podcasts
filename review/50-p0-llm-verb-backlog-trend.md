@@ -251,3 +251,30 @@ None: read-only over existing events. Rollback is deleting the workflow; the mod
 - A status-page row for the six verbs (`/admin/status`), reading the same JSON.
 - A `llm_completed` quality counter in `TagsStage` so tagger throughput becomes reliable (then flip `throughput_reliable`).
 - Extending `VERBS` for judge and adjudicator lanes (P1/P3).
+
+## Implementation instructions (for the implementing agent; binding)
+
+Read [AGENTS.md](../AGENTS.md) "Implementing from a breakout doc: stop and ask" first. Everything above is the spec; this section is the procedure.
+
+**Branching and PRs.** Branch `feat/backlog-trend-module` (PR1) then `feat/backlog-trend-workflow` (PR2); merge commits, never squash (CONTRIBUTING). One PR per section of "Sequencing"; do not combine them.
+
+**Before writing code (report results, then continue only if all match):**
+1. Confirm `RUN_EVENTS_DIR_NAME = "run_events"` and the event shape at `citypods/run.py::_record_run_history` (keys `ts`, `phase`, `lane`, `outcome`, `stages[name].{ran,reused,backlog,defer_reasons}`).
+2. Load `tests/fixtures/backlog_trend/run_events_2026_09_22_30.json` and confirm it has 184 events across the lanes `tag` (24), `chapter-agenda` (44), `chapter-locator` (39), `moments` (77).
+3. Confirm every token in the "Defer-token ownership" table appears in that fixture or in `citypods/stages.py`; if a token in the table appears nowhere, or a token in the fixture is missing from the table, **stop and ask**.
+
+**PR1 steps, in order:**
+1. Create `citypods/ops/backlog_trend.py` with exactly the public names and signatures listed under "Module"; constants `VERBS` and `STAGE_TOKENS` transcribed from the two tables (no additions).
+2. Implement `daily_points`, `analyze`, `analyze_all`, `params_from_config`, `render_markdown`, `load_events`, and `main` exactly per "Algorithm", "Output", "Reading events" and "CLI". Use only the standard library and `yaml` (and, inside `main` only, `citypods.config.load_site_config`, `citypods.statesync`, `citypods.storage`).
+3. Write `tests/test_backlog_trend.py` with the 13 tests named in "Test plan". Test 1 must reproduce the golden table: if a value differs from the table, **stop and ask**; do not change the algorithm or the expected values to make it pass.
+4. Add the optional `llm_backlog:` block to `config/site_config.yml` with the five `BacklogParams` defaults and a short comment; reject unknown keys in `params_from_config`.
+5. Run `ruff check .`, `ruff format --check .`, `python -m pytest -q`; note any pre-existing failure explicitly (`test_llm_evaluation_cli_is_importable_outside_checkout` fails on `main`; do not touch it).
+6. Doc-update contract: `CHANGELOG.md` entry, the `ARCHITECTURE.md` Ops/QA row, and `review/11` status for this doc.
+
+**PR2 steps:** add `.github/workflows/backlog-trend.yml` exactly per "Workflow", pinning action SHAs to the same versions the neighbouring workflows use (copy from `tag.yml`). Run it once with `workflow_dispatch`. If it fails on an unclassified token, **stop and ask** before adding any token to `STAGE_TOKENS`; do not add tokens unprompted.
+
+**Hard prohibitions:** no edits to `citypods/stages.py`, `citypods/run.py`, `citypods/cli.py`, `citypods/statesync.py`, anything under `workers/`, or any state schema; no writes to storage or to the repository from the workflow; no new dependencies; no change to `constraints/`; do not read `run_history.jsonl`.
+
+**Stop-and-ask checklist for this task:** the fixture or event shape differs from above; a golden value differs; a listed file would need a change outside "File-by-file changes"; the live workflow shows `skipped_files` above 0, an unclassified token, or a verb with no events; storage listing or restore behaves differently from "Reading events"; anything would require credentials other than the nine storage secrets listed.
+
+**Definition of done:** the acceptance criteria above, all tests and lint green (or the same pre-existing failure only), docs updated, the PR description lists any follow-ups noticed and every question that was asked and answered.

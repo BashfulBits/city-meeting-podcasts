@@ -391,22 +391,47 @@ Route promotions/demotions are opened as config PRs for the maintainer to merge,
 When the system is unsure or needs direction (audit/adjudicator disagreement, a judge tripping its
 reliability floor, a new route with contradictory results), it files a ticket instead of acting.
 
-## Shadow and switch-over (proposal, needs a decision)
+## Shadow and switch-over (decided 2026-09-30: a tag is visible only after it is judged good)
 
 What a person can see today: deterministic **rule** tags are displayed immediately (all 127,719 rule candidates have `display: true`); LLM tags are hidden shadow candidates until a tag/route row earns the 12/90%
 human-calibrated admission (711 hidden today); R6 moments never auto-publish (`moments.mode: manual`).
 
-- **Shadow phase (P2, no visible change):** the judges score every rule and LLM candidate (and moment candidate) as it is produced and the existing gates keep deciding visibility. Output is observation rows only; probes and stability checks run. The point is to measure the stack before it has any authority.
-- **Switch-over for tags (P3), recommended:** visibility becomes `consensus admitted and not audit-overturned`. For **rule** tags, which are visible today, the switch is non-destructive suppression: every visible rule candidate gets judged over a bounded backfill (in the same recent-first-then-backfill order as other work), and one the judges reject is hidden in the display projection (the candidate row is kept, as review/42 already does for pre-labeler suppression). Until a visible rule candidate has been judged it **stays visible** (so the switch hides nothing by absence of a verdict). For **LLM** tags, which are hidden today, unjudged stays hidden and consensus-admitted becomes visible, replacing the 12/90% matrix. A per-tag kill switch (config) returns any tag to the old behaviour.
-- **Switch-over for moments (P4):** consensus admission first feeds the existing manual gate as a recommendation (a pre-checked suggestion in the review flow) while `moments.mode` stays `manual`; `auto` is a separate, explicit later change.
-- **The alternative** (hide every rule tag until it has been judged) is safer against a bad judge but hides about 127k visible tags during the backfill; I do not recommend it.
+**The rule after switch-over (P3), for rule and LLM tags alike: a tag is visible if and only if the judge stack has admitted it.** Unjudged, contested-and-unresolved and rejected candidates are hidden
+(in the display projection only; every candidate row is kept, as review/42 already does for suppression). There are no per-source exceptions.
+**Moments (P4)** stay manual: consensus admission becomes a recommendation in the existing review flow while `moments.mode` remains `manual`.
+
+**Shadow phase (P2) is everything before the switch.** The judges score every candidate as it is produced and every existing candidate in a recent-first backfill, and the current gates keep deciding what is visible, so nothing
+the public sees changes. It exists to measure the stack (probes, stability, adjudicator agreement) before it has authority, and to do the backfill so the switch does not leave the site empty.
+
+### Worked example
+
+One episode (Planning Commission, a 40-minute hearing) has three candidates:
+
+| Candidate | Source | Evidence |
+|---|---|---|
+| "Short-term rentals" on the chapter "Amend Chapter 12, short-term rentals" | rule (matched phrase "short-term rental") | the agenda title and 30 s of discussion |
+| "Zoning" on the chapter "Approve minutes" | rule (matched the word "variance" in a read-back of last month's items) | one sentence of minutes text |
+| "Housing affordability" on the same STR chapter | LLM tagger | the commissioners' discussion of rents |
+
+| Stage | What happens | What a resident sees |
+|---|---|---|
+| **Today** | the two rule tags are shown immediately; the LLM tag is hidden until its route earns 12/90% admission | "Short-term rentals", "Zoning" (wrong, but shown) |
+| **P2, shadow** | JEV scores the three (for example 0.97, 0.06, 0.91) and the sibling judge agrees on the first two; the stack records "admit, reject, admit" but has no authority; old gates still decide | unchanged: the same two rule tags |
+| **Switch-over, day 0** | visibility becomes "judged good"; this episode was already judged in the backfill (recent episodes first), so it flips correctly | "Short-term rentals" and "Housing affordability" appear; "Zoning" disappears |
+| **Switch-over, an older episode not yet judged** | its rule tags are hidden until its backfill turn comes | no tags for that episode for a few days |
+| **A contested candidate** (JEV 0.62, sibling disagrees) | goes to the adjudicator with the evidence window; if still unclear it stays hidden and is a candidate for the weekly audit | hidden until decided |
+
+**What the switch costs:** about 127,700 existing rule candidates become hidden until judged. At 12 candidates per episode and recent-first ordering, the backfill is bounded by the spare Durable Object row budget rather than JEV:
+JEV packs roughly 100 to 300 candidates per call (evidence in the questions, 58k-token ceiling) so it clears the backlog in about a day of its spare free-tier calls, while the sibling judge (about 14k-token packets,
+roughly 35 candidates per call, about 25 rows per job) needs about 3,600 jobs or roughly 90k rows, which at about 30k spare rows a day is **3 to 5 days**, tag browse pages thin out for that period and refill recent-first. This is an estimate; P2 measures the real
+rate and P3 is not switched until the backlog is below an agreed level (see the graduation rules).
 
 ## Graduation rules (restated; the earlier "stable for two league cycles" was the wrong shape)
 
 Two separate decisions, each stated relative to a measured baseline rather than a fixed number:
 
 1. **Task graduation (shadow to enforced) measures the judge stack, not any tagger route.** Graduate a task when, on the same sample of judged items, the stack's decisions agree with the adjudicator
-   **at least as often as the current gate's decisions do** (the 12/90% matrix plus pre-labeler overlay for tags; the manual gate for moments), and the stack's false-accept on the human-verified probe set is not worse than that of its best single judge. Routes that are not in the mix do not affect this.
+   **at least as often as the current gate's decisions do** (the 12/90% matrix plus pre-labeler overlay for tags; the manual gate for moments), and the stack's false-accept on the human-verified probe set is not worse than that of its best single judge. Routes that are not in the mix do not affect this. Because unjudged tags are hidden, P3 is also not switched on until the recent-first backfill of rule candidates has judged the most recent portion of the catalog (the maintainer sets how much, for example the last 90 days of episodes), so the site does not go blank.
 2. **League promotion (a route that is not currently in the mix) uses its trial slot, not time.** A challenger with no record runs at the trial share (about 10%, capped by its own quota) until it has a minimum number of judged outputs (sized by the league, for example 100); it is promoted when its score interval's **lower bound exceeds the lowest incumbent's point estimate**, and a formerly demoted route is treated as a fresh challenger with its old record as a prior. "Stable" applies only to incumbents: an incumbent is relegated when its **upper bound** falls below the challenger's point estimate in two consecutive evaluations, never on one noisy evaluation.
 
 ## Decisions recorded 2026-09-30
@@ -423,7 +448,7 @@ Two separate decisions, each stated relative to a measured baseline rather than 
 ## Open questions (remaining)
 
 1. **Second adjudicator route:** decided after the locator verdict (expected Wednesday evening).
-2. **Shadow and switch-over:** confirm the recommended shape above (rule tags stay visible until judged, then are suppressed if rejected; LLM tags hidden until consensus admits; moments stay manual).
+2. **Shadow and switch-over:** the rule is now "visible only once judged good" for all tags; please confirm the worked example above matches what you meant.
 3. **Graduation wording:** confirm the two relative rules above.
 
 ## Path to L3
