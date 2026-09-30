@@ -1,0 +1,50 @@
+name: attach canary (temporary)
+
+# Temporary canary: can a workflow create an issue with an embedded video via `gh issue create --attach`
+# using the job's GITHUB_TOKEN? Delete with the PR. See review/49.
+on:
+  pull_request:
+    paths:
+      - .github/workflows/attach-canary.yml
+      - tmp/canary-clip.mp4
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: gh version, upgrade if older than 2.99
+        run: |
+          gh --version
+          v="$(gh --version | head -1 | awk '{print $3}')"
+          if [ "$(printf '%s\n2.99.0\n' "$v" | sort -V | head -1)" != "2.99.0" ]; then
+            curl -sSL -o gh.tgz https://github.com/cli/cli/releases/download/v2.100.0/gh_2.100.0_linux_amd64.tar.gz
+            tar -xzf gh.tgz
+            sudo install gh_2.100.0_linux_amd64/bin/gh /usr/local/bin/gh
+            hash -r
+            gh --version
+          fi
+      - name: Create issue with attached video using GITHUB_TOKEN
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          out="$(gh issue create --repo "$GITHUB_REPOSITORY" --title "[canary] CI attach test (delete)" --body "CI attach canary" --attach tmp/canary-clip.mp4 2>&1)"
+          rc=$?
+          echo "exit code: $rc"
+          echo "$out"
+          n="$(echo "$out" | grep -oE 'issues/[0-9]+' | tail -1 | cut -d/ -f2)"
+          if [ -n "$n" ]; then
+            echo "issue: $n"
+            gh api -H "Accept: application/vnd.github.full+json" "repos/$GITHUB_REPOSITORY/issues/$n" --jq '.body'
+            gh api -H "Accept: application/vnd.github.full+json" "repos/$GITHUB_REPOSITORY/issues/$n" --jq '.body_html' | grep -c '<video' | sed 's/^/video elements in rendered body: /'
+            gh issue close "$n" --repo "$GITHUB_REPOSITORY" --comment "canary done" >/dev/null 2>&1
+          fi
+          exit 0
