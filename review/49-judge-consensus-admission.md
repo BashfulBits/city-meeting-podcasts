@@ -226,19 +226,23 @@ More context should raise accuracy and lower speed: a larger prompt carries fewe
 known truth and, as labels accumulate, adjudicated labels. (b) **Continuous:** from P1 on every judgment records its `context_tier`, and a stratified 5% sample is judged at **all** tiers and by the adjudicator at the largest, which keeps
 measuring the trade-off as tasks, routes and prompts change. The free-tier JEV cap (about 1,440 calls a day) and Durable Object rows make this sample small on purpose.
 
-**Results (committed, 2026-09-30; 34 real candidates plus 10 controls).**
+**Results (committed, 2026-09-30; 34 real candidates plus 10 controls; two prompt versions).**
 
-| Tier | Tokens per item | Items per JEV call | JEV calls to backfill 127,719 candidates | Accuracy on 15 adjudicated items |
-|---|---|---|---|---|
-| T0 matched span | 163 | 344 | 372 | 10/15 (0.67) |
-| T1 +-45 s window | 428 | 131 | 975 | 11/15 (0.73) |
-| T2 whole chapter | 2,062 | 27 | 4,731 | 13/15 (0.87) |
+| Tier | Tokens per item | Items per JEV call | JEV calls to backfill 127,719 candidates | Accuracy on 13 adjudicated items, prompt 1 | prompt 2 (maintainer rubric) |
+|---|---|---|---|---|---|
+| T0 matched span | 241 | 232 | 551 | 10/13 | 12/13 |
+| T1 +-45 s window | 506 | 110 | 1,162 | 9/13 | 10/13 |
+| T2 whole chapter | 2,140 | 26 | 4,913 | 12/13 | 13/13 |
 
-No tier accepted any control (largest control score 0.09, 0.07, 0.17). T0 against T2 flipped 5 of the 34 real verdicts and T1 against T2 flipped 4. **Judging at T1 and re-judging at T2 when the T1 probability is between 0.3 and 0.7
-escalated 10 of 34 items (29%) and reached T2's 13/15**, at roughly 975 + 0.29 x 4,731, about **2,350 calls instead of 4,731**; a wider band escalated 50% for no gain. Caveats that matter: the 15 labels are Claude's (not the maintainer's) and 7 of them were chosen
-because the tiers disagreed, so accuracies are lower bounds; the real candidates have no other truth yet.
+No tier accepted any control. Under prompt 2, **judging at T1 and re-judging at T2 when the T1 probability is between 0.3 and 0.7 escalated 9 of 34 items (26%) and scored 13/13**, about 1,162 + 0.26 x 4,913, roughly **2,450 calls instead of 4,913**
+(prompt 1: 29% escalated, 12/13). Cautions: the labels are Claude's as corrected by the maintainer's rulings (two items are Uncertain and excluded), 6 of the 13 were chosen because tiers disagreed, and **prompt 2 was written after seeing these items,
+so its gain here is optimistic and must be confirmed on a fresh holdout (lane set version 2)**. At 13 labels the tiers cannot be separated statistically.
 
-**Initial rule for P1/P2: judge at T1, escalate to T2 when p is between 0.3 and 0.7, and let the continuous 5% sample confirm or move both the tier and the band.** T0 is too error-prone on its own; T2 on everything costs twice the calls for no measured gain over escalation.
+**The tag rubric (maintainer policy, 2026-09-30), part of the tag task spec and the `validate` question's instructions.** A tag is correct when the chapter involves a **specific project, contract, program or policy** on the topic, even when it is approved routinely (for example on a
+consent agenda); it is not correct for a generic mention, a passing reference in a list or summary, a read-back of past items, or a general-purpose services contract not tied to a specific project or policy on the topic. Surfacing specific projects and policies, not only contested debate, is the point of the
+tags. Marginal cases are Uncertain, which the lane and the audit both exclude from statistics. A rubric change bumps the prompt version and starts a new judge calibration cell.
+
+**Initial rule for P1/P2 (confirmed 2026-09-30): judge at T1, escalate to T2 when p is between 0.3 and 0.7, and let the continuous 5% sample confirm or move both the tier and the band.** T0 is a candidate first tier (12/13 under the rubric) but is not yet shown to be as good as T1 or T2 at this sample size.
 
 ### 5. Route league (European-cup model)
 
