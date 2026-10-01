@@ -63,6 +63,13 @@ tagging:
     # Run the `topic-tags:prelabeler-shadow` lane's evaluator (gemma-4-26b) on candidates that
     # already carry a current production assessment. Shadow-only: never changes display.
     shadow_enabled: true
+# Optional read-only per-verb backlog report parameters (review/50); absent keys use defaults.
+# llm_backlog:
+#   window_days: 7
+#   min_points: 4
+#   drain_days_max: 14.0
+#   deadband_floor: 1.0
+#   deadband_rel: 0.02
 # Tournament routing is deliberately human-approved. A weekly ticket may propose a challenger only
 # above this strict rolling win-rate gate; a checked switch opens a configuration PR.
 tournament:

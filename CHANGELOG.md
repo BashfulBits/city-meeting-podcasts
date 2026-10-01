@@ -17,6 +17,16 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Per-verb LLM backlog trends (GH#1968, review/50 PR1).**
+  `python -m citypods.ops.backlog_trend` reads scoped `run_events` locally or restores selected
+  recent event keys from storage. Six verbs report working backlog, daily trend, throughput,
+  drain time, cause classes and capacity/ingress recommendations in JSON and Markdown.
+  Upstream blocks, policy holds and errors are reported separately; unknown reasons remain
+  visible and can fail the report with `--fail-on-unclassified`. Interrupted runs are ignored.
+  Optional `llm_backlog` settings control the window and thresholds. This is a read-only
+  consumer: no producer, Worker, durable schema, pipeline recipe or stored artifact changes.
+  The scheduled workflow remains review/50 PR2 (GH#1969).
+
 - **A judge evaluation lane (`evals/judge/`, `scripts/eval_judge.py`).** The pilot harness for the review/49
   judge stack, in the `evals/chapter-agenda` layout: a frozen `manifest.json` (inputs) and `gold.json` (truth),
   dated `results/`, and one script with `freeze`, `run` and `report`. Four experiments: `bundling` (evidence in each
