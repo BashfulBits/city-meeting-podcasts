@@ -23,6 +23,8 @@ Phase R (Research-Tool Surface)._
   drain time, cause classes and capacity/ingress recommendations in JSON and Markdown.
   Upstream blocks, policy holds and errors are reported separately; unknown reasons remain
   visible and can fail the report with `--fail-on-unclassified`. Interrupted runs are ignored.
+  A growing historical trend with zero latest backlog retains its trend classification but
+  emits no action, so cleared unreliable verbs cannot crash recommendation calculations.
   Optional `llm_backlog` settings control the window and thresholds. This is a read-only
   consumer: no producer, Worker, durable schema, pipeline recipe or stored artifact changes.
   The scheduled workflow remains review/50 PR2 (GH#1969).

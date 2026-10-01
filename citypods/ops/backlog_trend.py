@@ -109,10 +109,12 @@ class VerbReport:
 
 
 def _timestamp(event: dict) -> datetime:
+    """Parse the event timestamp as UTC for daily grouping and cutoff comparisons."""
     return datetime.fromisoformat(event["ts"]).astimezone(UTC)
 
 
 def _read_events(paths, *, since: datetime) -> tuple[list[dict], int]:
+    """Read recent JSON event objects and count unreadable or malformed files."""
     events = []
     skipped = 0
     for path in paths:
@@ -128,10 +130,12 @@ def _read_events(paths, *, since: datetime) -> tuple[list[dict], int]:
 
 
 def load_events(state_dir: Path, *, since: datetime) -> list[dict]:
+    """Load recent local run events without modifying the state directory."""
     return _read_events(sorted((state_dir / "run_events").glob("*.json")), since=since)[0]
 
 
 def daily_points(events, verb: str, params, *, through: date | None = None) -> list[DayPoint]:
+    """Select each day's last completed snapshot and sum all completed daily runs."""
     spec = VERBS[verb]
     grouped = defaultdict(list)
     for event in events:
@@ -168,6 +172,7 @@ def daily_points(events, verb: str, params, *, through: date | None = None) -> l
 
 
 def analyze(events, verb: str, params) -> VerbReport:
+    """Measure one verb's trend and recommend an action when working backlog remains."""
     points = daily_points(events, verb, params)
     latest = points[-1] if points else None
     classes = latest.classes if latest else dict.fromkeys((*_WORKING_CLASSES, *_OTHER_CLASSES), 0)
@@ -197,7 +202,7 @@ def analyze(events, verb: str, params) -> VerbReport:
             if VERBS[verb].throughput_reliable
             else trend == "growing"
         )
-        if constrained:
+        if constrained and backlog > 0:
             action = (
                 "raise_ingress_quota"
                 if classes["ingress_limited"] / backlog >= 0.5
@@ -221,11 +226,13 @@ def analyze(events, verb: str, params) -> VerbReport:
 
 
 def analyze_all(events, params) -> dict[str, VerbReport]:
+    """Analyze all six verbs, materializing iterators once for shared stage consumers."""
     events = list(events)
     return {verb: analyze(events, verb, params) for verb in VERBS}
 
 
 def params_from_config(site_config: Mapping) -> BacklogParams:
+    """Read optional backlog settings, using defaults and rejecting unknown keys."""
     raw = site_config.get("llm_backlog") or {}
     if not isinstance(raw, Mapping):
         raise ValueError("llm_backlog must be a mapping")
@@ -240,6 +247,7 @@ def params_from_config(site_config: Mapping) -> BacklogParams:
 
 def _unclassified_tokens(reports: Mapping[str, VerbReport]) -> dict[str, dict[str, int]]:
     # Sibling verbs observe the same stage snapshot: record each unknown stage token only once.
+    """Collect unknown tokens once per stage rather than once per sibling verb."""
     result: dict[str, dict[str, int]] = {}
     for verb, report in reports.items():
         if report.unclassified:
@@ -248,6 +256,7 @@ def _unclassified_tokens(reports: Mapping[str, VerbReport]) -> dict[str, dict[st
 
 
 def render_markdown(reports: Mapping[str, VerbReport]) -> str:
+    """Render advisory backlog measurements as a Markdown summary table."""
     lines = [
         "| Verb | Backlog | Trend | Drain days | Constrained | Action | "
         "Blocked/held | Unclassified |",
@@ -270,10 +279,12 @@ def render_markdown(reports: Mapping[str, VerbReport]) -> str:
 
 
 def _now() -> datetime:
+    """Return the current UTC timestamp for report generation and event selection."""
     return datetime.now(UTC)
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Read local or selected remote events, write reports, and return the report exit code."""
     from citypods.config import load_site_config
 
     parser = argparse.ArgumentParser(description=__doc__)

@@ -14,6 +14,7 @@ NOW = datetime(2026, 9, 30, 12, tzinfo=UTC)
 
 
 def event(day=30, *, verb="chapter-locator", reasons=None, ran=1, hour=0, outcome="completed"):
+    """Build a scoped completed event with a deliberately unrelated aggregate backlog."""
     spec = trend.VERBS[verb]
     return {
         "ts": datetime(2026, 9, day, hour, tzinfo=UTC).isoformat(),
@@ -25,6 +26,7 @@ def event(day=30, *, verb="chapter-locator", reasons=None, ran=1, hour=0, outcom
 
 
 def series(values, *, verb="chapter-locator", token="llm-pending", ran=1):
+    """Build one event per day for a hand-computed backlog trend."""
     return [
         event(24 + index, verb=verb, reasons={token: value}, ran=ran)
         for index, value in enumerate(values)
@@ -32,6 +34,7 @@ def series(values, *, verb="chapter-locator", token="llm-pending", ran=1):
 
 
 def test_golden_results_from_committed_fixture():
+    """Reproduce every golden result from the unchanged real-event fixture."""
     fixture = Path(__file__).parent / "fixtures/backlog_trend/run_events_2026_09_22_30.json"
     reports = trend.analyze_all(json.loads(fixture.read_text())["events"], PARAMS)
     golden = {
@@ -79,6 +82,7 @@ def test_golden_results_from_committed_fixture():
 
 
 def test_token_ownership_ignores_sibling_verb_tokens():
+    """Keep prelabeler backlog out of the tagger report on the same stage."""
     report = trend.analyze(
         [event(verb="tagger", reasons={"tag-prelabeler-dispatch": 90})], "tagger", PARAMS
     )
@@ -87,6 +91,7 @@ def test_token_ownership_ignores_sibling_verb_tokens():
 
 
 def test_unknown_token_is_reported_not_counted():
+    """Expose unknown stage tokens once without adding them to working backlog."""
     events = [event(verb="tagger", reasons={"new-reason": 3, "tag-llm-dispatch": 2})]
     reports = trend.analyze_all(events, PARAMS)
     assert reports["tagger"].backlog == 2
@@ -95,6 +100,7 @@ def test_unknown_token_is_reported_not_counted():
 
 
 def test_blocked_policy_held_and_errored_do_not_count():
+    """Report held and failed work separately and retain the future capacity token."""
     events = [
         event(verb="chapter-agenda", reasons={"missing-agenda-artifact": 5}),
         event(verb="moments", reasons={"rollout-dispatch-cap": 50, "llm-error": 2}),
@@ -113,6 +119,7 @@ def test_blocked_policy_held_and_errored_do_not_count():
 
 
 def test_last_event_of_day_wins_and_ran_sums_all_events():
+    """Verify daily snapshots, UTC grouping, throughput sums and window selection."""
     events = [
         event(reasons={"llm-pending": 10}, ran=3, hour=1),
         event(reasons={"producer-cap": 6}, ran=4, hour=2),
@@ -132,6 +139,7 @@ def test_last_event_of_day_wins_and_ran_sums_all_events():
 
 
 def test_interrupted_events_are_ignored():
+    """Exclude interrupted snapshots from both backlog and completed throughput."""
     events = [
         event(reasons={"llm-pending": 2}),
         event(reasons={"llm-pending": 999}, hour=5, outcome="interrupted"),
@@ -142,6 +150,7 @@ def test_interrupted_events_are_ignored():
 
 
 def test_insufficient_data_below_min_points():
+    """Withhold trend judgements until enough distinct completed days exist."""
     for events in ([], series([10, 100, 1000])):
         report = trend.analyze(events, "chapter-locator", PARAMS)
         assert report.trend == "insufficient_data"
@@ -151,6 +160,7 @@ def test_insufficient_data_below_min_points():
 
 
 def test_trend_deadband():
+    """Distinguish flat, growing and shrinking trends at the configured deadband."""
     for values, expected in (
         ([100, 101, 102, 103], "flat"),
         ([10, 11, 12, 13], "growing"),
@@ -160,12 +170,14 @@ def test_trend_deadband():
 
 
 def test_ols_slope_exact():
+    """Verify the slope and mean of a hand-computed linear series."""
     report = trend.analyze(series([2, 4, 6, 8]), "chapter-locator", PARAMS)
     assert report.slope == 2
     assert report.mean == 5
 
 
 def test_constrained_requires_drain_for_reliable_verbs():
+    """Require long or unavailable drain time before flagging a reliable growing verb."""
     values = [10, 20, 30, 40]
     assert trend.analyze(series(values, ran=100), "chapter-locator", PARAMS).constrained is False
     assert trend.analyze(series(values, ran=1), "chapter-locator", PARAMS).constrained is True
@@ -178,6 +190,7 @@ def test_constrained_requires_drain_for_reliable_verbs():
 
 
 def test_unreliable_verbs_use_trend_only():
+    """Preserve the spec's trend-only constraint rule for unreliable throughput."""
     growing = series([10, 20, 30, 40], verb="tagger", token="tag-llm-dispatch", ran=1000)
     assert trend.analyze(growing, "tagger", PARAMS).constrained is True
     flat = series([40] * 4, verb="tagger", token="tag-llm-dispatch", ran=0)
@@ -185,6 +198,7 @@ def test_unreliable_verbs_use_trend_only():
 
 
 def test_action_split_ingress_vs_route_capacity():
+    """Select ingress recommendations at the inclusive fifty-percent boundary."""
     for ingress, expected in ((19, "add_route_capacity"), (20, "raise_ingress_quota")):
         events = series([40] * 4, ran=1)
         for row in events:
@@ -196,6 +210,7 @@ def test_action_split_ingress_vs_route_capacity():
 
 
 def test_params_from_config_defaults_and_overrides():
+    """Apply only explicitly overridden backlog settings."""
     assert trend.params_from_config({}) == PARAMS
     assert trend.params_from_config({"llm_backlog": {"window_days": 3, "deadband_rel": 0.1}}) == (
         trend.BacklogParams(window_days=3, deadband_rel=0.1)
@@ -203,11 +218,13 @@ def test_params_from_config_defaults_and_overrides():
 
 
 def test_unknown_config_key_rejected():
+    """Reject misspelled configuration instead of silently ignoring it."""
     with pytest.raises(ValueError, match="Unknown.*typo"):
         trend.params_from_config({"llm_backlog": {"typo": 3}})
 
 
 def test_main_reads_state_dir_and_writes_json_and_markdown(tmp_path, monkeypatch):
+    """Verify local report files, skipped inputs, unknown reasons and all exit codes."""
     monkeypatch.setattr(trend, "_now", lambda: NOW)
     config = tmp_path / "site.yml"
     config.write_text("{}\n")
@@ -245,6 +262,7 @@ def test_main_reads_state_dir_and_writes_json_and_markdown(tmp_path, monkeypatch
 
 
 def test_main_storage_path_uses_exact_keys(tmp_path, monkeypatch):
+    """Restore only selected event keys at or after the timestamp cutoff."""
     from citypods import storage
 
     monkeypatch.setattr(trend, "_now", lambda: NOW)
@@ -260,10 +278,12 @@ def test_main_storage_path_uses_exact_keys(tmp_path, monkeypatch):
 
     class FakeStorage:
         def list_objects(self, prefix):
+            """Record the requested prefix and return the fake remote event listing."""
             listed.append(prefix)
             return [(key, NOW) for key in keys]
 
         def get_file(self, key, local_path):
+            """Record exact restores and simulate an absent manifest plus event downloads."""
             requested.append(key)
             if key == "state/catalog/manifest.json":
                 return False
@@ -278,3 +298,24 @@ def test_main_storage_path_uses_exact_keys(tmp_path, monkeypatch):
     assert listed == ["state/run_events/"]
     assert sorted(key for key in requested if "/run_events/" in key) == keys[1:]
     assert json.loads(output.read_text())["skipped_files"] == 0
+
+
+@pytest.mark.parametrize(
+    "verb,token",
+    [
+        ("tagger", "tag-llm-dispatch"),
+        ("prelabeler", "tag-prelabeler-dispatch"),
+        ("prelabeler-shadow", "tag-prelabeler-shadow-dispatch"),
+        ("moments", "llm-pending"),
+    ],
+)
+def test_growing_unreliable_verb_with_zero_latest_backlog(verb, token):
+    """A cleared latest backlog must not crash recommendations for any report verb."""
+    reports = trend.analyze_all(series([0, 50, 100, 0], verb=verb, token=token), PARAMS)
+    report = reports[verb]
+    assert report.backlog == 0
+    assert report.slope == 5.0
+    assert report.trend == "growing"
+    assert report.constrained is True
+    assert report.action is None
+    assert set(reports) == set(trend.VERBS)
