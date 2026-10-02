@@ -135,6 +135,22 @@ Net approver effort per output-affecting bump: **tick one box, read one comment,
    from the same constraints automatically.
 5. Open the PR; CI does the rest.
 
+### CI validator tooling
+
+The `deps` job pins its npm Renovate validator to **44.125.1** in `.github/workflows/ci.yml`.
+The custom npm regex manager tracks that pin as reviewed hygiene tooling alongside Wrangler;
+it is excluded from the output-affecting group and is never auto-merged. Validate upgrades with
+CI's Node 24 runtime and the exact validator invocation before merging. This tool does not change
+pipeline versions or invalidate stored artifacts.
+
+The 2026-10-02 failure reproduced with CI's Node **24.21.0** / npm **11.19.0**: Renovate
+**44.132.1** pins `@yarnpkg/core@4.9.2`, whose published `got` dependency is
+`patch:got@npm%3A11.8.2#~/.yarn/patches/got-npm-11.8.2-c1eb105458.patch`.
+npm rejects that Yarn-only protocol (`EUNSUPPORTEDPROTOCOL`) before the validator starts. A local
+Node `unhandledRejection` listener exposed the error that npm's default output omitted. The
+verified validator uses `@yarnpkg/core@4.9.1` instead. CI uses a dedicated temporary npm cache,
+verbose install output, and prints its debug logs on failure while retaining the failing exit code.
+
 ### Enforcement (the anti-staleness mechanism)
 
 Three CI guards keep the policy live rather than aspirational (see `scripts/check_dependency_policy.py`
