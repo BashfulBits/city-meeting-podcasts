@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "frozen_on": "2026-10-02",
+  "status": "provisional seed; not an admission-sized independent holdout",
+  "cases": {
+    "tif-wrong-district": {
+      "supported": false,
+      "rationale": "Distinct district identity; shared Dallas/TIF tokens establish no equivalence.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-farmers-city-center": {
+      "supported": false,
+      "rationale": "Distinct district identity; aggregation does not make the bodies identical.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-grand-park-zone06": {
+      "supported": false,
+      "rationale": "Conflicting name/number needs investigation; never overwrite official title.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-dallas-aggregate": {
+      "supported": true,
+      "rationale": "The approved city subscription groups distinct TIF district boards.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-zone-marker": {
+      "supported": true,
+      "rationale": "The approved aggregate covers TIF zone variants.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-ethics": {
+      "supported": true,
+      "rationale": "Approved TIF scope includes oversight bodies.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-joint": {
+      "supported": true,
+      "rationale": "Both represented bodies belong to the aggregate; do not double-add the GUID.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-unmarked-joint": {
+      "supported": true,
+      "rationale": "The reviewed joint exception is supported; it does not license all DDA recordings.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-multifamily": {
+      "supported": false,
+      "rationale": "TIF must be a token/family marker, not part of multifamily.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-beautiful": {
+      "supported": false,
+      "rationale": "Beautiful is not a TIF identity marker.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-woodhaven": {
+      "supported": true,
+      "rationale": "Approved aggregate migration covers the district and duplicated provider label.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-duplicate-views": {
+      "supported": false,
+      "rationale": "Provider observations across views are not independent meetings.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-cross-city": {
+      "supported": false,
+      "rationale": "A city aggregate cannot cross source/city ownership.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-pid": {
+      "supported": false,
+      "rationale": "PID is a different district family, not TIF.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-unmarked-neighborhood": {
+      "supported": false,
+      "rationale": "A neighborhood name does not establish board identity.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tif-topic-only": {
+      "supported": false,
+      "rationale": "Council discussing TIF is not a district board.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "denton-dated-family": {
+      "supported": false,
+      "rationale": "Date/occurrence qualifiers do not change public-body identity.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "few-recordings": {
+      "supported": false,
+      "rationale": "Observation count does not determine independent body identity.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "bond-family": {
+      "supported": false,
+      "rationale": "Approved bond subscription policy spans programs/years.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "charter-years": {
+      "supported": true,
+      "rationale": "Maintainer approved one city feed per time-limited family.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "canceled-unknown": {
+      "supported": null,
+      "rationale": "Need recording/agenda evidence; uncertain truth stays outside accuracy scoring.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "tv-show": {
+      "supported": false,
+      "rationale": "Approved policy excludes municipal TV shows from meeting remediation.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "staff-training": {
+      "supported": false,
+      "rationale": "Approved format policy excludes training; title does not prove proceedings.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "proposed-community": {
+      "supported": true,
+      "rationale": "Recommendation D groups projects under one public-input subscription.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "sign-distinct": {
+      "supported": false,
+      "rationale": "Official city page lists them separately.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "same-topic-not-body": {
+      "supported": false,
+      "rationale": "Shared capital-improvement topic does not establish identity; inspect agendas.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    },
+    "joint-unowned": {
+      "supported": false,
+      "rationale": "Unknown ownership must stay unresolved.",
+      "provenance": "agent-reviewed policy regression seed",
+      "adjudication_status": "approved-policy-derived"
+    }
+  }
+}

@@ -13,6 +13,8 @@ scale; lower number = sooner.
 Maintainer-directed follow-up (2026-10-02): Dallas/Fort Worth aggregate TIF feed migration and
 remedy policy enforcement; residual backlog categories need approval. See
 [coverage policy](review/tif-coverage-2026-10.md) and review/11.
+[review/51](review/51-unexpected-body-remedy-flow.md) proposes the wider L2 remedy improvement
+sequence; implementation awaits final approval, project evaluations and development-ready specs.
 
 ## Recently shipped (summary)
 Timeline/EDL foundation; **#52** append-only content permanence; audio-cleanup band (**#22** silence

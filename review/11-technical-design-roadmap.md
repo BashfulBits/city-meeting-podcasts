@@ -84,8 +84,10 @@ policy enforcement. [Coverage and migration evidence](tif-coverage-2026-10.md) r
 implementation proposal (PR [#1973](https://github.com/BashfulBits/city-meeting-podcasts/pull/1973)).
 The dependent remedy-policy guard enforces the aggregate locally and in the prompt. Remaining historical feed categories require maintainer approval;
 [Historical coverage proposal](historical-feed-coverage-2026-10.md) inventories every residual
-label and asks for category approval. review/51 will design the wider remedy improvements before
-future implementation.
+label and asks for category approval. [review/51](51-unexpected-body-remedy-flow.md) is the L2
+design for complete-archive onboarding, evaluated independent judgment, durable dispositions and
+bounded PR/issue queues. Its 27-case `evals/remedy/` seed is not admission evidence. Future
+implementation requires final approval and L3 specifications.
 
 ### Active reliability follow-up: interactive remedy (#1231)
 

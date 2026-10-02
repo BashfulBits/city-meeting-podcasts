@@ -53,9 +53,11 @@ Rejecting it moves that decision into an issue for refinement, not an unchanged 
 | F | Civic media, ceremonies, promotion and staff training | 157 / 314 | Confirmed exclusions; preserve recordings/records; do not create meeting feeds |
 | G | Unresolved identity, notices, mixed recordings and unclear formats | 37 / 52 | Investigate first; verified genuine one-offs may use Other Public Meetings |
 
-The maintainer has already approved C's cross-program family policy and F's exclusion principle.
+The maintainer has approved C's cross-program family policy, D's city public-input aggregates,
+E's city public-briefings aggregates, and F's exclusion principle.
+Separate city PID aggregates, including the future-city default, are also approved.
 Exact selectors and ambiguous individual recordings still need evidence. Recommendations for A,
-B, D, E and G are presented separately so those policies can be approved or changed independently.
+B and G are presented separately so those policies can be approved or changed independently.
 
 ## A — Repair ownership before adding feeds
 

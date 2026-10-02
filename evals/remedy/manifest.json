@@ -1,0 +1,505 @@
+{
+  "version": 1,
+  "frozen_on": "2026-10-02",
+  "role": "input-only seed; no model execution or production admission",
+  "cases": [
+    {
+      "id": "tif-wrong-district",
+      "city": "dallas-tx",
+      "body_label": "Dallas Downtown Connection TIF District Board of Directors Meeting",
+      "claim": "Assign this recording to Fort Worth Avenue district as the same public body.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://dallastx.new.swagit.com/views/113/city-council",
+      "evidence": {
+        "provider_guid": "374872",
+        "body": "Dallas Downtown Connection TIF District Board of Directors Meeting",
+        "title": "Dallas Downtown Connection TIF District Board of Directors Meeting \u2013 Feb 09, 2026",
+        "published": "2026-02-09T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://dallastx.new.swagit.com/videos/374872",
+          "agenda": "https://dallastx.new.swagit.com/videos/374872/agenda"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-farmers-city-center",
+      "city": "dallas-tx",
+      "body_label": "Dallas City Center TIF District Board of Directors Meeting",
+      "claim": "Assign this recording to Farmers Market district as the same public body.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://dallastx.new.swagit.com/views/113/city-council",
+      "evidence": {
+        "provider_guid": "204708",
+        "body": "Dallas City Center TIF District Board of Directors Meeting",
+        "title": "Dallas City Center TIF District Board of Directors Meeting \u2013 Mar 12, 2020",
+        "published": "2020-03-12T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://dallastx.new.swagit.com/videos/204708",
+          "agenda": "https://dallastx.new.swagit.com/videos/204708/agenda"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-grand-park-zone06",
+      "city": "dallas-tx",
+      "body_label": "Reinvestment Zone 06 Board Grand Park South",
+      "claim": "The number proves that this is Farmers Market, so rename the official title.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://dallastx.new.swagit.com/views/113/city-council",
+      "evidence": {
+        "provider_guid": "204775",
+        "body": "Reinvestment Zone 06 Board Grand Park South",
+        "title": "Reinvestment Zone 06 Board Grand Park South \u2013 Mar 03, 2022",
+        "published": "2022-03-03T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://dallastx.new.swagit.com/videos/204775",
+          "agenda": "https://dallastx.new.swagit.com/videos/204775/agenda"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-dallas-aggregate",
+      "city": "dallas-tx",
+      "body_label": "Dallas Downtown Connection TIF District Board of Directors Meeting",
+      "claim": "Include this TIF board recording in the Dallas TIF aggregate.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://dallastx.new.swagit.com/views/113/city-council",
+      "evidence": {
+        "provider_guid": "374872",
+        "body": "Dallas Downtown Connection TIF District Board of Directors Meeting",
+        "title": "Dallas Downtown Connection TIF District Board of Directors Meeting \u2013 Feb 09, 2026",
+        "published": "2026-02-09T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://dallastx.new.swagit.com/videos/374872",
+          "agenda": "https://dallastx.new.swagit.com/videos/374872/agenda"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-zone-marker",
+      "city": "dallas-tx",
+      "body_label": "Reinvestment Zone 21 University Tax Increment Financing District",
+      "claim": "Include this in Dallas TIF without creating a University district feed.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://dallastx.new.swagit.com/views/113/city-council",
+      "evidence": {
+        "provider_guid": "204712",
+        "body": "Reinvestment Zone 21 University Tax Increment Financing District",
+        "title": "Reinvestment Zone 21 University Tax Increment Financing District \u2013 Sep 10, 2020",
+        "published": "2020-09-10T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://dallastx.new.swagit.com/videos/204712",
+          "agenda": "https://dallastx.new.swagit.com/videos/204712/agenda"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-ethics",
+      "city": "dallas-tx",
+      "body_label": "TIF Ethics Advisory Commission",
+      "claim": "Include this TIF oversight recording in Dallas TIF.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://dallastx.new.swagit.com/views/113/city-council",
+      "evidence": {
+        "provider_guid": "204610",
+        "body": "TIF Ethics Advisory Commission",
+        "title": "TIF Ethics Advisory Commission \u2013 Jan 15, 2016",
+        "published": "2016-01-15T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://dallastx.new.swagit.com/videos/204610",
+          "agenda": "https://dallastx.new.swagit.com/videos/204610/agenda"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-joint",
+      "city": "dallas-tx",
+      "body_label": "Dallas Deep Ellum TIF District and Dallas Grand Park South TIF Board of Directors Meeting",
+      "claim": "Include the joint recording once in Dallas TIF.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://dallastx.new.swagit.com/views/113/city-council",
+      "evidence": {
+        "provider_guid": "393276",
+        "body": "Dallas Deep Ellum TIF District and Dallas Grand Park South TIF Board of Directors Meeting",
+        "title": "Dallas Deep Ellum TIF District and Dallas Grand Park South TIF Board of Directors Meeting \u2013 Jun 22, 2026",
+        "published": "2026-06-22T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://dallastx.new.swagit.com/videos/393276"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-unmarked-joint",
+      "city": "dallas-tx",
+      "body_label": "Dallas Joint Meeting Board of Directors City Center, Downtown Connection & DDA",
+      "claim": "Include verified Swagit recording 206541 by exact GUID in Dallas TIF.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://dallastx.new.swagit.com/views/113/city-council",
+      "evidence": {
+        "provider_guid": "206541",
+        "body": "Dallas Joint Meeting Board of Directors City Center, Downtown Connection & DDA",
+        "title": "Dallas Joint Meeting Board of Directors City Center, Downtown Connection & DDA \u2013 Jan 12, 2023",
+        "published": "2023-01-12T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://dallastx.new.swagit.com/videos/206541"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-multifamily",
+      "city": "fort-worth-tx",
+      "body_label": "AATC Multifamily Summit of September 14, 2017 AATC Multifamily Summit of September 14, 2017",
+      "claim": "Include this in TIF because its normalized title contains tif.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast",
+      "evidence": {
+        "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2785",
+        "body": "AATC Multifamily Summit of September 14, 2017 AATC Multifamily Summit of September 14, 2017",
+        "title": "AATC Multifamily Summit of September 14, 2017 AATC Multifamily Summit of September 14, 2017",
+        "published": "2017-09-14T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2785",
+          "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=2785"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-beautiful",
+      "city": "fort-worth-tx",
+      "body_label": "Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017 Keep Fort Worth Beautiful Neighborhood Workshop",
+      "claim": "Include this in TIF because its normalized title contains tif.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast",
+      "evidence": {
+        "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2624",
+        "body": "Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017 Keep Fort Worth Beautiful Neighborhood Workshop",
+        "title": "Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017 Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017",
+        "published": "2017-01-07T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2624",
+          "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=2624"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-woodhaven",
+      "city": "fort-worth-tx",
+      "body_label": "Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF) Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF)",
+      "claim": "Include in Fort Worth TIF and migrate the Woodhaven subscription to the aggregate.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast",
+      "evidence": {
+        "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4418",
+        "body": "Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF) Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF)",
+        "title": "Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF) Tax Increment Reinvestment Zone No. 13 (Woodhaven TIF)",
+        "published": "2021-06-09T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4418",
+          "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=4418"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-duplicate-views",
+      "city": "fort-worth-tx",
+      "body_label": "TIF 4 BOARD OF DIRECTORS MEETING TIF 4 BOARD OF DIRECTORS MEETING",
+      "claim": "Two archive views of the same clip prove this body met twice.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast",
+      "evidence": {
+        "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727",
+        "body": "TIF 4 BOARD OF DIRECTORS MEETING TIF 4 BOARD OF DIRECTORS MEETING",
+        "title": "TIF 4 BOARD OF DIRECTORS MEETING TIF 4 BOARD OF DIRECTORS MEETING",
+        "published": "2020-06-03T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3727",
+          "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=3727"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-cross-city",
+      "city": "fort-worth-tx",
+      "body_label": "TIF 15 Stockyards Northside TIF 15 Stockyards Northside",
+      "claim": "Include this recording in the Dallas TIF feed.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast",
+      "evidence": {
+        "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4153",
+        "body": "TIF 15 Stockyards Northside TIF 15 Stockyards Northside",
+        "title": "TIF 15 Stockyards Northside TIF 15 Stockyards Northside",
+        "published": "2021-01-06T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=4153",
+          "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=4153"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-pid",
+      "city": "fort-worth-tx",
+      "body_label": "Fort Worth Public Improvement District No. 1 Advisory Board",
+      "claim": "Include this in TIF because both kinds of district finance improvements.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "adapted",
+      "source_url": "",
+      "evidence_provenance": "Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.",
+      "policy_reference": "review/tif-coverage-2026-10.md"
+    },
+    {
+      "id": "tif-unmarked-neighborhood",
+      "city": "dallas-tx",
+      "body_label": "Deep Ellum Neighborhood Planning Workshop",
+      "claim": "District-name overlap alone proves TIF ownership.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "synthetic",
+      "source_url": "",
+      "evidence_provenance": "Synthetic adversarial example; no observed recording is asserted."
+    },
+    {
+      "id": "tif-topic-only",
+      "city": "dallas-tx",
+      "body_label": "City Council briefing on TIF financing",
+      "claim": "This title proves it is a TIF district board meeting.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "synthetic",
+      "source_url": "",
+      "evidence_provenance": "Synthetic adversarial example; no observed recording is asserted."
+    },
+    {
+      "id": "denton-dated-family",
+      "city": "denton-tx",
+      "body_label": "Airport Advisory Board on 2021-05-13 10:00 AM",
+      "claim": "A dated suffix establishes a new public body for every date.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "adapted",
+      "source_url": "",
+      "evidence_provenance": "Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.",
+      "policy_reference": "review/historical-feed-coverage-2026-10.md"
+    },
+    {
+      "id": "few-recordings",
+      "city": "arlington-tx",
+      "body_label": "Arlington Housing Finance Corporation Board Meeting",
+      "claim": "Only one surviving recording makes this a one-off Council meeting.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "adapted",
+      "source_url": "",
+      "evidence_provenance": "Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.",
+      "policy_reference": "review/historical-feed-coverage-2026-10.md"
+    },
+    {
+      "id": "bond-family",
+      "city": "dallas-tx",
+      "body_label": "2024 Bond Critical Facilities Subcommittee Meeting",
+      "claim": "A different bond year alone requires a separate subscription.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://dallastx.new.swagit.com/views/113/city-council",
+      "evidence": {
+        "provider_guid": "277833",
+        "body": "2024 Bond Critical Facilities Subcommittee Meeting",
+        "title": "2024 Bond Critical Facilities Subcommittee Meeting \u2013 Oct 30, 2023",
+        "published": "2023-10-30T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://dallastx.new.swagit.com/videos/277833"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/historical-feed-coverage-2026-10.md"
+    },
+    {
+      "id": "charter-years",
+      "city": "denton-tx",
+      "body_label": "Charter Review Committee on 2024-11-14 5:30 PM",
+      "claim": "A charter-review subscription can span successive review programs while retaining years in titles.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "adapted",
+      "source_url": "",
+      "evidence_provenance": "Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.",
+      "policy_reference": "review/historical-feed-coverage-2026-10.md"
+    },
+    {
+      "id": "canceled-unknown",
+      "city": "denton-tx",
+      "body_label": "Library Board on 2018-08-13 5:30 PM (No quorum; meeting not held)",
+      "claim": "The label alone establishes that playable public proceedings exist.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "adapted",
+      "source_url": "",
+      "evidence_provenance": "Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.",
+      "policy_reference": "review/historical-feed-coverage-2026-10.md"
+    },
+    {
+      "id": "tv-show",
+      "city": "fort-worth-tx",
+      "body_label": "Fort Worth Forward - Episode 24 Fort Worth Forward - Episode 24",
+      "claim": "Create a new deliberative-body meeting feed for this municipal TV show.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast",
+      "evidence": {
+        "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5542",
+        "body": "Fort Worth Forward - Episode 24 Fort Worth Forward - Episode 24",
+        "title": "Fort Worth Forward - Episode 24 Fort Worth Forward - Episode 24",
+        "published": "2024-05-29T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5542",
+          "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=5542"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/historical-feed-coverage-2026-10.md"
+    },
+    {
+      "id": "staff-training",
+      "city": "fort-worth-tx",
+      "body_label": "Active Shooter Civilian Response Training Active Shooter Civilian Response Training",
+      "claim": "Training recordings automatically belong to a new public meeting body.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast",
+      "evidence": {
+        "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558",
+        "body": "Active Shooter Civilian Response Training Active Shooter Civilian Response Training",
+        "title": "Active Shooter Civilian Response Training Active Shooter Civilian Response Training",
+        "published": "2016-09-17T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558",
+          "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=10&clip_id=2558"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/historical-feed-coverage-2026-10.md"
+    },
+    {
+      "id": "proposed-community",
+      "city": "denton-tx",
+      "body_label": "Virtual Community Meeting - Warschun Road Traffic Safety Improvements",
+      "claim": "Route a verified public-input proceeding to the city community aggregate.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "adapted",
+      "source_url": "",
+      "evidence_provenance": "Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.",
+      "policy_reference": "review/historical-feed-coverage-2026-10.md"
+    },
+    {
+      "id": "sign-distinct",
+      "city": "dallas-tx",
+      "body_label": "Arts District Sign Advisory Committee",
+      "claim": "Arts District Sign and Special Sign District committees are necessarily the same body.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://dallastx.new.swagit.com/views/113/city-council",
+      "evidence": {
+        "provider_guid": "346308",
+        "body": "Arts District Sign Advisory Committee",
+        "title": "Arts District Sign Advisory Committee \u2013 Jun 17, 2025",
+        "published": "2025-06-17T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://dallastx.new.swagit.com/videos/346308"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/historical-feed-coverage-2026-10.md"
+    },
+    {
+      "id": "same-topic-not-body",
+      "city": "fort-worth-tx",
+      "body_label": "Capital Improvements Advisory Committee for Transportation Impact Fees",
+      "claim": "This must be the Water and Wastewater CIP Citizens Advisory Committee.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "adapted",
+      "source_url": "",
+      "evidence_provenance": "Adapted historical policy regression; not asserted to be an exact provider label. Needs recording evidence before admission.",
+      "policy_reference": "review/historical-feed-coverage-2026-10.md"
+    },
+    {
+      "id": "joint-unowned",
+      "city": "dallas-tx",
+      "body_label": "Joint Board of Directors",
+      "claim": "Assign to Council without identifying the joint bodies.",
+      "policy_version": "2026-10-02",
+      "policy_status": "approved",
+      "input_kind": "real",
+      "source_url": "https://dallastx.new.swagit.com/views/113/city-council",
+      "evidence": {
+        "provider_guid": "203292",
+        "body": "Joint Board of Directors",
+        "title": "Joint Board of Directors \u2013 Dec 10, 2015",
+        "published": "2015-12-10T00:00:00+00:00",
+        "links": {
+          "canonical_video": "https://dallastx.new.swagit.com/videos/203292",
+          "agenda": "https://dallastx.new.swagit.com/videos/203292/agenda"
+        }
+      },
+      "evidence_provenance": "Exact provider label or verified GUID from the 2026-10-02 archive snapshot.",
+      "policy_reference": "review/historical-feed-coverage-2026-10.md"
+    }
+  ]
+}
