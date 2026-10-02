@@ -21,6 +21,12 @@ Phase R (Research-Tool Surface)._
   aliases to one TIF subscription per city; boundary selectors cover historical variants without
   matching multifamily/Beautiful. Archive records, episode UIDs and pipeline versions are unchanged.
   Broader eligibility may schedule historical work under existing budgets; no forced backfill.
+  
+- **CI Renovate validator pinned to 44.125.1.** The unversioned npm install began resolving
+  Renovate 44.132.1, whose `@yarnpkg/core@4.9.2` dependency publishes an npm-incompatible Yarn
+  `patch:` URL. The verified pin restores configuration validation on Node 24; Renovate tracks
+  reviewed hygiene upgrades, and failed installs print npm debug logs from a dedicated cache.
+  Dependency guards remain enabled. No pipeline version changes or stored-artifact invalidation.
 
 - **Per-verb LLM backlog trends (GH#1968, review/50 PR1).**
   `python -m citypods.ops.backlog_trend` reads scoped `run_events` locally or restores selected

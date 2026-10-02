@@ -127,7 +127,27 @@ jobs:
           node-version: "24"
 
       - name: Validate Renovate configuration
-        run: npx --yes --package renovate renovate-config-validator .github/renovate.json5
+        env:
+          npm_config_cache: ${{ runner.temp }}/renovate-validator-npm
+        run: |
+          node --version
+          npm --version
+          # 44.132.1 pulls @yarnpkg/core 4.9.2's npm-incompatible patch: dependency.
+          # Keep the verified validator pinned; Renovate tracks this hygiene tool.
+          if npx --yes --loglevel verbose --package renovate@44.125.1 \
+            renovate-config-validator .github/renovate.json5; then
+            exit 0
+          else
+            status=$?
+            for log in "${npm_config_cache}"/_logs/*-debug-0.log; do
+              if [ -f "$log" ]; then
+                echo "::group::npm debug log"
+                cat "$log"
+                echo "::endgroup::"
+              fi
+            done
+            exit "$status"
+          fi
 
       - name: Constraints drift gate
         run: |
