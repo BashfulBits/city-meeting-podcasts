@@ -34,6 +34,11 @@ Phase R (Research-Tool Surface)._
   shadow evaluation, and per-candidate judges can consume multiple jobs per meeting from that shared
   envelope. No model or prompt recipes changed.
 
+- **Locator CI reuse fixtures.** Current artifacts now include the routing policy version in
+  tests, with coverage for both production models and stale or missing routing metadata. The
+  subprocess kill/restart test uses the production spawn path instead of forking from a thread.
+  No production behavior or stored-artifact invalidation changed.
+
 
 - **Unexpected-body remedy design (review/51, proposed).** Complete-archive city onboarding,
   traceable evaluation seeds, independent reasoning review and persistent rejection/exclusion

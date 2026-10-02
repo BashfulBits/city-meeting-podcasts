@@ -7,12 +7,14 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from citypods.chapter_artifacts import (
     AgendaCandidate,
     AgendaCandidatesArtifact,
 )
-from citypods.chapter_jobs import build_locator_job
-from citypods.chapter_locator import build_locator_units
+from citypods.chapter_jobs import LOCATOR_MODELS, build_locator_job
+from citypods.chapter_locator import LOCATOR_ROUTING_VERSION, build_locator_units
 from citypods.compute.base import JobHandle, JobResult
 from citypods.models import City, Episode
 from citypods.stages import (
@@ -308,24 +310,29 @@ def test_locator_stage_finalizes_and_filters_non_accepted_items(tmp_path: Path):
 
     # A completed result records the model/prompt_version it was produced under, so a later
     # LOCATOR_PROMPT_VERSION/LOCATOR_MODEL bump can tell this artifact apart from a stale one
-    # (see test_locator_stage_reprocesses_a_completed_episode_under_a_stale_prompt_version below).
+    # (see test_locator_stage_reprocesses_a_completed_episode_under_stale_policy below).
     from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
 
     assert ep.generated_agenda_candidates["locator_model"] == LOCATOR_MODEL
     assert ep.generated_agenda_candidates["locator_prompt_version"] == LOCATOR_PROMPT_VERSION
+    assert ep.generated_agenda_candidates["locator_routing_version"] == LOCATOR_ROUTING_VERSION
 
 
-def test_locator_stage_reprocesses_a_completed_episode_under_a_stale_prompt_version(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    ("stale_field", "stale_value"),
+    [
+        ("locator_model", "gemini/gemini-3.5-flash-lite"),
+        ("locator_prompt_version", "locator-v1"),
+        ("locator_routing_version", "size-split-retired"),
+        ("locator_routing_version", None),
+    ],
+)
+def test_locator_stage_reprocesses_a_completed_episode_under_stale_policy(
+    tmp_path: Path, stale_field: str, stale_value: str | None
 ):
-    """Mirrors AgendaChapterCandidatesStage's own
-    test_stage_reprocesses_a_completed_episode_under_a_retired_model: a completed locator result
-    is only current -- and safe to reuse -- if it matches the CURRENT LOCATOR_MODEL/
-    LOCATOR_PROMPT_VERSION. Without this check, stage_is_dirty's fingerprint (which does bake in
-    LOCATOR_PROMPT_VERSION via stage_input_fingerprint's own "recipe" field) makes the episode
-    dirty, and this stage would otherwise "reuse" the stale artifact and re-stamp it as current,
-    permanently laundering it -- exactly the failure mode CHAPTER_LOCATOR_PIPELINE_VERSION's own
-    comment warns this class of bug produces."""
+    """Stale model, prompt, or routing metadata must not be re-stamped as current on reuse."""
+    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+
     stage = ChapterBoundaryLocatorStage()
     city = _make_city()
     storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
@@ -334,11 +341,16 @@ def test_locator_stage_reprocesses_a_completed_episode_under_a_stale_prompt_vers
     ep.generated_agenda_candidates.update(
         {
             "locator_status": "completed",
-            "locator_model": "gemini/gemini-3.5-flash-lite",
-            "locator_prompt_version": "locator-v1",
+            "locator_model": LOCATOR_MODEL,
+            "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+            "locator_routing_version": LOCATOR_ROUTING_VERSION,
             "boundary_artifact_key": "state/generated_chapters/boundary/stale-key",
         }
     )
+    if stale_value is None:
+        ep.generated_agenda_candidates.pop(stale_field)
+    else:
+        ep.generated_agenda_candidates[stale_field] = stale_value
 
     model_output = json.dumps(
         {
@@ -366,14 +378,17 @@ def test_locator_stage_reprocesses_a_completed_episode_under_a_stale_prompt_vers
     assert stats.ran == 1
     assert stats.reused == 0
 
-    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
-
     assert ep.generated_agenda_candidates["locator_model"] == LOCATOR_MODEL
     assert ep.generated_agenda_candidates["locator_prompt_version"] == LOCATOR_PROMPT_VERSION
+    assert ep.generated_agenda_candidates["locator_routing_version"] == LOCATOR_ROUTING_VERSION
 
 
-def test_locator_stage_reuses_a_completed_episode_that_is_already_current(tmp_path: Path):
-    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+@pytest.mark.parametrize("model", LOCATOR_MODELS)
+@pytest.mark.parametrize("status", ["completed", "accepted"])
+def test_locator_stage_reuses_a_completed_episode_that_is_already_current(
+    tmp_path: Path, model: str, status: str
+):
+    from citypods.chapter_jobs import LOCATOR_PROMPT_VERSION
 
     stage = ChapterBoundaryLocatorStage()
     city = _make_city()
@@ -381,9 +396,10 @@ def test_locator_stage_reuses_a_completed_episode_that_is_already_current(tmp_pa
     ep = _make_episode("ep-current-locator-completed")
     ep.generated_agenda_candidates.update(
         {
-            "locator_status": "completed",
-            "locator_model": LOCATOR_MODEL,
+            "locator_status": status,
+            "locator_model": model,
             "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+            "locator_routing_version": LOCATOR_ROUTING_VERSION,
         }
     )
     backend = FakeBackend()  # must never be called
@@ -620,8 +636,9 @@ def test_locator_stage_failed_batch_job_does_not_consume_dispatch_quota(tmp_path
     assert not ctx.chapter_locator_dispatch_exhausted.is_set()
 
 
-def test_episode_needs_chapter_locator_evaluates_correctly():
-    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+@pytest.mark.parametrize("model", LOCATOR_MODELS)
+def test_episode_needs_chapter_locator_evaluates_correctly(model: str):
+    from citypods.chapter_jobs import LOCATOR_PROMPT_VERSION
     from citypods.stages import episode_needs_chapter_locator
 
     ep = _make_episode("ep-loc-eval")
@@ -638,22 +655,32 @@ def test_episode_needs_chapter_locator_evaluates_correctly():
     ep.generated_agenda_candidates = {"status": "pending"}
     assert episode_needs_chapter_locator(ep) is False
 
-    # Locator already completed or accepted under the CURRENT model/prompt_version -- genuinely
-    # reusable.
+    # Both selected models are reusable with the current prompt and routing versions.
     ep.generated_agenda_candidates = {
         "status": "completed",
         "locator_status": "completed",
-        "locator_model": LOCATOR_MODEL,
+        "locator_model": model,
         "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+        "locator_routing_version": LOCATOR_ROUTING_VERSION,
     }
     assert episode_needs_chapter_locator(ep) is False
     ep.generated_agenda_candidates = {
         "status": "completed",
         "locator_status": "accepted",
-        "locator_model": LOCATOR_MODEL,
+        "locator_model": model,
         "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+        "locator_routing_version": LOCATOR_ROUTING_VERSION,
     }
     assert episode_needs_chapter_locator(ep) is False
+
+    # Missing or stale routing metadata must requeue even with the current model and prompt.
+    del ep.generated_agenda_candidates["locator_routing_version"]
+    assert episode_needs_chapter_locator(ep) is True
+    ep.generated_agenda_candidates["locator_routing_version"] = "size-split-retired"
+    assert episode_needs_chapter_locator(ep) is True
+    ep.generated_agenda_candidates["locator_routing_version"] = LOCATOR_ROUTING_VERSION
+    ep.generated_agenda_candidates["locator_model"] = "gemini/gemini-3.5-flash-lite"
+    assert episode_needs_chapter_locator(ep) is True
 
     # Completed under a STALE locator_prompt_version -- this is the actual pre-filter `run.py`
     # applies before ChapterBoundaryLocatorStage.process() ever runs (--lane chapter-locator/
@@ -662,8 +689,9 @@ def test_episode_needs_chapter_locator_evaluates_correctly():
     ep.generated_agenda_candidates = {
         "status": "completed",
         "locator_status": "completed",
-        "locator_model": LOCATOR_MODEL,
+        "locator_model": model,
         "locator_prompt_version": "locator-v0-stale",
+        "locator_routing_version": LOCATOR_ROUTING_VERSION,
     }
     assert episode_needs_chapter_locator(ep) is True
 
