@@ -844,6 +844,11 @@ Phase R (Research-Tool Surface)._
 
 ### Added
 
+- **Historical feed coverage assessment (2026-10-02).** A source/label inventory and seven
+  separately reviewable policy directions cover the residual #1747 backlog after the proposed
+  TIF migration. Recommendations await category approval; no residual feed or exclusion changes
+  have been applied.
+
 - **Per-workflow LLM submission throughput telemetry** (`citypods/compute/llm_submission_telemetry.py`,
   `scripts/llm_submission_telemetry.py`, and the LLM producer workflows). Each run now records
   payload-free candidate disposition, fresh v2 admissions versus idempotent replays, ingress
