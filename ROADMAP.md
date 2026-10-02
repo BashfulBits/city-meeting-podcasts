@@ -12,7 +12,9 @@ scale; lower number = sooner.
 
 Maintainer-directed follow-up (2026-10-02): Dallas/Fort Worth aggregate TIF feed migration and
 remedy policy enforcement shipped in #1973/#1974; residual categories A–F are approved and
-await evidence-backed implementation. See
+are being applied in bounded, evidence-backed city batches. The
+[Arlington batch](review/arlington-coverage-2026-10.md) covers two named bodies while retaining
+explicit identity/investigation holds. See
 [coverage policy](review/tif-coverage-2026-10.md) and review/11.
 [review/51](review/51-unexpected-body-remedy-flow.md) records the approved improvement structure:
 P1 evaluation/physical-route admission is L3; P2–P5 have predecessor-gated build contracts.
