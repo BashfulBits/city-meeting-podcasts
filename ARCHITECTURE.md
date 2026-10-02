@@ -483,9 +483,15 @@ projection; it is emitted at most once per gate per five minutes per DO instance
 writers can spend the 10,000-row reserve. There is no working daily lease cap
 (`MAX_LEASES_PER_UTC_DAY` is a 7,000
 backstop), so a cheap day dispatches until the safe projection closes admission. Ingress is bounded
-by a daily quota near real drain (`MAX_JOBS_PER_UTC_DAY` 4,000,
-`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 18,000, divided by the lane budgets above) and a pending cap
-(`MAX_QUEUED_JOBS` 20,000). These tunables are compiled from `config/dispatch_tuning.yml`
+by a shared daily quota (`MAX_JOBS_PER_UTC_DAY` 4,000,
+`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 25,600) and a pending cap (`MAX_QUEUED_JOBS` 20,000).
+The 4,000-job/25,600-unit admission target funds 800 meetings through five core one-job-per-meeting
+tasks (agenda, locator, tagger, prelabeler, moments). Per-lane ceilings are independently sized to
+800 jobs/day, but this is not a same-day completion guarantee: live row headroom can defer ingress
+to protect dispatch, while prelabel batches, shadow evaluation, and per-candidate judges can use
+multiple jobs for one meeting and share the global budget. At most two billed ingress rows per
+unit means 51,200 rows at the configured maximum, below the 90,000 enqueue stop. These tunables are
+compiled from `config/dispatch_tuning.yml`
 into `src/dispatch_tuning.json` (a same-named Cloudflare variable still overrides), not declared as
 Worker variables, to stay under Workers Free's 64 variable-plus-secret limit.
 `enqueueBatch` reserves conservative row headroom for each new job and each supersede inside the

@@ -27,6 +27,13 @@ Phase R (Research-Tool Surface)._
   bytes remain unchanged. The 39-meeting two-prompt evaluation packet, answer key, scorer, golden
   labels, and matched-cohort results are in `evals/chapter-locator/`.
 
+- **LLM ingress lane ceilings.** Five core enrichment tasks now have 800-job/day per-lane ceilings.
+  The shared admission envelope is 4,000 jobs / 25,600 write units/day, calculated as 800 meetings
+  through agenda, locator, tagger, prelabeler, and moments. Runtime row headroom still gates live
+  admission to protect dispatch; this is not a same-day completion guarantee. Prelabel batching,
+  shadow evaluation, and per-candidate judges can consume multiple jobs per meeting from that shared
+  envelope. No model or prompt recipes changed.
+
 
 - **Unexpected-body remedy design (review/51, proposed).** Complete-archive city onboarding,
   traceable evaluation seeds, independent reasoning review and persistent rejection/exclusion

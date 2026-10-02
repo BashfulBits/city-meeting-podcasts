@@ -2,12 +2,12 @@
   "_generated_by": "scripts/compile_llm_lanes.py",
   "_source": "config/site_config.yml (llm_lanes)",
   "_readme": "Do not edit by hand. Keys are exact LLMRequestPolicy.purpose strings; a purpose absent from this map is rejected at ingress with purpose_not_registered rather than falling through to shared headroom.",
-  "global_write_budget": 18000,
-  "reserved_total": 13966,
+  "global_write_budget": 25600,
+  "reserved_total": 13186,
   "reservations": {
     "chapter-agenda": {
-      "reserved_write_units": 5580,
-      "daily_write_units": 9300,
+      "reserved_write_units": 4800,
+      "daily_write_units": 4800,
       "models": [
         "nvidia/nemotron-3-ultra-550b-a55b:free",
         "tencent/hy3",
@@ -62,7 +62,7 @@
     },
     "r6-judge": {
       "reserved_write_units": 650,
-      "daily_write_units": 1300,
+      "daily_write_units": 4800,
       "models": [
         "qwen/qwen3.8-27b",
         "gemini/gemini-3.6-flash",
@@ -76,7 +76,7 @@
     },
     "r6-moments": {
       "reserved_write_units": 916,
-      "daily_write_units": 2232,
+      "daily_write_units": 9600,
       "models": [
         "gemini/gemini-3.8-flash",
         "gemini/gemini-3.7-flash",
@@ -96,7 +96,7 @@
     },
     "topic-tags:prelabeler": {
       "reserved_write_units": 1860,
-      "daily_write_units": 3720,
+      "daily_write_units": 3200,
       "models": [
         "google/gemma-4-31b-it"
       ],
@@ -108,7 +108,7 @@
     },
     "topic-tags:prelabeler-shadow": {
       "reserved_write_units": 0,
-      "daily_write_units": 740,
+      "daily_write_units": 3200,
       "models": [
         "google/gemma-4-26b-a4b-it"
       ],
@@ -120,7 +120,7 @@
     },
     "topic-tags:tagger": {
       "reserved_write_units": 1860,
-      "daily_write_units": 5580,
+      "daily_write_units": 4800,
       "models": [
         "gemini/gemini-3.1-flash-lite",
         "kilo/stepfun/step-3.7-flash:free",

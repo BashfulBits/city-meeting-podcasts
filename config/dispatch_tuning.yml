@@ -69,13 +69,16 @@ MAX_BUNDLES_PER_UTC_DAY: 1400
 # checks the deployed variable count.
 # A blast-radius backstop, not the working limit: MAX_BUNDLES_PER_UTC_DAY x MAX_BUNDLE_JOBS.
 MAX_LEASES_PER_UTC_DAY: 7000
-# Ingress quota, sized near what dispatch can finish in a day (~20-29 billed rows per job, so
-# ~3,500-5,000 jobs/day fit the row budget).
+# Core pipeline target: 800 meetings/day x five one-job-per-meeting tasks (agenda, locator,
+# tagger, prelabeler, moments) = 4,000 jobs/day. Dispatch remains separately gated by measured
+# runtime row headroom; this is an admission ceiling, not a same-day completion guarantee.
 MAX_JOBS_PER_UTC_DAY: 4000
-# In the Worker's write units (3 + models per job; at most 2 billed rows each, so a full day
-# of ingress is at most 36,000 rows). ~4,000 jobs at the lanes' ~4.5 units/job. Lane
-# reservations compiled from `llm_lanes` must fit inside this.
-MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: 18000
+# 800 meetings/day x (agenda 6 + locator 4 + tagger 6 + prelabeler 4 + moments 12 units/job).
+# At most 2 billed DO rows per unit means 51,200 ingress rows at the full target, below the
+# 90,000 enqueue stop; the Worker's live row-headroom gate can defer earlier to protect dispatch.
+# Shadow and candidate-level judge jobs share this envelope and are not part of the 800-meeting
+# baseline calculation. Lane reservations compiled from `llm_lanes` must fit inside this.
+MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: 25600
 # Global cap on queued jobs (MAX_QUEUED_JOBS): past it new work waits in the producer, not in
 # the DO. Left at the coordinator's default of 20,000 (`_maxQueuedJobs`), so not declared --
 # see the variable-limit note above.
