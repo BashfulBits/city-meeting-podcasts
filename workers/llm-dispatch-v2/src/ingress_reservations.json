@@ -24,18 +24,16 @@
     },
     "chapter-locator": {
       "reserved_write_units": 2170,
-      "daily_write_units": 3255,
+      "daily_write_units": 3200,
       "models": [
-        "gemini/gemini-3.5-flash-lite",
-        "zai/glm-5.3-flash",
         "deepseek/deepseek-v4-flash",
         "moonshotai/kimi-k3"
       ],
       "backup_models": [],
       "backup_after_attempts": null,
-      "dispatch_shape": "pooled",
+      "dispatch_shape": "per_model",
       "reasoning": {},
-      "write_units_per_job": 7
+      "write_units_per_job": 4
     },
     "r5-benchmark:judge": {
       "reserved_write_units": 0,

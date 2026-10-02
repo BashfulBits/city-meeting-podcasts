@@ -318,7 +318,7 @@ class TestRecipeAffectingModelPins:
         ("purpose", "expected"),
         [
             ("chapter-agenda", "nvidia/nemotron-3-ultra-550b-a55b:free"),
-            ("chapter-locator", "gemini/gemini-3.5-flash-lite"),
+            ("chapter-locator", "deepseek/deepseek-v4-flash"),
             ("topic-tags:tagger", "gemini/gemini-3.1-flash-lite"),
             ("topic-tags:prelabeler", "google/gemma-4-31b-it"),
         ],

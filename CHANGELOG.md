@@ -17,6 +17,17 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Chapter locator baseline routing and evaluation.** Production now uses the baseline prompt, routes
+  packets up to 76,000 internal estimated input tokens to DeepSeek V4 Flash, and sends larger packets
+  to Kimi K3. GLM 5.3 Flash and DeepSeek V4.1 Flash are documented optional capacity and are not
+  wired into the lane. The locator ingress budget is 800 jobs/day. Schema corrections now require
+  answer JSON in assistant content; exact duplicate-start validation gets one persisted, focused
+  locator repair, with no invented timestamp offsets. Bumping the locator prompt/routing recipe
+  invalidates old generated locator outputs for gradual reprocessing; provider chapters and audio
+  bytes remain unchanged. The 39-meeting two-prompt evaluation packet, answer key, scorer, golden
+  labels, and matched-cohort results are in `evals/chapter-locator/`.
+
+
 - **Unexpected-body remedy design (review/51, proposed).** Complete-archive city onboarding,
   traceable evaluation seeds, independent reasoning review and persistent rejection/exclusion
   decisions are specified before implementation. Routine review targets 5–8 small PRs weekly

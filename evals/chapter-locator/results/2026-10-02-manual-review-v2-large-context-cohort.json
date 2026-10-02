@@ -1,0 +1,1619 @@
+{
+  "schema_version": 1,
+  "dataset": "chapter-locator/manual-review-v2",
+  "source_full_cohort_score": "2026-10-02-manual-review-v2-kimi-retry-rescore.json",
+  "source_small_context_cohort_score": "2026-10-02-manual-review-v2-small-context-cohort.json",
+  "cohort": {
+    "meetings": 12,
+    "boundary_cases": 157,
+    "eligibility": "The 12 meetings outside the exact 27-meeting intersection where both small-context models returned valid responses under both prompts.",
+    "meeting_uids": [
+      "0bd43068860d23ac",
+      "149e18205b342017",
+      "21451e2edf0b5d9c",
+      "3fd0769f51ca1f05",
+      "64d910657ceb47fa",
+      "9d84baa70ea96075",
+      "ab1cfb601c5c94f0",
+      "b0255efe9b903f4c",
+      "b713de3cac686c35",
+      "bb56b844c811808e",
+      "cbdae79171ad8b75",
+      "eb5eb0ee29393dbd"
+    ]
+  },
+  "metric_definitions": {
+    "chapter_assignment_coverage": "One-to-one matched gold chapters assigned to the correct manual agenda item, regardless of timestamp, divided by gold chapters with manual agenda association.",
+    "timing_accuracy_on_assigned_chapters": "Correctly assigned gold chapters whose predicted start is within 60 seconds, divided by correctly assigned gold chapters.",
+    "combined_chapter_recall": "Correctly assigned gold chapters with predicted start within 60 seconds, divided by all gold chapters with manual agenda association."
+  },
+  "scoring_contract": {
+    "boundary_tolerance_seconds": 60,
+    "concurrent_cases_folded_by": "connected components from scores.json concurrent_case_ids",
+    "boundary_metric": "one-to-one nearest-prediction recall, any agenda item",
+    "item_metric": "one-to-one nearest-prediction recall, manual agenda association plus boundary",
+    "item_metric_excludes_targets_without_manual_agenda_association": true,
+    "conditional_quality_excludes_invalid_or_missing_responses": true,
+    "full_cohort_lower_bound_assumes_no_hits_for_invalid_or_missing": true,
+    "optimistic_upper_bound_assumes_all_unobserved_targets_would_be_hits": true
+  },
+  "results": [
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "prompt": "baseline",
+      "full_cohort": {
+        "route_ids": [
+          "nvidia_deepseek_v4_1_flash_free"
+        ],
+        "meeting_count_denominator": 12,
+        "meetings_with_result": 12,
+        "valid_meetings": 12,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 98,
+        "timed_target_denominator": 116,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 84.5,
+        "timing_recall_full_cohort_lower_bound_pct": 84.5,
+        "timing_recall_full_cohort_optimistic_upper_pct": 84.5,
+        "timed_targets_in_valid_meetings": 116,
+        "timing_recall_given_valid_response_pct": 84.5,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          75.7,
+          91.9
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          75.3,
+          91.8
+        ],
+        "item_and_timing_hits_60s": 97,
+        "manual_item_target_denominator": 108,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 89.8,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 89.8,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 89.8,
+        "item_targets_in_valid_meetings": 108,
+        "item_and_timing_recall_given_valid_response_pct": 89.8,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          83.3,
+          94.6
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          83.5,
+          94.5
+        ],
+        "correct_item_error_samples": 99,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 2.0,
+        "valid_response_latency_mean_s": 569.1,
+        "valid_response_latency_median_s": 502.2
+      },
+      "by_split": {
+        "dataset-v3": {
+          "route_ids": [
+            "nvidia_deepseek_v4_1_flash_free"
+          ],
+          "meeting_count_denominator": 3,
+          "meetings_with_result": 3,
+          "valid_meetings": 3,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 12,
+          "timed_target_denominator": 14,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 85.7,
+          "timing_recall_full_cohort_lower_bound_pct": 85.7,
+          "timing_recall_full_cohort_optimistic_upper_pct": 85.7,
+          "timed_targets_in_valid_meetings": 14,
+          "timing_recall_given_valid_response_pct": 85.7,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "item_and_timing_hits_60s": 12,
+          "manual_item_target_denominator": 14,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 85.7,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 85.7,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 85.7,
+          "item_targets_in_valid_meetings": 14,
+          "item_and_timing_recall_given_valid_response_pct": 85.7,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "correct_item_error_samples": 13,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 0.4,
+          "valid_response_latency_mean_s": 331.6,
+          "valid_response_latency_median_s": 280.3
+        },
+        "holdout-v1": {
+          "route_ids": [
+            "nvidia_deepseek_v4_1_flash_free"
+          ],
+          "meeting_count_denominator": 9,
+          "meetings_with_result": 9,
+          "valid_meetings": 9,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 86,
+          "timed_target_denominator": 102,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 84.3,
+          "timing_recall_full_cohort_lower_bound_pct": 84.3,
+          "timing_recall_full_cohort_optimistic_upper_pct": 84.3,
+          "timed_targets_in_valid_meetings": 102,
+          "timing_recall_given_valid_response_pct": 84.3,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            74.2,
+            92.7
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            73.9,
+            92.6
+          ],
+          "item_and_timing_hits_60s": 85,
+          "manual_item_target_denominator": 94,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 90.4,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 90.4,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 90.4,
+          "item_targets_in_valid_meetings": 94,
+          "item_and_timing_recall_given_valid_response_pct": 90.4,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            83.1,
+            95.5
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            83.2,
+            95.6
+          ],
+          "correct_item_error_samples": 86,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 1.9,
+          "valid_response_latency_mean_s": 648.3,
+          "valid_response_latency_median_s": 568.1
+        }
+      },
+      "by_importance": {
+        "core": {
+          "timing_hits_60s": 82,
+          "timed_target_denominator": 91,
+          "timing_recall_full_cohort_pct": 90.1,
+          "item_and_timing_hits_60s": 80,
+          "manual_item_target_denominator": 87,
+          "item_and_timing_recall_full_cohort_pct": 92.0
+        },
+        "mixed": {
+          "timing_hits_60s": 4,
+          "timed_target_denominator": 4,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 4,
+          "manual_item_target_denominator": 4,
+          "item_and_timing_recall_full_cohort_pct": 100.0
+        },
+        "optional": {
+          "timing_hits_60s": 17,
+          "timed_target_denominator": 18,
+          "timing_recall_full_cohort_pct": 94.4,
+          "item_and_timing_hits_60s": 12,
+          "manual_item_target_denominator": 14,
+          "item_and_timing_recall_full_cohort_pct": 85.7
+        },
+        "unrated": {
+          "timing_hits_60s": 2,
+          "timed_target_denominator": 2,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 1,
+          "manual_item_target_denominator": 2,
+          "item_and_timing_recall_full_cohort_pct": 50.0
+        },
+        "unsure": {
+          "timing_hits_60s": 0,
+          "timed_target_denominator": 1,
+          "timing_recall_full_cohort_pct": 0.0,
+          "item_and_timing_hits_60s": 0,
+          "manual_item_target_denominator": 1,
+          "item_and_timing_recall_full_cohort_pct": 0.0
+        }
+      },
+      "chapter_metrics": {
+        "gold_manual_agenda_chapters": 108,
+        "correctly_assigned_chapters": 99,
+        "chapter_assignment_coverage_pct": 91.7,
+        "correctly_assigned_within_60s": 97,
+        "timing_accuracy_on_assigned_chapters_pct": 98.0,
+        "combined_chapter_recall_pct": 89.8,
+        "unassigned_or_misassigned_chapters": 9
+      }
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "prompt": "transition_sweep",
+      "full_cohort": {
+        "route_ids": [
+          "nvidia_deepseek_v4_1_flash_free"
+        ],
+        "meeting_count_denominator": 12,
+        "meetings_with_result": 12,
+        "valid_meetings": 12,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 94,
+        "timed_target_denominator": 116,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 81.0,
+        "timing_recall_full_cohort_lower_bound_pct": 81.0,
+        "timing_recall_full_cohort_optimistic_upper_pct": 81.0,
+        "timed_targets_in_valid_meetings": 116,
+        "timing_recall_given_valid_response_pct": 81.0,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          71.3,
+          91.7
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          71.1,
+          91.0
+        ],
+        "item_and_timing_hits_60s": 92,
+        "manual_item_target_denominator": 108,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 85.2,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 85.2,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 85.2,
+        "item_targets_in_valid_meetings": 108,
+        "item_and_timing_recall_given_valid_response_pct": 85.2,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          77.7,
+          91.3
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          77.7,
+          91.3
+        ],
+        "correct_item_error_samples": 95,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 2.9,
+        "valid_response_latency_mean_s": 911.1,
+        "valid_response_latency_median_s": 949.3
+      },
+      "by_split": {
+        "dataset-v3": {
+          "route_ids": [
+            "nvidia_deepseek_v4_1_flash_free"
+          ],
+          "meeting_count_denominator": 3,
+          "meetings_with_result": 3,
+          "valid_meetings": 3,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 13,
+          "timed_target_denominator": 14,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 92.9,
+          "timing_recall_full_cohort_lower_bound_pct": 92.9,
+          "timing_recall_full_cohort_optimistic_upper_pct": 92.9,
+          "timed_targets_in_valid_meetings": 14,
+          "timing_recall_given_valid_response_pct": 92.9,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "item_and_timing_hits_60s": 12,
+          "manual_item_target_denominator": 14,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 85.7,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 85.7,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 85.7,
+          "item_targets_in_valid_meetings": 14,
+          "item_and_timing_recall_given_valid_response_pct": 85.7,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            33.3,
+            100.0
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            33.3,
+            100.0
+          ],
+          "correct_item_error_samples": 13,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 0.0,
+          "valid_response_latency_mean_s": 835.3,
+          "valid_response_latency_median_s": 984.8
+        },
+        "holdout-v1": {
+          "route_ids": [
+            "nvidia_deepseek_v4_1_flash_free"
+          ],
+          "meeting_count_denominator": 9,
+          "meetings_with_result": 9,
+          "valid_meetings": 9,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 81,
+          "timed_target_denominator": 102,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 79.4,
+          "timing_recall_full_cohort_lower_bound_pct": 79.4,
+          "timing_recall_full_cohort_optimistic_upper_pct": 79.4,
+          "timed_targets_in_valid_meetings": 102,
+          "timing_recall_given_valid_response_pct": 79.4,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            68.9,
+            90.8
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            68.5,
+            90.5
+          ],
+          "item_and_timing_hits_60s": 80,
+          "manual_item_target_denominator": 94,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 85.1,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 85.1,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 85.1,
+          "item_targets_in_valid_meetings": 94,
+          "item_and_timing_recall_given_valid_response_pct": 85.1,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            78.3,
+            91.0
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            78.5,
+            91.1
+          ],
+          "correct_item_error_samples": 82,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 2.9,
+          "valid_response_latency_mean_s": 936.4,
+          "valid_response_latency_median_s": 918.8
+        }
+      },
+      "by_importance": {
+        "core": {
+          "timing_hits_60s": 77,
+          "timed_target_denominator": 91,
+          "timing_recall_full_cohort_pct": 84.6,
+          "item_and_timing_hits_60s": 74,
+          "manual_item_target_denominator": 87,
+          "item_and_timing_recall_full_cohort_pct": 85.1
+        },
+        "mixed": {
+          "timing_hits_60s": 4,
+          "timed_target_denominator": 4,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 4,
+          "manual_item_target_denominator": 4,
+          "item_and_timing_recall_full_cohort_pct": 100.0
+        },
+        "optional": {
+          "timing_hits_60s": 17,
+          "timed_target_denominator": 18,
+          "timing_recall_full_cohort_pct": 94.4,
+          "item_and_timing_hits_60s": 13,
+          "manual_item_target_denominator": 14,
+          "item_and_timing_recall_full_cohort_pct": 92.9
+        },
+        "unrated": {
+          "timing_hits_60s": 2,
+          "timed_target_denominator": 2,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 1,
+          "manual_item_target_denominator": 2,
+          "item_and_timing_recall_full_cohort_pct": 50.0
+        },
+        "unsure": {
+          "timing_hits_60s": 0,
+          "timed_target_denominator": 1,
+          "timing_recall_full_cohort_pct": 0.0,
+          "item_and_timing_hits_60s": 0,
+          "manual_item_target_denominator": 1,
+          "item_and_timing_recall_full_cohort_pct": 0.0
+        }
+      },
+      "chapter_metrics": {
+        "gold_manual_agenda_chapters": 108,
+        "correctly_assigned_chapters": 95,
+        "chapter_assignment_coverage_pct": 88.0,
+        "correctly_assigned_within_60s": 92,
+        "timing_accuracy_on_assigned_chapters_pct": 96.8,
+        "combined_chapter_recall_pct": 85.2,
+        "unassigned_or_misassigned_chapters": 13
+      }
+    },
+    {
+      "model": "gemini/gemini-3.5-flash-lite",
+      "prompt": "baseline",
+      "full_cohort": {
+        "route_ids": [
+          "gemini_3_5_flash_lite_primary",
+          "gemini_3_5_flash_lite_secondary"
+        ],
+        "meeting_count_denominator": 12,
+        "meetings_with_result": 12,
+        "valid_meetings": 12,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 92,
+        "timed_target_denominator": 116,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 79.3,
+        "timing_recall_full_cohort_lower_bound_pct": 79.3,
+        "timing_recall_full_cohort_optimistic_upper_pct": 79.3,
+        "timed_targets_in_valid_meetings": 116,
+        "timing_recall_given_valid_response_pct": 79.3,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          71.7,
+          88.4
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          71.6,
+          88.9
+        ],
+        "item_and_timing_hits_60s": 79,
+        "manual_item_target_denominator": 108,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 73.1,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 73.1,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 73.1,
+        "item_targets_in_valid_meetings": 108,
+        "item_and_timing_recall_given_valid_response_pct": 73.1,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          60.6,
+          84.5
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          60.4,
+          84.4
+        ],
+        "correct_item_error_samples": 95,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 579.8,
+        "valid_response_latency_mean_s": 90.9,
+        "valid_response_latency_median_s": 77.0
+      },
+      "by_split": {
+        "dataset-v3": {
+          "route_ids": [
+            "gemini_3_5_flash_lite_primary"
+          ],
+          "meeting_count_denominator": 3,
+          "meetings_with_result": 3,
+          "valid_meetings": 3,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 12,
+          "timed_target_denominator": 14,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 85.7,
+          "timing_recall_full_cohort_lower_bound_pct": 85.7,
+          "timing_recall_full_cohort_optimistic_upper_pct": 85.7,
+          "timed_targets_in_valid_meetings": 14,
+          "timing_recall_given_valid_response_pct": 85.7,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "item_and_timing_hits_60s": 11,
+          "manual_item_target_denominator": 14,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 78.6,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 78.6,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 78.6,
+          "item_targets_in_valid_meetings": 14,
+          "item_and_timing_recall_given_valid_response_pct": 78.6,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            33.3,
+            100.0
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            33.3,
+            100.0
+          ],
+          "correct_item_error_samples": 13,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 0.4,
+          "valid_response_latency_mean_s": 68.2,
+          "valid_response_latency_median_s": 80.5
+        },
+        "holdout-v1": {
+          "route_ids": [
+            "gemini_3_5_flash_lite_primary",
+            "gemini_3_5_flash_lite_secondary"
+          ],
+          "meeting_count_denominator": 9,
+          "meetings_with_result": 9,
+          "valid_meetings": 9,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 80,
+          "timed_target_denominator": 102,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 78.4,
+          "timing_recall_full_cohort_lower_bound_pct": 78.4,
+          "timing_recall_full_cohort_optimistic_upper_pct": 78.4,
+          "timed_targets_in_valid_meetings": 102,
+          "timing_recall_given_valid_response_pct": 78.4,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            69.9,
+            89.0
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            69.9,
+            88.9
+          ],
+          "item_and_timing_hits_60s": 68,
+          "manual_item_target_denominator": 94,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 72.3,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 72.3,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 72.3,
+          "item_targets_in_valid_meetings": 94,
+          "item_and_timing_recall_given_valid_response_pct": 72.3,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            58.5,
+            85.2
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            58.6,
+            85.0
+          ],
+          "correct_item_error_samples": 82,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 579.8,
+          "valid_response_latency_mean_s": 98.4,
+          "valid_response_latency_median_s": 73.4
+        }
+      },
+      "by_importance": {
+        "core": {
+          "timing_hits_60s": 76,
+          "timed_target_denominator": 91,
+          "timing_recall_full_cohort_pct": 83.5,
+          "item_and_timing_hits_60s": 63,
+          "manual_item_target_denominator": 87,
+          "item_and_timing_recall_full_cohort_pct": 72.4
+        },
+        "mixed": {
+          "timing_hits_60s": 4,
+          "timed_target_denominator": 4,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 4,
+          "manual_item_target_denominator": 4,
+          "item_and_timing_recall_full_cohort_pct": 100.0
+        },
+        "optional": {
+          "timing_hits_60s": 17,
+          "timed_target_denominator": 18,
+          "timing_recall_full_cohort_pct": 94.4,
+          "item_and_timing_hits_60s": 11,
+          "manual_item_target_denominator": 14,
+          "item_and_timing_recall_full_cohort_pct": 78.6
+        },
+        "unrated": {
+          "timing_hits_60s": 2,
+          "timed_target_denominator": 2,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 1,
+          "manual_item_target_denominator": 2,
+          "item_and_timing_recall_full_cohort_pct": 50.0
+        },
+        "unsure": {
+          "timing_hits_60s": 1,
+          "timed_target_denominator": 1,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 0,
+          "manual_item_target_denominator": 1,
+          "item_and_timing_recall_full_cohort_pct": 0.0
+        }
+      },
+      "chapter_metrics": {
+        "gold_manual_agenda_chapters": 108,
+        "correctly_assigned_chapters": 95,
+        "chapter_assignment_coverage_pct": 88.0,
+        "correctly_assigned_within_60s": 79,
+        "timing_accuracy_on_assigned_chapters_pct": 83.2,
+        "combined_chapter_recall_pct": 73.1,
+        "unassigned_or_misassigned_chapters": 13
+      }
+    },
+    {
+      "model": "gemini/gemini-3.5-flash-lite",
+      "prompt": "transition_sweep",
+      "full_cohort": {
+        "route_ids": [
+          "gemini_3_5_flash_lite_primary",
+          "gemini_3_5_flash_lite_secondary"
+        ],
+        "meeting_count_denominator": 12,
+        "meetings_with_result": 12,
+        "valid_meetings": 12,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 95,
+        "timed_target_denominator": 116,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 81.9,
+        "timing_recall_full_cohort_lower_bound_pct": 81.9,
+        "timing_recall_full_cohort_optimistic_upper_pct": 81.9,
+        "timed_targets_in_valid_meetings": 116,
+        "timing_recall_given_valid_response_pct": 81.9,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          75.4,
+          88.7
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          75.2,
+          88.6
+        ],
+        "item_and_timing_hits_60s": 90,
+        "manual_item_target_denominator": 108,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 83.3,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 83.3,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 83.3,
+        "item_targets_in_valid_meetings": 108,
+        "item_and_timing_recall_given_valid_response_pct": 83.3,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          76.8,
+          90.0
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          76.5,
+          90.0
+        ],
+        "correct_item_error_samples": 98,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 6.9,
+        "valid_response_latency_mean_s": 50.9,
+        "valid_response_latency_median_s": 51.6
+      },
+      "by_split": {
+        "dataset-v3": {
+          "route_ids": [
+            "gemini_3_5_flash_lite_primary"
+          ],
+          "meeting_count_denominator": 3,
+          "meetings_with_result": 3,
+          "valid_meetings": 3,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 12,
+          "timed_target_denominator": 14,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 85.7,
+          "timing_recall_full_cohort_lower_bound_pct": 85.7,
+          "timing_recall_full_cohort_optimistic_upper_pct": 85.7,
+          "timed_targets_in_valid_meetings": 14,
+          "timing_recall_given_valid_response_pct": 85.7,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "item_and_timing_hits_60s": 11,
+          "manual_item_target_denominator": 14,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 78.6,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 78.6,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 78.6,
+          "item_targets_in_valid_meetings": 14,
+          "item_and_timing_recall_given_valid_response_pct": 78.6,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            33.3,
+            100.0
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            33.3,
+            100.0
+          ],
+          "correct_item_error_samples": 13,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 0.4,
+          "valid_response_latency_mean_s": 49.0,
+          "valid_response_latency_median_s": 17.5
+        },
+        "holdout-v1": {
+          "route_ids": [
+            "gemini_3_5_flash_lite_primary",
+            "gemini_3_5_flash_lite_secondary"
+          ],
+          "meeting_count_denominator": 9,
+          "meetings_with_result": 9,
+          "valid_meetings": 9,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 83,
+          "timed_target_denominator": 102,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 81.4,
+          "timing_recall_full_cohort_lower_bound_pct": 81.4,
+          "timing_recall_full_cohort_optimistic_upper_pct": 81.4,
+          "timed_targets_in_valid_meetings": 102,
+          "timing_recall_given_valid_response_pct": 81.4,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            74.0,
+            88.9
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            73.8,
+            88.9
+          ],
+          "item_and_timing_hits_60s": 79,
+          "manual_item_target_denominator": 94,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 84.0,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 84.0,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 84.0,
+          "item_targets_in_valid_meetings": 94,
+          "item_and_timing_recall_given_valid_response_pct": 84.0,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            78.2,
+            91.1
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            78.1,
+            91.2
+          ],
+          "correct_item_error_samples": 85,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 6.1,
+          "valid_response_latency_mean_s": 51.6,
+          "valid_response_latency_median_s": 58.3
+        }
+      },
+      "by_importance": {
+        "core": {
+          "timing_hits_60s": 80,
+          "timed_target_denominator": 91,
+          "timing_recall_full_cohort_pct": 87.9,
+          "item_and_timing_hits_60s": 74,
+          "manual_item_target_denominator": 87,
+          "item_and_timing_recall_full_cohort_pct": 85.1
+        },
+        "mixed": {
+          "timing_hits_60s": 4,
+          "timed_target_denominator": 4,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 4,
+          "manual_item_target_denominator": 4,
+          "item_and_timing_recall_full_cohort_pct": 100.0
+        },
+        "optional": {
+          "timing_hits_60s": 16,
+          "timed_target_denominator": 18,
+          "timing_recall_full_cohort_pct": 88.9,
+          "item_and_timing_hits_60s": 11,
+          "manual_item_target_denominator": 14,
+          "item_and_timing_recall_full_cohort_pct": 78.6
+        },
+        "unrated": {
+          "timing_hits_60s": 2,
+          "timed_target_denominator": 2,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 1,
+          "manual_item_target_denominator": 2,
+          "item_and_timing_recall_full_cohort_pct": 50.0
+        },
+        "unsure": {
+          "timing_hits_60s": 1,
+          "timed_target_denominator": 1,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 0,
+          "manual_item_target_denominator": 1,
+          "item_and_timing_recall_full_cohort_pct": 0.0
+        }
+      },
+      "chapter_metrics": {
+        "gold_manual_agenda_chapters": 108,
+        "correctly_assigned_chapters": 98,
+        "chapter_assignment_coverage_pct": 90.7,
+        "correctly_assigned_within_60s": 90,
+        "timing_accuracy_on_assigned_chapters_pct": 91.8,
+        "combined_chapter_recall_pct": 83.3,
+        "unassigned_or_misassigned_chapters": 10
+      }
+    },
+    {
+      "model": "moonshotai/kimi-k3",
+      "prompt": "baseline",
+      "full_cohort": {
+        "route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "meeting_count_denominator": 12,
+        "meetings_with_result": 12,
+        "valid_meetings": 12,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 100,
+        "timed_target_denominator": 116,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 86.2,
+        "timing_recall_full_cohort_lower_bound_pct": 86.2,
+        "timing_recall_full_cohort_optimistic_upper_pct": 86.2,
+        "timed_targets_in_valid_meetings": 116,
+        "timing_recall_given_valid_response_pct": 86.2,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          77.5,
+          94.0
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          77.0,
+          93.7
+        ],
+        "item_and_timing_hits_60s": 98,
+        "manual_item_target_denominator": 108,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 90.7,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 90.7,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 90.7,
+        "item_targets_in_valid_meetings": 108,
+        "item_and_timing_recall_given_valid_response_pct": 90.7,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          84.4,
+          95.6
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          84.5,
+          95.5
+        ],
+        "correct_item_error_samples": 99,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 3.1,
+        "valid_response_latency_mean_s": 91.1,
+        "valid_response_latency_median_s": 90.2
+      },
+      "by_split": {
+        "dataset-v3": {
+          "route_ids": [
+            "nvidia_kimi_k3_free"
+          ],
+          "meeting_count_denominator": 3,
+          "meetings_with_result": 3,
+          "valid_meetings": 3,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 13,
+          "timed_target_denominator": 14,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 92.9,
+          "timing_recall_full_cohort_lower_bound_pct": 92.9,
+          "timing_recall_full_cohort_optimistic_upper_pct": 92.9,
+          "timed_targets_in_valid_meetings": 14,
+          "timing_recall_given_valid_response_pct": 92.9,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "item_and_timing_hits_60s": 13,
+          "manual_item_target_denominator": 14,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 92.9,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 92.9,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 92.9,
+          "item_targets_in_valid_meetings": 14,
+          "item_and_timing_recall_given_valid_response_pct": 92.9,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "correct_item_error_samples": 14,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 0.4,
+          "valid_response_latency_mean_s": 72.8,
+          "valid_response_latency_median_s": 69.1
+        },
+        "holdout-v1": {
+          "route_ids": [
+            "nvidia_kimi_k3_free"
+          ],
+          "meeting_count_denominator": 9,
+          "meetings_with_result": 9,
+          "valid_meetings": 9,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 87,
+          "timed_target_denominator": 102,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 85.3,
+          "timing_recall_full_cohort_lower_bound_pct": 85.3,
+          "timing_recall_full_cohort_optimistic_upper_pct": 85.3,
+          "timed_targets_in_valid_meetings": 102,
+          "timing_recall_given_valid_response_pct": 85.3,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            75.6,
+            93.4
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            75.5,
+            93.4
+          ],
+          "item_and_timing_hits_60s": 85,
+          "manual_item_target_denominator": 94,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 90.4,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 90.4,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 90.4,
+          "item_targets_in_valid_meetings": 94,
+          "item_and_timing_recall_given_valid_response_pct": 90.4,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            83.6,
+            95.5
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            83.5,
+            95.5
+          ],
+          "correct_item_error_samples": 85,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 3.1,
+          "valid_response_latency_mean_s": 97.2,
+          "valid_response_latency_median_s": 91.1
+        }
+      },
+      "by_importance": {
+        "core": {
+          "timing_hits_60s": 83,
+          "timed_target_denominator": 91,
+          "timing_recall_full_cohort_pct": 91.2,
+          "item_and_timing_hits_60s": 80,
+          "manual_item_target_denominator": 87,
+          "item_and_timing_recall_full_cohort_pct": 92.0
+        },
+        "mixed": {
+          "timing_hits_60s": 4,
+          "timed_target_denominator": 4,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 4,
+          "manual_item_target_denominator": 4,
+          "item_and_timing_recall_full_cohort_pct": 100.0
+        },
+        "optional": {
+          "timing_hits_60s": 17,
+          "timed_target_denominator": 18,
+          "timing_recall_full_cohort_pct": 94.4,
+          "item_and_timing_hits_60s": 13,
+          "manual_item_target_denominator": 14,
+          "item_and_timing_recall_full_cohort_pct": 92.9
+        },
+        "unrated": {
+          "timing_hits_60s": 2,
+          "timed_target_denominator": 2,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 1,
+          "manual_item_target_denominator": 2,
+          "item_and_timing_recall_full_cohort_pct": 50.0
+        },
+        "unsure": {
+          "timing_hits_60s": 0,
+          "timed_target_denominator": 1,
+          "timing_recall_full_cohort_pct": 0.0,
+          "item_and_timing_hits_60s": 0,
+          "manual_item_target_denominator": 1,
+          "item_and_timing_recall_full_cohort_pct": 0.0
+        }
+      },
+      "chapter_metrics": {
+        "gold_manual_agenda_chapters": 108,
+        "correctly_assigned_chapters": 99,
+        "chapter_assignment_coverage_pct": 91.7,
+        "correctly_assigned_within_60s": 98,
+        "timing_accuracy_on_assigned_chapters_pct": 99.0,
+        "combined_chapter_recall_pct": 90.7,
+        "unassigned_or_misassigned_chapters": 9
+      }
+    },
+    {
+      "model": "moonshotai/kimi-k3",
+      "prompt": "transition_sweep",
+      "full_cohort": {
+        "route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "meeting_count_denominator": 12,
+        "meetings_with_result": 12,
+        "valid_meetings": 12,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 96,
+        "timed_target_denominator": 116,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 82.8,
+        "timing_recall_full_cohort_lower_bound_pct": 82.8,
+        "timing_recall_full_cohort_optimistic_upper_pct": 82.8,
+        "timed_targets_in_valid_meetings": 116,
+        "timing_recall_given_valid_response_pct": 82.8,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          72.7,
+          92.5
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          72.2,
+          92.2
+        ],
+        "item_and_timing_hits_60s": 95,
+        "manual_item_target_denominator": 108,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 88.0,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 88.0,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 88.0,
+        "item_targets_in_valid_meetings": 108,
+        "item_and_timing_recall_given_valid_response_pct": 88.0,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          81.5,
+          93.2
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          81.1,
+          93.2
+        ],
+        "correct_item_error_samples": 98,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 2.0,
+        "valid_response_latency_mean_s": 101.0,
+        "valid_response_latency_median_s": 98.2
+      },
+      "by_split": {
+        "dataset-v3": {
+          "route_ids": [
+            "nvidia_kimi_k3_free"
+          ],
+          "meeting_count_denominator": 3,
+          "meetings_with_result": 3,
+          "valid_meetings": 3,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 13,
+          "timed_target_denominator": 14,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 92.9,
+          "timing_recall_full_cohort_lower_bound_pct": 92.9,
+          "timing_recall_full_cohort_optimistic_upper_pct": 92.9,
+          "timed_targets_in_valid_meetings": 14,
+          "timing_recall_given_valid_response_pct": 92.9,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "item_and_timing_hits_60s": 13,
+          "manual_item_target_denominator": 14,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 92.9,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 92.9,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 92.9,
+          "item_targets_in_valid_meetings": 14,
+          "item_and_timing_recall_given_valid_response_pct": 92.9,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            66.7,
+            100.0
+          ],
+          "correct_item_error_samples": 14,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 0.9,
+          "valid_response_latency_mean_s": 85.2,
+          "valid_response_latency_median_s": 77.7
+        },
+        "holdout-v1": {
+          "route_ids": [
+            "nvidia_kimi_k3_free"
+          ],
+          "meeting_count_denominator": 9,
+          "meetings_with_result": 9,
+          "valid_meetings": 9,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 83,
+          "timed_target_denominator": 102,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 81.4,
+          "timing_recall_full_cohort_lower_bound_pct": 81.4,
+          "timing_recall_full_cohort_optimistic_upper_pct": 81.4,
+          "timed_targets_in_valid_meetings": 102,
+          "timing_recall_given_valid_response_pct": 81.4,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            70.2,
+            91.7
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            69.7,
+            91.7
+          ],
+          "item_and_timing_hits_60s": 82,
+          "manual_item_target_denominator": 94,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 87.2,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 87.2,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 87.2,
+          "item_targets_in_valid_meetings": 94,
+          "item_and_timing_recall_given_valid_response_pct": 87.2,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            80.0,
+            92.7
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            79.7,
+            92.6
+          ],
+          "correct_item_error_samples": 84,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 1.9,
+          "valid_response_latency_mean_s": 106.3,
+          "valid_response_latency_median_s": 99.6
+        }
+      },
+      "by_importance": {
+        "core": {
+          "timing_hits_60s": 81,
+          "timed_target_denominator": 91,
+          "timing_recall_full_cohort_pct": 89.0,
+          "item_and_timing_hits_60s": 79,
+          "manual_item_target_denominator": 87,
+          "item_and_timing_recall_full_cohort_pct": 90.8
+        },
+        "mixed": {
+          "timing_hits_60s": 4,
+          "timed_target_denominator": 4,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 4,
+          "manual_item_target_denominator": 4,
+          "item_and_timing_recall_full_cohort_pct": 100.0
+        },
+        "optional": {
+          "timing_hits_60s": 15,
+          "timed_target_denominator": 18,
+          "timing_recall_full_cohort_pct": 83.3,
+          "item_and_timing_hits_60s": 11,
+          "manual_item_target_denominator": 14,
+          "item_and_timing_recall_full_cohort_pct": 78.6
+        },
+        "unrated": {
+          "timing_hits_60s": 2,
+          "timed_target_denominator": 2,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 1,
+          "manual_item_target_denominator": 2,
+          "item_and_timing_recall_full_cohort_pct": 50.0
+        },
+        "unsure": {
+          "timing_hits_60s": 0,
+          "timed_target_denominator": 1,
+          "timing_recall_full_cohort_pct": 0.0,
+          "item_and_timing_hits_60s": 0,
+          "manual_item_target_denominator": 1,
+          "item_and_timing_recall_full_cohort_pct": 0.0
+        }
+      },
+      "chapter_metrics": {
+        "gold_manual_agenda_chapters": 108,
+        "correctly_assigned_chapters": 98,
+        "chapter_assignment_coverage_pct": 90.7,
+        "correctly_assigned_within_60s": 95,
+        "timing_accuracy_on_assigned_chapters_pct": 96.9,
+        "combined_chapter_recall_pct": 88.0,
+        "unassigned_or_misassigned_chapters": 10
+      }
+    }
+  ],
+  "paired_prompt_comparison": [
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "baseline_prompt": "baseline",
+      "transition_prompt": "transition_sweep",
+      "shared_attempted_meetings": 12,
+      "baseline_valid_meetings_on_shared": 12,
+      "transition_valid_meetings_on_shared": 12,
+      "paired_valid_meetings": 12,
+      "baseline_quality_on_paired_valid": {
+        "route_ids": [
+          "nvidia_deepseek_v4_1_flash_free"
+        ],
+        "meeting_count_denominator": 12,
+        "meetings_with_result": 12,
+        "valid_meetings": 12,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 98,
+        "timed_target_denominator": 116,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 84.5,
+        "timing_recall_full_cohort_lower_bound_pct": 84.5,
+        "timing_recall_full_cohort_optimistic_upper_pct": 84.5,
+        "timed_targets_in_valid_meetings": 116,
+        "timing_recall_given_valid_response_pct": 84.5,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          75.7,
+          91.9
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          75.3,
+          91.8
+        ],
+        "item_and_timing_hits_60s": 97,
+        "manual_item_target_denominator": 108,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 89.8,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 89.8,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 89.8,
+        "item_targets_in_valid_meetings": 108,
+        "item_and_timing_recall_given_valid_response_pct": 89.8,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          83.3,
+          94.6
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          83.5,
+          94.5
+        ],
+        "correct_item_error_samples": 99,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 2.0,
+        "valid_response_latency_mean_s": 569.1,
+        "valid_response_latency_median_s": 502.2
+      },
+      "transition_quality_on_paired_valid": {
+        "route_ids": [
+          "nvidia_deepseek_v4_1_flash_free"
+        ],
+        "meeting_count_denominator": 12,
+        "meetings_with_result": 12,
+        "valid_meetings": 12,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 94,
+        "timed_target_denominator": 116,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 81.0,
+        "timing_recall_full_cohort_lower_bound_pct": 81.0,
+        "timing_recall_full_cohort_optimistic_upper_pct": 81.0,
+        "timed_targets_in_valid_meetings": 116,
+        "timing_recall_given_valid_response_pct": 81.0,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          71.3,
+          91.7
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          71.1,
+          91.0
+        ],
+        "item_and_timing_hits_60s": 92,
+        "manual_item_target_denominator": 108,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 85.2,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 85.2,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 85.2,
+        "item_targets_in_valid_meetings": 108,
+        "item_and_timing_recall_given_valid_response_pct": 85.2,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          77.7,
+          91.3
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          77.7,
+          91.3
+        ],
+        "correct_item_error_samples": 95,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 2.9,
+        "valid_response_latency_mean_s": 911.1,
+        "valid_response_latency_median_s": 949.3
+      }
+    },
+    {
+      "model": "gemini/gemini-3.5-flash-lite",
+      "baseline_prompt": "baseline",
+      "transition_prompt": "transition_sweep",
+      "shared_attempted_meetings": 12,
+      "baseline_valid_meetings_on_shared": 12,
+      "transition_valid_meetings_on_shared": 12,
+      "paired_valid_meetings": 12,
+      "baseline_quality_on_paired_valid": {
+        "route_ids": [
+          "gemini_3_5_flash_lite_primary",
+          "gemini_3_5_flash_lite_secondary"
+        ],
+        "meeting_count_denominator": 12,
+        "meetings_with_result": 12,
+        "valid_meetings": 12,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 92,
+        "timed_target_denominator": 116,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 79.3,
+        "timing_recall_full_cohort_lower_bound_pct": 79.3,
+        "timing_recall_full_cohort_optimistic_upper_pct": 79.3,
+        "timed_targets_in_valid_meetings": 116,
+        "timing_recall_given_valid_response_pct": 79.3,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          71.7,
+          88.4
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          71.6,
+          88.9
+        ],
+        "item_and_timing_hits_60s": 79,
+        "manual_item_target_denominator": 108,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 73.1,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 73.1,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 73.1,
+        "item_targets_in_valid_meetings": 108,
+        "item_and_timing_recall_given_valid_response_pct": 73.1,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          60.6,
+          84.5
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          60.4,
+          84.4
+        ],
+        "correct_item_error_samples": 95,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 579.8,
+        "valid_response_latency_mean_s": 90.9,
+        "valid_response_latency_median_s": 77.0
+      },
+      "transition_quality_on_paired_valid": {
+        "route_ids": [
+          "gemini_3_5_flash_lite_primary",
+          "gemini_3_5_flash_lite_secondary"
+        ],
+        "meeting_count_denominator": 12,
+        "meetings_with_result": 12,
+        "valid_meetings": 12,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 95,
+        "timed_target_denominator": 116,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 81.9,
+        "timing_recall_full_cohort_lower_bound_pct": 81.9,
+        "timing_recall_full_cohort_optimistic_upper_pct": 81.9,
+        "timed_targets_in_valid_meetings": 116,
+        "timing_recall_given_valid_response_pct": 81.9,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          75.4,
+          88.7
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          75.2,
+          88.6
+        ],
+        "item_and_timing_hits_60s": 90,
+        "manual_item_target_denominator": 108,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 83.3,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 83.3,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 83.3,
+        "item_targets_in_valid_meetings": 108,
+        "item_and_timing_recall_given_valid_response_pct": 83.3,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          76.8,
+          90.0
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          76.5,
+          90.0
+        ],
+        "correct_item_error_samples": 98,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 6.9,
+        "valid_response_latency_mean_s": 50.9,
+        "valid_response_latency_median_s": 51.6
+      }
+    },
+    {
+      "model": "moonshotai/kimi-k3",
+      "baseline_prompt": "baseline",
+      "transition_prompt": "transition_sweep",
+      "shared_attempted_meetings": 12,
+      "baseline_valid_meetings_on_shared": 12,
+      "transition_valid_meetings_on_shared": 12,
+      "paired_valid_meetings": 12,
+      "baseline_quality_on_paired_valid": {
+        "route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "meeting_count_denominator": 12,
+        "meetings_with_result": 12,
+        "valid_meetings": 12,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 100,
+        "timed_target_denominator": 116,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 86.2,
+        "timing_recall_full_cohort_lower_bound_pct": 86.2,
+        "timing_recall_full_cohort_optimistic_upper_pct": 86.2,
+        "timed_targets_in_valid_meetings": 116,
+        "timing_recall_given_valid_response_pct": 86.2,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          77.5,
+          94.0
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          77.0,
+          93.7
+        ],
+        "item_and_timing_hits_60s": 98,
+        "manual_item_target_denominator": 108,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 90.7,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 90.7,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 90.7,
+        "item_targets_in_valid_meetings": 108,
+        "item_and_timing_recall_given_valid_response_pct": 90.7,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          84.4,
+          95.6
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          84.5,
+          95.5
+        ],
+        "correct_item_error_samples": 99,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 3.1,
+        "valid_response_latency_mean_s": 91.1,
+        "valid_response_latency_median_s": 90.2
+      },
+      "transition_quality_on_paired_valid": {
+        "route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "meeting_count_denominator": 12,
+        "meetings_with_result": 12,
+        "valid_meetings": 12,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 96,
+        "timed_target_denominator": 116,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 82.8,
+        "timing_recall_full_cohort_lower_bound_pct": 82.8,
+        "timing_recall_full_cohort_optimistic_upper_pct": 82.8,
+        "timed_targets_in_valid_meetings": 116,
+        "timing_recall_given_valid_response_pct": 82.8,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          72.7,
+          92.5
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          72.2,
+          92.2
+        ],
+        "item_and_timing_hits_60s": 95,
+        "manual_item_target_denominator": 108,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 88.0,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 88.0,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 88.0,
+        "item_targets_in_valid_meetings": 108,
+        "item_and_timing_recall_given_valid_response_pct": 88.0,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          81.5,
+          93.2
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          81.1,
+          93.2
+        ],
+        "correct_item_error_samples": 98,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 2.0,
+        "valid_response_latency_mean_s": 101.0,
+        "valid_response_latency_median_s": 98.2
+      }
+    }
+  ]
+}

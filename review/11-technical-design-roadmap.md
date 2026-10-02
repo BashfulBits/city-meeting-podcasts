@@ -166,6 +166,18 @@ the text/timing provenance needed for the three-way quality review. After provid
 complete, a distinct `transcript-asr-comparison` queue produces full ASR only when normal ASR work
 is empty; it is H15 evidence and never replaces the served artifact by itself. See [review/12 §H15](12-hardening-and-efficiency.md#h15--transcript-quality-metric-periodic-caption-trust-scoring).
 
+**Chapter-locator quality/routing decision (2026-10-02; implementation in this PR).** The frozen
+manual-review-v2 matrix compares the baseline and transition-sweep prompts for five models across
+39 meetings, with validated responses or explicit too-large classifications recorded for all 390
+cells. Baseline is the production prompt. Route DeepSeek V4 Flash through 76,000 internal estimated
+input tokens and Kimi K3 above that; the accepted/rejected V4 Flash evidence brackets this
+conservative boundary. Set the locator lane's ingress budget to 800 logical jobs/day. GLM 5.3 Flash
+remains optional small-context capacity and DeepSeek V4.1 Flash optional large-context capacity;
+neither is wired until an operational capacity need is demonstrated. The evaluation README, frozen
+packet/goldens, raw answer key, scorer, and matched-cohort outputs are committed under
+`evals/chapter-locator/manual-review-v2/`. This production recipe change intentionally reprocesses
+existing generated locator artifacts gradually within the lane budget.
+
 ### Phase R — Research-Tool Surface (toward 1.0)
 
 | **Bounded audio integrity audits** | [GH#1024](https://github.com/BashfulBits/city-meeting-podcasts/issues/1024) (child of [GH#1012](https://github.com/BashfulBits/city-meeting-podcasts/issues/1012)) | L3 | **Implemented in the first 1.0 efficiency tranche.** Audio records now persist the verified immutable key/spec marker, invalidated by a key/spec mismatch or a storage-backend generation/epoch change. Matching trusted pointers bypass routine prefix LIST/HEAD/GET work; a small dirty set uses direct existence probes and larger batches retain one bounded source LIST fallback. `scripts/audit_audio_integrity.py` and `audio-integrity.yml` rotate through 32 stable UID partitions, sweeping every trusted pointer in the day's partition (concurrent HEAD checks, no per-run item cap, so the full catalog is swept monthly regardless of size) under a wall-clock budget that skips remaining sources rather than failing the run; it clears missing pointers and the Audio completion marker and lets ordinary Audio repair them without changing episode identity. Legacy/changed/repair pointers remain fail-closed. No audio pipeline-version bump or byte backfill is required. |

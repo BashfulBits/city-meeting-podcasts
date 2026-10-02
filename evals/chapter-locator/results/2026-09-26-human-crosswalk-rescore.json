@@ -1,0 +1,264 @@
+{
+  "schema_version": 1,
+  "title": "Chapter locator test route matrix rescored against human-adjudicated agenda crosswalk",
+  "date": "2026-09-26",
+  "source_route_matrix": "results/2026-09-26-test-route-matrix.json",
+  "source_dataset": "dataset-v3",
+  "tolerance_seconds": 60,
+  "reviewed_meetings": 16,
+  "reviewed_provider_chapters": 100,
+  "review_labels": {
+    "source_or_extraction_problem": 6,
+    "matched_candidate": 83,
+    "missing_generated_candidate": 3,
+    "consent_composite": 3,
+    "section_or_procedural": 5
+  },
+  "agenda_source_model_mix": {
+    "mistral/mistral-medium-2508": 13,
+    "gemini/gemini-3.1-flash-lite": 1,
+    "nvidia/nemotron-3-ultra-550b-a55b:free": 2
+  },
+  "eligible_target_chapters": 86,
+  "excluded_target_chapters": 14,
+  "crosswalk_sha256": "6ac66de7ca5932931e71b10113d28db8cb1bb2c7c613b33fff9e0770f032d88e",
+  "scoring_method": {
+    "timing": "one-to-one nearest start match within 60 seconds; unchanged from the original matrix",
+    "human_item_boundary": "one-to-one nearest match within 60 seconds where the agenda_item_index is among human-selected candidate indices for that provider chapter",
+    "item_identity": "one-to-one nearest same-agenda-item match without a timing tolerance",
+    "included_labels": [
+      "matched_candidate",
+      "consent_composite"
+    ],
+    "excluded_labels": [
+      "section_or_procedural",
+      "missing_generated_candidate",
+      "source_or_extraction_problem"
+    ],
+    "denominator": "all human-linked provider chapters (matched_candidate and consent_composite); failed route packets count as misses",
+    "anchor_lower_bound": "human item-and-boundary hits divided by all emitted anchors; conservative because unlinked agenda candidates may still be legitimate chapters",
+    "uncertainty": "percentile bootstrap resampling 16 meeting clusters, 20,000 draws; descriptive intervals only"
+  },
+  "models": [
+    {
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "model_key": "gemini/gemini-3.5-flash-lite",
+      "completed_packets": 13,
+      "failed_packets": 3,
+      "emitted_anchors": 88,
+      "timing_hits": 68,
+      "timing_recall_all_starts": 0.68,
+      "timing_precision_all_anchors": 0.7727,
+      "timing_mean_boundary_error_seconds": 4.462,
+      "timing_p95_boundary_error_seconds": 17.315,
+      "eligible_human_crosswalk_targets": 86,
+      "human_item_identity_hits": 71,
+      "human_item_identity_recall": 0.8256,
+      "human_item_and_boundary_hits": 65,
+      "human_item_and_boundary_recall": 0.7558,
+      "confirmed_human_linked_anchor_lower_bound": 0.7386,
+      "eligible_timing_pairs": 65,
+      "correct_item_given_timing_pair_hits": 59,
+      "correct_item_given_timing_pair": 0.9077,
+      "human_item_boundary_mean_error_seconds": 4.437,
+      "human_item_boundary_p95_error_seconds": 17.315,
+      "bootstrap95_cluster_by_meeting": {
+        "timing_recall_all_starts": [
+          0.4713,
+          0.8348
+        ],
+        "human_item_and_boundary_recall": [
+          0.5224,
+          0.9167
+        ]
+      },
+      "baseline_automated_strong_target_hits_check": 45
+    },
+    {
+      "route_id": "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
+      "model_key": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+      "completed_packets": 11,
+      "failed_packets": 5,
+      "emitted_anchors": 60,
+      "timing_hits": 44,
+      "timing_recall_all_starts": 0.44,
+      "timing_precision_all_anchors": 0.7333,
+      "timing_mean_boundary_error_seconds": 8.507,
+      "timing_p95_boundary_error_seconds": 42.037,
+      "eligible_human_crosswalk_targets": 86,
+      "human_item_identity_hits": 48,
+      "human_item_identity_recall": 0.5581,
+      "human_item_and_boundary_hits": 42,
+      "human_item_and_boundary_recall": 0.4884,
+      "confirmed_human_linked_anchor_lower_bound": 0.7,
+      "eligible_timing_pairs": 44,
+      "correct_item_given_timing_pair_hits": 31,
+      "correct_item_given_timing_pair": 0.7045,
+      "human_item_boundary_mean_error_seconds": 8.516,
+      "human_item_boundary_p95_error_seconds": 34.54,
+      "bootstrap95_cluster_by_meeting": {
+        "timing_recall_all_starts": [
+          0.1895,
+          0.6696
+        ],
+        "human_item_and_boundary_recall": [
+          0.2174,
+          0.7184
+        ]
+      },
+      "baseline_automated_strong_target_hits_check": 36
+    },
+    {
+      "route_id": "nvidia_kimi_k3_free",
+      "model_key": "moonshotai/kimi-k3",
+      "completed_packets": 14,
+      "failed_packets": 2,
+      "emitted_anchors": 80,
+      "timing_hits": 62,
+      "timing_recall_all_starts": 0.62,
+      "timing_precision_all_anchors": 0.775,
+      "timing_mean_boundary_error_seconds": 5.291,
+      "timing_p95_boundary_error_seconds": 22.145,
+      "eligible_human_crosswalk_targets": 86,
+      "human_item_identity_hits": 63,
+      "human_item_identity_recall": 0.7326,
+      "human_item_and_boundary_hits": 59,
+      "human_item_and_boundary_recall": 0.686,
+      "confirmed_human_linked_anchor_lower_bound": 0.7375,
+      "eligible_timing_pairs": 60,
+      "correct_item_given_timing_pair_hits": 56,
+      "correct_item_given_timing_pair": 0.9333,
+      "human_item_boundary_mean_error_seconds": 5.03,
+      "human_item_boundary_p95_error_seconds": 23.136,
+      "bootstrap95_cluster_by_meeting": {
+        "timing_recall_all_starts": [
+          0.3838,
+          0.8132
+        ],
+        "human_item_and_boundary_recall": [
+          0.4167,
+          0.8962
+        ]
+      },
+      "baseline_automated_strong_target_hits_check": 34
+    },
+    {
+      "route_id": "nvidia_deepseek_v4_1_flash_free",
+      "model_key": "deepseek/deepseek-v4.1-flash",
+      "completed_packets": 16,
+      "failed_packets": 0,
+      "emitted_anchors": 98,
+      "timing_hits": 79,
+      "timing_recall_all_starts": 0.79,
+      "timing_precision_all_anchors": 0.8061,
+      "timing_mean_boundary_error_seconds": 5.882,
+      "timing_p95_boundary_error_seconds": 25.446,
+      "eligible_human_crosswalk_targets": 86,
+      "human_item_identity_hits": 78,
+      "human_item_identity_recall": 0.907,
+      "human_item_and_boundary_hits": 75,
+      "human_item_and_boundary_recall": 0.8721,
+      "confirmed_human_linked_anchor_lower_bound": 0.7653,
+      "eligible_timing_pairs": 77,
+      "correct_item_given_timing_pair_hits": 70,
+      "correct_item_given_timing_pair": 0.9091,
+      "human_item_boundary_mean_error_seconds": 4.804,
+      "human_item_boundary_p95_error_seconds": 19.714,
+      "bootstrap95_cluster_by_meeting": {
+        "timing_recall_all_starts": [
+          0.6316,
+          0.9
+        ],
+        "human_item_and_boundary_recall": [
+          0.7531,
+          0.952
+        ]
+      },
+      "baseline_automated_strong_target_hits_check": 47
+    },
+    {
+      "route_id": "kilo_stepfun_step_3_7_flash_free",
+      "model_key": "kilo/stepfun/step-3.7-flash:free",
+      "completed_packets": 0,
+      "failed_packets": 16,
+      "emitted_anchors": 0,
+      "timing_hits": 0,
+      "timing_recall_all_starts": 0.0,
+      "timing_precision_all_anchors": null,
+      "timing_mean_boundary_error_seconds": null,
+      "timing_p95_boundary_error_seconds": null,
+      "eligible_human_crosswalk_targets": 86,
+      "human_item_identity_hits": 0,
+      "human_item_identity_recall": 0.0,
+      "human_item_and_boundary_hits": 0,
+      "human_item_and_boundary_recall": 0.0,
+      "confirmed_human_linked_anchor_lower_bound": null,
+      "eligible_timing_pairs": 0,
+      "correct_item_given_timing_pair_hits": 0,
+      "correct_item_given_timing_pair": null,
+      "human_item_boundary_mean_error_seconds": null,
+      "human_item_boundary_p95_error_seconds": null,
+      "bootstrap95_cluster_by_meeting": {
+        "timing_recall_all_starts": [
+          0.0,
+          0.0
+        ],
+        "human_item_and_boundary_recall": [
+          0.0,
+          0.0
+        ]
+      },
+      "baseline_automated_strong_target_hits_check": 0
+    },
+    {
+      "route_id": "zai_glm_4_7_flash_primary",
+      "model_key": "zai/glm-4.7-flash",
+      "completed_packets": 11,
+      "failed_packets": 5,
+      "emitted_anchors": 53,
+      "timing_hits": 47,
+      "timing_recall_all_starts": 0.47,
+      "timing_precision_all_anchors": 0.8868,
+      "timing_mean_boundary_error_seconds": 5.012,
+      "timing_p95_boundary_error_seconds": 19.714,
+      "eligible_human_crosswalk_targets": 86,
+      "human_item_identity_hits": 50,
+      "human_item_identity_recall": 0.5814,
+      "human_item_and_boundary_hits": 47,
+      "human_item_and_boundary_recall": 0.5465,
+      "confirmed_human_linked_anchor_lower_bound": 0.8868,
+      "eligible_timing_pairs": 47,
+      "correct_item_given_timing_pair_hits": 43,
+      "correct_item_given_timing_pair": 0.9149,
+      "human_item_boundary_mean_error_seconds": 5.603,
+      "human_item_boundary_p95_error_seconds": 19.714,
+      "bootstrap95_cluster_by_meeting": {
+        "timing_recall_all_starts": [
+          0.2708,
+          0.6372
+        ],
+        "human_item_and_boundary_recall": [
+          0.3239,
+          0.7414
+        ]
+      },
+      "baseline_automated_strong_target_hits_check": 24
+    }
+  ],
+  "automated_crosswalk_adjudication": {
+    "source_specific_status_counts": {
+      "strong": 54,
+      "possible": 6,
+      "unmatched": 37,
+      "ambiguous": 3
+    },
+    "human_eligible_targets_by_automated_status": {
+      "strong": 54,
+      "possible": 5,
+      "unmatched": 24,
+      "ambiguous": 3
+    },
+    "automated_strong_exact_candidate_links_confirmed": 54,
+    "automated_strong_exact_candidate_links_total": 54
+  }
+}

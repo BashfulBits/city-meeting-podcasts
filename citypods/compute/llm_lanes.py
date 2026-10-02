@@ -67,11 +67,9 @@ class LaneConfig:
     # ``pooled`` (default) -- one job carries the whole list as its ``allowed_models`` and the
     #   scheduler picks whichever route has capacity. Extra routes are pure throughput. This is
     #   the production lanes' shape (tags, moments, chapters).
-    # ``per_model`` -- the caller fans out one job per model, each pinned to a single route,
-    #   because the models are being *compared*, not pooled. This is the research lanes' shape
-    #   (tournament contestants, R5 benchmark taggers). Pooling them would let the scheduler
-    #   answer a "how does model X tag this?" job with model Y and silently invalidate the
-    #   comparison.
+    # ``per_model`` -- each job is pinned to one allowed model and indexes only that model. This
+    #   is used for model comparisons and for production policies that select one model per request
+    #   (for example, size-based routing). It must not be pooled.
     #
     # The distinction is not cosmetic: a pooled job writes one model-index row per allowed model
     # while a per-model job writes exactly one, so charging a four-model per_model lane as if each
@@ -286,8 +284,9 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
             # keep that retry budget without dedicating a weaker model as a fallback.
             if shape == "per_model":
                 raise ValueError(
-                    f"llm_lanes[{purpose!r}] is dispatch_shape 'per_model' (a model comparison) "
-                    "and cannot also declare backup_models (a failure-based fallback)"
+                    f"llm_lanes[{purpose!r}] is dispatch_shape 'per_model' (one pinned route "
+                    "per request) and cannot also declare backup_models (a failure-based "
+                    "fallback)"
                 )
             backup_after_attempts = _coerce_int(
                 backup_after_attempts, purpose=purpose, field="backup_after_attempts"

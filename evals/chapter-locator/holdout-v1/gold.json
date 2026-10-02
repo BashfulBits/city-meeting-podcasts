@@ -1,0 +1,1561 @@
+{
+  "dataset": "chapter-locator holdout-v1",
+  "episodes": [
+    {
+      "chapter_count": 21,
+      "chapters": [
+        {
+          "end": 1333.8520640000002,
+          "start": 245.852064,
+          "title": "1. ZC-25-053 Case Manager: Beth Knight CD 11 (Continued from June Zoning Commission)"
+        },
+        {
+          "end": 2112.9924950000004,
+          "start": 1333.8520640000002,
+          "title": "2. ZC-25-057 Case Manager: Sandy Michel CD 5 (Continued from June Zoning Commission)"
+        },
+        {
+          "end": 2264.9924950000004,
+          "start": 2112.9924950000004,
+          "title": "3. ZC-25-093 Case Manager: Lynn Jordan CD 11 (Continued from June Zoning Commission)"
+        },
+        {
+          "end": 3097.9924950000004,
+          "start": 2264.9924950000004,
+          "title": "4. ZC-25-108 Case Manager: Beth Knight CD 4 (Continued from July Zoning Commission)"
+        },
+        {
+          "end": 3109.9924950000004,
+          "start": 3097.9924950000004,
+          "title": "5. ZC-25-047 Case Manager: Dave McCorquodale CD 8"
+        },
+        {
+          "end": 3156.9924950000004,
+          "start": 3109.9924950000004,
+          "title": "6. ZC-25-112 Case Manager: Dave McCorquodale CD 11"
+        },
+        {
+          "end": 5002.195217,
+          "start": 3156.9924950000004,
+          "title": "7. ZC-25-117 (AX-25-002) Case Manager: Lynn Jordan Future CD 8"
+        },
+        {
+          "end": 5010.195217,
+          "start": 5002.195217,
+          "title": "8. ZC-25-119 Case Manager: Sandy Michel CD 8"
+        },
+        {
+          "end": 5020.195217,
+          "start": 5010.195217,
+          "title": "6. ZC-25-112 Case Manager: Dave McCorquodale CD 11"
+        },
+        {
+          "end": 5912.020318,
+          "start": 5020.195217,
+          "title": "6. ZC-25-112 Case Manager: Dave McCorquodale CD 11"
+        },
+        {
+          "end": 6320.020318,
+          "start": 5912.020318,
+          "title": "8. ZC-25-119 Case Manager: Sandy Michel CD 8"
+        },
+        {
+          "end": 6806.020318,
+          "start": 6320.020318,
+          "title": "9. ZC-25-120 Case Manager: Christine Ross CD 3"
+        },
+        {
+          "end": 6849.020318,
+          "start": 6806.020318,
+          "title": "10. ZC-25-121 Case Manager: Dave McCorquodale CD 3"
+        },
+        {
+          "end": 7020.020318,
+          "start": 6849.020318,
+          "title": "11. ZC-25-122 Case Manager: Christine Ross CD 9"
+        },
+        {
+          "end": 8219.020317999999,
+          "start": 7020.020318,
+          "title": "12. ZC-25-123 Case Manager: Beth Knight CD 7"
+        },
+        {
+          "end": 9765.020317999999,
+          "start": 8219.020317999999,
+          "title": "13. ZC-25-125 Case Manager: Dave McCorquodale CD 4"
+        },
+        {
+          "end": 10057.020317999999,
+          "start": 9765.020317999999,
+          "title": "14. ZC-25-126 Case Manager: Sandy Michel CD 8"
+        },
+        {
+          "end": 10206.020317999999,
+          "start": 10057.020317999999,
+          "title": "15. ZC-25-127 Case Manager: Christine Ross CD 3"
+        },
+        {
+          "end": 12854.693084999999,
+          "start": 10206.020317999999,
+          "title": "16. ZC-25-128 Case Manager: Dave McCorquodale CD 11"
+        },
+        {
+          "end": 13672.693084999999,
+          "start": 12854.693084999999,
+          "title": "17. ZC-25-130 Case Manager: Beth Knight CD 11"
+        },
+        {
+          "end": 14557.689,
+          "start": 13672.693084999999,
+          "title": "18. ZC-25-131 Case Manager: Lynn Jordan CD 8"
+        }
+      ],
+      "provider": "granicus",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "fort-worth-tx",
+      "split": "test",
+      "uid": "3fd0769f51ca1f05"
+    },
+    {
+      "chapter_count": 17,
+      "chapters": [
+        {
+          "end": 23.076417000000006,
+          "start": 2.0764170000000064,
+          "title": "I) CALL TO ORDER"
+        },
+        {
+          "end": 25.236689000000013,
+          "start": 23.076417000000006,
+          "title": "II) EXECUTIVE SESSION"
+        },
+        {
+          "end": 29.046892999999443,
+          "start": 25.236689000000013,
+          "title": "III) DISCUSSION OF WORK SESSION ITEMS"
+        },
+        {
+          "end": 4368.353060999998,
+          "start": 29.046892999999443,
+          "title": "3.1. Flood Preparedness and Emergency Response"
+        },
+        {
+          "end": 8744.353060999998,
+          "start": 4368.353060999998,
+          "title": "3.2. FY2026 Budget"
+        },
+        {
+          "end": 10652.353060999998,
+          "start": 8744.353060999998,
+          "title": "3.3. Unified Development Code Text Amendment related to the regulation of Multi-Family, Mixed-Use, and Small Lot Use and Development"
+        },
+        {
+          "end": 10772.353060999998,
+          "start": 10652.353060999998,
+          "title": "3.4. Council Priority - Enhance Regional Mobility"
+        },
+        {
+          "end": 10782.353060999998,
+          "start": 10772.353060999998,
+          "title": "IV) DISCUSSION OF ISSUES SESSION ITEMS"
+        },
+        {
+          "end": 10960.353060999998,
+          "start": 10782.353060999998,
+          "title": "4.1. Commercial Motor Vehicle Parking Violations"
+        },
+        {
+          "end": 11058.353060999998,
+          "start": 10960.353060999998,
+          "title": "4.2. 2026 Neighborhood Matching Grant Call for Projects"
+        },
+        {
+          "end": 11060.353060999998,
+          "start": 11058.353060999998,
+          "title": "4.4. Appointments to Boards and Commissions"
+        },
+        {
+          "end": 11067.353060999998,
+          "start": 11060.353060999998,
+          "title": "4.3. Community and Neighborhood Development - FY2026 Neighborhood Matching Grant Program"
+        },
+        {
+          "end": 11249.353060999998,
+          "start": 11067.353060999998,
+          "title": "4.5. City Council External Committee and Training Reports"
+        },
+        {
+          "end": 11300.353060999998,
+          "start": 11249.353060999998,
+          "title": "4.6. Legislative Update"
+        },
+        {
+          "end": 11308.353060999998,
+          "start": 11300.353060999998,
+          "title": "4.7. Evening Agenda Items"
+        },
+        {
+          "end": 11312.353060999998,
+          "start": 11308.353060999998,
+          "title": "4.8. Issues Relative to City and TxDOT Projects"
+        },
+        {
+          "end": 11545.915,
+          "start": 11312.353060999998,
+          "title": "4.9. Future Agenda Items"
+        }
+      ],
+      "provider": "granicus",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "arlington-tx",
+      "split": "test",
+      "uid": "149e18205b342017"
+    },
+    {
+      "chapter_count": 24,
+      "chapters": [
+        {
+          "end": 18.0,
+          "start": 17.0,
+          "title": "I. CALL TO ORDER"
+        },
+        {
+          "end": 82.0,
+          "start": 18.0,
+          "title": "II. INVOCATION - Father Eric Groner, Saint Rita's Catholic Church"
+        },
+        {
+          "end": 102.0,
+          "start": 82.0,
+          "title": "III. PLEDGE OF ALLEGIANCE"
+        },
+        {
+          "end": 114.0,
+          "start": 102.0,
+          "title": "IV. CONSIDERATION OF MINUTES OF THE REGULAR MEETING OF AUGUST 4, 2015"
+        },
+        {
+          "end": 118.0,
+          "start": 114.0,
+          "title": "V. ITEMS TO BE WITHDRAWN FROM THE CONSENT AGENDA"
+        },
+        {
+          "end": 129.0,
+          "start": 118.0,
+          "title": "VI. ITEMS TO BE CONTINUED OR WITHDRAWN BY STAFF"
+        },
+        {
+          "end": 139.0,
+          "start": 129.0,
+          "title": "VII. CONSENT AGENDA Items on the Consent Agenda require little or no deliberation by the City Council. Approval of the Consent Agenda authorizes the City Manager, or his designee, to implement each item in accordance with staff recommendations."
+        },
+        {
+          "end": 321.932993,
+          "start": 139.0,
+          "title": "1. Presentation of Proclamation of Miss Texas Shannon Lee Sanderford Day"
+        },
+        {
+          "end": 611.932993,
+          "start": 321.932993,
+          "title": "2. Presentation of Proclamation of National Health Center Week"
+        },
+        {
+          "end": 618.932993,
+          "start": 611.932993,
+          "title": "X. ANNOUNCEMENTS BY CITY COUNCIL MEMBERS AND STAFF"
+        },
+        {
+          "end": 1024.932993,
+          "start": 618.932993,
+          "title": "1. Upcoming and Recent Events"
+        },
+        {
+          "end": 1047.932993,
+          "start": 1024.932993,
+          "title": "1. Changes in Membership on Boards and Commissions"
+        },
+        {
+          "end": 1054.932993,
+          "start": 1047.932993,
+          "title": "XII. PRESENTATIONS AND/OR COMMUNICATIONS FROM BOARDS, COMMISSIONS AND/OR CITY COUNCIL COMMITTEES"
+        },
+        {
+          "end": 1055.932993,
+          "start": 1054.932993,
+          "title": "XIII. REPORT OF THE CITY MANAGER"
+        },
+        {
+          "end": 1279.932993,
+          "start": 1055.932993,
+          "title": "1. M&C G-18528 - Conduct a Public Hearing and Reject Fiscal Year 2016 Crime Control and Prevention District Budget in the Amount of $69,764,041.00 (ALL COUNCIL DISTRICTS) (PUBLIC HEARING)"
+        },
+        {
+          "end": 1284.932993,
+          "start": 1279.932993,
+          "title": "1. M&C L-15795 - Authorize Condemnation by Eminent Domain for a 0.009 Acre Right-of-Way Easement and a 0.029 Acre Temporary-Construction Easement Located at 5817 Parker Henderson Road Owned by Bobby E. Sides for the Parker-Henderson Road Reconstruction from Business 287/Mansfield Highway to Martin Street Project (COUNCIL DISTRICT 5) (Continued from a Previous Meeting)"
+        },
+        {
+          "end": 1317.932993,
+          "start": 1284.932993,
+          "title": "1. M&C C-27416 - Ratify Application for and Authorize Acceptance of, if Awarded, the Fiscal Year 2015 Paul Coverdell Forensic Science Improvement Grant from the United States Department of Justice, National Institute of Justice, in the Amount of $135,656.00, Authorize Execution of a Grant Agreement with the National Institute of Justice and Adopt Appropriation Ordinance (ALL COUNCIL DISTRICTS)"
+        },
+        {
+          "end": 1332.932993,
+          "start": 1317.932993,
+          "title": "1. Second Public Hearing for a Proposed Owner-Initiated Annexation of Approximately 468.04 Acres of Land in Tarrant County, Located Along South of Altamesa Boulevard, West of the Fort Worth and Western Railroad (AX-14-006, Area 55-2)"
+        },
+        {
+          "end": 1438.932993,
+          "start": 1332.932993,
+          "title": "a. Report of City Staff"
+        },
+        {
+          "end": 1448.932993,
+          "start": 1438.932993,
+          "title": "c. Council Action"
+        },
+        {
+          "end": 1512.932993,
+          "start": 1448.932993,
+          "title": "1. ZC-15-091 - (CD 7) - Moises Esquivel, 8801 Magnolia Blossom Trail; from: \"AG\" Agricultural to: \"A-2.5\" One-Family (Recommended for Denial without Prejudice by the Zoning Commission) (Continued from a Previous Meeting)"
+        },
+        {
+          "end": 1544.932993,
+          "start": 1512.932993,
+          "title": "2. ZC-15-094 - (CD 7) - Mark McCauley, 8464 Heron Drive; from: \"A-10\" One-Family, \"A-5\" One-Family to: \"A-7.5\" One-Family (Recommended for Approval as Amended by the Zoning Commission to \"A-7.5\" One-Family) (Continued from a Previous Meeting)"
+        },
+        {
+          "end": 2616.932993,
+          "start": 1544.932993,
+          "title": "XVI. CITIZEN PRESENTATIONS"
+        },
+        {
+          "end": 2622.005,
+          "start": 2616.932993,
+          "title": "XVIII. ADJOURNMENT"
+        }
+      ],
+      "provider": "granicus",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "fort-worth-tx",
+      "split": "test",
+      "uid": "b37ec9e08413f541"
+    },
+    {
+      "chapter_count": 9,
+      "chapters": [
+        {
+          "end": 281.052494,
+          "start": 22.052494000000024,
+          "title": "b. ANNOUNCEMENTS"
+        },
+        {
+          "end": 365.03911500000004,
+          "start": 281.052494,
+          "title": "c. APPROVAL OF August 14, 2024 MEETING MINUTES"
+        },
+        {
+          "end": 534.712154,
+          "start": 365.03911500000004,
+          "title": "1. VA-24-015 Vacation of a Portion of Cockrell Avenue Between Berry Street and Bowie Street: Council District 9."
+        },
+        {
+          "end": 648.712154,
+          "start": 534.712154,
+          "title": "2. VA-24-016 Vacation of an Alley in Block 12, Forest Park Addition, Between Berry Street and Bowie Street: Council District 9."
+        },
+        {
+          "end": 822.712154,
+          "start": 648.712154,
+          "title": "1. AX-24-007 LDS \u2013 New Granger (Annexation Request): Proposed for Institutional Type Development. ETJ-Tarrant County. Future Council District 10"
+        },
+        {
+          "end": 1067.353537,
+          "start": 822.712154,
+          "title": "2. PP-24-031 T-Square Townhomes Addition, Lots 1-31 & 1X, BLOCK 3 (Waiver Request): Council District 5"
+        },
+        {
+          "end": 1401.353537,
+          "start": 1067.353537,
+          "title": "3. PP-24-034 Boaz and Dillow Addition, Lots 2R, 2R1, 3R, 4R, 5R, 5R1, Block 6 (Conditional Approval): 6 Townhome Lots. Council District 8."
+        },
+        {
+          "end": 1620.353537,
+          "start": 1401.353537,
+          "title": "4. FS-24-181 Johnson Addition Lots 9-12 (Continuance Request): 4 Single-Family Detached Residential Lots. Council District 5."
+        },
+        {
+          "end": 1752.425,
+          "start": 1620.353537,
+          "title": "5. VA-24-017 Vacation of a Portion of Pleasant Oaks Street: Council District 5"
+        }
+      ],
+      "provider": "granicus",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "fort-worth-tx",
+      "split": "test",
+      "uid": "264212d037ce1e52"
+    },
+    {
+      "chapter_count": 12,
+      "chapters": [
+        {
+          "end": 101.0,
+          "start": 80.0,
+          "title": "I. 12:30 P.M. LUNCH/WORK SESSION City Council Conference Room 290"
+        },
+        {
+          "end": 336.0,
+          "start": 101.0,
+          "title": "II. 1:30 P.M. PUBLIC HEARING Council Chamber"
+        },
+        {
+          "end": 425.0,
+          "start": 336.0,
+          "title": "1. BAR-18-121 Delfino Ramirez 4120 Hemlock Street"
+        },
+        {
+          "end": 701.0,
+          "start": 425.0,
+          "title": "2. BAR-18-116 Jimmy Mullins 9857 Lake Haven Circle"
+        },
+        {
+          "end": 805.0,
+          "start": 701.0,
+          "title": "3. BAR-18-117 Phillip A Brown by Phillip Kennemer 5028 Meadowbrook Drive"
+        },
+        {
+          "end": 2013.267347,
+          "start": 805.0,
+          "title": "4. BAR-18-098 John & Stacy McKnight 5220 Byers Avenue"
+        },
+        {
+          "end": 4050.6344440000003,
+          "start": 2013.267347,
+          "title": "5. BAR-19-001 Vivian & Greg Smith by Greg & Ana Smith 724 West Anthony Street"
+        },
+        {
+          "end": 4277.634444,
+          "start": 4050.6344440000003,
+          "title": "6. BAR-19-002 DFW 70-36 LLC by Hector Guerara-Vargas 10524 Wild Oak Drive"
+        },
+        {
+          "end": 5706.634444,
+          "start": 4277.634444,
+          "title": "9. BAR-19-003 Dhiran Giri 3213 Vine Street"
+        },
+        {
+          "end": 6674.634444,
+          "start": 5706.634444,
+          "title": "10. BAR-19-004 Mary & Daniel Brezik 3148 Wabash Avenue"
+        },
+        {
+          "end": 6827.634444,
+          "start": 6674.634444,
+          "title": "11. BAR-19-005 Stuart Schultz III by Glendarroch Homes 3636 Hilltop Road"
+        },
+        {
+          "end": 7129.544,
+          "start": 6827.634444,
+          "title": "12. BAR-19-006 Clay & Jamie Hicks by Pulliam Pools 4449 Fairway View Drive"
+        }
+      ],
+      "provider": "granicus",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "fort-worth-tx",
+      "split": "test",
+      "uid": "bb150f59e23ceda6"
+    },
+    {
+      "chapter_count": 8,
+      "chapters": [
+        {
+          "end": 132.072604,
+          "start": 0.07260399999999989,
+          "title": "I. CALL TO ORDER"
+        },
+        {
+          "end": 168.072604,
+          "start": 132.072604,
+          "title": "II. APPROVAL OF MINUTES"
+        },
+        {
+          "end": 234.072604,
+          "start": 168.072604,
+          "title": "III.A Continued to July 17, 2024 (Action Required) Zoning Case PD23-26 (502 Veritas Way) - Application for approval of a revision to the approved Development Plan for Residential Single-Family-5 (PD-RS-5) uses, on approximately 5.499 acres."
+        },
+        {
+          "end": 348.072604,
+          "start": 234.072604,
+          "title": "IV.A Zoning Case PD23-39 (1117, 1219, and 1221 Dan Gould) - Application for approval of a change in zoning from Residential Estate (RE) to Planned Development (PD) for Residential Medium-Density-12 (RM-12) for a Cottage Community with a development plan, on approximately 1.966 acres."
+        },
+        {
+          "end": 3973.072604,
+          "start": 348.072604,
+          "title": "IV.B Zoning Case PD24-10 (300 East Stephens Street) - Application for approval of a change in zoning from Airport Overlay (APO)-General Commercial (GC) to Planned Development (PD) for Residential Multi-Family-22 (RMF-22) uses, with a Development Plan on approximately 9.792 acres."
+        },
+        {
+          "end": 4900.93577,
+          "start": 3973.072604,
+          "title": "IV.C Zoning Case SUP24-6 (Arlington Tattoo Shop) - Application for approval of a Specific Use Permit (SUP) for a Tattoo Parlor, currently zoned Community Commercial (CC)"
+        },
+        {
+          "end": 4912.93577,
+          "start": 4900.93577,
+          "title": "V. MISCELLANEOUS"
+        },
+        {
+          "end": 4965.08,
+          "start": 4912.93577,
+          "title": "VI. ADJOURN"
+        }
+      ],
+      "provider": "granicus",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "arlington-tx",
+      "split": "test",
+      "uid": "a25c5073da38d890"
+    },
+    {
+      "chapter_count": 9,
+      "chapters": [
+        {
+          "end": 346.229411,
+          "start": 341.229411,
+          "title": "I. CALL TO ORDER"
+        },
+        {
+          "end": 347.229411,
+          "start": 346.229411,
+          "title": "II. APPROVAL OF MINUTES"
+        },
+        {
+          "end": 361.229411,
+          "start": 347.229411,
+          "title": "A. Approval of August 10, 2021 meeting minutes"
+        },
+        {
+          "end": 362.229411,
+          "start": 361.229411,
+          "title": "III. BRIEFINGS"
+        },
+        {
+          "end": 3945.409297,
+          "start": 362.229411,
+          "title": "A. Internal Audit Activities Update - Patrice Randle, City Auditor"
+        },
+        {
+          "end": 3946.409297,
+          "start": 3945.409297,
+          "title": "IV. FUTURE AGENDA ITEMS"
+        },
+        {
+          "end": 3948.409297,
+          "start": 3946.409297,
+          "title": "A. Requests for future agenda items"
+        },
+        {
+          "end": 3967.409297,
+          "start": 3948.409297,
+          "title": "B. The next meeting is scheduled for November 9, 2021, 1:00 PM"
+        },
+        {
+          "end": 3973.355,
+          "start": 3967.409297,
+          "title": "V. ADJOURN"
+        }
+      ],
+      "provider": "granicus",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "fort-worth-tx",
+      "split": "test",
+      "uid": "0bd43068860d23ac"
+    },
+    {
+      "chapter_count": 33,
+      "chapters": [
+        {
+          "end": 4.426916000000006,
+          "start": 3.4269160000000056,
+          "title": "I. PUBLIC HEARING 1:00 P.M."
+        },
+        {
+          "end": 346.426916,
+          "start": 4.426916000000006,
+          "title": "I. PUBLIC HEARING 1:00 P.M."
+        },
+        {
+          "end": 348.426916,
+          "start": 346.426916,
+          "title": "C. Continued Translation Residential Case"
+        },
+        {
+          "end": 349.426916,
+          "start": 348.426916,
+          "title": "C. Continued Translation Residential Case"
+        },
+        {
+          "end": 350.426916,
+          "start": 349.426916,
+          "title": "1. BAR-23-075 Address: 4325 Lisbon Street Owner: Javier Sanchez Zoning: \u201cB\u201d Two-Family under the \u201cA-5\u201d One-Family standards"
+        },
+        {
+          "end": 351.426916,
+          "start": 350.426916,
+          "title": "1. BAR-23-075 Address: 4325 Lisbon Street Owner: Javier Sanchez Zoning: \u201cB\u201d Two-Family under the \u201cA-5\u201d One-Family standards"
+        },
+        {
+          "end": 352.426916,
+          "start": 351.426916,
+          "title": "a. Variance: Permit an existing carport encroaching in the side yard setback Required setback: 5 feet Requested setback: 2 feet 5 inches"
+        },
+        {
+          "end": 1786.426916,
+          "start": 352.426916,
+          "title": "a. Variance: Permit an existing carport encroaching in the side yard setback Required setback: 5 feet Requested setback: 2 feet 5 inches"
+        },
+        {
+          "end": 1787.426916,
+          "start": 1786.426916,
+          "title": "6. BAR-24-005 Address: 1300 Illinois Avenue Owner: Tonia Robinson by Cooper Conger Zoning: \u201cA-5\u201d One-Family"
+        },
+        {
+          "end": 1788.426916,
+          "start": 1787.426916,
+          "title": "6. BAR-24-005 Address: 1300 Illinois Avenue Owner: Tonia Robinson by Cooper Conger Zoning: \u201cA-5\u201d One-Family"
+        },
+        {
+          "end": 1789.426916,
+          "start": 1788.426916,
+          "title": "a. Variance: Permit a residence on a lot with less width than required Minimum lot width required: 50 feet Requested lot coverage percentage: 33 feet"
+        },
+        {
+          "end": 1790.426916,
+          "start": 1789.426916,
+          "title": "a. Variance: Permit a residence on a lot with less width than required Minimum lot width required: 50 feet Requested lot coverage percentage: 33 feet"
+        },
+        {
+          "end": 1791.426916,
+          "start": 1790.426916,
+          "title": "b. Variance: Permit a residence on a lot with less lot area than required Minimum lot area required: 5,000 square feet Requested lot area: 3,300 square feet"
+        },
+        {
+          "end": 1792.426916,
+          "start": 1791.426916,
+          "title": "b. Variance: Permit a residence on a lot with less lot area than required Minimum lot area required: 5,000 square feet Requested lot area: 3,300 square feet"
+        },
+        {
+          "end": 1793.426916,
+          "start": 1792.426916,
+          "title": "7. BAR-24-009 Address: 406 Grand Avenue Owner: Javier & Danette Morales by Cooper Conger Zoning: \u201cA-5\u201d One-Family"
+        },
+        {
+          "end": 1794.426916,
+          "start": 1793.426916,
+          "title": "7. BAR-24-009 Address: 406 Grand Avenue Owner: Javier & Danette Morales by Cooper Conger Zoning: \u201cA-5\u201d One-Family"
+        },
+        {
+          "end": 1795.426916,
+          "start": 1794.426916,
+          "title": "a. Variance: Permit a residence on a lot with less width than required Minimum lot width required: 50 feet Requested lot coverage percentage: 35 feet"
+        },
+        {
+          "end": 1797.426916,
+          "start": 1795.426916,
+          "title": "a. Variance: Permit a residence on a lot with less width than required Minimum lot width required: 50 feet Requested lot coverage percentage: 35 feet"
+        },
+        {
+          "end": 3168.426916,
+          "start": 1797.426916,
+          "title": "b. Variance: Permit a residence on a lot with less lot area than required"
+        },
+        {
+          "end": 3169.426916,
+          "start": 3168.426916,
+          "title": "3. BAR-24-002 Address: 1925 Dartmoor Court Owner: Guadalupe & Ayesha de la Fuente by Brandon Scuderi Zoning: \u201cA-5\u201d One-Family within the TCU Overlay"
+        },
+        {
+          "end": 3170.426916,
+          "start": 3169.426916,
+          "title": "3. BAR-24-002 Address: 1925 Dartmoor Court Owner: Guadalupe & Ayesha de la Fuente by Brandon Scuderi Zoning: \u201cA-5\u201d One-Family within the TCU Overlay"
+        },
+        {
+          "end": 6221.426916,
+          "start": 3170.426916,
+          "title": "a. Variance: Permit the continued construction of a porte cochere with an covered patio on top that encroaches into the side yard setback Required setback: 5 feet Requested setback: Zero (0) feet"
+        },
+        {
+          "end": 6225.426916,
+          "start": 6221.426916,
+          "title": "4. BAR-24-003 Address: 2215 Warner Road Owner: Bryan & Carolyn Lingle Zoning: \u201cA-5\u201d One-Family within the TCU Overlay"
+        },
+        {
+          "end": 6226.426916,
+          "start": 6225.426916,
+          "title": "a. Variance: Permit a remodel of a detached garage with habitable space that encroaches into the rear yard setback Minimum setback required: 5 feet Requested setback: 3 feet"
+        },
+        {
+          "end": 6229.426916,
+          "start": 6226.426916,
+          "title": "a. Variance: Permit a remodel of a detached garage with habitable space that encroaches into the rear yard setback Minimum setback required: 5 feet Requested setback: 3 feet"
+        },
+        {
+          "end": 6230.426916,
+          "start": 6229.426916,
+          "title": "b. Variance: Permit a remodel of a detached garage with habitable space that encroaches into the side yard setback Minimum setback required: 5 feet Requested setback: 1-foot 5 inches"
+        },
+        {
+          "end": 6968.426916,
+          "start": 6230.426916,
+          "title": "b. Variance: Permit a remodel of a detached garage with habitable space that encroaches into the side yard setback Minimum setback required: 5 feet Requested setback: 1-foot 5 inches"
+        },
+        {
+          "end": 6969.426916,
+          "start": 6968.426916,
+          "title": "5. BAR-24-004 Address: 2745 Ryan Place Drive Owner: Claire Lawrence by Michael Clark Zoning: \u201cA-7.5\u201d One-Family"
+        },
+        {
+          "end": 6971.426916,
+          "start": 6969.426916,
+          "title": "5. BAR-24-004 Address: 2745 Ryan Place Drive Owner: Claire Lawrence by Michael Clark Zoning: \u201cA-7.5\u201d One-Family"
+        },
+        {
+          "end": 6972.426916,
+          "start": 6971.426916,
+          "title": "a. Variance: Permit a remodel of a detached garage with habitable space that encroaches into the side yard setback Minimum setback required: 5 feet Requested setback: 3 feet"
+        },
+        {
+          "end": 6973.426916,
+          "start": 6972.426916,
+          "title": "a. Variance: Permit a remodel of a detached garage with habitable space that encroaches into the side yard setback Minimum setback required: 5 feet Requested setback: 3 feet"
+        },
+        {
+          "end": 6974.426916,
+          "start": 6973.426916,
+          "title": "b. Variance: Permit the encroachment of the front wall of the home into the established front yard setback Established front yard: 38 feet Requested setback: 32 feet 5 inches"
+        },
+        {
+          "end": 7142.842,
+          "start": 6974.426916,
+          "title": "b. Variance: Permit the encroachment of the front wall of the home into the established front yard setback Established front yard: 38 feet Requested setback: 32 feet 5 inches"
+        }
+      ],
+      "provider": "granicus",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "fort-worth-tx",
+      "split": "test",
+      "uid": "21451e2edf0b5d9c"
+    },
+    {
+      "chapter_count": 19,
+      "chapters": [
+        {
+          "end": 191.44027200000002,
+          "start": 181.44027200000002,
+          "title": "I) CALL TO ORDER"
+        },
+        {
+          "end": 230.02621199999973,
+          "start": 191.44027200000002,
+          "title": "II) EXECUTIVE SESSION"
+        },
+        {
+          "end": 240.39972699999996,
+          "start": 230.02621199999973,
+          "title": "III) DISCUSSION OF WORK SESSION ITEMS"
+        },
+        {
+          "end": 3020.399727,
+          "start": 240.39972699999996,
+          "title": "3.1. HUD 2025-2029 Consolidated Plan Component: Housing Needs Assessment"
+        },
+        {
+          "end": 6856.399727,
+          "start": 3020.399727,
+          "title": "3.2. Handitran and On-Demand Services Update"
+        },
+        {
+          "end": 6870.399727,
+          "start": 6856.399727,
+          "title": "IV) DISCUSSION OF ISSUES SESSION ITEMS"
+        },
+        {
+          "end": 6873.399727,
+          "start": 6870.399727,
+          "title": "4.1. FY24 Repetitive Loss Area Analysis Plan (RLAA) and Floodplain Program for Public Information Plan (PPI) Annual Reports"
+        },
+        {
+          "end": 6956.399727,
+          "start": 6873.399727,
+          "title": "4.2. Micromobility Pilot Program and License Agreement"
+        },
+        {
+          "end": 7004.399727,
+          "start": 6956.399727,
+          "title": "4.3. Boarding Home Facilities for Elderly and Disabled Persons"
+        },
+        {
+          "end": 7011.399727,
+          "start": 7004.399727,
+          "title": "4.4. City of Arlington/Arlington Independent School District Program for Student ID Library Services"
+        },
+        {
+          "end": 7402.399727,
+          "start": 7011.399727,
+          "title": "4.5. Municipal Policy - Charter Amendments"
+        },
+        {
+          "end": 7525.399727,
+          "start": 7402.399727,
+          "title": "4.6. Transportation and Municipal Infrastructure - Safe Streets Arlington Plan Update"
+        },
+        {
+          "end": 7538.399727,
+          "start": 7525.399727,
+          "title": "4.7. Economic Development - Executive Session: Deliberation Regarding Economic Development Negotiations: Offers of Incentives to Business Prospects"
+        },
+        {
+          "end": 7585.399727,
+          "start": 7538.399727,
+          "title": "4.8. Arlington Housing Finance Corporation Update"
+        },
+        {
+          "end": 7596.399727,
+          "start": 7585.399727,
+          "title": "4.9. Appointments to Boards and Commissions"
+        },
+        {
+          "end": 7711.399727,
+          "start": 7596.399727,
+          "title": "4.10. Nominations for Tarrant Appraisal District Board of Directors"
+        },
+        {
+          "end": 7776.399727,
+          "start": 7711.399727,
+          "title": "4.11. Evening Agenda Items"
+        },
+        {
+          "end": 7782.399727,
+          "start": 7776.399727,
+          "title": "4.12. Issues Relative to City and TxDOT Projects"
+        },
+        {
+          "end": 7892.314,
+          "start": 7782.399727,
+          "title": "4.13. Future Agenda Items"
+        }
+      ],
+      "provider": "granicus",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "arlington-tx",
+      "split": "test",
+      "uid": "74e16844b24866f6"
+    },
+    {
+      "chapter_count": 18,
+      "chapters": [
+        {
+          "end": 42.86741499999994,
+          "start": 22.593854999999962,
+          "title": "I) CALL TO ORDER"
+        },
+        {
+          "end": 47.0973699999999,
+          "start": 42.86741499999994,
+          "title": "II) EXECUTIVE SESSION"
+        },
+        {
+          "end": 51.0973699999999,
+          "start": 47.0973699999999,
+          "title": "III) DISCUSSION OF WORK SESSION ITEMS"
+        },
+        {
+          "end": 2443.09737,
+          "start": 51.0973699999999,
+          "title": "3.1. Proposed Access Agreement at Lake Arlington Golf Course"
+        },
+        {
+          "end": 3334.09737,
+          "start": 2443.09737,
+          "title": "3.2. FIFA World Cup 2026"
+        },
+        {
+          "end": 5252.0973699999995,
+          "start": 3334.09737,
+          "title": "3.3. 2026 Capital Budget"
+        },
+        {
+          "end": 6368.0973699999995,
+          "start": 5252.0973699999995,
+          "title": "3.4. Arlington Water Utilities 2025 Year-End Report"
+        },
+        {
+          "end": 6476.0973699999995,
+          "start": 6368.0973699999995,
+          "title": "DISCUSSION OF INFORMAL STAFF REPORTS"
+        },
+        {
+          "end": 7236.0973699999995,
+          "start": 6476.0973699999995,
+          "title": "4.1. Periodic Review of Arlington Code of Ordinances"
+        },
+        {
+          "end": 7352.0973699999995,
+          "start": 7236.0973699999995,
+          "title": "4.2. 2025 Landmark Preservation Commission Annual Report"
+        },
+        {
+          "end": 7622.0973699999995,
+          "start": 7352.0973699999995,
+          "title": "4.3. Community and Neighborhood Development - (1) Multi-Family Recycling; (2) PY2026 Action Plan - Finalization of HOME Review"
+        },
+        {
+          "end": 7632.0973699999995,
+          "start": 7622.0973699999995,
+          "title": "4.4. Economic Development - Executive Session: Offers of Incentives to Business Prospects"
+        },
+        {
+          "end": 7672.0973699999995,
+          "start": 7632.0973699999995,
+          "title": "4.5. Arlington Housing Finance Corporation Update"
+        },
+        {
+          "end": 8190.0973699999995,
+          "start": 7672.0973699999995,
+          "title": "4.6. Appointments to Boards and Commissions"
+        },
+        {
+          "end": 8194.09737,
+          "start": 8190.0973699999995,
+          "title": "4.7. Evening Agenda Items"
+        },
+        {
+          "end": 8200.09737,
+          "start": 8194.09737,
+          "title": "4.8. Issues Relative to City and TxDOT Projects"
+        },
+        {
+          "end": 8566.09737,
+          "start": 8200.09737,
+          "title": "4.9. Council External Committee and Training Reports A. Tarrant Regional Transportation Coalition Board of Directors Mayor J. Ross reported on the Tarrant Regional Transportation Coalition Board of Directors meeting. B. Regional Transportation Council Vision Subcommittee Councilmember R. Gonzalez reported on the Regional Transportation Council meeting. C. North Central Texas Council of Governments Executive Board Councilmember B. Hogg reported on the North Central Texas Council of Governments Executive Board meeting. D. North Texas Commission Board of Directors Mayor J. Ross reported on the North Texas Commission Board of Directors meeting."
+        },
+        {
+          "end": 8931.938,
+          "start": 8566.09737,
+          "title": "4.10. Future Agenda Items"
+        }
+      ],
+      "provider": "granicus",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "arlington-tx",
+      "split": "test",
+      "uid": "8a5215cef2c8f3cf"
+    },
+    {
+      "chapter_count": 19,
+      "chapters": [
+        {
+          "end": 12.992290000000025,
+          "start": 0.0,
+          "title": "I) CALL TO ORDER"
+        },
+        {
+          "end": 26.45707500000003,
+          "start": 12.992290000000025,
+          "title": "II) EXECUTIVE SESSION"
+        },
+        {
+          "end": 43.22752899999955,
+          "start": 26.45707500000003,
+          "title": "III) DISCUSSION OF WORK SESSION ITEMS"
+        },
+        {
+          "end": 3388.227529,
+          "start": 43.22752899999955,
+          "title": "3.1. FY 2026 Budget Planning Update"
+        },
+        {
+          "end": 3941.227529,
+          "start": 3388.227529,
+          "title": "3.2. 2026 FIFA World Cup Update"
+        },
+        {
+          "end": 5111.227529,
+          "start": 3941.227529,
+          "title": "3.3. Innovate Arlington Phase I Engagement Report Out"
+        },
+        {
+          "end": 7500.116101,
+          "start": 5111.227529,
+          "title": "3.4. Arlington Fire Department 2024 Annual Report"
+        },
+        {
+          "end": 9813.116101,
+          "start": 7500.116101,
+          "title": "3.5. Housing Annual Report"
+        },
+        {
+          "end": 10200.116101,
+          "start": 9813.116101,
+          "title": "3.6. Council Priority - Leverage Technology"
+        },
+        {
+          "end": 10213.116101,
+          "start": 10200.116101,
+          "title": "IV) DISCUSSION OF ISSUES SESSION ITEMS"
+        },
+        {
+          "end": 10249.116101,
+          "start": 10213.116101,
+          "title": "4.1. City of Arlington Boards and Commissions Review"
+        },
+        {
+          "end": 10271.116101,
+          "start": 10249.116101,
+          "title": "4.2. Contract for Medical Direction and Health Authority Services"
+        },
+        {
+          "end": 10297.116101,
+          "start": 10271.116101,
+          "title": "4.3. Economic Development - Executive Session: Deliberation Regarding Economic Development Negotiations: Offers of Incentives to Business Prospects"
+        },
+        {
+          "end": 10305.116101,
+          "start": 10297.116101,
+          "title": "4.4. Appointments to Boards and Commissions"
+        },
+        {
+          "end": 10697.116101,
+          "start": 10305.116101,
+          "title": "4.5. City Council External Committee and Training Reports A. Tarrant County Homeless Coalition Continuum of Care Program Board Meeting Councilmember B. Odom-Wesley, reported on the Tarrant County Homeless Coalition Continuum of Care Program Board Meeting. B. Tarrant Regional Transportation Coalition Board Meeting Mayor J. Ross reported on the Tarrant Regional Transportation Coalition Board Meeting. C. Tarrant County Mayors Council Mayor J. Ross reported on the Tarrant County Mayors Council meeting. D. Texas Municipal League Governance Committee Meeting Mayor J. Ross reported on the Texas Municipal League Governance Committee meeting. E. Mayors Alliance to End Childhood Hunger Meeting Mayor J. Ross reported on the Mayors Alliance to End Childhood Hunger meeting."
+        },
+        {
+          "end": 10846.116101,
+          "start": 10697.116101,
+          "title": "4.6. Legislative Update"
+        },
+        {
+          "end": 10858.116101,
+          "start": 10846.116101,
+          "title": "4.7. Evening Agenda Items"
+        },
+        {
+          "end": 10865.116101,
+          "start": 10858.116101,
+          "title": "4.8. Issues Relative to City and TxDOT Projects"
+        },
+        {
+          "end": 11009.671,
+          "start": 10865.116101,
+          "title": "4.9. Future Agenda Items"
+        }
+      ],
+      "provider": "granicus",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "arlington-tx",
+      "split": "test",
+      "uid": "eb5eb0ee29393dbd"
+    },
+    {
+      "chapter_count": 16,
+      "chapters": [
+        {
+          "end": 302.497052,
+          "start": 4.497052,
+          "title": "II. PUBLIC HEARING: 1:00 PM"
+        },
+        {
+          "end": 1655.409796,
+          "start": 302.497052,
+          "title": "1. ZC-26-064 Case Manager: Beth Knight CD 7"
+        },
+        {
+          "end": 2011.4389800000001,
+          "start": 1655.409796,
+          "title": "2. ZC-26-071 Case Manager: Enrique Alvarez CD 2"
+        },
+        {
+          "end": 3814.840568,
+          "start": 2011.4389800000001,
+          "title": "3. ZC-26-084 Case Manager: Beth Knight CD 9"
+        },
+        {
+          "end": 3883.108709,
+          "start": 3814.840568,
+          "title": "4. ZC-26-119 Case Manager: Enrique Alvarez CD 6"
+        },
+        {
+          "end": 4491.012246,
+          "start": 3883.108709,
+          "title": "5. ZC-26-091 Case Manager: Beth Knight CD 2"
+        },
+        {
+          "end": 4778.012246,
+          "start": 4491.012246,
+          "title": "6. ZC-26-101 Case Manager: Beth Knight CD 10"
+        },
+        {
+          "end": 6186.012246,
+          "start": 4778.012246,
+          "title": "7. ZC-26-103 Case Manager: Enrique Alvarez CD 5"
+        },
+        {
+          "end": 6866.012246,
+          "start": 6186.012246,
+          "title": "9. ZC-26-106 Case Manager: Lynn Jordan CD 5"
+        },
+        {
+          "end": 7431.859434,
+          "start": 6866.012246,
+          "title": "10. ZC-26-107 Case Manager: Enrique Alvarez CD 8"
+        },
+        {
+          "end": 10607.497303,
+          "start": 7431.859434,
+          "title": "11. ZC-26-110 Case Manager: Lynn Jordan CD 7"
+        },
+        {
+          "end": 11736.497303,
+          "start": 10607.497303,
+          "title": "12. ZC-26-112 Case Manager: Lynn Jordan CD 7"
+        },
+        {
+          "end": 11904.803356999999,
+          "start": 11736.497303,
+          "title": "13. ZC-26-113 Case Manager: Lynn Jordan CD 7"
+        },
+        {
+          "end": 12568.803356999999,
+          "start": 11904.803356999999,
+          "title": "14. ZC-26-114 Case Manager: Tony Herhold CD 2"
+        },
+        {
+          "end": 13146.803356999999,
+          "start": 12568.803356999999,
+          "title": "15. ZC-26-121 Case Manager: Francisco Vega CD 2"
+        },
+        {
+          "end": 13791.893,
+          "start": 13146.803356999999,
+          "title": "16. ZC-26-117 Case Manager: Francisco Vega CD 2"
+        }
+      ],
+      "provider": "granicus",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "fort-worth-tx",
+      "split": "test",
+      "uid": "cbdae79171ad8b75"
+    },
+    {
+      "chapter_count": 4,
+      "chapters": [
+        {
+          "end": 72.741973,
+          "start": 41.741973,
+          "title": "A. Consider approval of the minutes of July 26, 2023"
+        },
+        {
+          "end": 143.741973,
+          "start": 72.741973,
+          "title": "B. Receive nominations and elect a Committee Chair and Vice-Chair."
+        },
+        {
+          "end": 5561.741973,
+          "start": 143.741973,
+          "title": "C. Receive a report and hold a discussion regarding the City of Denton Transportation/Mobility Project Status Report."
+        },
+        {
+          "end": 7339.721,
+          "start": 5561.741973,
+          "title": "D. Staff Memorandum"
+        }
+      ],
+      "provider": "swagit",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "denton-tx-agenda-committee",
+      "split": "test",
+      "uid": "b686db6248625fc2"
+    },
+    {
+      "chapter_count": 1,
+      "chapters": [
+        {
+          "end": 7311.261,
+          "start": 2.751791,
+          "title": "Council Government Performance & Financial Management Committee on December 12, 2023."
+        }
+      ],
+      "provider": "swagit",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "dallas-tx-ad-hoc-committee-on-administrative-affairs",
+      "split": "test",
+      "uid": "bfcdafa242d6f4aa"
+    },
+    {
+      "chapter_count": 8,
+      "chapters": [
+        {
+          "end": 33.900498866213155,
+          "start": 0.0,
+          "title": "Item 1"
+        },
+        {
+          "end": 778.5109977324263,
+          "start": 33.900498866213155,
+          "title": "Item 2"
+        },
+        {
+          "end": 1465.9978004535146,
+          "start": 778.5109977324263,
+          "title": "Item 3"
+        },
+        {
+          "end": 3444.874693877551,
+          "start": 1465.9978004535146,
+          "title": "Item 4"
+        },
+        {
+          "end": 5463.25768707483,
+          "start": 3444.874693877551,
+          "title": "Item 5"
+        },
+        {
+          "end": 6872.331995464852,
+          "start": 5463.25768707483,
+          "title": "Item 6"
+        },
+        {
+          "end": 7023.049206349206,
+          "start": 6872.331995464852,
+          "title": "Item 7"
+        },
+        {
+          "end": 7206.465714285713,
+          "start": 7023.049206349206,
+          "title": "Item 8"
+        }
+      ],
+      "provider": "swagit",
+      "provider_chapter_timing": "provider-endpoints",
+      "slug": "austin-tx-public-safety-commission",
+      "split": "test",
+      "uid": "5ddb8129cbd21c8d"
+    },
+    {
+      "chapter_count": 5,
+      "chapters": [
+        {
+          "end": 46.08,
+          "start": 0.0,
+          "title": "Item 1"
+        },
+        {
+          "end": 2895.456,
+          "start": 46.08,
+          "title": "Item 2"
+        },
+        {
+          "end": 4228.8,
+          "start": 2895.456,
+          "title": "Item 3"
+        },
+        {
+          "end": 5427.168,
+          "start": 4228.8,
+          "title": "Item 4"
+        },
+        {
+          "end": 7216.191999999999,
+          "start": 5427.168,
+          "title": "Item 5"
+        }
+      ],
+      "provider": "swagit",
+      "provider_chapter_timing": "provider-endpoints",
+      "slug": "austin-tx-all-boards-and-commissions",
+      "split": "test",
+      "uid": "e0fcd5db5b678a1c"
+    },
+    {
+      "chapter_count": 14,
+      "chapters": [
+        {
+          "end": 108.602993,
+          "start": 15.20898,
+          "title": "WORK SESSION"
+        },
+        {
+          "end": 112.602993,
+          "start": 108.602993,
+          "title": "1. Clarification of agenda items listed in the Regular Session agenda for this meeting, and discussion of issues not briefed in the written backup materials."
+        },
+        {
+          "end": 218.60299299999997,
+          "start": 112.602993,
+          "title": "2. Receive a report, hold a discussion, and give staff direction concerning proposed amendments to"
+        },
+        {
+          "end": 2771.6029930000004,
+          "start": 218.60299299999997,
+          "title": "a. Subchapter 3 of the Denton Development Code (DDC) regarding authority given to the Zoning Board of Adjustment;"
+        },
+        {
+          "end": 4600.6029929999995,
+          "start": 2771.6029930000004,
+          "title": "3. Receive a report, hold a discussion, and give staff direction concerning the proposed Downtown Implementation Plan. This item will also include discussion on the proposed Form Based Code, proposed Wayfinding System, proposed amendment to the Mobility Plan, and proposed future engineering studies. (S10-0001, Downtown Implementation Plan (DTIP), Brian Lockley/Ron Menguita)"
+        },
+        {
+          "end": 4706.745645999999,
+          "start": 4600.6029929999995,
+          "title": "4. Receive a report, hold a discussion, and give staff direction regarding a proposed amendment to the Denton Development Code, Sections 35.5.7.3 and 35.5.8, regarding maximum building height in the Industrial Center General (IC-G) District. (DCA10-0005, IC-G Max Height Requirement, Cindy Jackson)"
+        },
+        {
+          "end": 4743.745645999999,
+          "start": 4706.745645999999,
+          "title": "REGULAR MEETING"
+        },
+        {
+          "end": 4747.745645999999,
+          "start": 4743.745645999999,
+          "title": "1. PLEDGE OF ALLEGIANCE:"
+        },
+        {
+          "end": 4814.745645999999,
+          "start": 4747.745645999999,
+          "title": "2. CONSIDER APPROVAL OF THE PLANNING AND ZONING COMMISSION MINUTES FOR:"
+        },
+        {
+          "end": 4837.745645999999,
+          "start": 4814.745645999999,
+          "title": "3. CONSENT AGENDA: Staff recommends approval of the following items because they meet the requirements of the Denton Development Code. Approval of the Consent Agenda includes staff recommendations for approvals and authorizes staff to proceed. The Planning and Zoning Commission has reviewed the applications and has had an opportunity to raise questions regarding the items prior to consideration:"
+        },
+        {
+          "end": 11254.745646,
+          "start": 4837.745645999999,
+          "title": "4. PUBLIC HEARINGS: Hold a public hearing and consider making a recommendation to the Denton City Council on the following items:"
+        },
+        {
+          "end": 12798.859455,
+          "start": 11254.745646,
+          "title": "A. Amendments to"
+        },
+        {
+          "end": 12917.859455,
+          "start": 12798.859455,
+          "title": "5. the schedule of fees contained in Ordinances 2005-237, and 2009-098 (2006 City Fire Code) pertaining to gas well drilling and production within the City limits and the Extra Territorial Jurisdiction (DCA10-0003, Mark Cunningham and Nana Appiah)"
+        },
+        {
+          "end": 12933.08,
+          "start": 12917.859455,
+          "title": "5. FUTURE AGENDA ITEMS: Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Planning and Zoning Commission or the public with specific factual information or recitation of policy, or accept a proposal to place the matter on the agenda for an upcoming meeting."
+        }
+      ],
+      "provider": "swagit",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "denton-tx-agenda-committee",
+      "split": "test",
+      "uid": "9d84baa70ea96075"
+    },
+    {
+      "chapter_count": 10,
+      "chapters": [
+        {
+          "end": 51.91979591836735,
+          "start": 0.0,
+          "title": "Call to Order"
+        },
+        {
+          "end": 93.7388888888889,
+          "start": 51.91979591836735,
+          "title": "Item 6D"
+        },
+        {
+          "end": 330.1644671201814,
+          "start": 93.7388888888889,
+          "title": "Items 2 \\u0026 3"
+        },
+        {
+          "end": 425.482358276644,
+          "start": 330.1644671201814,
+          "title": "Item 4A"
+        },
+        {
+          "end": 1001.8712471655328,
+          "start": 425.482358276644,
+          "title": "Item 4B"
+        },
+        {
+          "end": 2812.586530612245,
+          "start": 1001.8712471655328,
+          "title": "Item 5A"
+        },
+        {
+          "end": 4102.942630385488,
+          "start": 2812.586530612245,
+          "title": "Item 5B"
+        },
+        {
+          "end": 5375.39612244898,
+          "start": 4102.942630385488,
+          "title": "Item 6A"
+        },
+        {
+          "end": 10216.152925170069,
+          "start": 5375.39612244898,
+          "title": "Item 6B"
+        },
+        {
+          "end": 11279.859024943311,
+          "start": 10216.152925170069,
+          "title": "Items 6C \\u0026 9"
+        }
+      ],
+      "provider": "swagit",
+      "provider_chapter_timing": "provider-endpoints",
+      "slug": "austin-tx-environmental-board",
+      "split": "test",
+      "uid": "b0255efe9b903f4c"
+    },
+    {
+      "chapter_count": 8,
+      "chapters": [
+        {
+          "end": 32.913991,
+          "start": 0.0,
+          "title": "CALL TO ORDER"
+        },
+        {
+          "end": 213.913991,
+          "start": 32.913991,
+          "title": "PUBLIC COMMUNICATION: GENERAL"
+        },
+        {
+          "end": 266.913991,
+          "start": 213.913991,
+          "title": "APPROVAL OF MINUTES"
+        },
+        {
+          "end": 5102.457846000001,
+          "start": 266.913991,
+          "title": "2. Discussion of revisions to the Water Forward 2024 Plan, Water Conservation Plan, and Drought Contingency"
+        },
+        {
+          "end": 6187.457846000001,
+          "start": 5102.457846000001,
+          "title": "3. Recommend approval of Water Forward 2024, Austin\u2019s Integrated Water Resource Plan"
+        },
+        {
+          "end": 7659.457846000001,
+          "start": 6187.457846000001,
+          "title": "4. Recommend approval of the revised Water Conservation Plan"
+        },
+        {
+          "end": 7904.457846000001,
+          "start": 7659.457846000001,
+          "title": "5. Recommend approval of the revised Drought Contingency Plan"
+        },
+        {
+          "end": 7995.697,
+          "start": 7904.457846000001,
+          "title": "FUTURE AGENDA ITEMS"
+        }
+      ],
+      "provider": "swagit",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "austin-tx-austin-integrated-water-resource-planning-community-task-force",
+      "split": "test",
+      "uid": "f231ad89fc3c8046"
+    },
+    {
+      "chapter_count": 2,
+      "chapters": [
+        {
+          "end": 87.325306,
+          "start": 0.0,
+          "title": "1. Call Meeting to Order and Announce that a Quorum is Present"
+        },
+        {
+          "end": 13901.2739,
+          "start": 87.325306,
+          "title": "2. Strategic Planning Session"
+        }
+      ],
+      "provider": "swagit",
+      "provider_chapter_timing": "provider-endpoints",
+      "slug": "addison-tx-board-of-zoning-adjustment",
+      "split": "test",
+      "uid": "64d910657ceb47fa"
+    },
+    {
+      "chapter_count": 2,
+      "chapters": [
+        {
+          "end": 4199.995804988662,
+          "start": 0.0,
+          "title": "Board of Adjustments: Panel C (Part 1 of 2)"
+        },
+        {
+          "end": 8360.351995464851,
+          "start": 4199.995804988662,
+          "title": "Board of Adjustments: Panel C (Part 2 of 2)"
+        }
+      ],
+      "provider": "swagit",
+      "provider_chapter_timing": "provider-endpoints",
+      "slug": "dallas-tx-ad-hoc-committee-on-administrative-affairs",
+      "split": "test",
+      "uid": "dd2fca265ade6e8d"
+    },
+    {
+      "chapter_count": 3,
+      "chapters": [
+        {
+          "end": 5252.353696145125,
+          "start": 0.0,
+          "title": "Item 1 (Part 1 of 3)"
+        },
+        {
+          "end": 9321.720385487528,
+          "start": 5252.353696145125,
+          "title": "Item 1 (Part 2 of 3)"
+        },
+        {
+          "end": 10999.965782312926,
+          "start": 9321.720385487528,
+          "title": "Item 1 (Part 3 of 3)"
+        }
+      ],
+      "provider": "swagit",
+      "provider_chapter_timing": "provider-endpoints",
+      "slug": "austin-tx-all-boards-and-commissions",
+      "split": "test",
+      "uid": "0b7c86c1d697196d"
+    },
+    {
+      "chapter_count": 3,
+      "chapters": [
+        {
+          "end": 50.108095,
+          "start": 11.108095,
+          "title": "A. Consider approval of the April 14, 2021 minutes."
+        },
+        {
+          "end": 7328.623559,
+          "start": 50.108095,
+          "title": "B. Receive a report, hold a discussion, and give staff direction regarding proposed Code amendments related to nonconforming site features, accessory dwelling units, and Subchapter 7 development standards."
+        },
+        {
+          "end": 7382.818,
+          "start": 7328.623559,
+          "title": "2. CONCLUDING ITEMS"
+        }
+      ],
+      "provider": "swagit",
+      "provider_chapter_timing": "provider-starts-derived-ends",
+      "slug": "denton-tx-agenda-committee",
+      "split": "test",
+      "uid": "c20e533196fbd578"
+    }
+  ],
+  "schema_version": 1
+}

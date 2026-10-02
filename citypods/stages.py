@@ -861,9 +861,13 @@ def stage_input_fingerprint(
             "recipe": recipe,
         }
     elif name in {"chapter_locator", "generated_chapters"}:
-        from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+        from citypods.chapter_jobs import LOCATOR_MODELS, LOCATOR_PROMPT_VERSION
+        from citypods.chapter_locator import LOCATOR_ROUTING_VERSION
 
-        recipe = f"{LOCATOR_PROMPT_VERSION}:{LOCATOR_MODEL}:{CHAPTER_LOCATOR_PIPELINE_VERSION}"
+        recipe = (
+            f"{LOCATOR_PROMPT_VERSION}:{','.join(LOCATOR_MODELS)}:"
+            f"{LOCATOR_ROUTING_VERSION}:{CHAPTER_LOCATOR_PIPELINE_VERSION}"
+        )
         payload = {
             **common,
             "agenda_recipe": (ep.generated_agenda_candidates or {}).get("recipe"),
@@ -8911,12 +8915,13 @@ class ChapterBoundaryLocatorStage:
     ) -> StageStats:
         from citypods.chapter_artifacts import AgendaCandidatesArtifact, artifact_key
         from citypods.chapter_jobs import (
-            LOCATOR_MODEL,
+            LOCATOR_MODELS,
             LOCATOR_PROMPT_VERSION,
+            LOCATOR_ROUTING_VERSION,
             build_locator_job,
             finalize_locator_job,
         )
-        from citypods.chapter_locator import build_locator_units
+        from citypods.chapter_locator import DuplicateLocatorStartError, build_locator_units
         from citypods.compute.base import JobHandle, JobResult
         from citypods.compute.llm import dispatch_job_batch
         from citypods.compute.llm_deferred import discard_completed_result, look_up_deferred
@@ -8963,6 +8968,9 @@ class ChapterBoundaryLocatorStage:
                 continue
 
             locator_status = raw_agenda.get("locator_status")
+            if locator_status == "retry_exhausted":
+                stats.defer("locator-repair-exhausted")
+                continue
             # Mirrors AgendaChapterCandidatesStage's own is_current_artifact check (see its
             # comment): a completed/accepted locator result is only safe to reuse if it was
             # produced by the CURRENTLY configured model under the CURRENT prompt version.
@@ -8972,8 +8980,9 @@ class ChapterBoundaryLocatorStage:
             # stale result anyway, and _mark_stage_complete would re-stamp it under the fresh
             # fingerprint, permanently laundering stale output as current.
             is_current_locator_artifact = locator_status == "not_applicable" or (
-                raw_agenda.get("locator_model") == LOCATOR_MODEL
+                raw_agenda.get("locator_model") in LOCATOR_MODELS
                 and raw_agenda.get("locator_prompt_version") == LOCATOR_PROMPT_VERSION
+                and raw_agenda.get("locator_routing_version") == LOCATOR_ROUTING_VERSION
             )
             if (
                 locator_status in {"completed", "accepted", "not_applicable"}
@@ -9022,6 +9031,11 @@ class ChapterBoundaryLocatorStage:
                     agenda=agenda,
                     transcript_hash=transcript_hash,
                     units=units,
+                    retry_hint=(
+                        raw_agenda.get("locator_retry_hint")
+                        if isinstance(raw_agenda.get("locator_retry_hint"), str)
+                        else None
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort the
                 # build pass for every other episode
@@ -9112,6 +9126,32 @@ class ChapterBoundaryLocatorStage:
                 stale.pop("locator_status", None)
                 stale.pop("locator_recipe", None)
                 stale.pop("locator_job_ref", None)
+                retry_count = stale.get("locator_retry_count", 0)
+                retry_count = retry_count if isinstance(retry_count, int) else 0
+                if retry_count >= 1:
+                    stale["locator_status"] = "retry_exhausted"
+                    stale["locator_retry_error"] = str(exc)[:300]
+                    ep.generated_agenda_candidates = stale
+                    stats.defer("locator-repair-exhausted")
+                    continue
+                if isinstance(exc, DuplicateLocatorStartError):
+                    first, second = exc.agenda_item_indices
+                    stale["locator_retry_count"] = 1
+                    stale["locator_retry_hint"] = (
+                        "Repair only the conflicting anchors for agenda items "
+                        f"{first} and {second}, whose selected units both start at "
+                        f"{exc.start:.3f} seconds. Reconsider only these anchors. Use a "
+                        "different supplied unit only if its transcript text shows a real "
+                        "later substantive start. Otherwise keep the strongest, most "
+                        "specific chapter and omit the more general duplicate section "
+                        "heading. Never invent or offset a timestamp. Return the complete "
+                        "corrected JSON object in assistant message content, matching the "
+                        "requested schema."
+                    )
+                    stale["locator_status"] = "repair_pending"
+                    ep.generated_agenda_candidates = stale
+                    stats.defer("locator-repair-pending")
+                    continue
                 ep.generated_agenda_candidates = stale
                 continue
             try:
@@ -9159,10 +9199,14 @@ class ChapterBoundaryLocatorStage:
                 # stale completion from a current one on a later run.
                 "locator_model": boundary.model,
                 "locator_prompt_version": boundary.prompt_version,
+                "locator_routing_version": LOCATOR_ROUTING_VERSION,
                 "boundary_artifact_key": boundary_key,
                 "boundary_artifact_url": boundary_url,
                 "transcript_unit_source": unit_source,
             }
+            ep.generated_agenda_candidates.pop("locator_retry_count", None)
+            ep.generated_agenda_candidates.pop("locator_retry_hint", None)
+            ep.generated_agenda_candidates.pop("locator_retry_error", None)
             stats.ran += 1
         return stats
 
@@ -9204,8 +9248,8 @@ def episode_needs_chapter_locator(ep: Episode) -> bool:
     Same reasoning as `episode_needs_chapter_agenda` above, mirrored against
     `ChapterBoundaryLocatorStage.process()`'s own `is_current_locator_artifact` check: this
     pre-filter must recognize a stale completed locator result (produced under a since-bumped
-    LOCATOR_PROMPT_VERSION or a retired LOCATOR_MODEL) as still needing work, or it never reaches
-    that stage's own check at all.
+    LOCATOR_PROMPT_VERSION, routing version, or a retired model) as still needing work, or it never
+    reaches that stage's own check at all.
     """
     if ep.source_chapters:
         return (ep.generated_agenda_candidates or {}).get("locator_status") != "not_applicable"
@@ -9219,11 +9263,13 @@ def episode_needs_chapter_locator(ep: Episode) -> bool:
         return True
     if locator_status == "not_applicable":
         return False
-    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+    from citypods.chapter_jobs import LOCATOR_MODELS, LOCATOR_PROMPT_VERSION
+    from citypods.chapter_locator import LOCATOR_ROUTING_VERSION
 
     is_current_locator_artifact = (
-        raw_agenda.get("locator_model") == LOCATOR_MODEL
+        raw_agenda.get("locator_model") in LOCATOR_MODELS
         and raw_agenda.get("locator_prompt_version") == LOCATOR_PROMPT_VERSION
+        and raw_agenda.get("locator_routing_version") == LOCATOR_ROUTING_VERSION
     )
     return not is_current_locator_artifact
 

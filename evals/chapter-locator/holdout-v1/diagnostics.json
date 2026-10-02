@@ -1,0 +1,17 @@
+{
+  "locator_eligible": 23,
+  "locator_requests_sent": 23,
+  "locator_request_scope": "23 unique Gemini 3.5 Flash Lite packet jobs; 33 provider attempts",
+  "provider_counts": {
+    "granicus": 12,
+    "swagit": 11
+  },
+  "selected": 24,
+  "upstream_agenda_failures": [
+    {
+      "attempts": 2,
+      "reason": "upstream_agenda_extraction_invalid_after_retry",
+      "uid": "fb72668fb38af712"
+    }
+  ]
+}

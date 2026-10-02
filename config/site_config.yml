@@ -169,25 +169,22 @@ llm_lanes:
     reserved_write_units: 5580
     daily_write_units: 9300
   chapter-locator:
-    # Replaces citypods/chapter_locator.py:PRODUCTION_LOCATOR_MODEL. Gemini 3.5 Flash Lite is
-    # reserved for this long-context workload and deliberately not shared with tagging; it stays
-    # `models[0]` (the recipe/calibration key -- see chapter_locator.py's own docstring on why
-    # changing it re-queues the whole locator catalog). The overflow models take full-transcript
-    # jobs too large for Gemini's real free-tier ceiling. 2026-09-24: OrcaRouter's GLM 5.3 Flash
-    # (AA 41.8, 800/day, 1M context, ~5 s; json_object verified live) and DeepSeek v4 (AA 34.3,
-    # 800/day, 1M) give placement -- long-context reasoning -- two responsive independent pools;
-    # kimi-k3 is latency-bound (~590 s calls on one slot, ~146/day).
+    # Production selection is size-aware in citypods/chapter_locator.py. DeepSeek V4 Flash is the
+    # stable recipe model for packets up to 76,000 internal estimated input tokens; larger packets
+    # are pinned to Kimi K3. This empirically-derived cutoff stays below the largest accepted V4
+    # packet (76,546) and above the largest observed rejected boundary (81,301). GLM 5.3 Flash is
+    # documented as optional small-context capacity and DeepSeek V4.1 Flash as optional large-
+    # context capacity; neither is wired into production until capacity needs justify it.
     models:
-      - "gemini/gemini-3.5-flash-lite"
-      - "zai/glm-5.3-flash"
       - "deepseek/deepseek-v4-flash"
       - "moonshotai/kimi-k3"
-    # Per-run share of what daily_write_units funds at 4 models (4 index rows + 3 bookkeeping
-    # rows = 7 units/job; 3255/7 = 465 a day over 12 runs); see
-    # `LaneConfig.max_jobs_per_day`, which `parse_lanes` enforces this can never exceed.
-    max_dispatches_per_run: 150
+    # Each request is pinned to one size-selected model, so the worker writes one model index.
+    dispatch_shape: per_model
+    # Twelve scheduled runs/day; 67 admits/run, with the daily reservation as the hard 800-job cap.
+    # A pinned request costs four ingress write units (three bookkeeping + one model index): 800*4.
+    max_dispatches_per_run: 67
     reserved_write_units: 2170
-    daily_write_units: 3255
+    daily_write_units: 3200
   topic-tags:tagger:
     # Keep tagging pinned to the stable/calibrated Gemini 3.1 route; it is the recipe and
     # calibration-matrix key (models[0]). The two additional models (2026-09-24) are throughput

@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "purpose": "Development-only paired prompt ablation for locator contract validity and retry rate",
+  "date": "2026-09-27",
+  "dataset": "dataset-v3",
+  "split": "development",
+  "packet_count": 3,
+  "packet_builder_estimates": [1370, 23324, 20634],
+  "provider_labels_in_requests": false,
+  "hidden_targets_in_requests": false,
+  "scoring": "Automated Mistral crosswalk proxy with a fixed denominator of 11 provider starts; invalid first-pass responses count as misses.",
+  "arms": {
+    "deepseek/deepseek-v4-flash": {
+      "route_id": "orcarouter_deepseek_v4_flash_free",
+      "structured_output": "json_object plus the registered locator schema in the prompt",
+      "production_baseline": {
+        "first_pass_schema_valid": "2/3",
+        "first_pass_locator_valid": "1/3",
+        "pydantic_retry_calls": 1,
+        "provider_attempts": 4,
+        "final_locator_valid_after_retry": "2/3",
+        "first_pass_crosswalk_hits": "3/11",
+        "final_crosswalk_hits": "5/11",
+        "mean_seconds_per_packet_including_retry": 86.097
+      },
+      "explicit_unique_anchors": {
+        "first_pass_schema_valid": "2/3",
+        "first_pass_locator_valid": "2/3",
+        "pydantic_retry_calls": 1,
+        "provider_attempts": 4,
+        "final_locator_valid_after_retry": "3/3",
+        "first_pass_crosswalk_hits": "5/11",
+        "final_crosswalk_hits": "9/11",
+        "mean_seconds_per_packet_including_retry": 65.397
+      },
+      "first_pass_failure_categories": {
+        "production_baseline": ["duplicate_unit_id", "evidence_type_too_long"],
+        "explicit_unique_anchors": ["unit_id_pattern"]
+      }
+    },
+    "zai/glm-5.3-flash": {
+      "route_id": "orcarouter_zai_glm_5_3_flash_free",
+      "structured_output": "json_object plus the registered locator schema in the prompt",
+      "production_baseline": {
+        "first_pass_schema_valid": "3/3",
+        "first_pass_locator_valid": "3/3",
+        "pydantic_retry_calls": 0,
+        "provider_attempts": 3,
+        "final_locator_valid_after_retry": "3/3",
+        "first_pass_crosswalk_hits": "9/11",
+        "final_crosswalk_hits": "9/11",
+        "mean_seconds_per_packet_including_retry": 104.575
+      },
+      "explicit_unique_anchors": {
+        "first_pass_schema_valid": "3/3",
+        "first_pass_locator_valid": "3/3",
+        "pydantic_retry_calls": 0,
+        "provider_attempts": 3,
+        "final_locator_valid_after_retry": "3/3",
+        "first_pass_crosswalk_hits": "10/11",
+        "final_crosswalk_hits": "10/11",
+        "mean_seconds_per_packet_including_retry": 110.57
+      }
+    },
+    "gemini/gemini-3.5-flash-lite": {
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "structured_output": "json_schema",
+      "production_baseline": {
+        "first_pass_schema_valid": "3/3",
+        "first_pass_locator_valid": "3/3",
+        "pydantic_retry_calls": 0,
+        "provider_attempts": 3,
+        "final_locator_valid_after_retry": "3/3",
+        "first_pass_crosswalk_hits": "8/11",
+        "final_crosswalk_hits": "8/11",
+        "mean_seconds_per_packet_including_retry": 2.75
+      },
+      "explicit_unique_anchors": {
+        "first_pass_schema_valid": "3/3",
+        "first_pass_locator_valid": "2/3",
+        "pydantic_retry_calls": 0,
+        "provider_attempts": 3,
+        "final_locator_valid_after_retry": "2/3",
+        "first_pass_crosswalk_hits": "5/11",
+        "final_crosswalk_hits": "5/11",
+        "mean_seconds_per_packet_including_retry": 2.481,
+        "first_pass_failure_categories": ["unknown_unit_id"]
+      }
+    }
+  },
+  "prompt_variant": "Follow the locator output contract exactly. Return only one JSON object with the top-level key anchors. Each anchor must use only the schema's exact keys and types; do not add aliases such as title, start, end, quote, timestamp, or agenda_index. Copy unit_id exactly from supplied transcript_units and agenda_item_index exactly from agenda_items; never invent IDs or timestamps. Use each agenda_item_index at most once and each unit_id at most once across the entire anchors array. If one transcript unit appears to match multiple agenda items, keep only the strongest directly supported assignment and omit the weaker ones. Order anchors by strictly increasing transcript time. Use a short verbatim transition quote from the selected or immediately adjacent unit. If no item is supported, return {\"anchors\":[]}.",
+  "deepseek_v41_prior_evidence": {
+    "result": "2026-09-27-deepseek-v41-development-modes.json",
+    "prompt_already_included": "Explicit locator fields, schema/example, and no-repeat unit/item instructions",
+    "prompt_only_default_thinking": {
+      "first_pass_locator_valid": "8/8",
+      "provider_start_hits": "37/39"
+    },
+    "prompt_only_thinking_off": {
+      "first_pass_locator_valid": "5/8",
+      "duplicate_unit_failures": 3
+    },
+    "interpretation": "The chosen default-thinking mode had no schema repairs in this development run. Duplicate-unit failures remained in thinking-off output despite explicit uniqueness instructions; this earlier test was not a paired prompt A/B."
+  },
+  "interpretation": "The added prompt did not reduce Pydantic retry calls on any tested route. GLM already had 3/3 valid first responses; Gemini regressed on one packet with an unknown unit ID. DeepSeek V4 Flash had mixed validity categories: its Pydantic retry count stayed at one per arm, while locator-valid first responses improved from 1/3 to 2/3 and final crosswalk hits increased from 5/11 to 9/11. The three-packet sample is exploratory and does not justify a production prompt change.",
+  "retry_scope_note": "Pydantic retry counts come from the direct LiteLLM structured-output path, which allows one corrective provider call. This is not the llm-dispatch-v2 Worker's retry schedule. Domain-level failures such as duplicate or unknown unit IDs are reported separately from Pydantic schema failures.",
+  "pause": {
+    "scope": "Each exact physical route was paused and drained before its calls, then resumed.",
+    "nvidia": "Not paused; DeepSeek V4.1 evidence above reuses its completed NVIDIA development runs.",
+    "orcarouter_routes_drained": true,
+    "orcarouter_sibling_traffic": "Tencent HY3 work was in flight on the provider; only the two target routes were paused, so latency may reflect shared-provider contention.",
+    "gemini_route_drained": true
+  },
+  "not_tested": {
+    "moonshotai/kimi-k3": "No prompt calls were sent. It shares NVIDIA provider capacity with Nemotron 3 Ultra, and one Nemotron request was in flight when scope was set."
+  },
+  "private_raw_artifacts": [
+    "/private/tmp/chapter-locator-telemetry/locator-prompt-ablation-20260927T161352Z/",
+    "/private/tmp/chapter-locator-telemetry/locator-prompt-ablation-20260927T163652Z/"
+  ],
+  "operational_note": "An initial local harness initialization error occurred before any provider request; six conservative route reservations per Orca route were recorded without upstream calls. These reduce the local daily route ledger until reset but did not consume provider quota. Subsequent paired requests completed normally."
+}
