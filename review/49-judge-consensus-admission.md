@@ -372,10 +372,11 @@ inside the same cap (target: at most 10% of calls).
 ## 800-meeting reconciliation (2026-10-02)
 
 The [capacity follow-up](llm-800-meeting-capacity.md) scales the tables below to 800 meetings/day,
-updates locator accounting to one pinned DS4/Kimi model, and distinguishes the current unbatched
-panel from this future packed consensus design. Across-episode packing projects about 65.6k rows,
-or 69.3k-72.6k after a rough correction for Gemma's actual 10k/8k usable packet sizes. Per-episode
-packing projects about 88.1k, too close to the 90k safe budget for a throughput commitment.
+updates locator accounting to one pinned DS4/Kimi model, includes claim-time deletion of
+extra model indexes omitted from the table below, and distinguishes the current unbatched
+panel from this future packed consensus design. Across-episode packing projects about 71.9k rows,
+or 75.9k-79.4k after a rough correction for Gemma's actual 10k/8k usable packet sizes. Per-episode
+packing projects about 95.1k, exceeding the 90k safe budget.
 These are design projections, not completed production throughput; P1-P7 stay gated on shadow
 results. The offline calculator is `scripts/llm_capacity_plan.py --consensus packed`.
 

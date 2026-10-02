@@ -28,7 +28,8 @@ def project(
     """Project job/index demand and approximate billed lifecycle rows from the saved benchmark.
 
     Twenty rows is the benchmark's one-model, first-try lifecycle at four jobs/bundle. Each
-    additional indexed model adds two ingress rows. Council moments actually index seven models;
+    Additional indexed models add two ingress rows and two claim-time delete rows each.
+    Council moments actually index seven models;
     using the configured nine-model allowlist is conservative. Twenty-four rows per extra
     attempt is a planning allowance, not a proof for arbitrary repeated retries or new repairs.
     """
@@ -58,7 +59,7 @@ def project(
                 "jobs": jobs,
                 "ingress_units_per_job": units,
                 "ingress_units": jobs * units,
-                "first_try_rows_estimate": jobs * (20 + 2 * (indexes - 1)),
+                "first_try_rows_estimate": jobs * (20 + 4 * (indexes - 1)),
                 "configured_daily_job_ceiling": lane["daily_write_units"] // units,
             }
         )
@@ -104,7 +105,8 @@ def consensus_plan(*, meetings: int = 800, packed: bool = True) -> dict:
     """Scale review/49's measured-cohort design; P1-P7 are not deployed by this calculator.
 
     Jobs include the design's probe/contested allowances. Rows/job include its separate three-row
-    retry allowance. Locator now indexes one model (23 rows with allowance), rather than six (33).
+    retry allowance. Locator now indexes one model (23 rows with allowance), rather than six.
+    Count claim-time model-index deletion omitted in review/49 as well as enqueue indexes.
     The four-model moments pool and two-model sibling/adjudicator pools are proposed policy.
     """
     targets = (
@@ -124,8 +126,8 @@ def consensus_plan(*, meetings: int = 800, packed: bool = True) -> dict:
                 "purpose": purpose,
                 "jobs": jobs,
                 "indexes": indexes,
-                "rows_per_job_with_allowance": 23 + 2 * (indexes - 1),
-                "rows": jobs * (23 + 2 * (indexes - 1)),
+                "rows_per_job_with_allowance": 23 + 4 * (indexes - 1),
+                "rows": jobs * (23 + 4 * (indexes - 1)),
                 "ingress_units": jobs * (3 + indexes),
             }
         )

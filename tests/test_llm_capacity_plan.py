@@ -8,7 +8,7 @@ def test_full_plan_is_not_800_jobs_per_lane():
     assert report["new_jobs"] == 20800
     assert report["provider_attempts"] == 22880
     assert report["ingress_units"] == 94400
-    assert report["billed_rows_estimate"] == 489760
+    assert report["billed_rows_estimate"] == 512160
     assert not report["fits_shared_caps"]
     judge = next(row for row in report["lanes"] if row["purpose"] == "r6-judge")
     assert judge["jobs"] == 12000
@@ -42,10 +42,10 @@ def test_consensus_packing_makes_the_800_target_fit_on_paper():
     packed = consensus_plan()
     episode = consensus_plan(packed=False)
     assert packed["new_jobs"] == 2473
-    assert packed["billed_rows_estimate"] == 65631
+    assert packed["billed_rows_estimate"] == 71943
     assert packed["ingress_units"] == 13048
     assert episode["new_jobs"] == 3415
-    assert episode["billed_rows_estimate"] == 88055
+    assert episode["billed_rows_estimate"] == 95125
     assert episode["ingress_units"] == 17195
     assert packed["proposed_not_deployed"]
     locator = next(row for row in packed["lanes"] if row["purpose"] == "chapter-locator")

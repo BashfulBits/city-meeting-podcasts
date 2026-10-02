@@ -54,10 +54,12 @@ provider attempts. Optional research work is excluded, so including it only adds
 | **Total** | **26** | **20,800** | | **94,400** |
 
 With 10% extra attempts: 22,880 provider calls; at full five-job bundles, at least 4,576 bundles.
-The one-model benchmark is about 20 billed lifecycle rows/job at four jobs/bundle, plus two
-extra ingress rows for each additional model index. That estimates 438,400 first-try rows,
+The one-model benchmark is about 20 billed lifecycle rows/job at four jobs/bundle, plus four
+rows per additional model index: two at enqueue and two when claim deletes the queue indexes
+(`coordinator.js` claim path). The latter was missing from review/49. This estimates 460,800
+first-try rows,
 49,920 retry rows (24 per extra attempt as a planning allowance), and 1,440 idle cron rows:
-**489,760 rows/day**. Arbitrary retry storms, supersedes and cleanup can cost more.
+**512,160 rows/day**. Arbitrary retry storms, supersedes and cleanup can cost more.
 
 The shared limits remain 4,000 new jobs, 25,600 enqueue units, 1,400 bundles, and 90,000 safe
 account-wide billed rows/day. Raising individual lane caps cannot fund this scenario. The
@@ -74,33 +76,35 @@ All global row, queue, provider, concurrency and free-only controls remain autho
 
 Scale review/49's 500-meeting table by 1.6, rounding each lane upward. Its job quantities already
 contain probe/contested allowances; rows/job include a separate three-row retry allowance.
-Update locator from six indexed models to one size-selected model (33 to 23 rows/job including
-that allowance). Retire prelabeler, shadow and legacy panel only after P7's migration gates.
+Update locator from six indexed models to one size-selected model. Also correct review/49's claim cost for deletion of each extra model index: two rows
+per additional model, beyond its two enqueue rows. Pooled three-model jobs thus project 31 rows,
+pinned jobs 23, four-model jobs 35, and two-model jobs 27, including the retry allowance. Retire prelabeler, shadow and legacy panel only after P7's migration gates.
 The four-model moments pool and two-model sibling/adjudicator pools below are proposed, not live.
 
 | Lane | Per-episode packing jobs/day | Across-episode packing jobs/day | Across-episode rows/day |
 |---|---:|---:|---:|
-| Agenda | 480 | 480 | 12,960 |
+| Agenda | 480 | 480 | 14,880 |
 | Locator, pinned DS4/Kimi | 480 | 480 | 11,040 |
-| Tagger | 661 | 661 | 17,847 |
-| Moments, trimmed four-model pool | 104 | 104 | 3,016 |
+| Tagger | 661 | 661 | 20,491 |
+| Moments, trimmed four-model pool | 104 | 104 | 3,640 |
 | JEV anchor judge | 749 | 186 | 4,278 |
-| Independent sibling judge | 749 | 370 | 9,250 |
-| Packed adjudicator | 192 | 192 | 4,800 |
-| **Jobs / lifecycle rows** | **3,415** | **2,473** | **63,191** |
+| Independent sibling judge | 749 | 370 | 9,990 |
+| Packed adjudicator | 192 | 192 | 5,184 |
+| **Jobs / lifecycle rows** | **3,415** | **2,473** | **69,503** |
 | Idle cron + operational allowance | | | 2,440 |
-| **Total billed rows/day** | **88,055** | | **65,631** |
+| **Total billed rows/day** | **95,125** | | **71,943** |
 
 Enqueue demand is 17,195 units for per-episode packing versus 13,048 across episodes.
 A 20% lane headroom allowance makes the latter 15,658 units, below today's 25,600 envelope.
-Do not promise 800/day on the per-episode plan: 88,055 leaves only 1,945 safe rows.
-Across-episode packing leaves about 24,369 safe rows before other account usage and deviations.
+The per-episode plan does not fit: 95,125 exceeds the 90,000 safe budget.
+Across-episode packing leaves about 18,057 safe rows before other account usage and deviations.
 
 Important packing sensitivity: review/49 assumes roughly 14k sibling packets; today's two
 high-quota Gemma routes have a 10k input ceiling. A rough proportional correction increases
-370 sibling jobs to `ceil(370*14/10)=518`, adding 3,700 rows: about **69,331 rows/day**.
-At an 8k usable packet budget it becomes 648 sibling jobs and about **72,581 rows/day**.
-This is a sensitivity estimate, not evidence that uniform token density or quality holds.
+370 sibling jobs to `ceil(370*14/10)=518`, adding 3,996 rows: about **75,939 rows/day**.
+At an 8k usable packet budget it becomes 648 sibling jobs and about **79,449 rows/day**.
+These projections need a refreshed pooled-job workerd benchmark; the existing benchmark uses
+one-model lifecycle jobs. This is a sensitivity estimate, not evidence that uniform token density or quality holds.
 Packing must enforce the real route ceiling, learned token ratio and output reserve.
 
 During P1 shadow, old and new judging coexist. That costs more than the steady-state table;
