@@ -696,9 +696,11 @@ creation of duplicate district/program/body feeds or assignment to the wrong own
 Reviewed `member_names` and extended identity labels hold ambiguous cases for manual confirmation;
 they never broaden selectors or authorize ownership on their own. Non-TIF ownership requires an
 exact reviewed identity. TIF family markers retain their existing ownership rule, but unreviewed
-Council, training, announcement, ceremony and other topic-bearing labels require identity evidence.
+listed Council, training, announcement, ceremony and related topic tokens require identity evidence.
 Unknown public hearings/briefings are held instead of recreating approved aggregate families. This
-applies to any city with a configured policy. No dispatch/model changes are part of these guards;
+applies to any city with a configured policy. The retained TIF marker rule is not general semantic
+verification: unseen topic wording can still pass, and broad selector replay/new-match monitoring
+remains P2 work. No dispatch/model changes are part of these guards;
 the wider execution/model design remains review/51 work.
 
 Anything failing is dropped with a reason and surfaced in the report rather than applied. The
