@@ -274,6 +274,14 @@ Continue the approved A–F inventory in city/family PRs of at most five decisio
 source/agenda evidence, exact positive/negative selector replay, remedy guard changes and cases
 under `evals/remedy/`. G is investigation-first; no automatic catch-all feed is approved.
 
+P0 guard prerequisite extends existing feed-level `remedy_policy` metadata with optional exact
+`identity_names` and the approved `pid`, `bond`, `charter`, `redistricting`, `public_input` and
+`public_briefings` aggregate families alongside `tif`. Identity-only named-body policies omit the
+family. Only reviewed exact identities authorize non-TIF ownership; family/member clues hold new
+labels for evidence. Topic-bearing TIF labels also require reviewed identity. These local guards
+are implemented in `citypods/config.py` and `citypods/audit_remedy.py` with their existing tests;
+they do not implement P2's persistent decision ledger or enable model admission/automatic merging.
+
 The census used for P0 must include both persisted records and all available provider observations,
 with explicitly recorded gaps. Restore historical sources separately where provider migrations
 changed namespaces; no new cross-provider UID joins without their reviewed evidence. Count
