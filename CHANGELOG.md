@@ -42,7 +42,6 @@ Phase R (Research-Tool Surface)._
   subprocess kill/restart test uses the production spawn path instead of forking from a thread.
   No production behavior or stored-artifact invalidation changed.
 
-
 - **Unexpected-body remedy design (review/51, proposed).** Complete-archive city onboarding,
   traceable evaluation seeds, independent reasoning review and persistent rejection/exclusion
   decisions are specified before implementation. Routine review targets 5–8 small PRs weekly
