@@ -1,0 +1,34 @@
+# City-wide TIF subscription policy; see review/tif-coverage-2026-10.md.
+# Boundary globs avoid matching multifamily or Beautiful.
+slug: dallas-tx-tif
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: TIF *
+  body_any:
+    - '* TIF'
+    - '* TIF *'
+    - tax increment
+    - reinvestment zone
+    - TIRZ *
+    - '* TIRZ'
+    - '* TIRZ *'
+  body_includes:
+    - provider_guid: '206541'
+      body: Dallas Joint Meeting Board of Directors City Center, Downtown Connection & DDA
+aliases:
+  - dallas-tx-fort-worth-avenue-tif-district-board-of-directors
+  - dallas-tx-mall-area-redevelopment-tif-district-board-of-directors
+  - dallas-tx-maple-mockingbird-tif-district-board-of-directors
+  - dallas-tx-reinvestment-zone-06-board-farmers-market
+  - dallas-tx-reinvestment-zone-10-board-southwestern-medical
+  - dallas-tx-reinvestment-zone-19-cypress-waters-tif
+  - dallas-tx-skillman-corridor-tif-board-of-directors
+remedy_policy:
+  aggregate_family: tif
+podcast_title: 'Dallas: TIF Meetings'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Public recordings of tax increment financing (TIF) district boards, joint TIF
+  meetings, and TIF oversight bodies. District names remain in official episode titles.

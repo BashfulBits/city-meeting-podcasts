@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Dallas and Fort Worth TIF aggregates (proposed).** Nine district feeds migrate through
+  aliases to one TIF subscription per city; boundary selectors cover historical variants without
+  matching multifamily/Beautiful. Archive records, episode UIDs and pipeline versions are unchanged.
+  Broader eligibility may schedule historical work under existing budgets; no forced backfill.
+  
 - **CI Renovate validator pinned to 44.125.1.** The unversioned npm install began resolving
   Renovate 44.132.1, whose `@yarnpkg/core@4.9.2` dependency publishes an npm-incompatible Yarn
   `patch:` URL. The verified pin restores configuration validation on Node 24; Renovate tracks

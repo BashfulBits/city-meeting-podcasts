@@ -77,6 +77,13 @@ GitHub development issues are cut just-in-time only for remaining Phase-H work. 
 signals and individual city requests may remain open as operational inputs; later-phase initiatives
 live here until their series becomes active.
 
+### Maintainer-directed feed taxonomy simplification (2026-10-02)
+
+Aggregate-only TIF subscriptions for Dallas and Fort Worth are authorized, followed by remedy
+policy enforcement. [Coverage and migration evidence](tif-coverage-2026-10.md) records the first
+implementation proposal. Remaining historical feed categories require maintainer approval;
+review/51 will design the wider remedy improvements before future implementation.
+
 ### Active reliability follow-up: interactive remedy (#1231)
 
 Maintainer-directed, 2026-09-05; implementation in progress: direct-only, same-Actions-run remedy

@@ -639,6 +639,11 @@ the main native/gateway ceilings and intentionally does not replace the per-rout
 
 ### Unexpected-Body Remediation
 
+Dallas and Fort Worth TIF boards use one aggregate subscription per city. Former district slugs
+move through the existing alias feed stubs and page redirects. Boundary selectors and one reviewed
+Dallas joint-meeting inclusion cover historical naming variants; source namespaces and episode
+identities are unchanged. See [TIF coverage policy](review/tif-coverage-2026-10.md).
+
 The daily audit's `unexpected-body` check reports provider labels no feed selector covers.
 Resolving one is a taxonomy decision, and the repository applies a fixed three-way rule:
 
