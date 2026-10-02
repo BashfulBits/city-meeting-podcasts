@@ -11,10 +11,13 @@ scale; lower number = sooner.
 > The backlog opens for outside contribution after **1.0** (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 Maintainer-directed follow-up (2026-10-02): Dallas/Fort Worth aggregate TIF feed migration and
-remedy policy enforcement; residual backlog categories need approval. See
+remedy policy enforcement shipped in #1973/#1974; residual categories A–F are approved and
+await evidence-backed implementation. See
 [coverage policy](review/tif-coverage-2026-10.md) and review/11.
-[review/51](review/51-unexpected-body-remedy-flow.md) proposes the wider L2 remedy improvement
-sequence; implementation awaits final approval, project evaluations and development-ready specs.
+[review/51](review/51-unexpected-body-remedy-flow.md) records the approved improvement structure:
+P1 evaluation/physical-route admission is L3; P2–P5 have predecessor-gated build contracts.
+Alias qualification is narrow and reviewed; incomplete archives require documented exceptions;
+TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues.
 
 ## Recently shipped (summary)
 Timeline/EDL foundation; **#52** append-only content permanence; audio-cleanup band (**#22** silence

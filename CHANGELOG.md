@@ -33,7 +33,11 @@ Phase R (Research-Tool Surface)._
   subprocess kill/restart test uses the production spawn path instead of forking from a thread.
   No production behavior or stored-artifact invalidation changed.
 
-- **Unexpected-body remedy design (review/51, proposed).** Complete-archive city onboarding,
+- **Unexpected-body remedy specification (review/51).** Approved phase contracts make P1
+  evaluation/physical-route admission development-ready; P2–P5 are predecessor-gated. Narrow
+  alias-type qualification replaces the statistical gate; incomplete archives require reviewed
+  coverage exceptions, and city TIF aggregates are the future-city default. Remedy/onboarding
+  stay outside route leagues. Complete-archive city onboarding,
   traceable evaluation seeds, independent reasoning review and persistent rejection/exclusion
   decisions are specified before implementation. Routine review targets 5–8 small PRs weekly
   and about twelve active directional issues. No model admission or auto-merge is enabled.
