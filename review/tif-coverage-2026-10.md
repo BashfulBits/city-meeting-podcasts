@@ -71,5 +71,10 @@ The fixture was bootstrapped from marker candidates; every positive label and th
 exception were inspected. It is a selector regression set, **not** an independent model holdout.
 Model evaluations require separate input-only manifests and adjudicated truth under `evals/`.
 
-The second PR must expose this policy to remedy and prevent district feed recreation even when an
+The dependent remedy-policy implementation exposes this policy to remedy and prevent district feed recreation even when an
 LLM proposes it. Changes to the remaining historical backlog require category approval first.
+
+The guard also receives reviewed `member_names` for district-name clues without TIF markers.
+These clues only hold proposals for review; they never add a recording or broaden a selector.
+Unknown policies, malformed member lists and misspelled keys fail configuration loading.
+

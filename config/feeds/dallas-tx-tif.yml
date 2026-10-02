@@ -27,6 +27,21 @@ aliases:
   - dallas-tx-skillman-corridor-tif-board-of-directors
 remedy_policy:
   aggregate_family: tif
+  member_names:
+    - Downtown Connection
+    - Grand Park South
+    - Cypress Waters
+    - Oak Cliff Gateway
+    - Design District
+    - Deep Ellum
+    - Davis Garden
+    - Fort Worth Avenue
+    - Farmers Market
+    - Mall Area Redevelopment
+    - Maple Mockingbird
+    - Skillman Corridor
+    - Southwestern Medical
+    - Sports Arena
 podcast_title: 'Dallas: TIF Meetings'
 podcast_author: City of Dallas, TX
 podcast_email: ''

@@ -592,6 +592,12 @@ Phase R (Research-Tool Surface)._
 
 ### Fixed
 
+- **Unexpected-body TIF policy enforcement (proposed).** Remedy prompts receive each source
+  aggregate policy, and local validation blocks district recreation and wrong feed ownership.
+  Unmarked district-name clues require manual identity confirmation. The remedy recipe changes
+  to `direct-v5-aggregate-policy`; remedy already bypasses result caches, so no stored catalog
+  artifacts are invalidated and no audio/enrichment backfill is triggered.
+
 - **Direct LiteLLM calls now have a bounded 720 s default timeout** (`citypods/compute/llm.py`,
   `tests/test_compute_llm.py`, `LLM_SETUP.md`). `LLMBackendConfig.timeout_seconds` (30 s,
   `LLM_TIMEOUT_SECONDS`) only covered HTTP calls to the dispatch Worker; direct provider calls
