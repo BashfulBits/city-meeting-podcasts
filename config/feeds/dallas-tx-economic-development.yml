@@ -5,8 +5,6 @@ source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Economic Development"
   body_includes:
-    - provider_guid: "202470"
-      body: "Reinvestment Zone 5 City Center"
     - provider_guid: "205545"
       body: "Small Business Resource Virtual Town Hall Meeting"
     - provider_guid: "203327"

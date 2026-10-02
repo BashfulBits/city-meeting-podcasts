@@ -10,6 +10,10 @@ scale; lower number = sooner.
 > full design + the exhaustive backlog in **[`review/11`](review/11-technical-design-roadmap.md)**.
 > The backlog opens for outside contribution after **1.0** (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
+Maintainer-directed follow-up (2026-10-02): Dallas/Fort Worth aggregate TIF feed migration and
+remedy policy enforcement; residual backlog categories need approval. See
+[coverage policy](review/tif-coverage-2026-10.md) and review/11.
+
 ## Recently shipped (summary)
 Timeline/EDL foundation; **#52** append-only content permanence; audio-cleanup band (**#22** silence
 trim, **#21** loudness, **#23** host-all, **#122** concat, clips); **#1/#110** ASR transcripts (reuse

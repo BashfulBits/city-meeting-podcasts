@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Dallas and Fort Worth TIF aggregates (proposed).** Nine district feeds migrate through
+  aliases to one TIF subscription per city; boundary selectors cover historical variants without
+  matching multifamily/Beautiful. Archive records, episode UIDs and pipeline versions are unchanged.
+  Broader eligibility may schedule historical work under existing budgets; no forced backfill.
+
 - **Per-verb LLM backlog trends (GH#1968, review/50 PR1).**
   `python -m citypods.ops.backlog_trend` reads scoped `run_events` locally or restores selected
   recent event keys from storage. Six verbs report working backlog, daily trend, throughput,
