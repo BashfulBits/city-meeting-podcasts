@@ -27,7 +27,7 @@ import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, cast
 from urllib.parse import urlencode, urljoin, urlsplit
@@ -661,6 +661,13 @@ def _messages(job: InferenceJob) -> list[dict[str, Any]]:
 
 def _lane_reasoning_level(job: InferenceJob, route: Any) -> str | None:
     """The reasoning level the job's lane sets for this route's model, if any."""
+    explicit = job.inputs.get("reasoning_level")
+    if explicit is not None:
+        if explicit not in {"off", "minimal", "low", "medium", "high", "max"}:
+            raise ValueError("unsupported explicit reasoning_level")
+        if not route_reasoning_controls(route, explicit):
+            raise ValueError("route does not support explicit reasoning_level")
+        return explicit
     policy = job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
     purpose = getattr(policy, "purpose", "") or ""
     if not purpose:
@@ -671,6 +678,23 @@ def _lane_reasoning_level(job: InferenceJob, route: Any) -> str | None:
     if lane is None:
         return None
     return lane.reasoning_levels.get(canonical_model(getattr(route, "model", "") or ""))
+
+
+def _direct_result_provenance(result: JobResult, job: InferenceJob, route: Any) -> JobResult:
+    if route is None:
+        return result
+    controls = route_request_params(route)
+    level = _lane_reasoning_level(job, route)
+    controls.update(route_reasoning_controls(route, level))
+    return replace(
+        result,
+        route_id=route.route_id or None,
+        upstream_model=route.upstream_model or None,
+        reasoning_level=level,
+        request_params_hash=hashlib.sha256(
+            json.dumps(controls, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest(),
+    )
 
 
 def _job_timeout(job: InferenceJob) -> float | None:
@@ -1298,6 +1322,10 @@ class LiteLLMBackend(Backend):
             return self._run_without_policy(job, structured)
         if not isinstance(policy, LLMRequestPolicy):
             raise ValueError("LLM inputs.llm_policy must be an LLMRequestPolicy")
+        if policy.allowed_route_ids is not None and (
+            policy.queue_only or policy.allow_dispatch_overflow or not policy.require_direct
+        ):
+            raise ValueError("physical route allowlist requires direct-only requests")
         if self.storage is None or (
             not policy.queue_only and not getattr(self.storage, "cas_capable", False)
         ):
@@ -1588,6 +1616,7 @@ class LiteLLMBackend(Backend):
             _cleanup()
             raise
 
+        result = _direct_result_provenance(result, job, route)
         input_rate, output_rate, _ = route.pricing.rates_at(datetime.now(UTC))
         actual_tokens, actual_cost = _priced_actual(
             result.output,
@@ -1595,12 +1624,7 @@ class LiteLLMBackend(Backend):
             output_per_token=output_rate,
         )
         if result.model != resolved_model:
-            result = JobResult(
-                task=result.task,
-                recipe_hash=result.recipe_hash,
-                output=result.output,
-                model=resolved_model,
-            )
+            result = replace(result, model=resolved_model)
         settle_route_reservation(
             self.storage,
             owner,
@@ -1748,20 +1772,19 @@ class LiteLLMBackend(Backend):
                 result = self._run_structured_direct(
                     job, structured[1], resolved_model=direct_model, route=route
                 )
-                return JobResult(
-                    task=result.task,
-                    recipe_hash=result.recipe_hash,
-                    output=result.output,
-                    model=logical_model,
-                )
+                return _direct_result_provenance(replace(result, model=logical_model), job, route)
             response = self._completion_fn()(
                 **self._payload(job, resolved_model=direct_model, route=route, direct=True)
             )
-            return JobResult(
-                task=job.task,
-                recipe_hash=job.recipe_hash,
-                output=_response_mapping(response),
-                model=logical_model,
+            return _direct_result_provenance(
+                JobResult(
+                    task=job.task,
+                    recipe_hash=job.recipe_hash,
+                    output=_response_mapping(response),
+                    model=logical_model,
+                ),
+                job,
+                route,
             )
 
         # Dispatch mode: the v2 Worker owns provider access (mode validation guarantees its URL).
@@ -1799,6 +1822,12 @@ class LiteLLMBackend(Backend):
         if not jobs:
             return []
 
+        if any(
+            isinstance(job.inputs.get("llm_policy"), LLMRequestPolicy)
+            and job.inputs["llm_policy"].allowed_route_ids is not None
+            for job in jobs
+        ):
+            raise ValueError("dispatch cannot enforce physical route allowlists")
         enqueue_started = time.monotonic()
         telemetry_outcomes: list[tuple[InferenceJob, str, str | None]] = []
 

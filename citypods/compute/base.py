@@ -79,6 +79,10 @@ class JobResult:
     recipe_hash: str
     output: Any
     model: str | None = None
+    route_id: str | None = None
+    upstream_model: str | None = None
+    reasoning_level: str | None = None
+    request_params_hash: str | None = None
 
 
 @dataclass(frozen=True)

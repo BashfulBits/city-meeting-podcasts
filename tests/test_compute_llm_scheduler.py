@@ -1014,3 +1014,49 @@ def test_select_route_compares_ceilings_in_the_routes_tokenizer_units():
     rejected = pick(10_500)
     assert rejected.route is None
     assert {reason for _, reason in rejected.rejected} == {"hard input ceiling"}
+
+
+def test_physical_allowlist_precedes_overflow_and_also_serves(monkeypatch):
+    weak = LLMRoute(
+        model="weak",
+        route_id="weak-route",
+        also_serves=("strong",),
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(),
+    )
+    monkeypatch.setattr(llm_scheduler, "MODEL_ROUTING", {"strong": ("weak",)})
+    policy = LLMRequestPolicy(allowed_models=("strong",), allowed_route_ids=("strong-route",))
+    result = select_route(
+        policy,
+        routes={"weak-route": weak},
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1,
+        now=NOW,
+    )
+    assert result.route is None
+    assert result.rejected == (("weak", "physical route allowlist gate"),)
+    assert result.retry_at is None
+
+
+def test_physical_allowlist_none_and_empty_semantics():
+    route = LLMRoute(
+        model="test",
+        route_id="test-route",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(),
+    )
+    for allowed, expected in ((None, route), ((), None), (("test-route",), route)):
+        result = select_route(
+            LLMRequestPolicy(allowed_route_ids=allowed),
+            routes={"test-route": route},
+            ledger=LLMBudget(),
+            available_transports=DIRECT,
+            estimated_tokens=1,
+            now=NOW,
+        )
+        assert result.route == expected

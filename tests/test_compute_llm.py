@@ -389,6 +389,8 @@ def test_upstream_capacity_429_retries_sibling_route_without_deferring():
     assert isinstance(result, JobResult)
     assert result.output["choices"][0]["message"]["content"] == "ok"
     assert call_count == 2
+    assert result.route_id == "gemini_3_flash_preview_secondary"
+    assert result.upstream_model == ROUTE_REGISTRY[result.route_id].upstream_model
 
     budget, _ = load_llm_budget_cas(storage)
     ledger1 = budget.routes["gemini_3_flash_preview_primary"]
@@ -1521,3 +1523,71 @@ def test_a_rebuilt_deferred_job_keeps_its_lane_timeout_and_output_mode(monkeypat
     assert seen["inputs"]["max_tokens"] == 16_384
     assert seen["inputs"]["timeout"] == 45.0
     assert seen["inputs"]["max_tokens_mode"] == "route_max"
+
+
+def test_immediate_result_records_physical_route_and_explicit_controls(monkeypatch):
+    from dataclasses import replace
+
+    import citypods.compute.llm as llm_module
+    import citypods.compute.llm_scheduler as scheduler
+    from citypods.remedy_evaluation import canonical_hash
+
+    route = replace(
+        next(iter(ROUTE_REGISTRY.values())),
+        route_id="mock-high",
+        upstream_model="upstream-high",
+        provider_rpm=None,
+        provider_tpm=None,
+        provider_concurrency=None,
+        reasoning_controls_json='{"high":{"reasoning_effort":"high"}}',
+    )
+    monkeypatch.setattr(scheduler, "ROUTE_REGISTRY", {route.route_id: route})
+    monkeypatch.setattr(llm_module, "ROUTE_REGISTRY", {route.route_id: route})
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return {"model": route.upstream_model, "choices": [{"message": {"content": "done"}}]}
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model=route.model), completion=completion, storage=MemStorage()
+    )
+    policy = LLMRequestPolicy(
+        allowed_models=(route.model,),
+        allowed_route_ids=(route.route_id,),
+        require_direct=True,
+        purpose="audit-remedy",
+        deadline_at=datetime.now(UTC) + timedelta(seconds=10),
+    )
+    result = backend.run_immediate(
+        job(
+            messages=[{"role": "user", "content": "evidence"}],
+            llm_policy=policy,
+            reasoning_level="high",
+        )
+    )
+    assert result.route_id == route.route_id
+    assert result.upstream_model == "upstream-high"
+    assert result.reasoning_level == "high"
+    params = json.loads(route.request_params_json or "{}") | {"reasoning_effort": "high"}
+    assert result.request_params_hash == canonical_hash(params)
+    assert calls[0]["extra_body"] == params
+    assert result.model == route.model
+
+
+def test_explicit_unsupported_effort_never_calls_provider():
+    backend = LiteLLMBackend(completion=lambda **kwargs: pytest.fail("unsupported effort called"))
+    route = next(iter(ROUTE_REGISTRY.values()))
+    with pytest.raises(ValueError, match="does not support"):
+        backend._provider_options(job(reasoning_level="high"), route.model, route=route)
+
+
+def test_dispatch_allowlist_rejected_before_storage_or_calls():
+    backend = LiteLLMBackend()
+    policy = LLMRequestPolicy(allowed_route_ids=("physical",), queue_only=True)
+    with pytest.raises(ValueError, match="direct-only"):
+        backend.run_inference(
+            job(messages=[{"role": "user", "content": "evidence"}], llm_policy=policy)
+        )
+    with pytest.raises(ValueError, match="dispatch cannot"):
+        backend.enqueue_batch([job(llm_policy=policy)])

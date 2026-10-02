@@ -402,6 +402,9 @@ def select_route(
 
     for route_key, route in sorted(routes.items()):
         model = route.model
+        if policy.allowed_route_ids is not None and route.route_id not in policy.allowed_route_ids:
+            rejected.append((model, "physical route allowlist gate"))
+            continue
         if not any(t in available_transports for t in route.transports):
             rejected.append((model, "transport gate"))
             continue
