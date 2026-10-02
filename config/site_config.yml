@@ -157,8 +157,8 @@ llm_lanes:
       - "tencent/hy3"
       - "gemini/gemini-3.1-flash-lite"
     backup_after_attempts: 12
-    # Target 800 jobs/day: 6 ingress write units per pooled job, or 4,800 units. The shared daily
-    # guard remains authoritative if other lanes consume the available headroom first.
+    # 800 eligible meetings x one agenda job x six ingress units = 4,800 units/day.
+    # Demand ceiling only: shared job/row guards and provider capacity remain authoritative.
     max_dispatches_per_run: 67
     reserved_write_units: 4800
     daily_write_units: 4800
@@ -191,17 +191,18 @@ llm_lanes:
       - "deepseek/deepseek-v4-flash"
     max_dispatches_per_run: 267
     reserved_write_units: 1860
-    # Target 800 jobs/day at 6 units/job. Actual throughput remains subject to the shared guard.
-    daily_write_units: 4800
+    # Planning allowance: 800 meetings x two chapter batches x six units = 9,600.
+    # The per-run cap counts episode reservations, while each episode can enqueue many batches.
+    daily_write_units: 9600
   topic-tags:prelabeler:
     # Mirrors the legacy `tagging.prelabeler.model`. Its own budget, NOT a share of the
     # tagger's -- this split is exactly what the old `topic-tags` key failed to express.
     models: ["google/gemma-4-31b-it"]
     max_dispatches_per_run: 267
     reserved_write_units: 1860
-    # Target 800 batch jobs/day, not necessarily 800 meetings: large episodes may split into
-    # several requests to fit Google AI Studio's 10k-token Gemma ceiling. The shared guard applies.
-    daily_write_units: 3200
+    # Planning allowance: 800 meetings x three candidate batches x four units = 9,600.
+    # Batch count depends on candidates and the 10k-token route ceiling; not a measured mean.
+    daily_write_units: 9600
   topic-tags:prelabeler-shadow:
     # SHADOW evaluator (2026-09-23): gemma-4-26b-a4b-it runs the identical prelabeler prompt on the
     # same candidates as production, on its own free Gemini quota (a separate per-model pool from
@@ -213,8 +214,9 @@ llm_lanes:
     models: ["google/gemma-4-26b-a4b-it"]
     max_dispatches_per_run: 267
     reserved_write_units: 0
-    # Target 800 shadow jobs/day at four ingress units/job; shared headroom remains limiting.
-    daily_write_units: 3200
+    # Same three-batch planning allowance as production: 2,400 jobs / 9,600 units.
+    # Optional calibration work draws shared headroom; this is not reserved capacity.
+    daily_write_units: 9600
   r6-moments:
     # Mirrors the legacy `moments.llm_models`; the stage still filters this allowlist by
     # meeting family before dispatching. The two NVIDIA free routes at the end mirror
@@ -241,9 +243,11 @@ llm_lanes:
       - "gemini/gemini-3.1-flash-lite"
       - "deepseek/deepseek-v4-flash"
       - "moonshotai/kimi-k3"
-    max_dispatches_per_run: 90
+    # Nine passes: ceil(800 / 9). The runner sums this and the judge cap into one R6 counter.
+    # Daily lane/global/row gates still bound actual admission.
+    max_dispatches_per_run: 89
     reserved_write_units: 916
-    # Target 800 meeting jobs/day at 12 units/job (3 + 9 pooled models); shared guard applies.
+    # 800 eligible meeting jobs x at most twelve ingress units; council jobs index seven models.
     daily_write_units: 9600
   r6-judge:
     # A PANEL, not a pool: MomentJudgeStage sends each candidate to every judge pinned to that
@@ -254,11 +258,15 @@ llm_lanes:
       - "qwen/qwen3.8-27b"
       - "gemini/gemini-3.6-flash"
       - "google/gemma-4-26b-a4b-it"
-    max_dispatches_per_run: 90
+    dispatch_shape: per_model
+    # Free global ingress permits at most 4,000 total jobs; ceil(4,000 / 9) judge slots/pass.
+    # The runner adds this to extraction slots; this allowance is not reserved capacity.
+    max_dispatches_per_run: 445
     reserved_write_units: 650
-    # Target 800 candidate/judge jobs/day at 6 units/job. This is not 800 meetings: each candidate
-    # is evaluated by every configured judge, so one meeting can consume multiple jobs.
-    daily_write_units: 4800
+    # Desired demand is 800 x five quotes x three judges x four units = 48,000.
+    # Cap at 4,000 pinned jobs under the shared free envelope, not 800 fully judged meetings.
+    # Gemini 3.6 also has only forty configured free calls/day. See the capacity analysis.
+    daily_write_units: 16000
   # --- Research lanes (bounded, manual or low-cadence; must not starve production) ---------
   tournament:tag:
     # Replaces citypods/tournament.py:MODELS. These are CONTESTANTS being compared, so the lane

@@ -485,12 +485,18 @@ writers can spend the 10,000-row reserve. There is no working daily lease cap
 backstop), so a cheap day dispatches until the safe projection closes admission. Ingress is bounded
 by a shared daily quota (`MAX_JOBS_PER_UTC_DAY` 4,000,
 `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 25,600) and a pending cap (`MAX_QUEUED_JOBS` 20,000).
-The 4,000-job/25,600-unit admission target funds 800 meetings through five core one-job-per-meeting
-tasks (agenda, locator, tagger, prelabeler, moments). Per-lane ceilings are independently sized to
-800 jobs/day, but this is not a same-day completion guarantee: live row headroom can defer ingress
-to protect dispatch, while prelabel batches, shadow evaluation, and per-candidate judges can use
-multiple jobs for one meeting and share the global budget. At most two billed ingress rows per
-unit means 51,200 rows at the configured maximum, below the 90,000 enqueue stop. These tunables are
+These are shared free-tier safety ceilings, not capacity for 800 fully enriched meetings.
+Tagging and prelabeling can split meetings into batches; moment judging submits one pinned job
+per candidate per judge. The enabled shadow prelabeler also consumes batches. Lane ceilings now
+express an explicit planning scenario (two tag batches, three prelabel batches, five quotes and
+three judges per eligible meeting); the producer's tag caps count episodes, while R6 shares an
+extraction/judge job counter. See [the capacity analysis](review/llm-800-meeting-capacity.md) and
+`scripts/llm_capacity_plan.py` for eligibility, retries, provider bottlenecks and lifecycle rows.
+The planning scenario exceeds both the shared capacity and free Gemini judge quota. The model
+policy or platform budget must change before 800 fully enriched meetings/day is achievable.
+At most two billed ingress rows per unit means 51,200 rows for enqueue alone; dispatch, retries
+and retirement still need additional headroom under the 90,000 account-safe stop.
+These tunables are
 compiled from `config/dispatch_tuning.yml`
 into `src/dispatch_tuning.json` (a same-named Cloudflare variable still overrides), not declared as
 Worker variables, to stay under Workers Free's 64 variable-plus-secret limit.

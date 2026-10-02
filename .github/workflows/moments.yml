@@ -5,9 +5,9 @@ name: R6 meeting moments
 # extraction and judging from their durable records.
 on:
   schedule:
-    # Each pass shares one 90-dispatch budget between moment extraction and judging. Nine passes
-    # allow up to 810 combined jobs; per-lane daily write-unit ceilings and the shared Worker
-    # budget remain the hard stops. Extraction and candidate-level judge jobs share this pass cap.
+    # One shared counter sums 89 extraction and 445 judge slots per pass (nine passes/day).
+    # Full planning demand is 800 extraction + 12,000 panel jobs, beyond the shared free budget.
+    # Daily ingress, actual DO rows and provider quotas still gate all admission.
     - cron: "45 0 * * *"
     - cron: "25 3 * * *"
     - cron: "05 6 * * *"

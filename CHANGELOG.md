@@ -27,12 +27,15 @@ Phase R (Research-Tool Surface)._
   bytes remain unchanged. The 39-meeting two-prompt evaluation packet, answer key, scorer, golden
   labels, and matched-cohort results are in `evals/chapter-locator/`.
 
-- **LLM ingress lane ceilings.** Five core enrichment tasks now have 800-job/day per-lane ceilings.
-  The shared admission envelope is 4,000 jobs / 25,600 write units/day, calculated as 800 meetings
-  through agenda, locator, tagger, prelabeler, and moments. Runtime row headroom still gates live
-  admission to protect dispatch; this is not a same-day completion guarantee. Prelabel batching,
-  shadow evaluation, and per-candidate judges can consume multiple jobs per meeting from that shared
-  envelope. No model or prompt recipes changed.
+- **LLM capacity accounting corrected.** Lane ceilings now size an explicit 800-eligible-meeting
+  planning scenario: two tagger batches, three production and shadow prelabel batches, and five
+  quotes evaluated by three judges per meeting. Judges are correctly charged as pinned jobs;
+  the shared R6 producer cap includes extraction and panel fan-out. A reproducible offline
+  calculator and capacity analysis separate demand from the unchanged 4,000-job shared cap,
+  25,600 enqueue units, full lifecycle DO rows and provider quotas. The full scenario needs
+  20,800 jobs before retries and exceeds Workers Free and the forty-call Gemini judge pool;
+  these ceilings do not promise 800 completed meetings/day. No model/prompt recipes, platform
+  billing tier, route pauses or stored-artifact invalidation changed.
 
 - **Locator CI reuse fixtures.** Current artifacts now include the routing policy version in
   tests, with coverage for both production models and stale or missing routing metadata. The
