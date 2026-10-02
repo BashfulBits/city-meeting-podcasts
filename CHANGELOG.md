@@ -17,6 +17,11 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Unexpected-body remedy design (review/51, proposed).** Complete-archive city onboarding,
+  traceable evaluation seeds, independent reasoning review and persistent rejection/exclusion
+  decisions are specified before implementation. Routine review targets 5–8 small PRs weekly
+  and about twelve active directional issues. No model admission or auto-merge is enabled.
+
 - **Dallas and Fort Worth TIF aggregates (proposed).** Nine district feeds migrate through
   aliases to one TIF subscription per city; boundary selectors cover historical variants without
   matching multifamily/Beautiful. Archive records, episode UIDs and pipeline versions are unchanged.
@@ -843,6 +848,11 @@ Phase R (Research-Tool Surface)._
   closed in the pacing primitive as well.
 
 ### Added
+
+- **Historical feed coverage assessment (2026-10-02).** A source/label inventory and seven
+  separately reviewable policy directions cover the residual #1747 backlog after the proposed
+  TIF migration. Recommendations await category approval; no residual feed or exclusion changes
+  have been applied.
 
 - **Per-workflow LLM submission throughput telemetry** (`citypods/compute/llm_submission_telemetry.py`,
   `scripts/llm_submission_telemetry.py`, and the LLM producer workflows). Each run now records

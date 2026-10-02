@@ -1,8 +1,8 @@
 # Maintainer guide: handling an "Add a city" issue
 
 When an [add-city issue](ISSUE_TEMPLATE/add-city.yml) comes in, the goal is to land one or
-more `config/feeds/*.yml` feeds — **one feed per meeting body** (City Council, Planning &
-Zoning, Board of Adjustment, …) — and verify the right bodies are approved vs. denied.
+more `config/feeds/*.yml` feeds — **one feed per stable body or approved city family** (City Council, Planning &
+Zoning, TIF boards, …) — and verify complete historical coverage and explicit exclusions.
 
 Config lives under `config/`: per-board feeds in `config/feeds/`, shared per-city fields
 (`city_website`, `meetings_url`, `state`, `colors`) in a `config/cities/<entity-slug>.yml`
@@ -29,7 +29,33 @@ Then copy [`config/feeds/_template.yml`](../config/feeds/_template.yml) to
 `config/feeds/<slug>.yml`, set `city: <entity-slug>` + `provider` + `source` + metadata. This is
 the combined feed (no `body:` filter). Title it `"<City> — All Meetings"`.
 
-## 3. Review the bodies — approved (✓) vs denied (✗)
+## 3. Assess the complete historical archive before publication
+
+Use a frontier agent with maintainer review for the initial taxonomy assessment. Fetch all available
+provider pages/views and merge historical records append-only before making feed decisions. Record
+source caps, unavailable periods and duplicate views; a recent RSS window is not a full archive.
+
+Classify every historical label into a verified existing body, an approved aggregate family, a new
+legitimate body, an explicit non-meeting exclusion, or a documented unresolved question. Counts and
+recency do not decide eligibility: sparse and retired legitimate bodies still need coverage. Bond
+and charter programs use one city feed per family, preserving program/year in official titles.
+Promotions, ceremonies, staff training and municipal TV shows get evidence-backed exclusions.
+
+Approve policy families once, then encode selectors and remedy policy together. Do not create one
+feed per raw spelling. Preserve official titles, recording identities and archive records. Replay
+selectors against all available historical recordings and negative cases, checking newly included
+recordings as well as unmatched labels. Resolve ambiguous identity with official evidence.
+
+Freeze traceable examples and separate gold under [`evals/remedy/`](../evals/remedy/README.md),
+following [review/51](../review/51-unexpected-body-remedy-flow.md). Once its planned runner ships,
+run the approved evaluation/admission flow and retain dated results for the actual routes/efforts
+used. Until then, record the frontier assessment and maintainer-reviewed selector replay there;
+do not claim a completed model evaluation. Initial city coverage needs a documented disposition
+for every available historical label and all legitimate recordings assigned to an appropriate feed.
+Unresolved legitimate recordings or incomplete source coverage need explicit maintainer disposition
+before publication, rather than becoming recurring maintenance one-offs.
+
+The existing inventory command is an aid to this assessment:
 ```bash
 citypods bodies <slug>
 ```
@@ -41,15 +67,18 @@ feed) or ✗ (matched the `body_exclude` denylist — procurement, public-info p
   (it defaults from `site_config.yml`; override per city in the YAML).
 - A non-body marked ✓ (e.g. a recurring program)? Add a term to the city's `body_exclude`.
 
-## 4. Generate per-board feeds
+## 4. Generate exploratory drafts, then apply the approved taxonomy
 ```bash
 PYTHONPATH=. python scripts/generate_board_cities.py <slug> \
     --base-slug <slug> --title-prefix "<City>" --write
 ```
 This writes one `config/feeds/<slug>-<body>.yml` per body with ≥ `min_meetings_per_body` meetings in
 the last 12 months (configurable), skipping denylisted bodies and merging `" - subtype"` /
-`": panel"` variants. Review the generated files: fix titles, merge obvious variants (broaden a
-`body:` substring and delete siblings), delete any you don't want.
+`": panel"` variants. The generator is an exploratory draft tool, not a historical coverage or approval gate. Its
+recent-count threshold does not authorize excluding sparse/historical public bodies. Review output
+against the complete archive policy: merge approved families, keep distinct identities separate,
+encode evidence-backed exclusions, and include legitimate bodies missed by the generator. Add
+positive/negative regression cases and the equivalent remedy guard for every new family policy.
 
 ## 5. Validate and open a PR
 ```bash
