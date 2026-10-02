@@ -34,7 +34,7 @@ Phase R (Research-Tool Surface)._
 - **Approved historical feed policy guards.** Remedy policies now protect city PID, bond, charter,
   redistricting, public-input and public-briefings aggregates, and exact reviewed named bodies.
   Unverified identities defer; district/program feed recreation and wrong-owner assignments are
-  blocked locally. Topic-bearing TIF labels need reviewed identity rather than marker inference.
+  blocked locally. Known topic-bearing TIF labels need reviewed identity rather than marker inference.
   The remedy recipe changes to `direct-v6-approved-family-policy`; remedy bypasses result caches,
   so there is no stored-artifact invalidation, audio change or forced historical backfill.
 
