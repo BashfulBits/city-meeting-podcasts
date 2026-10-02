@@ -325,7 +325,7 @@ New interfaces in `citypods/remedy_evaluation.py`:
 - `freeze_cases(evidence, policies, *, split, provenance) -> dict`: freeze inputs without truth.
 - `compare_results(results, gold, *, manifest) -> EvaluationReport`: separate abstentions,
   transport/schema failures, critical errors and known truth; no consensus-as-truth scoring.
-- `validate_admission(entry, catalog, evaluation) -> AdmissionCheck`: check physical upstream,
+- `validate_admission(entry, catalog, evaluation=None, *, for_evaluation=False) -> AdmissionCheck`: check physical upstream,
   effort controls, free/direct capability, dated AA evidence and matching version hashes.
   The AA variant must meet the comparable Gemini 3.7 High baseline; approved project results
   and an explicit reviewed admission ref are required before a role is usable in production.
@@ -346,9 +346,15 @@ and qualified types start empty. Limits: `decisions_per_pr: 5`, `prs_per_rolling
 `open_prs: 8`, `active_directional_issues: 12`, `evidence_max_age_hours: 24`.
 Eight is a ceiling, not a target/minimum. Empty admissions produce a visible policy hold.
 
-Each admission entry identifies role, physical route IDs, upstream model, model family, reasoning
+Each entry has `status: candidate|admitted` and identifies role, physical route IDs, upstream model,
+model family, reasoning
 level, effective request-parameter fingerprint, AA version/variant/score/source/date, manifest/gold/
-prompt/schema/catalog hashes and reviewed result paths. Unknown effort or model identity fails
+prompt/schema/catalog hashes and reviewed result paths. Candidate entries may omit result hashes/paths only when
+`for_evaluation=True`; they still require the free/direct, AA, physical identity and effective-effort
+checks. Live evaluation records candidate status and cannot publish or qualify changes. Production
+requires `admitted`, complete version-matched results and the reviewed admission reference. This
+avoids requiring a model comparison before a candidate can participate in that comparison.
+Unknown effort or model identity fails
 admission. Role names map to `audit-remedy-proposer`, `audit-remedy-reviewer` and
 `audit-remedy-adjudicator`; `audit-remedy` remains the protected purpose for quota admission.
 
@@ -369,7 +375,8 @@ parameters. Do not silently drop unsupported effort; the admission validator rej
 
 P1 tests: identical inputs across routes; gold never serialized; wrong model through overflow or
 `also_serves` blocked before call; None/empty allowlist semantics; actual retry route identity;
-unsupported effort; unknown truth and failed calls never counted correct; adapted examples cannot
+unsupported effort; unknown truth and failed calls never counted correct; candidate execution is permitted only in
+evaluation mode and cannot satisfy production admission; adapted examples cannot
 qualify admission; holdout overlap; missing/disjoint IDs; immutable raw results; offline dry-run.
 Use fake backends/ledger/catalog fixtures; no credential requirement in CI.
 
@@ -424,7 +431,9 @@ content including parents and external delivery ID. Event fields: schema version
 UTC time, actor kind/identity, state, evidence/config/policy hashes, recording refs, model/reviewer
 provenance, rationale, PR/issue number+URL and disposition. No credentials or unrestricted model
 text enter event keys/issue markers. Events are never deleted during ordinary maintenance.
-A new recording under an approved rule updates coverage evidence without reopening the policy.
+Duplicate external delivery IDs fold once even if retry timestamps differ; use provider event
+time, not processing time, for their identity. A new recording under an approved rule updates
+coverage evidence without reopening the policy.
 
 States are `covered`, `excluded`, `proposed`, `in_review`, `refinement_needed`, `blocked`, `resolved`.
 A closed PR without merge yields `refinement_needed`; merged is not `covered` until replay confirms
