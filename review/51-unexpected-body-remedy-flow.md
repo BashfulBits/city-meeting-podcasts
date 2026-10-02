@@ -38,7 +38,8 @@ individual category recommendations; this document owns the improvement plan.
   historical cleanup and the initial complete-archive assessment of new cities.
 - Evaluation cases and results live in `evals/`, permitting retirement/replacement comparisons.
 
-Pending taxonomy approvals in #1975 are not implicitly approved by this design. The global default
+A–F taxonomy directions in #1975 are approved; individual uncertain identities remain held.
+Approval of that historical cleanup does not approve future-flow implementation in this design. The global default
 for future-city TIF aggregates still needs an explicit decision.
 
 ## Why the existing flow produces too much weak work

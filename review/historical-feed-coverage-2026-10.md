@@ -1,6 +1,6 @@
 # Historical meeting coverage: category approval proposal
 
-**Status: recommendations awaiting maintainer approval, 2026-10-02. No residual feeds or exclusions
+**Status: directions A–F approved, 2026-10-02; ambiguous identities remain held. No residual feeds or exclusions
 have been applied.** Depends on the TIF migration and remedy guard (PRs #1973 and #1974).
 
 ## Scope and evidence
@@ -53,11 +53,13 @@ Rejecting it moves that decision into an issue for refinement, not an unchanged 
 | F | Civic media, ceremonies, promotion and staff training | 157 / 314 | Confirmed exclusions; preserve recordings/records; do not create meeting feeds |
 | G | Unresolved identity, notices, mixed recordings and unclear formats | 37 / 52 | Investigate first; verified genuine one-offs may use Other Public Meetings |
 
-The maintainer has approved C's cross-program family policy, D's city public-input aggregates,
+The maintainer has approved A's verified parent repairs, B's verified missing named bodies,
+C's cross-program family policy, D's city public-input aggregates,
 E's city public-briefings aggregates, and F's exclusion principle.
 Separate city PID aggregates, including the future-city default, are also approved.
-Exact selectors and ambiguous individual recordings still need evidence. Recommendations for A,
-B and G are presented separately so those policies can be approved or changed independently.
+Exact selectors and ambiguous individual recordings still need evidence. Approval of A/B does
+not approve guessed ownership. G remains investigation-first; any catch-all subscription needs
+separate approval. Verified changes proceed in self-contained PRs of at most five decisions.
 
 ## A — Repair ownership before adding feeds
 
