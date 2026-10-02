@@ -39,7 +39,10 @@ Classify every historical label into a verified existing body, an approved aggre
 legitimate body, an explicit non-meeting exclusion, or a documented unresolved question. Counts and
 recency do not decide eligibility: sparse and retired legitimate bodies still need coverage. Bond
 and charter programs use one city feed per family, preserving program/year in official titles.
-Promotions, ceremonies, staff training and municipal TV shows get evidence-backed exclusions.
+The default is one TIF aggregate and a separate PID aggregate per city, with city public-input
+and public-briefings families for verified proceedings. Program/year stays in official titles.
+These subscription defaults never establish identity from a topic word alone. Promotions,
+ceremonies, staff training and municipal TV shows get evidence-backed exclusions.
 
 Approve policy families once, then encode selectors and remedy policy together. Do not create one
 feed per raw spelling. Preserve official titles, recording identities and archive records. Replay
@@ -52,8 +55,13 @@ run the approved evaluation/admission flow and retain dated results for the actu
 used. Until then, record the frontier assessment and maintainer-reviewed selector replay there;
 do not claim a completed model evaluation. Initial city coverage needs a documented disposition
 for every available historical label and all legitimate recordings assigned to an appropriate feed.
-Unresolved legitimate recordings or incomplete source coverage need explicit maintainer disposition
-before publication, rather than becoming recurring maintenance one-offs.
+Unresolved legitimate recordings need explicit maintainer disposition before publication.
+Incomplete archives may onboard through a documented maintainer exception listing available
+dates/views, missing periods/caps, retrieval attempts, approval link and the visible coverage
+limitation. Assign every available legitimate recording before publication; never label partial
+coverage complete. Newly available history reopens the affected assessment. Store the exception
+in `config/remedy.yml` once P1 ships; until then include it in the city onboarding PR and committed
+coverage evidence.
 
 The existing inventory command is an aid to this assessment:
 ```bash

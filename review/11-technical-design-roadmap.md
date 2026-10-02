@@ -79,15 +79,21 @@ live here until their series becomes active.
 
 ### Maintainer-directed feed taxonomy simplification (2026-10-02)
 
-Aggregate-only TIF subscriptions for Dallas and Fort Worth are authorized, followed by remedy
-policy enforcement. [Coverage and migration evidence](tif-coverage-2026-10.md) records the first
-implementation proposal (PR [#1973](https://github.com/BashfulBits/city-meeting-podcasts/pull/1973)).
-The dependent remedy-policy guard enforces the aggregate locally and in the prompt. Remaining historical feed categories require maintainer approval;
-[Historical coverage proposal](historical-feed-coverage-2026-10.md) inventories every residual
-label and asks for category approval. [review/51](51-unexpected-body-remedy-flow.md) is the L2
-design for complete-archive onboarding, evaluated independent judgment, durable dispositions and
-bounded PR/issue queues. Its 27-case `evals/remedy/` seed is not admission evidence. Future
-implementation requires final approval and L3 specifications.
+Aggregate-only TIF subscriptions for Dallas and Fort Worth and the remedy guard shipped in
+PRs [#1973](https://github.com/BashfulBits/city-meeting-podcasts/pull/1973) and
+[#1974](https://github.com/BashfulBits/city-meeting-podcasts/pull/1974).
+[Coverage and migration evidence](tif-coverage-2026-10.md) records their archive checks.
+The [historical inventory](historical-feed-coverage-2026-10.md) merged in #1975; directions A–F
+are approved but residual policy application is still P0, not completed by merging that inventory.
+
+[review/51](51-unexpected-body-remedy-flow.md), initially merged in #1976, now records the approved
+P1–P5 structure and exact phase build contracts. **P1: L3** (evaluation harness and strict physical-
+route admission, [#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979));
+P2–P5 stay predecessor-gated until their evidence and issues exist. The 27 seed
+cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
+partial historical coverage needs a documented exception; future cities default to separate TIF/PID
+aggregates. Remedy/onboarding stay outside leagues. This is a maintainer-directed follow-up;
+it does not silently reorder the unrelated Phase-H queue or change production route/Worker limits.
 
 ### Active reliability follow-up: interactive remedy (#1231)
 
