@@ -9,7 +9,7 @@ import urllib.request
 from collections import defaultdict
 from pathlib import Path
 
-REPO = Path("/Users/Eric/.codex/worktrees/9ac6/city-meeting-podcasts")
+REPO = Path(__file__).resolve().parents[3]
 OUT = Path(__file__).resolve().parent
 DATA = REPO / "evals/chapter-locator"
 TELEMETRY = Path("/private/tmp/chapter-locator-telemetry")

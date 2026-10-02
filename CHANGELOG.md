@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Chapter locator review fixes: scope repair exhaustion to saved policy and input fingerprints;
+  changed inputs/policy (including legacy exhaustion without fingerprints) receive a fresh repair
+  budget on their next eligible pass. Existing valid artifacts retain their current reuse policy.
+  Fresh locator recipes consume producer slots even when an older pending recipe has completed.
+  Evaluation cohort preparation now follows the active checkout, and duplicate-start retries
+  recognize the typed validation error.
+
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
