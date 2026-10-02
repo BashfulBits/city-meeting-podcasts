@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Capacity calculator review fixes: use committed Worker row-budget defaults and the same
+  idle-cron/operational allowances in both current and proposed scenarios. The current stress
+  projection now includes the previously omitted 1,000 operational rows (513,160 total/day).
+  Show per-episode lifecycle rows and reproduction commands alongside packed consensus totals.
+
 - Chapter locator review fixes: scope repair exhaustion to saved policy and input fingerprints;
   changed inputs/policy (including legacy exhaustion without fingerprints) receive a fresh repair
   budget on their next eligible pass. Existing valid artifacts retain their current reuse policy.

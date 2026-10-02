@@ -6,11 +6,32 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 from pathlib import Path
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+IDLE_CRON_ROWS_PER_DAY = 1_440  # Planning assumption: one idle cron write per minute.
+OPERATIONAL_ROWS_PER_DAY = 1_000  # Additional operations within the Worker's safe envelope.
+
+
+def _safe_row_budget() -> int:
+    """Read committed Worker defaults; live environment overrides are outside this projection."""
+    source = ROOT / "workers/llm-dispatch-v2/src"
+    budget = (source / "write_budget.js").read_text()
+    coordinator = (source / "coordinator.js").read_text()
+
+    def literal(text: str, pattern: str) -> int:
+        match = re.search(pattern, text)
+        if match is None:
+            raise ValueError("Worker row-budget default changed format; update the calculator")
+        return int(match.group(1))
+
+    platform = literal(budget, r"export const DO_ROWS_WRITTEN_PLATFORM_LIMIT = (\d+);")
+    reserve = literal(budget, r"export const DO_ROWS_ACCOUNT_RESERVE = (\d+);")
+    enqueue = literal(coordinator, r'_envInt\("DO_ROWS_ENQUEUE_STOP", (\d+)\)')
+    return min(enqueue, platform - reserve)
 
 
 def project(
@@ -27,7 +48,10 @@ def project(
 ) -> dict:
     """Project job/index demand and approximate billed lifecycle rows from the saved benchmark.
 
-    Twenty rows is the benchmark's one-model, first-try lifecycle at four jobs/bundle. Each
+    Both plans add the same idle-cron and operational allowances inside the safe row budget;
+    the operational allowance is separate from the Worker's account reserve. The budget follows
+    committed Worker defaults, not live environment overrides.
+    Twenty rows is the benchmark's one-model, first-try lifecycle at four jobs/bundle.
     Additional indexed models add two ingress rows and two claim-time delete rows each.
     Council moments actually index seven models;
     using the configured nine-model allowlist is conservative. Twenty-four rows per extra
@@ -65,7 +89,13 @@ def project(
         )
     jobs = sum(arm["jobs"] for arm in arms)
     extra_attempts = math.ceil(jobs * retry_fraction)
-    rows = sum(arm["first_try_rows_estimate"] for arm in arms) + 24 * extra_attempts + 1440
+    rows = (
+        sum(arm["first_try_rows_estimate"] for arm in arms)
+        + 24 * extra_attempts
+        + IDLE_CRON_ROWS_PER_DAY
+        + OPERATIONAL_ROWS_PER_DAY
+    )
+    safe_row_budget = _safe_row_budget()
     required_bundles = math.ceil((jobs + extra_attempts) / tuning["MAX_BUNDLE_JOBS"])
     return {
         "assumptions": {
@@ -90,13 +120,13 @@ def project(
         "shared_job_cap": tuning["MAX_JOBS_PER_UTC_DAY"],
         "shared_ingress_units": tuning["MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY"],
         "bundle_cap": tuning["MAX_BUNDLES_PER_UTC_DAY"],
-        "safe_row_budget": 90000,
+        "safe_row_budget": safe_row_budget,
         "fits_shared_caps": (
             jobs <= tuning["MAX_JOBS_PER_UTC_DAY"]
             and sum(arm["ingress_units"] for arm in arms)
             <= tuning["MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY"]
             and required_bundles <= tuning["MAX_BUNDLES_PER_UTC_DAY"]
-            and rows <= 90000
+            and rows <= safe_row_budget
         ),
     }
 
@@ -108,6 +138,7 @@ def consensus_plan(*, meetings: int = 800, packed: bool = True) -> dict:
     retry allowance. Locator now indexes one model (23 rows with allowance), rather than six.
     Count claim-time model-index deletion omitted in review/49 as well as enqueue indexes.
     The four-model moments pool and two-model sibling/adjudicator pools are proposed policy.
+    Idle-cron and operational allowances are identical to project().
     """
     targets = (
         ("chapter-agenda", 300, 3),
@@ -147,7 +178,10 @@ def consensus_plan(*, meetings: int = 800, packed: bool = True) -> dict:
         "lanes": lanes,
         "new_jobs": sum(row["jobs"] for row in lanes),
         "ingress_units": sum(row["ingress_units"] for row in lanes),
-        "billed_rows_estimate": sum(row["rows"] for row in lanes) + 1440 + 1000,
+        "billed_rows_estimate": (
+            sum(row["rows"] for row in lanes) + IDLE_CRON_ROWS_PER_DAY + OPERATIONAL_ROWS_PER_DAY
+        ),
+        "safe_row_budget": _safe_row_budget(),
         "routine_reservation_target_20pct_margin": math.ceil(
             1.2 * sum(row["ingress_units"] for row in lanes)
         ),

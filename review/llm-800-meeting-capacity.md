@@ -57,9 +57,12 @@ With 10% extra attempts: 22,880 provider calls; at full five-job bundles, at lea
 The one-model benchmark is about 20 billed lifecycle rows/job at four jobs/bundle, plus four
 rows per additional model index: two at enqueue and two when claim deletes the queue indexes
 (`coordinator.js` claim path). The latter was missing from review/49. This estimates 460,800
-first-try rows,
-49,920 retry rows (24 per extra attempt as a planning allowance), and 1,440 idle cron rows:
-**512,160 rows/day**. Arbitrary retry storms, supersedes and cleanup can cost more.
+first-try rows, 49,920 retry rows (24 per extra attempt as a planning allowance),
+1,440 idle cron rows, and 1,000 operational rows: **513,160 rows/day**.
+Both current and consensus scenarios include these same 2,440 overhead rows within the safe
+Worker envelope; the 1,000 operational rows are separate from the 10,000 account reserve.
+The calculator reads the committed platform/reserve constants and enqueue threshold from the
+Worker sources. It does not inspect live environment overrides. Arbitrary retry storms, supersedes and cleanup can cost more.
 
 The shared limits remain 4,000 new jobs, 25,600 enqueue units, 1,400 bundles, and 90,000 safe
 account-wide billed rows/day. Raising individual lane caps cannot fund this scenario. The
@@ -81,18 +84,21 @@ per additional model, beyond its two enqueue rows. Pooled three-model jobs thus 
 pinned jobs 23, four-model jobs 35, and two-model jobs 27, including the retry allowance. Retire prelabeler, shadow and legacy panel only after P7's migration gates.
 The four-model moments pool and two-model sibling/adjudicator pools below are proposed, not live.
 
-| Lane | Per-episode packing jobs/day | Across-episode packing jobs/day | Across-episode rows/day |
-|---|---:|---:|---:|
-| Agenda | 480 | 480 | 14,880 |
-| Locator, pinned DS4/Kimi | 480 | 480 | 11,040 |
-| Tagger | 661 | 661 | 20,491 |
-| Moments, trimmed four-model pool | 104 | 104 | 3,640 |
-| JEV anchor judge | 749 | 186 | 4,278 |
-| Independent sibling judge | 749 | 370 | 9,990 |
-| Packed adjudicator | 192 | 192 | 5,184 |
-| **Jobs / lifecycle rows** | **3,415** | **2,473** | **69,503** |
-| Idle cron + operational allowance | | | 2,440 |
-| **Total billed rows/day** | **95,125** | | **71,943** |
+| Lane | Per-episode jobs/day | Per-episode rows/day | Across-episode jobs/day | Across-episode rows/day |
+|---|---:|---:|---:|---:|
+| Agenda | 480 | 14,880 | 480 | 14,880 |
+| Locator, pinned DS4/Kimi | 480 | 11,040 | 480 | 11,040 |
+| Tagger | 661 | 20,491 | 661 | 20,491 |
+| Moments, trimmed four-model pool | 104 | 3,640 | 104 | 3,640 |
+| JEV anchor judge | 749 | 17,227 | 186 | 4,278 |
+| Independent sibling judge | 749 | 20,223 | 370 | 9,990 |
+| Packed adjudicator | 192 | 5,184 | 192 | 5,184 |
+| **Jobs / lifecycle rows** | **3,415** | **92,685** | **2,473** | **69,503** |
+| Idle cron + operational allowance | | 2,440 | | 2,440 |
+| **Total billed rows/day** | | **95,125** | | **71,943** |
+
+Reproduce both columns with `python scripts/llm_capacity_plan.py --consensus episode` and
+`python scripts/llm_capacity_plan.py --consensus packed`, respectively.
 
 Enqueue demand is 17,195 units for per-episode packing versus 13,048 across episodes.
 A 20% lane headroom allowance makes the latter 15,658 units, below today's 25,600 envelope.
