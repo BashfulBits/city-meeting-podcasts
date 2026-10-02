@@ -61,6 +61,14 @@ render / feeds / site               ── feed_content_hash skip → RSS + city
 docs/  ──► GitHub Pages              ;   audio + transcripts + state ──► B2 (Cloudflare CDN)
 ```
 
+The production `chapter-locator` stage uses the baseline locator prompt and routes by the complete
+request's internal token estimate: DeepSeek V4 Flash at or below 76,000 tokens, Kimi K3 above it.
+Each request is pinned to one route, and its recipe records prompt and routing versions so a policy
+change requeues generated locator work gradually under the lane's 800-jobs-per-day budget. GLM 5.3
+Flash and DeepSeek V4.1 Flash remain documented optional capacity and are not production routes.
+Provider-supplied chapters remain canonical; the locator runs only for episodes without them and
+does not alter audio bytes.
+
 The production deploy **splits render from enrich** into **separate workflows** (separate CLI commands,
 see below): `deploy.yml` is render-only — it publishes Pages quickly from already-known state, makes no
 provider episode-list requests (`build --phase render --no-refresh`), and never runs ffmpeg/ASR — while the

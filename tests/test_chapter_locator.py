@@ -224,7 +224,7 @@ def test_response_rejects_anchors_that_collide_on_one_timestamp():
         ]
     }
 
-    with pytest.raises(ValueError, match="strictly increasing"):
+    with pytest.raises(ValueError, match="share a start time"):
         validate_locator_response(json.dumps(payload), agenda_item_count=2, units=units)
 
 

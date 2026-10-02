@@ -1,0 +1,749 @@
+{
+  "schema_version": 1,
+  "dataset": "chapter-locator/manual-review-v2",
+  "evaluated_at_utc": "2026-09-30T03:52:44.417912+00:00",
+  "cohort": {
+    "meetings": 39,
+    "boundary_cases": 381,
+    "timed_boundary_cases": 347,
+    "transcript_status_exclusions": 34,
+    "concurrent_folded_timed_targets": 318,
+    "targets_with_manual_agenda_association": 295,
+    "targets_without_manual_agenda_association": 23
+  },
+  "scoring_contract": {
+    "boundary_tolerance_seconds": 60,
+    "concurrent_cases_folded_by": "connected components from scores.json concurrent_case_ids",
+    "boundary_metric": "one-to-one nearest-prediction recall, any agenda item",
+    "item_metric": "one-to-one nearest-prediction recall, manual agenda association plus boundary",
+    "item_metric_excludes_targets_without_manual_agenda_association": true,
+    "conditional_quality_excludes_invalid_or_missing_responses": true,
+    "full_cohort_lower_bound_assumes_no_hits_for_invalid_or_missing": true,
+    "optimistic_upper_bound_assumes_all_unobserved_targets_would_be_hits": true
+  },
+  "results": [
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "prompt": "transition_sweep",
+      "full_cohort": {
+        "route_ids": [
+          "nvidia_deepseek_v4_1_flash_free"
+        ],
+        "meeting_count_denominator": 39,
+        "meetings_with_result": 39,
+        "valid_meetings": 39,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 270,
+        "timed_target_denominator": 318,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 84.9,
+        "timing_recall_full_cohort_lower_bound_pct": 84.9,
+        "timing_recall_full_cohort_optimistic_upper_pct": 84.9,
+        "timed_targets_in_valid_meetings": 318,
+        "timing_recall_given_valid_response_pct": 84.9,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          79.8,
+          89.8
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          79.8,
+          89.9
+        ],
+        "item_and_timing_hits_60s": 264,
+        "manual_item_target_denominator": 295,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 89.5,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 89.5,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 89.5,
+        "item_targets_in_valid_meetings": 295,
+        "item_and_timing_recall_given_valid_response_pct": 89.5,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          85.6,
+          92.8
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          85.7,
+          92.8
+        ],
+        "correct_item_error_samples": 270,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 5.2,
+        "valid_response_latency_mean_s": 944.4,
+        "valid_response_latency_median_s": 540.0
+      },
+      "by_split": {
+        "dataset-v3": {
+          "route_ids": [
+            "nvidia_deepseek_v4_1_flash_free"
+          ],
+          "meeting_count_denominator": 16,
+          "meetings_with_result": 16,
+          "valid_meetings": 16,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 95,
+          "timed_target_denominator": 111,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 85.6,
+          "timing_recall_full_cohort_lower_bound_pct": 85.6,
+          "timing_recall_full_cohort_optimistic_upper_pct": 85.6,
+          "timed_targets_in_valid_meetings": 111,
+          "timing_recall_given_valid_response_pct": 85.6,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            75.6,
+            91.7
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            75.8,
+            91.7
+          ],
+          "item_and_timing_hits_60s": 91,
+          "manual_item_target_denominator": 103,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 88.3,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 88.3,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 88.3,
+          "item_targets_in_valid_meetings": 103,
+          "item_and_timing_recall_given_valid_response_pct": 88.3,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            79.4,
+            94.2
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            79.8,
+            94.3
+          ],
+          "correct_item_error_samples": 95,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 5.7,
+          "valid_response_latency_mean_s": 1511.7,
+          "valid_response_latency_median_s": 415.1
+        },
+        "holdout-v1": {
+          "route_ids": [
+            "nvidia_deepseek_v4_1_flash_free"
+          ],
+          "meeting_count_denominator": 23,
+          "meetings_with_result": 23,
+          "valid_meetings": 23,
+          "invalid_responses": 0,
+          "missing_responses": 0,
+          "invalid_response_uids": [],
+          "missing_response_uids": [],
+          "valid_response_rate_pct": 100.0,
+          "timing_hits_60s": 175,
+          "timed_target_denominator": 207,
+          "timing_unobserved_targets": 0,
+          "timing_recall_full_cohort_pct": 84.5,
+          "timing_recall_full_cohort_lower_bound_pct": 84.5,
+          "timing_recall_full_cohort_optimistic_upper_pct": 84.5,
+          "timed_targets_in_valid_meetings": 207,
+          "timing_recall_given_valid_response_pct": 84.5,
+          "timing_recall_cluster_bootstrap_95_ci_pct": [
+            77.9,
+            91.4
+          ],
+          "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            77.9,
+            91.3
+          ],
+          "item_and_timing_hits_60s": 173,
+          "manual_item_target_denominator": 192,
+          "item_unobserved_targets": 0,
+          "item_and_timing_recall_full_cohort_pct": 90.1,
+          "item_and_timing_recall_full_cohort_lower_bound_pct": 90.1,
+          "item_and_timing_recall_full_cohort_optimistic_upper_pct": 90.1,
+          "item_targets_in_valid_meetings": 192,
+          "item_and_timing_recall_given_valid_response_pct": 90.1,
+          "item_recall_cluster_bootstrap_95_ci_pct": [
+            85.8,
+            94.0
+          ],
+          "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+            85.9,
+            94.2
+          ],
+          "correct_item_error_samples": 175,
+          "correct_item_abs_error_median_s": 0.0,
+          "correct_item_abs_error_p90_s": 4.6,
+          "valid_response_latency_mean_s": 549.8,
+          "valid_response_latency_median_s": 554.4
+        }
+      },
+      "by_importance": {
+        "core": {
+          "timing_hits_60s": 225,
+          "timed_target_denominator": 245,
+          "timing_recall_full_cohort_pct": 91.8,
+          "item_and_timing_hits_60s": 217,
+          "manual_item_target_denominator": 240,
+          "item_and_timing_recall_full_cohort_pct": 90.4
+        },
+        "mixed": {
+          "timing_hits_60s": 4,
+          "timed_target_denominator": 4,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 4,
+          "manual_item_target_denominator": 4,
+          "item_and_timing_recall_full_cohort_pct": 100.0
+        },
+        "optional": {
+          "timing_hits_60s": 52,
+          "timed_target_denominator": 63,
+          "timing_recall_full_cohort_pct": 82.5,
+          "item_and_timing_hits_60s": 41,
+          "manual_item_target_denominator": 46,
+          "item_and_timing_recall_full_cohort_pct": 89.1
+        },
+        "unrated": {
+          "timing_hits_60s": 4,
+          "timed_target_denominator": 4,
+          "timing_recall_full_cohort_pct": 100.0,
+          "item_and_timing_hits_60s": 3,
+          "manual_item_target_denominator": 4,
+          "item_and_timing_recall_full_cohort_pct": 75.0
+        },
+        "unsure": {
+          "timing_hits_60s": 1,
+          "timed_target_denominator": 2,
+          "timing_recall_full_cohort_pct": 50.0,
+          "item_and_timing_hits_60s": 0,
+          "manual_item_target_denominator": 1,
+          "item_and_timing_recall_full_cohort_pct": 0.0
+        }
+      }
+    }
+  ],
+  "paired_prompt_comparison": [
+    {
+      "model": "deepseek/deepseek-v4-flash",
+      "baseline_prompt": "baseline",
+      "transition_prompt": "transition_sweep",
+      "shared_attempted_meetings": 20,
+      "baseline_valid_meetings_on_shared": 15,
+      "transition_valid_meetings_on_shared": 15,
+      "paired_valid_meetings": 15,
+      "baseline_quality_on_paired_valid": {
+        "route_ids": [
+          "orcarouter_deepseek_v4_flash_free"
+        ],
+        "meeting_count_denominator": 15,
+        "meetings_with_result": 15,
+        "valid_meetings": 15,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 106,
+        "timed_target_denominator": 123,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 86.2,
+        "timing_recall_full_cohort_lower_bound_pct": 86.2,
+        "timing_recall_full_cohort_optimistic_upper_pct": 86.2,
+        "timed_targets_in_valid_meetings": 123,
+        "timing_recall_given_valid_response_pct": 86.2,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          78.8,
+          90.5
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          78.7,
+          90.6
+        ],
+        "item_and_timing_hits_60s": 101,
+        "manual_item_target_denominator": 113,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 89.4,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 89.4,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 89.4,
+        "item_targets_in_valid_meetings": 113,
+        "item_and_timing_recall_given_valid_response_pct": 89.4,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          83.5,
+          93.6
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          83.3,
+          93.4
+        ],
+        "correct_item_error_samples": 104,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 5.8,
+        "valid_response_latency_mean_s": 136.8,
+        "valid_response_latency_median_s": 138.9
+      },
+      "transition_quality_on_paired_valid": {
+        "route_ids": [
+          "orcarouter_deepseek_v4_flash_free"
+        ],
+        "meeting_count_denominator": 15,
+        "meetings_with_result": 15,
+        "valid_meetings": 15,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 109,
+        "timed_target_denominator": 123,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 88.6,
+        "timing_recall_full_cohort_lower_bound_pct": 88.6,
+        "timing_recall_full_cohort_optimistic_upper_pct": 88.6,
+        "timed_targets_in_valid_meetings": 123,
+        "timing_recall_given_valid_response_pct": 88.6,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          81.1,
+          93.5
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          81.1,
+          93.6
+        ],
+        "item_and_timing_hits_60s": 105,
+        "manual_item_target_denominator": 113,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 92.9,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 92.9,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 92.9,
+        "item_targets_in_valid_meetings": 113,
+        "item_and_timing_recall_given_valid_response_pct": 92.9,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          88.6,
+          96.6
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          88.6,
+          96.6
+        ],
+        "correct_item_error_samples": 107,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 5.8,
+        "valid_response_latency_mean_s": 144.9,
+        "valid_response_latency_median_s": 140.6
+      }
+    },
+    {
+      "model": "deepseek/deepseek-v4.1-flash",
+      "baseline_prompt": "baseline",
+      "transition_prompt": "transition_sweep",
+      "shared_attempted_meetings": 3,
+      "baseline_valid_meetings_on_shared": 1,
+      "transition_valid_meetings_on_shared": 3,
+      "paired_valid_meetings": 1,
+      "baseline_quality_on_paired_valid": {
+        "route_ids": [
+          "nvidia_deepseek_v4_1_flash_free"
+        ],
+        "meeting_count_denominator": 1,
+        "meetings_with_result": 1,
+        "valid_meetings": 1,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 0,
+        "timed_target_denominator": 0,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": null,
+        "timing_recall_full_cohort_lower_bound_pct": null,
+        "timing_recall_full_cohort_optimistic_upper_pct": null,
+        "timed_targets_in_valid_meetings": 0,
+        "timing_recall_given_valid_response_pct": null,
+        "timing_recall_cluster_bootstrap_95_ci_pct": null,
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": null,
+        "item_and_timing_hits_60s": 0,
+        "manual_item_target_denominator": 0,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": null,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": null,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": null,
+        "item_targets_in_valid_meetings": 0,
+        "item_and_timing_recall_given_valid_response_pct": null,
+        "item_recall_cluster_bootstrap_95_ci_pct": null,
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": null,
+        "correct_item_error_samples": 0,
+        "correct_item_abs_error_median_s": null,
+        "correct_item_abs_error_p90_s": null,
+        "valid_response_latency_mean_s": 487.8,
+        "valid_response_latency_median_s": 487.8
+      },
+      "transition_quality_on_paired_valid": {
+        "route_ids": [
+          "nvidia_deepseek_v4_1_flash_free"
+        ],
+        "meeting_count_denominator": 1,
+        "meetings_with_result": 1,
+        "valid_meetings": 1,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 0,
+        "timed_target_denominator": 0,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": null,
+        "timing_recall_full_cohort_lower_bound_pct": null,
+        "timing_recall_full_cohort_optimistic_upper_pct": null,
+        "timed_targets_in_valid_meetings": 0,
+        "timing_recall_given_valid_response_pct": null,
+        "timing_recall_cluster_bootstrap_95_ci_pct": null,
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": null,
+        "item_and_timing_hits_60s": 0,
+        "manual_item_target_denominator": 0,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": null,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": null,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": null,
+        "item_targets_in_valid_meetings": 0,
+        "item_and_timing_recall_given_valid_response_pct": null,
+        "item_recall_cluster_bootstrap_95_ci_pct": null,
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": null,
+        "correct_item_error_samples": 0,
+        "correct_item_abs_error_median_s": null,
+        "correct_item_abs_error_p90_s": null,
+        "valid_response_latency_mean_s": 979.9,
+        "valid_response_latency_median_s": 979.9
+      }
+    },
+    {
+      "model": "gemini/gemini-3.5-flash-lite",
+      "baseline_prompt": "baseline",
+      "transition_prompt": "transition_sweep",
+      "shared_attempted_meetings": 23,
+      "baseline_valid_meetings_on_shared": 17,
+      "transition_valid_meetings_on_shared": 19,
+      "paired_valid_meetings": 15,
+      "baseline_quality_on_paired_valid": {
+        "route_ids": [
+          "gemini_3_5_flash_lite_primary",
+          "gemini_3_5_flash_lite_secondary"
+        ],
+        "meeting_count_denominator": 15,
+        "meetings_with_result": 15,
+        "valid_meetings": 15,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 127,
+        "timed_target_denominator": 150,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 84.7,
+        "timing_recall_full_cohort_lower_bound_pct": 84.7,
+        "timing_recall_full_cohort_optimistic_upper_pct": 84.7,
+        "timed_targets_in_valid_meetings": 150,
+        "timing_recall_given_valid_response_pct": 84.7,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          77.5,
+          93.1
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          77.4,
+          93.0
+        ],
+        "item_and_timing_hits_60s": 116,
+        "manual_item_target_denominator": 140,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 82.9,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 82.9,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 82.9,
+        "item_targets_in_valid_meetings": 140,
+        "item_and_timing_recall_given_valid_response_pct": 82.9,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          70.2,
+          94.9
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          70.0,
+          95.1
+        ],
+        "correct_item_error_samples": 128,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 14.4,
+        "valid_response_latency_mean_s": 42.7,
+        "valid_response_latency_median_s": 8.1
+      },
+      "transition_quality_on_paired_valid": {
+        "route_ids": [
+          "gemini_3_5_flash_lite_primary",
+          "gemini_3_5_flash_lite_secondary"
+        ],
+        "meeting_count_denominator": 15,
+        "meetings_with_result": 15,
+        "valid_meetings": 15,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 127,
+        "timed_target_denominator": 150,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 84.7,
+        "timing_recall_full_cohort_lower_bound_pct": 84.7,
+        "timing_recall_full_cohort_optimistic_upper_pct": 84.7,
+        "timed_targets_in_valid_meetings": 150,
+        "timing_recall_given_valid_response_pct": 84.7,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          79.9,
+          90.5
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          79.7,
+          90.4
+        ],
+        "item_and_timing_hits_60s": 123,
+        "manual_item_target_denominator": 140,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 87.9,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 87.9,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 87.9,
+        "item_targets_in_valid_meetings": 140,
+        "item_and_timing_recall_given_valid_response_pct": 87.9,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          83.1,
+          93.3
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          83.2,
+          93.3
+        ],
+        "correct_item_error_samples": 129,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 8.5,
+        "valid_response_latency_mean_s": 45.0,
+        "valid_response_latency_median_s": 57.2
+      }
+    },
+    {
+      "model": "moonshotai/kimi-k3",
+      "baseline_prompt": "baseline",
+      "transition_prompt": "transition_sweep",
+      "shared_attempted_meetings": 16,
+      "baseline_valid_meetings_on_shared": 13,
+      "transition_valid_meetings_on_shared": 11,
+      "paired_valid_meetings": 9,
+      "baseline_quality_on_paired_valid": {
+        "route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "meeting_count_denominator": 9,
+        "meetings_with_result": 9,
+        "valid_meetings": 9,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 68,
+        "timed_target_denominator": 77,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 88.3,
+        "timing_recall_full_cohort_lower_bound_pct": 88.3,
+        "timing_recall_full_cohort_optimistic_upper_pct": 88.3,
+        "timed_targets_in_valid_meetings": 77,
+        "timing_recall_given_valid_response_pct": 88.3,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          82.0,
+          92.2
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          82.1,
+          92.0
+        ],
+        "item_and_timing_hits_60s": 67,
+        "manual_item_target_denominator": 75,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 89.3,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 89.3,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 89.3,
+        "item_targets_in_valid_meetings": 75,
+        "item_and_timing_recall_given_valid_response_pct": 89.3,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          83.1,
+          94.7
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          82.9,
+          94.9
+        ],
+        "correct_item_error_samples": 68,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 4.8,
+        "valid_response_latency_mean_s": 159.3,
+        "valid_response_latency_median_s": 97.7
+      },
+      "transition_quality_on_paired_valid": {
+        "route_ids": [
+          "nvidia_kimi_k3_free"
+        ],
+        "meeting_count_denominator": 9,
+        "meetings_with_result": 9,
+        "valid_meetings": 9,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 67,
+        "timed_target_denominator": 77,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 87.0,
+        "timing_recall_full_cohort_lower_bound_pct": 87.0,
+        "timing_recall_full_cohort_optimistic_upper_pct": 87.0,
+        "timed_targets_in_valid_meetings": 77,
+        "timing_recall_given_valid_response_pct": 87.0,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          80.0,
+          91.7
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          80.3,
+          91.7
+        ],
+        "item_and_timing_hits_60s": 65,
+        "manual_item_target_denominator": 75,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 86.7,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 86.7,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 86.7,
+        "item_targets_in_valid_meetings": 75,
+        "item_and_timing_recall_given_valid_response_pct": 86.7,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          79.3,
+          92.2
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          79.4,
+          92.5
+        ],
+        "correct_item_error_samples": 67,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 3.8,
+        "valid_response_latency_mean_s": 92.6,
+        "valid_response_latency_median_s": 71.4
+      }
+    },
+    {
+      "model": "zai/glm-5.3-flash",
+      "baseline_prompt": "baseline",
+      "transition_prompt": "transition_sweep",
+      "shared_attempted_meetings": 20,
+      "baseline_valid_meetings_on_shared": 13,
+      "transition_valid_meetings_on_shared": 14,
+      "paired_valid_meetings": 13,
+      "baseline_quality_on_paired_valid": {
+        "route_ids": [
+          "orcarouter_zai_glm_5_3_flash_free"
+        ],
+        "meeting_count_denominator": 13,
+        "meetings_with_result": 13,
+        "valid_meetings": 13,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 86,
+        "timed_target_denominator": 102,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 84.3,
+        "timing_recall_full_cohort_lower_bound_pct": 84.3,
+        "timing_recall_full_cohort_optimistic_upper_pct": 84.3,
+        "timed_targets_in_valid_meetings": 102,
+        "timing_recall_given_valid_response_pct": 84.3,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          76.2,
+          90.7
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          76.2,
+          90.6
+        ],
+        "item_and_timing_hits_60s": 83,
+        "manual_item_target_denominator": 92,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 90.2,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 90.2,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 90.2,
+        "item_targets_in_valid_meetings": 92,
+        "item_and_timing_recall_given_valid_response_pct": 90.2,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          82.4,
+          96.3
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          82.5,
+          96.4
+        ],
+        "correct_item_error_samples": 86,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 6.7,
+        "valid_response_latency_mean_s": 164.8,
+        "valid_response_latency_median_s": 141.9
+      },
+      "transition_quality_on_paired_valid": {
+        "route_ids": [
+          "orcarouter_zai_glm_5_3_flash_free"
+        ],
+        "meeting_count_denominator": 13,
+        "meetings_with_result": 13,
+        "valid_meetings": 13,
+        "invalid_responses": 0,
+        "missing_responses": 0,
+        "invalid_response_uids": [],
+        "missing_response_uids": [],
+        "valid_response_rate_pct": 100.0,
+        "timing_hits_60s": 83,
+        "timed_target_denominator": 102,
+        "timing_unobserved_targets": 0,
+        "timing_recall_full_cohort_pct": 81.4,
+        "timing_recall_full_cohort_lower_bound_pct": 81.4,
+        "timing_recall_full_cohort_optimistic_upper_pct": 81.4,
+        "timed_targets_in_valid_meetings": 102,
+        "timing_recall_given_valid_response_pct": 81.4,
+        "timing_recall_cluster_bootstrap_95_ci_pct": [
+          72.0,
+          88.8
+        ],
+        "timing_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          71.6,
+          88.9
+        ],
+        "item_and_timing_hits_60s": 79,
+        "manual_item_target_denominator": 92,
+        "item_unobserved_targets": 0,
+        "item_and_timing_recall_full_cohort_pct": 85.9,
+        "item_and_timing_recall_full_cohort_lower_bound_pct": 85.9,
+        "item_and_timing_recall_full_cohort_optimistic_upper_pct": 85.9,
+        "item_targets_in_valid_meetings": 92,
+        "item_and_timing_recall_given_valid_response_pct": 85.9,
+        "item_recall_cluster_bootstrap_95_ci_pct": [
+          75.8,
+          93.8
+        ],
+        "item_recall_valid_meetings_cluster_bootstrap_95_ci_pct": [
+          75.9,
+          93.6
+        ],
+        "correct_item_error_samples": 82,
+        "correct_item_abs_error_median_s": 0.0,
+        "correct_item_abs_error_p90_s": 8.1,
+        "valid_response_latency_mean_s": 114.4,
+        "valid_response_latency_median_s": 115.8
+      }
+    }
+  ]
+}

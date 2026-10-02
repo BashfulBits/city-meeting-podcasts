@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Blinded chapter locator review</title>
+<style>
+:root{font:16px/1.45 system-ui,sans-serif;color:#17202a;background:#f4f6f8}
+body{margin:0}header{position:sticky;top:0;background:#fff;padding:12px 20px;border-bottom:1px solid #ccd3d9;z-index:2;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+button,.nav{font:inherit;padding:8px 12px;border:1px solid #9ba8b4;border-radius:6px;background:#fff;cursor:pointer;color:inherit;text-decoration:none;display:inline-block}
+button:hover,.nav:hover{background:#edf3f7}.nav.disabled{opacity:.45;pointer-events:none}
+main{max-width:1540px;margin:8px auto;padding:0 12px}.card,.panel{background:white;border:1px solid #d5dce2;border-radius:9px;padding:12px;margin:8px 0}
+.subtle{color:#53616d}.badge{padding:2px 7px;border-radius:12px;background:#e8edf2;font-size:.85em}
+.review-layout{display:grid;grid-template-columns:minmax(380px,.8fr) minmax(560px,1.2fr);gap:12px;align-items:start}
+.review-controls{min-width:0}.review-context{min-width:0}.review-head h2{margin:5px 0}.review-head p{margin:5px 0}
+.transcript{max-height:calc(100vh - 340px);min-height:220px;overflow:auto;background:#f8f9fa;padding:8px;border-radius:6px}
+.transcript div{margin:3px 0}.timebox{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin:7px 0;padding:8px;background:#f2f6fa;border-radius:7px}
+.timebox input{font:inherit;width:120px;padding:6px;border:1px solid #9ba8b4;border-radius:6px}
+.word{font:inherit;border:0;border-radius:3px;padding:0 2px;background:transparent;cursor:pointer}
+.word:hover,.word:focus-visible{background:#dcecff;outline:1px solid #5792d0}
+.word.selected{background:#ffe69b}.footer{display:flex;justify-content:space-between;margin:18px 0}
+.error{color:#9b1c1c}.good{color:#155d28}.section{margin:8px 0}.section h3{margin:4px 0}
+.load-error{border-color:#d6a3a3;background:#fffafa}
+.items{max-height:min(25vh,230px);overflow:auto;border:1px solid #d5dce2;border-radius:6px;padding:6px}
+.items label{display:block;padding:2px 0;line-height:1.3;font-size:.92em}.warning{background:#fff5d9;border-radius:6px;padding:8px}
+.mapping-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:10px}
+.mapping-column h4{margin:4px 0;font-size:.95em}.importance{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px;background:#f7f8fa;border-radius:6px;margin:7px 0}
+.importance-options{display:inline-flex;gap:4px;flex-wrap:wrap}
+.target-status{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px;background:#fff5df;border-radius:6px;margin:7px 0}
+.importance-option input{position:absolute;opacity:0;width:1px;height:1px}
+.importance-option span{display:inline-block;padding:6px 10px;border:1px solid #9ba8b4;border-radius:6px;background:#fff;cursor:pointer}
+.importance-option input:checked+span{background:#dcecff;border-color:#3478b9;color:#123e65;font-weight:600}
+.importance-option input:focus-visible+span{outline:2px solid #3478b9;outline-offset:2px}
+@media(max-width:1050px){.review-layout{grid-template-columns:1fr}.transcript{max-height:40vh}.mapping-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:700px){.mapping-grid{grid-template-columns:1fr}.importance{gap:5px}.importance-options{gap:3px}}
+@media(max-height:760px){.transcript{max-height:260px;min-height:170px}.items{max-height:160px}.card{padding:9px}}
+</style>
+</head>
+<body>
+<header>
+  <strong>Chapter-locator boundary review</strong>
+  <span id="meetingProgress" class="badge"></span>
+  <span id="caseProgress" class="badge"></span>
+  <span id="progress" class="subtle"></span>
+  <span style="flex:1"></span>
+  <a id="prev" class="nav" href="#case=0">← Previous</a>
+  <a id="next" class="nav" href="#case=1">Next →</a>
+  <button id="export">Download scores</button>
+</header>
+<main>
+<details class="panel">
+  <summary><b>How to score the boundaries</b></summary>
+  <p>Each page is one published chapter boundary. Its time field starts at the median of available
+  model predictions, with each model counted once regardless of how many prompt variants were run.
+  Save that time if it looks right, or click the first word of the new discussion to adjust it.</p>
+  <p>Model and route names are hidden while you label. Afterward, the saved time is compared with
+  each available response separately. A blank suggestion means no response was confidently matched
+  to this chapter’s agenda item.</p>
+<p>Use the left and right arrow keys to move between boundaries. Press <b>C</b> for core,
+<b>O</b> for optional, or <b>U</b> for unsure. In the always-open agenda section, check every
+agenda item at this transition and any other published chapters that share it. Their saved time and
+agenda-item selections are combined across the linked boundaries.</p>
+  <p>Optionally classify how much this boundary matters to following the meeting: core, optional to
+  omit, or unsure. This is separate from whether a model found the boundary at the right time.</p>
+  <p>If a provider chapter has no corresponding spoken segment, mark <b>No spoken segment</b>.
+  If the transcript is missing near the provider time, mark <b>Transcript gap</b>. Both are excluded
+  from timing and recall scoring; a transcript gap does not mean the discussion did not happen.</p>
+</details>
+<div id="root"></div>
+<div class="footer">
+  <a id="prev2" class="nav" href="#case=0">← Previous</a>
+  <span id="caseCounter"></span>
+  <a id="next2" class="nav" href="#case=1">Next →</a>
+</div>
+</main>
+<script>
+let packet,scores={},current=0,persistChain=Promise.resolve();
+const $=selector=>document.querySelector(selector);
+function esc(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function fmt(seconds){seconds=Number(seconds)||0;let hours=Math.floor(seconds/3600),minutes=Math.floor(seconds%3600/60),s=(seconds%60).toFixed(1).padStart(4,'0');return(hours?String(hours).padStart(2,'0')+':':'')+String(minutes).padStart(2,'0')+':'+s}
+function saved(c){return scores[c.case_id]||{}}
+function truth(c){return saved(c).truth_start_seconds}
+async function load(){try{const packetResponse=await fetch('/api/packet'),scoresResponse=await fetch('/api/scores');if(!packetResponse.ok||!scoresResponse.ok)throw new Error('The review server did not return its data.');packet=await packetResponse.json();scores=await scoresResponse.json();current=Number(new URLSearchParams(location.hash.slice(1)).get('case')||0);current=Math.max(0,Math.min(packet.cases.length-1,current));render()}catch(error){const filePage=location.protocol==='file:';$('#root').innerHTML=`<section class="card load-error"><h2>Review data could not be loaded</h2><p>${filePage?'This page was opened as a local file. It needs the local review server to load the packet and scores.':'The local review server did not return the packet or saved scores.'}</p><p><a class="nav" href="http://127.0.0.1:8768/">Open the chapter locator review server</a></p><p class="subtle">If the link does not open the review, start the server with <code>python evals/chapter-locator/manual-review-v2/server.py</code> from the repository root.</p></section>`;console.error('Chapter locator review load failed:',error)}}
+function persist(){const body=JSON.stringify(scores);persistChain=persistChain.then(()=>fetch('/api/scores',{method:'POST',headers:{'Content-Type':'application/json'},body})).then(()=>{updateProgress();$('#progress').textContent='Saved';setTimeout(()=>{if($('#progress').textContent==='Saved')updateProgress()},900)}).catch(()=>$('#progress').textContent='Save failed');return persistChain}
+function caseById(id){return packet.cases.find(item=>item.case_id===id)}
+function groupCases(c){const found=new Set([c.case_id]),pending=[c.case_id];while(pending.length){const id=pending.pop(),record=scores[id]||{};for(const other of record.concurrent_case_ids||[]){if(!found.has(other)&&caseById(other)?.meeting_number===c.meeting_number){found.add(other);pending.push(other)}}}return[...found].map(caseById).filter(Boolean)}
+function ownAgenda(c){const record=saved(c),targets=c.target_agenda_indices||[],manual=record.manual_agenda_indices||(record.bundle_agenda_indices||targets).filter(i=>!targets.includes(i));return{targets,manual,excluded:record.excluded_agenda_indices||[]}}
+function selectedAgenda(cases){const targets=new Set(),manual=new Set(),excluded=new Set();for(const c of cases){const own=ownAgenda(c);own.targets.forEach(i=>targets.add(i));own.manual.forEach(i=>manual.add(i));own.excluded.forEach(i=>excluded.add(i))}return[...new Set([...targets,...manual])].filter(i=>!excluded.has(i)).sort((a,b)=>a-b)}
+function neighborCases(c){return c.neighbor_chapters.filter(ch=>ch.index!==c.chapter_index).map(ch=>packet.cases.find(item=>item.meeting_number===c.meeting_number&&item.chapter_index===ch.index)).filter(Boolean)}
+function saveAgendaSelection(){const c=packet.cases[current],group=groupCases(c),checked=[...document.querySelectorAll('[data-agenda-index]:checked')].map(el=>Number(el.dataset.agendaIndex)),targets=new Set(group.flatMap(item=>item.target_agenda_indices||[])),extras=new Set(group.flatMap(item=>ownAgenda(item).manual)),base=new Set([...targets,...extras]),excluded=[...base].filter(i=>!checked.includes(i)),manual=checked.filter(i=>!targets.has(i));scores[c.case_id]={...saved(c),manual_agenda_indices:manual,excluded_agenda_indices:excluded};const selected=selectedAgenda(group);for(const item of group)scores[item.case_id]={...saved(item),bundle_agenda_indices:selected};persist()}
+function syncGroup(ids,preferredTime){const group=ids.map(caseById).filter(Boolean);for(const item of group){const record={...saved(item)};if(!Array.isArray(record.manual_agenda_indices))record.manual_agenda_indices=ownAgenda(item).manual;if(!Object.hasOwn(record,'truth_before_concurrency_seconds'))record.truth_before_concurrency_seconds=Number.isFinite(record.truth_start_seconds)?record.truth_start_seconds:null;scores[item.case_id]=record}const selected=selectedAgenda(group);for(const item of group){const record={...saved(item)};if(Number.isFinite(preferredTime))record.truth_start_seconds=preferredTime;record.bundle_agenda_indices=selected;scores[item.case_id]=record}}
+function setConcurrent(otherId,checked){const c=packet.cases[current],other=caseById(otherId);if(!other)return;const a=new Set(saved(c).concurrent_case_ids||[]),b=new Set(saved(other).concurrent_case_ids||[]);if(checked){a.add(otherId);b.add(c.case_id)}else{a.delete(otherId);b.delete(c.case_id)}scores[c.case_id]={...saved(c),concurrent_case_ids:[...a]};scores[otherId]={...saved(other),concurrent_case_ids:[...b]};const groups=[...new Map([groupCases(c),groupCases(other)].map(group=>[group.map(item=>item.case_id).sort().join('|'),group])).values()];for(const group of groups){if(group.length>1){const preferred=group.map(truth).find(Number.isFinite);syncGroup(group.map(item=>item.case_id),preferred)}else{const item=group[0],record={...saved(item)};if(Object.hasOwn(record,'truth_before_concurrency_seconds')){if(Number.isFinite(record.truth_before_concurrency_seconds))record.truth_start_seconds=record.truth_before_concurrency_seconds;else delete record.truth_start_seconds;delete record.truth_before_concurrency_seconds}record.bundle_agenda_indices=selectedAgenda(group);scores[item.case_id]=record}}persist().then(render)}
+function saveTruth(){const c=packet.cases[current],input=$('#truthStart'),value=Number(input.value);if(!Number.isFinite(value)||value<0||value>Number(c.duration_seconds||Infinity)){input.focus();$('#truthStatus').textContent='Enter a valid time in seconds from the meeting start.';$('#truthStatus').className='error';return}const rounded=Math.round(value*1000)/1000;for(const item of groupCases(c)){const record={...saved(item),truth_start_seconds:rounded,bundle_agenda_indices:selectedAgenda(groupCases(c)),updated_at:new Date().toISOString()};delete record.target_status;delete record.target_status_note;scores[item.case_id]=record}persist().then(render)}
+function markNoSpokenSegment(){const c=packet.cases[current],record={...saved(c)};delete record.truth_start_seconds;delete record.truth_before_concurrency_seconds;record.target_status='not_in_transcript';record.target_status_note='Provider chapter has no corresponding spoken segment in the transcript.';record.updated_at=new Date().toISOString();scores[c.case_id]=record;persist().then(render)}
+function markTranscriptGap(){const c=packet.cases[current],record={...saved(c)};delete record.truth_start_seconds;delete record.truth_before_concurrency_seconds;record.target_status='transcript_gap';record.target_status_note='Word-timed transcript has no coverage near this provider chapter.';record.updated_at=new Date().toISOString();scores[c.case_id]=record;persist().then(render)}
+function setTruthFromWord(seconds){$('#truthStart').value=Number(seconds).toFixed(3);$('#truthStatus').textContent=`Selected word at ${fmt(seconds)}; saved.`;$('#truthStatus').className='good';saveTruth()}
+function saveImportance(value){const c=packet.cases[current];scores[c.case_id]={...saved(c),flow_importance:value||null,importance_updated_at:new Date().toISOString()};persist()}
+function isScored(c){return Number.isFinite(truth(c))||['not_in_transcript','transcript_gap'].includes(saved(c).target_status)}
+function updateProgress(){const done=packet.cases.filter(isScored).length;const meetings=new Map();for(const c of packet.cases){const row=meetings.get(c.meeting_number)||{total:0,done:0};row.total+=1;if(isScored(c))row.done+=1;meetings.set(c.meeting_number,row)}const complete=[...meetings.values()].filter(row=>row.done===row.total).length;$('#progress').textContent=`${done}/${packet.case_count} boundaries reviewed · ${complete}/${packet.meeting_count} meetings complete`}
+function transcript(units,selectedTime=null){return units.length?units.map(unit=>{const words=unit.words?.length?unit.words.map(word=>{const chosen=selectedTime!=null&&Math.abs(selectedTime-word.start_seconds)<0.002;return`<button type="button" class="word${chosen?' selected':''}" data-word-start="${word.start_seconds}" title="Set transition to ${fmt(word.start_seconds)}">${esc(word.text)}</button>`}).join(' '):esc(unit.text||'');return`<div><code>${esc(fmt(unit.start_seconds??0))}</code> ${words}</div>`}).join(''):'No word-timed transcript excerpt available; you can enter a time above.'}
+function agendaList(c,indices){return c.agenda_items.map(item=>`<label><input type="checkbox" data-agenda-index="${item.index}" ${indices.includes(item.index)?'checked':''}> <b>${esc(item.display_ref||'')}</b> ${esc(item.title)}</label>`).join('')}
+function concurrentList(c,group){return neighborCases(c).map(other=>`<label><input type="checkbox" data-concurrent-case="${esc(other.case_id)}" ${group.some(item=>item.case_id===other.case_id)?'checked':''}> <b>${esc(other.neighbor_chapters.find(ch=>ch.index===other.chapter_index)?.start_clock||'')}</b> ${esc(other.chapter_title)}</label>`).join('')||'<span class="subtle">No neighboring published chapters in this meeting.</span>'}
+function render(){if(!packet)return;const c=packet.cases[current],record=saved(c),savedTime=truth(c),suggested=c.suggested_start_seconds,group=groupCases(c),groupIds=group.map(item=>item.case_id),agendaSelected=selectedAgenda(group);const initial=record.target_status?'':Number.isFinite(savedTime)?savedTime:(Number.isFinite(suggested)?suggested:'');const autoItems=c.target_agenda_items||[];const matchLabel=autoItems.map(item=>`${item.display_ref||''} ${item.title}`).join(' / ');const crosswalkLabel=c.crosswalk_status==='human-reviewed'?'Crosswalk manually checked':'Automatic crosswalk · verify as needed';const transcriptLabel=suggested==null?'Transcript around the published boundary':'Transcript around the suggested time and published boundary';const rows=`
+  <section class="card">
+    <div class="review-head">
+    <div><span class="badge">Meeting ${c.meeting_number} of ${packet.meeting_count}</span> <span class="badge">Boundary ${c.chapter_index+1} of ${c.meeting_case_count}</span> <span class="badge">${esc(c.duration_bucket||'size unknown')}</span></div>
+    <h2>${esc(c.chapter_title)}</h2>
+    <p><b>Meeting:</b> ${esc(c.body||'')} · <b>Provider:</b> ${esc(c.provider||'')} · <b>Published:</b> ${esc(c.published||'')}${c.agenda_url?` · <a href="${esc(c.agenda_url)}" target="_blank" rel="noopener noreferrer">Open published agenda</a>`:''}</p>
+    ${matchLabel?`<p><b>Agenda crosswalk:</b> ${esc(matchLabel)} <span class="badge">${crosswalkLabel}</span></p>`:'<p class="warning"><b>No confident automatic agenda crosswalk.</b> Select the agenda item or items represented below.</p>'}
+    </div>
+    <div class="review-layout">
+    <div class="review-controls">
+    <div class="timebox">
+      <label for="truthStart"><b>True transition time (seconds from meeting start)</b></label>
+      <input id="truthStart" type="number" min="0" step="0.01" value="${initial===''?'':Number(initial).toFixed(2)}" max="${esc(c.duration_seconds||'')}" placeholder="Click a transcript word">
+      <button id="saveTruth">Save selected time</button>
+      <span id="truthStatus" class="${record.target_status?'warning':Number.isFinite(savedTime)?'good':'subtle'}">${record.target_status==='not_in_transcript'?'Excluded: no spoken segment in transcript':record.target_status==='transcript_gap'?'Excluded: transcript has no coverage near this chapter':Number.isFinite(savedTime)?'Saved: '+fmt(savedTime):(Number.isFinite(suggested)?'Median suggestion: '+fmt(suggested)+' · click Save to accept':'No median suggestion · choose a word or enter a time')}</span>
+      <div class="target-status"><b>Transcript evidence</b><button id="noSpokenSegment" type="button">No spoken segment · exclude</button><button id="transcriptGap" type="button">Transcript gap · unscorable</button><span class="subtle">A transcript gap does not establish that the discussion never happened.</span></div>
+    </div>
+    <div class="section importance"><b>Importance for following meeting flow</b><div class="importance-options" role="radiogroup" aria-label="Importance for following meeting flow">${[
+      ['', 'Not assessed', 'Leave this boundary unclassified'],
+      ['core', 'Core', 'Omitting this would hurt understanding'],
+      ['optional', 'Optional', 'This is okay to omit'],
+      ['unsure', 'Unsure', 'Needs more context'],
+    ].map(([value,label,description])=>`<label class="importance-option" title="${description}"><input type="radio" name="importance" value="${value}" ${String(record.flow_importance||'')===value?'checked':''}><span>${label}</span></label>`).join('')}</div><span class="subtle">Core means omission hurts understanding; optional means okay to omit. Independent of timing and item matching.</span></div>
+    </div>
+    <div class="review-context"><details open><summary>${esc(transcriptLabel)} · click the first word to set the true start</summary><div class="transcript">${transcript(c.transcript_excerpt,Number(initial)||null)}</div></details></div>
+    </div>
+    <section class="section mapping-section"><h3>Transition contents</h3><p class="subtle">Agenda items describe what the meeting discusses. Published chapter rows identify provider timestamps. Link rows only when they mark the same transition; the linked rows share one time and their agenda selections combine.</p><div class="mapping-grid"><div class="mapping-column"><h4>Agenda items at this transition</h4><div class="items">${agendaList(c,agendaSelected)}</div></div><div class="mapping-column"><h4>Published chapter rows to merge with this time</h4><div class="items">${concurrentList(c,group)}</div></div></div></section>
+  </section>`;
+  $('#root').innerHTML=rows;$('#caseCounter').textContent=`Boundary ${current+1} of ${packet.case_count}`;$('#caseProgress').textContent=`${current+1}/${packet.case_count}`;$('#meetingProgress').textContent=`Meeting ${c.meeting_number}/${packet.meeting_count}`;
+  $('#saveTruth').onclick=saveTruth;$('#noSpokenSegment').onclick=markNoSpokenSegment;$('#transcriptGap').onclick=markTranscriptGap;document.querySelectorAll('input[name="importance"]').forEach(input=>input.onchange=()=>saveImportance(input.value));document.querySelectorAll('[data-agenda-index]').forEach(el=>el.onchange=saveAgendaSelection);document.querySelectorAll('[data-concurrent-case]').forEach(el=>el.onchange=()=>setConcurrent(el.dataset.concurrentCase,el.checked));
+  document.querySelectorAll('[data-word-start]').forEach(word=>word.onclick=()=>setTruthFromWord(Number(word.dataset.wordStart)));
+  for(const [element,offset] of [[$('#prev'),-1],[$('#prev2'),-1],[$('#next'),1],[$('#next2'),1]]){const target=current+offset;element.href=`#case=${Math.max(0,Math.min(packet.case_count-1,target))}`;element.classList.toggle('disabled',target<0||target>=packet.case_count)}updateProgress()}
+window.addEventListener('hashchange',()=>{if(!packet)return;current=Number(new URLSearchParams(location.hash.slice(1)).get('case')||0);current=Math.max(0,Math.min(packet.case_count-1,current));render();const top=$('#root').getBoundingClientRect().top+window.scrollY-document.querySelector('header').offsetHeight-12;window.scrollTo({top,behavior:'smooth'})});
+$('#export').onclick=()=>{const blob=new Blob([JSON.stringify({version:5,packet_version:packet.version,scores},null,2)],{type:'application/json'}),link=document.createElement('a');link.href=URL.createObjectURL(blob);link.download='chapter-locator-all-boundaries-scores.json';link.click();URL.revokeObjectURL(link.href)};
+load();
+document.addEventListener('keydown',event=>{if(!packet||event.altKey||event.ctrlKey||event.metaKey)return;const target=event.target,typing=target instanceof HTMLElement&&(target.isContentEditable||target.matches('textarea,select,input:not([type="radio"]):not([type="checkbox"])'));if(typing)return;if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();const next=Math.max(0,Math.min(packet.case_count-1,current+(event.key==='ArrowRight'?1:-1)));if(next!==current)location.hash=`case=${next}`;return}const importance={c:'core',o:'optional',u:'unsure'}[event.key.toLowerCase()];if(importance){event.preventDefault();const radio=document.querySelector(`input[name="importance"][value="${importance}"]`);if(radio){radio.checked=true;saveImportance(importance)}}});
+</script>
+</body>
+</html>

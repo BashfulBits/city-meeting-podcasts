@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "dataset": "dataset-v3",
+  "purpose": "Three-way DeepSeek V4.1 Flash overlap diagnostic",
+  "split": "development",
+  "route": "deepseek/deepseek-v4.1-flash",
+  "route_id": "nvidia_deepseek_v4_1_flash_free",
+  "structured_mode": "prompt_only",
+  "repairs_submitted": 0,
+  "start_spread_seconds": 0.000174,
+  "pause": {
+    "scope": "provider:nvidia",
+    "drained": true,
+    "in_flight_at_start": 3,
+    "drain_seconds": 453.1,
+    "contended": false,
+    "resumed_after_run": true
+  },
+  "requests": [
+    {
+      "packet_uid": "bb56b844c811808e",
+      "packet_slug": "arlington-tx",
+      "packet_estimate_chars_div_4": 93666,
+      "provider_prompt_tokens": 123780,
+      "elapsed_seconds": 556.452,
+      "http_status": 200,
+      "finish_status": "fulfilled",
+      "completion_tokens": 6839,
+      "reasoning_tokens": 6206,
+      "schema_valid": true,
+      "anchor_count": 11,
+      "provider_start_hits": 8,
+      "provider_start_denominator": 9,
+      "request_sha256": "abf4ac8410c2b6c3b9aeed94969f70d3bbd7dbb8d78e9078fadc20ac54214d0a",
+      "response_id": "90a2fd316340531e"
+    },
+    {
+      "packet_uid": "b713de3cac686c35",
+      "packet_slug": "addison-tx-board-of-zoning-adjustment",
+      "packet_estimate_chars_div_4": 134988,
+      "provider_prompt_tokens": 189229,
+      "elapsed_seconds": 837.803,
+      "http_status": 200,
+      "finish_status": "fulfilled",
+      "completion_tokens": 9734,
+      "reasoning_tokens": 9350,
+      "schema_valid": true,
+      "anchor_count": 4,
+      "provider_start_hits": 2,
+      "provider_start_denominator": 2,
+      "request_sha256": "55d189ccb91fc7f2205fd38f6ec67591d1b14469be13f52658f8d4e311a3fb55",
+      "response_id": "b5b6c3d873634ab5"
+    },
+    {
+      "packet_uid": "ab1cfb601c5c94f0",
+      "packet_slug": "addison-tx-board-of-zoning-adjustment",
+      "packet_estimate_chars_div_4": 167686,
+      "provider_prompt_tokens": 273043,
+      "elapsed_seconds": 298.987,
+      "http_status": 200,
+      "finish_status": "fulfilled",
+      "completion_tokens": 2854,
+      "reasoning_tokens": 2646,
+      "schema_valid": true,
+      "anchor_count": 3,
+      "provider_start_hits": 2,
+      "provider_start_denominator": 2,
+      "request_sha256": "a2d936da66186ac580319328fc0bba2c6af5571bc555f873d78d2cd1319c870b",
+      "response_id": "8364a03c15317387"
+    }
+  ],
+  "conclusion": "All three overlapping full-packet requests returned valid first-pass JSON with no repair. This is one successful three-call experiment, not a sustained concurrency or capacity guarantee; the configured route concurrency remains 1.",
+  "private_raw_artifacts": {
+    "directory": "/private/tmp/chapter-locator-telemetry/nvidia-v41-concurrency-20260927T020551Z/",
+    "contains": "raw requests, complete SSE response bodies, timestamped events, and protocol summaries"
+  }
+}

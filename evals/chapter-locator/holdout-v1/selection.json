@@ -1,0 +1,214 @@
+{
+  "duration_buckets": {
+    "2-to-4h": 17,
+    "4-to-8h": 1,
+    "under-2h": 6
+  },
+  "frozen_on": "2026-09-27",
+  "locator_results_seen_before_freeze": false,
+  "meeting_metadata": [
+    {
+      "body_key": "zoning commission zoning commission",
+      "duration_bucket": "4-to-8h",
+      "duration_seconds": 14557.689,
+      "provider": "granicus",
+      "uid": "3fd0769f51ca1f05"
+    },
+    {
+      "body_key": "council",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 11545.915,
+      "provider": "granicus",
+      "uid": "149e18205b342017"
+    },
+    {
+      "body_key": "city council meeting city council meeting",
+      "duration_bucket": "under-2h",
+      "duration_seconds": 2622.005,
+      "provider": "granicus",
+      "uid": "b37ec9e08413f541"
+    },
+    {
+      "body_key": "city plan commission city plan commission",
+      "duration_bucket": "under-2h",
+      "duration_seconds": 1752.425,
+      "provider": "granicus",
+      "uid": "264212d037ce1e52"
+    },
+    {
+      "body_key": "board of adjustment residential board of adjustment residential",
+      "duration_bucket": "under-2h",
+      "duration_seconds": 7129.544,
+      "provider": "granicus",
+      "uid": "bb150f59e23ceda6"
+    },
+    {
+      "body_key": "planning and zoning commission",
+      "duration_bucket": "under-2h",
+      "duration_seconds": 4965.08,
+      "provider": "granicus",
+      "uid": "a25c5073da38d890"
+    },
+    {
+      "body_key": "audit committee audit committee",
+      "duration_bucket": "under-2h",
+      "duration_seconds": 3973.355,
+      "provider": "granicus",
+      "uid": "0bd43068860d23ac"
+    },
+    {
+      "body_key": "board of adjustment residential board of adjustment",
+      "duration_bucket": "under-2h",
+      "duration_seconds": 7142.842,
+      "provider": "granicus",
+      "uid": "21451e2edf0b5d9c"
+    },
+    {
+      "body_key": "council",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7892.314,
+      "provider": "granicus",
+      "uid": "74e16844b24866f6"
+    },
+    {
+      "body_key": "council",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 8931.938,
+      "provider": "granicus",
+      "uid": "8a5215cef2c8f3cf"
+    },
+    {
+      "body_key": "council",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 11009.671,
+      "provider": "granicus",
+      "uid": "eb5eb0ee29393dbd"
+    },
+    {
+      "body_key": "zoning commission zoning commission",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 13791.893,
+      "provider": "granicus",
+      "uid": "cbdae79171ad8b75"
+    },
+    {
+      "body_key": "mobility committee",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7339.721,
+      "provider": "swagit",
+      "uid": "b686db6248625fc2"
+    },
+    {
+      "body_key": "charter review committee",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 10223.14,
+      "provider": "swagit",
+      "uid": "fb72668fb38af712"
+    },
+    {
+      "body_key": "council government performance and financial management committee",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7311.261,
+      "provider": "swagit",
+      "uid": "bfcdafa242d6f4aa"
+    },
+    {
+      "body_key": "public safety commission special called meeting",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7206.466,
+      "provider": "swagit",
+      "uid": "5ddb8129cbd21c8d"
+    },
+    {
+      "body_key": "council special committee on economic incentive",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7216.192,
+      "provider": "swagit",
+      "uid": "e0fcd5db5b678a1c"
+    },
+    {
+      "body_key": "planning and zoning meeting",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 12933.08,
+      "provider": "swagit",
+      "uid": "9d84baa70ea96075"
+    },
+    {
+      "body_key": "environmental board",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 11279.859,
+      "provider": "swagit",
+      "uid": "b0255efe9b903f4c"
+    },
+    {
+      "body_key": "austin integrated water resource planning community task force",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7995.697,
+      "provider": "swagit",
+      "uid": "f231ad89fc3c8046"
+    },
+    {
+      "body_key": "2026 city council strategic planning session",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 13901.604,
+      "provider": "swagit",
+      "uid": "64d910657ceb47fa"
+    },
+    {
+      "body_key": "board of adjustment",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 8360.352,
+      "provider": "swagit",
+      "uid": "dd2fca265ade6e8d"
+    },
+    {
+      "body_key": "city council meeting",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 10999.966,
+      "provider": "swagit",
+      "uid": "0b7c86c1d697196d"
+    },
+    {
+      "body_key": "development code review committee",
+      "duration_bucket": "2-to-4h",
+      "duration_seconds": 7382.818,
+      "provider": "swagit",
+      "uid": "c20e533196fbd578"
+    }
+  ],
+  "provider_counts": {
+    "granicus": 12,
+    "swagit": 12
+  },
+  "provider_gold_in_locator_requests": false,
+  "purpose": "Fresh locator holdout selection, before locator model calls; selected from canonical rows absent from dataset-v3.",
+  "schema_version": 1,
+  "seed": "chapter-locator-fresh-holdout-2026-09-27-v1",
+  "selection_source": "Read-only expanded candidate cohort built from /private/tmp/.citypods-state; 240 per provider, split by body family.",
+  "uids": [
+    "3fd0769f51ca1f05",
+    "149e18205b342017",
+    "b37ec9e08413f541",
+    "264212d037ce1e52",
+    "bb150f59e23ceda6",
+    "a25c5073da38d890",
+    "0bd43068860d23ac",
+    "21451e2edf0b5d9c",
+    "74e16844b24866f6",
+    "8a5215cef2c8f3cf",
+    "eb5eb0ee29393dbd",
+    "cbdae79171ad8b75",
+    "b686db6248625fc2",
+    "fb72668fb38af712",
+    "bfcdafa242d6f4aa",
+    "5ddb8129cbd21c8d",
+    "e0fcd5db5b678a1c",
+    "9d84baa70ea96075",
+    "b0255efe9b903f4c",
+    "f231ad89fc3c8046",
+    "64d910657ceb47fa",
+    "dd2fca265ade6e8d",
+    "0b7c86c1d697196d",
+    "c20e533196fbd578"
+  ]
+}

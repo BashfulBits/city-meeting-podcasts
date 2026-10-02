@@ -1,0 +1,246 @@
+{
+  "provider": "orcarouter",
+  "model": "zai/glm-5.3-flash",
+  "upstream_model": "z-ai/glm-5.3-flash-free",
+  "route_id": "orcarouter_zai_glm_5_3_flash_free",
+  "route_configured": true,
+  "test_split": "human-adjudicated 16-meeting route matrix",
+  "protocol": "same full locator packet and Z.AI JSON-only compatibility instruction; compiled OrcaRouter route json_object mode; local schema validation; one locator repair attempt allowed",
+  "pause": {
+    "scope": "provider:orcarouter",
+    "drained": true,
+    "in_flight_at_start": 0,
+    "drain_seconds": 0.1,
+    "contended": false
+  },
+  "quality": {
+    "valid_packets": 10,
+    "total_packets": 16,
+    "anchors": 58,
+    "timing_hits": 48,
+    "provider_starts": 100,
+    "timing_recall_all_starts": 0.48,
+    "timing_precision_all_anchors": 0.8275862068965517,
+    "mean_boundary_error_seconds_on_timing_hits": 6.70821461734695,
+    "p95_boundary_error_seconds_on_timing_hits": 35.325342849999835,
+    "human_item_identity_hits": 48,
+    "eligible_human_targets": 86,
+    "human_item_identity_recall": 0.5581395348837209,
+    "human_item_and_boundary_hits": 46,
+    "human_item_and_boundary_recall": 0.5348837209302325,
+    "human_item_boundary_cluster_bootstrap_95": [
+      0.2727272727272727,
+      0.8307692307692308
+    ],
+    "correct_item_given_eligible_timing_pair_hits": 44,
+    "eligible_timing_pairs": 48,
+    "correct_item_given_eligible_timing_pair": 0.9166666666666666
+  },
+  "context_and_operations": {
+    "requests": 20,
+    "packets_with_any_provider_response": 13,
+    "packets_without_provider_response": 3,
+    "explicit_prompt_or_context_size_rejections": 3,
+    "packet_builder_estimate_range": [
+      1154,
+      188657
+    ],
+    "largest_accepted_packet_builder_estimate": 63127,
+    "largest_reported_prompt_tokens": 84490,
+    "total_usage": {
+      "prompt_tokens": 838506,
+      "completion_tokens": 96816,
+      "total_tokens": 935322
+    },
+    "latency_seconds_by_attempt": [
+      91.82,
+      167.231,
+      186.482,
+      154.941,
+      149.99,
+      16.908,
+      16.702,
+      131.075,
+      21.947,
+      92.487,
+      79.734,
+      12.712,
+      153.197,
+      17.176,
+      78.501,
+      147.971,
+      142.452,
+      179.633,
+      231.004,
+      32.345
+    ],
+    "capacity_config": "800 RPD, 10 RPM, per-model concurrency 2; 1M configured context; practical ceiling not configured, free-tier size cap previously observed around ~94.5k provider tokens"
+  },
+  "per_meeting": [
+    {
+      "uid": "1e33fee06ae9d526",
+      "eligible_targets": 3,
+      "human_item_boundary_hits": 3,
+      "valid_packet": true,
+      "anchor_count": 3,
+      "packet_builder_estimate_tokens": 8020,
+      "input_tokens_reported_by_runner": 8056,
+      "error": null
+    },
+    {
+      "uid": "a7cafa96abee9fd4",
+      "eligible_targets": 3,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 24179,
+      "input_tokens_reported_by_runner": null,
+      "error": "structured_output_validation_failed_after_retry"
+    },
+    {
+      "uid": "68e93c804b716ddc",
+      "eligible_targets": 10,
+      "human_item_boundary_hits": 7,
+      "valid_packet": true,
+      "anchor_count": 8,
+      "packet_builder_estimate_tokens": 17223,
+      "input_tokens_reported_by_runner": 17259,
+      "error": null
+    },
+    {
+      "uid": "5661e9f07650d353",
+      "eligible_targets": 7,
+      "human_item_boundary_hits": 6,
+      "valid_packet": true,
+      "anchor_count": 8,
+      "packet_builder_estimate_tokens": 63127,
+      "input_tokens_reported_by_runner": 63162,
+      "error": null
+    },
+    {
+      "uid": "c6ed635dfa5776fd",
+      "eligible_targets": 11,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 90865,
+      "input_tokens_reported_by_runner": null,
+      "error": "provider_prompt_size_rejection"
+    },
+    {
+      "uid": "e65b938bd028c6b5",
+      "eligible_targets": 0,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 188657,
+      "input_tokens_reported_by_runner": null,
+      "error": "provider_prompt_size_rejection"
+    },
+    {
+      "uid": "f64bd49647621bd0",
+      "eligible_targets": 8,
+      "human_item_boundary_hits": 8,
+      "valid_packet": true,
+      "anchor_count": 10,
+      "packet_builder_estimate_tokens": 51747,
+      "input_tokens_reported_by_runner": 51783,
+      "error": null
+    },
+    {
+      "uid": "13a7ccd6cec16a73",
+      "eligible_targets": 8,
+      "human_item_boundary_hits": 8,
+      "valid_packet": true,
+      "anchor_count": 8,
+      "packet_builder_estimate_tokens": 61593,
+      "input_tokens_reported_by_runner": 61629,
+      "error": null
+    },
+    {
+      "uid": "b5bd376feea8e8ef",
+      "eligible_targets": 4,
+      "human_item_boundary_hits": 3,
+      "valid_packet": true,
+      "anchor_count": 3,
+      "packet_builder_estimate_tokens": 40596,
+      "input_tokens_reported_by_runner": 40632,
+      "error": null
+    },
+    {
+      "uid": "77558a2ffde222ff",
+      "eligible_targets": 1,
+      "human_item_boundary_hits": 1,
+      "valid_packet": true,
+      "anchor_count": 3,
+      "packet_builder_estimate_tokens": 1154,
+      "input_tokens_reported_by_runner": 1190,
+      "error": null
+    },
+    {
+      "uid": "4bdafbfb40214fff",
+      "eligible_targets": 2,
+      "human_item_boundary_hits": 0,
+      "valid_packet": true,
+      "anchor_count": 1,
+      "packet_builder_estimate_tokens": 49470,
+      "input_tokens_reported_by_runner": 49505,
+      "error": null
+    },
+    {
+      "uid": "a6bfcf669eb1ef77",
+      "eligible_targets": 5,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 120826,
+      "input_tokens_reported_by_runner": null,
+      "error": "provider_prompt_size_rejection"
+    },
+    {
+      "uid": "72250b5020c1c375",
+      "eligible_targets": 4,
+      "human_item_boundary_hits": 4,
+      "valid_packet": true,
+      "anchor_count": 6,
+      "packet_builder_estimate_tokens": 42318,
+      "input_tokens_reported_by_runner": 42354,
+      "error": null
+    },
+    {
+      "uid": "0004794481ddee5e",
+      "eligible_targets": 14,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 37275,
+      "input_tokens_reported_by_runner": null,
+      "error": "structured_output_validation_failed_after_retry"
+    },
+    {
+      "uid": "36415bafff30348d",
+      "eligible_targets": 0,
+      "human_item_boundary_hits": 0,
+      "valid_packet": false,
+      "anchor_count": 0,
+      "packet_builder_estimate_tokens": 46200,
+      "input_tokens_reported_by_runner": null,
+      "error": "structured_output_validation_failed_after_retry"
+    },
+    {
+      "uid": "e01edf2cbaf994c5",
+      "eligible_targets": 6,
+      "human_item_boundary_hits": 6,
+      "valid_packet": true,
+      "anchor_count": 8,
+      "packet_builder_estimate_tokens": 28989,
+      "input_tokens_reported_by_runner": 29025,
+      "error": null
+    }
+  ],
+  "run_artifact": "/private/tmp/chapter-locator-telemetry/glm-5-3-orcarouter-json-object-human-crosswalk-20260927T151058Z/run.json",
+  "date": "2026-09-27",
+  "run_variant": "configured_json_object",
+  "raw_telemetry_dir": "/private/tmp/chapter-locator-telemetry/glm-5-3-orcarouter-json-object-human-crosswalk-20260927T151058Z",
+  "retry_protocol_note": "Direct LiteLLM applies one provider-side Pydantic correction attempt for structured output, in addition to the locator runner’s one locator-level repair. This is not the v2 Worker retry schedule."
+}

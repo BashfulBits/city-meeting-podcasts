@@ -2830,10 +2830,24 @@ class LiteLLMBackend(Backend):
                 "content": (
                     "Retry this task. Your previous response failed local schema validation. "
                     "Return only one JSON object that exactly matches the requested response "
-                    "schema."
+                    "schema. Put the JSON in the assistant message content; reasoning text alone "
+                    "is not a response."
                 ),
             }
         )
+        if getattr(handle, "task", "") == "agenda-chapter-locate":
+            corrected_messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "For this locator retry, use only supplied transcript unit IDs and times. "
+                        "If distinct agenda items share one start time, reconsider the conflicting "
+                        "anchors: use another supplied unit only for a transcript-supported later "
+                        "start; otherwise keep the most specific chapter and omit a more general "
+                        "duplicate heading. Never invent a timestamp or add an arbitrary offset."
+                    ),
+                }
+            )
         corrected_payload = dict(payload)
         corrected_payload["messages"] = corrected_messages
         canonical_payload = json.dumps(corrected_payload, sort_keys=True)

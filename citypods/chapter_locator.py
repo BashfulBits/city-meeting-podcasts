@@ -30,18 +30,24 @@ MISTRAL_LOCATOR_MODEL = "mistral/mistral-large-2512"
 DEEPSEEK_FREE_LOCATOR_MODEL = "deepseek/deepseek-v4-flash"
 NEMOTRON_LOCATOR_MODEL = "nvidia/nemotron-3-ultra-550b-a55b:free"
 GEMINI_LOCATOR_MODEL = "gemini/gemini-3-flash-preview"
-# The production locator route, resolved from config/site_config.yml's
-# `llm_lanes["chapter-locator"]` rather than hard-coded, so every dispatching lane's route choice
-# is visible in one place (review/44 Phase 4).
+# Production uses the baseline prompt. DeepSeek V4 Flash is the preferred route for packets in its
+# empirically verified fit band; Kimi K3 handles larger packets. Keep these in the lane registry
+# and select one per request so the Worker reserves only that model's pool.
 #
 # THIS STRING IS PART OF THE RECIPE HASH (see `stages.py`'s `chapter_locator` recipe), so changing
 # the configured model re-queues every locator artifact in the catalog -- a deliberate backfill
 # whose story the PR and CHANGELOG must state per AGENTS.md, not a config tweak.
-# `tests/test_llm_lanes.py` pins the current value.
+# `tests/test_llm_lanes.py` pins the primary (DeepSeek) route.
 #
 # The `_LOCATOR_MODEL_BANDS` ladder below is a SEPARATE concern: it picks a fallback candidate set
 # by request size for the shadow/experimental locator path, and is not the production lane.
 PRODUCTION_LOCATOR_MODEL = lane_for("chapter-locator").primary_model
+PRODUCTION_LOCATOR_MODELS = lane_for("chapter-locator").models
+KIMI_LOCATOR_MODEL = "moonshotai/kimi-k3"
+# Saved V4 Flash telemetry accepted packets through 76,546 internal estimated tokens and
+# repeatedly rejected packets from 81,301. Keep a small margin below the observed accepted edge.
+DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS = 76_000
+LOCATOR_ROUTING_VERSION = "size-split-v1"
 # Mistral Large 3 accepts 256k total tokens. Reserve enough output room for a long chapter list
 # plus one structured-output repair. Gemini's documented 1M input window has the same reserve.
 MISTRAL_CONTEXT_TOKENS = 256_000
@@ -49,10 +55,8 @@ DEEPSEEK_FREE_CONTEXT_TOKENS = 200_000
 NEMOTRON_CONTEXT_TOKENS = 1_000_000
 GEMINI_CONTEXT_TOKENS = 1_048_576
 LOCATOR_OUTPUT_TOKEN_RESERVE = 16_384
-# Ascending-ceiling bands of same-priority candidates. Every model in a band can hold any request
-# that lands in it -- the scheduler's own availability/pacing ranking (not this order) picks among
-# them. Gemini's free quota is tiny (20 RPD) and is deliberately kept out of every band below its
-# own: it is a last-resort escalation once no free-model band fits, not a peer of the others.
+# Research-only shadow selection bands. Production uses the explicit empirically-derived split
+# below; this ladder remains for old shadow/evaluation callers.
 _LOCATOR_MODEL_BANDS: tuple[tuple[int, tuple[str, ...]], ...] = (
     (
         DEEPSEEK_FREE_CONTEXT_TOKENS,
@@ -339,12 +343,26 @@ def validate_locator_response(
             )
         )
     anchors.sort(key=lambda anchor: (anchor.unit.start, anchor.unit.id))
-    if any(
-        left.unit.start >= right.unit.start
-        for left, right in zip(anchors, anchors[1:], strict=False)
-    ):
-        raise ValueError("locator anchors must resolve to strictly increasing timestamps")
+    for left, right in zip(anchors, anchors[1:], strict=False):
+        if left.unit.start == right.unit.start:
+            raise DuplicateLocatorStartError(
+                (left.agenda_item_index, right.agenda_item_index), left.unit.start
+            )
+        if left.unit.start > right.unit.start:
+            raise ValueError("locator anchors must resolve to strictly increasing timestamps")
     return anchors
+
+
+class DuplicateLocatorStartError(ValueError):
+    """Two distinct agenda items resolved to the same transcript start time."""
+
+    def __init__(self, agenda_item_indices: tuple[int, int], start: float) -> None:
+        self.agenda_item_indices = agenda_item_indices
+        self.start = start
+        super().__init__(
+            "locator anchors share a start time for agenda items "
+            f"{agenda_item_indices[0]} and {agenda_item_indices[1]} ({start:.3f}s)"
+        )
 
 
 def _format_timestamp(seconds: float) -> str:
@@ -486,8 +504,9 @@ def build_production_locator_request(
     units: Sequence[LocatorUnit],
     *,
     unit_annotations: Mapping[str, Mapping[str, Any]] | None = None,
+    retry_hint: str | None = None,
 ) -> LocatorRequest:
-    """Build the full-transcript production request on pinned Gemini 3.5 Flash Lite.
+    """Build a baseline-prompt request on the size-selected production route.
 
     The complete unit list is always retained.  Annotations are optional research provenance and
     never replace or filter transcript units.
@@ -498,21 +517,37 @@ def build_production_locator_request(
         units,
         unit_annotations=unit_annotations,
     )
+    messages = request.messages
+    input_tokens = request.input_tokens
+    if retry_hint:
+        messages = (*messages, {"role": "user", "content": retry_hint})
+        from citypods.compute.llm_policy import estimate_tokens
+
+        input_tokens = estimate_tokens(list(messages))
+    model = (
+        PRODUCTION_LOCATOR_MODEL
+        if input_tokens <= DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS
+        else KIMI_LOCATOR_MODEL
+    )
     return LocatorRequest(
-        messages=request.messages,
-        model=PRODUCTION_LOCATOR_MODEL,
-        models=(PRODUCTION_LOCATOR_MODEL,),
-        input_tokens=request.input_tokens,
+        messages=messages,
+        model=model,
+        models=(model,),
+        input_tokens=input_tokens,
     )
 
 
 __all__ = [
     "DEEPSEEK_FREE_CONTEXT_TOKENS",
     "DEEPSEEK_FREE_LOCATOR_MODEL",
+    "DEEPSEEK_V4_FLASH_SAFE_INPUT_TOKENS",
+    "DuplicateLocatorStartError",
     "GEMINI_CONTEXT_TOKENS",
     "GEMINI_LOCATOR_MODEL",
     "LOCATOR_CONTRACT",
     "LOCATOR_OUTPUT_TOKEN_RESERVE",
+    "LOCATOR_ROUTING_VERSION",
+    "KIMI_LOCATOR_MODEL",
     "LocatorAgendaItem",
     "LocatorAnchor",
     "LocatorRequest",
@@ -522,6 +557,7 @@ __all__ = [
     "NEMOTRON_CONTEXT_TOKENS",
     "NEMOTRON_LOCATOR_MODEL",
     "PRODUCTION_LOCATOR_MODEL",
+    "PRODUCTION_LOCATOR_MODELS",
     "build_locator_request",
     "build_locator_units",
     "build_production_locator_request",
