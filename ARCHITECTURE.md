@@ -679,6 +679,14 @@ every value from the evidence bundle before anything is written:
 - `provider_guids` must belong to episodes carrying that label.
 - `new_feed_slug` must be well-formed and unused.
 
+Feed-level `remedy_policy.aggregate_family: tif` is a binding subscription policy, validated at
+config load and included in compact LLM evidence. Local validation reads same-source feed files,
+blocks TIF district creation and non-aggregate targets, and uses word-boundary family markers.
+Reviewed `member_names` hold ambiguous unmarked district labels for manual identity confirmation;
+they never broaden selectors or authorize ownership on their own. This applies to any city with
+a configured aggregate policy, not a Dallas/Fort Worth slug allowlist. No dispatch/model changes
+are part of this guard; the wider execution/model design remains review/51 work.
+
 Anything failing is dropped with a reason and surfaced in the report rather than applied. The
 applier resolves a slug to a path through a map built by scanning `config/feeds` itself, so no
 write path ever originates from model output.

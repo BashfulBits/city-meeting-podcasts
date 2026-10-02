@@ -36,7 +36,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from citypods.bodies import body_key
+from citypods.bodies import body_key, matches
 from citypods.compute.base import InferenceJob
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig, LLMStructuredOutputError
 from citypods.compute.llm_policy import LLMRequestPolicy, estimate_tokens
@@ -66,7 +66,7 @@ MIN_RECURRING_EPISODES = 3
 STALE_FEED_DORMANT_DAYS = 365
 STALE_FEED_RETIRED_DAYS = 730
 INCONSISTENT_GAP_DAYS = 365
-REMEDY_VERSION = "direct-v4"
+REMEDY_VERSION = "direct-v5-aggregate-policy"
 DECISION_CONTRACT = "unexpected-body-decisions-v2"
 
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -159,6 +159,11 @@ Actions:
 - new_feed: clearly recurring, distinct body with at least three observed meetings; provide slug,
   title, and description.
 - manual_review: evidence is insufficient or no safe owning feed exists; explain what is missing.
+Configured remedy_policy.aggregate_family is a binding subscription policy. All TIF/TIRZ district
+boards, joint TIF meetings and TIF oversight bodies belong to that city's aggregate TIF feed;
+never create district feeds or assign them to Economic Development or another body. Member names
+are identity clues, not permission to include unrelated neighborhood/project recordings. If an
+unmarked label is ambiguous, use manual_review and name the evidence needed.
 Prefer existing feeds. An independent board is not a Council session. For a joint meeting, select
 both bodies' feeds if configured; otherwise select the configured one and explain the missing body.
 Only use target slugs and evidence IDs supplied here. Do not invent GUIDs, labels, or source keys.
@@ -217,6 +222,7 @@ def gather_unexpected_body_evidence(
             "body": feed.source.get("body"),
             "body_any": feed.source.get("body_any", []),
             "body_includes": feed.source.get("body_includes", []),
+            "remedy_policy": feed.extra.get("remedy_policy", {}),
         }
         for feed in related_cities
     ]
@@ -305,7 +311,10 @@ def _compact_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
     return {
         "city": evidence.get("city", {}),
         "existing_feeds": [
-            {key: feed.get(key) for key in ("slug", "podcast_title", "body", "body_any")}
+            {
+                key: feed.get(key)
+                for key in ("slug", "podcast_title", "body", "body_any", "remedy_policy")
+            }
             for feed in evidence.get("existing_feeds", [])
         ],
         "unexpected_findings": findings,
@@ -388,8 +397,67 @@ def _configured_body_selectors(path: Path) -> list[str]:
     return selectors
 
 
+def _matches_tif_family(value: str, policy: dict[str, Any]) -> bool:
+    """Conservative policy clues, including reviewed names whose provider labels omit TIF."""
+    normalized = body_key(value)
+    tokens = set(normalized.split())
+    if tokens & {"tif", "tirz"} or any(
+        phrase in normalized for phrase in ("tax increment", "reinvestment zone")
+    ):
+        return True
+    names = policy.get("member_names", [])
+    return isinstance(names, list) and any(
+        isinstance(name, str) and name.strip() and matches(value, name) for name in names
+    )
+
+
+def _configured_aggregate_policy(path: Path) -> dict[str, Any]:
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    policy = data.get("remedy_policy") or {}
+    return policy if isinstance(policy, dict) else {}
+
+
+def _aggregate_policy_reason(proposal, feeds_on_source, feed_paths) -> str:
+    """Read authoritative policy from this source's files, never from model-supplied metadata.
+
+    A member-name clue can hold a proposal, but it does not establish correct ownership. A
+    model selecting the aggregate for an unmarked label must leave it for manual confirmation.
+    """
+    aggregates = {
+        slug: policy
+        for slug in sorted(feeds_on_source)
+        if slug in feed_paths
+        and (policy := _configured_aggregate_policy(feed_paths[slug])).get("aggregate_family")
+        == "tif"
+    }
+    if not aggregates:
+        return ""
+    claimed = " ".join([proposal.unexpected_body, proposal.new_feed_slug, proposal.new_feed_title])
+    relevant = {slug for slug, policy in aggregates.items() if _matches_tif_family(claimed, policy)}
+    if proposal.action == "new_feed" and relevant:
+        return (
+            "deferred: TIF aggregation policy forbids district feeds; reuse "
+            f"{sorted(relevant)} or request manual identity review"
+        )
+    if relevant and set(proposal.target_feeds) != relevant:
+        return (
+            "deferred: TIF aggregation policy requires the owning aggregate "
+            f"{sorted(relevant)}; do not assign TIF recordings to other feeds"
+        )
+    if set(proposal.target_feeds) & set(aggregates) and not _matches_tif_family(
+        proposal.unexpected_body, {}
+    ):
+        return "deferred: unmarked TIF member requires manual identity confirmation"
+    if set(proposal.target_feeds) & set(aggregates) and not relevant:
+        return "deferred: unverified aggregate ownership; request manual identity review"
+    return ""
+
+
 def _target_feed_is_compatible(label: str, path: Path) -> bool:
-    """Require a body-specific target to share a meaningful taxonomy token with the label."""
+    """Taxonomy overlap is a coarse check; approved aggregates use their family policy."""
+    policy = _configured_aggregate_policy(path)
+    if policy.get("aggregate_family") == "tif":
+        return _matches_tif_family(label, policy)
     selectors = _configured_body_selectors(path)
     if not selectors:
         return True
@@ -749,6 +817,10 @@ def _rejection_reason(
         return f"source_key {proposal.source_key!r} does not match this bundle ({source_key!r})"
     if proposal.unexpected_body not in labels:
         return f"unexpected_body {proposal.unexpected_body!r} was not observed for this source"
+
+    policy_reason = _aggregate_policy_reason(proposal, feeds_on_source, feed_paths)
+    if policy_reason:
+        return policy_reason
 
     if proposal.action == "new_feed":
         slug = proposal.new_feed_slug

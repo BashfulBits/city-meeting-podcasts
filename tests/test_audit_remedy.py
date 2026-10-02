@@ -934,3 +934,68 @@ def test_verify_remedy_mutations_timeout_or_oserror(repo, monkeypatch):
 
     assert success is False
     assert "Ruff lint could not finish (TimeoutExpired)" in message
+
+
+def test_tif_aggregate_policy_is_in_compact_evidence(repo):
+    city = make_city("test-city-council", "Council")
+    city.extra["remedy_policy"] = {"aggregate_family": "tif"}
+    evidence = gather_unexpected_body_evidence("source", "test-city-tx", {}, [city], {}, repo)
+    assert _compact_evidence(evidence)["existing_feeds"][0]["remedy_policy"] == {
+        "aggregate_family": "tif"
+    }
+
+
+@pytest.mark.parametrize(
+    "label,action,target,title,accepted,reason",
+    [
+        ("New District TIF Board", "new_feed", [], "New District", False, "forbids district"),
+        ("Downtown Connection Board", "new_feed", [], "Downtown", False, "forbids district"),
+        ("New District TIF Board", "union", ["council"], "", False, "requires the owning"),
+        ("New District TIF Board", "union", ["tif"], "", True, ""),
+        ("Multifamily Housing Board", "new_feed", [], "Housing", True, ""),
+        ("Public Improvement District", "union", ["tif"], "", False, "manual identity"),
+        ("Downtown Connection Board", "union", ["tif"], "", False, "manual identity"),
+        ("New District TIF Board", "union", ["tif", "council"], "", False, "requires"),
+        ("New District TIF Board", "single_uid_inclusion", ["council"], "", False, "requires"),
+        ("Unknown Board", "new_feed", [], "Dallas TIF District Board", False, "forbids"),
+    ],
+)
+def test_tif_policy_holds_wrong_owners_and_district_recreation(
+    tmp_path, label, action, target, title, accepted, reason
+):
+    aggregate = tmp_path / "tif.yml"
+    aggregate.write_text(
+        "source:\n  body: 'TIF *'\nremedy_policy:\n  aggregate_family: tif\n"
+        "  member_names: [Downtown Connection]\n"
+    )
+    council = tmp_path / "council.yml"
+    council.write_text("source:\n  body: Council\n")
+    count = 1 if action == "single_uid_inclusion" else 3
+    evidence = {
+        "source_key": "test-source",
+        "existing_feeds": [{"slug": "tif"}, {"slug": "council"}],
+        "unexpected_findings": [
+            {
+                "unexpected_body": label,
+                "count": count,
+                "episodes": [{"provider_guid": "observed"}],
+            }
+        ],
+    }
+    proposal = BodyProposal(
+        source_key="test-source",
+        unexpected_body=label,
+        action=action,
+        target_feeds=target,
+        provider_guids=["observed"],
+        new_feed_slug="new-board",
+        new_feed_title=title,
+        new_feed_description="Public board recordings",
+        rationale="Proposed from observed evidence",
+    )
+    plan = validate_proposals(
+        RemedyOutput(proposals=[proposal]), evidence, {"tif": aggregate, "council": council}
+    )
+    assert bool(plan.accepted) is accepted
+    if not accepted:
+        assert reason in plan.rejected[0].reason

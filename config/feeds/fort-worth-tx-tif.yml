@@ -24,6 +24,12 @@ aliases:
   - fort-worth-tx-woodhaven-tif-board-of-directors
 remedy_policy:
   aggregate_family: tif
+  member_names:
+    - Woodhaven
+    - Trinity Lakes
+    - Trinity River Vision
+    - Lancaster Corridor
+    - Stockyards Northside
 podcast_title: 'Fort Worth: TIF Meetings'
 podcast_author: City of Fort Worth, TX
 podcast_email: ''

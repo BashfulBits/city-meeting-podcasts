@@ -531,3 +531,19 @@ def test_unknown_audit_block_is_preserved_in_city_extra(tmp_path):
     c = load_city_configs(tmp_path, DEFAULTS)[0]
 
     assert c.extra["audit"]["lifecycle"]["status"] == "inactive"
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        "null",
+        "{aggregate_family: unknown}",
+        "{aggregate_family: tif, member_names: [null]}",
+        "{aggregate_family: tif, member_names: Downtown}",
+        "{aggregate_family: tif, unexpected: true}",
+    ],
+)
+def test_invalid_aggregate_remedy_policy_fails_closed(tmp_path, policy):
+    _write(tmp_path, "foo-tx.yml", VALID + f"remedy_policy: {policy}\n")
+    with pytest.raises(ValueError, match="remedy_policy"):
+        load_city_configs(tmp_path, DEFAULTS)

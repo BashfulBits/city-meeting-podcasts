@@ -81,7 +81,8 @@ live here until their series becomes active.
 
 Aggregate-only TIF subscriptions for Dallas and Fort Worth are authorized, followed by remedy
 policy enforcement. [Coverage and migration evidence](tif-coverage-2026-10.md) records the first
-implementation proposal. Remaining historical feed categories require maintainer approval;
+implementation proposal (PR [#1973](https://github.com/BashfulBits/city-meeting-podcasts/pull/1973)).
+The dependent remedy-policy guard enforces the aggregate locally and in the prompt. Remaining historical feed categories require maintainer approval;
 review/51 will design the wider remedy improvements before future implementation.
 
 ### Active reliability follow-up: interactive remedy (#1231)

@@ -250,6 +250,20 @@ def _build_city(
     if missing:
         raise ValueError(f"{source_file.name}: missing required keys: {', '.join(missing)}")
 
+    if "remedy_policy" in raw:
+        policy = raw["remedy_policy"]
+        if (
+            not isinstance(policy, dict)
+            or set(policy) - {"aggregate_family", "member_names"}
+            or policy.get("aggregate_family") != "tif"
+            or not isinstance(policy.get("member_names", []), list)
+            or any(
+                not isinstance(name, str) or not name.strip()
+                for name in policy.get("member_names", [])
+            )
+        ):
+            raise ValueError(f"{source_file.name}: invalid TIF remedy_policy")
+
     _validate_slug_format(raw["slug"], source_file=source_file, kind="slug")
     for alias in raw.get("aliases") or []:
         _validate_slug_format(str(alias), source_file=source_file, kind="alias")
