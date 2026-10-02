@@ -122,15 +122,12 @@ tournament:
 # counter). `daily_write_units` is that lane's hard daily ceiling; `reserved_write_units` is the
 # slice no other lane may consume. Reserved must sum to <= MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY (config/dispatch_tuning.yml);
 # `compile_llm_lanes.py` enforces that and the per-lane arithmetic below.
-# Rescaled 2026-09-23 to the MEASURED DO row-write budget, then raised 2026-09-24 when the
-# Worker moved to runtime row thresholds (workers/llm-dispatch-v2/src/write_budget.js): the daily
-# ingress quota is now sized near what dispatch can finish in a day (MAX_JOBS_PER_UTC_DAY 4,000,
-# MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY 5,800 -> 18,000), and every lane's reserved/daily budget
-# scaled by the same ~3.1x, so lane shares and priorities are unchanged (chapter-agenda keeps the
-# largest share; its output feeds the locator and tagger). Reservations total 11,720 of 18,000,
-# leaving 6,280 shared. Per-run caps are unchanged: each producer runs several times a day, and a
-# run's cap bounds its runtime, not the lane's daily throughput. Per-lane comments below that cite
-# older budgets describe history, not today's values.
+# Lane daily ceilings are independent ceilings, not additive reservations. The shared ingress
+# guard targets 4,000 jobs / 25,600 write units per UTC day: 800 meetings through five core
+# one-job-per-meeting tasks (agenda, locator, tagger, prelabeler, moments). Live row headroom may
+# defer work before any lane reaches 800. Reserved capacity is protected for its lane; all
+# reservations must fit the shared write-unit guard. Prelabel batches and per-candidate judges may
+# use multiple jobs for one meeting; shadow and judge work shares the same global budget.
 llm_lanes:
   # --- Production enrichment lanes (daily crons; these carry the catalog) ------------------
   chapter-agenda:
@@ -160,14 +157,11 @@ llm_lanes:
       - "tencent/hy3"
       - "gemini/gemini-3.1-flash-lite"
     backup_after_attempts: 12
-    # Per-run share of the day: this lane runs every 2 hours. daily_write_units funds 1,550 jobs a
-    # day at 6 units per job (3 bookkeeping rows + 3 pooled models; backup_models are not part of
-    # the per-job cost, see LaneConfig.ingress_write_units_per_job): 9,300 / 6 = 1,550. A run cap
-    # above the daily budget is not a harmless ceiling: the producer submits to it and the Worker
-    # rejects the surplus.
-    max_dispatches_per_run: 500
-    reserved_write_units: 5580
-    daily_write_units: 9300
+    # 800 eligible meetings x one agenda job x six ingress units = 4,800 units/day.
+    # Demand ceiling only: shared job/row guards and provider capacity remain authoritative.
+    max_dispatches_per_run: 67
+    reserved_write_units: 4800
+    daily_write_units: 4800
   chapter-locator:
     # Production selection is size-aware in citypods/chapter_locator.py. DeepSeek V4 Flash is the
     # stable recipe model for packets up to 76,000 internal estimated input tokens; larger packets
@@ -195,20 +189,20 @@ llm_lanes:
       - "gemini/gemini-3.1-flash-lite"
       - "kilo/stepfun/step-3.7-flash:free"
       - "deepseek/deepseek-v4-flash"
-    max_dispatches_per_run: 300
+    max_dispatches_per_run: 267
     reserved_write_units: 1860
-    # 930 jobs/day at 6 units/job (3 bookkeeping + 3 models), unchanged from the one-model lane.
-    daily_write_units: 5580
+    # Planning allowance: 800 meetings x two chapter batches x six units = 9,600.
+    # The per-run cap counts episode reservations, while each episode can enqueue many batches.
+    daily_write_units: 9600
   topic-tags:prelabeler:
     # Mirrors the legacy `tagging.prelabeler.model`. Its own budget, NOT a share of the
     # tagger's -- this split is exactly what the old `topic-tags` key failed to express.
     models: ["google/gemma-4-31b-it"]
-    max_dispatches_per_run: 300
+    max_dispatches_per_run: 267
     reserved_write_units: 1860
-    # 300 jobs/day. Batches are sized to fit Google AI Studio's 10k-token Gemma ceiling (tags.py
-    # prelabeler_batch_limits), so one episode may yield several jobs; the binding limit is the
-    # account's DO row-write budget (see the note above `llm_lanes`), not Gemma's quota.
-    daily_write_units: 3720
+    # Planning allowance: 800 meetings x three candidate batches x four units = 9,600.
+    # Batch count depends on candidates and the 10k-token route ceiling; not a measured mean.
+    daily_write_units: 9600
   topic-tags:prelabeler-shadow:
     # SHADOW evaluator (2026-09-23): gemma-4-26b-a4b-it runs the identical prelabeler prompt on the
     # same candidates as production, on its own free Gemini quota (a separate per-model pool from
@@ -218,9 +212,11 @@ llm_lanes:
     # measured against 31b at no extra reviewer cost before anyone considers it as a backup.
     # No reservation: it only draws on shared headroom and can never displace a production lane.
     models: ["google/gemma-4-26b-a4b-it"]
-    max_dispatches_per_run: 60
+    max_dispatches_per_run: 267
     reserved_write_units: 0
-    daily_write_units: 740
+    # Same three-batch planning allowance as production: 2,400 jobs / 9,600 units.
+    # Optional calibration work draws shared headroom; this is not reserved capacity.
+    daily_write_units: 9600
   r6-moments:
     # Mirrors the legacy `moments.llm_models`; the stage still filters this allowlist by
     # meeting family before dispatching. The two NVIDIA free routes at the end mirror
@@ -247,10 +243,12 @@ llm_lanes:
       - "gemini/gemini-3.1-flash-lite"
       - "deepseek/deepseek-v4-flash"
       - "moonshotai/kimi-k3"
-    max_dispatches_per_run: 40
+    # Nine passes: ceil(800 / 9). The runner sums this and the judge cap into one R6 counter.
+    # Daily lane/global/row gates still bound actual admission.
+    max_dispatches_per_run: 89
     reserved_write_units: 916
-    # ~186 jobs/day at 12 units/job (3 + 9 models).
-    daily_write_units: 2232
+    # 800 eligible meeting jobs x at most twelve ingress units; council jobs index seven models.
+    daily_write_units: 9600
   r6-judge:
     # A PANEL, not a pool: MomentJudgeStage sends each candidate to every judge pinned to that
     # model, and admission is calibrated per judge. 2026-09-24: glm-4.7-flash (AA 14.9) and
@@ -260,9 +258,15 @@ llm_lanes:
       - "qwen/qwen3.8-27b"
       - "gemini/gemini-3.6-flash"
       - "google/gemma-4-26b-a4b-it"
-    max_dispatches_per_run: 40
+    dispatch_shape: per_model
+    # Free global ingress permits at most 4,000 total jobs; ceil(4,000 / 9) judge slots/pass.
+    # The runner adds this to extraction slots; this allowance is not reserved capacity.
+    max_dispatches_per_run: 445
     reserved_write_units: 650
-    daily_write_units: 1300
+    # Desired demand is 800 x five quotes x three judges x four units = 48,000.
+    # Cap at 4,000 pinned jobs under the shared free envelope, not 800 fully judged meetings.
+    # Gemini 3.6 also has only forty configured free calls/day. See the capacity analysis.
+    daily_write_units: 16000
   # --- Research lanes (bounded, manual or low-cadence; must not starve production) ---------
   tournament:tag:
     # Replaces citypods/tournament.py:MODELS. These are CONTESTANTS being compared, so the lane

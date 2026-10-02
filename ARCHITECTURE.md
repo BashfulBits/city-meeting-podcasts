@@ -483,9 +483,21 @@ projection; it is emitted at most once per gate per five minutes per DO instance
 writers can spend the 10,000-row reserve. There is no working daily lease cap
 (`MAX_LEASES_PER_UTC_DAY` is a 7,000
 backstop), so a cheap day dispatches until the safe projection closes admission. Ingress is bounded
-by a daily quota near real drain (`MAX_JOBS_PER_UTC_DAY` 4,000,
-`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 18,000, divided by the lane budgets above) and a pending cap
-(`MAX_QUEUED_JOBS` 20,000). These tunables are compiled from `config/dispatch_tuning.yml`
+by a shared daily quota (`MAX_JOBS_PER_UTC_DAY` 4,000,
+`MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 25,600) and a pending cap (`MAX_QUEUED_JOBS` 20,000).
+These are shared free-tier safety ceilings, not capacity for 800 fully enriched meetings.
+Tagging and prelabeling can split meetings into batches; moment judging submits one pinned job
+per candidate per judge. The enabled shadow prelabeler also consumes batches. Lane ceilings now
+express an explicit planning scenario (two tag batches, three prelabel batches, five quotes and
+three judges per eligible meeting); the producer's tag caps count episodes, while R6 shares an
+extraction/judge job counter. See [the capacity analysis](review/llm-800-meeting-capacity.md) and
+`scripts/llm_capacity_plan.py` for eligibility, retries, provider bottlenecks and lifecycle rows.
+The planning scenario exceeds both the shared capacity and free Gemini judge quota. The model
+policy or platform budget must change before 800 fully enriched meetings/day is achievable.
+At most two billed ingress rows per unit means 51,200 rows for enqueue alone; dispatch, retries
+and retirement still need additional headroom under the 90,000 account-safe stop.
+These tunables are
+compiled from `config/dispatch_tuning.yml`
 into `src/dispatch_tuning.json` (a same-named Cloudflare variable still overrides), not declared as
 Worker variables, to stay under Workers Free's 64 variable-plus-secret limit.
 `enqueueBatch` reserves conservative row headroom for each new job and each supersede inside the

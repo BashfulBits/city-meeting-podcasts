@@ -2772,7 +2772,11 @@ def _build_impl(
     ).max_dispatches_per_run
     chapter_agenda_max_dispatches = lane_for("chapter-agenda").max_dispatches_per_run
     chapter_locator_max_dispatches = lane_for("chapter-locator").max_dispatches_per_run
-    moment_max_dispatches = lane_for("r6-moments").max_dispatches_per_run
+    # Extraction and candidate/panel judging share the stage counter. Both lane allowances
+    # must contribute: using only extraction slots starves the larger judge fan-out.
+    moment_max_dispatches = (
+        lane_for("r6-moments").max_dispatches_per_run + lane_for("r6-judge").max_dispatches_per_run
+    )
     # Ingress preflight: a lane the dispatch Worker would refuse today (daily DO row budget,
     # pending-queue cap, daily job cap, or its own budget) gets a zero per-run cap, so the stages
     # skip building its prompts instead of doing the work only to have every job rejected. The

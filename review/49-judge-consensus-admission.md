@@ -359,11 +359,26 @@ free-plan limit**, not the 61 the test predicts: the 39 variables match `wrangle
 
 ## Capacity check (maintainer figures, 2026-09-29)
 
+Historical shorthand only: the job-to-meeting equivalence in this paragraph is superseded by
+the detailed 500-meeting table and the 800-meeting reconciliation below. It does not account
+for every pipeline task, batching, panel judging or full billed-row lifecycle.
+
 About 10 new meetings/day today, 800–1,000 dispatch jobs/day budget (about 600–800 meetings, roughly
 500 cities of headroom). JEV at 1 RPM allows about 1,440 calls/day, one call per chapter for tags plus one per
 meeting for moments, so current volume is far below the cap and the backlog drains at whatever the cap
 leaves, in the existing recent-first-then-backfill order. Probe and adjudication traffic must be budgeted
 inside the same cap (target: at most 10% of calls).
+
+## 800-meeting reconciliation (2026-10-02)
+
+The [capacity follow-up](llm-800-meeting-capacity.md) scales the tables below to 800 meetings/day,
+updates locator accounting to one pinned DS4/Kimi model, includes claim-time deletion of
+extra model indexes omitted from the table below, and distinguishes the current unbatched
+panel from this future packed consensus design. Across-episode packing projects about 71.9k rows,
+or 75.9k-79.4k after a rough correction for Gemma's actual 10k/8k usable packet sizes. Per-episode
+packing projects about 95.1k, exceeding the 90k safe budget.
+These are design projections, not completed production throughput; P1-P7 stay gated on shadow
+results. The offline calculator is `scripts/llm_capacity_plan.py --consensus packed`.
 
 ## Capacity targets and Durable Object row accounting at 500 episodes/day
 
