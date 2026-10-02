@@ -6,6 +6,11 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: Dallas Mall Area Redevelopment TIF District Board of Directors Meeting
+  body_any:
+    - "Reinvestment Zone 20 Board Mall Area Redevelopment"
+    - "Mall Area Redevelopment TIF District--Special Called Meeting"
+    - "Reinvestment Zone 20 Mall Area Redevelopment"
+    - "Reinvestment Zone 20 Mall Area Redevelopment TIF District"
 lifecycle:
   status: dormant
   reason: irregular series has a 725-day gap and latest meeting was 2026-01-20 (231
