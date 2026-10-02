@@ -625,10 +625,11 @@ not comparable with the human slice or v3.
 
 ## Production routing today
 
-The current `chapter-locator` lane is pooled across Gemini 3.5 Flash Lite, GLM 5.3 Flash, DeepSeek
-V4 Flash, and Kimi K3. `backup_models` is empty, so the policy does not declare a primary/backup
-ordering; it pools these models as peers. Nemotron Super and Step 3.7 were tested here but are not
-assigned to that lane. The `chapter-agenda` pool is Nemotron 3 Ultra, Tencent Hy3, and Gemini 3.1
+The `chapter-locator` lane uses the baseline prompt with size-based routing: DeepSeek V4 Flash
+for packets up to 76,000 internally estimated input tokens, and Kimi K3 above that threshold.
+GLM 5.3 Flash is documented as additional small-packet capacity and DeepSeek V4.1 Flash as
+additional large-packet capacity; neither is wired into this lane. Nemotron Super and Step 3.7
+were tested here but are not assigned to the lane. The `chapter-agenda` pool is Nemotron 3 Ultra, Tencent Hy3, and Gemini 3.1
 Flash Lite, with Hy3 and Gemini 3.1 as backups after 12 attempts.
 
 ## Artifact layout

@@ -708,3 +708,75 @@ def test_episode_needs_chapter_locator_evaluates_correctly(model: str):
     # Provider chapters already reconciled to not_applicable
     ep.generated_agenda_candidates = {"status": "completed", "locator_status": "not_applicable"}
     assert episode_needs_chapter_locator(ep) is False
+
+
+@pytest.mark.parametrize("change", ["unchanged", "transcript", "agenda", "policy", "legacy"])
+def test_exhausted_locator_reopens_only_for_changed_identity(tmp_path, monkeypatch, change):
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode()
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    ep.generated_agenda_candidates.update(
+        {"locator_retry_count": 1, "locator_retry_hint": "Repair conflicting anchors"}
+    )
+    invalid = JobResult(task="agenda-chapter-locate", recipe_hash="invalid", output={"anchors": []})
+    backend = FakeBackend(invalid)
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+    stage = ChapterBoundaryLocatorStage()
+    stage.process(None, _make_city(), [ep], ctx)
+    assert ep.generated_agenda_candidates["locator_status"] == "retry_exhausted"
+    assert ep.generated_agenda_candidates["locator_retry_policy"]
+    assert ep.generated_agenda_candidates["locator_retry_input"]
+    if change == "transcript":
+        _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT + b"\n")
+    elif change == "agenda":
+        ep.generated_agenda_candidates["items"][0]["title"] = "Opening remarks"
+    elif change == "policy":
+        monkeypatch.setattr("citypods.chapter_jobs.LOCATOR_ROUTING_VERSION", "next-policy")
+    elif change == "legacy":
+        ep.generated_agenda_candidates.pop("locator_retry_policy")
+        ep.generated_agenda_candidates.pop("locator_retry_input")
+    backend = FakeBackend(
+        JobHandle(task="agenda-chapter-locate", ref="fresh", recipe_hash="fresh", backend="fake")
+    )
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+    stats = stage.process(None, _make_city(), [ep], ctx)
+    if change == "unchanged":
+        assert not backend.submitted_jobs
+        assert stats.defer_reasons["locator-repair-exhausted"] == 1
+    else:
+        assert len(backend.submitted_jobs) == 1
+        assert ep.generated_agenda_candidates["locator_status"] == "pending"
+        assert "locator_retry_count" not in ep.generated_agenda_candidates
+        assert "locator_retry_hint" not in ep.generated_agenda_candidates
+        assert "locator_retry_error" not in ep.generated_agenda_candidates
+
+
+def test_old_completed_pending_recipe_consumes_current_dispatch_slot(tmp_path):
+    from citypods.compute.llm_deferred import write_deferred
+
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    episodes = [_make_episode(f"old-{i}") for i in range(2)]
+    for ep in episodes:
+        _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+        old_recipe = f"old-policy-{ep.uid}"
+        ep.generated_agenda_candidates.update(
+            {"locator_status": "pending", "locator_recipe": old_recipe}
+        )
+        write_deferred(
+            storage,
+            old_recipe,
+            JobResult(task="agenda-chapter-locate", recipe_hash=old_recipe, output={}),
+        )
+    backend = FakeBackend(
+        JobHandle(
+            task="agenda-chapter-locate", ref="current", recipe_hash="current", backend="fake"
+        )
+    )
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+    ctx.chapter_locator_max_dispatches = 1
+    stats = ChapterBoundaryLocatorStage().process(None, _make_city(), episodes, ctx)
+    assert len(backend.submitted_jobs) == 1
+    assert stats.defer_reasons["producer-cap"] == 1

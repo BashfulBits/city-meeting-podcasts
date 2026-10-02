@@ -8968,9 +8968,6 @@ class ChapterBoundaryLocatorStage:
                 continue
 
             locator_status = raw_agenda.get("locator_status")
-            if locator_status == "retry_exhausted":
-                stats.defer("locator-repair-exhausted")
-                continue
             # Mirrors AgendaChapterCandidatesStage's own is_current_artifact check (see its
             # comment): a completed/accepted locator result is only safe to reuse if it was
             # produced by the CURRENTLY configured model under the CURRENT prompt version.
@@ -9026,6 +9023,39 @@ class ChapterBoundaryLocatorStage:
                 agenda = AgendaCandidatesArtifact.from_dict(raw_agenda)
                 selected_data = words if unit_source == "words" else vtt
                 transcript_hash = hashlib.sha256(selected_data or b"").hexdigest()
+                policy_fingerprint = hashlib.sha256(
+                    json.dumps(
+                        [LOCATOR_PROMPT_VERSION, LOCATOR_ROUTING_VERSION, LOCATOR_MODELS]
+                    ).encode()
+                ).hexdigest()
+                input_fingerprint = hashlib.sha256(
+                    json.dumps([uid, agenda.to_dict(), transcript_hash], sort_keys=True).encode()
+                ).hexdigest()
+                if locator_status == "retry_exhausted":
+                    if (
+                        raw_agenda.get("locator_retry_policy") == policy_fingerprint
+                        and raw_agenda.get("locator_retry_input") == input_fingerprint
+                    ):
+                        if is_new_dispatch:
+                            ctx.settle_chapter_locator_dispatch(dispatched=False)
+                        stats.defer("locator-repair-exhausted")
+                        continue
+                    raw_agenda = dict(raw_agenda)
+                    for field in (
+                        "locator_status",
+                        "locator_retry_count",
+                        "locator_retry_hint",
+                        "locator_retry_error",
+                        "locator_retry_policy",
+                        "locator_retry_input",
+                    ):
+                        raw_agenda.pop(field, None)
+                    ep.generated_agenda_candidates = raw_agenda
+                raw_agenda = {
+                    **raw_agenda,
+                    "locator_retry_policy": policy_fingerprint,
+                    "locator_retry_input": input_fingerprint,
+                }
                 job = build_locator_job(
                     episode_uid=uid,
                     agenda=agenda,
@@ -9043,6 +9073,12 @@ class ChapterBoundaryLocatorStage:
                     ctx.settle_chapter_locator_dispatch(dispatched=False)
                 stats.errors.append(f"{uid}: chapter locator: {exc}")
                 continue
+            # A completed pending recipe is a replay only for this exact current job.
+            if not is_new_dispatch and locator_recipe != job.recipe_hash:
+                is_new_dispatch = True
+                if not ctx.reserve_chapter_locator_dispatch():
+                    stats.defer("producer-cap")
+                    continue
             prepared.append(
                 (
                     ep,
@@ -9207,6 +9243,8 @@ class ChapterBoundaryLocatorStage:
             ep.generated_agenda_candidates.pop("locator_retry_count", None)
             ep.generated_agenda_candidates.pop("locator_retry_hint", None)
             ep.generated_agenda_candidates.pop("locator_retry_error", None)
+            ep.generated_agenda_candidates.pop("locator_retry_policy", None)
+            ep.generated_agenda_candidates.pop("locator_retry_input", None)
             stats.ran += 1
         return stats
 

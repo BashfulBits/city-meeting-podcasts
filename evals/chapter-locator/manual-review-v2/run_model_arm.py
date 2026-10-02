@@ -21,6 +21,7 @@ import litellm
 
 from citypods.chapter_locator import (
     LOCATOR_CONTRACT,
+    DuplicateLocatorStartError,
     build_locator_request,
     build_locator_units,
     ensure_locator_contract,
@@ -350,10 +351,7 @@ def main() -> int:
                     answer["error"] = f"ValueError: {exc}"
                     if attempt < MAX_ATTEMPTS and isinstance(locals().get("content"), str):
                         duplicate_unit = re.fullmatch(r"duplicate locator unit: (u\d{5})", str(exc))
-                        repeated_start = (
-                            str(exc)
-                            == "locator anchors must resolve to strictly increasing timestamps"
-                        )
+                        repeated_start = isinstance(exc, DuplicateLocatorStartError)
                         if duplicate_unit or repeated_start:
                             collision = (
                                 f" Transcript unit {duplicate_unit.group(1)} was assigned to "
