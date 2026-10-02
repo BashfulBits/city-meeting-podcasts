@@ -437,8 +437,22 @@ def _policy_family_clue(value: str, policy: dict[str, Any]) -> bool:
         "bond": ("bond",),
         "charter": ("charter",),
         "redistricting": ("redistricting",),
-        "public_input": ("town hall", "public input", "public meeting", "neighborhood meeting"),
-        "public_briefings": ("press conference", "news conference", "public presentation"),
+        "public_input": (
+            "town hall",
+            "townhall",
+            "public input",
+            "public meeting",
+            "public hearing",
+            "public forum",
+            "community meeting",
+            "neighborhood meeting",
+        ),
+        "public_briefings": (
+            "press conference",
+            "news conference",
+            "public presentation",
+            "public briefing",
+        ),
     }
     return (
         any(" " + body_key(marker) + " " in normalized for marker in markers.get(family, ()))

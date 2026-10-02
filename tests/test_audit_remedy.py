@@ -1063,7 +1063,9 @@ def test_policy_ownership_requires_reviewed_identity(tmp_path, family, label, id
         ("charter", "2030 Charter Review Commission"),
         ("redistricting", "2030 Redistricting Commission"),
         ("public_input", "Bridge Project Town Hall"),
+        ("public_input", "Bridge Project Public Hearing"),
         ("public_briefings", "Municipal News Conference"),
+        ("public_briefings", "Municipal Public Briefing"),
         (None, "Housing Finance Corporation"),
     ],
 )
