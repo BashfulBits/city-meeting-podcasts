@@ -371,7 +371,8 @@ inside the same cap (target: at most 10% of calls).
 
 ## 800-meeting reconciliation (2026-10-02)
 
-The [capacity follow-up](llm-800-meeting-capacity.md) scales the tables below to 800 meetings/day,
+The [capacity evidence](evidence/2026-10-02-llm-800-meeting-capacity.md) scales the tables below
+to 800 meetings/day,
 updates locator accounting to one pinned DS4/Kimi model, includes claim-time deletion of
 extra model indexes omitted from the table below, and distinguishes the current unbatched
 panel from this future packed consensus design. Across-episode packing projects about 71.9k rows,

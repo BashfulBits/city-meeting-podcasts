@@ -46,6 +46,7 @@ measures enqueue only. `claimDispatchWindow` also deletes all `job_models` rows 
 job, including their unique index. The capacity projection must include those deletes: two extra
 billed rows per additional model at claim as well as two at enqueue. A constant 4.9 claim rows
 for every pool size undercounts multi-model jobs. The corrected design projection is in
-[the 800-meeting analysis](../../../../review/llm-800-meeting-capacity.md). Re-run the full lifecycle
+[capacity evidence](../../../../review/evidence/2026-10-02-llm-800-meeting-capacity.md).
+Re-run the full lifecycle
 with representative pool sizes before treating its row totals as measured production capacity;
 the existing one-model measurement remains the baseline, not proof for all pools.

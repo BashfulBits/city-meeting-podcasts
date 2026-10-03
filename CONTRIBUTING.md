@@ -211,9 +211,14 @@ then `Order`).
 | The system as built | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Near-term plan / long-horizon vision | [ROADMAP.md](ROADMAP.md) / [VISION.md](VISION.md) |
 | Forward design, pick next work | [`review/11`](review/11-technical-design-roadmap.md) + breakouts `review/12+` |
+| Supporting analysis and captured evidence | `review/evidence/` — dated material linked from the numbered plan; not a development plan or source of implementation authority |
 | What shipped | [CHANGELOG.md](CHANGELOG.md) |
 | Agent/AI orientation | [AGENTS.md](AGENTS.md) (and [CLAUDE.md](CLAUDE.md)) |
 | Security posture & reporting | [SECURITY.md](SECURITY.md) |
+
+Numbered `review/NN` documents own development plans and their maturity/acceptance gates.
+Put dated supporting capacity analyses and benchmark evidence in `review/evidence/`, and link
+back to the owning numbered plan. Evidence does not independently authorize implementation.
 
 ## Feature lifecycle & doc-update contract (normative)
 

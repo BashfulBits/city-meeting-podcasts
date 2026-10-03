@@ -1,15 +1,25 @@
-# LLM capacity reconciliation: 800 meetings/day
+# Supporting evidence: LLM capacity at 800 meetings/day
 
-Analysis for PR #1982, 2026-10-02. This corrects the earlier assumption that five lanes at
-800 jobs/day fund 800 fully enriched meetings. A meeting, a candidate, a batch, an admitted job,
-a provider attempt and a billed DO row are different units.
+**Type:** dated capacity analysis, not a development plan or rollout authorization.  
+**Snapshot:** October 2, 2026; quota/accounting changes merged in
+[PR #1982](https://github.com/BashfulBits/city-meeting-podcasts/pull/1982).  
+**Plan owner:** [review/49 — judge-consensus admission](../49-judge-consensus-admission.md).  
+**Next development slice:** [review/50 — P0 backlog trend](../50-p0-llm-verb-backlog-trend.md).  
+**Reproduction:** [offline calculator](../../scripts/llm_capacity_plan.py).
+
+This evidence corrects the assumption that five lanes at 800 jobs/day fund 800 fully enriched
+meetings. A meeting, a candidate, a batch, an admitted job, a provider attempt, and a billed DO row
+are different units. The figures below preserve the assumptions and calculations supporting
+review/49; its numbered plan owns sequencing, maturity, acceptance gates, and implementation.
+Proposed model assignments and consensus packing below remain hypotheses requiring that plan's
+shadow evidence. They do not create a second development plan or approve production changes.
 
 ## Existing design and observed eligibility
 
-[review/50](50-p0-llm-verb-backlog-trend.md) is the read-only backlog measurement phase of
-[review/49](49-judge-consensus-admission.md). It does not implement the new judges. review/49's
+[review/50](../50-p0-llm-verb-backlog-trend.md) is the read-only backlog measurement phase of
+[review/49](../49-judge-consensus-admission.md). It does not implement the new judges. review/49's
 500-meeting capacity table does account for judge packing, candidate counts and contested work;
-its P1-P7 phases remain L2 until shadow evidence exists. This PR does not skip those gates.
+its P1-P7 phases remain L2 until shadow evidence exists. The merged accounting changes did not skip those gates.
 
 The catalog scan in review/49 covers 26,537 episodes across 42 source keys. It found 32% without
 provider chapters overall, about 60% recently; 68% of recent episodes have transcripts; and
@@ -24,12 +34,12 @@ reliable completed-LLM-meetings denominator. Live `/v2/stats` was read for this 
 reports attempts, not per-episode batch distributions. Do not call speculative batching means
 measured production averages. Use the P0 trend and P1 shadow records to revise them.
 
-## Today's implementation: where calls multiply
+## Implementation at the snapshot date: where calls multiply
 
 - Agenda and locator: one job each when generated chapters are needed. Provider chapters skip them.
 - Tagger: chapter groups are greedily split against route input/output/TPM and request-byte limits.
 - Production and shadow prelabelers: each candidate batch is a separate job (at most 100
-  candidates, often fewer because Gemma's input limit is 10,000 tokens). Both are enabled today.
+  candidates, often fewer because Gemma's input limit is 10,000 tokens). Both were enabled at the snapshot date.
 - Moments: one extraction job per eligible meeting; council requests index seven of the nine
   configured models. The nine-model pool is a conservative ingress sizing bound.
 - Judges: `MomentJudgeStage` sends every candidate to every configured judge, pinned to one model.
@@ -70,8 +80,8 @@ compiler correctly rejects a lane cap above the global unit envelope. The judge 
 therefore 4,000 jobs, not the 12,000 demanded by this scenario. Reservations protect a fraction
 of shared admission; daily lane ceilings are neither reservations nor completion commitments.
 
-This PR sizes batch-lane ceilings to the stated allowances, corrects judges to `per_model`, and
-sums extraction and judge producer allowances into the shared R6 counter. Tag per-run caps count
+PR #1982 sized batch-lane ceilings to the stated allowances, corrected judges to `per_model`, and
+summed extraction and judge producer allowances into the shared R6 counter. Tag per-run caps count
 episode reservations, so they stay `ceil(800/3)` rather than being multiplied by batch count.
 All global row, queue, provider, concurrency and free-only controls remain authoritative.
 
@@ -101,11 +111,11 @@ Reproduce both columns with `python scripts/llm_capacity_plan.py --consensus epi
 `python scripts/llm_capacity_plan.py --consensus packed`, respectively.
 
 Enqueue demand is 17,195 units for per-episode packing versus 13,048 across episodes.
-A 20% lane headroom allowance makes the latter 15,658 units, below today's 25,600 envelope.
+A 20% lane headroom allowance makes the latter 15,658 units, below the snapshot's 25,600 envelope.
 The per-episode plan does not fit: 95,125 exceeds the 90,000 safe budget.
 Across-episode packing leaves about 18,057 safe rows before other account usage and deviations.
 
-Important packing sensitivity: review/49 assumes roughly 14k sibling packets; today's two
+Important packing sensitivity: review/49 assumes roughly 14k sibling packets; the snapshot's two
 high-quota Gemma routes have a 10k input ceiling. A rough proportional correction increases
 370 sibling jobs to `ceil(370*14/10)=518`, adding 3,996 rows: about **75,939 rows/day**.
 At an 8k usable packet budget it becomes 648 sibling jobs and about **79,449 rows/day**.
@@ -169,7 +179,7 @@ Sources: [DO pricing](https://developers.cloudflare.com/durable-objects/platform
 
 ## Reproduce and acceptance
 
-Run `python scripts/llm_capacity_plan.py` for today's all-eligible stress scenario;
+Run `python scripts/llm_capacity_plan.py` for the configured all-eligible stress scenario;
 `--consensus episode` and `--consensus packed` reproduce the revised design tables. Override
 eligibility, quotes and batch sizes on the current plan to test a measured cohort. The calculator
 makes no provider calls or queue changes. Golden unit tests protect job/row/unit distinctions.
@@ -178,4 +188,4 @@ Before claiming 800 completed meetings/day: complete review/49 P1 shadow evidenc
 measure per-episode batch/candidate counts, new repair jobs and extra attempts; verify account-wide
 DO writes/reads, CPU, request count and route latency over sustained days. Show completed eligible
 meetings and backlog/drain trends separately from accepted jobs. Billing or policy changes need a
-separate chosen trade-off; this PR keeps the free-only policy and makes no paid upgrade.
+separate chosen trade-off; PR #1982 preserved the free-only policy and made no paid upgrade.

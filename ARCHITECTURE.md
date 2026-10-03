@@ -490,7 +490,8 @@ Tagging and prelabeling can split meetings into batches; moment judging submits 
 per candidate per judge. The enabled shadow prelabeler also consumes batches. Lane ceilings now
 express an explicit planning scenario (two tag batches, three prelabel batches, five quotes and
 three judges per eligible meeting); the producer's tag caps count episodes, while R6 shares an
-extraction/judge job counter. See [the capacity analysis](review/llm-800-meeting-capacity.md) and
+extraction/judge job counter.
+See [capacity evidence](review/evidence/2026-10-02-llm-800-meeting-capacity.md) and
 `scripts/llm_capacity_plan.py` for eligibility, retries, provider bottlenecks and lifecycle rows.
 The planning scenario exceeds both the shared capacity and free Gemini judge quota. The model
 policy or platform budget must change before 800 fully enriched meetings/day is achievable.
