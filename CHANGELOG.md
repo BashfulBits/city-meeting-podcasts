@@ -24,6 +24,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Pflugerville Board of Adjustment coverage.** Adds a named-body feed with exact reviewed
+  ownership and fifteen traceable regression cases. Full current/persisted replay selects ten
+  independently identified historical recordings while preserving their UIDs and source namespace.
+  Identity coverage is separate from media availability: older unavailable provider links remain
+  documented, with no media recovery promise or archived-record deletion. No pipeline bump,
+  artifact invalidation or forced backfill. Evidence: `review/pflugerville-boa-coverage-2026-10.md`.
+
 - **Unexpected-body evaluation harness.** Adds schema-v2 freeze/run/report/rescore,
   direct physical-route allowlists, validated effort controls and synchronous result provenance.
   Production remedy models and Worker routes are unchanged; shadow config admits no models.

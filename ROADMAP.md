@@ -19,6 +19,8 @@ distinct public-input formats; the
 [Addison UDC batch](review/addison-udc-coverage-2026-10.md) applies it to three historical
 committee recordings. See
 [coverage policy](review/tif-coverage-2026-10.md) and review/11.
+The [Pflugerville BOA batch](review/pflugerville-boa-coverage-2026-10.md) covers ten verified
+historical identities while documenting unavailable provider media.
 [review/51](review/51-unexpected-body-remedy-flow.md) records the approved improvement structure:
 P1 evaluation/physical-route admission implements the approved scoring/hash contracts and is
 ready for review in #1987; P2–P5 have predecessor-gated build contracts. Duplicate publication has

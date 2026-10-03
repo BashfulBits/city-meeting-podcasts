@@ -1,0 +1,14 @@
+slug: pflugerville-tx-board-of-adjustment
+city: pflugerville-tx
+provider: granicus
+source:
+  feed_url: https://pflugerville.granicus.com/ViewPublisherRSS.php?view_id=1&mode=vpodcast
+  body_exact:
+  - Board of Adjustment
+remedy_policy:
+  identity_names:
+  - Board of Adjustment
+podcast_title: 'Pflugerville: Board of Adjustment'
+podcast_author: City of Pflugerville, TX
+podcast_email: ''
+podcast_description: Board of Adjustment public meeting recordings for Pflugerville.
