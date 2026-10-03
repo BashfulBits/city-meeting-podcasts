@@ -1,0 +1,140 @@
+{
+  "version": 2,
+  "cases": {
+    "arlington-hfc-owner": {
+      "supported": true,
+      "rationale": "The dated official agenda identifies this corporation meeting.",
+      "evidence_refs": [
+        "provider-3579",
+        "official-agenda-3579"
+      ],
+      "adjudicator": "agent reviewed official source evidence",
+      "provenance": "seed",
+      "policy_approval_ref": "review/arlington-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "arlington-hfc-not-council": {
+      "supported": false,
+      "rationale": "Shared city and council-member directors do not merge legal body identities.",
+      "evidence_refs": [
+        "provider-3579",
+        "official-agenda-3579"
+      ],
+      "adjudicator": "agent reviewed official source evidence",
+      "provenance": "seed",
+      "policy_approval_ref": "review/arlington-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "arlington-hfc-not-pz": {
+      "supported": false,
+      "rationale": "Housing topic does not establish commission ownership.",
+      "evidence_refs": [
+        "provider-3579",
+        "official-agenda-3579"
+      ],
+      "adjudicator": "agent reviewed official source evidence",
+      "provenance": "seed",
+      "policy_approval_ref": "review/arlington-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "arlington-zba-owner": {
+      "supported": true,
+      "rationale": "Official city calendar identifies ZBA as this separate board.",
+      "evidence_refs": [
+        "provider-1069",
+        "official-zba-calendar"
+      ],
+      "adjudicator": "agent reviewed official source evidence",
+      "provenance": "seed",
+      "policy_approval_ref": "review/arlington-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "arlington-zba-not-pz": {
+      "supported": false,
+      "rationale": "Both involve zoning; board hears appeals/variances separately.",
+      "evidence_refs": [
+        "provider-1069",
+        "official-zba-calendar"
+      ],
+      "adjudicator": "agent reviewed official source evidence",
+      "provenance": "seed",
+      "policy_approval_ref": "review/arlington-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "arlington-hfc-duplicate": {
+      "supported": false,
+      "rationale": "The reviewed title already has a named-body owner.",
+      "evidence_refs": [
+        "provider-3579",
+        "official-agenda-3579"
+      ],
+      "adjudicator": "agent reviewed official source evidence",
+      "provenance": "seed",
+      "policy_approval_ref": "review/arlington-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "arlington-zba-duplicate": {
+      "supported": false,
+      "rationale": "Session wording does not justify a duplicate subscription.",
+      "evidence_refs": [
+        "provider-1069",
+        "official-zba-calendar"
+      ],
+      "adjudicator": "agent reviewed official source evidence",
+      "provenance": "seed",
+      "policy_approval_ref": "review/arlington-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "arlington-council-hfc-topic": {
+      "supported": false,
+      "rationale": "Council topic references are not corporation proceedings.",
+      "evidence_refs": [
+        "synthetic-label",
+        "official-agenda-3579"
+      ],
+      "adjudicator": "agent reviewed official source evidence",
+      "provenance": "seed",
+      "policy_approval_ref": "review/arlington-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "arlington-other-city-zba": {
+      "supported": false,
+      "rationale": "Distinct city source and legal body.",
+      "evidence_refs": [
+        "synthetic-label",
+        "official-zba-calendar"
+      ],
+      "adjudicator": "agent reviewed official source evidence",
+      "provenance": "seed",
+      "policy_approval_ref": "review/arlington-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    }
+  }
+}
