@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from citypods.bodies import source_body_filter, source_body_inclusions
+from citypods.bodies import body_key, source_body_filter, source_body_inclusions
 from citypods.models import (
     DEFAULT_FULL_ARTIFACT_EPISODES,
     DEFAULT_MAX_EPISODES,
@@ -254,15 +254,37 @@ def _build_city(
         policy = raw["remedy_policy"]
         if (
             not isinstance(policy, dict)
-            or set(policy) - {"aggregate_family", "member_names"}
-            or policy.get("aggregate_family") != "tif"
-            or not isinstance(policy.get("member_names", []), list)
+            or set(policy) - {"aggregate_family", "member_names", "identity_names"}
+            or (
+                "aggregate_family" in policy
+                and (
+                    not isinstance(policy["aggregate_family"], str)
+                    or policy["aggregate_family"]
+                    not in {
+                        "tif",
+                        "pid",
+                        "bond",
+                        "charter",
+                        "redistricting",
+                        "public_input",
+                        "public_briefings",
+                    }
+                )
+            )
+            or not policy.get("aggregate_family")
+            and not policy.get("identity_names")
             or any(
-                not isinstance(name, str) or not name.strip()
-                for name in policy.get("member_names", [])
+                not isinstance(policy.get(key, []), list)
+                or any(
+                    not isinstance(name, str)
+                    or not body_key(name)
+                    or (key == "identity_names" and any(char in name for char in "*?"))
+                    for name in policy.get(key, [])
+                )
+                for key in ("member_names", "identity_names")
             )
         ):
-            raise ValueError(f"{source_file.name}: invalid TIF remedy_policy")
+            raise ValueError(f"{source_file.name}: invalid remedy_policy")
 
     _validate_slug_format(raw["slug"], source_file=source_file, kind="slug")
     for alias in raw.get("aliases") or []:
@@ -462,7 +484,7 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
             identity_source = {
                 k: v
                 for k, v in city.source.items()
-                if k not in {"body", "body_any", "body_includes"}
+                if k not in {"body", "body_any", "body_exact", "body_includes"}
             }
             identity = (city.city_entity, city.provider, identity_source, path.name)
             prior = seen_source_ids.get(city.source_id)

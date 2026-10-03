@@ -221,7 +221,11 @@ def source_key(city: City) -> str:
     """
     if city.source_id:
         return city.source_id
-    src = {k: v for k, v in city.source.items() if k not in {"body", "body_any", "body_includes"}}
+    src = {
+        k: v
+        for k, v in city.source.items()
+        if k not in {"body", "body_any", "body_exact", "body_includes"}
+    }
     raw = f"{city.provider}|{json.dumps(src, sort_keys=True)}"
     return hashlib.sha1(raw.encode()).hexdigest()[:12]
 

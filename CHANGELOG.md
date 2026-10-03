@@ -32,6 +32,23 @@ Phase R (Research-Tool Surface)._
   Blind-owner scoring and candidate input-hash requirements await specification clarification.
   No pipeline-version change, stored-artifact invalidation or historical backfill is introduced.
 
+- **Exact feed-body selector rules.** Optional `source.body_exact` matches complete normalized
+  labels and provider-duplicated copies, separating bare committee names from Open House/topic
+  suffixes. It unions with existing selectors/inclusions; remedy retains exact-selector evidence
+  and does not append a broad alias for an already covered exact label. Search accepts individual
+  exact selectors and refreshes cached destinations when an exact rule changes; unconfigured
+  views retain their previous cache hashes. Source transport/hash,
+  author, episode UIDs, records and audio are unchanged. No pipeline bump, artifact invalidation
+  or backfill; no existing feed configuration changes in this prerequisite.
+
+- **Approved historical feed policy guards.** Remedy policies now protect city PID, bond, charter,
+  redistricting, public-input and public-briefings aggregates, and exact reviewed named bodies.
+  Unverified identities defer; district/program feed recreation and wrong-owner assignments are
+  blocked locally. Exact reviewed owners override another policy's ambiguous holding clues; joint
+  exact owners remain required. Known topic-bearing TIF labels need reviewed identity rather than marker inference.
+  The remedy recipe changes to `direct-v6-approved-family-policy`; remedy bypasses result caches,
+  so there is no stored-artifact invalidation, audio change or forced historical backfill.
+
 - **Chapter locator baseline routing and evaluation.** Production now uses the baseline prompt, routes
   packets up to 76,000 internal estimated input tokens to DeepSeek V4 Flash, and sends larger packets
   to Kimi K3. GLM 5.3 Flash and DeepSeek V4.1 Flash are documented optional capacity and are not

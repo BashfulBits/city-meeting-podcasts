@@ -1,8 +1,9 @@
 """Generic per-body (committee/commission) handling shared across providers.
 
 Each provider populates ``Episode.body`` with the meeting body it can infer. A city's
-optional ``source.body`` then filters a mixed feed down to one body (case-insensitive
-substring), so any provider can produce "one feed per board/commission".
+optional ``source.body`` and ``body_any`` filter a mixed feed by normalized substrings or globs;
+``body_exact`` restricts complete normalized labels. These selectors produce per-body or family
+subscriptions without changing provider records.
 """
 
 from __future__ import annotations
@@ -86,7 +87,14 @@ def body_key(body: str | None) -> str:
     return " ".join(words)
 
 
-BodySelector = str | Sequence[str] | None
+@dataclass(frozen=True)
+class ExactBodyLabel:
+    """A complete normalized provider label, never a substring or glob."""
+
+    label: str
+
+
+BodySelector = str | ExactBodyLabel | Sequence[str | ExactBodyLabel] | None
 
 
 @dataclass(frozen=True)
@@ -102,22 +110,28 @@ def source_body_filter(source: Mapping[str, object]) -> BodySelector:
 
     ``body`` remains the primary selector for existing feeds. ``body_any`` adds explicit
     alternatives without broadening a substring filter to unrelated bodies that happen to share
-    words such as ``City Council``.
+    words such as ``City Council``. ``body_exact`` restricts complete normalized labels,
+    including provider-duplicated copies, without claiming suffixed proceedings.
     """
     primary = source.get("body")
     additional = source.get("body_any")
-    if additional is None:
+    exact = source.get("body_exact")
+    for key, values in (("body_any", additional), ("body_exact", exact)):
+        if values is not None and (
+            not isinstance(values, list)
+            or not values
+            or any(not isinstance(value, str) or not value.strip() for value in values)
+        ):
+            raise ValueError(f"source.{key} must be a non-empty list of non-empty strings")
+    if exact and any(not body_key(value) or "*" in value or "?" in value for value in exact):
+        raise ValueError("source.body_exact must contain complete normalized labels, not globs")
+    if additional is None and exact is None:
         return primary if isinstance(primary, str) and primary.strip() else None
-    if (
-        not isinstance(additional, list)
-        or not additional
-        or any(not isinstance(value, str) or not value.strip() for value in additional)
-    ):
-        raise ValueError("source.body_any must be a non-empty list of non-empty strings")
-    selectors = []
+    selectors: list[str | ExactBodyLabel] = []
     if isinstance(primary, str) and primary.strip():
         selectors.append(primary)
-    selectors.extend(additional)
+    selectors.extend(additional or [])
+    selectors.extend(ExactBodyLabel(value) for value in (exact or []))
     return tuple(selectors) or None
 
 
@@ -155,12 +169,18 @@ def source_body_inclusions(source: Mapping[str, object]) -> tuple[BodyInclusion,
     return tuple(inclusions)
 
 
-def _selectors(needle: BodySelector) -> tuple[str, ...]:
+def _selectors(needle: BodySelector) -> tuple[str | ExactBodyLabel, ...]:
     if needle is None:
         return ()
     if isinstance(needle, str):
         return (needle,) if needle.strip() else ()
-    return tuple(value for value in needle if isinstance(value, str) and value.strip())
+    if isinstance(needle, ExactBodyLabel):
+        return (needle,)
+    return tuple(
+        value
+        for value in needle
+        if isinstance(value, ExactBodyLabel) or (isinstance(value, str) and value.strip())
+    )
 
 
 def matches(body: str | None, needle: BodySelector) -> bool:
@@ -169,10 +189,14 @@ def matches(body: str | None, needle: BodySelector) -> bool:
     Selectors remain normalized, case-insensitive substrings by default. A selector containing
     ``*`` or ``?`` is a normalized glob matched against the complete body label. This covers
     provider-generated families such as ``Purchasing Bids 7-16-2015`` without enumerating each
-    dated label.
+    dated label. ``ExactBodyLabel`` entries require a complete normalized label or duplicated copy.
     """
     body_key_value = body_key(body)
     for selector in _selectors(needle):
+        if isinstance(selector, ExactBodyLabel):
+            if matches_exact_body_label(body, selector.label):
+                return True
+            continue
         # Preserve glob metacharacters while applying the same punctuation/spacing normalization
         # as ordinary selectors. ``body_key`` deliberately removes punctuation, including ``*``.
         normalized = (
