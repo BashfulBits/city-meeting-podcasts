@@ -1,0 +1,11 @@
+version: 1
+mode: shadow
+admissions: []
+qualified_alias_types: []
+limits:
+  decisions_per_pr: 5
+  prs_per_rolling_week: 8
+  open_prs: 8
+  active_directional_issues: 12
+  evidence_max_age_hours: 24
+onboarding_exceptions: []

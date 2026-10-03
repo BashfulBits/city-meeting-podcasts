@@ -62,6 +62,7 @@ class LLMRequestPolicy:
     # dispatch has no equivalent persistent counter today and ignores these fields.
     backup_models: tuple[str, ...] = ()
     backup_after_attempts: int | None = None
+    allowed_route_ids: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)

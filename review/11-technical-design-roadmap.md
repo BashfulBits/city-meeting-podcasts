@@ -105,7 +105,13 @@ inventory or implement P2's persistent ledger.
 [review/51](51-unexpected-body-remedy-flow.md), initially merged in #1976, now records the approved
 P1–P5 structure and exact phase build contracts. **P1: L3** (evaluation harness and strict physical-
 route admission, [#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979));
-P2–P5 stay predecessor-gated until their evidence and issues exist. The 27 seed
+P1 implements the approved hidden-owner truth, independent blind-owner mode and frozen candidate
+input hashes in PR #1987 (ready for review; pending merge). No model is admitted and no
+live evaluation has run. The publication-selection extension is L2: reviewed existing UIDs only,
+archive preservation and a separate runtime gate for #1986/#1989/#1991. Shared approved templates and cross-city cases are specified for one resolver/replay path in
+onboarding and maintenance; verified identities and feedback remain city/source-scoped.
+P2–P5 stay predecessor-gated until their
+evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID
 aggregates. Remedy/onboarding stay outside leagues. This is a maintainer-directed follow-up;
