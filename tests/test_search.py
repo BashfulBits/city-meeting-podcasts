@@ -285,3 +285,32 @@ def test_search_assets_fail_before_copying_when_a_vendored_file_is_missing(tmp_p
         search_mod._write_search_asset(tmp_path / "docs")
 
     assert not (tmp_path / "docs" / "assets" / "minisearch-7.1.2.js").exists()
+
+
+@pytest.mark.parametrize("mixed", [False, True])
+def test_search_render_from_retained_records_routes_exact_body_without_topic_capture(
+    tmp_path, mixed
+):
+    owner = _city("udc")
+    owner.source["body_exact"] = ["UDC Advisory Committee"]
+    if mixed:
+        owner.source["body_any"] = ["City Council"]
+    combined = _city("all-meetings")
+    committee = _episode("committee")
+    committee.body = "UDC Advisory Committee"
+    committee.title = committee.body
+    open_house = _episode("open-house")
+    open_house.body = "UDC Advisory Committee Open House"
+    open_house.title = open_house.body
+    records = {ep.uid: episode_to_record(ep) for ep in [committee, open_house]}
+    assert search_mod._city_for_record([owner, combined], records[committee.uid]) is owner
+    assert search_mod._city_for_record([owner, combined], records[open_house.uid]) is combined
+    src = _save(tmp_path, combined, records)
+    build_search_index(
+        tmp_path / "state", [owner, combined], tmp_path / "docs", "https://site.test"
+    )
+    documents = {doc["uid"]: doc for doc in _shard(tmp_path, src)["documents"]}
+    assert documents[committee.uid]["page_url"].startswith("https://site.test/udc/")
+    assert documents[open_house.uid]["page_url"].startswith("https://site.test/all-meetings/")
+    assert documents[committee.uid]["body"] == committee.body
+    assert documents[open_house.uid]["body"] == open_house.body

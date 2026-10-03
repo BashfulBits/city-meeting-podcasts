@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import pytest
 
 from citypods.bodies import (
+    ExactBodyLabel,
     body_key,
     canonical_body,
     filter_by_body,
@@ -248,3 +249,34 @@ def test_exact_body_selectors_union_with_existing_patterns_and_guid_inclusions()
 def test_exact_body_selectors_reject_malformed_or_nonliteral_labels(invalid):
     with pytest.raises(ValueError, match="body_exact"):
         source_body_filter({"body_exact": invalid})
+
+
+@pytest.mark.parametrize(
+    "label",
+    ["UDC Advisory Committee", "udc advisory committees", "UDC Advisory Committee " * 2],
+)
+def test_single_exact_selector_filters_episodes_and_retained_records(label):
+    selector = ExactBodyLabel("UDC Advisory Committee")
+    episodes = [_ep(label), _ep("UDC Advisory Committee Open House"), _ep(None)]
+    assert matches(label, selector)
+    assert not matches("UDC Advisory Committee Open House", selector)
+    assert filter_by_body(episodes, selector) == [episodes[0]]
+    assert record_matches_body({"body": label}, selector)
+    assert not record_matches_body({"body": episodes[1].body}, selector)
+    assert not record_matches_body({"body": None}, selector)
+
+
+def test_mixed_selectors_can_be_applied_individually_to_episodes():
+    selectors = source_body_filter(
+        {"body_any": ["City Council"], "body_exact": ["UDC Advisory Committee"]}
+    )
+    episodes = [
+        _ep("City Council Work Session"),
+        _ep("UDC Advisory Committee"),
+        _ep("UDC Advisory Committee Open House"),
+    ]
+    assert filter_by_body(episodes, selectors) == episodes[:2]
+    assert [ep for ep in episodes if any(matches(ep.body, item) for item in selectors)] == (
+        episodes[:2]
+    )
+    assert filter_by_body(episodes, ExactBodyLabel("")) == []

@@ -94,7 +94,7 @@ class ExactBodyLabel:
     label: str
 
 
-BodySelector = str | Sequence[str | ExactBodyLabel] | None
+BodySelector = str | ExactBodyLabel | Sequence[str | ExactBodyLabel] | None
 
 
 @dataclass(frozen=True)
@@ -174,6 +174,8 @@ def _selectors(needle: BodySelector) -> tuple[str | ExactBodyLabel, ...]:
         return ()
     if isinstance(needle, str):
         return (needle,) if needle.strip() else ()
+    if isinstance(needle, ExactBodyLabel):
+        return (needle,)
     return tuple(
         value
         for value in needle
