@@ -36,7 +36,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from citypods.bodies import body_key, matches
+from citypods.bodies import body_key, matches, matches_exact_body_label
 from citypods.compute.base import InferenceJob
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig, LLMStructuredOutputError
 from citypods.compute.llm_policy import LLMRequestPolicy, estimate_tokens
@@ -66,7 +66,7 @@ MIN_RECURRING_EPISODES = 3
 STALE_FEED_DORMANT_DAYS = 365
 STALE_FEED_RETIRED_DAYS = 730
 INCONSISTENT_GAP_DAYS = 365
-REMEDY_VERSION = "direct-v5-aggregate-policy"
+REMEDY_VERSION = "direct-v6-approved-family-policy"
 DECISION_CONTRACT = "unexpected-body-decisions-v2"
 
 SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -159,11 +159,14 @@ Actions:
 - new_feed: clearly recurring, distinct body with at least three observed meetings; provide slug,
   title, and description.
 - manual_review: evidence is insufficient or no safe owning feed exists; explain what is missing.
-Configured remedy_policy.aggregate_family is a binding subscription policy. All TIF/TIRZ district
-boards, joint TIF meetings and TIF oversight bodies belong to that city's aggregate TIF feed;
-never create district feeds or assign them to Economic Development or another body. Member names
-are identity clues, not permission to include unrelated neighborhood/project recordings. If an
-unmarked label is ambiguous, use manual_review and name the evidence needed.
+Configured remedy_policy is a binding source-scoped subscription policy. Respect approved city
+aggregates for TIF, PID, bond, charter, redistricting, public input and public briefings. Never
+recreate separate district, year, program or project feeds within those families. identity_names
+are exact reviewed labels, including provider-duplicated copies; they do not equate independent
+bodies. member_names and topic words are holding clues, not permission to include recordings.
+Council discussions, announcements, training and promotional clips are not family proceedings
+merely because they mention the topic. Unknown ownership requires manual_review with the evidence
+needed. Named-body identity policies also forbid duplicate feeds or assignment to another parent.
 Prefer existing feeds. An independent board is not a Council session. For a joint meeting, select
 both bodies' feeds if configured; otherwise select the configured one and explain the missing body.
 Only use target slugs and evidence IDs supplied here. Do not invent GUIDs, labels, or source keys.
@@ -402,7 +405,8 @@ def _matches_tif_family(value: str, policy: dict[str, Any]) -> bool:
     normalized = body_key(value)
     tokens = set(normalized.split())
     if tokens & {"tif", "tirz"} or any(
-        phrase in normalized for phrase in ("tax increment", "reinvestment zone")
+        " " + phrase + " " in " " + normalized + " "
+        for phrase in ("tax increment", "reinvestment zone")
     ):
         return True
     names = policy.get("member_names", [])
@@ -417,47 +421,134 @@ def _configured_aggregate_policy(path: Path) -> dict[str, Any]:
     return policy if isinstance(policy, dict) else {}
 
 
-def _aggregate_policy_reason(proposal, feeds_on_source, feed_paths) -> str:
-    """Read authoritative policy from this source's files, never from model-supplied metadata.
+def _policy_identity_matches(value: str, policy: dict[str, Any]) -> bool:
+    """Exact reviewed labels; normalization does not turn a topic into an owning body."""
+    return any(matches_exact_body_label(value, name) for name in policy.get("identity_names", []))
 
-    A member-name clue can hold a proposal, but it does not establish correct ownership. A
-    model selecting the aggregate for an unmarked label must leave it for manual confirmation.
+
+def _policy_family_clue(value: str, policy: dict[str, Any]) -> bool:
+    """Markers can hold recreation proposals but do not approve new ownership."""
+    family = policy.get("aggregate_family")
+    if family == "tif":
+        return _matches_tif_family(value, policy) or _policy_identity_matches(value, policy)
+    normalized = " " + body_key(value) + " "
+    markers = {
+        "pid": ("pid", "public improvement district"),
+        "bond": ("bond",),
+        "charter": ("charter",),
+        "redistricting": ("redistricting",),
+        "public_input": (
+            "town hall",
+            "townhall",
+            "public input",
+            "public meeting",
+            "public hearing",
+            "public forum",
+            "community meeting",
+            "neighborhood meeting",
+        ),
+        "public_briefings": (
+            "press conference",
+            "news conference",
+            "public presentation",
+            "public briefing",
+        ),
+    }
+    return (
+        any(" " + body_key(marker) + " " in normalized for marker in markers.get(family, ()))
+        or _policy_identity_matches(value, policy)
+        or any(
+            matches(value, name)
+            for name in policy.get("member_names", []) + policy.get("identity_names", [])
+        )
+    )
+
+
+def _policy_verified_owner(value: str, policy: dict[str, Any]) -> bool:
+    if _policy_identity_matches(value, policy):
+        return True
+    # Preserve the reviewed TIF marker rule. Topic-bearing proceedings of another body need
+    # explicit identity evidence, even if the family marker would otherwise match.
+    if policy.get("aggregate_family") != "tif":
+        return False
+    tokens = set(body_key(value).split())
+    if tokens & {
+        "council",
+        "training",
+        "announcement",
+        "promo",
+        "promotion",
+        "ceremony",
+        "conference",
+        "discussion",
+        "presentation",
+        "television",
+        "show",
+    }:
+        return False
+    return _matches_tif_family(value, {})
+
+
+def _aggregate_policy_reason(proposal, feeds_on_source, feed_paths) -> str:
+    """Enforce authoritative source-scoped policies, never model-supplied metadata.
+
+    Identity-only policies protect named bodies without merging distinct bodies. Unreviewed
+    family/member clues hold proposals for evidence; only a reviewed identity establishes
+    ownership, except for the existing TIF marker rule.
     """
-    aggregates = {
+    policies = {
         slug: policy
         for slug in sorted(feeds_on_source)
-        if slug in feed_paths
-        and (policy := _configured_aggregate_policy(feed_paths[slug])).get("aggregate_family")
-        == "tif"
+        if slug in feed_paths and (policy := _configured_aggregate_policy(feed_paths[slug]))
     }
-    if not aggregates:
+    if not policies:
         return ""
-    claimed = " ".join([proposal.unexpected_body, proposal.new_feed_slug, proposal.new_feed_title])
-    relevant = {slug for slug, policy in aggregates.items() if _matches_tif_family(claimed, policy)}
+    claims = (proposal.unexpected_body, proposal.new_feed_slug, proposal.new_feed_title)
+    relevant = {
+        slug
+        for slug, policy in policies.items()
+        if any(_policy_family_clue(claim, policy) for claim in claims)
+    }
     if proposal.action == "new_feed" and relevant:
+        kind = (
+            "TIF aggregation"
+            if any(policies[slug].get("aggregate_family") == "tif" for slug in relevant)
+            else "approved family/identity"
+        )
         return (
-            "deferred: TIF aggregation policy forbids district feeds; reuse "
+            f"deferred: {kind} policy forbids district or duplicate feeds; reuse "
             f"{sorted(relevant)} or request manual identity review"
         )
+    # An explicitly reviewed label owns its subscriptions. A different policy's weaker
+    # holding clue cannot turn an Open House into its similarly named committee proceeding.
+    # Keep all exact owners for reviewed joint subscriptions; unknown labels still use holds.
+    exact_owners = {
+        slug
+        for slug, policy in policies.items()
+        if _policy_identity_matches(proposal.unexpected_body, policy)
+    }
+    if exact_owners:
+        relevant = exact_owners
     if relevant and set(proposal.target_feeds) != relevant:
         return (
-            "deferred: TIF aggregation policy requires the owning aggregate "
-            f"{sorted(relevant)}; do not assign TIF recordings to other feeds"
+            "deferred: approved policy requires the owning aggregate or named feed "
+            f"{sorted(relevant)}; do not assign recordings to other feeds"
         )
-    if set(proposal.target_feeds) & set(aggregates) and not _matches_tif_family(
-        proposal.unexpected_body, {}
+    if set(proposal.target_feeds) & set(policies) and not all(
+        _policy_verified_owner(proposal.unexpected_body, policies[slug])
+        for slug in set(proposal.target_feeds) & set(policies)
     ):
-        return "deferred: unmarked TIF member requires manual identity confirmation"
-    if set(proposal.target_feeds) & set(aggregates) and not relevant:
-        return "deferred: unverified aggregate ownership; request manual identity review"
+        return (
+            "deferred: unmarked or unverified policy member requires manual identity confirmation"
+        )
     return ""
 
 
 def _target_feed_is_compatible(label: str, path: Path) -> bool:
-    """Taxonomy overlap is a coarse check; approved aggregates use their family policy."""
+    """Taxonomy overlap is a coarse check; explicit policies require verified ownership."""
     policy = _configured_aggregate_policy(path)
-    if policy.get("aggregate_family") == "tif":
-        return _matches_tif_family(label, policy)
+    if policy:
+        return _policy_verified_owner(label, policy)
     selectors = _configured_body_selectors(path)
     if not selectors:
         return True

@@ -999,3 +999,209 @@ def test_tif_policy_holds_wrong_owners_and_district_recreation(
     assert bool(plan.accepted) is accepted
     if not accepted:
         assert reason in plan.rejected[0].reason
+
+
+@pytest.mark.parametrize(
+    "family,label,identity,accepted",
+    [
+        ("pid", "PID 7 Board", "PID 7 Board", True),
+        ("pid", "PID 8 Board", "PID 7 Board", False),
+        ("pid", "Rapid Planning Board", "PID 7 Board", False),
+        ("bond", "2027 Bond Committee", "2024 Bond Committee", False),
+        ("bond", "Council Bond Briefing", "Bond Committee", False),
+        ("charter", "2024 Charter Review Committee", "2024 Charter Review Committee", True),
+        ("charter", "Charter School Promotion", "Charter Review Committee", False),
+        ("redistricting", "Redistricting Committee", "Redistricting Committee", True),
+        ("redistricting", "Council Redistricting Hearing", "Redistricting Committee", False),
+        ("public_input", "Neighborhood Public Meeting", "Neighborhood Public Meeting", True),
+        ("public_input", "Neighborhood Project", "Neighborhood Public Meeting", False),
+        ("public_input", "Town Hall Staff Training", "Town Hall", False),
+        ("public_briefings", "News Conference", "News Conference", True),
+        ("public_briefings", "Press Conference Announcement", "Press Conference", False),
+        ("public_briefings", "Municipal TV Show", "News Conference", False),
+        ("tif", "Council Briefing on TIF", "TIF Board", False),
+        ("tif", "TIF Staff Training", "TIF Board", False),
+        ("tif", "TIF Press Conference", "TIF Board", False),
+        ("tif", "Tax Incremental Housing Board", "TIF Board", False),
+        ("tif", "Reinvestment Zoneless Board", "TIF Board", False),
+        ("tif", "Joint City Center Board", "Joint City Center Board", True),
+        (None, "Housing Finance Corporation", "Housing Finance Corporation", True),
+        (
+            None,
+            "Housing Finance Corporation Housing Finance Corporation",
+            "Housing Finance Corporation",
+            True,
+        ),
+        (None, "Council Housing Finance Briefing", "Housing Finance Corporation", False),
+        (None, "Capital Improvements Transportation", "Capital Improvements Water", False),
+    ],
+)
+def test_policy_ownership_requires_reviewed_identity(tmp_path, family, label, identity, accepted):
+    from citypods.audit_remedy import _aggregate_policy_reason, _target_feed_is_compatible
+
+    policy = {"identity_names": [identity], "member_names": [identity]}
+    if family:
+        policy["aggregate_family"] = family
+    path = tmp_path / "owner.yml"
+    path.write_text(yaml.safe_dump({"remedy_policy": policy}))
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=label,
+        action="union",
+        target_feeds=["owner"],
+        rationale="Evidence-backed identity",
+    )
+    assert _target_feed_is_compatible(label, path) is accepted
+    assert bool(_aggregate_policy_reason(proposal, {"owner"}, {"owner": path})) is not accepted
+
+
+@pytest.mark.parametrize(
+    "family,label",
+    [
+        ("pid", "New PID 20 Board"),
+        ("bond", "2030 Bond Committee"),
+        ("charter", "2030 Charter Review Commission"),
+        ("redistricting", "2030 Redistricting Commission"),
+        ("public_input", "Bridge Project Town Hall"),
+        ("public_input", "Bridge Project Public Hearing"),
+        ("public_briefings", "Municipal News Conference"),
+        ("public_briefings", "Municipal Public Briefing"),
+        (None, "Housing Finance Corporation"),
+    ],
+)
+def test_family_and_named_body_policy_holds_recreation_and_wrong_owner(tmp_path, family, label):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    policy = {"identity_names": ["Housing Finance Corporation"]}
+    if family:
+        policy["aggregate_family"] = family
+    path = tmp_path / "owner.yml"
+    path.write_text(yaml.safe_dump({"remedy_policy": policy}))
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=label,
+        action="new_feed",
+        new_feed_slug="new-feed",
+        new_feed_title=label,
+        rationale="Evidence-backed identity",
+    )
+    paths = {"owner": path}
+    assert "forbids" in _aggregate_policy_reason(proposal, {"owner"}, paths)
+    proposal.action = "union"
+    proposal.target_feeds = ["council"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, {"owner"}, paths)
+    # A policy on another source cannot establish ownership or suppress a distinct feed.
+    assert not _aggregate_policy_reason(proposal, {"council"}, paths)
+
+
+def test_policy_topic_and_member_clues_cannot_approve_unknown_owner(tmp_path):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    path = tmp_path / "owner.yml"
+    path.write_text(
+        "remedy_policy:\n  aggregate_family: public_input\n"
+        "  identity_names: [Public Input Meeting]\n  member_names: [Bridge Project]\n"
+    )
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="Bridge Project",
+        action="union",
+        target_feeds=["owner"],
+        rationale="Topic is not identity evidence",
+    )
+    assert "manual identity" in _aggregate_policy_reason(proposal, {"owner"}, {"owner": path})
+
+
+def test_exact_identity_can_hold_extended_label_without_approving_it(tmp_path):
+    from citypods.audit_remedy import _aggregate_policy_reason, _target_feed_is_compatible
+
+    path = tmp_path / "owner.yml"
+    path.write_text("remedy_policy:\n  identity_names: [Housing Finance Corporation]\n")
+    label = "2026 Housing Finance Corporation Special Meeting"
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=label,
+        action="new_feed",
+        new_feed_slug="new-corporation",
+        new_feed_title=label,
+        rationale="An extended label needs identity evidence",
+    )
+    assert "forbids" in _aggregate_policy_reason(proposal, {"owner"}, {"owner": path})
+    assert not _target_feed_is_compatible(label, path)
+
+
+@pytest.fixture
+def overlapping_policy_paths(tmp_path):
+    policies = {
+        "udc": {"identity_names": ["UDC Advisory Committee"]},
+        "public-input": {
+            "aggregate_family": "public_input",
+            "identity_names": ["UDC Advisory Committee Open House"],
+        },
+    }
+    paths = {}
+    for slug, policy in policies.items():
+        path = tmp_path / f"{slug}.yml"
+        path.write_text(yaml.safe_dump({"remedy_policy": policy}))
+        paths[slug] = path
+    return paths
+
+
+@pytest.mark.parametrize("action", ["union", "single_uid_inclusion"])
+def test_exact_reviewed_owner_overrides_other_policy_holding_clue(overlapping_policy_paths, action):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    paths = overlapping_policy_paths
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="UDC Advisory Committee Open House",
+        action=action,
+        target_feeds=["public-input"],
+        provider_guids=["open-house"],
+        rationale="Reviewed public-input proceeding identity",
+    )
+    assert not _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.target_feeds = ["udc"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.target_feeds = ["udc", "public-input"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)
+
+
+def test_overlapping_holding_clues_still_hold_unknown_identity_and_duplicate_feed(
+    overlapping_policy_paths,
+):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    paths = overlapping_policy_paths
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="UDC Advisory Committee Open House 2027",
+        action="union",
+        target_feeds=["public-input"],
+        rationale="Unreviewed suffix remains evidence-first",
+    )
+    assert _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.action = "new_feed"
+    proposal.unexpected_body = "UDC Advisory Committee Open House"
+    proposal.new_feed_slug = "duplicate-open-house"
+    proposal.new_feed_title = proposal.unexpected_body
+    assert "forbids" in _aggregate_policy_reason(proposal, set(paths), paths)
+
+
+def test_joint_exact_owners_require_all_reviewed_subscriptions(overlapping_policy_paths):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    paths = overlapping_policy_paths
+    joint = "Joint Council and Planning Commission Meeting"
+    for path in paths.values():
+        path.write_text(yaml.safe_dump({"remedy_policy": {"identity_names": [joint]}}))
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=joint,
+        action="union",
+        target_feeds=list(paths),
+        rationale="Both subscriptions were explicitly reviewed for this joint label",
+    )
+    assert not _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.target_feeds = ["udc"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)

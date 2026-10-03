@@ -700,13 +700,23 @@ every value from the evidence bundle before anything is written:
 - `provider_guids` must belong to episodes carrying that label.
 - `new_feed_slug` must be well-formed and unused.
 
-Feed-level `remedy_policy.aggregate_family: tif` is a binding subscription policy, validated at
-config load and included in compact LLM evidence. Local validation reads same-source feed files,
-blocks TIF district creation and non-aggregate targets, and uses word-boundary family markers.
-Reviewed `member_names` hold ambiguous unmarked district labels for manual identity confirmation;
-they never broaden selectors or authorize ownership on their own. This applies to any city with
-a configured aggregate policy, not a Dallas/Fort Worth slug allowlist. No dispatch/model changes
-are part of this guard; the wider execution/model design remains review/51 work.
+Feed-level `remedy_policy` is a binding subscription policy, validated at config load and included
+in compact LLM evidence. `aggregate_family` supports TIF, PID, bond, charter, redistricting,
+public-input and public-briefings families. Exact reviewed `identity_names` can also protect named
+bodies without an aggregate family. Local validation reads same-source feed files and blocks
+creation of duplicate district/program/body feeds or assignment to the wrong owner. For assignments,
+exact reviewed owners take precedence over another policy's holding clues; multiple exact joint
+owners remain required. Duplicate-feed creation remains blocked by any relevant policy.
+
+Reviewed `member_names` and extended identity labels hold ambiguous cases for manual confirmation;
+they never broaden selectors or authorize ownership on their own. Non-TIF ownership requires an
+exact reviewed identity. TIF family markers retain their existing ownership rule, but unreviewed
+listed Council, training, announcement, ceremony and related topic tokens require identity evidence.
+Unknown public hearings/briefings are held instead of recreating approved aggregate families. This
+applies to any city with a configured policy. The retained TIF marker rule is not general semantic
+verification: unseen topic wording can still pass, and broad selector replay/new-match monitoring
+remains P2 work. No dispatch/model changes are part of these guards;
+the wider execution/model design remains review/51 work.
 
 Anything failing is dropped with a reason and surfaced in the report rather than applied. The
 applier resolves a slug to a path through a map built by scanning `config/feeds` itself, so no
