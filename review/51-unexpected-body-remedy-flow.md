@@ -10,7 +10,8 @@ Onboard a city's complete available archive once, approve its subscription taxon
 that policy in selectors and regression evaluations. Maintenance should then discover genuinely
 new bodies and formats, rather than repeatedly rediscovering historical spellings. The target is
 manual decisions per established city approaching zero, without hiding unknowns or silently
-excluding legitimate recordings.
+excluding legitimate recordings. Approved reusable policy templates and evaluation cases must
+serve both maintenance and onboarding; reviewed city/source identities remain local.
 
 This is a maintainer-authorized follow-up to PR #1747, outside the usual implementation queue.
 The initial reviews merged as TIF migration (#1973), remedy guard (#1974), historical coverage
@@ -41,6 +42,9 @@ individual category recommendations; this document owns the improvement plan.
 - Routine automation uses free routes. Subscription/frontier-agent work is acceptable for this
   historical cleanup and the initial complete-archive assessment of new cities.
 - Evaluation cases and results live in `evals/`, permitting retirement/replacement comparisons.
+- Shared approved policy templates are defaults for new cities and new historical evidence.
+  Onboarding and maintenance use the same resolver, replay and case catalog; matching an approved
+  rule does not require another LLM decision. This clarification was approved on 2026-10-03.
 
 A–F taxonomy directions in #1975 are approved; individual uncertain identities remain held.
 The future-flow structure is approved. Only a phase marked L3 with its predecessor gates satisfied
@@ -96,6 +100,24 @@ subscription aggregation separate from body equivalence. A policy names the city
 family, permitted selector forms, exclusions, identity constraints, migration behavior and linked
 regression cases. Do not introduce a hardcoded city list or infer a global policy from one city's
 approval. District-family subscription rules must not imply district renames.
+
+Approved reusable defaults are explicit versioned templates, not inferred global ownership.
+A template describes a subscription family or body identity type, permitted selector/alias forms,
+required official proof, exclusion boundaries and positive/negative/transfer cases. A city/source
+instance binds that template to its verified identities and owning feeds. TIF/PID, bond/charter/
+redistricting, public-input and public-briefings defaults are cross-city policy approvals; a local
+board alias or rejected recording remains local unless separately promoted with transfer evidence.
+
+Both onboarding and maintenance load the same templates, instantiate source-scoped policies,
+resolve ownership and replay coverage before model work. Recognized observations update coverage
+under an approved rule. Unknown identity, missing proof, conflicting evidence or new policy scope
+uses the same escalation path in either flow. Shared words or another city's exact names never
+establish a recording's owner. Initial city approval remains a full available-history assessment;
+templates do not waive completeness, exclusions or identity verification.
+
+A newly learned local decision may propose an explicit template improvement with independent
+cross-city positive/negative cases and approval; it must not silently rewrite global defaults.
+This is maintained policy and regression evidence, not training or implicit learning by an LLM.
 
 Maintain an append-only decision history keyed by city/source and normalized label/family, with
 recording references, evidence hash, config/policy version, prompt/schema version, actual model
@@ -569,17 +591,37 @@ quota/deadlines. No admission result or approved production route is assumed by 
 **Permitted files:** new `citypods/remedy_policy.py`, new `citypods/remedy_ledger.py`,
 `citypods/{config.py,audit.py,audit_remedy.py}`, `scripts/audit_feeds.py`,
 `citypods/storage/routing.py`, `config/remedy.yml`, approved `config/feeds/*.yml`,
-new `tests/test_remedy_policy.py`, new `tests/test_remedy_ledger.py`, existing audit/config/storage
+`citypods/remedy_evaluation.py` (only shared-config/template schema compatibility),
+new `tests/test_remedy_policy.py`, new `tests/test_remedy_ledger.py`,
+`tests/test_remedy_evaluation.py` (only shared-config compatibility), existing audit/config/storage
 routing tests and lifecycle docs. Feed changes are still separate city/family decisions.
 
 Extend validated feed `remedy_policy`: existing `aggregate_family`/`member_names` stay valid;
 new optional `policy_id`, `version`, `identity_names`, `positive_case_ids`, `negative_case_ids`,
-`approval_ref`. Supported families: `tif`, `pid`, `bond`, `charter`, `redistricting`,
+`approval_ref`, plus optional `template_id` and `template_version` identifying the approved
+reusable policy. Supported families: `tif`, `pid`, `bond`, `charter`, `redistricting`,
 `public_input`, `public_briefings`. Identity-only policies omit `aggregate_family`; they do not
 merge independent bodies. Approved marker recognition belongs in `remedy_policy.py`, never in
 an LLM response. Member/topic names are holding clues and cannot establish ownership alone.
 
-New interfaces: `load_policies(feed_paths) -> PolicyIndex`,
+P2 adds optional `policy_templates` to shared `config/remedy.yml` and its strict `RemedyConfig`
+reader, defaulting to an empty list for existing config compatibility. New strict `PolicyTemplate`
+entries contain `id`, `version`, `approval_ref`, approved scope (`cross_city` or `city_source`),
+family/identity type, permitted transformations/selector forms, official-proof requirements,
+exclusion/migration boundaries and positive/negative/transfer case IDs. Known keys/types only;
+unknown templates/versions, unsupported forms and missing required proof fail closed. Templates
+never carry a city's exact body names as global truths or automatically qualify a model/merge.
+Define these types in `citypods/remedy_policy.py`; do not introduce another independent catalog
+or config parser for onboarding. Policy-instance evidence includes template and local revision
+hashes, so a template change replays affected instances and invalidates stale decisions.
+
+New `load_policy_templates(config) -> TemplateIndex` and
+`instantiate_policies(city, source_key, templates, official_evidence) -> PolicyInstances` live in
+`citypods/remedy_policy.py`. Instantiation binds an approved template to verified local ownership;
+it emits an evidence-backed unresolved result if required identity/completeness proof is missing.
+Cross-city template approval does not authorize a new city's publication without its baseline gate.
+
+New interfaces: `load_policies(feed_paths, *, templates=None) -> PolicyIndex`,
 `resolve_owner(label, source_key, policies) -> OwnershipResolution`,
 `replay_coverage(recordings, feeds, policies) -> CoverageReplay`, and
 `material_evidence_hash(evidence) -> str`. Resolution returns verified owner, ambiguous or unknown,
@@ -639,6 +681,14 @@ Material change is new official identity evidence, changed approved policy, or a
 format contradiction. Counts, a new date under the same rule, prompt/model changes or another week
 alone do not regenerate a rejected proposal. Explicit maintainer reopening is recorded as an event.
 Route changes may trigger an eval comparison, not unsolicited reopening of a rejected policy.
+
+P2 shared-default acceptance: the same frozen evidence yields identical ownership, coverage and
+exclusion results through onboarding and maintenance entrypoints. Known normalization/rule matches
+resolve without an LLM call; unknowns preserve evidence and escalate. Test template instantiation
+for a previously unseen city, neighboring wrong-body/topic labels, missing local proof, local
+feedback isolation, unknown/stale template revisions and complete regression replay after changes.
+Cross-city positive/negative cases live under `evals/remedy/` with ordinary gold provenance and
+holdout isolation; city-specific facts are never promoted by agreement alone.
 
 P2 tests: archived-but-unserved labels visible; newly matched false inclusion surfaced; duplicate
 views; no UID invention; shared word not identity; source-scoped negatives; v1 refresh and stale
@@ -783,6 +833,17 @@ recheck config/evidence/qualification and that the PR is still open; changed bas
 replay and fresh review. Independent validation is cached only by all evidence/config/model/prompt
 hashes. Critical error appends a suspension event which overrides `enabled`; report immediately,
 retain evidence and create a reviewed rollback PR. A recovered R2 cache cannot remove a suspension.
+
+P5 wires city onboarding to P2's shared template loader/instantiator, ownership resolver and
+coverage replay before the same P1 evaluation lane. It must not maintain a second prompt-only
+taxonomy or copy city aliases into global defaults. Test identical maintenance/onboarding outcomes
+and transfer to unseen cities using frozen official evidence, including wrong-body/topic negatives.
+
+Qualification identifies the stable template/version, city/source owner and permitted
+transformation scope. Each change still validates its base/prospective instance hashes and replay.
+A new reviewed alias within that enabled scope does not itself require requalifying the entire
+template; changes to ownership rules, template version or permitted transformations do. Applying
+a subscription default to a new city never transfers another city's automatic-merge authorization.
 
 `onboarding_exceptions` entries: city/source, available date range and views, missing periods/caps,
 retrieval attempts with refs, approved issue/PR and maintainer, approval date, visible limitation
