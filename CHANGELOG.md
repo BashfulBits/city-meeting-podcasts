@@ -24,6 +24,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Addison UDC historical committee coverage.** Adds one Unified Development Code Advisory
+  Committee subscription using exact reviewed labels, covering three official committee recordings
+  without selecting its Open House. All provider/stored observations replayed and the three stored
+  UIDs preserved. CPC duplicate identities and public-input migration remain separate holds.
+  No source, record, author, UID algorithm or audio change; no pipeline bump, invalidation or forced
+  backfill. Evidence: `review/addison-udc-coverage-2026-10.md`.
+
 - **Exact feed-body selector rules.** Optional `source.body_exact` matches complete normalized
   labels and provider-duplicated copies, separating bare committee names from Open House/topic
   suffixes. It unions with existing selectors/inclusions; remedy retains exact-selector evidence

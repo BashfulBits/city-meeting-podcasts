@@ -13,7 +13,9 @@ scale; lower number = sooner.
 Maintainer-directed follow-up (2026-10-02): Dallas/Fort Worth aggregate TIF feed migration and
 remedy policy enforcement shipped in #1973/#1974; residual categories A–F are approved and
 are being applied in bounded city batches; exact-label selection is a prerequisite where committee
-names overlap distinct public-input formats. See
+names overlap distinct public-input formats. The
+[Addison UDC batch](review/addison-udc-coverage-2026-10.md) applies that distinction to three
+historical committee recordings. See
 [coverage policy](review/tif-coverage-2026-10.md) and review/11.
 [review/51](review/51-unexpected-body-remedy-flow.md) records the approved improvement structure:
 P1 evaluation/physical-route admission is L3; P2–P5 have predecessor-gated build contracts.
