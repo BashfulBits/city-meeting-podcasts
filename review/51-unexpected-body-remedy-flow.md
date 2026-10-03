@@ -277,7 +277,9 @@ under `evals/remedy/`. G is investigation-first; no automatic catch-all feed is 
 P0 guard prerequisite extends existing feed-level `remedy_policy` metadata with optional exact
 `identity_names` and the approved `pid`, `bond`, `charter`, `redistricting`, `public_input` and
 `public_briefings` aggregate families alongside `tif`. Identity-only named-body policies omit the
-family. Only reviewed exact identities authorize non-TIF ownership; family/member clues hold new
+family. For assignments, exact reviewed owners override competing holding clues; multiple exact
+joint owners remain required. New-feed duplication remains blocked by any relevant policy.
+Only reviewed exact identities authorize non-TIF ownership; family/member clues hold new
 labels for evidence. Known topic-bearing TIF labels also require reviewed identity; unseen topic
 wording can still pass the retained marker rule, so newly matched observation/replay remains P2
 work. These local guards

@@ -704,7 +704,9 @@ Feed-level `remedy_policy` is a binding subscription policy, validated at config
 in compact LLM evidence. `aggregate_family` supports TIF, PID, bond, charter, redistricting,
 public-input and public-briefings families. Exact reviewed `identity_names` can also protect named
 bodies without an aggregate family. Local validation reads same-source feed files and blocks
-creation of duplicate district/program/body feeds or assignment to the wrong owner.
+creation of duplicate district/program/body feeds or assignment to the wrong owner. For assignments,
+exact reviewed owners take precedence over another policy's holding clues; multiple exact joint
+owners remain required. Duplicate-feed creation remains blocked by any relevant policy.
 
 Reviewed `member_names` and extended identity labels hold ambiguous cases for manual confirmation;
 they never broaden selectors or authorize ownership on their own. Non-TIF ownership requires an

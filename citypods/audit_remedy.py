@@ -527,6 +527,16 @@ def _aggregate_policy_reason(proposal, feeds_on_source, feed_paths) -> str:
             f"deferred: {kind} policy forbids district or duplicate feeds; reuse "
             f"{sorted(relevant)} or request manual identity review"
         )
+    # An explicitly reviewed label owns its subscriptions. A different policy's weaker
+    # holding clue cannot turn an Open House into its similarly named committee proceeding.
+    # Keep all exact owners for reviewed joint subscriptions; unknown labels still use holds.
+    exact_owners = {
+        slug
+        for slug, policy in policies.items()
+        if _policy_identity_matches(proposal.unexpected_body, policy)
+    }
+    if exact_owners:
+        relevant = exact_owners
     if relevant and set(proposal.target_feeds) != relevant:
         return (
             "deferred: approved policy requires the owning aggregate or named feed "
