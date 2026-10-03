@@ -24,6 +24,14 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Unexpected-body evaluation harness (P1 draft).** Adds schema-v2 freeze/run/report/rescore,
+  direct physical-route allowlists, validated effort controls and synchronous result provenance.
+  Production remedy models and Worker routes are unchanged; shadow config admits no models.
+  Seeds are regression evidence, not admission results. Missing CAS coordination is a visible
+  preflight hold; explicit live runs use shared quota bookkeeping but cannot write feeds/audio.
+  Blind-owner scoring and candidate input-hash requirements await specification clarification.
+  No pipeline-version change, stored-artifact invalidation or historical backfill is introduced.
+
 - **Chapter locator baseline routing and evaluation.** Production now uses the baseline prompt, routes
   packets up to 76,000 internal estimated input tokens to DeepSeek V4 Flash, and sends larger packets
   to Kimi K3. GLM 5.3 Flash and DeepSeek V4.1 Flash are documented optional capacity and are not

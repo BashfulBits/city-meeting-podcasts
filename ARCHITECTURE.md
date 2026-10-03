@@ -674,6 +674,24 @@ matches `"TIRZ Board"`, so adding the latter to `body_any` is dead config. Conve
 like `"Special Meeting"` is only safe when no sibling feed on the same source carries it as a
 substring — worth checking, because per-body feeds share one source.
 
+#### Remedy evaluation (P1 draft)
+
+`scripts/eval_remedy.py` freezes schema-v2 evidence and produces immutable route-comparison and
+rescoring artifacts; independently maintained gold never enters model messages. Production remedy
+routing is unchanged. `config/remedy.yml` starts in shadow mode with empty admissions and alias
+qualifications. Current high/max effort capabilities are unverified in the route catalog, so
+admission fails closed rather than silently dropping effort or accepting a weaker fallback.
+
+Direct evaluation requests use physical route allowlists checked before quota reservation and pool
+substitution. Dispatch requests reject this direct-only gate. Synchronous `JobResult` adds selected
+route/upstream/effort/parameter provenance; evaluation also validates returned model identity.
+Offline dry runs make zero model observations. Explicit live runs require CAS-capable shared
+scheduler storage, bounded cases and quota bookkeeping; they do not mutate feeds or audio.
+
+P1 remains a draft pending hidden owner truth, separate blind-owner experiments and candidate input
+hash clarification in [review/51](review/51-unexpected-body-remedy-flow.md). No route is qualified by
+the seed corpus or this implementation alone.
+
 #### Trust boundary
 
 `citypods/audit_remedy.py` uses an LLM for the taxonomy judgement only. **The model proposes; the

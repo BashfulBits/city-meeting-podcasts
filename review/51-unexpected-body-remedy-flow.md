@@ -288,7 +288,14 @@ P1 can supply evaluation tooling while P0 is being completed; P5 requires an app
 ### P1 — evaluation harness and physical-route admission (L3)
 
 Tracking issue: [#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979).
-Implementation starts after this specification update merges.
+Implementation is prepared as a draft; P1 is not complete or frozen. The offline harness and strict
+direct routing/provenance are implemented, with empty shadow admissions and no live model calls.
+Three specification clarifications remain with the maintainer: hidden independently adjudicated
+`expected_owner` truth, an explicit blind-owner mode that omits claim/target inputs, and mandatory
+frozen input hashes for evaluation-only candidates. Current route effort capability metadata is
+unverified, so no candidate/admitted route is enabled. Live evaluation requires shared CAS-capable
+quota coordination; “no production writes” below means no feed/audio/catalog mutation, not bypass
+of shared quota bookkeeping.
 
 **Purpose:** compare actual model/effort configurations on fixed truth, safely and rerunnably.
 No production model swap or feed mutation occurs in this phase.

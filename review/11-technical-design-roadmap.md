@@ -89,7 +89,9 @@ are approved but residual policy application is still P0, not completed by mergi
 [review/51](51-unexpected-body-remedy-flow.md), initially merged in #1976, now records the approved
 P1–P5 structure and exact phase build contracts. **P1: L3** (evaluation harness and strict physical-
 route admission, [#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979));
-P2–P5 stay predecessor-gated until their evidence and issues exist. The 27 seed
+P1 implementation is a draft pending blind-owner/input-hash specification clarifications;
+no model is admitted and no live evaluation has run. P2–P5 stay predecessor-gated until their
+evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID
 aggregates. Remedy/onboarding stay outside leagues. This is a maintainer-directed follow-up;
