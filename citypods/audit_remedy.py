@@ -224,6 +224,7 @@ def gather_unexpected_body_evidence(
             "podcast_description": feed.podcast_description,
             "body": feed.source.get("body"),
             "body_any": feed.source.get("body_any", []),
+            "body_exact": feed.source.get("body_exact", []),
             "body_includes": feed.source.get("body_includes", []),
             "remedy_policy": feed.extra.get("remedy_policy", {}),
         }
@@ -316,7 +317,14 @@ def _compact_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
         "existing_feeds": [
             {
                 key: feed.get(key)
-                for key in ("slug", "podcast_title", "body", "body_any", "remedy_policy")
+                for key in (
+                    "slug",
+                    "podcast_title",
+                    "body",
+                    "body_any",
+                    "body_exact",
+                    "remedy_policy",
+                )
             }
             for feed in evidence.get("existing_feeds", [])
         ],
@@ -391,7 +399,7 @@ def _configured_body_selectors(path: Path) -> list[str]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     source = data.get("source") or {}
     selectors: list[str] = []
-    for key in ("body", "body_any"):
+    for key in ("body", "body_any", "body_exact"):
         value = source.get(key)
         if isinstance(value, str):
             selectors.append(value)
@@ -980,7 +988,7 @@ class SourceContext:
         transport = {
             key: value
             for key, value in city.source.items()
-            if key not in {"body", "body_any", "body_includes"}
+            if key not in {"body", "body_any", "body_exact", "body_includes"}
         }
         return cls(
             provider=city.provider,
@@ -993,7 +1001,11 @@ class SourceContext:
 def _already_has_body_any(path: Path, value: str) -> bool:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     source = data.get("source") or {}
-    return value in (source.get("body_any") or []) or source.get("body") == value
+    return (
+        value in (source.get("body_any") or [])
+        or source.get("body") == value
+        or any(matches_exact_body_label(value, label) for label in (source.get("body_exact") or []))
+    )
 
 
 def _already_has_include(path: Path, provider_guid: str) -> bool:

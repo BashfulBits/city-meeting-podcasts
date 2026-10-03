@@ -205,3 +205,46 @@ def test_body_inclusions_validate_entries():
                 ]
             }
         )
+
+
+def test_exact_body_selector_restricts_live_and_retained_rows_without_topic_capture():
+    selector = source_body_filter({"body_exact": ["UDC Advisory Committee"]})
+    positive = "UDC Advisory Committee"
+    duplicated = "UDC Advisory Committee UDC Advisory Committee"
+    negative = "UDC Advisory Committee Open House"
+    assert matches(positive.lower(), selector)
+    assert matches(duplicated, selector)
+    assert not matches(negative, selector)
+    assert not matches("Council discussion of UDC Advisory Committee", selector)
+    assert [ep.body for ep in filter_by_body([_ep(positive), _ep(negative)], selector)] == [
+        positive
+    ]
+    assert record_matches_body({"body": positive}, selector)
+    assert not record_matches_body({"body": negative}, selector)
+    assert not record_matches_body({"body": None}, selector)
+
+
+def test_exact_body_selectors_union_with_existing_patterns_and_guid_inclusions():
+    source = {
+        "body": "City Council",
+        "body_any": ["TIF *"],
+        "body_exact": ["UDC Advisory Committee"],
+        "body_includes": [{"provider_guid": "special", "body": "Joint Board"}],
+    }
+    selector = source_body_filter(source)
+    inclusions = source_body_inclusions(source)
+    assert matches("City Council Regular Meeting", selector)
+    assert matches("TIF 1 Board", selector)
+    assert matches("udc advisory committee", selector)
+    assert not matches("UDC Advisory Committee Open House", selector)
+    assert record_matches_body(
+        {"provider_guid": "special", "body": "Joint Board"}, selector, inclusions
+    )
+    assert record_matches_body({"body": "Any Board"}, source_body_filter({}))
+    assert filter_by_body([_ep("Any Board")], source_body_filter({}))
+
+
+@pytest.mark.parametrize("invalid", [[], "Committee", [None], [" "], ["TIF *"], ["Board?"], ["!"]])
+def test_exact_body_selectors_reject_malformed_or_nonliteral_labels(invalid):
+    with pytest.raises(ValueError, match="body_exact"):
+        source_body_filter({"body_exact": invalid})

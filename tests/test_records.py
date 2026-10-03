@@ -2487,3 +2487,14 @@ def test_confirmed_dead_recheck_due_flat_interval():
     # No verdict / no anchor → treated as due so a freshly-confirmed episode rechecks once.
     ep.media_availability = None
     assert confirmed_dead_recheck_due(ep, now)
+
+
+def test_exact_body_selectors_do_not_change_source_namespace_or_episode_uids():
+    original = _city(source={"feed_url": "F"})
+    exact = _city(source={"feed_url": "F", "body_exact": ["UDC Advisory Committee"]})
+    assert source_key(original) == source_key(exact)
+    episode = _ep("clip", body="UDC Advisory Committee")
+    comparison = _ep("clip", body="UDC Advisory Committee")
+    assign_uids(original, [episode])
+    assign_uids(exact, [comparison])
+    assert episode.uid == comparison.uid
