@@ -535,8 +535,14 @@ Planned CLI (not available until P1): `freeze --evidence FILE --policy-root conf
 plan, performs no network calls and reports zero model observations. Freeze cannot overwrite an
 existing set without `--force`; forced output retains the superseded manifest/gold and hashes.
 Rescore writes a separate derived report, never replaces raw responses. Live `run` requires
-`--live` and positive `--max-cases`; quota exhaustion records unattempted cases, rather than
-retrying indefinitely. No production writes are possible from these commands.
+`--live` and positive `--max-cases`, a total logical-case cap across configurations.
+Maintainer-approved on 2026-10-03: evaluation jobs set `max_provider_attempts: 2` in their inputs.
+The immediate backend shares that budget across correction, capacity and pacing retries, disables
+SDK retries, and records actual client invocation counts on results and safe failure rows.
+`JobResult.provider_attempts` is optional/additive; ordinary production defaults are unchanged.
+Non-immediate/dispatch paths reject this input before side effects. Reports distinguish first-call
+and retried completion; remote provider/gateway internal retries are outside the client count.
+Quota exhaustion records unattempted cases, rather than retrying indefinitely. No production writes are possible from these commands.
 
 `config/remedy.yml` schema v1 has `mode: shadow|manual|qualified_alias`, `admissions`,
 `qualified_alias_types`, `limits`, and `onboarding_exceptions`. Initial mode is `shadow`; admissions

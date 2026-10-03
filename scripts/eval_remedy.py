@@ -154,6 +154,7 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
                 "max_tokens": 2048,
                 "timeout": 30,
                 "num_retries": 0,
+                "max_provider_attempts": 2,
             },
         )
         started = time.monotonic()
@@ -161,6 +162,7 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
             result = backend.run_immediate(job)
             row.update(
                 raw_response=result.output,
+                provider_attempts=result.provider_attempts,
                 route_id=result.route_id,
                 upstream_model=result.upstream_model,
                 reasoning_level=result.reasoning_level,
@@ -184,9 +186,17 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
             row.update(status="completed", answer=mapped.model_dump())
         except TimeoutError as exc:
             exhausted.add(plan["configuration_id"])
-            row.update(status="failed", error_class=type(exc).__name__)
+            row.update(
+                status="failed",
+                error_class=type(exc).__name__,
+                provider_attempts=getattr(exc, "provider_attempts", row.get("provider_attempts")),
+            )
         except Exception as exc:  # noqa: BLE001 -- provider classes vary; preserve safe failure rows
-            row.update(status="failed", error_class=type(exc).__name__)
+            row.update(
+                status="failed",
+                error_class=type(exc).__name__,
+                provider_attempts=getattr(exc, "provider_attempts", row.get("provider_attempts")),
+            )
         row["latency_seconds"] = time.monotonic() - started
         rows.append(row)
     return {
@@ -307,6 +317,29 @@ def main(argv=None) -> int:
                         "results_hash": canonical_hash(raw),
                         "configuration_id": configuration_id,
                         "mode": mode,
+                        "attempt_counts": {
+                            "first_attempt_completed": sum(
+                                row.get("status") == "completed"
+                                and row.get("provider_attempts") == 1
+                                for row in rows
+                            ),
+                            "retried_completed": sum(
+                                row.get("status") == "completed"
+                                and isinstance(row.get("provider_attempts"), int)
+                                and row["provider_attempts"] > 1
+                                for row in rows
+                            ),
+                            "known_provider_attempts": sum(
+                                row["provider_attempts"]
+                                for row in rows
+                                if isinstance(row.get("provider_attempts"), int)
+                            ),
+                            "unknown_attempt_count": sum(
+                                row.get("status") in {"completed", "failed"}
+                                and row.get("provider_attempts") is None
+                                for row in rows
+                            ),
+                        },
                         "report": report.model_dump(),
                     }
                 )

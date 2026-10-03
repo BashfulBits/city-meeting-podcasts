@@ -643,6 +643,17 @@ def _is_rate_limited_or_capacity(source: Any) -> bool:
     return False
 
 
+@dataclass
+class _ProviderAttemptBudget:
+    limit: int
+    used: int = 0
+
+    def consume(self) -> None:
+        if self.used >= self.limit:
+            raise LLMBackendError("immediate provider-attempt limit reached")
+        self.used += 1
+
+
 def _messages(job: InferenceJob) -> list[dict[str, Any]]:
     """Return caller-supplied messages or construct the task's default structured prompt."""
     supplied = job.inputs.get("messages")
@@ -1318,6 +1329,8 @@ class LiteLLMBackend(Backend):
             raise ValueError(f"LiteLLM backend does not handle task {job.task!r}")
         if job.inputs.get("reasoning_level") is not None:
             raise ValueError("explicit reasoning_level requires run_immediate")
+        if job.inputs.get("max_provider_attempts") is not None:
+            raise ValueError("max_provider_attempts requires run_immediate")
         policy = job.inputs.get("llm_policy")
         structured = self._response_model(job)
         if policy is None:
@@ -1364,6 +1377,13 @@ class LiteLLMBackend(Backend):
         handles may escape into the shared sweep. The paced implementation still reserves and
         settles every actual provider attempt, including its local structured-output retry.
         """
+        limit = job.inputs.get("max_provider_attempts")
+        budget = None
+        if limit is not None:
+            if type(limit) is not int or limit <= 0:
+                raise ValueError("max_provider_attempts must be a positive integer")
+            budget = _ProviderAttemptBudget(limit)
+            job = replace(job, inputs={**job.inputs, "_provider_attempt_budget": budget})
         policy = job.inputs.get("llm_policy")
         if not isinstance(policy, LLMRequestPolicy) or not policy.require_direct:
             raise ValueError("immediate inference requires a direct request policy")
@@ -1376,11 +1396,16 @@ class LiteLLMBackend(Backend):
         if policy.deadline_at <= self._now():
             raise TimeoutError("Immediate inference deadline reached")
         structured = self._response_model(job)
-        result = self._run_policy_job_paced(job, policy, structured, _messages(job))
-        if isinstance(result, JobHandle):
-            raise TimeoutError("No direct route capacity before the request deadline")
-        self._validate_reconciled(result.output, self._structured_output(job))
-        return result
+        try:
+            result = self._run_policy_job_paced(job, policy, structured, _messages(job))
+            if isinstance(result, JobHandle):
+                raise TimeoutError("No direct route capacity before the request deadline")
+            self._validate_reconciled(result.output, self._structured_output(job))
+        except Exception as exc:
+            if budget is not None:
+                exc.provider_attempts = budget.used
+            raise
+        return replace(result, provider_attempts=budget.used) if budget is not None else result
 
     def _enqueue_durable_policy_job(
         self,
@@ -1419,7 +1444,12 @@ class LiteLLMBackend(Backend):
         # provider requests for one logical dispatch. Reserve the worst case up front so RPM/RPD/
         # TPM can never be breached even when both attempts happen; settling afterwards to the
         # single terminal response's actual usage only ever releases back what wasn't needed.
+        budget = job.inputs.get("_provider_attempt_budget")
         max_provider_attempts = 2 if structured else 1
+        if isinstance(budget, _ProviderAttemptBudget):
+            if budget.used >= budget.limit:
+                raise LLMBackendError("immediate provider-attempt limit reached")
+            max_provider_attempts = min(max_provider_attempts, budget.limit - budget.used)
         admission_messages = self._admission_messages(messages, structured, policy)
         input_tokens = estimate_tokens(admission_messages)
         output_tokens = self._output_token_budget(job)
@@ -1428,6 +1458,10 @@ class LiteLLMBackend(Backend):
             len(policy.allowed_models) if policy.allowed_models else len(ROUTE_REGISTRY), 10
         )
         for _capacity_attempt in range(max_capacity_retries + 1):
+            if isinstance(budget, _ProviderAttemptBudget):
+                if budget.used >= budget.limit:
+                    raise LLMBackendError("immediate provider-attempt limit reached")
+                max_provider_attempts = min(2 if structured else 1, budget.limit - budget.used)
             selection = select_and_reserve(
                 self.storage,
                 job.recipe_hash,
@@ -1478,6 +1512,7 @@ class LiteLLMBackend(Backend):
         assert resolved_model is not None and route is not None and owner is not None
         attempted = False
         attempted_requests = 0
+        budget = job.inputs.get("_provider_attempt_budget")
 
         def _cleanup() -> None:
             if attempted:
@@ -1573,6 +1608,9 @@ class LiteLLMBackend(Backend):
 
                     def guarded_completion(**kwargs):
                         nonlocal attempted, attempted_requests
+                        if isinstance(budget, _ProviderAttemptBudget):
+                            budget.consume()
+                            kwargs["num_retries"] = 0
                         attempted = True
                         attempted_requests += 1
                         return completion_fn(**kwargs)
@@ -1596,6 +1634,9 @@ class LiteLLMBackend(Backend):
                         job, resolved_model=direct_model, route=route, direct=True
                     )
                     completion_fn = self._completion_fn()
+                    if isinstance(budget, _ProviderAttemptBudget):
+                        budget.consume()
+                        payload["num_retries"] = 0
                     attempted = True
                     attempted_requests += 1
                     response = completion_fn(**payload)
@@ -1709,7 +1750,12 @@ class LiteLLMBackend(Backend):
         predicted to free up (``None`` if none ever will -- no eligible route), and ``.rejected``
         names why each allowed route was passed over (pacing log visibility)."""
         ledger, _ = load_llm_budget_cas(self.storage)
+        budget = job.inputs.get("_provider_attempt_budget")
         max_provider_attempts = 2 if structured else 1
+        if isinstance(budget, _ProviderAttemptBudget):
+            if budget.used >= budget.limit:
+                raise LLMBackendError("immediate provider-attempt limit reached")
+            max_provider_attempts = min(max_provider_attempts, budget.limit - budget.used)
         admission_messages = self._admission_messages(messages, structured, policy)
         input_tokens = estimate_tokens(admission_messages)
         output_tokens = self._output_token_budget(job)
@@ -1832,6 +1878,8 @@ class LiteLLMBackend(Backend):
             raise ValueError("dispatch cannot enforce physical route allowlists")
         if any(job.inputs.get("reasoning_level") is not None for job in jobs):
             raise ValueError("dispatch cannot enforce explicit reasoning_level")
+        if any(job.inputs.get("max_provider_attempts") is not None for job in jobs):
+            raise ValueError("dispatch cannot enforce max_provider_attempts")
         enqueue_started = time.monotonic()
         telemetry_outcomes: list[tuple[InferenceJob, str, str | None]] = []
 

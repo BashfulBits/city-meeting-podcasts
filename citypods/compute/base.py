@@ -83,6 +83,7 @@ class JobResult:
     upstream_model: str | None = None
     reasoning_level: str | None = None
     request_params_hash: str | None = None
+    provider_attempts: int | None = None
 
 
 @dataclass(frozen=True)
