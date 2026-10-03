@@ -33,6 +33,8 @@ Phase R (Research-Tool Surface)._
   have separate scores and prompt hashes. Frozen candidate input hashes are mandatory. Safe
   provider failures retain the exception class without potentially sensitive exception text.
   Publication selection is specified at L2; the duplicate-identity feeds remain held.
+  Clarifies future shared policy templates and cross-city evaluations for the same onboarding/
+  maintenance resolver; local identities stay scoped and runtime template activation is still gated.
   No pipeline-version change, stored-artifact invalidation or historical backfill is introduced.
 
 - **Addison UDC historical committee coverage.** Adds one Unified Development Code Advisory

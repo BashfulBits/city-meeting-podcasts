@@ -108,7 +108,9 @@ route admission, [#1979](https://github.com/BashfulBits/city-meeting-podcasts/is
 P1 implements the approved hidden-owner truth, independent blind-owner mode and frozen candidate
 input hashes in PR #1987 (ready for review; pending merge). No model is admitted and no
 live evaluation has run. The publication-selection extension is L2: reviewed existing UIDs only,
-archive preservation and a separate runtime gate for #1986/#1989/#1991. P2–P5 stay predecessor-gated until their
+archive preservation and a separate runtime gate for #1986/#1989/#1991. Shared approved templates and cross-city cases are specified for one resolver/replay path in
+onboarding and maintenance; verified identities and feedback remain city/source-scoped.
+P2–P5 stay predecessor-gated until their
 evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID
