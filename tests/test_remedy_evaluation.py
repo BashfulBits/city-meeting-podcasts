@@ -427,3 +427,93 @@ def test_public_load_freeze_and_report_reject_overlapping_holdout(dataset, tmp_p
         freeze_cases({"cases": value["cases"]}, {}, split="holdout", provenance="test")
     with pytest.raises(ValueError, match="overlaps"):
         compare_results([], dataset.gold, manifest=value)
+
+
+def admitted_run_entry(dataset):
+    from citypods.remedy_evaluation import PROMPT, RemedyEvalAnswer
+
+    context = dict(
+        manifest_hash=canonical_hash(dataset.manifest.model_dump()),
+        prompt_hash=canonical_hash(PROMPT),
+        schema_hash=canonical_hash(RemedyEvalAnswer.model_json_schema()),
+        catalog_hash=canonical_hash(
+            json.loads((ROOT / "citypods/compute/llm_routes.json").read_text())
+        ),
+    )
+    return (
+        candidate()
+        | context
+        | dict(
+            status="admitted",
+            gold_hash=canonical_hash(dataset.gold.model_dump()),
+            reviewed_result_paths=["results/previous-admission.json"],
+            reviewed_admission_ref="https://example.org/previous-admission",
+        )
+    )
+
+
+def test_admitted_route_can_rerun_on_matching_inputs_without_gold_or_prior_results(
+    dataset,
+    monkeypatch,
+):
+    import yaml
+
+    import citypods.compute.llm_policy as policy_module
+
+    route = capable_route()
+    monkeypatch.setattr(policy_module, "ROUTE_REGISTRY", {route.route_id: route})
+    entry = admitted_run_entry(dataset)
+    config = yaml.safe_load((ROOT / "config/remedy.yml").read_text())
+    config["admissions"] = [entry]
+    result = cli().run_cases(
+        dataset.manifest,
+        RemedyConfig.model_validate(config),
+        "proposer",
+        dry_run=True,
+        max_cases=None,
+    )
+    assert not result["policy_holds"]
+    assert len(result["plans"]) == len(dataset.manifest.cases)
+    assert result["model_observations"] == 0
+    assert all(plan["candidate_status"] == "admitted" for plan in result["plans"])
+    execution_context = {
+        name: entry[name]
+        for name in ("manifest_hash", "prompt_hash", "schema_hash", "catalog_hash")
+    }
+    production = validate_admission(entry, {route.route_id: route}, execution_context)
+    assert not production.usable
+    assert any("gold_hash" in reason for reason in production.reasons)
+    assert any("not qualified" in reason for reason in production.reasons)
+
+
+@pytest.mark.parametrize("failure", ["input_hash", "unknown_route", "below_baseline", "effort"])
+def test_admitted_rerun_still_holds_input_or_physical_quality_failures(
+    dataset, monkeypatch, failure
+):
+    import yaml
+
+    import citypods.compute.llm_policy as policy_module
+
+    route = capable_route()
+    entry = admitted_run_entry(dataset)
+    if failure == "input_hash":
+        entry["manifest_hash"] = canonical_hash("different-frozen-inputs")
+    elif failure == "unknown_route":
+        entry["physical_route_ids"] = ["unknown-route"]
+    elif failure == "below_baseline":
+        entry["aa"]["score"] = 20
+    else:
+        route = replace(route, reasoning_controls_json="")
+    monkeypatch.setattr(policy_module, "ROUTE_REGISTRY", {route.route_id: route})
+    config = yaml.safe_load((ROOT / "config/remedy.yml").read_text())
+    config["admissions"] = [entry]
+    result = cli().run_cases(
+        dataset.manifest,
+        RemedyConfig.model_validate(config),
+        "proposer",
+        dry_run=True,
+        max_cases=None,
+    )
+    assert result["policy_holds"]
+    assert result["plans"] == []
+    assert result["model_observations"] == 0

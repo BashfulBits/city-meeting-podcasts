@@ -413,11 +413,16 @@ def validate_admission(entry, catalog, evaluation=None, *, for_evaluation=False)
     if not for_evaluation and entry.status != "admitted":
         reasons.append("candidate is evaluation-only")
     if evaluation is not None:
-        for name in ("manifest_hash", "gold_hash", "prompt_hash", "schema_hash", "catalog_hash"):
+        # Execution binds frozen inputs, not the truth/results of a prior qualification.
+        # An admitted route can be re-evaluated without passing gold into run context.
+        fields = ("manifest_hash", "prompt_hash", "schema_hash", "catalog_hash")
+        if not for_evaluation:
+            fields += ("gold_hash",)
+        for name in fields:
             supplied = getattr(entry, name)
             if supplied is not None and evaluation.get(name) != supplied:
                 reasons.append(f"evaluation version mismatch: {name}")
-    if entry.status == "admitted" or not for_evaluation:
+    if not for_evaluation:
         required = ("manifest_hash", "gold_hash", "prompt_hash", "schema_hash", "catalog_hash")
         if any(not getattr(entry, name) for name in required):
             reasons.append("missing version hashes")
