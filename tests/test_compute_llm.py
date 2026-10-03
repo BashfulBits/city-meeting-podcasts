@@ -1576,8 +1576,13 @@ def test_immediate_result_records_physical_route_and_explicit_controls(monkeypat
 
 
 def test_explicit_unsupported_effort_never_calls_provider():
-    backend = LiteLLMBackend(completion=lambda **kwargs: pytest.fail("unsupported effort called"))
-    route = next(iter(ROUTE_REGISTRY.values()))
+    from dataclasses import replace
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(),
+        completion=lambda **kwargs: pytest.fail("unsupported effort called"),
+    )
+    route = replace(next(iter(ROUTE_REGISTRY.values())), reasoning_controls_json="")
     with pytest.raises(ValueError, match="does not support"):
         backend._provider_options(job(reasoning_level="high"), route.model, route=route)
 
@@ -1591,3 +1596,15 @@ def test_dispatch_allowlist_rejected_before_storage_or_calls():
         )
     with pytest.raises(ValueError, match="dispatch cannot"):
         backend.enqueue_batch([job(llm_policy=policy)])
+
+
+@pytest.mark.parametrize("policy", [None, LLMRequestPolicy(require_direct=True)])
+def test_explicit_effort_rejected_before_non_immediate_side_effects(policy):
+    backend = LiteLLMBackend(
+        LLMBackendConfig(), completion=lambda **kwargs: pytest.fail("provider called")
+    )
+    request = job(reasoning_level="high", llm_policy=policy)
+    with pytest.raises(ValueError, match="requires run_immediate"):
+        backend.run_inference(request)
+    with pytest.raises(ValueError, match="cannot enforce explicit reasoning_level"):
+        backend.enqueue_batch([request])

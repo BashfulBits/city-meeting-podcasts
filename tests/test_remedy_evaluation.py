@@ -314,7 +314,7 @@ def test_identical_inputs_across_candidates_and_unknown_returned_model(dataset, 
     config = RemedyConfig.model_validate(config)
     module = cli()
     plan = module.run_cases(dataset.manifest, config, "proposer", dry_run=True, max_cases=None)
-    first, second = plan["plans"][:27], plan["plans"][27:]
+    first, second = plan["plans"][::2], plan["plans"][1::2]
     assert [row["messages"] for row in first] == [row["messages"] for row in second]
     called = []
 
@@ -989,3 +989,74 @@ def test_blind_owner_preserves_frozen_feed_policies_without_proposer_metadata(da
         "dallas-tx-tif": {"aggregate_family": "tif", "identity_names": ["TIF Board"]}
     }
     assert payload["existing_feeds"][0]["source"] == {"body_exact": ["TIF Board"]}
+
+
+def test_bounded_candidates_interleave_and_timeout_is_configuration_local(dataset, monkeypatch):
+    from types import SimpleNamespace
+
+    import yaml
+
+    import citypods.compute.llm_policy as policy_module
+
+    first = capable_route()
+    second = replace(first, route_id="other-route")
+    monkeypatch.setattr(
+        policy_module, "ROUTE_REGISTRY", {first.route_id: first, second.route_id: second}
+    )
+    config = yaml.safe_load((ROOT / "config/remedy.yml").read_text())
+    other = candidate()
+    other["physical_route_ids"] = [second.route_id]
+    config["admissions"] = [candidate(), other]
+    calls = []
+
+    def complete(job):
+        calls.append(job.inputs["llm_policy"].allowed_route_ids)
+        if calls[-1] == (first.route_id,):
+            raise TimeoutError("no capacity")
+        raise ValueError("ordinary failure does not exhaust candidate")
+
+    module = cli()
+    result = module.run_cases(
+        dataset.manifest,
+        RemedyConfig.model_validate(config),
+        "proposer",
+        dry_run=False,
+        max_cases=3,
+        backend=SimpleNamespace(run_immediate=complete),
+    )
+    assert calls == [(first.route_id,), (second.route_id,), (second.route_id,)]
+    rows = result["results"]
+    assert rows[0]["case_id"] == rows[1]["case_id"] == dataset.manifest.cases[0].id
+    assert rows[2]["status"] == "unattempted"
+    assert rows[3]["status"] == "failed"
+    assert sum(row["status"] == "failed" for row in rows) == 3
+    assert all(row["status"] == "unattempted" for row in rows[4:])
+
+
+def test_git_preflight_failure_happens_before_live_attempts(dataset, monkeypatch, tmp_path):
+    import subprocess
+
+    module = cli()
+
+    def missing_git(*args, **kwargs):
+        raise FileNotFoundError("git unavailable")
+
+    monkeypatch.setattr(subprocess, "check_output", missing_git)
+    monkeypatch.setattr(module, "run_cases", lambda *a, **kw: pytest.fail("live run started"))
+    output = tmp_path / "results.json"
+    with pytest.raises(FileNotFoundError, match="git unavailable"):
+        module.main(
+            [
+                "run",
+                "--manifest",
+                str(ROOT / "evals/remedy/manifest.json"),
+                "--role",
+                "proposer",
+                "--live",
+                "--max-cases",
+                "1",
+                "--out",
+                str(output),
+            ]
+        )
+    assert not output.exists()

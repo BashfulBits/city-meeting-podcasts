@@ -32,6 +32,9 @@ Phase R (Research-Tool Surface)._
   Hidden reviewed owner truth, opaque-ID blind-owner comparisons and claim-support comparisons
   have separate scores and prompt hashes. Frozen candidate input hashes are mandatory. Safe
   provider failures retain the exception class without potentially sensitive exception text.
+  Explicit effort is rejected before deferred/dispatch side effects. Bounded evaluation calls
+  interleave configurations under one total cap; timeouts hold only the affected configuration.
+  Git and frozen-version metadata are collected before live attempts.
   Publication selection is specified at L2; the duplicate-identity feeds remain held.
   Clarifies future shared policy templates and cross-city evaluations for the same onboarding/
   maintenance resolver; local identities stay scoped and runtime template activation is still gated.

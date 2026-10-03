@@ -70,6 +70,8 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
                     "messages": case_messages(case, mode),
                 }
             )
+    case_order = {case.id: index for index, case in enumerate(manifest.cases)}
+    plans.sort(key=lambda plan: case_order[plan["case_id"]])
     if not entries:
         holds.append("policy hold: no configured admissions for role")
     if dry_run:
@@ -120,7 +122,7 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
         model = ROUTE_REGISTRY[first["physical_route_ids"][0]].model
         backend = LiteLLMBackend(LLMBackendConfig(model=model), storage=storage)
     remaining = max_cases
-    exhausted = False
+    exhausted = set()
     for plan in plans:
         entry = plan["admission"]
         row = {
@@ -129,7 +131,7 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
             "prompt_case_id": plan["prompt_case_id"],
             "candidate_status": entry["status"],
         }
-        if remaining <= 0 or exhausted:
+        if remaining <= 0 or plan["configuration_id"] in exhausted:
             rows.append({**row, "status": "unattempted", "reason": "bounded run/capacity"})
             continue
         remaining -= 1
@@ -181,7 +183,7 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode=
             mapped = parsed.model_copy(update={"case_id": case.id})
             row.update(status="completed", answer=mapped.model_dump())
         except TimeoutError as exc:
-            exhausted = True
+            exhausted.add(plan["configuration_id"])
             row.update(status="failed", error_class=type(exc).__name__)
         except Exception as exc:  # noqa: BLE001 -- provider classes vary; preserve safe failure rows
             row.update(status="failed", error_class=type(exc).__name__)
@@ -254,15 +256,7 @@ def main(argv=None) -> int:
             parser.error("execution requires --live and positive --max-cases; or use --dry-run")
         manifest = Manifest.model_validate(json.loads(args.manifest.read_text()))
         config = RemedyConfig.model_validate(yaml.safe_load(args.admission.read_text()))
-        value = run_cases(
-            manifest,
-            config,
-            args.role,
-            dry_run=args.dry_run,
-            max_cases=args.max_cases,
-            mode=args.mode,
-        )
-        value.update(
+        metadata = dict(
             admissions_hash=canonical_hash(config.model_dump()),
             catalog_hash=canonical_hash(
                 json.loads(
@@ -280,6 +274,15 @@ def main(argv=None) -> int:
                 subprocess.check_output(["git", "status", "--porcelain"], text=True).strip()
             ),
         )
+        value = run_cases(
+            manifest,
+            config,
+            args.role,
+            dry_run=args.dry_run,
+            max_cases=args.max_cases,
+            mode=args.mode,
+        )
+        value.update(metadata)
         write_new(args.out, value)
     else:
         dataset = load_cases(args.manifest, args.gold)

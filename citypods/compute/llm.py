@@ -1316,6 +1316,8 @@ class LiteLLMBackend(Backend):
         """Run directly through LiteLLM or enqueue through the asynchronous dispatch Worker."""
         if job.task not in LLM_TASKS:
             raise ValueError(f"LiteLLM backend does not handle task {job.task!r}")
+        if job.inputs.get("reasoning_level") is not None:
+            raise ValueError("explicit reasoning_level requires run_immediate")
         policy = job.inputs.get("llm_policy")
         structured = self._response_model(job)
         if policy is None:
@@ -1828,6 +1830,8 @@ class LiteLLMBackend(Backend):
             for job in jobs
         ):
             raise ValueError("dispatch cannot enforce physical route allowlists")
+        if any(job.inputs.get("reasoning_level") is not None for job in jobs):
+            raise ValueError("dispatch cannot enforce explicit reasoning_level")
         enqueue_started = time.monotonic()
         telemetry_outcomes: list[tuple[InferenceJob, str, str | None]] = []
 
