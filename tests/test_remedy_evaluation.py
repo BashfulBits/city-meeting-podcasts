@@ -517,3 +517,128 @@ def test_admitted_rerun_still_holds_input_or_physical_quality_failures(
     assert result["policy_holds"]
     assert result["plans"] == []
     assert result["model_observations"] == 0
+
+
+def test_provider_exception_reports_failed_row_and_remaining_bounded_cases(
+    dataset,
+    monkeypatch,
+    tmp_path,
+):
+    from types import SimpleNamespace
+
+    import yaml
+
+    import citypods.compute.llm_policy as policy_module
+    from citypods.compute.base import JobResult
+
+    class OrdinaryProviderError(Exception):
+        pass
+
+    route = capable_route()
+    monkeypatch.setattr(policy_module, "ROUTE_REGISTRY", {route.route_id: route})
+    config = yaml.safe_load((ROOT / "config/remedy.yml").read_text())
+    config["admissions"] = [candidate()]
+    calls = []
+    secret = "provider exception contains private-auth-secret"
+
+    def complete(job):
+        calls.append(job)
+        if len(calls) == 1:
+            raise OrdinaryProviderError(secret)
+        case = dataset.manifest.cases[1]
+        return JobResult(
+            task=job.task,
+            recipe_hash=job.recipe_hash,
+            route_id=route.route_id,
+            upstream_model=route.upstream_model,
+            reasoning_level="high",
+            request_params_hash=candidate()["request_params_hash"],
+            output={
+                "model": route.upstream_model,
+                "choices": [{"message": {"content": json.dumps(answer(case, False))}}],
+            },
+        )
+
+    module = cli()
+    result = module.run_cases(
+        dataset.manifest,
+        RemedyConfig.model_validate(config),
+        "proposer",
+        dry_run=False,
+        max_cases=2,
+        backend=SimpleNamespace(run_immediate=complete),
+    )
+    assert len(calls) == 2
+    assert result["results"][0]["status"] == "failed"
+    assert result["results"][0]["error_class"] == "OrdinaryProviderError"
+    assert "error" not in result["results"][0]
+    assert secret not in json.dumps(result)
+    assert result["results"][1]["status"] == "completed"
+    assert all(row["status"] == "unattempted" for row in result["results"][2:])
+    output = tmp_path / "provider-failure.json"
+    module.write_new(output, result)
+    original = output.read_bytes()
+    with pytest.raises(FileExistsError):
+        module.write_new(output, {"replacement": True})
+    assert output.read_bytes() == original
+
+
+@pytest.mark.parametrize("interruption", [KeyboardInterrupt, SystemExit])
+def test_provider_execution_does_not_swallow_process_interruptions(
+    dataset, monkeypatch, interruption
+):
+    from types import SimpleNamespace
+
+    import yaml
+
+    import citypods.compute.llm_policy as policy_module
+
+    route = capable_route()
+    monkeypatch.setattr(policy_module, "ROUTE_REGISTRY", {route.route_id: route})
+    config = yaml.safe_load((ROOT / "config/remedy.yml").read_text())
+    config["admissions"] = [candidate()]
+
+    def interrupted(job):
+        raise interruption()
+
+    with pytest.raises(interruption):
+        cli().run_cases(
+            dataset.manifest,
+            RemedyConfig.model_validate(config),
+            "proposer",
+            dry_run=False,
+            max_cases=1,
+            backend=SimpleNamespace(run_immediate=interrupted),
+        )
+
+
+def test_timeout_exception_message_is_redacted_and_remaining_cases_are_unattempted(
+    dataset,
+    monkeypatch,
+):
+    from types import SimpleNamespace
+
+    import yaml
+
+    import citypods.compute.llm_policy as policy_module
+
+    route = capable_route()
+    monkeypatch.setattr(policy_module, "ROUTE_REGISTRY", {route.route_id: route})
+    config = yaml.safe_load((ROOT / "config/remedy.yml").read_text())
+    config["admissions"] = [candidate()]
+    secret = "timeout URL contains private-auth-secret"
+
+    def timed_out(job):
+        raise TimeoutError(secret)
+
+    result = cli().run_cases(
+        dataset.manifest,
+        RemedyConfig.model_validate(config),
+        "proposer",
+        dry_run=False,
+        max_cases=2,
+        backend=SimpleNamespace(run_immediate=timed_out),
+    )
+    assert result["results"][0]["error_class"] == "TimeoutError"
+    assert secret not in json.dumps(result)
+    assert all(row["status"] == "unattempted" for row in result["results"][1:])

@@ -173,8 +173,8 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None):
             row.update(status="completed", answer=validate_answer(answer, case).model_dump())
         except TimeoutError as exc:
             exhausted = True
-            row.update(status="failed", error_class=type(exc).__name__, error=str(exc))
-        except (ValueError, KeyError, IndexError, TypeError, RuntimeError) as exc:
+            row.update(status="failed", error_class=type(exc).__name__)
+        except Exception as exc:  # noqa: BLE001 -- provider classes vary; preserve safe failure rows
             row.update(status="failed", error_class=type(exc).__name__)
         row["latency_seconds"] = time.monotonic() - started
         rows.append(row)
