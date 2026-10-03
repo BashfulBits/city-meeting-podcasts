@@ -314,3 +314,36 @@ def test_search_render_from_retained_records_routes_exact_body_without_topic_cap
     assert documents[open_house.uid]["page_url"].startswith("https://site.test/all-meetings/")
     assert documents[committee.uid]["body"] == committee.body
     assert documents[open_house.uid]["body"] == open_house.body
+
+
+def test_exact_body_rule_changes_invalidate_cached_search_routes(tmp_path):
+    owner = _city("udc")
+    owner.source["body_exact"] = ["UDC Advisory Committee"]
+    combined = _city("all-meetings")
+    episode = _episode("committee")
+    episode.body = "UDC Advisory Committee"
+    records = {episode.uid: episode_to_record(episode)}
+    src = _save(tmp_path, combined, records)
+    cache = {}
+    build_search_index(
+        tmp_path / "state", [owner, combined], tmp_path / "docs", "https://site.test", cache=cache
+    )
+    original_hash = cache["shards"][src]["hash"]
+    assert _shard(tmp_path, src)["documents"][0]["page_url"].startswith("https://site.test/udc/")
+
+    owner.source["body_exact"] = ["Another Advisory Committee"]
+    build_search_index(
+        tmp_path / "state", [owner, combined], tmp_path / "docs", "https://site.test", cache=cache
+    )
+    assert cache["shards"][src]["hash"] != original_hash
+    assert _shard(tmp_path, src)["documents"][0]["page_url"].startswith(
+        "https://site.test/all-meetings/"
+    )
+
+
+def test_search_hash_preserves_legacy_views_without_exact_body_rules():
+    records = {"u1": episode_to_record(_episode())}
+    # Captured before body_exact was added to the fingerprint: existing city shards stay cached.
+    assert search_mod._shard_hash(records, [_city()], "https://site.test") == (
+        "3a14ea22a0c8d498b1365182e7e6f14a451a50417fbb37019e3e6384232f300b"
+    )

@@ -676,6 +676,8 @@ substring — worth checking, because per-body feeds share one source.
 
 #### Exact feed-body labels
 
+Search shard fingerprints include `body_exact` only when configured; changing exact rules
+rebuilds cached destination links without invalidating caches for legacy selector views.
 Optional `source.body_exact` is a nonempty list of complete labels. Matching applies the existing
 body normalization and repeated complete-provider-label handling, without substring or glob
 expansion. It unions with legacy `body`, `body_any` and GUID-specific `body_includes`; an exact-only
