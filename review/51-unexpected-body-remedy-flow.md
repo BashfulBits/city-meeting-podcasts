@@ -1,7 +1,7 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
 **Status: approved structure; P1 is L3, P2–P5 have predecessor-gated build contracts.**
-**Revised:** 2026-10-02 after maintainer approval of the final decisions.
+**Revised:** 2026-10-03 after maintainer approval of the remaining evaluation design choices.
 This specification does not itself change production routing or enable auto-merge.
 
 ## Outcome and scope
@@ -316,7 +316,10 @@ Synthetic cases are labelled; adapted cases without grounding are regression-onl
 seeds migrate without changing their claims or inventing evidence. `gold.json` never enters a prompt.
 
 Gold schema v2: case ID, nullable `supported`, rationale, evidence refs, adjudicator/provenance,
-policy approval link, critical-error class, revision and superseded revision. Only verified,
+policy approval link, critical-error class, revision and superseded revision. Add optional hidden `expected_owner: str | None`
+(default None); a non-null value is a reviewed feed slug, not a target inferred from the claim.
+Reject blank owner truth. Leave the 27 seed owners unset until independently adjudicated.
+Only verified,
 approved-policy cases contribute to admission. Holdout groups cannot share recordings or near-
 duplicate source/family label variants with tuned seeds. Correcting gold requires a reason and a
 new version; prior results remain immutable.
@@ -325,6 +328,28 @@ New `RemedyEvalAnswer` wire contract: case ID, nullable supported verdict, propo
 evidence-reference IDs, missing-evidence list and bounded rationale. IDs resolve locally against
 inputs; unknown IDs fail the response. For blind reviewer experiments, evaluate independent owner
 selection as well as claim support, and keep those scores separate.
+
+Maintainer-authorized clarification (2026-10-03): `run --mode claim_support|blind_owner`
+(default `claim_support`) selects a distinct experiment and prompt hash. `case_messages` accepts
+the same optional mode. Blind inputs use opaque deterministic case IDs mapped back locally,
+never semantically named seed IDs; omit claim, decision type, split group and proposer/tuning
+metadata. Allow only city/source/body, official evidence/recordings, existing feed taxonomy,
+approved policy fields and completeness. Policy fields are limited to policy ID/version,
+approval ref, aggregate family, exact identities and member names; seed evidence is omitted.
+Gold is never read by run. Preserve the raw answer and map its opaque ID locally for validation.
+
+`compare_results(..., mode="claim_support")` and the report artifact identify the experiment.
+Owner scoring uses hidden `expected_owner`, independently of whether claim truth is known.
+Missing owner truth is unknown, a null proposed owner is abstention, and failed/unattempted jobs
+never score as correct. Blind-owner results cannot contribute to claim-support accuracy or recall.
+Non-null owner truth must be an existing feed slug in the case taxonomy. No truth is inferred
+from model agreement, the proposed claim or historical seed names.
+
+Every evaluation candidate must supply manifest/prompt/schema/catalog hashes and match the
+frozen run context. Missing hashes fail closed even for dry-run planning. Candidate gold hashes,
+reviewed results and production admission refs may be absent until evaluation is complete;
+production still requires all five hashes, qualified evidence and independent reviewed admission.
+The mode-specific prompt hash prevents comparing differently exposed inputs as the same run.
 
 New interfaces in `citypods/remedy_evaluation.py`:
 
@@ -385,7 +410,10 @@ P1 tests: identical inputs across routes; gold never serialized; wrong model thr
 unsupported effort; unknown truth and failed calls never counted correct; candidate execution is permitted only in
 evaluation mode and cannot satisfy production admission; adapted examples cannot
 qualify admission; holdout overlap; missing/disjoint IDs; immutable raw results; offline dry-run.
-Use fake backends/ledger/catalog fixtures; no credential requirement in CI.
+Also test hidden owner truth never enters prompts, opaque IDs and metadata masking, owner truth
+independent of unknown claim truth, owner abstention/failure/unattempted accounting, separate mode
+metrics/hashes and missing candidate hashes. Use fake backends/ledger/catalog fixtures; no
+credential requirement in CI.
 
 P1 exit: offline tests and full checks pass; the harness writes traceable reports and strictly
 constrains direct physical routes. Live evaluation is a separate opt-in run with existing free
