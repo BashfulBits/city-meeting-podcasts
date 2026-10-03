@@ -86,6 +86,9 @@ PRs [#1973](https://github.com/BashfulBits/city-meeting-podcasts/pull/1973) and
 The [historical inventory](historical-feed-coverage-2026-10.md) merged in #1975; directions A–F
 are approved but residual policy application is still P0, not completed by merging that inventory.
 
+P0's exact-label selector prerequisite separates bare committee names from distinct public-input
+formats. It preserves the source namespace/UIDs and does not change any existing feed configuration.
+
 P0's guard prerequisite generalizes local policy protection to the approved aggregate families and
 exact reviewed named bodies. Unknown identities remain held; this does not complete the historical
 inventory or implement P2's persistent ledger.

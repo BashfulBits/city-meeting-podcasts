@@ -674,6 +674,19 @@ matches `"TIRZ Board"`, so adding the latter to `body_any` is dead config. Conve
 like `"Special Meeting"` is only safe when no sibling feed on the same source carries it as a
 substring — worth checking, because per-body feeds share one source.
 
+#### Exact feed-body labels
+
+Optional `source.body_exact` is a nonempty list of complete labels. Matching applies the existing
+body normalization and repeated complete-provider-label handling, without substring or glob
+expansion. It unions with legacy `body`, `body_any` and GUID-specific `body_includes`; an exact-only
+feed is restricted in both live and retained-record paths. This separates a bare committee name
+from its Open House or Council-topic variants. Wildcards and blank labels fail config validation.
+
+Exact labels are feed-local and excluded from source identity/transport, so source URL ordering,
+author, archived records, episode UIDs and audio keys remain stable. Remedy includes exact labels
+in evidence and treats an already covered exact identity as a no-op. Exact selection does not
+approve unknown ownership; reviewed source-scoped remedy policies still govern new assignments.
+
 #### Trust boundary
 
 `citypods/audit_remedy.py` uses an LLM for the taxonomy judgement only. **The model proposes; the

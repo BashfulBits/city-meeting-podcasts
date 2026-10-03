@@ -24,6 +24,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Exact feed-body selector rules.** Optional `source.body_exact` matches complete normalized
+  labels and provider-duplicated copies, separating bare committee names from Open House/topic
+  suffixes. It unions with existing selectors/inclusions; remedy retains exact-selector evidence
+  and does not append a broad alias for an already covered exact label. Source transport/hash,
+  author, episode UIDs, records and audio are unchanged. No pipeline bump, artifact invalidation
+  or backfill; no existing feed configuration changes in this prerequisite.
+
 - **Approved historical feed policy guards.** Remedy policies now protect city PID, bond, charter,
   redistricting, public-input and public-briefings aggregates, and exact reviewed named bodies.
   Unverified identities defer; district/program feed recreation and wrong-owner assignments are
