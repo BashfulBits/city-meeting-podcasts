@@ -54,12 +54,14 @@ def test_arlington_subscription_changes_do_not_change_episode_identity():
     feeds = load_city_configs(ROOT / "config", {})
     parent = next(feed for feed in feeds if feed.slug == "arlington-tx-council")
     for row in CENSUS["positive_episodes"]:
-        owner = next(
+        owners = [
             feed
             for feed in feeds
             if feed.city_entity == "arlington-tx"
             and matches(row["body"], source_body_filter(feed.source))
-        )
+        ]
+        assert len(owners) == 1, row["body"]
+        owner = owners[0]
         episode = Episode(
             guid=row["provider_guid"],
             title=row["title"],
