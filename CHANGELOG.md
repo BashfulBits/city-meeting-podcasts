@@ -32,6 +32,13 @@ Phase R (Research-Tool Surface)._
   Blind-owner scoring and candidate input-hash requirements await specification clarification.
   No pipeline-version change, stored-artifact invalidation or historical backfill is introduced.
 
+- **Addison UDC historical committee coverage.** Adds one Unified Development Code Advisory
+  Committee subscription using exact reviewed labels, covering three official committee recordings
+  without selecting its Open House. All provider/stored observations replayed and the three stored
+  UIDs preserved. CPC duplicate identities and public-input migration remain separate holds.
+  No source, record, author, UID algorithm or audio change; no pipeline bump, invalidation or forced
+  backfill. Evidence: `review/addison-udc-coverage-2026-10.md`.
+
 - **Exact feed-body selector rules.** Optional `source.body_exact` matches complete normalized
   labels and provider-duplicated copies, separating bare committee names from Open House/topic
   suffixes. It unions with existing selectors/inclusions; remedy retains exact-selector evidence
@@ -40,6 +47,13 @@ Phase R (Research-Tool Surface)._
   views retain their previous cache hashes. Source transport/hash,
   author, episode UIDs, records and audio are unchanged. No pipeline bump, artifact invalidation
   or backfill; no existing feed configuration changes in this prerequisite.
+
+- **Arlington historical named-body coverage.** Adds Housing Finance Corporation and Zoning Board
+  of Adjustment subscriptions with reviewed identity policies. Full provider and persisted-state
+  replay selects one retained recording per feed and preserves its UID. Existing source URL,
+  author, records and audio keys remain unchanged; normal publication requires no forced backfill
+  or artifact invalidation. Foundation duplicate UID aliases and the unidentified Empty clip remain
+  held, as documented in `review/arlington-coverage-2026-10.md`.
 
 - **Approved historical feed policy guards.** Remedy policies now protect city PID, bond, charter,
   redistricting, public-input and public-briefings aggregates, and exact reviewed named bodies.
