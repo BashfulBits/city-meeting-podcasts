@@ -48,6 +48,14 @@ def test_addison_udc_preserves_existing_source_namespace_and_stored_episode_uids
     assert source_key(owner) == source_key(council) == CENSUS["source_key"]
     assert owner.podcast_author == council.podcast_author
     assert not source_body_inclusions(owner.source)
+    persisted = [
+        record
+        for record in CENSUS["persisted_records"]
+        if record_matches_body(record, source_body_filter(owner.source))
+    ]
+    assert len(persisted) == len({record["provider_guid"] for record in persisted})
+    persisted_uids = {record["provider_guid"]: record["uid"] for record in persisted}
+    assert set(persisted_uids) == {row["provider_guid"] for row in CENSUS["positive_episodes"]}
     for row in CENSUS["positive_episodes"]:
         episode = Episode(
             guid=row["provider_guid"],
@@ -59,7 +67,7 @@ def test_addison_udc_preserves_existing_source_namespace_and_stored_episode_uids
         prior = copy.deepcopy(episode)
         assign_uids(council, [prior])
         assign_uids(owner, [episode])
-        assert episode.uid == prior.uid == row["uid"]
+        assert episode.uid == prior.uid == row["uid"] == persisted_uids[row["provider_guid"]]
         for slug in [
             "addison-tx-city-council",
             "addison-tx-planning-and-zoning-commission",
