@@ -12,6 +12,16 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Daily per-verb LLM backlog report (GH#1969, review/50 PR2).**
+  Add the read-only 00:20 UTC/manual workflow over durable `run_events/`, using only the nine
+  storage secrets. Publish the six-verb Markdown summary and retain the JSON report for 30 days;
+  fail on unclassified tokens and preserve diagnostic reports even when the report step fails.
+  No producer, queue, model-call, quota, pipeline-version, or durable-state changes.
+  Read append-only event keys directly: the snapshot manifest excludes them and previously
+  caused every selected file to be skipped. Bound concurrent downloads and count missing or
+  transiently unreadable files; propagate access-denied errors. The new workflow needs to be
+  registered on main before its first manual Actions run.
+
 - Capacity calculator review fixes: use committed Worker row-budget defaults and the same
   idle-cron/operational allowances in both current and proposed scenarios. The current stress
   projection now includes the previously omitted 1,000 operational rows (513,160 total/day).

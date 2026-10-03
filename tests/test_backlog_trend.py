@@ -262,7 +262,7 @@ def test_main_reads_state_dir_and_writes_json_and_markdown(tmp_path, monkeypatch
 
 
 def test_main_storage_path_uses_exact_keys(tmp_path, monkeypatch):
-    """Restore only selected event keys at or after the timestamp cutoff."""
+    """Read exact event keys even when the snapshot manifest excludes append-only events."""
     from citypods import storage
 
     monkeypatch.setattr(trend, "_now", lambda: NOW)
@@ -283,10 +283,9 @@ def test_main_storage_path_uses_exact_keys(tmp_path, monkeypatch):
             return [(key, NOW) for key in keys]
 
         def get_file(self, key, local_path):
-            """Record exact restores and simulate an absent manifest plus event downloads."""
+            """A snapshot manifest must not be consulted for the listed append-only events."""
             requested.append(key)
-            if key == "state/catalog/manifest.json":
-                return False
+            assert key in keys[1:]
             local_path.parent.mkdir(parents=True, exist_ok=True)
             day = 21 if "boundary" in key else 30
             local_path.write_text(json.dumps(event(day, hour=12)))
@@ -296,7 +295,7 @@ def test_main_storage_path_uses_exact_keys(tmp_path, monkeypatch):
     output = tmp_path / "report.json"
     assert trend.main(["--site-config", str(config), "--json", str(output)]) == 0
     assert listed == ["state/run_events/"]
-    assert sorted(key for key in requested if "/run_events/" in key) == keys[1:]
+    assert sorted(requested) == keys[1:]
     assert json.loads(output.read_text())["skipped_files"] == 0
 
 
@@ -319,3 +318,35 @@ def test_growing_unreliable_verb_with_zero_latest_backlog(verb, token):
     assert report.constrained is True
     assert report.action is None
     assert set(reports) == set(trend.VERBS)
+
+
+@pytest.mark.parametrize("failure", ["missing", "transient", "denied"])
+def test_main_remote_event_download_failures(tmp_path, monkeypatch, failure):
+    from botocore.exceptions import ClientError, ReadTimeoutError
+
+    from citypods import storage
+
+    monkeypatch.setattr(trend, "_now", lambda: NOW)
+    config = tmp_path / "site.yml"
+    config.write_text("{}\n")
+
+    class FakeStorage:
+        def list_objects(self, prefix):
+            return [("state/run_events/20260930T000000-new.json", NOW)]
+
+        def get_file(self, key, path):
+            if failure == "missing":
+                return False
+            if failure == "transient":
+                raise ReadTimeoutError(endpoint_url="https://storage.invalid")
+            raise ClientError({"Error": {"Code": "AccessDenied"}}, "GetObject")
+
+    monkeypatch.setattr(storage, "make_storage", lambda *args: FakeStorage())
+    output = tmp_path / "report.json"
+    if failure == "denied":
+        with pytest.raises(ClientError):
+            trend.main(["--site-config", str(config), "--json", str(output)])
+        assert not output.exists()
+    else:
+        assert trend.main(["--site-config", str(config), "--json", str(output)]) == 2
+        assert json.loads(output.read_text())["skipped_files"] == 1

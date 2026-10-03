@@ -7,6 +7,7 @@ import json
 import tempfile
 from collections import defaultdict
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, fields
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -307,8 +308,9 @@ def main(argv: list[str] | None = None) -> int:
         paths = sorted((args.state_dir / "run_events").glob("*.json"))
         events, skipped = _read_events(paths, since=since)
     else:
-        from citypods.statesync import STATE_PREFIX, pull_state
+        from citypods.statesync import STATE_PREFIX
         from citypods.storage import make_storage
+        from citypods.storage.s3 import is_transient_storage_error
 
         site = load_site_config(args.site_config)
         storage = make_storage(site, site.get("base_url", ""), Path(args.output_dir))
@@ -319,13 +321,27 @@ def main(argv: list[str] | None = None) -> int:
         keys = sorted(
             key
             for key, _ in storage.list_objects(prefix)
-            if key.endswith(".json") and Path(key).name[:15] >= cutoff
+            if key.startswith(prefix) and key.endswith(".json") and Path(key).name[:15] >= cutoff
         )
         with tempfile.TemporaryDirectory(prefix="backlog-trend-") as directory:
-            state_dir = Path(directory)
-            rels = [key[len(STATE_PREFIX) + 1 :] for key in keys]
-            pull_state(storage, state_dir, only_paths=rels)
-            events, skipped = _read_events([state_dir / rel for rel in rels], since=since)
+            # Append-only run events are not snapshot-manifest members. Read the listed keys
+            # directly, using local numeric names so remote keys cannot escape the temp directory.
+            paths = [Path(directory) / f"{index:06d}.json" for index in range(len(keys))]
+
+            def download(pair: tuple[str, Path]) -> None:
+                key, path = pair
+                try:
+                    storage.get_file(key, path)
+                except Exception as exc:
+                    if not is_transient_storage_error(exc):
+                        raise
+                    # Missing or transiently unreadable files are counted by _read_events.
+                    path.unlink(missing_ok=True)
+
+            if keys:
+                with ThreadPoolExecutor(max_workers=min(8, len(keys))) as pool:
+                    list(pool.map(download, zip(keys, paths, strict=True)))
+            events, skipped = _read_events(paths, since=since)
     reports = analyze_all(events, params)
     unknown = _unclassified_tokens(reports)
     output = {
