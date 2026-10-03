@@ -293,7 +293,8 @@ source namespace or UID inputs. It enables separate committee/Open House ownersh
 create an automatic ownership approval channel. Named implementation files are `citypods/bodies.py`
 (`ExactBodyLabel`, selector construction/matching), `citypods/config.py` (validation/source identity),
 `citypods/records.py` (source-key exclusion), `citypods/audit_remedy.py` (evidence, transport exclusion
-and redundant-alias no-op), and their existing tests. Acceptance includes live/retained selection,
+and redundant-alias no-op), and their existing tests, including `tests/test_search.py` for
+retained-record search ownership. Acceptance includes live/retained selection,
 negative suffix/topic labels, mixed selector unions, unchanged UID/source transport and whole-repo
 checks. No feed configuration is changed by this generic prerequisite.
 
