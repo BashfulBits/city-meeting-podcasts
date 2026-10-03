@@ -15,7 +15,9 @@ remedy policy enforcement shipped in #1973/#1974; residual categories A–F are 
 are being applied in bounded, evidence-backed city batches. The
 [Arlington batch](review/arlington-coverage-2026-10.md) covers two named bodies while retaining
 explicit identity/investigation holds. Exact-label selection separates committee names from
-distinct public-input formats. See
+distinct public-input formats; the
+[Addison UDC batch](review/addison-udc-coverage-2026-10.md) applies it to three historical
+committee recordings. See
 [coverage policy](review/tif-coverage-2026-10.md) and review/11.
 [review/51](review/51-unexpected-body-remedy-flow.md) records the approved improvement structure:
 P1 evaluation/physical-route admission is L3; P2–P5 have predecessor-gated build contracts.
