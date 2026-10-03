@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Move the 800-meeting LLM capacity analysis into dated supporting evidence under
+  `review/evidence/`, update its references, and identify review/49 as the development-plan owner.
+  Clarify the documentation map so supporting calculations cannot be mistaken for a rollout plan.
+
 - Capacity calculator review fixes: use committed Worker row-budget defaults and the same
   idle-cron/operational allowances in both current and proposed scenarios. The current stress
   projection now includes the previously omitted 1,000 operational rows (513,160 total/day).

@@ -71,7 +71,8 @@ MAX_BUNDLES_PER_UTC_DAY: 1400
 MAX_LEASES_PER_UTC_DAY: 7000
 # Shared free-tier ceilings, NOT an 800-meeting capacity commitment. The full planning scenario
 # requires 20,800 new jobs/day (including enabled shadow and a three-judge/five-quote panel),
-# before retries. See review/llm-800-meeting-capacity.md and scripts/llm_capacity_plan.py.
+# before retries. Capacity evidence: review/evidence/2026-10-02-llm-800-meeting-capacity.md
+# Reproduce with scripts/llm_capacity_plan.py.
 # Keep the shared cap bounded near measured drain; raising it alone only grows the queue.
 MAX_JOBS_PER_UTC_DAY: 4000
 # Admission units cover enqueue indexes only, not completion/retry/retirement billed rows.
