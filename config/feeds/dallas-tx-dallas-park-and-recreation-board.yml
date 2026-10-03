@@ -7,6 +7,14 @@ source:
   body_includes:
     - provider_guid: "296250"
       body: "Special Called Park Board Meeting"
+    - provider_guid: "273421"
+      body: "2024 Bond Program Special Called Park and Trails Subcommittee Meeting"
+    - provider_guid: "270978"
+      body: "2024 Bond Parks and Trails Subcommittee Meeting"
+    - provider_guid: "237215"
+      body: "2024 Bond Parks and Trails Meeting"
+    - provider_guid: "230801"
+      body: "2024 Bond Parks and Trails Meeting"
   body_any:
     - "Special Park and Recreation Board"
 podcast_title: "Dallas: Dallas Park and Recreation Board"

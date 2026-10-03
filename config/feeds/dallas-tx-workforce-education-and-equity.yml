@@ -1,0 +1,15 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Workforce-Education and Equity is a recurring committee with 58 observed meetings between 2019 and 2025.
+slug: dallas-tx-workforce-education-and-equity
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Workforce-Education and Equity
+lifecycle:
+  status: dormant
+  reason: latest observed meeting was 2025-06-03 (487 days ago)
+podcast_title: 'Dallas: Workforce-Education and Equity'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Workforce-Education and Equity committee meetings

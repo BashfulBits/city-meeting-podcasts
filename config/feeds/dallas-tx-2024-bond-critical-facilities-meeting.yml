@@ -1,0 +1,15 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Three observed meetings between May 2023 and June 2023 for 2024 Bond Critical Facilities Meeting. Meets the threshold of at least three observed meetings for a new recurring feed.
+slug: dallas-tx-2024-bond-critical-facilities-meeting
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: 2024 Bond Critical Facilities Meeting
+lifecycle:
+  status: retired
+  reason: latest observed meeting was 2023-06-13 (1208 days ago)
+podcast_title: 'Dallas: 2024 Bond Critical Facilities Meeting'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Recordings of the 2024 Bond Critical Facilities Meetings.
