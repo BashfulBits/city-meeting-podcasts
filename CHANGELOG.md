@@ -33,6 +33,13 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Arlington historical named-body coverage.** Adds Housing Finance Corporation and Zoning Board
+  of Adjustment subscriptions with reviewed identity policies. Full provider and persisted-state
+  replay selects one retained recording per feed and preserves its UID. Existing source URL,
+  author, records and audio keys remain unchanged; normal publication requires no forced backfill
+  or artifact invalidation. Foundation duplicate UID aliases and the unidentified Empty clip remain
+  held, as documented in `review/arlington-coverage-2026-10.md`.
+
 - **Approved historical feed policy guards.** Remedy policies now protect city PID, bond, charter,
   redistricting, public-input and public-briefings aggregates, and exact reviewed named bodies.
   Unverified identities defer; district/program feed recreation and wrong-owner assignments are
