@@ -1128,3 +1128,80 @@ def test_exact_identity_can_hold_extended_label_without_approving_it(tmp_path):
     )
     assert "forbids" in _aggregate_policy_reason(proposal, {"owner"}, {"owner": path})
     assert not _target_feed_is_compatible(label, path)
+
+
+@pytest.fixture
+def overlapping_policy_paths(tmp_path):
+    policies = {
+        "udc": {"identity_names": ["UDC Advisory Committee"]},
+        "public-input": {
+            "aggregate_family": "public_input",
+            "identity_names": ["UDC Advisory Committee Open House"],
+        },
+    }
+    paths = {}
+    for slug, policy in policies.items():
+        path = tmp_path / f"{slug}.yml"
+        path.write_text(yaml.safe_dump({"remedy_policy": policy}))
+        paths[slug] = path
+    return paths
+
+
+@pytest.mark.parametrize("action", ["union", "single_uid_inclusion"])
+def test_exact_reviewed_owner_overrides_other_policy_holding_clue(overlapping_policy_paths, action):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    paths = overlapping_policy_paths
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="UDC Advisory Committee Open House",
+        action=action,
+        target_feeds=["public-input"],
+        provider_guids=["open-house"],
+        rationale="Reviewed public-input proceeding identity",
+    )
+    assert not _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.target_feeds = ["udc"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.target_feeds = ["udc", "public-input"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)
+
+
+def test_overlapping_holding_clues_still_hold_unknown_identity_and_duplicate_feed(
+    overlapping_policy_paths,
+):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    paths = overlapping_policy_paths
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="UDC Advisory Committee Open House 2027",
+        action="union",
+        target_feeds=["public-input"],
+        rationale="Unreviewed suffix remains evidence-first",
+    )
+    assert _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.action = "new_feed"
+    proposal.unexpected_body = "UDC Advisory Committee Open House"
+    proposal.new_feed_slug = "duplicate-open-house"
+    proposal.new_feed_title = proposal.unexpected_body
+    assert "forbids" in _aggregate_policy_reason(proposal, set(paths), paths)
+
+
+def test_joint_exact_owners_require_all_reviewed_subscriptions(overlapping_policy_paths):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    paths = overlapping_policy_paths
+    joint = "Joint Council and Planning Commission Meeting"
+    for path in paths.values():
+        path.write_text(yaml.safe_dump({"remedy_policy": {"identity_names": [joint]}}))
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=joint,
+        action="union",
+        target_feeds=list(paths),
+        rationale="Both subscriptions were explicitly reviewed for this joint label",
+    )
+    assert not _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.target_feeds = ["udc"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)
