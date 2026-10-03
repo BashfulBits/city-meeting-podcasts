@@ -286,6 +286,22 @@ work. These local guards
 are implemented in `citypods/config.py` and `citypods/audit_remedy.py` with their existing tests;
 they do not implement P2's persistent decision ledger or enable model admission/automatic merging.
 
+P0 selector prerequisite: optional `source.body_exact` lists complete normalized labels, rejects
+wildcards/blanks and reuses `matches_exact_body_label`, including repeated provider copies. Its
+union with `body`, `body_any` and `body_includes` restricts exact-only feeds without changing their
+source namespace or UID inputs. It enables separate committee/Open House ownership; it does not
+create an automatic ownership approval channel. Named implementation files are `citypods/bodies.py`
+(`ExactBodyLabel`, selector construction/matching), `citypods/config.py` (validation/source identity),
+`citypods/records.py` (source-key exclusion), `citypods/audit_remedy.py` (evidence, transport exclusion
+and redundant-alias no-op), `citypods/search.py` (selector fingerprint), and their existing tests,
+including `tests/test_search.py` for
+retained-record search ownership. Acceptance includes live/retained selection,
+negative suffix/topic labels, mixed selector unions, unchanged UID/source transport and whole-repo
+checks. Include `body_exact` in search shard fingerprints only when configured, so exact-rule
+changes rebuild cached destinations while legacy selector hashes remain unchanged. This small
+cache integration scope was authorized by the maintainer on 2026-10-03. No feed configuration is
+changed by this generic prerequisite.
+
 The census used for P0 must include both persisted records and all available provider observations,
 with explicitly recorded gaps. Restore historical sources separately where provider migrations
 changed namespaces; no new cross-provider UID joins without their reviewed evidence. Count

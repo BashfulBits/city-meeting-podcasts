@@ -33,6 +33,15 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
+- **Exact feed-body selector rules.** Optional `source.body_exact` matches complete normalized
+  labels and provider-duplicated copies, separating bare committee names from Open House/topic
+  suffixes. It unions with existing selectors/inclusions; remedy retains exact-selector evidence
+  and does not append a broad alias for an already covered exact label. Search accepts individual
+  exact selectors and refreshes cached destinations when an exact rule changes; unconfigured
+  views retain their previous cache hashes. Source transport/hash,
+  author, episode UIDs, records and audio are unchanged. No pipeline bump, artifact invalidation
+  or backfill; no existing feed configuration changes in this prerequisite.
+
 - **Arlington historical named-body coverage.** Adds Housing Finance Corporation and Zoning Board
   of Adjustment subscriptions with reviewed identity policies. Full provider and persisted-state
   replay selects one retained recording per feed and preserves its UID. Existing source URL,

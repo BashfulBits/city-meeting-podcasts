@@ -1130,6 +1130,55 @@ def test_exact_identity_can_hold_extended_label_without_approving_it(tmp_path):
     assert not _target_feed_is_compatible(label, path)
 
 
+def test_exact_body_selectors_remain_in_remedy_evidence_without_transport_inheritance(repo):
+    city = make_city("test-city-council", None, body_exact=["UDC Advisory Committee"])
+    evidence = gather_unexpected_body_evidence("source", "test-city-tx", {}, [city], {}, repo)
+    assert evidence["existing_feeds"][0]["body_exact"] == ["UDC Advisory Committee"]
+    assert _compact_evidence(evidence)["existing_feeds"][0]["body_exact"] == [
+        "UDC Advisory Committee"
+    ]
+    # Typed selector objects never enter JSON model evidence.
+    json.dumps(_compact_evidence(evidence))
+    assert SourceContext.from_city(city).transport == {"feed_url": "https://test.example/feed"}
+
+
+def test_redundant_exact_label_union_does_not_broaden_the_feed(repo):
+    path = repo / "config/feeds/test-city-council.yml"
+    before = (
+        "slug: test-city-council\nsource:\n  feed_url: https://test.example/feed\n"
+        "  body_exact:\n    - UDC Advisory Committee\n"
+    )
+    path.write_text(before)
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="udc advisory committee",
+        action="union",
+        target_feeds=["test-city-council"],
+        rationale="Already covered exact identity",
+    )
+    plan = RemedyPlan(accepted=[proposal])
+    assert (
+        apply_remedy_plan(
+            plan,
+            feed_paths={"test-city-council": path},
+            source_context=SourceContext.from_city(make_city("test-city-council", None)),
+            repo_root=repo,
+        )
+        == []
+    )
+    assert path.read_text() == before
+
+
+def test_unexpected_body_audit_distinguishes_exact_committee_and_open_house():
+    city = make_city("test-city-udc", None, body_exact=["UDC Advisory Committee"])
+    committee = make_episode("committee", "UDC Advisory Committee", "UDC Advisory Committee", 1)
+    public_input = make_episode(
+        "open-house", "UDC Advisory Committee Open House", "UDC Advisory Committee Open House", 2
+    )
+    unexpected = collect_unexpected_bodies([committee, public_input], {}, related_cities=[city])
+    assert {ep.guid for row in unexpected.values() for ep in row["episodes"]} == {"open-house"}
+
+
 @pytest.fixture
 def overlapping_policy_paths(tmp_path):
     policies = {

@@ -484,7 +484,7 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
             identity_source = {
                 k: v
                 for k, v in city.source.items()
-                if k not in {"body", "body_any", "body_includes"}
+                if k not in {"body", "body_any", "body_exact", "body_includes"}
             }
             identity = (city.city_entity, city.provider, identity_source, path.name)
             prior = seen_source_ids.get(city.source_id)

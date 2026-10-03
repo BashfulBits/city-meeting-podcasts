@@ -86,6 +86,9 @@ PRs [#1973](https://github.com/BashfulBits/city-meeting-podcasts/pull/1973) and
 The [historical inventory](historical-feed-coverage-2026-10.md) merged in #1975; directions A–F
 are approved but residual policy application is still P0, not completed by merging that inventory.
 
+P0's exact-label selector prerequisite separates bare committee names from distinct public-input
+formats. It preserves the source namespace/UIDs and does not change any existing feed configuration.
+
 P0's [Arlington batch](arlington-coverage-2026-10.md) prepares two named-body decisions with
 full provider/persisted replay and retained UID verification. Foundation duplicate UID aliases and
 an unidentified clip remain held; Arlington is not yet a complete approved onboarding baseline.
