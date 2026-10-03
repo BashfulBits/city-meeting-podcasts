@@ -26,8 +26,10 @@ to day precision remain dates; exact observation times are UTC ISO strings. Case
 require a correction reason and superseded revision. Freeze does not manufacture truth.
 
 `run` reads only the manifest and admission config: gold never enters a prompt. A live run requires
-both `--live` and positive `--max-cases`; quota/deadline exhaustion records remaining work as
-unattempted. Dry-run performs no network/storage calls and reports zero model observations. Raw
+both `--live` and positive `--max-cases`, a total provider-attempt cap across configurations.
+Plans interleave candidates by case, so the cap yields comparable case prefixes without multiplying
+quota. A timeout holds remaining cases for that configuration; other candidates may still run
+within the total cap. Remaining work is recorded as unattempted. Dry-run performs no network/storage calls and reports zero model observations. Raw
 results and derived reports refuse overwrite; rescore writes a separate report. Multiple candidate
 configurations are compared on identical case inputs and scored separately. Results record actual
 physical route/upstream/effort/control hash, raw replies, usage, latency, errors and version hashes.

@@ -451,11 +451,11 @@ provider-wide canonicalization and cross-source joining remain outside this cont
 Tracking issue: [#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979).
 Implementation: [PR #1987](https://github.com/BashfulBits/city-meeting-podcasts/pull/1987),
 ready for review, pending merge. Live comparison/admission remains a separate opt-in activity.
-Implementation is prepared as a draft; P1 is not complete or frozen. The offline harness and strict
-direct routing/provenance are implemented, with empty shadow admissions and no live model calls.
-Three specification clarifications remain with the maintainer: hidden independently adjudicated
-`expected_owner` truth, an explicit blind-owner mode that omits claim/target inputs, and mandatory
-frozen input hashes for evaluation-only candidates. Current route effort capability metadata is
+P1 is ready for review, not complete or frozen. The offline harness and strict direct
+routing/provenance are implemented, with empty shadow admissions and no live model calls.
+The maintainer resolved the three specification clarifications: hidden independently adjudicated
+`expected_owner` truth, explicit blind-owner isolation, and mandatory frozen input hashes for
+all evaluation candidates are implemented requirements. Current route effort capability metadata is
 unverified, so no candidate/admitted route is enabled. Live evaluation requires shared CAS-capable
 quota coordination; “no production writes” below means no feed/audio/catalog mutation, not bypass
 of shared quota bookkeeping.
