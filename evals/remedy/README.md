@@ -26,9 +26,13 @@ to day precision remain dates; exact observation times are UTC ISO strings. Case
 require a correction reason and superseded revision. Freeze does not manufacture truth.
 
 `run` reads only the manifest and admission config: gold never enters a prompt. A live run requires
-both `--live` and positive `--max-cases`, a total provider-attempt cap across configurations.
+both `--live` and positive `--max-cases`, a total logical-case cap across configurations.
 Plans interleave candidates by case, so the cap yields comparable case prefixes without multiplying
-quota. A timeout holds remaining cases for that configuration; other candidates may still run
+quota. Each case permits at most two client provider invocations, shared across schema correction
+and capacity/pacing retries; SDK retries are disabled for these bounded requests. The run therefore
+makes at most twice `--max-cases` client calls. Counts do not measure retries internal to a remote
+provider or gateway. Actual attempt counts distinguish first-attempt from retried completion in
+raw results and reports. Normal production retry behavior is unchanged. A timeout holds remaining cases for that configuration; other candidates may still run
 within the total cap. Remaining work is recorded as unattempted. Dry-run performs no network/storage calls and reports zero model observations. Raw
 results and derived reports refuse overwrite; rescore writes a separate report. Multiple candidate
 configurations are compared on identical case inputs and scored separately. Results record actual

@@ -33,7 +33,10 @@ Phase R (Research-Tool Surface)._
   have separate scores and prompt hashes. Frozen candidate input hashes are mandatory. Safe
   provider failures retain the exception class without potentially sensitive exception text.
   Explicit effort is rejected before deferred/dispatch side effects. Bounded evaluation calls
-  interleave configurations under one total cap; timeouts hold only the affected configuration.
+  interleave configurations under one total logical-case cap; timeouts hold their configuration.
+  Evaluation cases permit two client provider invocations across all retries, with SDK retries
+  disabled and attempt counts reported separately. Production retry defaults remain unchanged.
+  AA effort checks reject partial words and explicitly non-reasoning variants.
   Git and frozen-version metadata are collected before live attempts.
   Publication selection is specified at L2; the duplicate-identity feeds remain held.
   Clarifies future shared policy templates and cross-city evaluations for the same onboarding/

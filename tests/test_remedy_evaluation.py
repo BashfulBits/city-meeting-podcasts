@@ -1060,3 +1060,69 @@ def test_git_preflight_failure_happens_before_live_attempts(dataset, monkeypatch
             ]
         )
     assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    ("level", "variant"),
+    [("low", "Test Flow"), ("max", "Qwen3 Max (Non-reasoning)"), ("high", "Test Highlight")],
+)
+def test_aa_model_name_substrings_and_non_reasoning_are_not_effort(level, variant):
+    route = replace(
+        capable_route(), reasoning_controls_json=json.dumps({level: {"reasoning_effort": level}})
+    )
+    entry = candidate()
+    entry["reasoning_level"] = level
+    entry["aa"]["variant"] = variant
+    entry["request_params_hash"] = canonical_hash({"reasoning_effort": level})
+    result = validate_admission(
+        entry, {route.route_id: route}, frozen_context(), for_evaluation=True
+    )
+    assert "AA reasoning variant mismatch" in result.reasons
+
+
+def test_reports_separate_first_attempt_and_retried_completion(dataset, tmp_path):
+    from citypods.remedy_evaluation import prompt_for_mode
+
+    rows = []
+    for case, count in zip(dataset.manifest.cases[:3], [1, 2, None], strict=True):
+        rows.append(
+            dict(
+                case_id=case.id,
+                configuration_id="configuration",
+                status="completed",
+                provider_attempts=count,
+                answer=answer(case, False),
+            )
+        )
+    raw = dict(
+        manifest_hash=canonical_hash(dataset.manifest.model_dump()),
+        prompt_hash=canonical_hash(prompt_for_mode("claim_support")),
+        mode="claim_support",
+        results=rows,
+    )
+    results_path = tmp_path / "raw.json"
+    results_path.write_text(json.dumps(raw))
+    output = tmp_path / "report.json"
+    assert (
+        cli().main(
+            [
+                "report",
+                "--manifest",
+                str(ROOT / "evals/remedy/manifest.json"),
+                "--gold",
+                str(ROOT / "evals/remedy/gold.json"),
+                "--results",
+                str(results_path),
+                "--out",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    counts = json.loads(output.read_text())["reports"][0]["attempt_counts"]
+    assert counts == dict(
+        first_attempt_completed=1,
+        retried_completed=1,
+        known_provider_attempts=3,
+        unknown_attempt_count=1,
+    )

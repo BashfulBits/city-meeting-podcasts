@@ -1588,7 +1588,7 @@ def test_explicit_unsupported_effort_never_calls_provider():
 
 
 def test_dispatch_allowlist_rejected_before_storage_or_calls():
-    backend = LiteLLMBackend()
+    backend = LiteLLMBackend(LLMBackendConfig())
     policy = LLMRequestPolicy(allowed_route_ids=("physical",), queue_only=True)
     with pytest.raises(ValueError, match="direct-only"):
         backend.run_inference(
@@ -1607,4 +1607,91 @@ def test_explicit_effort_rejected_before_non_immediate_side_effects(policy):
     with pytest.raises(ValueError, match="requires run_immediate"):
         backend.run_inference(request)
     with pytest.raises(ValueError, match="cannot enforce explicit reasoning_level"):
+        backend.enqueue_batch([request])
+
+
+@pytest.mark.parametrize("limit", [1, 2])
+def test_immediate_attempt_budget_bounds_schema_correction_and_records_count(limit):
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response("not json" if len(calls) == 1 else '{"value":"fixed"}')
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3.5-flash"),
+        completion=completion,
+        storage=MemStorage(),
+    )
+    request = job(
+        content="test",
+        structured_output="test-output",
+        max_provider_attempts=limit,
+        num_retries=7,
+        llm_policy=LLMRequestPolicy(
+            require_direct=True,
+            allowed_models=("gemini/gemini-3.5-flash",),
+            deadline_at=datetime.now(UTC) + timedelta(seconds=10),
+        ),
+    )
+    if limit == 1:
+        with pytest.raises(LLMBackendError, match="provider-attempt limit") as error:
+            backend.run_immediate(request)
+        assert error.value.provider_attempts == 1
+    else:
+        result = backend.run_immediate(request)
+        assert result.provider_attempts == 2
+    assert len(calls) == limit
+    assert all(call["num_retries"] == 0 for call in calls)
+
+
+def test_immediate_budget_is_shared_across_capacity_and_schema_retries():
+    class CapacityLimited(Exception):
+        status_code = 429
+        headers = {"retry-after": "15"}
+
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise CapacityLimited("upstream provider overloaded, please try again later")
+        return structured_response("not json")
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    request = job(
+        content="test",
+        structured_output="test-output",
+        max_provider_attempts=2,
+        llm_policy=LLMRequestPolicy(
+            require_direct=True,
+            allowed_models=("gemini/gemini-3-flash-preview", "gemini/gemini-3.5-flash"),
+            deadline_at=datetime.now(UTC) + timedelta(seconds=10),
+        ),
+    )
+    with pytest.raises(LLMBackendError, match="provider-attempt limit") as error:
+        backend.run_immediate(request)
+    assert error.value.provider_attempts == len(calls) == 2
+    ledger, _ = load_llm_budget_cas(storage)
+    assert all(not route.inflight for route in ledger.routes.values())
+
+
+@pytest.mark.parametrize("limit", [True, 0, -1, "2", 2.5])
+def test_invalid_attempt_budget_rejected_before_io(limit):
+    backend = LiteLLMBackend(LLMBackendConfig())
+    with pytest.raises(ValueError, match="positive integer"):
+        backend.run_immediate(job(max_provider_attempts=limit))
+
+
+def test_attempt_budget_cannot_be_dropped_by_deferred_or_dispatch_paths():
+    backend = LiteLLMBackend(LLMBackendConfig())
+    request = job(max_provider_attempts=2)
+    with pytest.raises(ValueError, match="requires run_immediate"):
+        backend.run_inference(request)
+    with pytest.raises(ValueError, match="cannot enforce max_provider_attempts"):
         backend.enqueue_batch([request])

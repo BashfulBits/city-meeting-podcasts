@@ -677,8 +677,11 @@ substring — worth checking, because per-body feeds share one source.
 #### Remedy evaluation
 
 Explicit reasoning effort requires immediate execution; deferred and dispatch paths reject it
-before side effects. Evaluation candidates interleave by case under a total attempt cap, and
-timeouts hold only their configuration. Git/version metadata is captured before provider calls.
+before side effects. Evaluation candidates interleave by case under a total logical-case cap, and
+timeouts hold only their configuration. Each evaluation case shares a two-invocation budget across
+correction and capacity retries, with SDK retries disabled and attempt counts recorded. Remote
+provider/gateway internal attempts are outside that client count. Git/version metadata is captured
+before provider calls.
 
 `scripts/eval_remedy.py` freezes schema-v2 evidence and produces immutable route-comparison and
 rescoring artifacts; independently maintained gold never enters model messages. Production remedy

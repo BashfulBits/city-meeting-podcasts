@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -498,7 +499,9 @@ def validate_admission(entry, catalog, evaluation=None, *, for_evaluation=False)
         reasons.append("empty physical route allowlist")
     if entry.aa.version != "4.3.2" or entry.aa.score < 39:
         reasons.append("AA evidence does not meet comparable Gemini 3.7 High baseline")
-    if entry.reasoning_level not in entry.aa.variant.lower():
+    variant_tokens = set(re.findall(r"[a-z0-9]+", entry.aa.variant.lower()))
+    non_reasoning = bool(re.search(r"\bnon[ -]?reasoning\b", entry.aa.variant.lower()))
+    if entry.reasoning_level not in variant_tokens or non_reasoning:
         reasons.append("AA reasoning variant mismatch")
     try:
         observed = datetime.fromisoformat(entry.aa.date.replace("Z", "+00:00"))
