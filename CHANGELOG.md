@@ -24,12 +24,15 @@ Phase R (Research-Tool Surface)._
 
 ### Changed
 
-- **Unexpected-body evaluation harness (P1 draft).** Adds schema-v2 freeze/run/report/rescore,
+- **Unexpected-body evaluation harness.** Adds schema-v2 freeze/run/report/rescore,
   direct physical-route allowlists, validated effort controls and synchronous result provenance.
   Production remedy models and Worker routes are unchanged; shadow config admits no models.
   Seeds are regression evidence, not admission results. Missing CAS coordination is a visible
   preflight hold; explicit live runs use shared quota bookkeeping but cannot write feeds/audio.
-  Blind-owner scoring and candidate input-hash requirements await specification clarification.
+  Hidden reviewed owner truth, opaque-ID blind-owner comparisons and claim-support comparisons
+  have separate scores and prompt hashes. Frozen candidate input hashes are mandatory. Safe
+  provider failures retain the exception class without potentially sensitive exception text.
+  Publication selection is specified at L2; the duplicate-identity feeds remain held.
   No pipeline-version change, stored-artifact invalidation or historical backfill is introduced.
 
 - **Addison UDC historical committee coverage.** Adds one Unified Development Code Advisory

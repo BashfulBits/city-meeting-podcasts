@@ -20,8 +20,9 @@ distinct public-input formats; the
 committee recordings. See
 [coverage policy](review/tif-coverage-2026-10.md) and review/11.
 [review/51](review/51-unexpected-body-remedy-flow.md) records the approved improvement structure:
-P1 evaluation/physical-route admission is L3 with a draft implementation awaiting scoring/hash
-clarifications; P2–P5 have predecessor-gated build contracts.
+P1 evaluation/physical-route admission implements the approved scoring/hash contracts and is
+ready for review in #1987; P2–P5 have predecessor-gated build contracts. Duplicate publication has
+a separate L2 design gate before affected feeds activate.
 Alias qualification is narrow and reviewed; incomplete archives require documented exceptions;
 TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues.
 

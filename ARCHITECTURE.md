@@ -674,7 +674,7 @@ matches `"TIRZ Board"`, so adding the latter to `body_any` is dead config. Conve
 like `"Special Meeting"` is only safe when no sibling feed on the same source carries it as a
 substring — worth checking, because per-body feeds share one source.
 
-#### Remedy evaluation (P1 draft)
+#### Remedy evaluation
 
 `scripts/eval_remedy.py` freezes schema-v2 evidence and produces immutable route-comparison and
 rescoring artifacts; independently maintained gold never enters model messages. Production remedy
@@ -688,9 +688,14 @@ route/upstream/effort/parameter provenance; evaluation also validates returned m
 Offline dry runs make zero model observations. Explicit live runs require CAS-capable shared
 scheduler storage, bounded cases and quota bookkeeping; they do not mutate feeds or audio.
 
-P1 remains a draft pending hidden owner truth, separate blind-owner experiments and candidate input
-hash clarification in [review/51](review/51-unexpected-body-remedy-flow.md). No route is qualified by
-the seed corpus or this implementation alone.
+Claim-support and blind-owner runs have separate prompts, input hashes and scores. Blind runs
+use opaque case IDs and remove proposal metadata; independently adjudicated owner truth stays
+in gold, never requests. Every candidate supplies matching manifest/prompt/schema/catalog hashes.
+No route is qualified by the seed corpus or this implementation alone.
+
+[review/51](review/51-unexpected-body-remedy-flow.md) separately specifies publication selection
+at L2 for verified duplicate observations. Runtime selection and affected feeds remain gated;
+this evaluation harness does not delete records, merge UIDs or deduplicate published episodes.
 
 #### Exact feed-body labels
 

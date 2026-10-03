@@ -18,6 +18,21 @@ PROMPT = (
     "missing. Select an owner independently and cite only supplied evidence-reference IDs."
 )
 
+BLIND_OWNER_PROMPT = (
+    "Independently select the owning existing feed from the frozen official evidence and approved "
+    "taxonomy. No proposed claim or owner is supplied. Shared city/topic words do not establish "
+    "identity. Return supported=null; select proposed_owner only when evidence establishes it, "
+    "otherwise abstain with proposed_owner=null. Echo the supplied opaque case ID and cite only "
+    "supplied evidence-reference IDs. Official metadata is immutable."
+)
+EVALUATION_MODES = ("claim_support", "blind_owner")
+
+
+def prompt_for_mode(mode: str = "claim_support") -> str:
+    if mode not in EVALUATION_MODES:
+        raise ValueError("unsupported evaluation mode")
+    return PROMPT if mode == "claim_support" else BLIND_OWNER_PROMPT
+
 
 def canonical_hash(value: Any) -> str:
     """SHA-256 of canonical JSON, shared by inputs, controls and reports."""
@@ -117,9 +132,12 @@ class GoldCase(StrictModel):
     revision: int = Field(ge=1)
     superseded_revision: int | None
     correction_reason: str | None = None
+    expected_owner: str | None = None
 
     @model_validator(mode="after")
     def corrected(self):
+        if self.expected_owner is not None and not self.expected_owner.strip():
+            raise ValueError("owner truth must not be blank")
         if self.revision > 1 and (
             self.superseded_revision != self.revision - 1 or not self.correction_reason
         ):
@@ -148,6 +166,7 @@ class EvaluationSet(StrictModel):
 
 
 class EvaluationReport(StrictModel):
+    mode: Literal["claim_support", "blind_owner"]
     counts: dict[str, int]
     accepted_precision: float | None
     supported_claim_recall: float | None
@@ -216,6 +235,7 @@ def load_cases(manifest_path, gold_path) -> EvaluationSet:
     for case in manifest.cases:
         if not set(gold.cases[case.id].evidence_refs) <= {ref.id for ref in case.evidence_refs}:
             raise ValueError("gold cites unknown evidence IDs")
+    _validate_owner_truth(manifest, gold)
     return EvaluationSet(manifest=manifest, gold=gold)
 
 
@@ -276,11 +296,66 @@ def freeze_cases(evidence, policies, *, split, provenance) -> dict:
     return manifest.model_dump()
 
 
-def case_messages(case: RemedyCase) -> list[dict[str, str]]:
+def prompt_case_id(case: RemedyCase, mode: str = "claim_support") -> str:
+    prompt_for_mode(mode)
+    if mode == "claim_support":
+        return case.id
+    return "case-" + canonical_hash({"id": case.id, "mode": mode})[:24]
+
+
+def case_messages(case: RemedyCase, mode: str = "claim_support") -> list[dict[str, str]]:
+    payload = case.model_dump()
+    if mode == "blind_owner":
+        allowed = (
+            "city",
+            "source_key",
+            "body_label",
+            "evidence_refs",
+            "recordings",
+            "existing_feeds",
+            "completeness",
+        )
+        payload = {key: payload[key] for key in allowed}
+        payload["id"] = prompt_case_id(case, mode)
+        policy_fields = (
+            "policy_id",
+            "version",
+            "approval_ref",
+            "aggregate_family",
+            "identity_names",
+            "member_names",
+        )
+        feed_fields = ("slug", "city", "title", "podcast_title", "podcast_description", "provider")
+        selector_fields = ("body", "body_any", "body_exact", "body_includes")
+        payload["existing_feeds"] = []
+        for feed in case.existing_feeds:
+            taxonomy = {key: value for key, value in feed.items() if key in feed_fields}
+            if isinstance(feed.get("source"), dict):
+                taxonomy["source"] = {
+                    key: value for key, value in feed["source"].items() if key in selector_fields
+                }
+            payload["existing_feeds"].append(taxonomy)
+        payload["family_policy"] = {}
+        if case.policy_status == "approved":
+            owners = {feed.get("slug") for feed in case.existing_feeds}
+            for key, value in case.family_policy.items():
+                if key in policy_fields:
+                    payload["family_policy"][key] = value
+                elif key in owners and isinstance(value, dict):
+                    payload["family_policy"][key] = {
+                        name: field for name, field in value.items() if name in policy_fields
+                    }
     return [
-        {"role": "system", "content": PROMPT},
-        {"role": "user", "content": json.dumps(case.model_dump(), sort_keys=True)},
+        {"role": "system", "content": prompt_for_mode(mode)},
+        {"role": "user", "content": json.dumps(payload, sort_keys=True)},
     ]
+
+
+def _validate_owner_truth(manifest: Manifest, gold: Gold) -> None:
+    for case in manifest.cases:
+        owner = gold.cases[case.id].expected_owner
+        if owner is not None and owner not in {feed.get("slug") for feed in case.existing_feeds}:
+            raise ValueError("owner truth is not an existing feed slug")
 
 
 def validate_answer(answer: Any, case: RemedyCase) -> RemedyEvalAnswer:
@@ -292,10 +367,12 @@ def validate_answer(answer: Any, case: RemedyCase) -> RemedyEvalAnswer:
     return parsed
 
 
-def compare_results(results, gold, *, manifest) -> EvaluationReport:
+def compare_results(results, gold, *, manifest, mode="claim_support") -> EvaluationReport:
+    prompt_for_mode(mode)
     manifest = Manifest.model_validate(manifest) if isinstance(manifest, dict) else manifest
     gold = Gold.model_validate(gold) if isinstance(gold, dict) else gold
     _validate_against_regression(manifest)
+    _validate_owner_truth(manifest, gold)
     cases = {case.id: case for case in manifest.cases}
     counts = dict.fromkeys(
         (
@@ -312,7 +389,19 @@ def compare_results(results, gold, *, manifest) -> EvaluationReport:
         ),
         0,
     )
-    owner_scores = {"evaluated": 0, "correct": 0}
+    owner_scores = dict.fromkeys(
+        (
+            "known_truth",
+            "unknown_truth",
+            "evaluated",
+            "correct",
+            "incorrect",
+            "abstained",
+            "failed",
+            "unattempted",
+        ),
+        0,
+    )
     breakdown = {}
     positives = found = 0
     eligible = 0
@@ -323,16 +412,37 @@ def compare_results(results, gold, *, manifest) -> EvaluationReport:
             raise ValueError("unknown or duplicate result case ID")
         seen.add(case_id)
         case, truth = cases[case_id], gold.cases[case_id]
+        counters = owner_scores if mode == "blind_owner" else counts
         if result.get("status") == "unattempted":
-            counts["unattempted"] += 1
+            counters["unattempted"] += 1
             continue
         if result.get("status") != "completed":
-            counts["failed"] += 1
+            counters["failed"] += 1
             continue
         try:
             answer = validate_answer(result.get("answer"), case)
         except ValueError:
-            counts["failed"] += 1
+            counters["failed"] += 1
+            continue
+        if mode == "blind_owner":
+            if truth.expected_owner is None:
+                owner_scores["unknown_truth"] += 1
+            else:
+                owner_scores["known_truth"] += 1
+                if answer.proposed_owner is None:
+                    owner_scores["abstained"] += 1
+                else:
+                    owner_scores["evaluated"] += 1
+                    correct = answer.proposed_owner == truth.expected_owner
+                    owner_scores["correct" if correct else "incorrect"] += 1
+                eligible += int(
+                    manifest.split == "holdout"
+                    and truth.provenance == "verified"
+                    and case.input_kind == "real"
+                    and case.policy_status == "approved"
+                    and bool(case.evidence_refs)
+                    and bool(truth.policy_approval_ref)
+                )
             continue
         if truth.supported is None:
             counts["unknown_truth"] += 1
@@ -364,8 +474,10 @@ def compare_results(results, gold, *, manifest) -> EvaluationReport:
             counts["accepted"] += 1
             counts["accepted_correct"] += int(correct)
         counts["critical_errors"] += int(not correct and bool(truth.critical_error_class))
-    counts["unattempted"] += len(cases) - len(seen)
+    counters = owner_scores if mode == "blind_owner" else counts
+    counters["unattempted"] += len(cases) - len(seen)
     return EvaluationReport(
+        mode=mode,
         counts=counts,
         accepted_precision=(
             counts["accepted_correct"] / counts["accepted"] if counts["accepted"] else None
@@ -410,6 +522,12 @@ def validate_admission(entry, catalog, evaluation=None, *, for_evaluation=False)
         params.update(controls)
         if canonical_hash(params) != entry.request_params_hash:
             reasons.append(f"effective request-parameter mismatch: {route_id}")
+    if for_evaluation:
+        for name in ("manifest_hash", "prompt_hash", "schema_hash", "catalog_hash"):
+            if not getattr(entry, name):
+                reasons.append(f"missing frozen input hash: {name}")
+        if evaluation is None:
+            reasons.append("missing frozen run context")
     if not for_evaluation and entry.status != "admitted":
         reasons.append("candidate is evaluation-only")
     if evaluation is not None:

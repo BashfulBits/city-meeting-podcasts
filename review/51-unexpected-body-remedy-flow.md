@@ -313,9 +313,122 @@ issue, or a documented unavailable-source exception. An unresolved legitimate re
 “covered.” The current 680-row inventory is a starting snapshot, not a permanently complete census.
 P1 can supply evaluation tooling while P0 is being completed; P5 requires an approved city baseline.
 
+### P0 publication selection — specification first (L2)
+
+The maintainer authorized writing this specification; runtime projection changes and affected feed
+publication remain gated. Proceed independently with historical batches whose rendered output has
+no identity conflict. The held groups are Arlington Foundation [#1986](https://github.com/BashfulBits/city-meeting-podcasts/issues/1986),
+Fort Worth PID [#1989](https://github.com/BashfulBits/city-meeting-podcasts/issues/1989) and Addison
+CPC [#1991](https://github.com/BashfulBits/city-meeting-podcasts/issues/1991).
+
+**Chosen approach:** finite, evidence-reviewed publication groups choose one **existing UID** per
+verified recording for named public outputs. Keep every archived observation, UID, official field
+and artifact intact. Do not merge records or assign new UIDs. Foundation/CPC have equal provider
+GUIDs but multiple stored UIDs; PID has different view-specific GUIDs for the same verified clip.
+Body aliases, titles, dates, model agreement and numeric clip IDs alone do not establish identity.
+No automatic global deduplication or cross-provider/source joining is approved.
+
+#### Configuration and proof contract
+
+Use an optional top-level `publication_selection` key in a feed, outside `source` so the namespace
+hash stays unchanged. Version 1 contains explicit groups with:
+
+- `id`, `source_key`, `identity_kind` (`same_provider_guid` or `verified_granicus_clip`), source-scoped
+  `identity_key`, members `{uid, provider_guid, record_fingerprint}`, fixed `preferred_uid`;
+- official `evidence_refs` `{url, retrieved_at, content_hash}`, `approval_ref`, and publication
+  `exposure` `{status, artifacts, rationale}`; exposure status distinguishes known-current,
+  both-published, never-published and historical-unknown cases;
+- explicit `search` opt-in: this feed's lists/RSS use its group, and only approved groups may also
+  collapse their exact members in the source search shard. Other feeds' RSS remain unchanged.
+
+Strictly validate keys/types/version, UID shapes, exact member GUIDs, preferred membership and
+source key. Overlaps, conflicting winners or inconsistent repeated group declarations fail; input
+order never chooses a winner. Fingerprints hash canonical JSON of source key, UID, provider GUID,
+official body/title/date and canonical recording URL, excluding stage bookkeeping/audio/transcript
+changes. No model output may introduce or edit this configuration.
+
+Same-GUID groups require exact full GUID equality inside one source. Granicus groups require equal
+reviewed host/clip identity, explicit views and direct recording/agenda equivalence proof. A future
+view or extra UID is not automatically admitted. Date/title corrections, conflicting agendas,
+changed fingerprints, missing preferred/member records and extra members on an approved identity
+key hold the affected output instead of restoring duplicates silently.
+
+Freeze public RSS/page exposure evidence before selecting existing-feed winners. Preserve the
+previously visible UID when only one is evidenced; both/unknown cases need a recorded maintainer
+choice rather than latest-date/lowest-UID guesses. Addison's date conflict requires official agenda
+verification. The unpublished PID feed can choose a reviewed view per clip explicitly. Missing or
+withheld preferred media never switches UID, splices artifacts or bypasses suppression; normal
+availability is preserved and a different winner needs a new reviewed decision.
+
+#### Future implementation boundary
+
+Only these files/functions are in scope when the implementation gate opens:
+
+- New `citypods/publication_selection.py`: strict `parse_publication_selection`, conflict-checking
+  `load_selection_index(cities)`, `record_identity_fingerprint`, pure `select_feed_publication` and
+  `select_search_publication`. Plans return existing objects, selected UIDs and diagnostic counts;
+  unconfigured and ungrouped items remain unchanged.
+- `citypods/config.py::_build_city` validates the optional metadata in `City.extra`; no UID, author,
+  source-ID or transport changes and no new `City` identity fields.
+- `citypods/run.py::_build_impl` loads the full configured index; `_process_city` validates before
+  writes and separates raw retained episodes from public retained episodes after body selection,
+  **before capping**. RSS/index/archive/speaker lists use public selection. `_write_meeting_pages`
+  retains raw selected UID pages, preventing old URLs from disappearing; chapter sidecars needed
+  by those pages remain usable. `_city_archive_hash` and render cache inputs include policy/proof
+  hashes. `SourcePipeline` caches, ingestion and persisted record stores remain full archives.
+- `citypods/search.py::build_search_index` preflights configured groups before shard writes and
+  projects reviewed source groups before `_record_to_document`. `_city_for_record` uses the group's
+  reviewed owning feed for canonical links, leaving ungrouped ownership unchanged. `_shard_hash`
+  includes proof hashes/selected UIDs. Source search currently reads raw archives, so RSS-only
+  filtering is insufficient. Never combine titles, dates, tags, transcripts or votes across members.
+- New `tests/test_publication_selection.py`, existing config/run/search/feed/record tests, sanitized
+  fixtures and `evals/remedy/` regression cases for the three issues, approved feed activations and
+  lifecycle docs. No provider, record-merge/retention, audio/stage, storage, worker or credential edits.
+
+Invalid selection leaves the affected feed's prior files/cache intact and reports a visible hold;
+new feeds publish nothing. Search selection failure retains the prior complete manifest/shards/cache.
+Validate before writing or pruning outputs, including tests with nonempty prior publication.
+Cheap validation is not gated by the expensive-work stop budget. Static cache-version changes must
+state the render/search rebuild story; no audio/ASR pipeline bump or forced artifact backfill.
+
+#### Acceptance and remaining maturation
+
+Ship machinery first with no active groups and prove unchanged existing output. Activate reviewed
+city groups separately, with at most five decisions per PR. Required acceptance:
+
+1. Full provider/persisted replay and separate legacy accounting; unchanged source namespaces,
+   archived JSON, UIDs, official metadata, audio keys and URLs after rendering.
+2. Actual record-backed audio RSS: Foundation's three affected clips appear once each; Addison CPC
+   publishes five recordings while retaining six records; PID publishes three while retaining six.
+   Selector counts alone do not pass. Verify archive/search/list counts as well.
+3. One canonical search document per activated group; old UID pages/chapter URLs still work;
+   ungrouped records and unrelated feed projections stay unchanged. Calendar/no-video rows unaffected.
+4. Negative tests for wrong-host/source clip collisions, independent recordings with equal dates/
+   titles, new/missing/preferred members, conflicting dates/agendas, changed labels, unavailable media,
+   overlapping policies, cache changes and reordered input. No fallback UID or imported artifacts.
+5. Proof failures preserve prior complete outputs/cache; aliases that would expose duplicates stay
+   held until an approved group exists. Whole Ruff/format, offline tests and real CI preview pass.
+
+Before L3, mature the exact typed schema/diagnostics, select each group's preferred UID with exposure
+and official-date evidence, and prove output-preservation/cache failure behavior against current
+writer/pruning paths. These are implementation gates, not permission to publish the held feeds now.
+Rollback must freeze the last good public outputs or revert selector activation and group activation
+**together**: removing an active group alone reintroduces duplicates. Archive records/artifacts and
+old UID URLs remain. Winner changes explicitly disclose possible subscriber redownloads.
+
+Risks remain explicit: finite mappings need review on identity changes; a chosen record can have less
+complete artifacts than an alternate; past public UID exposure may be unknowable; raw historical UID
+pages can show duplicate observations while canonical lists show one recording. Finite groups are a bounded historical safety step, not the steady-state maintenance design.
+Before L3, also define a frozen, evaluated provider/view identity policy for future observations
+with a sticky published winner. An approved proof type should cover routine repeats without a
+new human decision; conflicting evidence or a proposed winner change still escalates. General
+provider-wide canonicalization and cross-source joining remain outside this contract.
+
 ### P1 — evaluation harness and physical-route admission (L3)
 
 Tracking issue: [#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979).
+Implementation: [PR #1987](https://github.com/BashfulBits/city-meeting-podcasts/pull/1987),
+ready for review, pending merge. Live comparison/admission remains a separate opt-in activity.
 Implementation is prepared as a draft; P1 is not complete or frozen. The offline harness and strict
 direct routing/provenance are implemented, with empty shadow admissions and no live model calls.
 Three specification clarifications remain with the maintainer: hidden independently adjudicated
@@ -362,7 +475,10 @@ Maintainer-authorized clarification (2026-10-03): `run --mode claim_support|blin
 the same optional mode. Blind inputs use opaque deterministic case IDs mapped back locally,
 never semantically named seed IDs; omit claim, decision type, split group and proposer/tuning
 metadata. Allow only city/source/body, official evidence/recordings, existing feed taxonomy,
-approved policy fields and completeness. Policy fields are limited to policy ID/version,
+approved policy fields and completeness. Existing-feed taxonomy exposes only slug/city/title,
+podcast title/description, provider and body/body-any/exact/GUID selectors; omit proposal metadata.
+Support both flat policies and frozen per-feed policy maps, filtered to known feed slugs.
+Policy fields are limited to policy ID/version,
 approval ref, aggregate family, exact identities and member names; seed evidence is omitted.
 Gold is never read by run. Preserve the raw answer and map its opaque ID locally for validation.
 

@@ -35,7 +35,9 @@ Unknown or mismatched returned model identity is a failure, never a correct deci
 
 `config/remedy.yml` starts in shadow mode with empty admissions and qualified alias types: a
 visible policy hold. Candidate entries can run only evaluations; admitted entries require reviewed,
-version-matched results and an admission reference. Both must pass physical free/direct identity,
+version-matched results and an admission reference for production qualification. Evaluations can
+rerun either status without reading prior gold or production qualification. Both must pass physical
+free/direct identity,
 dated comparable AA baseline, and effective-effort checks. The inspected catalog does not currently
 verify high/max controls for the proposed reasoning models; a separately reviewed capability update
 is required before live admission. No upstream incapability is inferred from absent catalog evidence.
@@ -43,13 +45,24 @@ Live runs use the existing CAS-capable scheduler storage and update shared quota
 missing CAS configuration is a visible policy hold before provider calls. No production feed or
 audio artifact writes, route swaps, provider-limit changes or Worker changes occur in this lane.
 
-Holdout cases must be independently adjudicated, source/family/recording-disjoint from the tuned
-seeds; call `validate_holdout` before reviewing admission. Only real grounded, verified,
-approved-policy holdout truth can contribute to qualification. Report accepted precision,
-critical errors, abstentions, unknown truth, failed calls and unattempted work separately. Blind-owner scoring is not implemented yet: it requires clarification of hidden owner truth and
-a separate experiment that hides the proposed claim/target. The current owner-selection counters
-remain zero (not evaluated); they are not evidence of correctness. Candidate input version hashes
-currently remain optional pending specification clarification; supplied mismatches fail closed.
-These outstanding contracts keep P1 incomplete. The seed alone qualifies no automatic alias type.
-Remedy remains outside continuous leagues; compare frozen inputs when models retire or candidates,
-policy, prompt, effort, schema or routing change. Never send `gold.json` to a model.
+`run --mode claim_support` (default) checks a proposed claim. `run --mode blind_owner` runs a
+separate owner-selection experiment: opaque deterministic IDs replace named case IDs, and claims,
+decision types, split groups and proposer/tuning metadata are omitted. Approved policy metadata
+uses an explicit allowlist. Both modes preserve raw replies and map IDs locally; results and reports
+identify the mode and its distinct prompt hash. Claim-support metrics exclude blind-owner replies.
+
+Optional hidden gold `expected_owner` is an independently reviewed existing feed slug. Missing
+owner truth is unknown; null proposed owners abstain; failed and unattempted jobs never count as
+correct. Exclusion correctness remains a claim-support decision. All 27 migrated seeds leave owner
+truth unset. Do not infer it from claims or policy targets. Candidate evaluation requires matching
+frozen manifest, mode-specific prompt, response-schema and catalog hashes even for dry-run. Gold
+and qualified-result references remain optional for candidates; production admission requires all
+five hashes and reviewed qualification.
+
+Holdout cases must be independently adjudicated and source/family/recording-disjoint from the tuned
+seeds. Load, freeze and report enforce this split against the canonical regression manifest. Only
+real grounded, verified, approved-policy holdout truth can contribute to qualification. Report
+accepted precision, critical errors, abstentions, unknown truth, failed calls and unattempted work
+separately. The seed alone qualifies no automatic alias type. Remedy remains outside continuous
+leagues; compare frozen inputs when models retire or candidates, policy, prompt, effort, schema or
+routing change. Never send `gold.json` to a model.

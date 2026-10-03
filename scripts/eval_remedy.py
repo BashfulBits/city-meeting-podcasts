@@ -12,7 +12,7 @@ from pathlib import Path
 import yaml
 
 from citypods.remedy_evaluation import (
-    PROMPT,
+    EVALUATION_MODES,
     Manifest,
     RemedyConfig,
     RemedyEvalAnswer,
@@ -21,6 +21,8 @@ from citypods.remedy_evaluation import (
     compare_results,
     freeze_cases,
     load_cases,
+    prompt_case_id,
+    prompt_for_mode,
     validate_admission,
     validate_answer,
 )
@@ -33,7 +35,7 @@ def write_new(path: Path, value) -> None:
         handle.write("\n")
 
 
-def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None):
+def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None, mode="claim_support"):
     """Candidates are execution-only: no publication or production-admission API exists here."""
     from citypods.compute.llm_policy import ROUTE_REGISTRY, LLMRequestPolicy
 
@@ -42,7 +44,7 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None):
     holds = []
     context = {
         "manifest_hash": canonical_hash(manifest.model_dump()),
-        "prompt_hash": canonical_hash(PROMPT),
+        "prompt_hash": canonical_hash(prompt_for_mode(mode)),
         "schema_hash": canonical_hash(RemedyEvalAnswer.model_json_schema()),
         "catalog_hash": canonical_hash(
             json.loads(
@@ -61,10 +63,11 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None):
             plans.append(
                 {
                     "case_id": case.id,
+                    "prompt_case_id": prompt_case_id(case, mode),
                     "configuration_id": canonical_hash(entry.model_dump()),
                     "candidate_status": entry.status,
                     "admission": entry.model_dump(),
-                    "messages": case_messages(case),
+                    "messages": case_messages(case, mode),
                 }
             )
     if not entries:
@@ -73,6 +76,7 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None):
         return {
             "version": 1,
             "dry_run": True,
+            "mode": mode,
             "model_observations": 0,
             "policy_holds": holds,
             "plans": plans,
@@ -97,6 +101,7 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None):
             return {
                 "version": 1,
                 "dry_run": False,
+                "mode": mode,
                 "model_observations": 0,
                 "policy_holds": holds
                 + ["policy hold: configured scheduler storage is not CAS-capable"],
@@ -121,6 +126,7 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None):
         row = {
             "case_id": plan["case_id"],
             "configuration_id": plan["configuration_id"],
+            "prompt_case_id": plan["prompt_case_id"],
             "candidate_status": entry["status"],
         }
         if remaining <= 0 or exhausted:
@@ -170,7 +176,10 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None):
             ):
                 raise ValueError("unknown/mismatched returned physical model or effort")
             answer = parse_structured_json(result.output["choices"][0]["message"]["content"])
-            row.update(status="completed", answer=validate_answer(answer, case).model_dump())
+            prompt_case = case.model_copy(update={"id": plan["prompt_case_id"]})
+            parsed = validate_answer(answer, prompt_case)
+            mapped = parsed.model_copy(update={"case_id": case.id})
+            row.update(status="completed", answer=mapped.model_dump())
         except TimeoutError as exc:
             exhausted = True
             row.update(status="failed", error_class=type(exc).__name__)
@@ -181,6 +190,7 @@ def run_cases(manifest, config, role, *, dry_run, max_cases, backend=None):
     return {
         "version": 1,
         "dry_run": False,
+        "mode": mode,
         "policy_holds": holds,
         "results": rows,
         "model_observations": sum("raw_response" in row for row in rows),
@@ -200,6 +210,7 @@ def main(argv=None) -> int:
     run = commands.add_parser("run")
     run.add_argument("--manifest", type=Path, required=True)
     run.add_argument("--admission", type=Path, default=Path("config/remedy.yml"))
+    run.add_argument("--mode", choices=EVALUATION_MODES, default="claim_support")
     run.add_argument("--role", choices=("proposer", "reviewer", "adjudicator"), required=True)
     run.add_argument("--out", type=Path, required=True)
     run.add_argument("--dry-run", action="store_true")
@@ -244,7 +255,12 @@ def main(argv=None) -> int:
         manifest = Manifest.model_validate(json.loads(args.manifest.read_text()))
         config = RemedyConfig.model_validate(yaml.safe_load(args.admission.read_text()))
         value = run_cases(
-            manifest, config, args.role, dry_run=args.dry_run, max_cases=args.max_cases
+            manifest,
+            config,
+            args.role,
+            dry_run=args.dry_run,
+            max_cases=args.max_cases,
+            mode=args.mode,
         )
         value.update(
             admissions_hash=canonical_hash(config.model_dump()),
@@ -256,7 +272,7 @@ def main(argv=None) -> int:
                 )
             ),
             manifest_hash=canonical_hash(manifest.model_dump()),
-            prompt_hash=canonical_hash(PROMPT),
+            prompt_hash=canonical_hash(prompt_for_mode(args.mode)),
             schema_hash=canonical_hash(RemedyEvalAnswer.model_json_schema()),
             observed_at=datetime.now(UTC).isoformat(),
             commit=subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
@@ -278,12 +294,16 @@ def main(argv=None) -> int:
             if not groups:
                 groups["no-model-observations"] = []
             for configuration_id, rows in groups.items():
-                report = compare_results(rows, dataset.gold, manifest=dataset.manifest)
+                mode = raw.get("mode", "claim_support")
+                if raw.get("prompt_hash") != canonical_hash(prompt_for_mode(mode)):
+                    parser.error("results mode-specific prompt hash mismatch")
+                report = compare_results(rows, dataset.gold, manifest=dataset.manifest, mode=mode)
                 reports.append(
                     {
                         "results_path": str(path),
                         "results_hash": canonical_hash(raw),
                         "configuration_id": configuration_id,
+                        "mode": mode,
                         "report": report.model_dump(),
                     }
                 )
