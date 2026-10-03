@@ -17,8 +17,10 @@ Once 1.0 ships, entries move under semver tags.
   storage secrets. Publish the six-verb Markdown summary and retain the JSON report for 30 days;
   fail on unclassified tokens and preserve diagnostic reports even when the report step fails.
   No producer, queue, model-call, quota, pipeline-version, or durable-state changes.
-  Live acceptance is blocked by the specified manifest-filtered restore path; the new workflow
-  also needs to be registered on main before its first manual Actions run.
+  Read append-only event keys directly: the snapshot manifest excludes them and previously
+  caused every selected file to be skipped. Bound concurrent downloads and count missing or
+  transiently unreadable files; propagate access-denied errors. The new workflow needs to be
+  registered on main before its first manual Actions run.
 
 - Capacity calculator review fixes: use committed Worker row-budget defaults and the same
   idle-cron/operational allowances in both current and proposed scenarios. The current stress

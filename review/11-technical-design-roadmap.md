@@ -1128,5 +1128,6 @@ The nine-secret read-only preflight selected 375 recent `state/run_events/` obje
 in the state manifest. `pull_state(..., only_paths=...)` honors that manifest and restores zero
 files, so the report has 375 skipped files and no events. A direct GET of the latest listed event
 succeeds. The proposed correction is confined to `ops/backlog_trend.py`: download the exact
-listed keys without the state snapshot manifest. This requires maintainer confirmation under
-review/50's stop-and-ask rule; shared `statesync.py` remains outside scope.
+listed keys without the state snapshot manifest. The maintainer approved the work needed to validate the catalog backlog on 2026-10-02. The
+correction reads exact listed keys with bounded concurrency in the backlog reader and adds
+regression coverage; shared `statesync.py` remains outside scope. The repeated nine-secret live read passed with zero skipped files, no unknown tokens, and seven days of events for each of six verbs. Agenda backlog 727 matches Actions run 37083865479. First manual Actions acceptance remains pending workflow registration on main.

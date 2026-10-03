@@ -196,7 +196,10 @@ The shadow prelabeler is correctly flagged: its lane is closed by its own daily 
 1. `site = load_site_config(--site-config)`; `storage = make_storage(site, site.get("base_url", ""), Path(--output-dir))` (same as `citypods/llm_tag_review.py::_paths`).
 2. `since = now − (window_days + 2) days`. List `storage.list_objects(f"{STATE_PREFIX}/run_events/")` and keep keys whose basename timestamp prefix
    (`YYYYMMDDTHHMMSS…`, the first 15 characters of the file name) is ≥ `since.strftime("%Y%m%dT%H%M%S")`. Keys sort lexicographically by time.
-3. `pull_state(storage, state_dir, only_paths=[rel, …])` with `rel = key[len(STATE_PREFIX)+1:]` (exact-key restore; no manifest needed), then `json.loads` each file;
+3. Download each listed key with `storage.get_file` into a temporary directory (bounded pool of
+   at most eight reads); use numeric local filenames rather than remote-key paths. Do not use
+   `pull_state`: the live snapshot manifest excludes these append-only events. Then `json.loads`
+   each downloaded file;
    unreadable or non-object files are skipped and counted in the output (`"skipped_files": N`), never fatal.
 4. `--state-dir DIR` skips storage and reads `DIR/run_events/*.json` directly (used by tests and local runs).
 
@@ -229,7 +232,10 @@ run the module with `--json "$RUNNER_TEMP/backlog_trend.json" --markdown "$RUNNE
 10. `test_action_split_ingress_vs_route_capacity` (≥ 50% `ingress_limited` gives `raise_ingress_quota`).
 11. `test_params_from_config_defaults_and_overrides` and `test_unknown_config_key_rejected`.
 12. `test_main_reads_state_dir_and_writes_json_and_markdown` (tmp dir with a few event files; asserts exit codes 0/1/2 including `--fail-on-unclassified`).
-13. `test_main_storage_path_uses_exact_keys` with a fake storage whose `list_objects` returns keys and whose `get_file` is recorded, asserting only keys at or after `since` are requested.
+13. `test_main_storage_path_uses_exact_keys` with a fake storage whose `list_objects` returns keys
+    and whose `get_file` is recorded, asserting only keys at or after `since` are requested and no
+    snapshot manifest is consulted. Missing/transient downloads count as skipped; access denial
+    remains an error rather than an empty report.
 
 ## Acceptance criteria
 
@@ -278,3 +284,36 @@ Read [AGENTS.md](../AGENTS.md) "Implementing from a breakout doc: stop and ask" 
 **Stop-and-ask checklist for this task:** the fixture or event shape differs from above; a golden value differs; a listed file would need a change outside "File-by-file changes"; the live workflow shows `skipped_files` above 0, an unclassified token, or a verb with no events; storage listing or restore behaves differently from "Reading events"; anything would require credentials other than the nine storage secrets listed.
 
 **Definition of done:** the acceptance criteria above, all tests and lint green (or the same pre-existing failure only), docs updated, the PR description lists any follow-ups noticed and every question that was asked and answered.
+
+
+## Approved PR2 restore correction (2026-10-02)
+
+The maintainer authorized the work needed to validate the catalog backlog after PR2's preflight
+found 375 listed event files but zero members in the live state manifest. A direct GET succeeds;
+the existing `pull_state(..., only_paths=...)` honors that manifest and restores nothing.
+PR2 may therefore correct `citypods/ops/backlog_trend.py` and `tests/test_backlog_trend.py` to read
+listed keys directly with bounded concurrency, without changing shared state-sync code or writing
+remote state. This supersedes the manifest-based restore instruction above and the workflow-only
+PR2 file scope for this specific correction. No provider/dispatch credentials are required.
+
+
+### Repeated live validation
+
+At 2026-10-03 04:04:50 UTC (October 2 in America/Chicago), the corrected reader ran successfully
+with only the nine specified storage secrets: `skipped_files=0`, no unclassified tokens, and
+seven event days for every verb. The agenda backlog of 727 matches the summary and `llm-pending`
+count in [Actions run 37083865479](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37083865479).
+
+| Verb | Latest working backlog | Trend | Separate blocked/held/error counts |
+|---|---:|---|---|
+| chapter-agenda | 727 | shrinking | none |
+| chapter-locator | 2,628 | growing | none; 2,133 of working backlog is ingress-limited |
+| tagger | 34 | growing | blocked 2 |
+| prelabeler | 86 | shrinking | none |
+| prelabeler-shadow | 125 | growing | none; all 125 working backlog is ingress-limited |
+| moments | 905 | growing | policy-held 291; errored 4 |
+
+These are latest per-verb run snapshots, not a sum of unique meetings across lanes. Tagger,
+prelabeler, shadow and moments throughput remain marked unreliable under the P0 design; their
+reported drain estimates do not establish achieved meeting throughput. No quotas were changed.
+First manual Actions acceptance still follows workflow registration on the default branch.
