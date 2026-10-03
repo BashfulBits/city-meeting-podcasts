@@ -91,6 +91,10 @@ three verified committee recordings. Exact labels exclude the Open House; CPC du
 remain in [#1991](https://github.com/BashfulBits/city-meeting-podcasts/issues/1991). This does not
 complete the city baseline or the approved public-input migration.
 
+P0's [Pflugerville BOA batch](pflugerville-boa-coverage-2026-10.md) prepares one named-body
+decision with ten retained recording identities, full source replay and fifteen regression cases.
+Older media availability remains explicit; this does not certify the full city baseline.
+
 P0's exact-label selector prerequisite separates bare committee names from distinct public-input
 formats. It preserves the source namespace/UIDs and does not change any existing feed configuration.
 
