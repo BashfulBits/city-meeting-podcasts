@@ -17,6 +17,19 @@ Once 1.0 ships, entries move under semver tags.
   No city groups are activated. Configured selection enters render/search cache fingerprints;
   unconfigured views retain existing hashes. No pipeline-version bump or audio backfill occurs.
 
+- **Daily per-verb LLM backlog report (GH#1969, review/50 PR2).**
+  Add the read-only 00:20 UTC/manual workflow over durable `run_events/`, using only the nine
+  storage secrets. Publish the six-verb Markdown summary and retain the JSON report for 30 days;
+  report unknown tokens without failing the schedule; preserve reports after report-step failures.
+  No producer, queue, model-call, quota, pipeline-version, or durable-state changes.
+  Read append-only event keys directly: the snapshot manifest excludes them and previously
+  caused every selected file to be skipped. Bound concurrent downloads and count missing or
+  transiently unreadable files; propagate access-denied errors. PR #1983 merged and its first manual
+  Actions acceptance passed on 2026-10-04 (run 37179726987, zero skipped files/unknown tokens). Discover registry purposes and LLM
+  stage snapshots automatically, identify retired/unregistered/unmeasured rows, and suppress
+  recommendations when attribution is incomplete. Shared-stage purposes without distinct telemetry
+  are listed with null backlog. Strict unknown-token checking remains an opt-in CLI diagnostic.
+
 - Remedy evaluations report only applied reasoning controls and reject physical-route allowlists
   on deferred inference paths; immediate evaluation routing remains supported.
 

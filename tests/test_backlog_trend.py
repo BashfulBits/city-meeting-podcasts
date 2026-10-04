@@ -242,7 +242,8 @@ def test_main_reads_state_dir_and_writes_json_and_markdown(tmp_path, monkeypatch
         "--markdown",
         str(markdown),
     ]
-    assert trend.main(args) == 2
+    assert trend.main(args) == 0
+    assert trend.main([*args, "--fail-on-unclassified"]) == 2
     (directory / "good.json").write_text(json.dumps(event(reasons={"llm-pending": 5})))
     (directory / "old.json").write_text(json.dumps(event(1)))
     (directory / "broken.json").write_text("bad json")
@@ -262,7 +263,7 @@ def test_main_reads_state_dir_and_writes_json_and_markdown(tmp_path, monkeypatch
 
 
 def test_main_storage_path_uses_exact_keys(tmp_path, monkeypatch):
-    """Restore only selected event keys at or after the timestamp cutoff."""
+    """Read exact event keys even when the snapshot manifest excludes append-only events."""
     from citypods import storage
 
     monkeypatch.setattr(trend, "_now", lambda: NOW)
@@ -283,10 +284,9 @@ def test_main_storage_path_uses_exact_keys(tmp_path, monkeypatch):
             return [(key, NOW) for key in keys]
 
         def get_file(self, key, local_path):
-            """Record exact restores and simulate an absent manifest plus event downloads."""
+            """A snapshot manifest must not be consulted for the listed append-only events."""
             requested.append(key)
-            if key == "state/catalog/manifest.json":
-                return False
+            assert key in keys[1:]
             local_path.parent.mkdir(parents=True, exist_ok=True)
             day = 21 if "boundary" in key else 30
             local_path.write_text(json.dumps(event(day, hour=12)))
@@ -296,7 +296,7 @@ def test_main_storage_path_uses_exact_keys(tmp_path, monkeypatch):
     output = tmp_path / "report.json"
     assert trend.main(["--site-config", str(config), "--json", str(output)]) == 0
     assert listed == ["state/run_events/"]
-    assert sorted(key for key in requested if "/run_events/" in key) == keys[1:]
+    assert sorted(requested) == keys[1:]
     assert json.loads(output.read_text())["skipped_files"] == 0
 
 
@@ -319,3 +319,123 @@ def test_growing_unreliable_verb_with_zero_latest_backlog(verb, token):
     assert report.constrained is True
     assert report.action is None
     assert set(reports) == set(trend.VERBS)
+
+
+@pytest.mark.parametrize("failure", ["missing", "transient", "denied"])
+def test_main_remote_event_download_failures(tmp_path, monkeypatch, failure):
+    from botocore.exceptions import ClientError, ReadTimeoutError
+
+    from citypods import storage
+
+    monkeypatch.setattr(trend, "_now", lambda: NOW)
+    config = tmp_path / "site.yml"
+    config.write_text("{}\n")
+
+    class FakeStorage:
+        def list_objects(self, prefix):
+            return [("state/run_events/20260930T000000-new.json", NOW)]
+
+        def get_file(self, key, path):
+            if failure == "missing":
+                return False
+            if failure == "transient":
+                raise ReadTimeoutError(endpoint_url="https://storage.invalid")
+            raise ClientError({"Error": {"Code": "AccessDenied"}}, "GetObject")
+
+    monkeypatch.setattr(storage, "make_storage", lambda *args: FakeStorage())
+    output = tmp_path / "report.json"
+    if failure == "denied":
+        with pytest.raises(ClientError):
+            trend.main(["--site-config", str(config), "--json", str(output)])
+        assert not output.exists()
+    else:
+        assert trend.main(["--site-config", str(config), "--json", str(output)]) == 2
+        assert json.loads(output.read_text())["skipped_files"] == 1
+
+
+def test_registry_discovers_new_verbs_and_retirement_without_code_changes():
+    rows = [
+        {
+            "ts": NOW.isoformat(),
+            "lane": "new-task",
+            "outcome": "completed",
+            "stages": {"new_task": {"ran": 2, "defer_reasons": {"llm-pending": 7}}},
+        }
+    ]
+    specs, tokens, lifecycle = trend.discover_verbs(rows, {"llm_lanes": {"new-task": {}}})
+    report = trend.analyze(rows, "new-task", trend.BacklogParams(), specs=specs, tokens=tokens)
+    assert report.backlog == 7
+    assert lifecycle["new-task"] == "active"
+    assert lifecycle["tagger"] == "retired"
+    specs, tokens, lifecycle = trend.discover_verbs(rows, {"llm_lanes": {}})
+    assert lifecycle["new-task:new_task"] == "unregistered"
+    assert (
+        trend.analyze(
+            rows, "new-task:new_task", trend.BacklogParams(), specs=specs, tokens=tokens
+        ).backlog
+        == 7
+    )
+
+
+def test_registered_purpose_without_telemetry_is_visible():
+    specs, _, lifecycle = trend.discover_verbs([], {"llm_lanes": {"new-shared-purpose": {}}})
+    assert "new-shared-purpose" in specs
+    assert lifecycle["new-shared-purpose"] == "no_telemetry"
+
+
+def test_unknown_tokens_do_not_fail_scheduled_report_or_recommend_capacity(tmp_path, monkeypatch):
+    monkeypatch.setattr(trend, "_now", lambda: NOW)
+    config = tmp_path / "site.yml"
+    config.write_text("llm_lanes:\n  chapter-agenda: {}\n")
+    directory = tmp_path / "run_events"
+    directory.mkdir()
+    for day in range(24, 31):
+        row = event(day, verb="chapter-agenda", reasons={"llm-pending": day * 10})
+        row["stages"]["chapter_agenda"]["defer_reasons"]["new-token"] = 3
+        (directory / f"{day}.json").write_text(json.dumps(row))
+    output = tmp_path / "report.json"
+    args = ["--site-config", str(config), "--state-dir", str(tmp_path), "--json", str(output)]
+    assert trend.main(args) == 0
+    report = json.loads(output.read_text())
+    assert report["unclassified_tokens"]["chapter_agenda"] == {"new-token": 3}
+    assert report["verbs"]["chapter-agenda"]["action"] is None
+    assert report["verbs"]["chapter-agenda"]["constrained"] is False
+    assert trend.main([*args, "--fail-on-unclassified"]) == 1
+
+
+def test_distinct_lanes_with_same_stage_keep_token_ownership():
+    rows = [
+        {
+            "ts": NOW.isoformat(),
+            "lane": lane,
+            "outcome": "completed",
+            "stages": {"new_stage": {"defer_reasons": {"llm-pending": count}}},
+        }
+        for lane, count in [("lane-a", 3), ("lane-b", 8)]
+    ]
+    specs, tokens, lifecycle = trend.discover_verbs(rows, {"llm_lanes": {}})
+    reports = {
+        verb: trend.analyze(rows, verb, PARAMS, specs=specs, tokens=tokens)
+        for verb in ["lane-a:new_stage", "lane-b:new_stage"]
+    }
+    assert reports["lane-a:new_stage"].backlog == 3
+    assert reports["lane-b:new_stage"].backlog == 8
+    assert lifecycle["lane-a:new_stage"] == "unregistered"
+
+
+def test_multiple_stages_cannot_be_attributed_to_one_registry_purpose():
+    rows = [
+        {
+            "ts": NOW.isoformat(),
+            "lane": "new-task",
+            "outcome": "completed",
+            "stages": {
+                stage: {"defer_reasons": {"llm-pending": count}}
+                for stage, count in [("first", 3), ("second", 8)]
+            },
+        }
+    ]
+    specs, _, lifecycle = trend.discover_verbs(rows, {"llm_lanes": {"new-task": {}}})
+    assert lifecycle["new-task"] == "no_telemetry"
+    assert "new-task:first" in specs
+    assert "new-task:second" in specs
