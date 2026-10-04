@@ -18,7 +18,7 @@ Once 1.0 ships, entries move under semver tags.
   hosted-runner compatibility. No Python/Worker dependency, image, model, pipeline-version or
   artifact changes; stored artifacts stay valid and no backfill is triggered.
 
-- **Purpose-bound LLM telemetry (GH#2001, review/52).** Require producer, accounting unit,
+- **Purpose-bound LLM telemetry (GH#2001, PR #2004, review/52; merged 2026-10-04).** Require producer, accounting unit,
   completion and coverage contracts in every LLM lane registration. Shared work handles count
   eligibility before caps, deduplicate episode/batch replay, record submission outcomes, and count
   validated producer consumption separately from backend responses or cached reuse. Production
