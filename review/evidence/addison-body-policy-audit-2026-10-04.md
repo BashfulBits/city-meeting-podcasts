@@ -1026,3 +1026,11 @@ Swearing-in56023/1f50e2274a6dd26c is an explicitly named ceremony. Approved glob
 
 
 Review hold lifted by maintainer; code reviews resume with repository-wide65-minute spacing.
+
+
+Council ownership correction (#2015) prepared/unmerged:25 proved exact aliases replace broad
+substrings;549->501 selector replay removes47 P&Z-only work sessions and one ceremony,
+preserving all genuine Council/joint memberships, records, UIDs and hosted audio. P&Z search
+attribution is corrected where Council previously matched incorrectly. TIRZ stays in Council
+until its separate #2017 correction. Registered cases remain open until human merge/deployment.
+No audio invalidation, pipeline changes or backfill. Full checks precede push/review.
