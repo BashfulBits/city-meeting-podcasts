@@ -12,6 +12,19 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Purpose-bound LLM telemetry (GH#2001, review/52).** Require producer, accounting unit,
+  completion and coverage contracts in every LLM lane registration. Shared work handles count
+  eligibility before caps, deduplicate episode/batch replay, record submission outcomes, and count
+  validated producer consumption separately from backend responses or cached reuse. Production
+  stages and research traversals emit aggregate purpose snapshots through existing append-only run
+  events. Reports automatically discover new/retired purposes, retain legacy events, and require
+  complete catalog/shard coverage for capacity recommendations. Research sample units stay explicit.
+  Blocked research pairs retain both order-swapped assessment identities when retried.
+  Cached tag census initializes taxonomy/evaluation inputs before classifying retained work;
+  malformed shard scopes and episodes without identities are skipped safely.
+  No model, recipe, pipeline-version, quota, Worker, dependency or artifact changes; stored artifacts
+  remain valid and no backfill is triggered. Telemetry begins with new runs.
+
 - Prepare Foundation's approved existing-UID publication selection: three historical recordings
   appear once in dedicated/combined public views, with raw records and pages retained. Correct
   retirement inferred from old clips using current official board activity. Configured proof changes

@@ -30,6 +30,11 @@ maintenance, resolving known rules before model calls while requiring verified l
 Alias qualification is narrow and reviewed; incomplete archives require documented exceptions;
 TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues.
 
+Purpose-bound telemetry follow-on **GH#2001** is in implementation under
+[review/52](review/52-purpose-work-telemetry.md), following the maintainer's request on 2026-10-04.
+It enforces producer/unit/coverage contracts, shared submission tracking and automatic report discovery
+without promoting the later incremental eligibility ledger or changing P1–P7 sequencing.
+
 ## Recently shipped (summary)
 
 - **P0 LLM backlog trend:** daily/manual read-only reporting shipped in

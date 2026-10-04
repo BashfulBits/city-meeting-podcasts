@@ -30,6 +30,7 @@ from citypods.compute.llm import (
 from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.llm_submission_telemetry import record_stage_activity
+from citypods.compute.llm_work import LLMWorkTracker, tracked_producer, write_run_event
 from citypods.compute.structured import parse_structured_json, register_response_model
 from citypods.config import load_city_configs, load_site_config
 from citypods.records import iter_records, record_to_episode, source_key
@@ -578,7 +579,15 @@ def package_ticket(*, site_config_path: str, config_dir: str, output_dir: str, o
     return 0
 
 
-def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int) -> int:
+@tracked_producer("tournament")
+def run(
+    *,
+    site_config_path: str,
+    config_dir: str,
+    output_dir: str,
+    samples: int,
+    tracker: LLMWorkTracker | None = None,
+) -> int:
     from citypods.compute.llm import dispatch_v2_ingress_open
 
     # This weekly producer owns two independent ingress lanes. Check both before restoring the
@@ -674,6 +683,9 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
     # Run-scoped, per-model backends. Every queue-only job this run creates -- candidate
     # generation for each contestant and each pairwise comparison -- is collected here and
     # submitted in one bounded batch per model at the end, instead of one Worker request per job.
+    tracker = tracker or LLMWorkTracker()
+    for purpose in ("tournament:tag", "tournament:tag-judge"):
+        tracker.activate(purpose, producer="tournament")
     backends = PerModelBatchingBackends(lambda model: _backend(model, storage))
     # Comparison submissions that failed outright. These come back from `dispatch_job_batch` as
     # per-item Exceptions and are recorded against their own comparison below, so they never reach
@@ -698,17 +710,21 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
         outputs: dict[str, Any] = {}
         contest_failed = False
         for model in MODELS:
+            work = tracker.item(
+                "tournament:tag", f"{ep.uid}:{chapter_id}:{model}", producer="tournament"
+            )
             if model == "gemini/gemini-3.1-flash-lite":
                 persisted = persisted_r5_flash_output(record, chapter_id)
                 if persisted is not None:
                     outputs[model] = persisted
+                    work.consumed(reused=True)
                     continue
             recipe = _digest(
                 {"v": 2, "uid": ep.uid, "chapter_id": chapter_id, "model": model, "source": source}
             )
             try:
                 _, chapter_tags, pending, _ = llm_tag_suggestions(
-                    backends.collecting(model),
+                    work.backend(backends.collecting(model)),
                     taxonomy=taxonomy,
                     agenda_item_titles="",
                     agenda_text="",
@@ -727,9 +743,12 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                 # reason to crash the whole tournament (see scripts/city_discovery.py for the
                 # same pattern). A genuine config bug still raises unhandled, failing loudly.
                 print(f"llm-tournament: skipping {ep.uid!r} ({model}): {exc}")
+                work.defer("errored")
+                tracker.partial("tournament")
                 contest_failed = True
                 break
             if pending:
+                work.defer("queued")
                 # Keep going rather than breaking. Every contestant's job is built against the
                 # run-scoped collector, which hands back a provisional handle for anything not yet
                 # resolved -- so the FIRST unresolved contestant makes every later one "pending"
@@ -739,7 +758,11 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                 # output.
                 continue
             outputs[model] = chapter_tags.get(chapter_id, [])
+            work.consumed()
         if contest_failed or len(outputs) != len(MODELS):
+            # Queued contestants remain queued. Coverage is partial because judge comparison
+            # identities below depend on outputs and have not yet been enumerated for this sample.
+            tracker.partial("tournament")
             continue
         # Pass 1: for each of the 12 comparisons (6 CONTESTS x 2 order-swapped pairs), reuse a
         # prior resolved decision from state if there is one, otherwise build its job without
@@ -767,6 +790,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                     second_model=second,
                     judge_model=judge,
                 )
+                work = tracker.item("tournament:tag-judge", comparison_key, producer="tournament")
                 slot = len(decisions)
                 decisions.append(None)
                 prior_comparison = comparison_store.get(comparison_key)
@@ -777,6 +801,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                     prior_record = prior_comparison.get("decision_record")
                     if isinstance(prior_record, dict):
                         decisions[slot] = dict(prior_record)
+                        work.consumed(reused=True)
                         reused_comparisons += 1
                         continue
                     # A hand-repaired or partially-written state entry must not make a sample
@@ -791,6 +816,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                     recipe_hash=comparison_key,
                     candidate_models=(left, right),
                 )
+                job = work.bind(job)
                 to_dispatch.append(
                     _PendingComparison(slot, comparison_key, job, left, right, judge, first)
                 )
@@ -804,6 +830,10 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
             group = [item for item in to_dispatch if item.judge == judge]
             results = dispatch_job_batch(backends.collecting(judge), [item.job for item in group])
             for item, result in zip(group, results, strict=True):
+                work = tracker.item(
+                    "tournament:tag-judge", item.comparison_key, producer="tournament"
+                )
+                work.result(item.job, result)
                 if isinstance(result, JobHandle):
                     comparison_store[item.comparison_key] = {
                         "status": "pending",
@@ -832,7 +862,12 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                         "subject_id": f"{ep.uid}:{chapter_id}",
                         "decision_record": decision_record,
                     }
+                    if decision is not None:
+                        work.consumed()
+                    else:
+                        work.defer("errored")
                 else:
+                    work.defer("errored")
                     # dispatch_job_batch's own contract: anything that isn't a JobResult/JobHandle
                     # is the Exception sentinel for this one comparison's own failed submission
                     # (e.g. LLMBackendError) -- same per-comparison isolation the old code's
@@ -901,7 +936,8 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
-    push_state(storage, state_dir, only_paths=[STATE])
+    event = write_run_event(tracker, state_dir, "tournament")
+    push_state(storage, state_dir, only_paths=[STATE, event])
     print(f"llm-tournament: completed {completed} sample(s)")
     if submit_errors:
         # A failed submission is not a deferral: nothing is queued, so no later run picks it up
