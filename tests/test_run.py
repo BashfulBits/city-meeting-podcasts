@@ -4009,6 +4009,11 @@ def test_publication_unavailable_preferred_never_promotes_alternate(tmp_path):
     preferred.media_availability = MediaAvailability(state=MISSING, reason="official unavailable")
     preferred.hosted_audio_url = None
     output = tmp_path / "docs"
+    city_dir = output / city.slug
+    city_dir.mkdir(parents=True)
+    (city_dir / "audio_feed.xml").write_text(
+        f"<rss><channel><item><guid>{alternate.uid}</guid></item></channel></rss>"
+    )
     result, _ = run._process_city(
         city,
         "https://example.gov",
@@ -4023,7 +4028,8 @@ def test_publication_unavailable_preferred_never_promotes_alternate(tmp_path):
     )
     assert result.status == "built"
     feed = output / city.slug / "audio_feed.xml"
-    rss = feed.read_text() if feed.exists() else ""
+    rss = feed.read_text()
+    assert "<channel>" in rss
     assert "<item>" not in rss
     assert alternate.uid not in rss
     for episode in episodes:
