@@ -1465,3 +1465,94 @@ state this limitation. Registered missing UIDs still appear in missing_registere
 Uncovered recordings with an evidenced resolved disposition remain reported with that disposition
 so approved exclusions are distinguishable without hiding archived records. Resolve does not
 mean silently erase. Do not overwrite the register or source files with the output path.
+
+
+## Review hold lifted — maintainer direction2026-10-04
+
+The maintainer explicitly lifted the classification review hold and requested CodeRabbit review
+for non-documentation PRs while follow-on corrections proceed in parallel. Earlier hold text
+records historical context and is superseded. Skip new documentation-only review requests.
+Repository-wide full/incremental requests still require65-minute spacing and pending-request
+checks. Human verification and merge commits remain required. #2003 is ready on036beb68:
+reviewed production configuration is unchanged after two acknowledged/resolved small fixes.
+#2010 full review requested19:50:57UTC; #2012/#2014 await their spaced requests.
+
+## Addison Council ownership correction — L3 (#2015)
+
+Approved body/event policy applies: exactly47 P&Z work sessions and one ceremony leave Council.
+Replace body/body_any with the complete exact alias list below; keep source URL, metadata and
+all four body_includes unchanged, including TIRZ until #2017.
+
+```yaml
+body_exact:
+  - "2025 City Council Strategic Planning Session"
+  - "2026 City Council Strategic Planning Session"
+  - "Budget Meeting"
+  - "Combined Meeting"
+  - "Council Strategic Planning Day 1 & 2"
+  - "Fiscal Year 2023-2024 Budget Workshop"
+  - "Fiscal Year 2024-2025 Budget Workshop"
+  - "Joint CPAC, P&Z, and City Council Meeting #1"
+  - "Joint CPAC, P&Z, and City Council Meeting #2"
+  - "Joint City Council and Planning & Zoning Commission Meeting"
+  - "Joint P&Z and City Council Meeting #1"
+  - "Regular City Council"
+  - "Regular City Council Meeting"
+  - "Special Budget Meeting"
+  - "Special Council"
+  - "Special Emergency Meeting"
+  - "Special Meeting"
+  - "Special Meeting and Work Session"
+  - "Special Meeting-Tax Rate & Budget Public Hearing"
+  - "Special Work Session"
+  - "Tax & Budget Public Hearing"
+  - "Tax Rate Public Hearing"
+  - "Work Session"
+  - "Work Session - Economic Development Strategic Plan"
+  - "Work Session and Regular Meeting"
+```
+
+Files: Council feed YAML, tests/fixtures/addison-council-retained.json (549 lightweight actual
+records), tests/test_addison_council_ownership.py (actual config549->501 replay, exact negatives,
+P&Z preservation, genuine joints/UID/RSS/audio/search/raw-identity invariants), case register,
+body-policy audit, review/11, this contract, CHANGELOG, ARCHITECTURE and ROADMAP.
+Full822 local replay changes no other feed memberships. Update47 P&Z and ceremony cases with
+evidenced prepared dispositions, retaining IDs/research history; do not claim deployment.
+Official representative agenda proof for24 aliases and shared GUID/date/video identity proof for
+Regular City Council Meeting399077 are recorded in the audit. Keep future year aliases visible
+until evidenced, rather than restoring broad fiscal/strategic wildcards.
+
+## Addison Bond family — L3 (#2016)
+
+Create config/feeds/addison-tx-bond-committees.yml, city addison-tx, provider swagit,
+meeting_family bond; slug addison-tx-bond-committees; same Swagit list URL128, body_exact
+list containing only Bond Advisory Committee. Display Addison: Bond Committees, author
+City of Addison, TX, empty email; describe the verified2026 Police/Courts program. No broad
+Bond substring, lifecycle assertion, publication groups or pending P2 schema.
+Four official dated GUIDs359742/361917/362796/371625 bind existing UID/audio records.
+Tests/fixtures/addison-bond-retained.json contains their minimal original metadata/audio;
+tests/test_addison_bond_family.py loads actual config and verifies four memberships, original
+RSS identities/enclosures, near-match/topic negatives, unchanged raw records and corrected
+canonical search owner. Existing unmatched search fallback is BZA; it intentionally becomes Bond,
+not a claimed preservation of that erroneous attribution. Full822 replay adds only these four
+new-feed memberships; existing feed membership sets remain identical. Update the four cases
+with evidenced prepared dispositions, retaining records. Lifecycle/audit files as in #2015.
+
+## Addison TIRZ board — L3 (#2017)
+
+Create config/feeds/addison-tx-tif.yml, city addison-tx, provider swagit, meeting_family tif,
+slug addison-tx-tif, same Swagit list URL128; source.body_exact LIST contains only
+TIRZ #1 Board Meeting (not a boolean). Display Addison: TIF Meetings, author City of Addison,
+TX, empty email; describe public tax increment financing/reinvestment-zone board recordings.
+Use existing remedy_policy aggregate_family tif and member_names list containing TIRZ #1.
+Remove only GUID394474 from Council body_includes, preserving all other selectors/metadata.
+Tests/fixtures/addison-tirz-retained.json contains its original minimal metadata/audio;
+tests/test_addison_tirz_family.py loads actual config and verifies Council->TIF membership and
+canonical search correction, original UID/enclosure, exact negatives/topic exclusion and raw
+record preservation. Official cached dated board agenda supplies proof; full822 replay moves
+only UID757ab2a4aaf9bbca. Update that case with prepared disposition; lifecycle/audit as above.
+
+All three slices prohibit runtime/provider/storage/stage/record-schema/dependency/audio changes.
+No versions, invalidation or backfill; derived feed/search projections rebuild using existing
+hashes. Targeted tests plus full offline/Ruff/format and current CI required. Separate dependent
+PRs and human merge commits. The2016 joint singleton-owner question remains separately gated.

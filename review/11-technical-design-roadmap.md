@@ -1243,3 +1243,9 @@ once and reports unmatched raw recordings, assignment changes and missing regist
 Feed assignments mean selector eligibility under the supplied config snapshot, not verified live
 RSS exposure. Sources absent from local cache remain outside this snapshot. No legacy remedy
 dispatch or scheduled notification is enabled; P2a model-policy schemas remain independently gated.
+
+
+Maintainer lifted the review hold2026-10-04: code PRs receive spaced CodeRabbit reviews,
+documentation-only PRs skip new requests. Parallel follow-on L3 slices in review/51:
+#2015 Council ownership, #2016 Bond family, #2017 TIRZ board; exact files/tests and evidence
+are bounded there. Human merges only. The2016 joint search-owner decision remains pending.

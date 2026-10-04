@@ -982,3 +982,47 @@ The register records30 individually resolved Combined Meeting identities and fiv
 exclusions without deleting their records. Citizen Advisory and ambiguous older media remain open.
 CPC/Finance official meetings with no located recording remain documented evidence obligations
 here rather than fabricated UID entries. The CLI does not scrape, publish or trigger legacy remedy.
+
+
+## Council positive-alias proof for bounded #2015 correction
+
+## Evidence and positive-label proof
+
+Official agenda text was read from previously stored agenda-backup artifacts via validate_source_url with audio.citymeetings.fyi allowed host, no redirects, no credentials or writes. Each cached header names the Council; joint headers name all participating bodies. The complete30 Combined Meeting proof is already committed in the audit and remains authoritative. The regular399077 alias is additionally identity-bound to a Council-label record sharing GUID/date/video.
+
+| Exact label | Count | Representative GUID | Cached official agenda |
+|---|---:|---|---|
+| 2025 City Council Strategic Planning Session | 1 | 336861 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/dbe3234cb18c9884/backup-6e325d83c19217eb) |
+| 2026 City Council Strategic Planning Session | 1 | 374152 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/64d910657ceb47fa/backup-912e374253bc3c03) |
+| Budget Meeting | 2 | 55890 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/9d70bea2066389f7/backup-2dd818e1c8146126) |
+| Combined Meeting | 30 | 55599 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/e59549e833479e1d/backup-2a684b64e68a2c3f) |
+| Council Strategic Planning Day 1 & 2 | 1 | 297695 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/56ff95c049d1027e/backup-371521858fa3b3e1) |
+| Fiscal Year 2023-2024 Budget Workshop | 2 | 268810 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/20209034b0e4f7b9/backup-06f47bd3b20703f0) |
+| Fiscal Year 2024-2025 Budget Workshop | 1 | 311687 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/5768282805ed4de3/backup-3b0d64aa3d463c71) |
+| Joint CPAC, P&Z, and City Council Meeting #1 | 1 | 295839 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/fcc9bde16c7f47fe/backup-0239bd2236cc0926) |
+| Joint CPAC, P&Z, and City Council Meeting #2 | 1 | 310072 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/c95af66385f6cf31/backup-659d1a2490d1fdcf) |
+| Joint City Council and Planning & Zoning Commission Meeting | 7 | 55896 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/4112b5bc5a5be0ef/backup-12e0a1f3e015890d) |
+| Joint P&Z and City Council Meeting #1 | 1 | 276855 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/4ef85ec6540cf95b/backup-8928572f440c34ec) |
+| Regular City Council | 111 | 55817 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/4977cbe848f71af9/backup-d143c56e2c71fb8e) |
+| Regular City Council Meeting | 1 | 399077 | No cached agenda; see identity binding below |
+| Special Budget Meeting | 8 | 55895 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/5f9247d8b49ec33b/backup-4581448319abdcba) |
+| Special Council | 15 | 55850 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/dce4d5fc2550a32a/backup-7204471aa8470562) |
+| Special Emergency Meeting | 1 | 55874 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/276a0365c8ef32e0/backup-fb3258a08ff01fe4) |
+| Special Meeting | 36 | 55854 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/9fdab5a0104df0ef/backup-787380949ec33788) |
+| Special Meeting and Work Session | 15 | 55875 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/f4d4794bd811ca77/backup-b128bc67a413f324) |
+| Special Meeting-Tax Rate & Budget Public Hearing | 1 | 55887 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/5f830e631abdb6cc/backup-4a9f3f52c46a4de6) |
+| Special Work Session | 3 | 55886 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/e5cef2310da110c8/backup-5256db89dce9af23) |
+| Tax & Budget Public Hearing | 2 | 55893 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/b5430e76a3d766a0/backup-a05a6cd5d16193ae) |
+| Tax Rate Public Hearing | 1 | 55892 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/a946496c2bb4da38/backup-cb5f5f1bc239e128) |
+| Work Session | 23 | 55902 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/ea7bab8059305bd1/backup-791acca551da83b5) |
+| Work Session - Economic Development Strategic Plan | 1 | 55913 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/56e9ec0d67030444/backup-c57f22a9826c4b4e) |
+| Work Session and Regular Meeting | 234 | 55706 | [cached agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/bb69cb17f1a3966e/backup-1d09d516d624d3c2) |
+
+Regular City Council Meeting GUID399077: UID0901af8e58b8f0a2 and the existing Work Session and Regular Meeting UID35651c52b4a6834f share published2026-08-25 and https://addisontx.new.swagit.com/videos/399077/download. This is institutional alias corroboration, not permission to deduplicate records or audio. Both remain selected.
+
+PZ example394156/01960ed1399198df dated2026-07-21 has a cached official header PLANNING AND ZONING COMMISSION WORK SESSION, independently establishes separate body. Citation already committed in audit. The47 exact-label-class records stay in their existing PZ feed.
+
+Swearing-in56023/1f50e2274a6dd26c is an explicitly named ceremony. Approved global event policy excludes it from subscriptions only; raw archival pages remain.
+
+
+Review hold lifted by maintainer; code reviews resume with repository-wide65-minute spacing.
