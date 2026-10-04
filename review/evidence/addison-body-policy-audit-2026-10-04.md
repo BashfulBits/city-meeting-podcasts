@@ -843,3 +843,52 @@ or a compiled presentation. Do not spend ASR/provider quota without the relevant
 Existing `collect_unexpected_bodies` does not meet this contract: it suppresses archived labels
 and already-covered records. This is a tracked implementation gap under review/51 P2 evidence,
 not a claim that the current automation already performs complete unresolved sweeps.
+
+## #2009 local implementation and retained replay
+
+The approved Public Input rename retains the existing slug/URL and Citizen Advisory identity.
+The educational seminar GUID304981 moves to Public Briefings; explicit events56020/56021/56022/
+56024/56025 leave those subscriptions. Both formal Appeals functions retain their existing feed
+with a clear display title. Raw records/UIDs/audio are untouched.
+
+The verified [seminar page](https://addisontx.new.swagit.com/videos/304981) contains educational
+presentations from homelessness-service representatives, supporting briefing rather than Council
+classification. Other named ceremonies/events appear individually in the official Community
+Events archive; exclusion is subscription-only and does not delete the historical record.
+
+The remaining municipal-media56026/56027/56028 and applicant/staff presentations are active
+recording-evidence tasks. P&Z47 Council leakage, four missing Bond subscriptions, TIRZ ownership,
+missing proven joint subscriptions and generic-label evidence remain open corrections; this
+bounded implementation does not claim all Addison policy work is finished.
+
+Read-only complete replay for #2009: all 822 raw records/62 labels were preserved. Public Input
+selects 50 records versus the previous56; the six departures are the one briefing and five
+explicit events listed above. Public Briefings selects the same existing seminar UID exactly
+once. Every other Addison feed's selected UID set is unchanged, including BZA/Appeals.
+These are selector counts, not a claim that every selected audio object is publicly available.
+
+Outstanding historical corrections remain concrete:
+
+| Case | Stable evidence | Next action |
+|---|---|---|
+| Citizen Advisory compilation | UID63b22f80ce9500ff, GUID56029, ten retained parts | Reconcile provider eleven-item listing and bind program report; keep Public Input |
+| Named P&Z work sessions | 47 retained records; example394156 | Narrow Council complete-label rules, preserve P&Z |
+| Three proven missing joint subscriptions | GUID295839/310072/276855 | Add exact participating feed bindings; retain canonical owners |
+| Older joint variant | GUID55634, September19,2016 | Retrieve official agenda; Council currently missing |
+| Bond committee recordings | GUID359742/361917/362796/371625 | Implement reviewed bond-family config; distinguish Council reports |
+| TIRZ recording | GUID394474, UID757ab2a4aaf9bbca | Bind board agenda, route to TIF family rather than Council |
+| Council swearing-in ceremony | GUID56023, UID1f50e2274a6dd26c | Remove ceremony eligibility with narrow Council selector replay |
+| Municipal media | GUID56026/56027/56028 | Inspect actual content, decide briefing/input versus promotion |
+| Applicant/staff presentations | GUID56060/56059 | Bind proceeding/public participation; choose family |
+| Combined Meeting alias | Thirty2013–15 records | Establish convened institutions from dated agenda records |
+| Finance/CPC media gaps | Official held dates; no located recording | Reconcile agenda census/provider views, report unavailable media |
+
+These cases stay visible regardless of age, current matching or archive presence. #1623 remains
+the historical coverage tracker; #2009 is the bounded implementation tracker. No sweep runtime
+change is included, and the future sweep must consume these existing obligations rather than
+only look for labels newly appearing after deployment.
+
+#2009 validation: 4,841 offline tests passed, 14 live tests deselected; 213 targeted publication
+and config-editor tests passed. Whole Ruff/format and diff checks passed. No production write,
+provider media download, LLM/ASR call, audio invalidation or CodeRabbit request occurred.
+Historical obligations were also posted to #1623 in comment5983390336.

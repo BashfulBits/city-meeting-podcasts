@@ -1249,3 +1249,11 @@ media URLs directly via libavformat, bypassing that cap entirely. `citypods.http
 `source_media_max_bytes` ceiling before any ffmpeg process starts; a source that honestly discloses an
 oversized total raises `MediaSourceTooLargeError` and is never retried unguarded. An unverifiable size is
 logged and allowed through — nothing can enforce a cap on bytes ffmpeg itself will fetch regardless.
+
+Addison's prepared public-input migration (#2009, unmerged) retains the Town Meetings slug/URL
+while displaying Public Input. Its 2007 Citizen Advisory recording retains the same UID and audio;
+the separately verified educational seminar uses Public Briefings. Five explicit ceremony/event
+inclusions leave these podcast projections, with stored records and raw pages preserved.
+Zoning Adjustment & Appeals remains one formally combined subscription at its existing URL.
+Historical ambiguous recordings retain active census obligations; this does not implement the
+separately gated P2 unresolved-episode sweep or claim complete Addison ownership correction.

@@ -29,6 +29,10 @@ Maintainer preference (2026-10-04): continuing standing committees, including Co
 have dedicated feeds across cities; seasonal activity does not imply a temporary committee.
 Addison CPC's dedicated-feed revision is under validation in #2003, with historical recording gaps
 explicitly retained in its evidence packet. Temporary programs keep their approved family policy.
+Addison's approved Public Input/Briefings and combined Appeals presentation is being implemented
+in the bounded #2009 slice; existing URLs and historical Citizen Advisory identity remain.
+Known historical ambiguity is tracked independently of new-body discovery.
+
 Approved policy templates and cross-city regression cases will serve both onboarding and
 maintenance, resolving known rules before model calls while requiring verified local identity.
 Alias qualification is narrow and reviewed; incomplete archives require documented exceptions;

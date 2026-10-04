@@ -614,3 +614,86 @@ def test_addison_cpc_new_unique_recording_classifies_without_identity_merge():
     assert next(item for item in plan.public_items if item.uid == uid).audio_url is None
     assert len(plan.public_items) == 6
     assert records == original
+
+
+def test_addison_public_input_migration_preserves_historical_recording_and_routes_briefing():
+    """Approved feed migration preserves Citizen Advisory identity and hosted audio."""
+    import defusedxml.ElementTree as DET
+
+    from citypods import bodies
+    from citypods.config import load_city_configs
+    from citypods.feeds import build_rss
+    from citypods.records import record_to_episode, source_key
+
+    cities = load_city_configs(ADDISON_ROOT / "config", {})
+    public_input = next(c for c in cities if c.slug == "addison-tx-town-meetings")
+    briefings = next(c for c in cities if c.slug == "addison-tx-public-briefings")
+    records = json.loads(
+        (ADDISON_ROOT / "tests/fixtures/addison-public-input-retained.json").read_text()
+    )["records"]
+    original = copy.deepcopy(records)
+    index = load_selection_index(cities)
+    assert public_input.podcast_title == "Addison: Public Input"
+    assert source_key(public_input) == source_key(briefings) == ADDISON_CPC_SOURCE
+    assert public_input.extra["meeting_family"] == "public_input"
+    assert briefings.extra["meeting_family"] == "public_briefings"
+
+    def selected(city):
+        return {
+            uid: r
+            for uid, r in records.items()
+            if bodies.record_matches_body(
+                r,
+                bodies.source_body_filter(city.source),
+                bodies.source_body_inclusions(city.source),
+            )
+        }
+
+    citizen_uid = "63b22f80ce9500ff"
+    seminar_uid = "817ef9212ccc9ca0"
+    input_records = selected(public_input)
+    assert citizen_uid in input_records
+    assert seminar_uid not in input_records
+    assert set(selected(briefings)) == {seminar_uid}
+    excluded_guids = {"56020", "56021", "56022", "56024", "56025"}
+    assert not any(r["provider_guid"] in excluded_guids for r in input_records.values())
+    # These older media cases remain visible for investigation, rather than silently disappearing.
+    assert {"56026", "56027", "56028"} <= {r["provider_guid"] for r in input_records.values()}
+    for city in (public_input, briefings):
+        filtered = selected(city)
+        plan = select_feed_publication(
+            index, city, [record_to_episode(r) for r in filtered.values()], records
+        )
+        assert not plan.held
+        xml = build_rss(city, list(plan.public_items), "audio", "https://www.citymeetings.fyi")
+        channel = DET.fromstring(xml).find("channel")
+        assert channel.find("title").text == f"{city.podcast_title} (Audio)"
+        rss_items = {i.find("guid").text: i for i in channel.findall("item")}
+        assert set(rss_items) == set(filtered)
+        uid = citizen_uid if city.slug == public_input.slug else seminar_uid
+        assert rss_items[uid].find("title").text == records[uid]["title"]
+        assert rss_items[uid].find("enclosure").get("url") == records[uid]["audio"]["url"]
+    selector = bodies.source_body_filter(briefings.source)
+    assert bodies.matches("HOMELESSNESS EDUCATION SEMINAR", selector)
+    assert not bodies.matches("Other City Homelessness Education Seminar", selector)
+    assert not bodies.matches("Homelessness Education Seminar Staff Training", selector)
+    assert records == original
+
+
+def test_addison_appeals_display_preserves_combined_institution_source():
+    """A formal dual-function board keeps its existing URL and both subscriptions."""
+    from citypods import bodies
+    from citypods.config import load_city_configs
+    from citypods.records import source_key
+
+    city = next(
+        c
+        for c in load_city_configs(ADDISON_ROOT / "config", {})
+        if c.slug == "addison-tx-board-of-zoning-adjustment"
+    )
+    assert city.podcast_title == "Addison: Zoning Adjustment & Appeals"
+    assert source_key(city) == ADDISON_CPC_SOURCE
+    selector = bodies.source_body_filter(city.source)
+    assert bodies.matches("Board of Zoning Adjustment", selector)
+    assert bodies.matches("Board of Appeals", selector)
+    assert not bodies.matches("Community Partnership Committee", selector)

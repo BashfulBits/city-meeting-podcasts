@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Prepare Addison's approved Public Input migration (#2009): preserve the Town Meetings URL
+  and historical Citizen Advisory UID/audio, move the verified homelessness seminar to Public
+  Briefings, and remove five explicit ceremony/event inclusions while preserving raw records.
+  Display the formally combined board as Zoning Adjustment & Appeals without changing its URL.
+  Older ambiguous recordings remain actively tracked. No audio/stage invalidation or backfill.
+
 - Prepare a dedicated Addison Community Partnership Committee feed: five recordings publish from six retained observations,
   using the approved July 9 UID while preserving the July 10 record and all old pages. Exact identity
   guards preserve the committee identity for future classification. Render/search caches rebuild for the configured proof;
