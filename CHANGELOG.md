@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Prepare Foundation's approved existing-UID publication selection: three historical recordings
+  appear once in dedicated/combined public views, with raw records and pages retained. Correct
+  retirement inferred from old clips using current official board activity. Configured proof changes
+  rebuild render/search outputs only; no audio/stage version bump or artifact backfill.
+
 - Add inactive publication-selection v1 machinery for #1997: strict reviewed proof declarations,
   existing UID projection and pre-write feed/search holds preserve raw records and meeting pages.
   No city groups are activated. Configured selection enters render/search cache fingerprints;

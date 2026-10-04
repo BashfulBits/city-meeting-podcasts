@@ -340,3 +340,117 @@ def test_identical_feed_groups_allow_one_search_owner_in_any_order(reverse):
     competing = replace(owner, slug="competing")
     with pytest.raises(ValueError, match="conflicting"):
         load_selection_index([owner, aggregate, competing])
+
+
+FOUNDATION_WINNERS = frozenset({"52ea444ed933464a", "c73dbd3dab9b14cc", "ccee5be42508e88d"})
+FOUNDATION_ALTERNATES = frozenset({"a54b5fc602d9e5c7", "85e716fc0a89c65a", "7d87cd30071ce800"})
+
+
+def _foundation_activation_packet():
+    from pathlib import Path
+
+    from citypods.config import load_city_configs
+
+    root = Path(__file__).resolve().parents[1]
+    fixture = json.loads(
+        (root / "tests/fixtures/arlington-foundation-publication.json").read_text()
+    )
+    cities = load_city_configs(root / "config", {})
+    foundation = next(c for c in cities if c.slug == "arlington-tx-arlington-tomorrow-foundation")
+    combined = next(c for c in cities if c.slug == "arlington-tx")
+    return fixture, cities, foundation, combined
+
+
+def test_foundation_approved_winners_render_record_backed_audio_and_video_rss():
+    from xml.etree import ElementTree
+
+    from citypods.bodies import filter_by_body, source_body_filter
+    from citypods.feeds import build_rss
+    from citypods.records import record_to_episode
+
+    fixture, cities, foundation, combined = _foundation_activation_packet()
+    records = fixture["records"]
+    before = copy.deepcopy(records)
+    index = load_selection_index(cities)
+    episodes = [record_to_episode(r) for r in records.values()]
+    for city in (foundation, combined):
+        items = filter_by_body(episodes, source_body_filter(city.source))
+        plan = select_feed_publication(index, city, items, records)
+        assert not plan.held, plan.diagnostics
+        assert set(plan.suppressed_uids) == FOUNDATION_ALTERNATES
+        assert source_key(city) == fixture["source_key"]
+        for kind in ("audio", "video"):
+            rss = ElementTree.fromstring(
+                build_rss(city, list(plan.public_items), kind, "https://www.citymeetings.fyi")
+            )
+            rss_items = rss.findall("channel/item")
+            uids = [item.findtext("guid") for item in rss_items]
+            assert len(uids) == len(set(uids))
+            assert set(uids) & (FOUNDATION_WINNERS | FOUNDATION_ALTERNATES) == FOUNDATION_WINNERS
+            if city.slug == foundation.slug:
+                assert set(uids) == FOUNDATION_WINNERS
+            for item in rss_items:
+                uid = item.findtext("guid")
+                if uid not in FOUNDATION_WINNERS:
+                    continue
+                enclosure = item.find("enclosure")
+                assert enclosure is not None
+                if kind == "audio":
+                    assert enclosure.attrib["url"] == records[uid]["audio"]["url"]
+    assert records == before
+    assert all(records[uid]["uid"] == uid for uid in FOUNDATION_WINNERS | FOUNDATION_ALTERNATES)
+    for group in foundation.extra["publication_selection"]["groups"]:
+        assert group["preferred_uid"] in FOUNDATION_WINNERS
+        for member in group["members"]:
+            assert (
+                record_identity_fingerprint(fixture["source_key"], records[member["uid"]])
+                == (member["record_fingerprint"])
+            )
+
+
+def test_foundation_shared_groups_have_one_search_owner_and_preserve_other_feeds():
+    from citypods.bodies import record_matches_body, source_body_filter, source_body_inclusions
+
+    fixture, cities, foundation, combined = _foundation_activation_packet()
+    records = fixture["records"]
+    for declared in ([foundation, combined], [combined, foundation]):
+        index = load_selection_index(declared)
+        plan = select_search_publication(index, fixture["source_key"], records)
+        assert not plan.held, plan.diagnostics
+        assert set(plan.suppressed_uids) == FOUNDATION_ALTERNATES
+        assert set(plan.owner_by_uid) == FOUNDATION_WINNERS
+        assert {owner.slug for owner in plan.owner_by_uid.values()} == {foundation.slug}
+    index = load_selection_index(cities)
+    for city in cities:
+        if city.slug not in fixture["unrelated_feed_controls"]:
+            continue
+        items = [
+            r
+            for r in records.values()
+            if record_matches_body(
+                r, source_body_filter(city.source), source_body_inclusions(city.source)
+            )
+        ]
+        assert fixture["unrelated_feed_controls"][city.slug] in {r["uid"] for r in items}
+        plan = select_feed_publication(index, city, items, records)
+        assert not plan.held
+        assert plan.public_items == tuple(items)
+        assert not plan.suppressed_uids
+
+
+def test_foundation_unreviewed_extra_same_guid_member_holds_full_source():
+    fixture, cities, foundation, combined = _foundation_activation_packet()
+    records = copy.deepcopy(fixture["records"])
+    extra = copy.deepcopy(records["52ea444ed933464a"])
+    extra["uid"] = "f" * 16
+    # Same source/GUID is insufficient to authorize a new publication member.
+    records[extra["uid"]] = extra
+    index = load_selection_index(cities)
+    # Extra observation is deliberately outside the body-selected item list. Full source proof
+    # must still detect it before publication, including search.
+    items = [fixture["records"][uid] for uid in FOUNDATION_WINNERS | FOUNDATION_ALTERNATES]
+    for city in (foundation, combined):
+        plan = select_feed_publication(index, city, items, records)
+        assert plan.held
+        assert "unexpected-member" in {d.code for d in plan.diagnostics}
+    assert select_search_publication(index, fixture["source_key"], records).held
