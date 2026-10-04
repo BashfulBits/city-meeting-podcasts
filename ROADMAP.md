@@ -480,3 +480,11 @@ once and reports unmatched raw recordings, assignment changes and missing regist
 Feed assignments mean selector eligibility under the supplied config snapshot, not verified live
 RSS exposure. Sources absent from local cache remain outside this snapshot. No legacy remedy
 dispatch or scheduled notification is enabled; P2a model-policy schemas remain independently gated.
+
+
+Council ownership correction (#2015) prepared/unmerged:25 proved exact aliases replace broad
+substrings;549->501 selector replay removes47 P&Z-only work sessions and one ceremony,
+preserving all genuine Council/joint memberships, records, UIDs and hosted audio. P&Z search
+attribution is corrected where Council previously matched incorrectly. TIRZ stays in Council
+until its separate #2017 correction. Registered cases remain open until human merge/deployment.
+No audio invalidation, pipeline changes or backfill. Full checks precede push/review.
