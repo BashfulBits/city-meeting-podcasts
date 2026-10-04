@@ -892,3 +892,21 @@ only look for labels newly appearing after deployment.
 and config-editor tests passed. Whole Ruff/format and diff checks passed. No production write,
 provider media download, LLM/ASR call, audio invalidation or CodeRabbit request occurred.
 Historical obligations were also posted to #1623 in comment5983390336.
+
+
+Addison verified joint subscriptions (#2011, prepared/unmerged): GUID295839 and310072
+now join the existing P&Z and CPAC subscriptions; GUID276855 joins P&Z only. Council
+canonical search ownership, recording UIDs and audio are preserved. Complete822-record replay
+adds exactly three P&Z and two CPAC memberships, with no removals or other feed changes.
+Other historical assignments remain active evidence tasks; CodeRabbit requests remain held.
+
+### Additional historical binding: May27,2014 Combined Meeting
+
+The official dated packet at
+https://agendas.addisontx.gov/docs/2014/CM/20140527_426/422_05-27-14_1507_AGENDApacket.pdf
+opens with the regular meeting and work session of the City Council, with separate session
+start times. Its internal agenda-item header calls this `Combined Meeting`. This establishes
+Council-only ownership for that date; it is not a joint Council/P&Z merely because P&Z findings
+are discussed. The remaining29 recordings still need dated corroboration. The official provider
+Council archive lists the dated recording separately. Do not extrapolate one packet into proof
+of every historical Combined Meeting or erase the remaining evidence obligations.

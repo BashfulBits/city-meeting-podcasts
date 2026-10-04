@@ -697,3 +697,45 @@ def test_addison_appeals_display_preserves_combined_institution_source():
     assert bodies.matches("Board of Zoning Adjustment", selector)
     assert bodies.matches("Board of Appeals", selector)
     assert not bodies.matches("Community Partnership Committee", selector)
+
+
+def test_addison_verified_joint_subscriptions_preserve_identity_and_search_owner():
+    """Proven joints publish in each participant feed with one canonical search identity."""
+    from citypods import bodies
+    from citypods.config import load_city_configs
+    from citypods.feeds import build_rss
+    from citypods.records import record_to_episode
+    from citypods.search import _city_for_record
+
+    cities = [
+        c for c in load_city_configs(ADDISON_ROOT / "config", {}) if c.city_entity == "addison-tx"
+    ]
+    candidates = sorted(cities, key=lambda c: c.slug)
+    records = json.loads((ADDISON_ROOT / "tests/fixtures/addison-joint-retained.json").read_text())[
+        "records"
+    ]
+    original = copy.deepcopy(records)
+    index = load_selection_index(cities)
+    for uid, record in records.items():
+        expected = {"addison-tx-city-council", "addison-tx-planning-and-zoning-commission"}
+        if record["provider_guid"] in {"295839", "310072"}:
+            expected.add("addison-tx-comprehensive-plan-advisory-committee")
+        selected = [
+            c
+            for c in cities
+            if bodies.record_matches_body(
+                record,
+                bodies.source_body_filter(c.source),
+                bodies.source_body_inclusions(c.source),
+            )
+        ]
+        assert {c.slug for c in selected} == expected
+        assert _city_for_record(candidates, record).slug == "addison-tx-city-council"
+        for city in selected:
+            plan = select_feed_publication(index, city, [record_to_episode(record)], records)
+            assert not plan.held
+            assert set(plan.selected_uids) == {uid}
+            xml = build_rss(city, list(plan.public_items), "audio", "https://www.citymeetings.fyi")
+            assert uid in xml
+            assert record["audio"]["url"] in xml
+    assert records == original

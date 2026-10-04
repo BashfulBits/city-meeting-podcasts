@@ -1224,3 +1224,10 @@ This extends frozen review/50's read-only scope without changing P1–P7 orderin
 incremental ledger. New purposes need their registration and producer eligibility semantics, while
 telemetry deduplication/submission accounting/report discovery are shared. Research units and partial
 coverage remain explicit; no quota, recipe, pipeline-version, Worker or artifact changes are included.
+
+
+Addison verified joint subscriptions (#2011, prepared/unmerged): GUID295839 and310072
+now join the existing P&Z and CPAC subscriptions; GUID276855 joins P&Z only. Council
+canonical search ownership, recording UIDs and audio are preserved. Complete822-record replay
+adds exactly three P&Z and two CPAC memberships, with no removals or other feed changes.
+Other historical assignments remain active evidence tasks; CodeRabbit requests remain held.

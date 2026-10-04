@@ -1,0 +1,73 @@
+{
+  "records": {
+    "4ef85ec6540cf95b": {
+      "uid": "4ef85ec6540cf95b",
+      "title": "Joint P&Z and City Council Meeting #1 \u2013 Oct 17, 2023",
+      "published": "2023-10-17T00:00:00+00:00",
+      "body": "Joint P&Z and City Council Meeting #1",
+      "provider_guid": "276855",
+      "video_url": "https://addisontx.new.swagit.com/videos/276855/download",
+      "audio": {
+        "attempts": 0,
+        "bytes": 94896306,
+        "duration_served": 7548.191,
+        "encode_time": "2026-07-12T05:14:36.074100+00:00",
+        "error": null,
+        "error_spec_hash": null,
+        "key": "swagit/abbf5e25e078/4ef85ec6540cf95b-74cb1c0eb7fc.m4a",
+        "last_attempt": null,
+        "rebuild": null,
+        "spec_hash": "74cb1c0eb7fc",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/4ef85ec6540cf95b-74cb1c0eb7fc.m4a",
+        "verification": null
+      },
+      "duration": null
+    },
+    "c95af66385f6cf31": {
+      "uid": "c95af66385f6cf31",
+      "title": "Joint CPAC, P&Z, and City Council Meeting #2 \u2013 Jul 11, 2024",
+      "published": "2024-07-11T00:00:00+00:00",
+      "body": "Joint CPAC, P&Z, and City Council Meeting #2",
+      "provider_guid": "310072",
+      "video_url": "https://addisontx.new.swagit.com/videos/310072/download",
+      "audio": {
+        "attempts": 0,
+        "bytes": 99018569,
+        "duration_served": 7836.556,
+        "encode_time": "2026-07-12T05:11:22.076252+00:00",
+        "error": null,
+        "error_spec_hash": null,
+        "key": "swagit/abbf5e25e078/c95af66385f6cf31-6e6391313539.m4a",
+        "last_attempt": null,
+        "rebuild": null,
+        "spec_hash": "6e6391313539",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/c95af66385f6cf31-6e6391313539.m4a",
+        "verification": null
+      },
+      "duration": null
+    },
+    "fcc9bde16c7f47fe": {
+      "uid": "fcc9bde16c7f47fe",
+      "title": "Joint CPAC, P&Z, and City Council Meeting #1 \u2013 Jan 24, 2024",
+      "published": "2024-01-24T00:00:00+00:00",
+      "body": "Joint CPAC, P&Z, and City Council Meeting #1",
+      "provider_guid": "295839",
+      "video_url": "https://addisontx.new.swagit.com/videos/295839/download",
+      "audio": {
+        "attempts": 0,
+        "bytes": 60860866,
+        "duration_served": 4850.86,
+        "encode_time": "2026-07-12T05:13:51.181841+00:00",
+        "error": null,
+        "error_spec_hash": null,
+        "key": "swagit/abbf5e25e078/fcc9bde16c7f47fe-fc3322c4ce9a.m4a",
+        "last_attempt": null,
+        "rebuild": null,
+        "spec_hash": "fc3322c4ce9a",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/fcc9bde16c7f47fe-fc3322c4ce9a.m4a",
+        "verification": null
+      },
+      "duration": null
+    }
+  }
+}
