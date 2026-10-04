@@ -36,6 +36,15 @@ TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues
 
 ## Recently shipped (summary)
 
+- Foundation historical publication selection (#2002, 2026-10-04): preserve the three existing
+  dedicated RSS winners across Foundation/combined search projections, retain every archive UID
+  and page, and correct active board lifecycle using official current evidence. Future-member
+  admission and broader Arlington coverage remain separately gated.
+
+- Inactive publication-selection v1 machinery (#1999, 2026-10-04): reviewed existing-UID
+  projection, feed/search pre-write holds and raw-page retention. City activations, future-member
+  admission and the remaining remedy-policy phases retain their separate gates.
+
 - **Purpose-bound LLM telemetry (GH#2001):** shipped in
   [PR #2004](https://github.com/BashfulBits/city-meeting-podcasts/pull/2004) on 2026-10-04.
   Registration enforces producer/unit/coverage contracts; shared work handles track submission

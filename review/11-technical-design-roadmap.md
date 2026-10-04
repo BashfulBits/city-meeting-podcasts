@@ -94,6 +94,20 @@ Seasonal schedules and Council-only membership do not make a committee temporary
 is L3 under PR #2003 validation; it supersedes Council placement, preserves source identities and
 records historical meeting/recording gaps in its dated evidence packet.
 
+The approved joint-meeting rule applies across all cities and future onboarding: publish the same
+recording in each officially proven participating body's feed, preserving stable identity. This
+requires genuine joint convening, not topic mentions, common membership or bundled separate meetings.
+
+Classification settlement hold (2026-10-04): no further CodeRabbit requests until full Addison
+body policy, cross-city spot checks and onboarding acceptance are stabilized. See the
+[retained-label audit and proposed policy](evidence/addison-body-policy-audit-2026-10-04.md).
+Prepared CPC coverage alone does not complete this city baseline or authorize broader migrations.
+The approved public-input/briefing and BZA presentation slice is L3 in
+[review/51](51-unexpected-body-remedy-flow.md#addison-public-input-display-and-verified-routing--l3-bounded-implementation),
+tracked by #2009. Citizen Advisory remains public input with stable identity and an active
+historical evidence obligation; unknown older recordings are not silently retired.
+
+
 P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) prepares one named-body decision covering
 three verified committee recordings. Exact labels exclude the Open House; CPC duplicate identities
 remain in [#1991](https://github.com/BashfulBits/city-meeting-podcasts/issues/1991). This does not
@@ -107,28 +121,29 @@ P0's exact-label selector prerequisite separates bare committee names from disti
 formats. It preserves the source namespace/UIDs and does not change any existing feed configuration.
 
 P0's [Arlington batch](arlington-coverage-2026-10.md) prepares two named-body decisions with
-full provider/persisted replay and retained UID verification. Foundation duplicate UID aliases and
-an unidentified clip remain held; Arlington is not yet a complete approved onboarding baseline.
+full provider/persisted replay and retained UID verification. The three reviewed Foundation duplicate groups shipped in #2002;
+an unidentified clip remains held. Arlington is not yet a complete approved onboarding baseline.
 
 P0's guard prerequisite generalizes local policy protection to the approved aggregate families and
 exact reviewed named bodies. Unknown identities remain held; this does not complete the historical
 inventory or implement P2's persistent ledger.
 
 [review/51](51-unexpected-body-remedy-flow.md), initially merged in #1976, now records the approved
-P1–P5 structure and exact phase build contracts. **P1: L3** (evaluation harness and strict physical-
-route admission, [#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979));
+P1–P5 structure and exact phase build contracts. **P1 harness: Shipped** (#1987); strict physical-
+route admission remains L3 ([#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979)).
 P1 implements the approved hidden-owner truth, independent blind-owner mode and frozen candidate
 input hashes shipped in [PR #1987](https://github.com/BashfulBits/city-meeting-podcasts/pull/1987). No model is admitted and no
-live evaluation has run. Publication-selection inactive machinery is L3
+live evaluation has run. Publication-selection inactive machinery is **Shipped** in
+[PR #1999](https://github.com/BashfulBits/city-meeting-podcasts/pull/1999)
 ([#1997](https://github.com/BashfulBits/city-meeting-podcasts/issues/1997)): strict proof schemas,
-existing UID projection, pre-write holds and raw-page preservation. Its implementation is under
-validation; no city declarations are activated. City activations and future-member admission stay L2
+existing UID projection, pre-write holds and raw-page preservation. No city declarations are activated by that machinery PR. City activations and future-member admission stay L2
 until exact winner/exposure/date proof and evaluated sticky-winner policies are ready.
-#1986 has approved historical winners/exposure and L3 activation under validation;
+#1986 historical activation is **Shipped** in [PR #2002](https://github.com/BashfulBits/city-meeting-podcasts/pull/2002);
 #1989 remains held for artifact comparison and #1991 has approved July 9 winner/exposure and L3 activation under validation. Shared approved templates and cross-city cases are specified for one resolver/replay path in
 onboarding and maintenance; verified identities and feedback remain city/source-scoped.
-P2–P5 stay predecessor-gated until their
-evidence and issues exist. The 27 seed
+P2 deterministic policy/evidence/ledger work has met its P1 schema prerequisite; its exact scoped
+L3 contracts and issues are being prepared. The maintainer approved source-partitioned immutable
+feedback-event paths on 2026-10-04. P3–P5 stay predecessor-gated until their evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID
 aggregates. Remedy/onboarding stay outside leagues. This is a maintainer-directed follow-up;
