@@ -51,6 +51,25 @@ def row(work):
     return work.snapshot()["purposes"]["new-purpose"]
 
 
+@pytest.mark.parametrize(
+    "stage_name,purpose", [("MomentsStage", "r6-moments"), ("MomentJudgeStage", "r6-judge")]
+)
+def test_moment_producers_skip_missing_episode_identity(stage_name, purpose):
+    from citypods import stages
+
+    work = LLMWorkTracker()
+    ctx = SimpleNamespace(
+        llm_work=work,
+        moment_backend=object(),
+        storage=object(),
+        moment_evaluation_config={"judges": {"enabled": True}},
+    )
+    episode = SimpleNamespace(uid="", guid="", moment_pullquote_candidates=[{}])
+    stats = getattr(stages, stage_name)().process(None, SimpleNamespace(extra={}), [episode], ctx)
+    assert stats.ran == 0
+    assert work.snapshot()["purposes"][purpose]["observed"] == 0
+
+
 def test_registration_requires_telemetry_and_owner():
     work = tracker()
     with pytest.raises(ValueError, match="belongs"):

@@ -1162,6 +1162,8 @@ class MomentsStage(LLMProducerStage):
         ensure_moment_contract()
 
         for ep in episodes:
+            if not (ep.uid or ep.guid):
+                continue
             work = ctx.llm_work.item("r6-moments", ep.uid or ep.guid, producer=self.name)
             if ctx.stop and ctx.stop():
                 work.defer("stopped")
@@ -1454,6 +1456,8 @@ class MomentJudgeStage(LLMProducerStage):
             return stats
         ensure_judge_contract()
         for ep in episodes:
+            if not (ep.uid or ep.guid):
+                continue
             if not any(isinstance(row, dict) for row in ep.moment_pullquote_candidates):
                 continue
             work = ctx.llm_work.item("r6-judge", ep.uid or ep.guid, producer=self.name)

@@ -353,6 +353,18 @@ def test_main_remote_event_download_failures(tmp_path, monkeypatch, failure):
         assert json.loads(output.read_text())["skipped_files"] == 1
 
 
+@pytest.mark.parametrize("shard", [1, True, [0, 2], {"index": 0, "count": 2}])
+def test_non_string_shards_are_skipped_without_losing_valid_events(tmp_path, shard):
+    malformed = tmp_path / "malformed.json"
+    valid = tmp_path / "valid.json"
+    malformed.write_text(json.dumps({**event(), "shard": shard}))
+    valid.write_text(json.dumps({**event(), "shard": "0/2"}))
+    rows, skipped = trend._read_events([malformed, valid], since=NOW - timedelta(days=1))
+    assert skipped == 1
+    assert len(rows) == 1
+    assert rows[0]["shard"] == "0/2"
+
+
 def test_registry_discovers_new_verbs_and_retirement_without_code_changes():
     rows = [
         {

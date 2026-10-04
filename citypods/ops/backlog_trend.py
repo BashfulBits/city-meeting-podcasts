@@ -148,6 +148,8 @@ def _read_events(paths, *, since: datetime) -> tuple[list[dict], int]:
                     ):
                         raise ValueError("invalid LLM purpose snapshot")
             if event.get("shard"):
+                if not isinstance(event["shard"], str):
+                    raise ValueError("invalid shard scope")
                 index, count = map(int, event["shard"].split("/"))
                 if count <= 0 or not 0 <= index < count:
                     raise ValueError("invalid shard scope")
