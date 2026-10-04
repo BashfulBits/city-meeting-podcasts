@@ -38,3 +38,15 @@ A completed first-try job costs ~20 rows end to end at 4 jobs per bundle (44.3 b
 `src/write_budget.js` records these (worst case 2 rows per ingress unit, 6 per bundle, 24 per
 lease, 3 per cleaned-up job). The daily limit itself is enforced at runtime against the rows the
 coordinator actually writes (the `DO_ROWS_*_STOP` thresholds), not against these constants.
+
+## Pool-size accounting correction (2026-10-02)
+
+The full-lifecycle run above uses one indexed model per job; the multi-model `/ingress` run
+measures enqueue only. `claimDispatchWindow` also deletes all `job_models` rows for each leased
+job, including their unique index. The capacity projection must include those deletes: two extra
+billed rows per additional model at claim as well as two at enqueue. A constant 4.9 claim rows
+for every pool size undercounts multi-model jobs. The corrected design projection is in
+[capacity evidence](../../../../review/evidence/2026-10-02-llm-800-meeting-capacity.md).
+Re-run the full lifecycle
+with representative pool sizes before treating its row totals as measured production capacity;
+the existing one-model measurement remains the baseline, not proof for all pools.

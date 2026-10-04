@@ -15,6 +15,15 @@ Once 1.0 ships, entries move under semver tags.
 - Remedy evaluations report only applied reasoning controls and reject physical-route allowlists
   on deferred inference paths; immediate evaluation routing remains supported.
 
+- Move the 800-meeting LLM capacity analysis into dated supporting evidence under
+  `review/evidence/`, update its references, and identify review/49 as the development-plan owner.
+  Clarify the documentation map so supporting calculations cannot be mistaken for a rollout plan.
+
+- Capacity calculator review fixes: use committed Worker row-budget defaults and the same
+  idle-cron/operational allowances in both current and proposed scenarios. The current stress
+  projection now includes the previously omitted 1,000 operational rows (513,160 total/day).
+  Show per-episode lifecycle rows and reproduction commands alongside packed consensus totals.
+
 - Chapter locator review fixes: scope repair exhaustion to saved policy and input fingerprints;
   changed inputs/policy (including legacy exhaustion without fingerprints) receive a fresh repair
   budget on their next eligible pass. Existing valid artifacts retain their current reuse policy.
@@ -87,6 +96,15 @@ Phase R (Research-Tool Surface)._
   bytes remain unchanged. The 39-meeting two-prompt evaluation packet, answer key, scorer, golden
   labels, and matched-cohort results are in `evals/chapter-locator/`.
 
+- **LLM capacity accounting corrected.** Lane ceilings now size an explicit 800-eligible-meeting
+  planning scenario: two tagger batches, three production and shadow prelabel batches, and five
+  quotes evaluated by three judges per meeting. Judges are correctly charged as pinned jobs;
+  the shared R6 producer cap includes extraction and panel fan-out. A reproducible offline
+  calculator and capacity analysis separate demand from the unchanged 4,000-job shared cap,
+  25,600 enqueue units, full lifecycle DO rows and provider quotas. The full scenario needs
+  20,800 jobs before retries and exceeds Workers Free and the forty-call Gemini judge pool;
+  these ceilings do not promise 800 completed meetings/day. No model/prompt recipes, platform
+  billing tier, route pauses or stored-artifact invalidation changed.
 
 - **Locator CI reuse fixtures.** Current artifacts now include the routing policy version in
   tests, with coverage for both production models and stale or missing routing metadata. The
