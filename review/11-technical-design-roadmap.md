@@ -104,7 +104,8 @@ body policy, cross-city spot checks and onboarding acceptance are stabilized. Se
 Prepared CPC coverage alone does not complete this city baseline or authorize broader migrations.
 The approved public-input/briefing and BZA presentation slice is L3 in
 [review/51](51-unexpected-body-remedy-flow.md#addison-public-input-display-and-verified-routing--l3-bounded-implementation),
-tracked by #2009. Citizen Advisory remains public input with stable identity and an active
+tracked by #2009 and implemented with validation passed; review disposition is in PR #2010.
+Citizen Advisory remains public input with stable identity and an active
 historical evidence obligation; unknown older recordings are not silently retired.
 
 
