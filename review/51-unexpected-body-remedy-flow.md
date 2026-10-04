@@ -28,7 +28,8 @@ individual category recommendations; this document owns the improvement plan.
   across cities unless official evidence establishes a temporary body. Seasonal schedules and
   Council-only membership do not make a committee temporary. Addison CPC uses this default;
   temporary programs retain the approved family-feed policy. This was directed on 2026-10-04.
-- Genuinely jointly convened meetings publish the same recording in each officially participating
+- Across all cities, including future onboarding, genuinely jointly convened meetings publish the
+  same recording in each officially participating
   body's feed, preserving the recording and stable episode identity. This was explicitly approved
   on 2026-10-04. Membership overlap, a topic mention, or separately convened meetings bundled in
   one video do not prove joint participation. Existing canonical search ownership stays stable;

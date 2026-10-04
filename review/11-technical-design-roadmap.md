@@ -94,6 +94,10 @@ Seasonal schedules and Council-only membership do not make a committee temporary
 is L3 under PR #2003 validation; it supersedes Council placement, preserves source identities and
 records historical meeting/recording gaps in its dated evidence packet.
 
+The approved joint-meeting rule applies across all cities and future onboarding: publish the same
+recording in each officially proven participating body's feed, preserving stable identity. This
+requires genuine joint convening, not topic mentions, common membership or bundled separate meetings.
+
 Classification settlement hold (2026-10-04): no further CodeRabbit requests until full Addison
 body policy, cross-city spot checks and onboarding acceptance are stabilized. See the
 [retained-label audit and proposed policy](evidence/addison-body-policy-audit-2026-10-04.md).

@@ -139,8 +139,9 @@ Primary sources for institutional gaps:
 4. Council subscriptions contain genuine full Council proceedings only. Use reviewed complete labels
    or source-bound, fully anchored aliases; `Work Session`, `Special Meeting` and shared topic words
    must not silently absorb another named institution. Generic labels require official body evidence.
-5. Genuine jointly convened meetings are distinct from separate proceedings bundled in one recording.
-   Proposed subscription rule: the same stable recording may appear in each proven participating
+5. Across all existing and future cities, genuine jointly convened meetings are distinct from
+   separate proceedings bundled in one recording.
+   Maintainer-approved subscription rule (2026-10-04): the same stable recording appears in each proven participating
    body's feed, with explicit participation proof and stable canonical search ownership. Separately
    convened segments require declared timeline/identity evidence; no blind clip splitting or merging.
 6. Standalone public-input and public-briefing recordings use their approved family feeds. Promotions,
@@ -158,8 +159,32 @@ Primary sources for institutional gaps:
 10. Preserve all stored records, UIDs, official metadata and audio; publication changes require
     exposure/cache/raw-page checks and separate reviewed small PRs. No legacy remedy dispatch.
 
-This draft does not widen executable P2 schemas or admit a model. Joint publication/canonical-owner
-choices and recording-level ambiguous Addison cases must be settled before L3 implementation.
+This draft does not widen executable P2 schemas or admit a model. Joint publication in each
+participating feed is approved; unresolved canonical-owner/timeline choices and recording-level
+ambiguous Addison cases must be settled before L3 implementation.
+
+## Subsequent official identity/lifecycle verification
+
+- **Finance:** July13,2021 minutes explicitly approve discontinuation by Resolution R21-035,
+  vote6–1. It was a historical continuing committee, not one deemed retired by age. If standalone
+  recordings are found, preserve historical Finance ownership; do not classify Council meetings
+  discussing its reports/discontinuation as Finance meetings.
+  https://agendas.addisontx.gov/docs/2021/CM/20210810_6813/4002_07-13-2021%20Minutes%20FINAL.pdf
+- **Board of Appeals:** the actual August11,2022 packet identifies the Building/Code Board of
+  Appeals as constituted from Zoning Adjustment membership. Later Town documents explicitly say
+  Zoning Adjustment serves as Board of Appeals. This supports keeping its existing combined feed
+  through formal institutional evidence, not merely shared members. Two retained Appeals records
+  are not demonstrated Council misclassifications.
+  https://agendas.addisontx.gov/docs/2022/BZA/20220811_6958/AGENDApacket__08-11-22_0519_6953.pdf
+  https://agendas.addisontx.gov/docs/2025/PZ/20250129_7409/AGENDApacket__01-29-25_0333_7404.pdf
+- **P&Z and TIRZ recordings:** the official indexed Swagit archive separately lists July21,2026
+  P&Z work session and P&Z regular meeting, and July28 TIRZ board video (13m19s) separately from
+  that day's Council video (1h31m). This confirms those labels are not simply topics inside the
+  Council recording. TIRZ source calendar/board packet remains a further activation-proof task.
+  https://addisontx.new.swagit.com/views/128/live
+- **Citizen Advisory:** official2007budget describes approximately85 citizen members; 2009Council
+  packet refers to2007NextGreatestIdeas planning process. Exact linkage to Swagit56029 (8h48m)
+  remains unknown; compilation/chapter ambiguity and403video access prevent a settled identity.
 
 ## Cross-city spot check
 
