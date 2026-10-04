@@ -12,6 +12,9 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Remedy evaluations report only applied reasoning controls and reject physical-route allowlists
+  on deferred inference paths; immediate evaluation routing remains supported.
+
 - Move the 800-meeting LLM capacity analysis into dated supporting evidence under
   `review/evidence/`, update its references, and identify review/49 as the development-plan owner.
   Clarify the documentation map so supporting calculations cannot be mistaken for a rollout plan.
@@ -32,6 +35,25 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 Phase R (Research-Tool Surface)._
 
 ### Changed
+
+- **Unexpected-body evaluation harness.** Adds schema-v2 freeze/run/report/rescore,
+  direct physical-route allowlists, validated effort controls and synchronous result provenance.
+  Production remedy models and Worker routes are unchanged; shadow config admits no models.
+  Seeds are regression evidence, not admission results. Missing CAS coordination is a visible
+  preflight hold; explicit live runs use shared quota bookkeeping but cannot write feeds/audio.
+  Hidden reviewed owner truth, opaque-ID blind-owner comparisons and claim-support comparisons
+  have separate scores and prompt hashes. Frozen candidate input hashes are mandatory. Safe
+  provider failures retain the exception class without potentially sensitive exception text.
+  Explicit effort is rejected before deferred/dispatch side effects. Bounded evaluation calls
+  interleave configurations under one total logical-case cap; timeouts hold their configuration.
+  Evaluation cases permit two client provider invocations across all retries, with SDK retries
+  disabled and attempt counts reported separately. Production retry defaults remain unchanged.
+  AA effort checks reject partial words and explicitly non-reasoning variants.
+  Git and frozen-version metadata are collected before live attempts.
+  Publication selection is specified at L2; the duplicate-identity feeds remain held.
+  Clarifies future shared policy templates and cross-city evaluations for the same onboarding/
+  maintenance resolver; local identities stay scoped and runtime template activation is still gated.
+  No pipeline-version change, stored-artifact invalidation or historical backfill is introduced.
 
 - **Addison UDC historical committee coverage.** Adds one Unified Development Code Advisory
   Committee subscription using exact reviewed labels, covering three official committee recordings

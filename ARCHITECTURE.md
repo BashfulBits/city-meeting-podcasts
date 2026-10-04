@@ -687,6 +687,37 @@ matches `"TIRZ Board"`, so adding the latter to `body_any` is dead config. Conve
 like `"Special Meeting"` is only safe when no sibling feed on the same source carries it as a
 substring — worth checking, because per-body feeds share one source.
 
+#### Remedy evaluation
+
+Explicit reasoning effort requires immediate execution; deferred and dispatch paths reject it
+before side effects. Evaluation candidates interleave by case under a total logical-case cap, and
+timeouts hold only their configuration. Each evaluation case shares a two-invocation budget across
+correction and capacity retries, with SDK retries disabled and attempt counts recorded. Remote
+provider/gateway internal attempts are outside that client count. Git/version metadata is captured
+before provider calls.
+
+`scripts/eval_remedy.py` freezes schema-v2 evidence and produces immutable route-comparison and
+rescoring artifacts; independently maintained gold never enters model messages. Production remedy
+routing is unchanged. `config/remedy.yml` starts in shadow mode with empty admissions and alias
+qualifications. Current high/max effort capabilities are unverified in the route catalog, so
+admission fails closed rather than silently dropping effort or accepting a weaker fallback.
+
+Direct evaluation requests use physical route allowlists checked before quota reservation and pool
+substitution. Only `run_immediate` accepts this gate; deferred and dispatch requests reject it.
+Synchronous `JobResult` adds selected route/upstream/parameter provenance and reports reasoning
+effort only when the route applied its controls; evaluation also validates returned model identity.
+Offline dry runs make zero model observations. Explicit live runs require CAS-capable shared
+scheduler storage, bounded cases and quota bookkeeping; they do not mutate feeds or audio.
+
+Claim-support and blind-owner runs have separate prompts, input hashes and scores. Blind runs
+use opaque case IDs and remove proposal metadata; independently adjudicated owner truth stays
+in gold, never requests. Every candidate supplies matching manifest/prompt/schema/catalog hashes.
+No route is qualified by the seed corpus or this implementation alone.
+
+[review/51](review/51-unexpected-body-remedy-flow.md) separately specifies publication selection
+at L2 for verified duplicate observations. Runtime selection and affected feeds remain gated;
+this evaluation harness does not delete records, merge UIDs or deduplicate published episodes.
+
 #### Exact feed-body labels
 
 Search shard fingerprints include `body_exact` only when configured; changing exact rules
