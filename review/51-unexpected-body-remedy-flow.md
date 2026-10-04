@@ -1556,3 +1556,11 @@ All three slices prohibit runtime/provider/storage/stage/record-schema/dependenc
 No versions, invalidation or backfill; derived feed/search projections rebuild using existing
 hashes. Targeted tests plus full offline/Ruff/format and current CI required. Separate dependent
 PRs and human merge commits. The2016 joint singleton-owner question remains separately gated.
+
+
+Integration acceptance for #2017: update tests/test_addison_council_ownership.py to expect
+500 Council selections after the separately proved board departure,49 departures from the
+original549 (48 initial corrections plus TIRZ). Update the earlier sweep regression in
+tests/test_unresolved_recordings_sweep.py to preserve its matched-open-case/assignment-change
+assertions against the corrected P&Z-only membership, rather than requiring the removed Council
+false match. This is regression compatibility, not a new sweep/runtime path.

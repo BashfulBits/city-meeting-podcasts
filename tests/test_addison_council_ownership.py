@@ -33,14 +33,14 @@ def _matches(city, record):
 
 
 def test_council_replay_removes_only_commission_work_sessions_and_ceremony():
-    """All former Council rows retain identity while 48 wrong subscriptions leave Council."""
+    """Former Council rows retain identity while wrong-body subscriptions leave Council."""
     cities, records = _inputs()
     original = copy.deepcopy(records)
     council = next(c for c in cities if c.slug == COUNCIL)
     pz = next(c for c in cities if c.slug == PZ)
     selected = {uid for uid, record in records.items() if _matches(council, record)}
     assert len(records) == 549
-    assert len(selected) == 501
+    assert len(selected) == 500
     removed = set(records) - selected
     work_sessions = {
         uid
@@ -48,7 +48,7 @@ def test_council_replay_removes_only_commission_work_sessions_and_ceremony():
         if record["body"] == "Planning & Zoning Commission Work Session"
     }
     assert len(work_sessions) == 47
-    assert removed == work_sessions | {"1f50e2274a6dd26c"}
+    assert removed == work_sessions | {"1f50e2274a6dd26c", "757ab2a4aaf9bbca"}
     for uid in work_sessions:
         record = records[uid]
         assert _matches(pz, record)

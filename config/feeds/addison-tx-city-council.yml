@@ -31,8 +31,6 @@ source:
     - "Work Session - Economic Development Strategic Plan"
     - "Work Session and Regular Meeting"
   body_includes:
-    - provider_guid: "394474"
-      body: "TIRZ #1 Board Meeting"
     - provider_guid: "297695"
       body: "Council Strategic Planning Day 1 & 2"
     - provider_guid: "55874"
