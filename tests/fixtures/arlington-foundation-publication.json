@@ -1,0 +1,242 @@
+{
+  "provenance": "Read-only restored source archive, no official values rewritten. Six Foundation observations and one retained recording per unrelated Arlington feed. Audio metadata retained; no network in tests.",
+  "records": {
+    "001e652607191f4b": {
+      "audio": {
+        "bytes": 37203738,
+        "duration_served": 2988.015,
+        "key": "granicus/ecc3710ac47f/001e652607191f4b-a01082d6decc.m4a",
+        "spec_hash": "a01082d6decc",
+        "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/001e652607191f4b-a01082d6decc.m4a"
+      },
+      "body": "Evening Council",
+      "duration": 4140,
+      "media_kind": "direct",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4208",
+      "published": "2022-08-16T00:00:00+00:00",
+      "served_duration_seconds": 2988.015,
+      "source_duration_seconds": 4140.0,
+      "title": "Evening Council",
+      "uid": "001e652607191f4b",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=4208"
+    },
+    "00209664799cf602": {
+      "audio": {
+        "bytes": 107709222,
+        "duration_served": 8653.121,
+        "key": "granicus/ecc3710ac47f/00209664799cf602-0ce466a99df1.m4a",
+        "spec_hash": "0ce466a99df1",
+        "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/00209664799cf602-0ce466a99df1.m4a"
+      },
+      "body": "Planning and Zoning Commission - Regular Session",
+      "duration": 8880,
+      "media_kind": "direct",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=4598",
+      "published": "2023-08-16T00:00:00+00:00",
+      "served_duration_seconds": 8653.121,
+      "source_duration_seconds": 8880.0,
+      "title": "Planning and Zoning Commission - Regular Session",
+      "uid": "00209664799cf602",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=4598"
+    },
+    "331755e4bfdeb5b9": {
+      "audio": {
+        "bytes": 134246222,
+        "duration_served": 10833.223,
+        "key": "granicus/ecc3710ac47f/331755e4bfdeb5b9-e0781d396495.m4a",
+        "spec_hash": "e0781d396495",
+        "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/331755e4bfdeb5b9-e0781d396495.m4a"
+      },
+      "body": "Term Limits Advisory Committee",
+      "duration": 11280,
+      "media_kind": "direct",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3524",
+      "published": "2020-07-16T00:00:00+00:00",
+      "served_duration_seconds": 10833.223,
+      "source_duration_seconds": 11280.0,
+      "title": "Term Limits Advisory Committee",
+      "uid": "331755e4bfdeb5b9",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3524"
+    },
+    "429f1518618b805e": {
+      "audio": {
+        "bytes": 2291207,
+        "duration_served": 181.684,
+        "key": "granicus/ecc3710ac47f/429f1518618b805e-fc2ca403a353.m4a",
+        "spec_hash": "fc2ca403a353",
+        "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/429f1518618b805e-fc2ca403a353.m4a"
+      },
+      "body": "Economic Development Committee",
+      "duration": 180,
+      "media_kind": "direct",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3456",
+      "published": "2020-04-28T00:00:00+00:00",
+      "served_duration_seconds": 181.684,
+      "source_duration_seconds": 180.0,
+      "title": "Economic Development Committee",
+      "uid": "429f1518618b805e",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3456"
+    },
+    "52ea444ed933464a": {
+      "audio": {
+        "bytes": 19020768,
+        "duration_served": 1540.22,
+        "key": "granicus/ecc3710ac47f/52ea444ed933464a-9789a87dcdfe.m4a",
+        "spec_hash": "9789a87dcdfe",
+        "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/52ea444ed933464a-9789a87dcdfe.m4a"
+      },
+      "body": "Arlington Tomorrow Foundation - Board of Directors",
+      "duration": 1500,
+      "media_kind": "direct",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3432",
+      "published": "2020-04-02T00:00:00+00:00",
+      "served_duration_seconds": 1540.22,
+      "source_duration_seconds": 1500.0,
+      "title": "Arlington Tomorrow Foundation - Board of Directors",
+      "uid": "52ea444ed933464a",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3432"
+    },
+    "7d87cd30071ce800": {
+      "audio": {
+        "bytes": 41488564,
+        "duration_served": 3350.48,
+        "key": "granicus/ecc3710ac47f/7d87cd30071ce800-bfd543cee502.m4a",
+        "spec_hash": "bfd543cee502",
+        "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/7d87cd30071ce800-bfd543cee502.m4a"
+      },
+      "body": "Arlington Tomorrow Foundation Board Meeting",
+      "duration": 3300,
+      "media_kind": "direct",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3455",
+      "published": "2020-04-28T00:00:00+00:00",
+      "served_duration_seconds": 3350.48,
+      "source_duration_seconds": 3300.0,
+      "title": "Arlington Tomorrow Foundation Board Meeting",
+      "uid": "7d87cd30071ce800",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3455"
+    },
+    "85e716fc0a89c65a": {
+      "audio": {
+        "bytes": 101127890,
+        "duration_served": 8166.59,
+        "key": "granicus/ecc3710ac47f/85e716fc0a89c65a-014015987f52.m4a",
+        "spec_hash": "014015987f52",
+        "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/85e716fc0a89c65a-014015987f52.m4a"
+      },
+      "body": "Arlington Tomorrow Foundation Board Meeting",
+      "duration": 8160,
+      "media_kind": "direct",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3433",
+      "published": "2020-03-26T00:00:00+00:00",
+      "served_duration_seconds": 8166.59,
+      "source_duration_seconds": 8160.0,
+      "title": "Arlington Tomorrow Foundation Board Meeting",
+      "uid": "85e716fc0a89c65a",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3433"
+    },
+    "97655ff1190b7f0e": {
+      "audio": {
+        "bytes": 12689206,
+        "duration_served": 1026.29,
+        "key": "granicus/ecc3710ac47f/97655ff1190b7f0e-7e29400252e6.m4a",
+        "spec_hash": "7e29400252e6",
+        "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/97655ff1190b7f0e-7e29400252e6.m4a"
+      },
+      "body": "ZBA Regular Session",
+      "duration": 1020,
+      "media_kind": "direct",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1069",
+      "published": "2012-05-31T00:00:00+00:00",
+      "served_duration_seconds": 1026.29,
+      "source_duration_seconds": 1020.0,
+      "title": "ZBA Regular Session",
+      "uid": "97655ff1190b7f0e",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=1069"
+    },
+    "a54b5fc602d9e5c7": {
+      "audio": {
+        "bytes": 19020768,
+        "duration_served": 1540.22,
+        "key": "granicus/ecc3710ac47f/a54b5fc602d9e5c7-9789a87dcdfe.m4a",
+        "spec_hash": "9789a87dcdfe",
+        "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/a54b5fc602d9e5c7-9789a87dcdfe.m4a"
+      },
+      "body": "Arlington Tomorrow Foundation Board Meeting",
+      "duration": 1500,
+      "media_kind": "direct",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3432",
+      "published": "2020-04-02T00:00:00+00:00",
+      "served_duration_seconds": 1540.22,
+      "source_duration_seconds": 1500.0,
+      "title": "Arlington Tomorrow Foundation Board Meeting",
+      "uid": "a54b5fc602d9e5c7",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3432"
+    },
+    "a711cf888edf66bc": {
+      "audio": {
+        "bytes": 61611279,
+        "duration_served": 4915.714,
+        "key": "granicus/ecc3710ac47f/a711cf888edf66bc-4a366ca91065.m4a",
+        "spec_hash": "4a366ca91065",
+        "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/a711cf888edf66bc-4a366ca91065.m4a"
+      },
+      "body": "Arlington Housing Finance Corporation Board Meeting",
+      "duration": 4860,
+      "media_kind": "direct",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3579",
+      "published": "2020-08-25T00:00:00+00:00",
+      "served_duration_seconds": 4915.714,
+      "source_duration_seconds": 4860.0,
+      "title": "Arlington Housing Finance Corporation Board Meeting",
+      "uid": "a711cf888edf66bc",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3579"
+    },
+    "c73dbd3dab9b14cc": {
+      "audio": {
+        "bytes": 101127890,
+        "duration_served": 8166.59,
+        "key": "granicus/ecc3710ac47f/c73dbd3dab9b14cc-014015987f52.m4a",
+        "spec_hash": "014015987f52",
+        "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/c73dbd3dab9b14cc-014015987f52.m4a"
+      },
+      "body": "Arlington Tomorrow Foundation - Board of Directors",
+      "duration": 8160,
+      "media_kind": "direct",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3433",
+      "published": "2020-03-26T00:00:00+00:00",
+      "served_duration_seconds": 8166.59,
+      "source_duration_seconds": 8160.0,
+      "title": "Arlington Tomorrow Foundation - Board of Directors",
+      "uid": "c73dbd3dab9b14cc",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3433"
+    },
+    "ccee5be42508e88d": {
+      "audio": {
+        "bytes": 41488564,
+        "duration_served": 3350.48,
+        "key": "granicus/ecc3710ac47f/ccee5be42508e88d-bfd543cee502.m4a",
+        "spec_hash": "bfd543cee502",
+        "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/ccee5be42508e88d-bfd543cee502.m4a"
+      },
+      "body": "Arlington Tomorrow Foundation - Board of Directors",
+      "duration": 3300,
+      "media_kind": "direct",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3455",
+      "published": "2020-04-28T00:00:00+00:00",
+      "served_duration_seconds": 3350.48,
+      "source_duration_seconds": 3300.0,
+      "title": "Arlington Tomorrow Foundation - Board of Directors",
+      "uid": "ccee5be42508e88d",
+      "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3455"
+    }
+  },
+  "source_key": "ecc3710ac47f",
+  "unrelated_feed_controls": {
+    "arlington-tx-council": "001e652607191f4b",
+    "arlington-tx-economic-development-committee": "429f1518618b805e",
+    "arlington-tx-housing-finance-corporation": "a711cf888edf66bc",
+    "arlington-tx-planning-and-zoning-commission": "00209664799cf602",
+    "arlington-tx-term-limits-advisory-committee": "331755e4bfdeb5b9",
+    "arlington-tx-zoning-board-of-adjustment": "97655ff1190b7f0e"
+  }
+}

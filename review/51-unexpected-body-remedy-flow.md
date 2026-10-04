@@ -448,7 +448,8 @@ provider-wide canonicalization and cross-source joining remain outside this cont
 
 #### Development-ready split and implementation specification
 
-**Inactive machinery: L3. Historical activation and automatic future-member admission: L2.**
+**Inactive machinery: L3. Foundation historical activation: L3 (approved below).**
+**Other city activations and automatic future-member admission: L2.**
 This split preserves the maintainer-approved specification-first sequence. Machinery ships with
 no configured groups. No implicit date repair, identity inference or new publication is enabled.
 The approved directions for the three cities remain subject to evidence, not another taxonomy vote.
@@ -598,6 +599,23 @@ Tests use `tests/test_publication_selection.py`, `tests/test_config.py`, `tests/
 Inactive machinery may be implemented from this L3 contract. Do not promote city activation or
 future-member auto-admission merely because machinery tests pass. L3 requires the exact reviewed
 winner/proof packet; unresolved Foundation exposure and Addison agenda date remain held.
+
+### Foundation historical activation — L3, implementation under validation
+
+Maintainer approval: [#1986 comment 5976979529](https://github.com/BashfulBits/city-meeting-podcasts/issues/1986#issuecomment-5976979529).
+The [dated proof packet](evidence/foundation-publication-selection-2026-10-04.md) records
+same-source exact provider GUIDs, equal dates and both-published exposure. Keep existing dedicated
+RSS winners `52ea444ed933464a`, `c73dbd3dab9b14cc`, `ccee5be42508e88d`.
+Change only Foundation and combined Arlington feed configs: both historical labels, three exact
+v1 groups with Foundation search ownership and equivalent combined declarations (`search: false`).
+Foundation's official October 2026 board agenda establishes ongoing activity; correct its retired
+classification without changing provider sources. Raw records, UIDs, audio and all old pages remain.
+Tests extend `tests/test_publication_selection.py` with a sanitized retained-record fixture:
+actual audio/video RSS, winner enclosures, unique search ownership in either config order,
+full-source extra-member holds and unchanged unrelated Arlington projections. Full restored replay
+selects Foundation 6→3 and combined/search 1,515→1,512; source namespace remains unchanged.
+Rollback reverts both selector and group activation together. No audio/stage version bump or
+backfill. This approves these three historical groups, not automatic future-member admission.
 
 ### P1 — evaluation harness and physical-route admission (L3)
 
