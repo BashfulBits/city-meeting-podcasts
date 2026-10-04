@@ -470,9 +470,9 @@ def _addison_cpc_inputs():
     from citypods.config import load_city_configs
 
     cities = load_city_configs(ADDISON_ROOT / "config", {})
-    council = next(c for c in cities if c.slug == "addison-tx-city-council")
+    committee = next(c for c in cities if c.slug == "addison-tx-community-partnership-committee")
     records = json.loads(ADDISON_CPC_FIXTURE.read_text())["records"]
-    return cities, council, records
+    return cities, committee, records
 
 
 def test_addison_cpc_five_rss_recordings_preserve_six_retained_observations():
@@ -482,11 +482,11 @@ def test_addison_cpc_five_rss_recordings_preserve_six_retained_observations():
     from citypods.feeds import build_rss
     from citypods.records import record_to_episode, source_key
 
-    cities, council, records = _addison_cpc_inputs()
+    cities, committee, records = _addison_cpc_inputs()
     original = copy.deepcopy(records)
     index = load_selection_index(cities)
-    assert source_key(council) == ADDISON_CPC_SOURCE
-    group = next(g for g in index.groups if g.feed_slug == council.slug)
+    assert source_key(committee) == ADDISON_CPC_SOURCE
+    group = next(g for g in index.groups if g.feed_slug == committee.slug)
     assert group.preferred_uid == ADDISON_CPC_WINNER
     assert group.date_resolution["official_date"] == "2026-07-09"
     assert group.exposure["status"] == "historical-unknown"
@@ -499,19 +499,19 @@ def test_addison_cpc_five_rss_recordings_preserve_six_retained_observations():
     assert all(
         bodies.record_matches_body(
             r,
-            bodies.source_body_filter(council.source),
-            bodies.source_body_inclusions(council.source),
+            bodies.source_body_filter(committee.source),
+            bodies.source_body_inclusions(committee.source),
         )
         for r in records.values()
     )
-    plan = select_feed_publication(index, council, items, records)
+    plan = select_feed_publication(index, committee, items, records)
     assert not plan.held
     assert len(plan.raw_items) == 6
     assert len(plan.public_items) == 5
     assert (
         ADDISON_CPC_WINNER in plan.selected_uids and ADDISON_CPC_DUPLICATE not in plan.selected_uids
     )
-    xml = build_rss(council, list(plan.public_items), "audio", "https://www.citymeetings.fyi")
+    xml = build_rss(committee, list(plan.public_items), "audio", "https://www.citymeetings.fyi")
     rss_items = DET.fromstring(xml).find("channel").findall("item")
     assert len(rss_items) == 5
     published_uids = {i.find("guid").text for i in rss_items}
@@ -520,7 +520,7 @@ def test_addison_cpc_five_rss_recordings_preserve_six_retained_observations():
     assert winner_item.find("enclosure").get("url") == records[ADDISON_CPC_WINNER]["audio"]["url"]
     assert records == original
     assert len({r["provider_guid"] for r in records.values()}) == 5
-    second = select_feed_publication(index, council, items, records)
+    second = select_feed_publication(index, committee, items, records)
     assert second.selected_uids == plan.selected_uids
     assert second.policy_hash == plan.policy_hash
 
@@ -529,14 +529,14 @@ def test_addison_cpc_search_owner_and_other_feed_selectors():
     from citypods import bodies
     from citypods.records import source_key
 
-    cities, council, records = _addison_cpc_inputs()
+    cities, committee, records = _addison_cpc_inputs()
     index = load_selection_index(cities)
     search = select_search_publication(index, ADDISON_CPC_SOURCE, records)
     assert not search.held
     assert len(search.public_items) == 5
-    assert search.owner_by_uid[ADDISON_CPC_WINNER].slug == council.slug
+    assert search.owner_by_uid[ADDISON_CPC_WINNER].slug == committee.slug
     for city in cities:
-        if city.city_entity != "addison-tx" or city.slug == council.slug:
+        if city.city_entity != "addison-tx" or city.slug == committee.slug:
             continue
         assert source_key(city) == ADDISON_CPC_SOURCE
         assert not any(
@@ -548,7 +548,7 @@ def test_addison_cpc_search_owner_and_other_feed_selectors():
             for r in records.values()
         )
         assert select_feed_publication(index, city, [], records).policy_hash is None
-    selector = bodies.source_body_filter(council.source)
+    selector = bodies.source_body_filter(committee.source)
     assert not bodies.matches("Community Partnership Staff Training", selector)
     assert not bodies.matches("Other City Community Partnership Committee", selector)
 
@@ -564,7 +564,7 @@ def test_addison_cpc_search_owner_and_other_feed_selectors():
 def test_addison_cpc_changed_identity_holds_before_publication(mutation, diagnostic):
     from citypods.records import record_to_episode
 
-    cities, council, records = _addison_cpc_inputs()
+    cities, committee, records = _addison_cpc_inputs()
     if mutation == "missing-winner":
         records.pop(ADDISON_CPC_WINNER)
     elif mutation == "changed-fingerprint":
@@ -573,10 +573,41 @@ def test_addison_cpc_changed_identity_holds_before_publication(mutation, diagnos
         records["d" * 16] = {**records[ADDISON_CPC_WINNER], "uid": "d" * 16, "body": "Not selected"}
     plan = select_feed_publication(
         load_selection_index(cities),
-        council,
+        committee,
         [record_to_episode(r) for r in records.values()],
         records,
     )
     assert plan.held
     assert diagnostic in {d.code for d in plan.diagnostics}
     assert plan.public_items == plan.raw_items
+
+
+def test_addison_cpc_new_unique_recording_classifies_without_identity_merge():
+    from citypods import bodies
+    from citypods.records import record_to_episode
+
+    cities, committee, records = _addison_cpc_inputs()
+    uid = "e" * 16
+    records[uid] = {
+        **copy.deepcopy(records[ADDISON_CPC_WINNER]),
+        "uid": uid,
+        "provider_guid": "new-independent-recording",
+        "title": "Community Partnership Committee – Jul 23, 2026",
+        "published": "2026-07-23T00:00:00+00:00",
+    }
+    selector = bodies.source_body_filter(committee.source)
+    assert bodies.matches("Community Partnership Committee", selector)
+    assert bodies.matches("COMMUNITY PARTNERSHIP COMMITTEE", selector)
+    assert not bodies.matches("Community Partnership Committee Open House", selector)
+    assert not bodies.matches("Comprehensive Plan Advisory Committee", selector)
+    original = copy.deepcopy(records)
+    plan = select_feed_publication(
+        load_selection_index(cities),
+        committee,
+        [record_to_episode(r) for r in records.values()],
+        records,
+    )
+    assert not plan.held
+    assert uid in plan.selected_uids
+    assert len(plan.public_items) == 6
+    assert records == original

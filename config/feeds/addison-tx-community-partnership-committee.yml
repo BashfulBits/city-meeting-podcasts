@@ -1,0 +1,57 @@
+slug: addison-tx-community-partnership-committee
+city: addison-tx
+provider: swagit
+source:
+  list_url: https://addisontx.new.swagit.com/views/128
+  body_exact:
+  - Community Partnership Committee
+podcast_title: 'Addison: Community Partnership Committee'
+podcast_author: City of Addison, TX
+podcast_email: ''
+podcast_description: Community Partnership Committee meetings in Addison, including annual nonprofit
+  funding review.
+remedy_policy:
+  identity_names:
+  - Community Partnership Committee
+  - City Council Community Partnership Committee
+  member_names:
+  - Community Partnership Committee
+publication_selection:
+  version: 1
+  groups:
+  - id: community-partnership-393215
+    source_key: abbf5e25e078
+    identity_kind: same_provider_guid
+    identity_key: '393215'
+    members:
+    - uid: 91efc2425e16e017
+      provider_guid: '393215'
+      record_fingerprint: 33ba50e8fccff84a745baa7545758415decb53eb7926963859ecc1f656959bd5
+    - uid: c70591ce9d69600c
+      provider_guid: '393215'
+      record_fingerprint: 5efe085bc4b84224df728bccfc477bc47a5c45a002dfef09d7166799fd26f2dd
+    preferred_uid: 91efc2425e16e017
+    evidence_refs:
+    - url: https://agendas.addisontx.gov/agenda_publish.cfm?dsp=ag&get_month=7&get_year=2026&id=&mt=ALL&seq=7601
+      retrieved_at: '2026-10-04T04:04:34.135712+00:00'
+      content_hash: 50207de8568edb8e4f2bf2544ba9002235a53055243bcfea3d8e468dccb2ad67
+    - url: https://agendas.addisontx.gov/agenda_publish.cfm?dsp=ag&get_month=7&get_year=2026&id=&mt=ALL&seq=7602
+      retrieved_at: '2026-10-04T04:04:34.299765+00:00'
+      content_hash: e9e4e05c93b34ca9fde3e7dbf074e1870290a77cec2c83f02e46926cbe208fe3
+    approval_ref: https://github.com/BashfulBits/city-meeting-podcasts/issues/1991#issuecomment-5976979654
+    exposure:
+      status: historical-unknown
+      artifacts:
+      - url: https://www.citymeetings.fyi/addison-tx-city-council/audio_feed.xml
+        retrieved_at: '2026-10-04T04:04:34.441198+00:00'
+        content_hash: 97cad0a43ad8657ae1c6d40531d0368f6786ca1bf76d1756d4c329fd61db27f0
+      - url: https://www.citymeetings.fyi/addison-tx-city-council/
+        retrieved_at: '2026-10-04T04:04:34.677015+00:00'
+        content_hash: 35062983bccf3cf9a713d92e117419b606b3fd0f38b2950af7bee14f43075f61
+      rationale: Current Council RSS and uncapped landing page contain neither retained observation.
+        Prior publication history is incomplete. Maintainer explicitly approved July 9 existing UID
+        selection while preserving all archived records and old UID pages.
+    search: true
+    date_resolution:
+      official_date: '2026-07-09'
+      evidence_url: https://agendas.addisontx.gov/agenda_publish.cfm?dsp=ag&get_month=7&get_year=2026&id=&mt=ALL&seq=7601

@@ -87,6 +87,13 @@ PRs [#1973](https://github.com/BashfulBits/city-meeting-podcasts/pull/1973) and
 The [historical inventory](historical-feed-coverage-2026-10.md) merged in #1975; directions A–F
 are approved but residual policy application is still P0, not completed by merging that inventory.
 
+Maintainer clarification (2026-10-04): specific continuing standing committees, including Council
+subcommittees, have dedicated feeds across cities unless evidence establishes a temporary body.
+Seasonal schedules and Council-only membership do not make a committee temporary. Addison CPC's
+[dedicated-feed contract](51-unexpected-body-remedy-flow.md#addison-cpc-dedicated-feed--l3-implementation-under-validation)
+is L3 under PR #2003 validation; it supersedes Council placement, preserves source identities and
+records historical meeting/recording gaps in its dated evidence packet.
+
 P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) prepares one named-body decision covering
 three verified committee recordings. Exact labels exclude the Open House; CPC duplicate identities
 remain in [#1991](https://github.com/BashfulBits/city-meeting-podcasts/issues/1991). This does not

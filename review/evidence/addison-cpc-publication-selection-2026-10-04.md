@@ -44,3 +44,80 @@ Owner subscription direction Council subcommittee is supported by official agend
 | https://addisontx.new.swagit.com/videos/393215/agenda | 2026-10-04T04:03:31.718446+00:00 | 403 | 58bf2215b395dcac74c009aa98701854e43cbe54a1cd3a95fee6a647ca9910d4 | /tmp/addison-evidence-1.html |
 | https://addisontx.new.swagit.com/videos/393859 | 2026-10-04T04:03:31.936509+00:00 | 403 | 58bf2215b395dcac74c009aa98701854e43cbe54a1cd3a95fee6a647ca9910d4 | /tmp/addison-evidence-2.html |
 | https://addisontx.new.swagit.com/videos/393859/agenda | 2026-10-04T04:03:32.155718+00:00 | 403 | 58bf2215b395dcac74c009aa98701854e43cbe54a1cd3a95fee6a647ca9910d4 | /tmp/addison-evidence-3.html |
+
+
+## Historical census and dedicated-feed policy (2026-10-04)
+
+Read-only research on 2026-10-04. Scope: formation 2024-12-10 through 2026-10-04.
+Local archive inspected: `.citypods-state/sources/abbf5e25e078/episodes.json`.
+
+## Conclusion and confidence
+
+The committee is an ongoing three-member Council subcommittee with annual appointments and an
+annual nonprofit-budget role. A seasonal cycle does not make it temporary. It belongs in a dedicated
+feed under the maintainer's explicit preference. Known evidence establishes nine held meeting dates,
+one additional scheduled date (July 17, 2025), and one cancelled date. Only five distinct recordings
+are present in the current official indexed Swagit archive and six raw archive UIDs (one duplicate
+July 2026 GUID/date representation). Do not claim the five videos constitute every historical meeting.
+
+## Date census
+
+| Date | Status and proof | Recording / retained UID |
+|---|---|---|
+| 2024-12-10 | Council establishes CPC via R24-111. This is a Council meeting, not a CPC episode. | Council Swagit 322414; do not classify from agenda mention. |
+| 2025-01-23 | Held: March 25 Council packet retrospectively lists meeting; February 4 minutes approve Jan 23 minutes. | No CPC recording found in public indexed archive or retained source. |
+| 2025-02-04 | Held: draft official actions in Feb 18 cancelled packet record call to order, attendance and adjournment. Also March25 retrospective. | No CPC recording found. |
+| 2025-02-18 | Cancelled: first page of amended packet explicitly states cancelled/to be rescheduled; March11 memo confirms cancellation. | Must not create a podcast episode. |
+| 2025-03-11 | Held: March25 retrospective; March11 meeting packet gives exact committee heading and memo date despite stale URL directory 20250220. | No CPC recording found. |
+| 2025-03-18 | Held: March25 Council packet explicitly lists this meeting among four held. | No standalone packet or CPC recording found in searches. |
+| 2025-06-26 | Held: official minutes included July17 packet and Swagit archive. | GUID347901 / d2a2a095572de394. |
+| 2025-07-10 | Held: official minutes included July17 packet and Swagit archive. | GUID349471 / e4683d84499ede30. |
+| 2025-07-17 | Scheduled: amended official agenda at 4PM, nonprofit presentations and funding recommendations. No located completed minutes/video proof. | No recording found. Keep availability/held status unresolved; agenda alone is not an audio episode. |
+| 2026-06-29 | Held: Swagit archive and minutes approved at July16 recording. | GUID392446 / 406d87fa54437613. |
+| 2026-07-09 | Held: Swagit archive and minutes approved at July16 recording; approved official date reconciliation. | GUID393215 / preferred91efc2425e16e017; alternate c70591ce9d69600c labelled July10,2026 is same GUID/download. Preserve both raw UIDs. |
+| 2026-07-16 | Held: Swagit archive, full recorded agenda and transcript. | GUID393859 / 926cf5eb32e17f89. |
+
+Five distinct recorded CPC meetings become five feed entries after existing approved duplicate winner
+selection. Five historical dates have no located recording (four confirmed held, one scheduled).
+There may be additional unindexed meetings. The July16,2026 transcript also describes a committee
+visit to nonprofit offices that week; without exact formal meeting/date/recording evidence it is not
+an extra feed episode and must not be silently inferred from speech.
+
+## Primary source URLs
+
+- Formation, ongoing purpose, annual appointments and four held early-2025 meetings:
+  https://agendas.addisontx.gov/docs/2025/CM/20250325_7396/AGENDApacket__03-25-25_0329_7391.pdf
+- Dec10 minutes (formation vote), included Jan14 Council packet:
+  https://agendas.addisontx.gov/docs/2025/CM/20250114_7384/AGENDApacket__01-14-25_0219_7379.pdf
+- Feb18 cancelled packet and Feb4 draft official actions (Jan23 minutes approval):
+  https://agendas.addisontx.gov/docs/2025/CPAC/20250213_7405/AGENDApacket__02-18-25_1248_7400.pdf
+- March11 agenda/memo; cancellation confirmation (URL date is not authoritative meeting date):
+  https://agendas.addisontx.gov/docs/2025/CPAC/20250220_7406/AGENDApacket__03-11-25_0324_7401.pdf
+- July17 agenda and June26/July10 minutes, annual cycle and three members annually appointed:
+  https://agendas.addisontx.gov/docs/2025/CPAC/20250717_7467/AGENDApacket__07-17-25_1155_7462.pdf
+- Official indexed Swagit archive, Specialty–Other category, five CPC recordings:
+  https://addisontx.new.swagit.com/views/128/live
+- July16,2026 recording and June29/July9 minutes approvals:
+  https://addisontx.new.swagit.com/videos/393859
+- Current annual program explains subcommittee and June/July2026 presentation cycle:
+  https://www.addisontx.gov/Government/Budget/Non-Profit-Funding-Program
+
+## Research limitations
+
+Swagit direct web fetch returned403; indexed archive and indexed individual recording are readable.
+AgendaQuick calendar requests failed or returned application errors; one direct calendar request
+returned an anti-attack/IP-capture message. No further direct calendar attempts were made. Indexed
+PDFs are available. Broad official-domain searches found no additional standalone March18 or July17
+recording. Absence from search is not proof a recording never existed. Historical total remains a
+minimum known census, not complete authoritative all-dates coverage. Do not fabricate no-audio UIDs,
+borrow Council recordings discussing CPC, or claim missing historic audio was recovered.
+
+## Minimal classification implications
+
+Existing trusted source body exactly `Community Partnership Committee` matches all six retained CPC
+records; exact official whole-meeting alias `City Council Community Partnership Committee` may be a
+reviewed second alias. Anchor whole meeting/body label, not agenda/transcript mention. Do not use
+`CPAC` as alias or `/CPAC/` URL directory: Addison reuses that AgendaQuick directory for unrelated
+Comprehensive Plan Advisory Committee. No member-name, date-window or nonprofit-topic heuristic.
+CPC's genuine later titled recordings can be classified automatically by approved exact body rule;
+previously unrecorded dates remain coverage evidence only, not fabricated episodes.
