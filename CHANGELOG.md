@@ -19,6 +19,8 @@ Once 1.0 ships, entries move under semver tags.
 
 - Add inactive publication-selection v1 machinery for #1997: strict reviewed proof declarations,
   existing UID projection and pre-write feed/search holds preserve raw records and meeting pages.
+  Valid selections also rewrite an empty audio channel when the preferred record is unavailable,
+  removing stale alternate RSS items without promoting another UID.
   No city groups are activated. Configured selection enters render/search cache fingerprints;
   unconfigured views retain existing hashes. No pipeline-version bump or audio backfill occurs.
 
