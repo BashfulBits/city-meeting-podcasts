@@ -565,8 +565,8 @@ admission. Role names map to `audit-remedy-proposer`, `audit-remedy-reviewer` an
 Add optional `allowed_route_ids: tuple[str, ...] | None = None` to `LLMRequestPolicy`.
 `select_route` rejects physical IDs outside it **before** overflow/`also_serves` pool substitution
 and quota reservation. `None` preserves current behavior; empty tuple admits nothing. P1 uses
-this only for direct calls; no dispatch serialization or Worker change is introduced.
-A non-None allowlist with a queued/dispatch request is rejected at the backend boundary, rather
+this only for `run_immediate`; no deferred serialization or Worker change is introduced.
+A non-None allowlist with any `run_inference` or queued/dispatch request is rejected, rather
 than silently ignored by a transport that does not implement this gate.
 
 Add optional fields to synchronous `JobResult`: `route_id`, `upstream_model`,

@@ -696,12 +696,13 @@ def _direct_result_provenance(result: JobResult, job: InferenceJob, route: Any) 
         return result
     controls = route_request_params(route)
     level = _lane_reasoning_level(job, route)
-    controls.update(route_reasoning_controls(route, level))
+    effort_controls = route_reasoning_controls(route, level)
+    controls.update(effort_controls)
     return replace(
         result,
         route_id=route.route_id or None,
         upstream_model=route.upstream_model or None,
-        reasoning_level=level,
+        reasoning_level=level if effort_controls else None,
         request_params_hash=hashlib.sha256(
             json.dumps(controls, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest(),
@@ -1337,10 +1338,8 @@ class LiteLLMBackend(Backend):
             return self._run_without_policy(job, structured)
         if not isinstance(policy, LLMRequestPolicy):
             raise ValueError("LLM inputs.llm_policy must be an LLMRequestPolicy")
-        if policy.allowed_route_ids is not None and (
-            policy.queue_only or policy.allow_dispatch_overflow or not policy.require_direct
-        ):
-            raise ValueError("physical route allowlist requires direct-only requests")
+        if policy.allowed_route_ids is not None:
+            raise ValueError("physical route allowlist requires run_immediate")
         if self.storage is None or (
             not policy.queue_only and not getattr(self.storage, "cas_capable", False)
         ):
