@@ -1,0 +1,681 @@
+inventory_id,city,source_key,body,retained_uids,matched_uids,unmatched_uids,matching_feeds,status
+2147c4da110a,addison-tx,abbf5e25e078,Addison Economic Development Luncheon,1,0,1,,selector-gap
+1b47dc03a798,addison-tx,abbf5e25e078,Community Partnership Committee,6,0,6,,selector-gap
+1fee066734f6,addison-tx,abbf5e25e078,Bond Advisory Committee,4,0,4,,selector-gap
+5958cfb33af5,addison-tx,abbf5e25e078,Unified Development Code (UDC) Advisory Committee,3,3,0,addison-tx-unified-development-code-advisory-committee,selector-covered
+abecffac363f,arlington-tx,ecc3710ac47f,Arlington Housing Finance Corporation Board Meeting,1,1,0,arlington-tx;arlington-tx-housing-finance-corporation,selector-covered
+4ec7e9654983,arlington-tx,ecc3710ac47f,Empty,1,1,0,arlington-tx,selector-covered
+1d90997bebcb,arlington-tx,ecc3710ac47f,ZBA Regular Session,1,1,0,arlington-tx;arlington-tx-zoning-board-of-adjustment,selector-covered
+b5fd5e15c795,dallas-tx,76869ed1994f,"Building Inspection Advisory, Examining & Appeals Boards",2,0,2,,selector-gap
+4fdc3a6e244f,dallas-tx,76869ed1994f,Subdivision Review Committee,2,0,2,,selector-gap
+fd972d06a8ef,dallas-tx,76869ed1994f,Arts District Sign Advisory Committee,2,0,2,,selector-gap
+e3cfb24b7253,dallas-tx,76869ed1994f,"Building Inspection Advisory, Examining and Appeals Board Special Called Meeting",2,0,2,,selector-gap
+629013b2e94e,dallas-tx,76869ed1994f,Dallas Area Partnership to End and Prevent Homelessness Local Government Corporation,12,0,12,,selector-gap
+6c9c3c0c7c8c,dallas-tx,76869ed1994f,Charter Review Commission,30,0,30,,selector-gap
+ed8d5c7d7837,dallas-tx,76869ed1994f,City of Dallas Neighborhood Public Meeting,1,0,1,,selector-gap
+90b5eb16cbf2,dallas-tx,76869ed1994f,Dallas Area Partnership,1,0,1,,selector-gap
+1e60f56bad10,dallas-tx,76869ed1994f,Urban Design Peer Review,1,0,1,,selector-gap
+1947af1d868d,dallas-tx,76869ed1994f,Police Online Reporting System,1,0,1,,selector-gap
+9100f981ac2a,dallas-tx,76869ed1994f,DDF Board Meeting,1,0,1,,selector-gap
+348376a14c1f,dallas-tx,76869ed1994f,CPC Bus Tour,1,0,1,,selector-gap
+9d23e1220174,dallas-tx,76869ed1994f,Comprehensive Land Use Plan Committee,2,0,2,,selector-gap
+d95a2b649fa9,dallas-tx,76869ed1994f,Neighborhood Public Meeting for FY 2022-23 HUD Grant Funds,1,0,1,,selector-gap
+4ea4078fd9a3,dallas-tx,76869ed1994f,Automated Red Light Commission,11,0,11,,selector-gap
+6b6fe168e855,dallas-tx,76869ed1994f,Dangerous Dog Taskforce Meeting,1,0,1,,selector-gap
+342cfe056e8e,dallas-tx,76869ed1994f,Pension Hearing Meeting,1,0,1,,selector-gap
+148ebe6fb0c6,dallas-tx,76869ed1994f,Dallas Area Partnership to End and Prevent Homelessness LGC,1,0,1,,selector-gap
+44909aa4b23c,dallas-tx,76869ed1994f,Mayor's Task Force on Confederate Monuments,5,0,5,,selector-gap
+47b40582d874,dallas-tx,76869ed1994f,Mayor's Poverty Task Force,1,0,1,,selector-gap
+a8aa6f8d3ca8,dallas-tx,76869ed1994f,Commission on Homelessness,11,0,11,,selector-gap
+736ee0de1004,dallas-tx,76869ed1994f,Ethics Preliminary Panel Hearing Meeting,1,0,1,,selector-gap
+2f3e816a77a9,dallas-tx,76869ed1994f,Art Community Meeting,1,0,1,,selector-gap
+63a70b857a46,dallas-tx,76869ed1994f,Education Task Force,1,0,1,,selector-gap
+f86f6c6423be,dallas-tx,76869ed1994f,Trinity Parkway Advisory Committee,2,0,2,,selector-gap
+b1c6f8bc3144,dallas-tx,76869ed1994f,Joint Board of Directors,1,0,1,,selector-gap
+0d90bc525d2a,dallas-tx,76869ed1994f,Urban Design Peer Review Panel,1,0,1,,selector-gap
+d54d3a52548e,dallas-tx,76869ed1994f,Charter Review Commission: Community Meeting,3,0,3,,selector-gap
+1f2583ef6e4a,dallas-tx,76869ed1994f,Charter Review Commission Inaugural Meeting,1,0,1,,selector-gap
+08c610dfa9eb,dallas-tx,76869ed1994f,Ad Hoc Committee on General Investigating and Ethics,17,0,17,,selector-gap
+4a85ef022f88,dallas-tx,76869ed1994f,Ad Hoc Committee on Judicial Nominations,1,0,1,,selector-gap
+197cccab72bb,dallas-tx,76869ed1994f,Ad Hoc Judicial Nominating Committee,8,0,8,,selector-gap
+197bf2139e8b,dallas-tx,76869ed1994f,Ad Hoc Committee on Legislative Affairs,14,0,14,,selector-gap
+bfd1db7e6d3b,dallas-tx,76869ed1994f,Ad Hoc City Council Canvassing Committee,7,0,7,,selector-gap
+3170909739c3,dallas-tx,76869ed1994f,Workforce-Education and Equity,58,0,58,,selector-gap
+79c1c149336a,dallas-tx,76869ed1994f,Ad Hoc Committee on Pensions,10,0,10,,selector-gap
+6fb1cc8a3bb1,dallas-tx,76869ed1994f,Zoning Ordinance Advisory Committee,1,0,1,,selector-gap
+14b86b972b9d,dallas-tx,76869ed1994f,2024 Bond Critical Facilities Subcommittee Meeting,2,0,2,,selector-gap
+42eea1cb1e1f,dallas-tx,76869ed1994f,2024 Capital Bond CBTF and Subcommittee Chairs Meeting,1,0,1,,selector-gap
+5ba305eb8fac,dallas-tx,76869ed1994f,2024 Capital Bond Meeting Spanish,1,0,1,,selector-gap
+26c5c85b915d,dallas-tx,76869ed1994f,2024 Capital Bond Program CBTF Meetings,3,0,3,,selector-gap
+61588d555345,dallas-tx,76869ed1994f,2024 Bond Program Special Called Park and Trails Subcommittee Meeting,1,0,1,,selector-gap
+21240333c0b4,dallas-tx,76869ed1994f,2024 Bond Flood Control & Storm Drainage Meeting,4,0,4,,selector-gap
+833c271a6a0e,dallas-tx,76869ed1994f,Special Called Joint Meeting AD Hoc and GPFM Committee,1,0,1,,selector-gap
+660dd1def3f4,dallas-tx,76869ed1994f,2024 Bond Critical Facilities Subcommittee,2,0,2,,selector-gap
+a2b55bc2fde6,dallas-tx,76869ed1994f,"2024 Bond ECO, HOU, OHS Meeting",3,0,3,,selector-gap
+03dd73d2eb05,dallas-tx,76869ed1994f,2024 Capital Bond CBTF Meeting,5,0,5,,selector-gap
+c3c8fe304610,dallas-tx,76869ed1994f,2024 Bond ECONOM,1,0,1,,selector-gap
+69e1a9abfa35,dallas-tx,76869ed1994f,2024 Bond Parks and Trails Subcommittee Meeting,1,0,1,,selector-gap
+7a571145a851,dallas-tx,76869ed1994f,2024 Bond Task Force Community Bond Task Force Meeting,1,0,1,,selector-gap
+240913f4d1b2,dallas-tx,76869ed1994f,2024 Bond Task Force Critical Facilities Subcommittee Meeting,1,0,1,,selector-gap
+c6901c992fef,dallas-tx,76869ed1994f,2024 Bond Task Force Flood,1,0,1,,selector-gap
+b6d72634e049,dallas-tx,76869ed1994f,2024 Bond Program: Allocation Discussion,1,0,1,,selector-gap
+b08a11616a2f,dallas-tx,76869ed1994f,2024 Bond Flood Protection and Storm Drainage Subcommittee Meeting,1,0,1,,selector-gap
+b664903db29a,dallas-tx,76869ed1994f,2024 Capital Bond ECONOM Meeting,2,0,2,,selector-gap
+fb6a1628c10c,dallas-tx,76869ed1994f,2024 Bond Critical Facilities Meeting,3,0,3,,selector-gap
+6c57a93bb9ea,dallas-tx,76869ed1994f,2024 Bond Parks and Trails Meeting,2,0,2,,selector-gap
+e59f24f157e3,dallas-tx,76869ed1994f,2024 Bond Kick off,1,0,1,,selector-gap
+0a546ab424f4,dallas-tx,76869ed1994f,TELE Town Hall Meetings District 9,1,0,1,,selector-gap
+e0a98d271c96,dallas-tx,76869ed1994f,TELE Town Hall Meetings District 8,1,0,1,,selector-gap
+c252489e1ba7,dallas-tx,76869ed1994f,TELE Town Hall Meetings District 1 & 6,1,0,1,,selector-gap
+1abfef181f40,dallas-tx,76869ed1994f,Legislative Ad Hoc Committee,16,0,16,,selector-gap
+e3d68a7423c2,dallas-tx,76869ed1994f,District 4 OHS Budget Listening Sessions,1,0,1,,selector-gap
+7bf6f271b63f,dallas-tx,76869ed1994f,"D1, D3, & OHS Budget Listening Session",1,0,1,,selector-gap
+6c337207e1a5,dallas-tx,76869ed1994f,"Budget Listening Session for D11, D12, and D13",1,0,1,,selector-gap
+44cbba86e465,dallas-tx,76869ed1994f,Ad Hoc Committee on COVID-19 Recovery & Assistance,13,0,13,,selector-gap
+863591b4adfe,dallas-tx,76869ed1994f,Council Agenda,2,0,2,,selector-gap
+e874bf674530,dallas-tx,76869ed1994f,Special Workforce-Education and Equity,2,0,2,,selector-gap
+528b34c525cf,dallas-tx,76869ed1994f,Youth Commission,49,0,49,,selector-gap
+ba5cbb67926d,dallas-tx,76869ed1994f,Council Ad Hoc Committee on COVID-19 Recovery and Assistance,7,0,7,,selector-gap
+d7dccdb3b0f3,dallas-tx,76869ed1994f,District 3 Virtual Town Hall Meetings,1,0,1,,selector-gap
+aa89b835f027,dallas-tx,76869ed1994f,Districts 1 and 6 Virtual Town Hall Meetings,1,0,1,,selector-gap
+36151d09d67c,dallas-tx,76869ed1994f,District 7 Virtual Town Hall Meetings,1,0,1,,selector-gap
+6d39b4a5a606,dallas-tx,76869ed1994f,Districts 11 and 13 Virtual Town Hall Meetings,1,0,1,,selector-gap
+648b8894e655,dallas-tx,76869ed1994f,District 10 Virtual Town Hall Meetings,1,0,1,,selector-gap
+7ca983e16b64,dallas-tx,76869ed1994f,Districts 2 and 6 Virtual Town Hall Meetings,1,0,1,,selector-gap
+a8c62d7c5f2e,dallas-tx,76869ed1994f,District 8 Virtual Town Hall Meetings,1,0,1,,selector-gap
+9ffbd10b3071,dallas-tx,76869ed1994f,Council Ad Hoc Committee on COVID-19 Human and Social Recovery and Assistance,12,0,12,,selector-gap
+8a58c48e4bde,dallas-tx,76869ed1994f,Council Ad Hoc Committee on COVID-19 Economic Recovery and Assistance,7,0,7,,selector-gap
+224f743b9700,dallas-tx,76869ed1994f,Virtual Town Hall Meetings,29,0,29,,selector-gap
+ff8d4dbdf945,dallas-tx,76869ed1994f,"Mobility Solutions, Infrastructure and Sustainability Committee",34,0,34,,selector-gap
+b9ff33aed385,dallas-tx,76869ed1994f,Human & Social Needs Committee,33,0,33,,selector-gap
+fa52af1c93d8,dallas-tx,76869ed1994f,Mayor’s Task Force on Poverty,2,0,2,,selector-gap
+269cf609a061,dallas-tx,76869ed1994f,Citizens Bond Task Force: Town Hall Meeting,3,0,3,,selector-gap
+37b0c6ef5397,dallas-tx,76869ed1994f,Joint Education Task Force,4,0,4,,selector-gap
+2b7cb934efa7,dallas-tx,76869ed1994f,AD HOC Judical Nominations Committee,1,0,1,,selector-gap
+53666b45f775,dallas-tx,76869ed1994f,Budget Virtual Town Hall Meeting,15,0,15,,selector-gap
+e4553cb23038,dallas-tx,76869ed1994f,Joint Education Taskforce,1,0,1,,selector-gap
+19f379fe45c7,dallas-tx,76869ed1994f,AD HOC Committees,1,0,1,,selector-gap
+d7402c4baa17,dallas-tx,76869ed1994f,Deck The Plaza 2025,1,0,1,,selector-gap
+280703204965,dallas-tx,76869ed1994f,Zoning Reform Meeting,1,0,1,,selector-gap
+16a3af902cfd,dallas-tx,76869ed1994f,Dallas Police & Dallas Fire Rescue Chiefs Swearing in Ceremony,1,0,1,,selector-gap
+05fcfff65704,dallas-tx,76869ed1994f,Naturalization Ceremony,2,0,2,,selector-gap
+a9894d5c76d0,dallas-tx,76869ed1994f,State of the Address,1,0,1,,selector-gap
+27156d63690b,dallas-tx,76869ed1994f,District 4 Telephone Town Hall Meeting,1,0,1,,selector-gap
+20185fe29a7b,dallas-tx,76869ed1994f,Mayor Back to School Press Conference,2,0,2,,selector-gap
+9c90fa220764,dallas-tx,76869ed1994f,City of Dallas Scooter Press Conference,1,0,1,,selector-gap
+873ea8b260c0,dallas-tx,76869ed1994f,Juanita J. Craft Civil Rights House Ribbon Cutting,1,0,1,,selector-gap
+8af7f3dd32d0,dallas-tx,76869ed1994f,Fentanyl Awareness Day Proclamation Press Conference,1,0,1,,selector-gap
+a028e3b8ddaa,dallas-tx,76869ed1994f,I-345 Panel and Public Discussion,1,0,1,,selector-gap
+6c85665b77c1,dallas-tx,76869ed1994f,Mayor's Distinguished Awards News Conference,1,0,1,,selector-gap
+6bbf49c1da6b,dallas-tx,76869ed1994f,Home for the Holidays News Conference,1,0,1,,selector-gap
+fbb317ac6264,dallas-tx,76869ed1994f,Run. Hide. Fight,1,0,1,,selector-gap
+b5463df67a86,dallas-tx,76869ed1994f,Back To School Fair Press Conference,1,0,1,,selector-gap
+a12f9397dbb4,dallas-tx,76869ed1994f,News Conference,4,0,4,,selector-gap
+b2e00d9de462,dallas-tx,76869ed1994f,Racial Equity Audit Report,2,0,2,,selector-gap
+46b61f7f0498,dallas-tx,76869ed1994f,State of City Address,2,0,2,,selector-gap
+57362c1663df,dallas-tx,76869ed1994f,Mayor's Press Conference,5,0,5,,selector-gap
+58d39fb9a95b,dallas-tx,76869ed1994f,Forward Dallas Neighborhood Summit Press Conference,1,0,1,,selector-gap
+fdc5f8c6274c,dallas-tx,76869ed1994f,Botham Jean Boulevard Street Renaming Ceremony,1,0,1,,selector-gap
+30b9413d0de8,dallas-tx,76869ed1994f,Spanish Forum on COVID-19 Vaccination,1,0,1,,selector-gap
+b696b877cf8c,dallas-tx,76869ed1994f,COVID Focus Group,1,0,1,,selector-gap
+5313c7d1b516,dallas-tx,76869ed1994f,Neighborhood Public Meeting for FY 2021-22 Consolidated Plan Budget,1,0,1,,selector-gap
+6bd022632c78,dallas-tx,76869ed1994f,News Conference (Spanish),1,0,1,,selector-gap
+1ee83841d905,dallas-tx,76869ed1994f,Press conference on COVID Vaccine,1,0,1,,selector-gap
+3c8ed6b909c7,dallas-tx,76869ed1994f,Dallas Police Chief Forum,1,0,1,,selector-gap
+cc571ee1159a,dallas-tx,76869ed1994f,Dallas Police Chief Forum (Spanish),1,0,1,,selector-gap
+a7e67ff5e60f,dallas-tx,76869ed1994f,National Gold Medal Award Presentation,1,0,1,,selector-gap
+b75e7e857ecb,dallas-tx,76869ed1994f,City of Dallas FY-2020-21 Budget Press Conference,1,0,1,,selector-gap
+5126f9b67947,dallas-tx,76869ed1994f,CM West News Conference,1,0,1,,selector-gap
+b8d7f203f0c3,dallas-tx,76869ed1994f,District 4's Dallas 365 Safe Press Conference,1,0,1,,selector-gap
+fb7478ba74d5,dallas-tx,76869ed1994f,Texas House Committee on Redistricting,1,0,1,,selector-gap
+0a87146da49e,dallas-tx,76869ed1994f,Tax Credit 101 for Policymakers,1,0,1,,selector-gap
+f3262e567ab2,dallas-tx,76869ed1994f,Texas House Committee on Land and Resource Management Meeting,1,0,1,,selector-gap
+3a930b82caaf,dallas-tx,76869ed1994f,Grow South Annual Reports,1,0,1,,selector-gap
+5759e7cdb660,dallas-tx,76869ed1994f,DPD Chief Hall Swearing-In Ceremony,1,0,1,,selector-gap
+539930b9159d,dallas-tx,76869ed1994f,City Manager T.C. Broadnax Presentation,1,0,1,,selector-gap
+f1af305e6f04,dallas-tx,76869ed1994f,Dr. Richard Florida,1,0,1,,selector-gap
+7723a9dc8e6f,dallas-tx,76869ed1994f,Virtual Neighborhood Public Hearing,1,0,1,,selector-gap
+d48c255f59c5,dallas-tx,76869ed1994f,Veterans Day Parade,1,0,1,,selector-gap
+68f8ddc4086b,dallas-tx,76869ed1994f,Mayor Grow South Meeting,2,0,2,,selector-gap
+c69f20a86e24,dallas-tx,76869ed1994f,Fair Park Foundation Press Conference,1,0,1,,selector-gap
+51a45fee0875,dallas-tx,76869ed1994f,Urban Land Institute,1,0,1,,selector-gap
+f383863d6417,dallas-tx,76869ed1994f,Let's Talk,1,0,1,,selector-gap
+5b256c648728,dallas-tx,76869ed1994f,Code Video,1,0,1,,selector-gap
+d1dc215a51ec,dallas-tx,76869ed1994f,Goodbye to the Wright Amendment,1,0,1,,selector-gap
+6bb7d7ac4a61,dallas-tx,76869ed1994f,Committee on Homeland Security Joint Hearing,1,0,1,,selector-gap
+a208baf52132,dallas-tx,76869ed1994f,Dallas Ebola Case News Conference,1,0,1,,selector-gap
+95d0cfe8077c,dallas-tx,76869ed1994f,Joint Dallas Ebola Update News Conference,1,0,1,,selector-gap
+6512bd1fe710,dallas-tx,76869ed1994f,The FEED,1,0,1,,selector-gap
+2a520b58c852,dallas-tx,76869ed1994f,Conversations About Race,2,0,2,,selector-gap
+897e291b8896,dallas-tx,76869ed1994f,Grow Grow South Townview 2-11-14,1,0,1,,selector-gap
+43a39395892d,dallas-tx,76869ed1994f,The 50th:  Honoring the Memory of President John F. Kennedy,1,0,1,,selector-gap
+10186fd1d496,dallas-tx,76869ed1994f,311 App,1,0,1,,selector-gap
+906131278476,dallas-tx,76869ed1994f,Proposed Annual Budget for Fiscal Year 2013-2014,1,0,1,,selector-gap
+600ba4e2cff0,dallas-tx,76869ed1994f,2013 Back to School Fair,1,0,1,,selector-gap
+fadbad258c13,dallas-tx,76869ed1994f,Nelson Mandela International Day,1,0,1,,selector-gap
+f227cdb36f82,dallas-tx,76869ed1994f,Communities Foundation of Texas,1,0,1,,selector-gap
+b70c066409fa,dallas-tx,76869ed1994f,Wowie Awards 2013,1,0,1,,selector-gap
+953cb7f3326e,dallas-tx,76869ed1994f,WOWie Commercial 2,1,0,1,,selector-gap
+c1d3d9c1cba7,denton-tx,3b7588310856,Airport Advisory Board on 2021-05-13 10:00 AM,1,0,1,,selector-gap
+3b2677a0b68e,denton-tx,3b7588310856,Airport Advisory Board on 2021-04-08 1:30 PM,1,0,1,,selector-gap
+061585e42370,denton-tx,3b7588310856,Airport Advisory Board on 2021-03-11 1:00 PM,1,0,1,,selector-gap
+db61ec49c4b3,denton-tx,3b7588310856,Airport Advisory Board on 2021-02-11 11:00 AM (SPECIAL CALLED MEETING),1,0,1,,selector-gap
+79a1dad2fa40,denton-tx,3b7588310856,Airport Advisory Board on 2021-01-14 11:00 AM (SPECIAL CALLED MEETING),1,0,1,,selector-gap
+ee292f5d1e68,denton-tx,3b7588310856,Airport Advisory Board on 2020-12-10 1:00 PM (SPECIAL CALLED MEETING),1,0,1,,selector-gap
+b23ab59bc951,denton-tx,3b7588310856,Airport Advisory Board on 2020-11-12 1:00 PM (SPECIAL CALLED MEETING),1,0,1,,selector-gap
+447ad4e9c306,denton-tx,3b7588310856,Airport Advisory Board on 2020-06-17 1:00 PM (SPECIAL CALLED MEETING),1,0,1,,selector-gap
+308c7b9baab2,denton-tx,3b7588310856,Animal Shelter Advisory Committee on 2021-03-24 3:00 PM,1,0,1,,selector-gap
+1d5b0bc422f3,denton-tx,3b7588310856,Animal Shelter Advisory Committee on 2020-10-21 3:00 PM,1,0,1,,selector-gap
+4bde1eae7e73,denton-tx,3b7588310856,Animal Shelter Advisory Committee on 2020-07-23 2:00 PM,1,0,1,,selector-gap
+1df1a3b6f4b1,denton-tx,3b7588310856,Bond Oversight Committee on 2021-05-06 12:00 PM,1,0,1,,selector-gap
+ad6b38b20241,denton-tx,3b7588310856,Bond Oversight Committee on 2021-02-04 12:00 PM (AMENDED),1,0,1,,selector-gap
+c3f4b124c223,denton-tx,3b7588310856,Bond Oversight Committee on 2020-11-05 12:00 PM (SPECIAL CALLED MEETING),1,0,1,,selector-gap
+a40835890164,denton-tx,3b7588310856,Bond Oversight Committee on 2020-07-23 11:30 AM,1,0,1,,selector-gap
+da743a93fbec,denton-tx,3b7588310856,Charter Review Committee on 2024-11-14 5:30 PM,1,0,1,,selector-gap
+3898836ef31c,denton-tx,3b7588310856,Charter Review Committee on 2024-10-17 5:30 PM,1,0,1,,selector-gap
+11938fbfe6e0,denton-tx,3b7588310856,Charter Review Committee on 2024-10-03 5:30 PM,1,0,1,,selector-gap
+ea5fd3f6526a,denton-tx,3b7588310856,Charter Review Committee on 2024-09-19 5:30 PM,1,0,1,,selector-gap
+b3d17d22d415,denton-tx,3b7588310856,Charter Review Committee on 2024-09-05 5:30 PM,1,0,1,,selector-gap
+2be4c4c8fc8d,denton-tx,3b7588310856,Charter Review Committee on 2024-08-22 5:30 PM,1,0,1,,selector-gap
+70d695073180,denton-tx,3b7588310856,Charter Review Committee on 2024-08-08 5:30 PM,1,0,1,,selector-gap
+192fd8b13b97,denton-tx,3b7588310856,Charter Review Committee on 2024-07-25 5:30 PM,1,0,1,,selector-gap
+b1f1edaf4556,denton-tx,3b7588310856,Charter Review Committee on 2017-03-01 6:00 PM,1,0,1,,selector-gap
+f393d424f361,denton-tx,3b7588310856,Committee on the Environment on 2021-05-03 9:00 AM,1,0,1,,selector-gap
+8910d840a2c9,denton-tx,3b7588310856,Committee on the Environment on 2021-04-05 9:00 AM,1,0,1,,selector-gap
+8ab880d753d2,denton-tx,3b7588310856,Committee on the Environment on 2021-02-01 9:00 AM,1,0,1,,selector-gap
+de547de8f73d,denton-tx,3b7588310856,Committee on the Environment on 2020-11-02 9:00 AM,1,0,1,,selector-gap
+07fd3f8d1522,denton-tx,3b7588310856,Committee on the Environment on 2020-10-05 9:00 AM,1,0,1,,selector-gap
+ddf502a2bcdd,denton-tx,3b7588310856,Committee on the Environment on 2020-09-08 1:00 PM,1,0,1,,selector-gap
+9955ee4f50c0,denton-tx,3b7588310856,Committee on the Environment on 2020-06-25 10:00 AM,1,0,1,,selector-gap
+bc637efc3b8d,denton-tx,3b7588310856,Committee on the Environment on 2018-09-17 9:00 AM,1,0,1,,selector-gap
+47a00a7c8d3a,denton-tx,3b7588310856,Committee on the Environment on 2018-08-06 9:00 AM,1,0,1,,selector-gap
+2958d7f92aa5,denton-tx,3b7588310856,Committee on the Environment on 2018-05-21 1:00 PM,1,0,1,,selector-gap
+b2df78f7b528,denton-tx,3b7588310856,Committee on the Environment on 2018-03-19 9:00 AM,1,0,1,,selector-gap
+771bac3525a4,denton-tx,3b7588310856,Committee on the Environment on 2018-02-05 1:30 PM,1,0,1,,selector-gap
+641920ff1963,denton-tx,3b7588310856,Committee on the Environment on 2018-01-08 12:00 PM,1,0,1,,selector-gap
+d30dd662f68c,denton-tx,3b7588310856,Committee on the Environment on 2017-11-06 9:00 AM,1,0,1,,selector-gap
+0da1c59961e5,denton-tx,3b7588310856,Committee on the Environment on 2017-09-11 12:00 PM,1,0,1,,selector-gap
+62bdd1794755,denton-tx,3b7588310856,Committee on the Environment on 2017-08-14 12:00 PM,1,0,1,,selector-gap
+9c03a539a5e1,denton-tx,3b7588310856,Committee on the Environment on 2017-04-03 1:30 PM,1,0,1,,selector-gap
+53416d4765a9,denton-tx,3b7588310856,Committee on the Environment on 2017-03-06 1:30 PM,1,0,1,,selector-gap
+d0d1c037f165,denton-tx,3b7588310856,Committee on the Environment on 2017-02-06 1:30 PM,1,0,1,,selector-gap
+e3bb8913a570,denton-tx,3b7588310856,Committee on the Environment on 2017-01-17 10:30 AM,1,0,1,,selector-gap
+74e3c03f37cd,denton-tx,3b7588310856,Committee on the Environment on 2016-12-05 1:30 PM,1,0,1,,selector-gap
+86789e1919ec,denton-tx,3b7588310856,Committee on the Environment on 2016-10-03 1:30 PM,1,0,1,,selector-gap
+9c4e42a28816,denton-tx,3b7588310856,Committee on the Environment on 2016-09-12 1:30 PM,1,0,1,,selector-gap
+935f2c3591e5,denton-tx,3b7588310856,Committee on the Environment on 2016-07-25 1:00 PM,1,0,1,,selector-gap
+3d293b2ae64d,denton-tx,3b7588310856,Committee on the Environment on 2016-06-06 1:30 PM,1,0,1,,selector-gap
+999d96fb9b4b,denton-tx,3b7588310856,Committee on the Environment on 2016-04-04 1:30 PM,1,0,1,,selector-gap
+41b259a87af1,denton-tx,3b7588310856,Committee on the Environment on 2016-01-20 9:00 AM,1,0,1,,selector-gap
+4360ab662fb5,denton-tx,3b7588310856,Committee on the Environment on 2015-11-02 1:30 PM,1,0,1,,selector-gap
+b6532a27014b,denton-tx,3b7588310856,Committee on the Environment on 2015-10-05 1:30 PM,1,0,1,,selector-gap
+0c6ad9ab7104,denton-tx,3b7588310856,Committee on the Environment on 2015-08-03 1:30 PM,1,0,1,,selector-gap
+a958bda070b1,denton-tx,3b7588310856,Community Partnership Committee on 2021-04-22 9:00 AM,1,0,1,,selector-gap
+5b1b7d4ca845,denton-tx,3b7588310856,Community Partnership Committee on 2021-03-18 9:00 AM,1,0,1,,selector-gap
+901b04451c8f,denton-tx,3b7588310856,Hotel Occupancy Tax and Sponsorship Committee on 2020-07-20 9:00 AM,1,0,1,,selector-gap
+c918bbc76625,denton-tx,3b7588310856,Hotel Occupancy Tax and Sponsorship Committee on 2020-06-11 10:00 AM,1,0,1,,selector-gap
+40c0065b51cb,denton-tx,3b7588310856,Hotel Occupancy Tax and Sponsorship Committee on 2020-05-14 1:00 PM,1,0,1,,selector-gap
+fefb19ff1040,denton-tx,3b7588310856,Hotel Occupancy Tax Committee on 2018-09-27 10:00 AM,1,0,1,,selector-gap
+78c88cb0bee2,denton-tx,3b7588310856,Hotel Occupancy Tax Committee on 2018-06-21 9:00 AM,1,0,1,,selector-gap
+e2a2b237a57a,denton-tx,3b7588310856,Hotel Occupancy Tax Committee on 2017-08-22 9:30 AM,1,0,1,,selector-gap
+c53eaf38b48a,denton-tx,3b7588310856,Hotel Occupancy Tax Committee on 2017-07-21 9:00 AM,1,0,1,,selector-gap
+8e48ded373d7,denton-tx,3b7588310856,Hotel Occupancy Tax Committee on 2017-04-20 10:00 AM,1,0,1,,selector-gap
+8b6bdb31be34,denton-tx,3b7588310856,Hotel Occupancy Tax Committee on 2016-05-03 10:00 AM,1,0,1,,selector-gap
+2a69e21f4dec,denton-tx,3b7588310856,Development Code Review Committee on 2021-05-05 11:00 AM,1,0,1,,selector-gap
+df49638452fa,denton-tx,3b7588310856,Development Code Review Committee on 2021-04-28 12:00 PM,1,0,1,,selector-gap
+6eff09bf8260,denton-tx,3b7588310856,Development Code Review Committee on 2021-04-14 12:30 PM,1,0,1,,selector-gap
+531b6c7c9df8,denton-tx,3b7588310856,Development Code Review Committee on 2021-01-14 4:00 PM (SPECIAL CALLED MEETING),1,0,1,,selector-gap
+57d7826ac6c9,denton-tx,3b7588310856,Development Code Review Committee on 2020-11-18 1:00 PM,1,0,1,,selector-gap
+37442449781e,denton-tx,3b7588310856,Development Code Review Committee on 2020-11-11 1:00 PM,1,0,1,,selector-gap
+6e2f1655a090,denton-tx,3b7588310856,Development Code Review Committee on 2020-11-04 1:00 PM,1,0,1,,selector-gap
+c2611b3f8aac,denton-tx,3b7588310856,Development Code Review Committee on 2020-10-19 11:00 AM,1,0,1,,selector-gap
+0d14e341f15e,denton-tx,3b7588310856,Development Code Review Committee on 2018-10-26 11:00 AM,1,0,1,,selector-gap
+8c6d2450f0dc,denton-tx,3b7588310856,Development Code Review Committee on 2018-10-19 11:00 AM,1,0,1,,selector-gap
+1fc84da8fc6a,denton-tx,3b7588310856,Development Code Review Committee on 2018-09-28 9:00 AM,1,0,1,,selector-gap
+77c9596f5cf6,denton-tx,3b7588310856,Development Code Review Committee on 2018-08-24 11:00 AM,1,0,1,,selector-gap
+14f2f127c33d,denton-tx,3b7588310856,Development Code Review Committee on 2018-08-10 11:00 AM,1,0,1,,selector-gap
+e89f45ad6e87,denton-tx,3b7588310856,Development Code Review Committee on 2018-07-20 11:00 AM,1,0,1,,selector-gap
+6fad924f5fb9,denton-tx,3b7588310856,Development Code Review Committee on 2018-07-13 11:00 AM,1,0,1,,selector-gap
+9e662fa155ff,denton-tx,3b7588310856,Development Code Review Committee on 2018-07-06 11:00 AM,1,0,1,,selector-gap
+f991a8d99234,denton-tx,3b7588310856,Development Code Review Committee on 2018-06-29 11:00 AM,1,0,1,,selector-gap
+24af6a49fab3,denton-tx,3b7588310856,Development Code Review Committee on 2018-06-22 11:00 AM,1,0,1,,selector-gap
+d6bd75f001dd,denton-tx,3b7588310856,Development Code Review Committee on 2018-06-08 11:00 AM - Cancelled,1,0,1,,selector-gap
+82878aaf72c7,denton-tx,3b7588310856,Development Code Review Committee on 2018-05-24 12:00 PM,1,0,1,,selector-gap
+a8eb119725c5,denton-tx,3b7588310856,Development Code Review Committee on 2018-05-11 11:00 AM,1,0,1,,selector-gap
+3597d488c0a9,denton-tx,3b7588310856,Library Board on 2021-03-11 3:30 PM,1,0,1,,selector-gap
+42589f357d28,denton-tx,3b7588310856,Library Board on 2021-02-11 2:00 PM,1,0,1,,selector-gap
+569c4bb031df,denton-tx,3b7588310856,Library Board on 2021-01-14 2:00 PM,1,0,1,,selector-gap
+84ad1d84cdb3,denton-tx,3b7588310856,Library Board on 2020-10-07 1:00 PM,1,0,1,,selector-gap
+ab5492fde506,denton-tx,3b7588310856,Library Board on 2018-08-13 5:30 PM (No quorum; meeting not held),1,0,1,,selector-gap
+01e5271c1e34,denton-tx,3b7588310856,The League of Women Voters Candidate Forum,3,0,3,,selector-gap
+bd5f12429669,denton-tx,3b7588310856,Developer Town Hall,6,0,6,,selector-gap
+3d150334d435,denton-tx,3b7588310856,Westgate Drive Reconstruction Project Phase 1,1,0,1,,selector-gap
+4924b97fe4a8,denton-tx,3b7588310856,Grants Management Workshop,1,0,1,,selector-gap
+73d105d7bed1,denton-tx,3b7588310856,Denton Safe Route to School,1,0,1,,selector-gap
+aec291d5aff5,denton-tx,3b7588310856,2019 Reconstruction Bond Program Neighborhood 1B,1,0,1,,selector-gap
+bfab2e9870ce,denton-tx,3b7588310856,Special Event Permitting,1,0,1,,selector-gap
+4f6b45c5144c,denton-tx,3b7588310856,Denton Bonnie Brae Phase 6,1,0,1,,selector-gap
+598f24d33d45,denton-tx,3b7588310856,Morse Street,1,0,1,,selector-gap
+2f246013f5ed,denton-tx,3b7588310856,Robinwood Reconstruction,1,0,1,,selector-gap
+fa244a0aff2f,denton-tx,3b7588310856,Denton Westgate Drive Improvement Project,1,0,1,,selector-gap
+ca17eb451377,denton-tx,3b7588310856,2019 Street Reconstruction Bond Program Neighborhood 2 & 6,1,0,1,,selector-gap
+1e1af810b8d6,denton-tx,3b7588310856,Virtual Community Meeting - Roadway Micro-surfacing,2,0,2,,selector-gap
+2a72991659d3,denton-tx,3b7588310856,Avondale Park Streambank Restoration,1,0,1,,selector-gap
+7db2a9faac9c,denton-tx,3b7588310856,League of Women Voters Candidate Forum,4,0,4,,selector-gap
+d74741bb54a0,denton-tx,3b7588310856,Virtual Community Meeting - Parks and Trails Naming,1,0,1,,selector-gap
+bb8193a09b72,denton-tx,3b7588310856,Virtual Community Meeting - North Tx Blvd Widening,1,0,1,,selector-gap
+b2254b9ef225,denton-tx,3b7588310856,Denton Virtual Community Meeting - Windsor Sewer Capacity Upgrade,1,0,1,,selector-gap
+635b7ff00d5c,denton-tx,3b7588310856,Denton Virtual Community Meeting - 2020 Street Bundle Sector III Construction Kickoff,1,0,1,,selector-gap
+dbcf01643984,denton-tx,3b7588310856,Denton Virtual Community Meeting - 2020 Street Bundle Sector I Construction Kickoff,1,0,1,,selector-gap
+343fe579bb13,denton-tx,3b7588310856,Denton Virtual Community Meeting -  Water Metering and Billing Overview,1,0,1,,selector-gap
+987768868c01,denton-tx,3b7588310856,Virtual Community Meeting - ParksRec,1,0,1,,selector-gap
+d118b7ba0871,denton-tx,3b7588310856,Virtual Community Meeting - Downtown Denton Community Update,2,0,2,,selector-gap
+e61a80c884fa,denton-tx,3b7588310856,Virtual Community Meeting - Windsor Sewer Capacity Upgrade,1,0,1,,selector-gap
+05f285ece1ab,denton-tx,3b7588310856,Virtual Community Meeting - Naming Requests,4,0,4,,selector-gap
+7788431f4e42,denton-tx,3b7588310856,Virtual Community Meeting - LOFT CIP,2,0,2,,selector-gap
+f9b28f2cb8d0,denton-tx,3b7588310856,Virtual Community Meeting - Recycle Right,1,0,1,,selector-gap
+d59c04eed60e,denton-tx,3b7588310856,Virtual Community Meeting - Hickory Creek,1,0,1,,selector-gap
+3d4864a975b5,denton-tx,3b7588310856,Virtual Community Meeting - Northwest Booster Pump Station,1,0,1,,selector-gap
+669a71fe9fcf,denton-tx,3b7588310856,Virtual Community Meeting - Hardaway Road Water Connection,2,0,2,,selector-gap
+ab0d73f0bdc5,denton-tx,3b7588310856,Virtual Community Meeting - Jim Christal Road Rezoning,1,0,1,,selector-gap
+4990eb35902e,denton-tx,3b7588310856,Virtual Community Meeting - DPD Community Conversation,1,0,1,,selector-gap
+7c3701fc0d4f,denton-tx,3b7588310856,Virtual Community Meeting - Industrial Street Park,1,0,1,,selector-gap
+317b781eb1de,denton-tx,3b7588310856,Virtual Community Meeting – Westgate Improvements,1,0,1,,selector-gap
+9e33a6bab83e,denton-tx,3b7588310856,Virtual Community Meeting - Denton Street Rehab May 2021,1,0,1,,selector-gap
+d01412077b82,denton-tx,3b7588310856,Virtual Community Meeting - All Way Crosswalk 6pm,1,0,1,,selector-gap
+009e0ee5e35c,denton-tx,3b7588310856,Virtual Community Meeting - All Way Crosswalk 11am,1,0,1,,selector-gap
+3481710eab4a,denton-tx,3b7588310856,Virtual Community Meeting - Oak Hickory Driveway Ownership,1,0,1,,selector-gap
+e2d8b40b7353,denton-tx,3b7588310856,Virtual Community Meeting - 2020 Street Reconstruction Bundle,1,0,1,,selector-gap
+85dffb570542,denton-tx,3b7588310856,Virtual Community Meeting - Bowling Green Park,1,0,1,,selector-gap
+89c28e7dc1fb,denton-tx,3b7588310856,Virtual Community Meeting - Intersection Improvement Project,1,0,1,,selector-gap
+ddd0e8dc68e3,denton-tx,3b7588310856,Virtual Community Meeting - Villages at Carmel Property,1,0,1,,selector-gap
+e005a7f76dd0,denton-tx,3b7588310856,Virtual Community Meeting - Southwest Parks Master Plan,1,0,1,,selector-gap
+e11097ba3046,denton-tx,3b7588310856,Virtual Community Meeting - Early Start Street Reconstruction,1,0,1,,selector-gap
+2ba0f2aa980c,denton-tx,3b7588310856,Virtual Community Meeting - Parks Master Plan,1,0,1,,selector-gap
+9410fa91da49,denton-tx,3b7588310856,Virtual Community Meeting - Country Lakes North Planned Development Amendment,1,0,1,,selector-gap
+36cd99178da8,denton-tx,3b7588310856,Virtual Community Meeting - Community Needs Workshop,1,0,1,,selector-gap
+2b39acfbf573,denton-tx,3b7588310856,Virtual Community Meeting - 2019 Street Rehabilitation Program Phase 3,1,0,1,,selector-gap
+788d8cfd19b7,denton-tx,3b7588310856,City of Denton Update,1,0,1,,selector-gap
+093105ca266b,denton-tx,3b7588310856,Virtual Community Meeting - Bonnie Brae Ph 3,1,0,1,,selector-gap
+4474904206b4,denton-tx,3b7588310856,Virtual Community Meeting - Bonnie Brae Ph 6,1,0,1,,selector-gap
+cd0d55f815b5,denton-tx,3b7588310856,Virtual Community Meeting - Hardaway Road,1,0,1,,selector-gap
+1e529c902394,denton-tx,3b7588310856,Denton Virtual Community Meeting - Bonnie Brae Phase 3,1,0,1,,selector-gap
+b3806bf769a7,denton-tx,3b7588310856,Denton Virtual Community Meeting - Southwest Park Master Plan Community Meeting,1,0,1,,selector-gap
+64d032449d70,denton-tx,3b7588310856,Denton Virtual Community Meeting - Developer Town Hall,1,0,1,,selector-gap
+3863e74fbfe6,denton-tx,3b7588310856,Virtual Community Meeting - North Denton Neighborhood Association,1,0,1,,selector-gap
+b10be01fd3d5,denton-tx,3b7588310856,Virtual Community Meeting - McKinney Street Water Main Breaks,1,0,1,,selector-gap
+603a8e1f6abe,denton-tx,3b7588310856,Virtual Community Meeting - Denton Police Department Community Conversation,1,0,1,,selector-gap
+01d89d43b1e6,denton-tx,3b7588310856,Virtual Community Meeting - Farris Road Sewer Project,1,0,1,,selector-gap
+55d271b8031d,denton-tx,3b7588310856,Virtual Community Meeting - Warschun Road Traffic Safety Improvements,1,0,1,,selector-gap
+9786434415f2,denton-tx,3b7588310856,Virtual Community Meeting - Trails Master Plan,1,0,1,,selector-gap
+cc5a4e208ae4,denton-tx,3b7588310856,Capital Improvement Advisory Committee on 2025-06-25 4:00 PM,1,0,1,,selector-gap
+d29f367b05fe,denton-tx,3b7588310856,Public Art Committee on 2021-05-21 4:00 PM (SPECIAL CALLED MEETING),1,0,1,,selector-gap
+9b42080594ad,denton-tx,3b7588310856,Public Art Committee on 2021-04-16 4:00 PM (SPECIAL CALLED MEETING),1,0,1,,selector-gap
+edad92bfea45,denton-tx,3b7588310856,Public Art Committee on 2021-03-04 12:00 PM,1,0,1,,selector-gap
+cdbd695dd982,denton-tx,3b7588310856,Public Art Committee on 2021-01-28 12:00 PM,1,0,1,,selector-gap
+38a9a76964c6,denton-tx,3b7588310856,Public Art Committee on 2020-12-04 12:00 PM,1,0,1,,selector-gap
+bebcd6bb901b,denton-tx,3b7588310856,Public Art Committee on 2020-10-22 12:00 PM,1,0,1,,selector-gap
+0275f20fc17d,denton-tx,3b7588310856,Public Art Committee on 2020-09-04 3:00 PM,1,0,1,,selector-gap
+e273cd7a747b,denton-tx,3b7588310856,Public Art Committee on 2020-08-07 3:00 PM,1,0,1,,selector-gap
+d55a84eae635,denton-tx,3b7588310856,Public Art Committee on 2020-07-17 3:00 PM (SPECIAL CALLED MEETING),1,0,1,,selector-gap
+65783f46e0b0,denton-tx,3b7588310856,Public Art Committee on 2020-06-22 3:00 PM (SPECIAL CALLED MEETING),1,0,1,,selector-gap
+d2f253cdac4d,denton-tx,3b7588310856,Public Art Committee on 2020-06-04 1:00 PM,1,0,1,,selector-gap
+0b0a9f1cdd44,denton-tx,3b7588310856,Public Art Committee on 2018-09-06 4:00 PM,1,0,1,,selector-gap
+40bf1c6411d3,denton-tx,3b7588310856,Public Art Committee on 2018-06-07 4:00 PM,1,0,1,,selector-gap
+f6a47430e9f4,denton-tx,3b7588310856,Public Art Committee on 2018-05-03 4:00 PM,1,0,1,,selector-gap
+57c1429e5f40,denton-tx,3b7588310856,Public Art Committee on 2018-04-05 4:00 PM,1,0,1,,selector-gap
+250502b09991,denton-tx,3b7588310856,Public Art Committee on 2018-03-01 4:30 PM,1,0,1,,selector-gap
+a49c0bc4e9ca,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2023-07-11 6:00 PM (AMENDED ON 07-11-23),1,0,1,,selector-gap
+478a92e2e69c,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2023-06-26 6:00 PM (AMENDED ON 06-26-23),1,0,1,,selector-gap
+f5411a80b65c,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2023-06-15 6:00 PM (AMENDED on 06-13-2023),1,0,1,,selector-gap
+4bd5f3ae288b,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2023-06-27 6:00 PM,1,0,1,,selector-gap
+d9ed1dfc1f14,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2023-06-01 6:00 PM (AMENDED on 5-30-2023),1,0,1,,selector-gap
+aa127b028cea,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2023-05-23 6:00 PM,1,0,1,,selector-gap
+f0466caf04bb,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 07-25-2019 6:00 PM,1,0,1,,selector-gap
+f12e4d775e8f,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2019-07-18 5:30 PM,1,0,1,,selector-gap
+f3c913374621,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2019-07-11 6:00 PM,1,0,1,,selector-gap
+de18563657ea,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2019-07-11 4:00 PM (SCBAC Task Force),1,0,1,,selector-gap
+77409ab322d8,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2019-06-27 6:00 PM,1,0,1,,selector-gap
+83b781b1d992,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2019-06-27 3:00 PM (SCBAC Task Force),1,0,1,,selector-gap
+df639b77261d,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2019-06-20 6:00 PM,1,0,1,,selector-gap
+c4e1f52e9b85,denton-tx,3b7588310856,Special Citizens Bond Advisory Committee on 2019-06-13 6:00 PM,1,0,1,,selector-gap
+011fdb96a577,fort-worth-tx,6540eef2dc2e,Research and Innovation Local Government Corporation Research and Innovation Local Government Corporation,6,0,6,,selector-gap
+8004a8c03382,fort-worth-tx,6540eef2dc2e,fortworthgovMerg fortworthgovMerg,1,0,1,,selector-gap
+0630cc000573,fort-worth-tx,6540eef2dc2e,fortworthfinal fortworthfinal,1,0,1,,selector-gap
+bd56b0b8f0e8,fort-worth-tx,6540eef2dc2e,Ad Hoc Council Committee on Emergency Medical Response Meeting Ad Hoc Council Committee on Emergency Medical Response Meeting,2,0,2,,selector-gap
+ce1f0df629fc,fort-worth-tx,6540eef2dc2e,Ad Hoc Council Committee On Emergency Medical Response Ad Hoc Council Committee On Emergency Medical Response,14,0,14,,selector-gap
+6fd869651b23,fort-worth-tx,6540eef2dc2e,Ad Hoc Committee on Emergency Medical Response Ad Hoc Committee on Emergency Medical Response,4,0,4,,selector-gap
+a9acc2b6d178,fort-worth-tx,6540eef2dc2e,ARTS FUNDING TASK FORCE ARTS FUNDING TASK FORCE,5,0,5,,selector-gap
+b5b819801672,fort-worth-tx,6540eef2dc2e,Aviation Advisory Board Aviation Advisory Board,7,0,7,,selector-gap
+c75eeef6a069,fort-worth-tx,6540eef2dc2e,Capital Improvements Advisory Committee Capital Improvements Advisory Committee,5,0,5,,selector-gap
+1495522ce973,fort-worth-tx,6540eef2dc2e,Capital Improvements Advisory Committee for Transportation Impact Fees Capital Improvements Advisory Committee for Transportation Impact Fees,1,0,1,,selector-gap
+358d293f38f3,fort-worth-tx,6540eef2dc2e,Capitol Improvements Advisory Committee (CIAC) Capitol Improvements Advisory Committee (CIAC),7,0,7,,selector-gap
+7ed83ab86004,fort-worth-tx,6540eef2dc2e,"Capital Improvements Advisory Committee of November 17, 2023 (CIAC) Capital Improvements Advisory Committee of November 17, 2023 (CIAC)",1,0,1,,selector-gap
+daf91a6682b4,fort-worth-tx,6540eef2dc2e,"CIAC of April 26, 2023 CIAC of April 26, 2023",1,0,1,,selector-gap
+89e2b80d8e74,fort-worth-tx,6540eef2dc2e,"CIAC of November 18, 2022 CIAC of November 18, 2022",1,0,1,,selector-gap
+2407bd87c555,fort-worth-tx,6540eef2dc2e,"CIAC of September 14, 2022 CIAC of September 14, 2022",1,0,1,,selector-gap
+c93c2d82b583,fort-worth-tx,6540eef2dc2e,"CIAC of August 24, 2022 CIAC of August 24, 2022",1,0,1,,selector-gap
+1deda8e552cd,fort-worth-tx,6540eef2dc2e,"CIAC of June 22, 2022 CIAC of June 22, 2022",1,0,1,,selector-gap
+89c7728c90dd,fort-worth-tx,6540eef2dc2e,"CIAC of April 27, 2022 CIAC of April 27, 2022",1,0,1,,selector-gap
+a5e45d76aa94,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 24 Fort Worth Forward - Episode 24,2,0,2,,selector-gap
+d0c50ec718b4,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 23 Fort Worth Forward - Episode 23,1,0,1,,selector-gap
+f72c3a221175,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 22 Fort Worth Forward - Episode 22,1,0,1,,selector-gap
+7195cae84ac3,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 21 Fort Worth Forward - Episode 21,1,0,1,,selector-gap
+c2d56b737e1d,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 20 Fort Worth Forward - Episode 20,1,0,1,,selector-gap
+13f7d641d27e,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 19 Fort Worth Forward - Episode 19,1,0,1,,selector-gap
+35c2b85e5ce0,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 17 Fort Worth Forward - Episode 17,1,0,1,,selector-gap
+57f0a6b0a347,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 16 Fort Worth Forward - Episode 16,1,0,1,,selector-gap
+2514622eab63,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 15 Fort Worth Forward - Episode 15,1,0,1,,selector-gap
+25b8e601f8df,fort-worth-tx,6540eef2dc2e,Black History Month Program Black History Month Program,5,0,5,,selector-gap
+2fb51765c7b3,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 14 Fort Worth Forward - Episode 14,1,0,1,,selector-gap
+a04fb805ecee,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 13 Fort Worth Forward - Episode 13,1,0,1,,selector-gap
+f3de38459194,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 12 Fort Worth Forward - Episode 12,1,0,1,,selector-gap
+5c2c3131bd1d,fort-worth-tx,6540eef2dc2e,Reby Cary Memorial Street Sign Unveiling Reby Cary Memorial Street Sign Unveiling,1,0,1,,selector-gap
+ef8c5ea488df,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 11 Fort Worth Forward - Episode 11,1,0,1,,selector-gap
+6a70464f40e8,fort-worth-tx,6540eef2dc2e,Juneteenth Celebration 2022 Juneteenth Celebration 2022,1,0,1,,selector-gap
+901f512bf671,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 10 Fort Worth Forward - Episode 10,1,0,1,,selector-gap
+6e32357b5dd1,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 9 Fort Worth Forward - Episode 9,1,0,1,,selector-gap
+2fac083302da,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 8 Fort Worth Forward - Episode 8,1,0,1,,selector-gap
+b393cd12b98b,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 7 Fort Worth Forward - Episode 7,1,0,1,,selector-gap
+47015054fb28,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 6 Fort Worth Forward - Episode 6,1,0,1,,selector-gap
+d338389196d3,fort-worth-tx,6540eef2dc2e,MLK Jr Employee Celebration MLK Jr Employee Celebration,1,0,1,,selector-gap
+23e3069e39ef,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 5 Fort Worth Forward - Episode 5,1,0,1,,selector-gap
+734b8e879649,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 4 Fort Worth Forward - Episode 4,1,0,1,,selector-gap
+f663a9e95195,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 3 Fort Worth Forward - Episode 3,1,0,1,,selector-gap
+72c0a06fb6da,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 2 Fort Worth Forward - Episode 2,1,0,1,,selector-gap
+ec6ea2ac90fc,fort-worth-tx,6540eef2dc2e,"Dedication of the Pioneer Tower Public Artworks of August 20, 2021 Dedication of the Pioneer Tower Public Artworks of August 20, 2021",1,0,1,,selector-gap
+dbb0b41bae24,fort-worth-tx,6540eef2dc2e,Fort Worth Forward - Episode 1 Fort Worth Forward - Episode 1,1,0,1,,selector-gap
+cac369afd9c2,fort-worth-tx,6540eef2dc2e,"2018 Neighborhood Awards - February 16, 2019 2018 Neighborhood Awards",1,0,1,,selector-gap
+ba8e88865f37,fort-worth-tx,6540eef2dc2e,Juneteenth 2017: A Conversation With Opal Lee Juneteenth 2017: A Conversation With Opal Lee,1,0,1,,selector-gap
+13cdba3c92cd,fort-worth-tx,6540eef2dc2e,Hispanic Heritage Festival 2015 - Mariachi Band Hispanic Heritage Festival 2015 - Mariachi Band,1,0,1,,selector-gap
+2319371f3438,fort-worth-tx,6540eef2dc2e,"Fort Worth Chamber of Commerce 133rd Annual Meeting, June 5, 2015 Fort Worth Chamber of Commerce 133rd Annual Meeting, June 5, 2015",1,0,1,,selector-gap
+eebf9b09a7de,fort-worth-tx,6540eef2dc2e,"Fort Worth Metropolitan Black Chamber of Commerce 35th Annual luncheon: June 19, 2015 Fort Worth Metropolitan Black Chamber of Commerce 35th Annual luncheon: June 19, 2015",1,0,1,,selector-gap
+f740a4368d25,fort-worth-tx,6540eef2dc2e,"Juneteenth Celebration at City Hall on June 14, 2013 Juneteenth Celebration at City Hall on June 14, 2013",1,0,1,,selector-gap
+5765b09083c6,fort-worth-tx,6540eef2dc2e,"Bike Share Program Kick-Off of April 22, 2013 Bike Share Program Kick-Off of April 22, 2013",1,0,1,,selector-gap
+751c11d6d1ff,fort-worth-tx,6540eef2dc2e,Texas Girls Choir Christmas GIFT Concert 2011 Texas Girls Choir Christmas GIFT Concert 2011,1,0,1,,selector-gap
+0aa70b4df5a2,fort-worth-tx,6540eef2dc2e,COVID-19 Community Update COVID-19 Community Update,6,0,6,,selector-gap
+6fd1fe0825bc,fort-worth-tx,6540eef2dc2e,COVID-19 Community Update (Spanish) COVID-19 Community Update (Spanish),46,0,46,,selector-gap
+e33f9f850c1f,fort-worth-tx,6540eef2dc2e,COVID-19 Community Update (English) COVID-19 Community Update (English),46,0,46,,selector-gap
+13c49451cba0,fort-worth-tx,6540eef2dc2e,COVID-19 Press Conference COVID-19 Press Conference,2,0,2,,selector-gap
+77f273fc7604,fort-worth-tx,6540eef2dc2e,It's Your Fort Worth: Fort Worth Funky It's Your Fort Worth: Fort Worth Funky,2,0,2,,selector-gap
+b9f665153dd7,fort-worth-tx,6540eef2dc2e,Minority Leaders and Citzen's Council Minority Leaders and Citzen's Council,2,0,2,,selector-gap
+03cd222d4f13,fort-worth-tx,6540eef2dc2e,Minority Leaders and Citizen's Council Minority Leaders and Citizen's Council,54,0,54,,selector-gap
+fc365c0f8b53,fort-worth-tx,6540eef2dc2e,"Fort Worth Business Plan Competition Finals | October 14, 2025 Fort Worth Business Plan Competition Finals | October 14, 2025",2,0,2,,selector-gap
+b945a615d760,fort-worth-tx,6540eef2dc2e,Future Downtown Library Community Report Future Downtown Library Community Report,2,0,2,,selector-gap
+3f4c8b6c98cd,fort-worth-tx,6540eef2dc2e,RESEARCH & INNOVATION LOCAL GOVERNMENT CORP. (immediately following LDC) RESEARCH & INNOVATION LOCAL GOVERNMENT CORP. (immediately following LDC),2,0,2,,selector-gap
+a0893c0d82bc,fort-worth-tx,6540eef2dc2e,"Police Chief Press Conference | August 22, 2025 Police Chief Press Conference | August 22, 2025",2,0,2,,selector-gap
+b83f749fd110,fort-worth-tx,6540eef2dc2e,Local Development Corporation Local Development Corporation,8,0,8,,selector-gap
+04b902f31bd5,fort-worth-tx,6540eef2dc2e,Entrepreneurship and Innovation Committee Entrepreneurship and Innovation Committee,34,0,34,,selector-gap
+d3ded0619f10,fort-worth-tx,6540eef2dc2e,Neighborhood Quality and Revitalization Committee Neighborhood Quality and Revitalization Committee,46,0,46,,selector-gap
+2c9e3a8126c4,fort-worth-tx,6540eef2dc2e,"Juneteenth Employee Celebration of June 13, 2024 Juneteenth Employee Celebration of June 13, 2024",2,0,2,,selector-gap
+436b86039eb4,fort-worth-tx,6540eef2dc2e,"Crime Control Prevention District, Fort Worth LDC, Central City LDC, Research & Innovation LGC, and Fort Worth HFC Crime Control Prevention District, Fort Worth LDC, Central City LDC, Research & Innovation LGC, and Fort Worth HFC",2,0,2,,selector-gap
+9d7ce5b76e90,fort-worth-tx,6540eef2dc2e,"Asian American Pacific Islander Heritage Month program of May 9, 2024 Asian American Pacific Islander Heritage Month program of May 9, 2024",2,0,2,,selector-gap
+fe0e8ee0a4fe,fort-worth-tx,6540eef2dc2e,TCEQ Public Meeting on Proposed Concrete Batch Plant TCEQ Public Meeting on Proposed Concrete Batch Plant,2,0,2,,selector-gap
+c8b47b8041bf,fort-worth-tx,6540eef2dc2e,District 6 Open House District 6 Open House,4,0,4,,selector-gap
+c1128727d567,fort-worth-tx,6540eef2dc2e,Police Oversight Community Meeting Police Oversight Community Meeting,2,0,2,,selector-gap
+7191b612d113,fort-worth-tx,6540eef2dc2e,"Local Development Corporation of March 26, 2024 Local Development Corporation of March 26, 2024",2,0,2,,selector-gap
+81f1522f23f5,fort-worth-tx,6540eef2dc2e,The Mayor's 2023 Neighborhood Awards The Mayor's 2023 Neighborhood Awards,2,0,2,,selector-gap
+c23baf0630f1,fort-worth-tx,6540eef2dc2e,"Black History Month - ""Afrofuturism: Imagining the Future While Honoring the Past"" Black History Month - ""Afrofuturism: Imagining the Future While Honoring the Past""",2,0,2,,selector-gap
+8736ddf8e996,fort-worth-tx,6540eef2dc2e,"Evans & Rosedale Community Meeting of February 7, 2024 Evans & Rosedale Community Meeting of February 7, 2024",2,0,2,,selector-gap
+8912784a2e30,fort-worth-tx,6540eef2dc2e,Texas Rangers World Champions Trophy & Key To The City Presentation Texas Rangers World Champions Trophy & Key To The City Presentation,2,0,2,,selector-gap
+e4b34afad241,fort-worth-tx,6540eef2dc2e,Native American Heritage Month Celebration Native American Heritage Month Celebration,2,0,2,,selector-gap
+b7fd9641ea4f,fort-worth-tx,6540eef2dc2e,Redevelopment Of Community Arts Center at 1300 Gendy Street - Public Meeting Redevelopment Of Community Arts Center at 1300 Gendy Street - Public Meeting,2,0,2,,selector-gap
+57323491bac2,fort-worth-tx,6540eef2dc2e,Fort Worth State of the City 2023 | Mayor Mattie Parker Fort Worth State of the City 2023 | Mayor Mattie Parker,2,0,2,,selector-gap
+555ee97df0e3,fort-worth-tx,6540eef2dc2e,"Hispanic Heritage Month Employee Celebration of September 28, 2023 Hispanic Heritage Month Employee Celebration of September 28, 2023",2,0,2,,selector-gap
+afd808c0a50d,fort-worth-tx,6540eef2dc2e,Neighborhood Conservation Plan & Housing Affordability Strategy Meeting Neighborhood Conservation Plan & Housing Affordability Strategy Meeting,2,0,2,,selector-gap
+af8334f67fc0,fort-worth-tx,6540eef2dc2e,"Ray White Road Widening Improvements meeting of August 10, 2023 Ray White Road Widening Improvements meeting of August 10, 2023",2,0,2,,selector-gap
+2baca898fa76,fort-worth-tx,6540eef2dc2e,"Convention Center District Expansion Town Hall Meeting of August 9, 2023 Convention Center District Expansion Town Hall Meeting of August 9, 2023",2,0,2,,selector-gap
+dbea00edc7c7,fort-worth-tx,6540eef2dc2e,Stop Six Neighborhood Hub Community Meeting Stop Six Neighborhood Hub Community Meeting,2,0,2,,selector-gap
+7c03632975af,fort-worth-tx,6540eef2dc2e,"Press Conference of June 24, 2023 Press Conference of June 24, 2023",2,0,2,,selector-gap
+24dbb613caa9,fort-worth-tx,6540eef2dc2e,Pride Month - More Than 50 Years Of Pride In Tarrant County Granicus Pride Month - More Than 50 Years Of Pride In Tarrant County Granicus,2,0,2,,selector-gap
+c8201f0f32e5,fort-worth-tx,6540eef2dc2e,"City of Fort Worth summer heat messaging overview of June 22, 2023 City of Fort Worth summer heat messaging overview of June 22, 2023",2,0,2,,selector-gap
+3ef06440a247,fort-worth-tx,6540eef2dc2e,"Echo Heights Public Meeting of June 12, 2023 Echo Heights Public Meeting of June 12, 2023",2,0,2,,selector-gap
+5ddb4d5b810f,fort-worth-tx,6540eef2dc2e,"City of Fort Worth Juneteenth Employee Celebration of June 15, 2023 City of Fort Worth Juneteenth Employee Celebration of June 15, 2023",2,0,2,,selector-gap
+5d87ee04183b,fort-worth-tx,6540eef2dc2e,Pride Month 2023 Employee Program Pride Month 2023 Employee Program,2,0,2,,selector-gap
+eb7b98d7f2e2,fort-worth-tx,6540eef2dc2e,Public Forum for Police Oversight Monitor Candidates Public Forum for Police Oversight Monitor Candidates,2,0,2,,selector-gap
+dce877438637,fort-worth-tx,6540eef2dc2e,"The Asian Tradition Of Meditation And Mindfulness of May 11, 2023 The Asian Tradition Of Meditation And Mindfulness of May 11, 2023",2,0,2,,selector-gap
+c06211fb3fd6,fort-worth-tx,6540eef2dc2e,The Asian Tradition of Meditation and Mindfulness The Asian Tradition of Meditation and Mindfulness,2,0,2,,selector-gap
+423aed172d79,fort-worth-tx,6540eef2dc2e,"Business Plan Competition Finals of May 11, 2023 Business Plan Competition Finals of May 11, 2023",2,0,2,,selector-gap
+a89c6807e620,fort-worth-tx,6540eef2dc2e,1300 Gendy Task Force Public Meeting 1300 Gendy Task Force Public Meeting,2,0,2,,selector-gap
+7b62c984edbf,fort-worth-tx,6540eef2dc2e,"City of Fort Worth Winter Weather Update January 31, 2023 City of Fort Worth Winter Weather Update January 31, 2023",2,0,2,,selector-gap
+b9be669415d7,fort-worth-tx,6540eef2dc2e,"Progress Update - Evans & Rosedale Project meeting of January 19, 2023 Progress Update - Evans & Rosedale Project meeting of January 19, 2023",2,0,2,,selector-gap
+f41c38e372f5,fort-worth-tx,6540eef2dc2e,Entrepreneurship and Innovation Committee - CANCELED Entrepreneurship and Innovation Committee - CANCELED,2,0,2,,selector-gap
+68feb7bd20e4,fort-worth-tx,6540eef2dc2e,"District 5 Leadership Meeting of December 17, 2022 District 5 Leadership Meeting of December 17, 2022",2,0,2,,selector-gap
+73a3e59dc73b,fort-worth-tx,6540eef2dc2e,Altamesa/McCart Safe Community Collaboration Altamesa/McCart Safe Community Collaboration,2,0,2,,selector-gap
+2227a79156c9,fort-worth-tx,6540eef2dc2e,"Native American Heritage Month Program of November 10, 2022 Native American Heritage Month Program of November 10, 2022",2,0,2,,selector-gap
+68dfebf0540c,fort-worth-tx,6540eef2dc2e,7th Annual Business Fair Panel Discussion 7th Annual Business Fair Panel Discussion,2,0,2,,selector-gap
+96d53bc120b9,fort-worth-tx,6540eef2dc2e,Hispanic Heritage Employee Celebration Hispanic Heritage Employee Celebration,2,0,2,,selector-gap
+80371c893a45,fort-worth-tx,6540eef2dc2e,State Of the City 2022 State Of the City 2022,2,0,2,,selector-gap
+7319e3473151,fort-worth-tx,6540eef2dc2e,"FY2023 Budget Conversation - August 25, 2022 FY2023 Budget Conversation",2,0,2,,selector-gap
+570ef534ae68,fort-worth-tx,6540eef2dc2e,Budget Engagement Meeting - City Manager's presentation Budget Engagement Meeting - City Manager's presentation,2,0,2,,selector-gap
+17e60ec89200,fort-worth-tx,6540eef2dc2e,"Neighborhood Quality And Revitalization of August 9, 2022 Neighborhood Quality And Revitalization of August 9, 2022",2,0,2,,selector-gap
+492a7b0620f3,fort-worth-tx,6540eef2dc2e,Mobility: Infrastructure and Transportation Committee & Neighborhood Quality and Revitalization Committee Mobility: Infrastructure and Transportation Committee & Neighborhood Quality and Revitalization Committee,2,0,2,,selector-gap
+8763318a910a,fort-worth-tx,6540eef2dc2e,OPOM: The Changing Landscape of Civilian Oversight in Texas OPOM: The Changing Landscape of Civilian Oversight in Texas,2,0,2,,selector-gap
+9b6a589f4a92,fort-worth-tx,6540eef2dc2e,"CDFI Friendly Fort Worth Kickoff of January 26, 2022 CDFI Friendly Fort Worth Kickoff of January 26, 2022",2,0,2,,selector-gap
+bc68cb6cce28,fort-worth-tx,6540eef2dc2e,Listening Circle with Dr. J: Public Safety Listening Circle with Dr. J: Public Safety,2,0,2,,selector-gap
+f86a770593e5,fort-worth-tx,6540eef2dc2e,OPOM Community Conversation OPOM Community Conversation,4,0,4,,selector-gap
+9bf4141a9d6d,fort-worth-tx,6540eef2dc2e,Fall 2021 Virtual OPOM Community Conversations Fall 2021 Virtual OPOM Community Conversations,2,0,2,,selector-gap
+6afcb9247652,fort-worth-tx,6540eef2dc2e,Sixth Annual Tarrant County Business Opportunity Fair Sixth Annual Tarrant County Business Opportunity Fair,2,0,2,,selector-gap
+56645ec31348,fort-worth-tx,6540eef2dc2e,Listening Circle with Dr. J: Traffic Infrastructure Listening Circle with Dr. J: Traffic Infrastructure,2,0,2,,selector-gap
+bcfb126598c6,fort-worth-tx,6540eef2dc2e,Listening Circle with Dr. J: A Discussion on Water Listening Circle with Dr. J: A Discussion on Water,2,0,2,,selector-gap
+f5c9ee8032d4,fort-worth-tx,6540eef2dc2e,Water and Wastewater CIP Citizens Advisory Committee Water and Wastewater CIP Citizens Advisory Committee,2,0,2,,selector-gap
+3a516f8a39e9,fort-worth-tx,6540eef2dc2e,District 8 Town Hall Meeting District 8 Town Hall Meeting,2,0,2,,selector-gap
+c81c2b49564e,fort-worth-tx,6540eef2dc2e,"Tax Foreclosed Property meeting, September 18, 2021 Tax Foreclosed Property meeting, September 18, 2021",2,0,2,,selector-gap
+d010c0835c65,fort-worth-tx,6540eef2dc2e,District 5 Town Hall Meeting District 5 Town Hall Meeting,4,0,4,,selector-gap
+f05338173d19,fort-worth-tx,6540eef2dc2e,District 2 Town Hall Meeting District 2 Town Hall Meeting,2,0,2,,selector-gap
+003226f40328,fort-worth-tx,6540eef2dc2e,District 3 Town Hall Meeting District 3 Town Hall Meeting,2,0,2,,selector-gap
+8f92b0adba7e,fort-worth-tx,6540eef2dc2e,District 9 Town Hall Meeting District 9 Town Hall Meeting,2,0,2,,selector-gap
+2fa228af273c,fort-worth-tx,6540eef2dc2e,District 6 Town Hall Meeting District 6 Town Hall Meeting,2,0,2,,selector-gap
+04e7154744f5,fort-worth-tx,6540eef2dc2e,District 4 Town Hall Meeting District 4 Town Hall Meeting,2,0,2,,selector-gap
+4ef21af345c3,fort-worth-tx,6540eef2dc2e,Community Action Partners Council Community Action Partners Council,4,0,4,,selector-gap
+e884917068fa,fort-worth-tx,6540eef2dc2e,Fort Worth Sports Authority Fort Worth Sports Authority,4,0,4,,selector-gap
+330cb5ed53e0,fort-worth-tx,6540eef2dc2e,Mayor's Committee on Persons with Disabilities Mayor's Committee on Persons with Disabilities,18,0,18,,selector-gap
+c92f39997010,fort-worth-tx,6540eef2dc2e,Human Relations Commission Human Relations Commission,22,0,22,,selector-gap
+346ceb3f3718,fort-worth-tx,6540eef2dc2e,Business Equity Committee Business Equity Committee,2,0,2,,selector-gap
+c02acb7f5249,fort-worth-tx,6540eef2dc2e,Pedestrian and Bicycle Advisory Commission Pedestrian and Bicycle Advisory Commission,10,0,10,,selector-gap
+59b1da074a7a,fort-worth-tx,6540eef2dc2e,Library Advisory Board Library Advisory Board,10,0,10,,selector-gap
+afabb81c06a6,fort-worth-tx,6540eef2dc2e,Community Action Partners Community Action Partners,8,0,8,,selector-gap
+9e05b04a8f36,fort-worth-tx,6540eef2dc2e,Java with Jungus May 2021 Java with Jungus May 2021,2,0,2,,selector-gap
+912d7228d283,fort-worth-tx,6540eef2dc2e,Park and Recreation Advisory Board Park and Recreation Advisory Board,16,0,16,,selector-gap
+02cb575c1b9a,fort-worth-tx,6540eef2dc2e,"Community Design Meeting For The New York, Main, Morningside, Capps, Page And Alley Infrastructure Improvement Community Design Meeting For The New York, Main, Morningside, Capps, Page And Alley Infrastructure Improvement",2,0,2,,selector-gap
+56bd6dd2a46f,fort-worth-tx,6540eef2dc2e,Business Equity Advisory Board Meeting Business Equity Advisory Board Meeting,2,0,2,,selector-gap
+a364fc008448,fort-worth-tx,6540eef2dc2e,Water and Wastewater Capital Improvements Plans Citizen Advisory Committee Water and Wastewater Capital Improvements Plans Citizen Advisory Committee,4,0,4,,selector-gap
+837c6b5b46c1,fort-worth-tx,6540eef2dc2e,"Community Action Partners of April 14, 2021 Community Action Partners of April 14, 2021",2,0,2,,selector-gap
+279104e6e02c,fort-worth-tx,6540eef2dc2e,"FW Sports Authority, Inc. FW Sports Authority, Inc.",2,0,2,,selector-gap
+699b004c9595,fort-worth-tx,6540eef2dc2e,Mayors Committee on Persons with Disabilities Mayors Committee on Persons with Disabilities,2,0,2,,selector-gap
+d2275eab3bd3,fort-worth-tx,6540eef2dc2e,Virtual Webex Design Meeting For Lake Worth Water And Sewer Improvements Part 2 Virtual Webex Design Meeting For Lake Worth Water And Sewer Improvements Part 2,2,0,2,,selector-gap
+8f88fd0d468c,fort-worth-tx,6540eef2dc2e,Transportation & Public Works Community Meeting Transportation & Public Works Community Meeting,4,0,4,,selector-gap
+c9a23eeacc18,fort-worth-tx,6540eef2dc2e,Fort Worth Human Relations Commission Fort Worth Human Relations Commission,2,0,2,,selector-gap
+5c39a7c8a01b,fort-worth-tx,6540eef2dc2e,Minority and Women Business Enterprise Advisory Committee Minority and Women Business Enterprise Advisory Committee,8,0,8,,selector-gap
+391cd5b87a2d,fort-worth-tx,6540eef2dc2e,"AllianceAirport Authority, Inc. AllianceAirport Authority, Inc.",4,0,4,,selector-gap
+195bc5142a6e,fort-worth-tx,6540eef2dc2e,Ad Hoc Municipal Court Advisory Committee Ad Hoc Municipal Court Advisory Committee,8,0,8,,selector-gap
+140ce8e4631e,fort-worth-tx,6540eef2dc2e,Civil Service Commission Civil Service Commission,2,0,2,,selector-gap
+57397a3574b8,fort-worth-tx,6540eef2dc2e,Press Conference Press Conference,4,0,4,,selector-gap
+c7be456a8817,fort-worth-tx,6540eef2dc2e,Animal Shelter Advisory Committee Animal Shelter Advisory Committee,4,0,4,,selector-gap
+f56137a31f3a,fort-worth-tx,6540eef2dc2e,Police Chief Candidate Public Forum Police Chief Candidate Public Forum,2,0,2,,selector-gap
+2603796cdc65,fort-worth-tx,6540eef2dc2e,Fort Worth Public Improvement District No. 1 Advisory Board Fort Worth Public Improvement District No. 1 Advisory Board,4,0,4,,selector-gap
+af85f2bec1b5,fort-worth-tx,6540eef2dc2e,"Virtual Community Construction Meeting - Rosemont, Shaw Clarke & Worth Heights Area Lead Replacement And Infras Virtual Community Construction Meeting - Rosemont, Shaw Clarke & Worth Heights Area Lead Replacement And Infras",2,0,2,,selector-gap
+0c8092991552,fort-worth-tx,6540eef2dc2e,"Alliance Airport Authority January 12, 2021 Alliance Airport Authority January 12, 2021",2,0,2,,selector-gap
+376c29adadb8,fort-worth-tx,6540eef2dc2e,Community Action Partners Council Meeting of 12-17-20 Community Action Partners Council Meeting of,2,0,2,,selector-gap
+fac1406e15eb,fort-worth-tx,6540eef2dc2e,"Minority and Women Business Enterprise, December 11, 2020 Minority and Women Business Enterprise, December 11, 2020",2,0,2,,selector-gap
+78c246a27c3e,fort-worth-tx,6540eef2dc2e,Community Meeting For East 4Th Streeteast 1St Street Striping And Bicycle Trail Improvements Community Meeting For East 4Th Streeteast 1St Street Striping And Bicycle Trail Improvements,2,0,2,,selector-gap
+859c891fcf8b,fort-worth-tx,6540eef2dc2e,Mayor's Committee on Persons with Disabilites Mayor's Committee on Persons with Disabilites,2,0,2,,selector-gap
+5d5f9852b67f,fort-worth-tx,6540eef2dc2e,Fort Worth Water Department Wholesale Water and Wastewater Advisory Committee Fort Worth Water Department Wholesale Water and Wastewater Advisory Committee,2,0,2,,selector-gap
+8ca6c12245d3,fort-worth-tx,6540eef2dc2e,Community Meeting - Handley Area And Central Meadowbrook Area Street Improvements Community Meeting - Handley Area And Central Meadowbrook Area Street Improvements,4,0,4,,selector-gap
+36cc1a651c90,fort-worth-tx,6540eef2dc2e,Capital Improvement Advisory Committee on Transportation Impact Fees Capital Improvement Advisory Committee on Transportation Impact Fees,2,0,2,,selector-gap
+3a65f9e0dd02,fort-worth-tx,6540eef2dc2e,Mayor's Commttee on Persons with Disabilities Mayor's Commttee on Persons with Disabilities,2,0,2,,selector-gap
+166f6139b890,fort-worth-tx,6540eef2dc2e,Pedestrian and Bicycle Advisory Committee Pedestrian and Bicycle Advisory Committee,2,0,2,,selector-gap
+fb386e8ba46b,fort-worth-tx,6540eef2dc2e,Park Board Park Board,2,0,2,,selector-gap
+1ffc37b94dc1,fort-worth-tx,6540eef2dc2e,"Animal Shelter Advisory Committee of October 14, 2020 Animal Shelter Advisory Committee of October 14, 2020",2,0,2,,selector-gap
+966e1beca15f,fort-worth-tx,6540eef2dc2e,Community Meeting For Shoreview Culvert Improvements Community Meeting For Shoreview Culvert Improvements,2,0,2,,selector-gap
+0729523fcb9c,fort-worth-tx,6540eef2dc2e,Community Meeting For Riverside Area Street Reconstruction Community Meeting For Riverside Area Street Reconstruction,2,0,2,,selector-gap
+30a8fd345f87,fort-worth-tx,6540eef2dc2e,National Night Out 2020 National Night Out 2020,2,0,2,,selector-gap
+c6170e54cace,fort-worth-tx,6540eef2dc2e,Bellaire Drive South Bike Lane Virtual Community Meeting Bellaire Drive South Bike Lane Virtual Community Meeting,2,0,2,,selector-gap
+5a6cdade1ebb,fort-worth-tx,6540eef2dc2e,Hispanic Heritage Month Celebration Hispanic Heritage Month Celebration,2,0,2,,selector-gap
+32d1d76c5a55,fort-worth-tx,6540eef2dc2e,Community Meeting For University Drive Community Meeting For University Drive,4,0,4,,selector-gap
+88b5781712bb,fort-worth-tx,6540eef2dc2e,District 3 Town Hall District 3 Town Hall,2,0,2,,selector-gap
+6a1b91909422,fort-worth-tx,6540eef2dc2e,District 6 Town Hall District 6 Town Hall,2,0,2,,selector-gap
+8ec731cb1cf8,fort-worth-tx,6540eef2dc2e,Park and Recreation Advisory Board Public Hearing Park and Recreation Advisory Board Public Hearing,2,0,2,,selector-gap
+383bf7e38814,fort-worth-tx,6540eef2dc2e,"Fort Worth Sports Authority, Inc. Quarterly Board Meeting, August 25, 2020 Fort Worth Sports Authority, Inc. Quarterly Board Meeting, August 25, 2020",2,0,2,,selector-gap
+93d789ac40db,fort-worth-tx,6540eef2dc2e,Sunset Heights Sidewalk Improvements Sunset Heights Sidewalk Improvements,2,0,2,,selector-gap
+0c223c31c919,fort-worth-tx,6540eef2dc2e,Fort Worth Public Library Advisory Board Meeting Fort Worth Public Library Advisory Board Meeting,2,0,2,,selector-gap
+44bb867f3d84,fort-worth-tx,6540eef2dc2e,Central City Local Development Corporation Central City Local Development Corporation,2,0,2,,selector-gap
+dba88809de16,fort-worth-tx,6540eef2dc2e,Special Called Community Action Partners (CAP) Council Special Called Community Action Partners (CAP) Council,2,0,2,,selector-gap
+07107f2b2f69,fort-worth-tx,6540eef2dc2e,Risinger At I35 Improvements Risinger At I35 Improvements,2,0,2,,selector-gap
+04371d4adfaf,fort-worth-tx,6540eef2dc2e,Human Relations Commission - Mayor's Committee on Persons with Disabilities Human Relations Commission - Mayor's Committee on Persons with Disabilities,2,0,2,,selector-gap
+b7473dac13bd,fort-worth-tx,6540eef2dc2e,"Park Advisory Board Meeting of June 24, 2020 Park Advisory Board Meeting of June 24, 2020",2,0,2,,selector-gap
+adeead1da70b,fort-worth-tx,6540eef2dc2e,Community Action Partners (CAP) Council Community Action Partners (CAP) Council,2,0,2,,selector-gap
+b16ca44c70f1,fort-worth-tx,6540eef2dc2e,Housing Neighborhood Services Committee Housing Neighborhood Services Committee,2,0,2,,selector-gap
+85c718e45e70,fort-worth-tx,6540eef2dc2e,Deferred Compensation Oversight Committee Deferred Compensation Oversight Committee,2,0,2,,selector-gap
+b8b3e2245bb9,fort-worth-tx,6540eef2dc2e,"FW Sports Authority, Inc. Quarterly Board Meeting May 26, 2020 FW Sports Authority, Inc. Quarterly Board Meeting May 26, 2020",2,0,2,,selector-gap
+8b05639b799a,fort-worth-tx,6540eef2dc2e,"2019 Neighborhood Awards of February 22, 2020 2019 Neighborhood Awards of February 22, 2020",2,0,2,,selector-gap
+c18ce8bdc3ea,fort-worth-tx,6540eef2dc2e,Police Monitor Public Forum Police Monitor Public Forum,2,0,2,,selector-gap
+4abe4832108d,fort-worth-tx,6540eef2dc2e,"Public Forum: Candidates for Diversity and Inclusion Director of October 28, 2019 Public Forum: Candidates for Diversity and Inclusion Director of October 28, 2019",2,0,2,,selector-gap
+8174267fc39f,fort-worth-tx,6540eef2dc2e,"Municipal Summit of September 12, 2018 Municipal Summit of September 12, 2018",2,0,2,,selector-gap
+b8b70d0363a3,fort-worth-tx,6540eef2dc2e,"Community Development Week Celebration - April 2, 2018 Community Development Week Celebration",2,0,2,,selector-gap
+7f249071b740,fort-worth-tx,6540eef2dc2e,"Neighborhood Workshop: Race & Culture - January 20, 2018 Neighborhood Workshop: Race & Culture",2,0,2,,selector-gap
+d8cb2f9e3746,fort-worth-tx,6540eef2dc2e,"Neighborhood Workshop: Helping The Homeless - January 20, 2018 Neighborhood Workshop: Helping The Homeless",2,0,2,,selector-gap
+d3357cfe5c72,fort-worth-tx,6540eef2dc2e,"Neighborhood Workshop: Tarrant County Services - January 20, 2018 Neighborhood Workshop: Tarrant County Services",2,0,2,,selector-gap
+c436fa2bf273,fort-worth-tx,6540eef2dc2e,Neighborhood Awards 2017 Neighborhood Awards 2017,2,0,2,,selector-gap
+524c6cfbb93b,fort-worth-tx,6540eef2dc2e,Economic Development Strategic Plan Workshop Economic Development Strategic Plan Workshop,2,0,2,,selector-gap
+1de10835bd1f,fort-worth-tx,6540eef2dc2e,"AATC Multifamily Summit of September 14, 2017 AATC Multifamily Summit of September 14, 2017",2,0,2,,selector-gap
+aec30ce9b892,fort-worth-tx,6540eef2dc2e,"Affordable Housing 101 Forum of May 13, 2017 Affordable Housing 101 Forum of May 13, 2017",2,0,2,,selector-gap
+c5d2a6ad4dfb,fort-worth-tx,6540eef2dc2e,Stormwater Management Program Master Plan Update PowerPoint Stormwater Management Program Master Plan Update PowerPoint,2,0,2,,selector-gap
+de16204463f3,fort-worth-tx,6540eef2dc2e,"Practical Tips for Successful Meetings Neighborhood Workshop - January 7, 2017 Practical Tips for Successful Meetings Neighborhood Workshop",2,0,2,,selector-gap
+fa81927136a8,fort-worth-tx,6540eef2dc2e,"Keep Fort Worth Beautiful Neighborhood Workshop - January 7, 2017 Keep Fort Worth Beautiful Neighborhood Workshop",2,0,2,,selector-gap
+4d0d06a8089e,fort-worth-tx,6540eef2dc2e,"2016 Neighborhood Awards - January 7, 2017 2016 Neighborhood Awards",2,0,2,,selector-gap
+43ee559debce,fort-worth-tx,6540eef2dc2e,"Fair Housing Roundtable of October 6, 2016 Fair Housing Roundtable of October 6, 2016",2,0,2,,selector-gap
+f8e647ff76b6,fort-worth-tx,6540eef2dc2e,Active Shooter Civilian Response Training Active Shooter Civilian Response Training,2,0,2,,selector-gap
+afb08aed1d41,fort-worth-tx,6540eef2dc2e,"Stockyards Form Based Code Work-In-Progress Presentation of May 25, 2016 Stockyards Form Based Code Work-In-Progress Presentation of May 25, 2016",2,0,2,,selector-gap
+40788d1f3fd8,fort-worth-tx,6540eef2dc2e,CHARTER REVIEW TASK FORCE CHARTER REVIEW TASK FORCE,8,0,8,,selector-gap
+07b33ff8716f,fort-worth-tx,6540eef2dc2e,HOUSING AND ECONOMIC DEVELOPMENT COMMITTEE HOUSING AND ECONOMIC DEVELOPMENT COMMITTEE,82,0,82,,selector-gap
+45418d88423b,fort-worth-tx,6540eef2dc2e,JAVA - A Caffeinated Town Hall with Mayor Betsy Price and Councilmember Sal Espino JAVA - A Caffeinated Town Hall with Mayor Betsy Price and Councilmember Sal Espino,2,0,2,,selector-gap
+88ce4758c3f0,fort-worth-tx,6540eef2dc2e,Caffeinated Town Hall from Villages of Woodland Springs Caffeinated Town Hall from Villages of Woodland Springs,2,0,2,,selector-gap
+43860f491b27,fort-worth-tx,6540eef2dc2e,Bond Public Input Meeting Bond Public Input Meeting,2,0,2,,selector-gap
+6aea5fb94e2a,fort-worth-tx,6540eef2dc2e,Employee Diversity Forum Employee Diversity Forum,2,0,2,,selector-gap
+38e0a1c5cc02,fort-worth-tx,6540eef2dc2e,Water Task Force Water Task Force,2,0,2,,selector-gap
+08d5877b2c37,fort-worth-tx,6540eef2dc2e,Bond Election Public Meeting Bond Election Public Meeting,2,0,2,,selector-gap
+b7981a68b531,fort-worth-tx,6540eef2dc2e,Virtual Worshop on Water Education Virtual Worshop on Water Education,2,0,2,,selector-gap
+c6873d2c1ad2,fort-worth-tx,6540eef2dc2e,Neighborhood Awards Neighborhood Awards,4,0,4,,selector-gap
+e8df4e610d68,fort-worth-tx,6540eef2dc2e,"""Grow a Green Multifamily Development"" Symposium ""Grow a Green Multifamily Development"" Symposium",2,0,2,,selector-gap
+6b7da9ff30c4,fort-worth-tx,6540eef2dc2e,Redistricting Public Meeting Redistricting Public Meeting,10,0,10,,selector-gap
+1aaa3c28909b,fort-worth-tx,6540eef2dc2e,Storm Water Symposium Storm Water Symposium,2,0,2,,selector-gap
+7d0241bfe5d3,fort-worth-tx,6540eef2dc2e,Salt Water Disposal Well Public Meeting Salt Water Disposal Well Public Meeting,2,0,2,,selector-gap
+0bcc3fd78c89,fort-worth-tx,6540eef2dc2e,Salt Water Disposal Public Meeting Salt Water Disposal Public Meeting,4,0,4,,selector-gap
+1943e417f55f,fort-worth-tx,6540eef2dc2e,Special Called Art Commission Meeting Special Called Art Commission Meeting,2,0,2,,selector-gap
+9a1b099778d6,fort-worth-tx,6540eef2dc2e,"Art Commission of November 15, 2021 Art Commission of November 15, 2021",2,0,2,,selector-gap
+72bb4d2c6332,fort-worth-tx,6540eef2dc2e,Fort Worth Art Commission Fort Worth Art Commission,10,0,10,,selector-gap
+8bfc62d55a69,fort-worth-tx,6540eef2dc2e,Art Commission Art Commission,8,0,8,,selector-gap
+0401f09a4c60,fort-worth-tx,6540eef2dc2e,Fort Worth Art Commission Special Meeting Fort Worth Art Commission Special Meeting,2,0,2,,selector-gap
+e58985fc271b,fort-worth-tx,6540eef2dc2e,Art Commission SPECIAL CALLED MEETING Art Commission SPECIAL CALLED MEETING,4,0,4,,selector-gap
+5c34217c9ac7,fort-worth-tx,6540eef2dc2e,Race and Culture Task Force Race and Culture Task Force,24,0,24,,selector-gap
+1d005f8ea250,fort-worth-tx,6540eef2dc2e,Race anc Culture Task Force Race anc Culture Task Force,2,0,2,,selector-gap
+f058788a913b,fort-worth-tx,6540eef2dc2e,Interim Report of the Task Force on Race and Culture Interim Report of the Task Force on Race and Culture,2,0,2,,selector-gap
+0150614443ad,fort-worth-tx,6540eef2dc2e,Race and Culture Task Force Townhall Race and Culture Task Force Townhall,2,0,2,,selector-gap
+c340bb61ed06,fort-worth-tx,6540eef2dc2e,Race and Culture Task Force Worksession Race and Culture Task Force Worksession,2,0,2,,selector-gap
+9f3ba02d8a11,fort-worth-tx,6540eef2dc2e,Task Force Meeting by Task Force on Race and Culture Task Force Meeting by Task Force on Race and Culture,2,0,2,,selector-gap
+0653ed9a5013,fort-worth-tx,6540eef2dc2e,Redistricting Task Force Redistricting Task Force,18,0,18,,selector-gap
+a294270ed4ff,fort-worth-tx,6540eef2dc2e,ESRI Redistricting Software Training ESRI Redistricting Software Training,2,0,2,,selector-gap
+922033c002ad,fort-worth-tx,6540eef2dc2e,"Redistricting Task Force of February 4, 2021 Redistricting Task Force of February 4, 2021",2,0,2,,selector-gap
+5f890de5b015,fort-worth-tx,6540eef2dc2e,Redistricting Task Force - Spanish Only Redistricting Task Force - Spanish Only,2,0,2,,selector-gap
+6420cf92d4c7,fort-worth-tx,6540eef2dc2e,"Redistricting 101 with Spanish subtitle January 4, 2021 Redistricting 101 with Spanish subtitle January 4, 2021",2,0,2,,selector-gap
+9e01008480a8,fort-worth-tx,6540eef2dc2e,Redistricting 101 Redistricting 101,2,0,2,,selector-gap
+7ad14832da99,fort-worth-tx,6540eef2dc2e,Redistricting Task Force Demo Redistricting Task Force Demo,2,0,2,,selector-gap
+df86e74c7d52,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Bob Tallman - January 31, 2020 Speaker's Podium - Bob Tallman",2,0,2,,selector-gap
+6a9821e17869,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Medal of Honor Museum - January 24, 2020 Speaker's Podium - Medal of Honor Museum",2,0,2,,selector-gap
+92b9f0f2c1ab,fort-worth-tx,6540eef2dc2e,"Speakers Podium - Chef Tim Love - December 13, 2019 Speakers Podium - Chef Tim Love",2,0,2,,selector-gap
+3349e22fb833,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Robert Earley, JPS Health Network - August 16, 2019 Speaker's Podium - Robert Earley, JPS Health Network",2,0,2,,selector-gap
+4bc4d0f0bacf,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Dr. D. Newell Williams, Brite Divinity School - February 1, 2019 Speaker's Podium - Dr. D. Newell Williams, Brite Divinity School",2,0,2,,selector-gap
+67488a4fb6fb,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Mike Sanborn, Baylor Scott & White All Saints Medical Center - November 30, 2018 Speaker's Podium - Mike Sanborn, Baylor Scott & White All Saints Medical Center",2,0,2,,selector-gap
+9638330973e2,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Col. Mickey Addison, USAF, Retired - November 11, 2018 Speaker's Podium - Col. Mickey Addison, USAF, Retired",2,0,2,,selector-gap
+ec54d6001cfd,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Robert Ahdieh, Texas A&M School of Law - September, 28, 2018 Speaker's Podium - Robert Ahdieh, Texas A&M School of Law - September, 28, 2018",2,0,2,,selector-gap
+dbc7f21e0c1f,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Officer Hannah Rivard, Human Trafficking - June 1, 2018 Speaker's Podium - Officer Hannah Rivard, Human Trafficking",2,0,2,,selector-gap
+4e4d7289dc12,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Manya Shorr, Fort Worth Library - May 18, 2018 Speaker's Podium - Manya Shorr, Fort Worth Library",2,0,2,,selector-gap
+e323c70d1349,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Cristo Rey Fort Worth High School - May 11, 2018 Speaker's Podium - Cristo Rey Fort Worth High School",2,0,2,,selector-gap
+7d69e8055278,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Lex Keen, PURF - November 10, 2017 Speaker's Podium - Lex Keen, PURF",2,0,2,,selector-gap
+cc1ed423c901,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Dr. Jay Maddock, Texas A&M School of Public Health - September 22, 2017 Speaker's Podium - Dr. Jay Maddock, Texas A&M School of Public Health",2,0,2,,selector-gap
+7be6795ca8dd,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Rev. Charles Foster Johnson, Texas Pastors for Childern - September 8, 2017 Speaker's Podium - Rev. Charles Foster Johnson, Texas Pastors for Childern",2,0,2,,selector-gap
+2167215f3566,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Roderick McLean, Lockheed Martin - July 28, 2017 Speaker's Podium - Roderick McLean, Lockheed Martin",2,0,2,,selector-gap
+21f684fd276a,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Jonathan Townsend, Naval Air Station Fort Worth Joint Reserve Base - July 14, 2017 Speaker's Podium - Jonathan Townsend, Naval Air Station Fort Worth Joint Reserve Base",2,0,2,,selector-gap
+b0a7859c94c1,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Ed Schneider, BRIT - May 19, 2017 Speaker's Podium - Ed Schneider, BRIT",2,0,2,,selector-gap
+239a44939bd5,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - George Fassett, Thumbtechs - April 28, 2017 Speaker's Podium - George Fassett, Thumbtechs",2,0,2,,selector-gap
+d63e25690c4b,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Mary J. Eisenhower, People To People International - March 31, 2017 Speaker's Podium - Mary J. Eisenhower, People To People International",2,0,2,,selector-gap
+b47cbe455a25,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Brandom Gengelbach, Fort Worth Chamber of Commerce - March 17, 2017 Speaker's Podium - Brandom Gengelbach, Fort Worth Chamber of Commerce",2,0,2,,selector-gap
+ccdfa21fd09c,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Dr. Vistasp Karbhari, University of Texas at Arlington - March 3, 2017 Speaker's Podium - Dr. Vistasp Karbhari, University of Texas at Arlington",2,0,2,,selector-gap
+979bc707c58a,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Jacques Marquis, The Cliburn - February 24, 2017 Speaker's Podium - Jacques Marquis, The Cliburn",2,0,2,,selector-gap
+d24f788ea308,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Bruce Frankel, Day Resource Center - December 9, 2016 Speaker's Podium - Bruce Frankel, Day Resource Center",2,0,2,,selector-gap
+e15499ef8436,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Mike Berry, Hillwood Properties - December 2, 2016 Speaker's Podium - Mike Berry, Hillwood Properties",2,0,2,,selector-gap
+ff046873890f,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - J.D. Granger, Trinity River Vision Authority - November 4, 2016 Speaker's Podium - J.D. Granger, Trinity River Vision Authority",2,0,2,,selector-gap
+f2d7c4c1dbeb,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Randal Mays, Junior Achievement - October 28, 2016 Speaker's Podium - Randal Mays, Junior Achievement",2,0,2,,selector-gap
+a0da7d9f37d8,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - U.S./Japanese Girl Scouts - October 7, 2016 Speaker's Podium - U.S./Japanese Girl Scouts",2,0,2,,selector-gap
+c21b462eb44f,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Dr. Jon Levine, Texas A&M Veterinarian Medicine - September 23, 2016 Speaker's Podium - Dr. Jon Levine, Texas A&M Veterinarian Medicine",2,0,2,,selector-gap
+ad19f78eebc8,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Bishop Michael Olson, Catholic Diocese of Fort Worth - August 26, 2016 Speaker's Podium - Bishop Michael Olson, Catholic Diocese of Fort Worth",2,0,2,,selector-gap
+cbb2f9067fc0,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Dr. Joyce Mauk, The Child Study Center - August 19, 2016 Speaker's Podium - Dr. Joyce Mauk, The Child Study Center",2,0,2,,selector-gap
+ac806c10489a,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Jamie Dixon, TCU Basketball Coach - August 5, 2016 Speaker's Podium - Jamie Dixon, TCU Basketball Coach",2,0,2,,selector-gap
+04dd05af678a,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Tempa Sherrill - Stay The Course Veteran Services - July 29, 2016 Speaker's Podium - Tempa Sherrill - Stay The Course Veteran Services",2,0,2,,selector-gap
+132ea2538733,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Jeff Williams, Mayor of Arlington - May 13, 2016 Speaker's Podium - Jeff Williams, Mayor of Arlington",2,0,2,,selector-gap
+179951fb846f,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Robert Earley - JPS Health Network - April 22, 2016 Speaker's Podium - Robert Earley - JPS Health Network",2,0,2,,selector-gap
+58eb404b8148,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Miguel Harth-Bedoya, Fort Worth Symphony - March 4, 2016 Speaker's Podium - Miguel Harth-Bedoya, Fort Worth Symphony",2,0,2,,selector-gap
+1f8c441e80ce,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Fred Slabach, Texas Wesleyan University - February 26, 2016 Speaker's Podium - Fred Slabach, Texas Wesleyan University",2,0,2,,selector-gap
+70b56da3c612,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Richard Marquez, Texans Can Academies - February 19, 2016 Speaker's Podium - Richard Marquez, Texans Can Academies",2,0,2,,selector-gap
+357e5b1412b0,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Jim Schlossnagle, Head Coach TCU Baseball - February 5, 2016 Speaker's Podium - Jim Schlossnagle, Head Coach TCU Baseball",2,0,2,,selector-gap
+63a44579251e,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Matt Hicks, Texas Rangers - January 22, 2016 Speaker's Podium - Matt Hicks, Texas Rangers",2,0,2,,selector-gap
+f414a0274fb6,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Gary Wortel, Star-Telegram - December 11, 2015 Speaker's Podium - Gary Wortel, Star-Telegram",2,0,2,,selector-gap
+94c7a9c641e7,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Tom Ferguson, CEO, AZZ Inc. - December 4, 2015 Speaker's Podium - Tom Ferguson, CEO, AZZ Inc.",2,0,2,,selector-gap
+2add0d6ff67c,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Jeff Whitfield, Rotary Peace Fellow - November 20, 2016 Speaker's Podium - Jeff Whitfield, Rotary Peace Fellow",2,0,2,,selector-gap
+e99a858248e5,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Terry Montesi, Trademark Property Company - November 13, 2015 Speaker's Podium - Terry Montesi, Trademark Property Company",2,0,2,,selector-gap
+81541f984cd2,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Chad Mathews, Lone Star Film Society - October 30, 2015 Speaker's Podium - Chad Mathews, Lone Star Film Society",2,0,2,,selector-gap
+220799e83f47,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Rachel Croson - Dean, UTA School of Business - October 23, 2015 Speaker's Podium - Rachel Croson - Dean, UTA School of Business",2,0,2,,selector-gap
+f5fa9656295e,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Chris Young, CIFAL Atlanta - September 25, 2015 Speaker's Podium - Chris Young, CIFAL Atlanta",2,0,2,,selector-gap
+30af8cb40c59,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Gerry Fraley, Sportswriter - Dallas Morning News - August 28, 2015 Speaker's Podium - Gerry Fraley, Sportswriter - Dallas Morning News",2,0,2,,selector-gap
+6d732b86a826,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Terri Sexton & Michelle Taylor - Texas Ballet Theater - July 24, 2015 Speaker's Podium - Terri Sexton & Michelle Taylor - Texas Ballet Theater",2,0,2,,selector-gap
+28a62b6ae7b3,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Leta Andrews - July 17, 2015 Speaker's Podium - Leta Andrews",2,0,2,,selector-gap
+8a94a7167b86,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Todd Miller & Brian Williams - Fort Worth Police Officers Awards Foundation - July 10, 2015 Speaker's Podium - Todd Miller & Brian Williams - Fort Worth Police Officers Awards Foundation",2,0,2,,selector-gap
+7af317a65888,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Colonel Scott Taylor, U.S. Army - May 15, 2015 Speaker's Podium - Colonel Scott Taylor, U.S. Army",2,0,2,,selector-gap
+2ee3ca1f8435,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Andrea Green - CEO, Community Hospice of Texas - April 24, 2015 Speaker's Podium - Andrea Green - CEO, Community Hospice of Texas",2,0,2,,selector-gap
+9070508410c7,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Paul Kessler - ""Lessons From The Holocaust"" - April 17, 2015 Speaker's Podium - Paul Kessler - ""Lessons From The Holocaust""",2,0,2,,selector-gap
+0bb2e22b0dd8,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Darren Woods - General Director, FW Opera - April 10, 2015 Speaker's Podium - Darren Woods - General Director, FW Opera",2,0,2,,selector-gap
+22073a10405b,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Miguel Harth-Bedoya - Conductor, Fort Worth Symphony Orchestra - March 27, 2015 Speaker's Podium - Miguel Harth-Bedoya - Conductor, Fort Worth Symphony Orchestra",2,0,2,,selector-gap
+92df3d8b26c8,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Barclay Berdan - CEO, Texas Health Resources 3-20-15 - March 20, 2015 Speaker's Podium - Barclay Berdan - CEO, Texas Health Resources",2,0,2,,selector-gap
+9ee0736069a9,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Homer Erekson - Dean, TCU Neeley School of Business - February 13, 2015 Speaker's Podium - Homer Erekson - Dean, TCU Neeley School of Business",2,0,2,,selector-gap
+15178a0d2590,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Joy Webster - MorningStar Partners, LP - January 23, 2015 Speaker's Podium - Joy Webster - MorningStar Partners, LP",2,0,2,,selector-gap
+eae361ff1573,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Jeff Banister & Tom Grieve - Texas Rangers Baseball Club - January 9, 2015 Speaker's Podium - Jeff Banister & Tom Grieve - Texas Rangers Baseball Club",2,0,2,,selector-gap
+710990f56da8,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Brad Barnes - Fort Worth Stock Show & Rodeo - December 12, 2014 Speaker's Podium - Brad Barnes - Fort Worth Stock Show & Rodeo",2,0,2,,selector-gap
+a6d321529bb0,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Ross Ramsey - Texas Tribune - November 14, 2014 Speaker's Podium - Ross Ramsey - Texas Tribune",2,0,2,,selector-gap
+e1be8a559f03,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Tim Weiser - Deputy Commissioner, Big 12 Conference - October 24, 2014 Speaker's Podium - Tim Weiser - Deputy Commissioner, Big 12 Conference",2,0,2,,selector-gap
+d2d1d6a110b0,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Dr. Michael Williams - President, UNT Health Science Center - October 17, 2014 Speaker's Podium - Dr. Michael Williams - President, UNT Health Science Center",2,0,2,,selector-gap
+a1bc2d32656b,fort-worth-tx,6540eef2dc2e,"Speakers Podium - David Cooke - City Manager, City of Fort Worth - October, 10, 2014 Speakers Podium - David Cooke - City Manager, City of Fort Worth - October, 10, 2014",2,0,2,,selector-gap
+9ca576783973,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Fred Slaback - President, Texas Wesleyan University - September 26, 2014 Speaker's Podium - Fred Slaback - President, Texas Wesleyan University",2,0,2,,selector-gap
+b82a776b7a28,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Jim Riddlesperger - Professor of Political Science, TCU - September 19, 2014 Speaker's Podium - Jim Riddlesperger - Professor of Political Science, TCU",2,0,2,,selector-gap
+1d023df9d73f,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Dr. Mike Jacobson - College of Pharmacy UNTHSC - June 13, 2014 Speaker's Podium - Dr. Mike Jacobson - College of Pharmacy UNTHSC",2,0,2,,selector-gap
+52f7f09c183b,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Robert Hinkle - North Tarrant Express - May 30, 2014 Speaker's Podium - Robert Hinkle - North Tarrant Express",2,0,2,,selector-gap
+ecead95ab2fb,fort-worth-tx,6540eef2dc2e,"Speaker's Podium - Andy Taft - Plan 2023 - March 16, 2014 Speaker's Podium - Andy Taft - Plan 2023",2,0,2,,selector-gap
+9268e314c4f3,fort-worth-tx,6540eef2dc2e,T Board of Directors T Board of Directors,4,0,4,,selector-gap
+06a927590ad8,fort-worth-tx,6540eef2dc2e,T Board Meeting T Board Meeting,38,0,38,,selector-gap
+e6f138880695,fort-worth-tx,6540eef2dc2e,"Records Management - Inventory, Retention & Open Records Records Management - Inventory, Retention & Open Records",1,0,1,,selector-gap
+694a754c98bf,fort-worth-tx,6540eef2dc2e,City News City News,26,0,26,,selector-gap
+7589fd43ffb0,fort-worth-tx,6540eef2dc2e,City Notes City Notes,5,0,5,,selector-gap
+771628751307,fort-worth-tx,6540eef2dc2e,Participación en Cenus 2010 Participación en Cenus 2010,1,0,1,,selector-gap
+5823617ae808,fort-worth-tx,6540eef2dc2e,Census Participation 2010 Census Participation 2010,1,0,1,,selector-gap
+92b82ed39a3c,fort-worth-tx,6540eef2dc2e,City Page Update City Page Update,26,0,26,,selector-gap
+fbdd0e0642b4,fort-worth-tx,6540eef2dc2e,Entrepreneur Expo 2009 Awards Luncheon Entrepreneur Expo 2009 Awards Luncheon,1,0,1,,selector-gap
+61a75705814d,fort-worth-tx,6540eef2dc2e,Silcox Animal Care Control Center Dedication Silcox Animal Care Control Center Dedication,1,0,1,,selector-gap
+bc18dc1c1c70,fort-worth-tx,6540eef2dc2e,Ask the Archives Ask the Archives,1,0,1,,selector-gap
+f5a9ce9c913b,fort-worth-tx,6540eef2dc2e,State of the City Address 2009 State of the City Address 2009,2,0,2,,selector-gap
+775caa3889e1,fort-worth-tx,6540eef2dc2e,Modern Streetcar Town Hall Meeting Modern Streetcar Town Hall Meeting,2,0,2,,selector-gap
+6191344c030c,fort-worth-tx,6540eef2dc2e,Air Quality Study Air Quality Study,2,0,2,,selector-gap
+29f9c84b97d2,fort-worth-tx,6540eef2dc2e,Air Quality Study Presentation Air Quality Study Presentation,1,0,1,,selector-gap
+76814a80f1a1,fort-worth-tx,6540eef2dc2e,Air Quality Monitors in Barnett Shale Press Conference Air Quality Monitors in Barnett Shale Press Conference,1,0,1,,selector-gap
+616961b17fa8,fort-worth-tx,6540eef2dc2e,CITY MANAGER’S INFORMATIONAL OPEN HOUSE AND PUBLIC INPUT MEETING CITY MANAGER’S INFORMATIONAL OPEN HOUSE AND PUBLIC INPUT MEETING,1,0,1,,selector-gap
+318442212ea1,fort-worth-tx,6540eef2dc2e,ECONOMIC FORUM ECONOMIC FORUM,1,0,1,,selector-gap
+885c5b538254,fort-worth-tx,6540eef2dc2e,Raw Footage of Chief Halstead's Press Conference regarding recently arrested employee Raw Footage of Chief Halstead's Press Conference regarding recently arrested employee,1,0,1,,selector-gap
+2fec601344c9,fort-worth-tx,6540eef2dc2e,Tracks to the Future - Street Car Impact on Regional Transit Tracks to the Future - Street Car Impact on Regional Transit,1,0,1,,selector-gap
+d10b75dabc4a,fort-worth-tx,6540eef2dc2e,Tracks to the Future - Next Steps: Communications and Coalitions Tracks to the Future - Next Steps: Communications and Coalitions,1,0,1,,selector-gap
+1c8b2f8328b1,fort-worth-tx,6540eef2dc2e,Tracks to the Future - Business as Usual or a New Direction? Tracks to the Future - Business as Usual or a New Direction?,1,0,1,,selector-gap
+c764b45fe9cb,fort-worth-tx,6540eef2dc2e,"Tracks to Future - 12 Steps to Transportation Success in Charlotte, NC. Tracks to Future - 12 Steps to Transportation Success in Charlotte, NC.",1,0,1,,selector-gap
+a3dd848e9eae,fort-worth-tx,6540eef2dc2e,Track to Future - Next Steps: Finance and Government Track to Future - Next Steps: Finance and Government,1,0,1,,selector-gap
+23a109dc77e3,fort-worth-tx,6540eef2dc2e,Rainbow Lounge Investigation Report Rainbow Lounge Investigation Report,1,0,1,,selector-gap
+59a667aab30c,fort-worth-tx,6540eef2dc2e,Southwest Parkway Project Workshop Southwest Parkway Project Workshop,1,0,1,,selector-gap
+d69d4cb04747,fort-worth-tx,6540eef2dc2e,Housing and Economic Development Committee #2 Housing and Economic Development Committee #2,1,0,1,,selector-gap
+37a9ae699aef,fort-worth-tx,6540eef2dc2e,Housing and Economic Development Committee #1 Housing and Economic Development Committee #1,1,0,1,,selector-gap
+6a0c32716997,pflugerville-tx,19c2ffe87d08,Board of Adjustment,10,10,0,pflugerville-tx;pflugerville-tx-board-of-adjustment,selector-covered
