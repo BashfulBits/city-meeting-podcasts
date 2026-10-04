@@ -763,7 +763,7 @@ joint. Likewise, no CPAC membership/topic rule should claim those recordings.
 - Freeze complete exact Council labels and independently bound joint additions; leave unknown
   generic aliases explicitly unchanged until evidence supports a migration.
 - Name the affected feed files, replay tests, exposure checks and expected UID ownership in
-  review/51; mark only those concrete slices L3 and create their scoped tracking issues.
+  [review/51](../51-unexpected-body-remedy-flow.md); mark only those concrete slices L3 and create their scoped tracking issues.
 - Apply verified Addison corrections in small dependent PRs, preserving records/audio/URLs.
 - Verify the 822-record, 62-label replay, standalone/joint negatives, RSS/search ownership and
   raw-page preservation; run whole-repository lint/format and offline tests for code changes.
