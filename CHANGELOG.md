@@ -17,6 +17,27 @@ Once 1.0 ships, entries move under semver tags.
   guards preserve the committee identity for future classification. Render/search caches rebuild for the configured proof;
   audio keys and stage versions remain unchanged, with no forced backfill.
 
+- **GitHub Actions major updates (PR #1497).** Refresh full-SHA action pins across current
+  workflows, preserve retired LLM workflows and the dispatch-tuning drift gate, and cover
+  workflows added since the original Renovate branch. Validate upstream action inputs and
+  hosted-runner compatibility. Add credential-free Worker packaging smoke checks and verify
+  nonpublishing audio-image build/load plus runtime checks. No Python/Worker dependency, image,
+  model, pipeline-version or
+  artifact changes; stored artifacts stay valid and no backfill is triggered.
+
+- **Purpose-bound LLM telemetry (GH#2001, PR #2004, review/52; merged 2026-10-04).** Require producer, accounting unit,
+  completion and coverage contracts in every LLM lane registration. Shared work handles count
+  eligibility before caps, deduplicate episode/batch replay, record submission outcomes, and count
+  validated producer consumption separately from backend responses or cached reuse. Production
+  stages and research traversals emit aggregate purpose snapshots through existing append-only run
+  events. Reports automatically discover new/retired purposes, retain legacy events, and require
+  complete catalog/shard coverage for capacity recommendations. Research sample units stay explicit.
+  Blocked research pairs retain both order-swapped assessment identities when retried.
+  Cached tag census initializes taxonomy/evaluation inputs before classifying retained work;
+  malformed shard scopes and episodes without identities are skipped safely.
+  No model, recipe, pipeline-version, quota, Worker, dependency or artifact changes; stored artifacts
+  remain valid and no backfill is triggered. Telemetry begins with new runs.
+
 - Prepare Foundation's approved existing-UID publication selection: three historical recordings
   appear once in dedicated/combined public views, with raw records and pages retained. Correct
   retirement inferred from old clips using current official board activity. Configured proof changes

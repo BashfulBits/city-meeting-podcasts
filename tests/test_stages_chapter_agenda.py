@@ -530,6 +530,10 @@ def test_stage_finalizes_and_writes_artifact_on_job_result(tmp_path: Path):
     artifact_key = ep.generated_agenda_candidates["artifact_key"]
     assert artifact_key.startswith("state/generated_chapters/agenda/ep-result-")
     assert storage.exists(artifact_key)
+    snapshot = ctx.llm_work.snapshot()["purposes"]["chapter-agenda"]
+    assert snapshot["consumed"] == 1
+    assert snapshot["backlog"] == 0
+    assert snapshot["job_outcomes"] == {"returned": 1}
 
 
 def test_stage_keeps_completed_registry_record_when_only_the_storage_write_fails(
@@ -647,6 +651,10 @@ def test_stage_clears_pending_state_when_finalize_fails(tmp_path: Path):
     assert ep.generated_agenda_candidates == {}
     assert look_up_deferred(storage, "recipe-agenda-broken-1") is None
 
+    snapshot = ctx.llm_work.snapshot()["purposes"]["chapter-agenda"]
+    assert snapshot["consumed"] == 0
+    assert snapshot["states"] == {"errored": 1}
+
 
 def test_stage_defers_on_stop_signal(tmp_path: Path):
     stage = AgendaChapterCandidatesStage()
@@ -752,6 +760,12 @@ def test_agenda_stage_enforces_producer_dispatch_cap(tmp_path: Path):
     assert len(backend.submitted_jobs) == 1
     assert stats.defer_reasons.get("producer-cap") == 1
     assert stats.defer_reasons.get("llm-pending") == 1
+
+    snapshot = ctx.llm_work.snapshot()["purposes"]["chapter-agenda"]
+    assert snapshot["observed"] == 2
+    assert snapshot["states"] == {"ingress_limited": 1, "queued": 1}
+    assert snapshot["backlog"] == 2
+    assert snapshot["consumed"] == 0
 
 
 def test_agenda_stage_failed_batch_job_does_not_consume_dispatch_quota(tmp_path: Path):

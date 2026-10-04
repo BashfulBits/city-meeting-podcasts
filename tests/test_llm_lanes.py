@@ -57,12 +57,49 @@ DISPATCHING_PURPOSES = frozenset(
 
 
 def _lane(**overrides):
-    entry = {"models": ["m1"], "max_dispatches_per_run": 10, "daily_write_units": 100}
+    entry = {
+        "models": ["m1"],
+        "max_dispatches_per_run": 10,
+        "daily_write_units": 100,
+        "telemetry": {
+            "producer": "test",
+            "unit": "episode",
+            "completion": "consumed",
+            "scope": "retained_catalog",
+        },
+    }
     entry.update(overrides)
     return {"a-purpose": entry}
 
 
 class TestParsing:
+    @pytest.mark.parametrize(
+        "change",
+        [
+            None,
+            {"extra": True},
+            {"producer": " "},
+            {"unit": " "},
+            {"scope": "unknown"},
+            {"completion": "queued"},
+        ],
+    )
+    def test_rejects_invalid_telemetry_contracts(self, change):
+        config = _lane()
+        if change is None:
+            config["a-purpose"].pop("telemetry")
+        else:
+            config["a-purpose"]["telemetry"].update(change)
+        with pytest.raises(ValueError, match="telemetry"):
+            parse_lanes(config)
+
+    def test_normalizes_telemetry_identity_fields(self):
+        config = _lane()
+        config["a-purpose"]["telemetry"].update(producer=" test ", unit=" episode ")
+        lane = parse_lanes(config)["a-purpose"]
+        assert lane.telemetry_producer == "test"
+        assert lane.telemetry_unit == "episode"
+
     def test_accepts_a_well_formed_lane(self):
         lanes = parse_lanes(_lane())
         assert lanes["a-purpose"] == LaneConfig(
@@ -72,6 +109,7 @@ class TestParsing:
             reserved_write_units=0,
             daily_write_units=100,
             dispatch_shape="pooled",
+            telemetry_producer="test",
         )
 
     @pytest.mark.parametrize("block", [None, {}, [], "nope"])
@@ -452,7 +490,7 @@ def test_catalog_backup_candidates_defaults_on_and_excludes_per_model_lanes():
     assert all(
         lane.accepts_catalog_backups == (lane.dispatch_shape == "pooled") for lane in lanes.values()
     )
-    base = {"models": ["a/b"], "max_dispatches_per_run": 1, "daily_write_units": 100}
+    base = {**_lane()["a-purpose"], "models": ["a/b"], "max_dispatches_per_run": 1}
     assert (
         parse_lanes({"x": {**base, "catalog_backup_candidates": False}})[
             "x"

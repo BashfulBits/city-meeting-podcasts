@@ -125,6 +125,13 @@ def record_enqueue_outcomes(
     ``unknown``, ``cached_completed``, ``prior_pending``, ``deferred_retry``, or
     ``client_daily_cap``.  The optional third tuple item is a non-secret rejection reason.
     """
+    from citypods.compute.llm_work import validate_work_binding
+
+    for job, status, reason in entries:
+        binding = validate_work_binding(job)
+        if binding is not None:
+            binding.job_outcome(job.recipe_hash, status, reason)
+
     grouped: dict[tuple[str, str, str], Counter[str]] = defaultdict(Counter)
     reasons: dict[tuple[str, str, str], Counter[str]] = defaultdict(Counter)
     for job, status, reason in entries:

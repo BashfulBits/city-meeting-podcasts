@@ -147,11 +147,23 @@ LANES = parse_lanes(
             "models": ["meta/llama-keep"],
             "max_dispatches_per_run": 1,
             "daily_write_units": 100,
+            "telemetry": {
+                "producer": "test",
+                "unit": "episode",
+                "completion": "consumed",
+                "scope": "retained_catalog",
+            },
         },
         "fixed": {
             "models": ["meta/llama-keep"],
             "max_dispatches_per_run": 1,
             "daily_write_units": 100,
+            "telemetry": {
+                "producer": "test",
+                "unit": "episode",
+                "completion": "consumed",
+                "scope": "retained_catalog",
+            },
             "catalog_backup_candidates": False,
         },
     }
@@ -321,6 +333,12 @@ def test_a_new_lane_is_offered_with_no_code_change(monkeypatch):
                         "models": list(lane.models),
                         "max_dispatches_per_run": 1,
                         "daily_write_units": 100,
+                        "telemetry": {
+                            "producer": "test",
+                            "unit": "episode",
+                            "completion": "consumed",
+                            "scope": "retained_catalog",
+                        },
                     }
                     for p, lane in original.items()
                 },
@@ -328,6 +346,12 @@ def test_a_new_lane_is_offered_with_no_code_change(monkeypatch):
                     "models": ["meta/llama-keep"],
                     "max_dispatches_per_run": 1,
                     "daily_write_units": 100,
+                    "telemetry": {
+                        "producer": "test",
+                        "unit": "episode",
+                        "completion": "consumed",
+                        "scope": "retained_catalog",
+                    },
                 },
             }
         )
@@ -575,11 +599,23 @@ def test_a_free_route_turned_paid_is_a_decision_with_its_lane_impact(monkeypatch
                 "models": ["google/gem-scarce", "meta/llama-keep"],
                 "max_dispatches_per_run": 1,
                 "daily_write_units": 100,
+                "telemetry": {
+                    "producer": "test",
+                    "unit": "episode",
+                    "completion": "consumed",
+                    "scope": "retained_catalog",
+                },
             },
             "solo": {
                 "models": ["google/gem-scarce"],
                 "max_dispatches_per_run": 1,
                 "daily_write_units": 100,
+                "telemetry": {
+                    "producer": "test",
+                    "unit": "episode",
+                    "completion": "consumed",
+                    "scope": "retained_catalog",
+                },
             },
         }
     )
