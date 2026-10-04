@@ -25,6 +25,10 @@ historical identities while documenting unavailable provider media.
 P1 evaluation/physical-route admission implements the approved scoring/hash contracts and is
 ready for review in #1987; P2–P5 have predecessor-gated build contracts. Duplicate publication has
 a separate L2 design gate before affected feeds activate.
+Maintainer preference (2026-10-04): continuing standing committees, including Council subcommittees,
+have dedicated feeds across cities; seasonal activity does not imply a temporary committee.
+Addison CPC's dedicated-feed revision is under validation in #2003, with historical recording gaps
+explicitly retained in its evidence packet. Temporary programs keep their approved family policy.
 Approved policy templates and cross-city regression cases will serve both onboarding and
 maintenance, resolving known rules before model calls while requiring verified local identity.
 Alias qualification is narrow and reviewed; incomplete archives require documented exceptions;
@@ -40,6 +44,13 @@ TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues
 - Inactive publication-selection v1 machinery (#1999, 2026-10-04): reviewed existing-UID
   projection, feed/search pre-write holds and raw-page retention. City activations, future-member
   admission and the remaining remedy-policy phases retain their separate gates.
+
+- **Purpose-bound LLM telemetry (GH#2001):** shipped in
+  [PR #2004](https://github.com/BashfulBits/city-meeting-podcasts/pull/2004) on 2026-10-04.
+  Registration enforces producer/unit/coverage contracts; shared work handles track submission
+  and validated consumption, and reports discover new/retired purposes automatically. Research
+  units and partial coverage remain explicit. The later incremental ledger and P1–P7 sequencing
+  are unchanged. Frozen design: [review/52](review/52-purpose-work-telemetry.md).
 
 - **P0 LLM backlog trend:** daily/manual read-only reporting shipped in
   [PR #1983](https://github.com/BashfulBits/city-meeting-podcasts/pull/1983), accepted against live

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import tempfile
 from collections import defaultdict
 from collections.abc import Mapping
@@ -29,6 +30,7 @@ class VerbSpec:
     lane: str
     stage: str
     throughput_reliable: bool
+    purpose: str | None = None
 
 
 VERBS = {
@@ -80,7 +82,7 @@ STAGE_TOKENS: dict[str, dict[str, tuple[str, str]]] = {
         "llm-error": ("moments", "errored"),
     },
 }
-_WORKING_CLASSES = ("queued", "ingress_limited", "stopped")
+_WORKING_CLASSES = ("ready", "queued", "ingress_limited", "stopped")
 _OTHER_CLASSES = ("blocked", "policy_held", "errored")
 
 
@@ -123,6 +125,39 @@ def _read_events(paths, *, since: datetime) -> tuple[list[dict], int]:
             event = json.loads(path.read_text())
             if not isinstance(event, dict):
                 raise ValueError("event is not an object")
+            work = event.get("llm_work")
+            if work is not None:
+                if not isinstance(work, dict) or work.get("schema_version") != 1:
+                    raise ValueError("unknown LLM work schema")
+                purposes = work.get("purposes")
+                if not isinstance(purposes, dict):
+                    raise ValueError("invalid LLM purposes")
+                for row in purposes.values():
+                    if (
+                        not isinstance(row, dict)
+                        or row.get("coverage") not in {"complete", "partial"}
+                        or row.get("scope") not in {"retained_catalog", "sample"}
+                        or not isinstance(row.get("unit"), str)
+                        or not isinstance(row.get("states"), dict)
+                        or any(
+                            type(value) is not int or value < 0 for value in row["states"].values()
+                        )
+                        or type(row.get("consumed")) is not int
+                        or row["consumed"] < 0
+                        or type(row.get("observed")) is not int
+                        or row["observed"] < 0
+                    ):
+                        raise ValueError("invalid LLM purpose snapshot")
+            if event.get("shard"):
+                if not isinstance(event["shard"], str):
+                    raise ValueError("invalid shard scope")
+                match = re.fullmatch(r"([0-9]+)/([0-9]+)", event["shard"])
+                if not match:
+                    raise ValueError("invalid shard scope")
+                index, count = int(match[1]), int(match[2])
+                if count <= 0 or not 0 <= index < count:
+                    raise ValueError("invalid shard scope")
+                event["shard"] = f"{index}/{count}"
             if _timestamp(event) >= since:
                 events.append(event)
         except (OSError, ValueError, TypeError, KeyError):
@@ -141,6 +176,12 @@ def daily_points(
     """Select each day's last completed snapshot and sum all completed daily runs."""
     spec = (VERBS if specs is None else specs)[verb]
     tokens = STAGE_TOKENS if tokens is None else tokens
+    purpose = spec.purpose or _PURPOSES.get(verb, verb)
+    explicit = [
+        event for event in events if purpose in (event.get("llm_work") or {}).get("purposes", {})
+    ]
+    if explicit:
+        return purpose_points(explicit, purpose, params, through=through)
     grouped = defaultdict(list)
     for event in events:
         if (
@@ -170,6 +211,72 @@ def daily_points(
                 ran_day=sum(run.get("ran", 0) for _, run in runs),
                 classes=classes,
                 unclassified=unclassified,
+            )
+        )
+    return points
+
+
+def purpose_points(events, purpose, params, *, through=None):
+    """Combine disjoint shard censuses only when every shard has a complete snapshot."""
+    if not events:
+        return []
+    grouped = defaultdict(list)
+    # The newest contract owns the unit even when its census is partial. Selecting an older
+    # complete row could present obsolete-unit measurements under the current report's unit.
+    latest_event = max(events, key=_timestamp)
+    unit = latest_event["llm_work"]["purposes"][purpose]["unit"]
+    for event in events:
+        row = event["llm_work"]["purposes"][purpose]
+        if (
+            row.get("unit") != unit
+            or row.get("coverage") != "complete"
+            or row.get("scope") != "retained_catalog"
+            or event.get("interrupted")
+            or event.get("outcome") == "interrupted"
+            or event.get("source")
+            or event.get("city")
+        ):
+            continue
+        ts = _timestamp(event)
+        if through is None or ts.date() <= through:
+            grouped[ts.date()].append((ts, event.get("shard"), row))
+    points = []
+    for day in sorted(grouped)[-params.window_days :]:
+        runs = grouped[day]
+        # Prefer a full census to overlapping shard observations. Sum throughput only from
+        # the same scope, so a diagnostic whole-catalog replay cannot double-count shard runs.
+        full = [entry for entry in runs if not entry[1]]
+        if full:
+            chosen = [max(full, key=lambda entry: entry[0])]
+            daily_runs = full
+        else:
+            latest = {}
+            for entry in sorted(runs, key=lambda entry: entry[0]):
+                latest[entry[1]] = entry
+            counts = {int(shard.split("/")[1]) for shard in latest}
+            if len(counts) != 1:
+                continue
+            count = counts.pop()
+            if {int(shard.split("/")[0]) for shard in latest} != set(range(count)):
+                continue
+            chosen = list(latest.values())
+            daily_runs = runs
+        classes = dict.fromkeys((*_WORKING_CLASSES, *_OTHER_CLASSES), 0)
+        unknown = defaultdict(int)
+        for _, _, row in chosen:
+            states = row.get("states") or {}
+            for key in classes:
+                classes[key] += states.get(key, 0)
+            for key, value in states.items():
+                if key not in {"ready", "consumed", "reused", *classes}:
+                    unknown[key] += value
+        points.append(
+            DayPoint(
+                day,
+                sum(classes[key] for key in _WORKING_CLASSES),
+                sum(row.get("consumed", 0) for _, _, row in daily_runs),
+                classes,
+                dict(unknown),
             )
         )
     return points
@@ -207,6 +314,7 @@ def analyze(events, verb: str, params, *, specs=None, tokens=None) -> VerbReport
             if specs[verb].throughput_reliable
             else trend == "growing"
         )
+        constrained = constrained and classes.get("ready", 0) == 0
         if constrained and backlog > 0:
             action = (
                 "raise_ingress_quota"
@@ -316,6 +424,14 @@ def discover_verbs(events, site_config):
             for event in events
         ):
             lifecycle[verb] = "no_telemetry"
+    explicit = {
+        purpose for event in events for purpose in (event.get("llm_work") or {}).get("purposes", {})
+    }
+    reverse = {purpose: verb for verb, purpose in _PURPOSES.items()}
+    for purpose in sorted(explicit):
+        verb = reverse.get(purpose, purpose)
+        specs[verb] = VerbSpec(verb, purpose, purpose, True, purpose)
+        lifecycle[verb] = "active" if registry is None or purpose in registered else "retired"
     return specs, tokens, lifecycle
 
 
@@ -346,7 +462,7 @@ def _unclassified_tokens(
     return result
 
 
-def render_markdown(reports: Mapping[str, VerbReport], lifecycle=None) -> str:
+def render_markdown(reports: Mapping[str, VerbReport], lifecycle=None, *, unmeasured=()) -> str:
     """Render advisory backlog measurements as a Markdown summary table."""
     lines = [
         "| Verb | Backlog | Trend | Drain days | Constrained | Action | "
@@ -363,7 +479,7 @@ def render_markdown(reports: Mapping[str, VerbReport], lifecycle=None) -> str:
         drain = f"{report.drain_days:.2f}" if report.drain_days is not None else "—"
         label = verb.replace("|", "\\|").replace("\n", " ").replace("\r", " ")
         status = (lifecycle or {}).get(verb, "active")
-        backlog = "—" if status == "no_telemetry" else str(report.backlog)
+        backlog = "—" if status == "no_telemetry" or verb in unmeasured else str(report.backlog)
         lines.append(
             f"| {label} | {backlog} | {report.trend} | {drain} | "
             f"{str(report.constrained).lower()} | {report.action or '—'} | "
@@ -456,9 +572,55 @@ def main(argv: list[str] | None = None) -> int:
         "verb_lifecycle": lifecycle,
     }
     for verb, status in lifecycle.items():
-        if status == "no_telemetry":
+        if status == "no_telemetry" or reports[verb].days == 0:
             output["verbs"][verb]["backlog"] = None
-    markdown = render_markdown(reports, lifecycle)
+    for verb, spec in specs.items():
+        purpose = spec.purpose or _PURPOSES.get(verb, verb)
+        rows = [
+            (event, (event.get("llm_work") or {}).get("purposes", {}).get(purpose))
+            for event in events
+        ]
+        rows = [(event, row) for event, row in rows if row is not None]
+        if rows:
+            event, row = max(rows, key=lambda pair: _timestamp(pair[0]))
+            output["verbs"][verb].update(
+                {
+                    "unit": row["unit"],
+                    "coverage": row["coverage"],
+                    "scope": row["scope"],
+                    "telemetry_source": "purpose_snapshot",
+                    "observed": row["observed"],
+                    "consumed_run": row["consumed"],
+                    "states": row["states"],
+                    "job_outcomes": row.get("job_outcomes", {}),
+                }
+            )
+            if (
+                row["coverage"] != "complete"
+                or row["scope"] == "sample"
+                or event.get("source")
+                or event.get("city")
+                or event.get("interrupted")
+            ):
+                reports[verb] = replace(reports[verb], constrained=False, action=None)
+                output["verbs"][verb].update(constrained=False, action=None, backlog=None)
+            measured = purpose_points([event for event, _ in rows], purpose, params)
+            if not measured or measured[-1].day != _timestamp(event).date():
+                reports[verb] = replace(reports[verb], constrained=False, action=None)
+                output["verbs"][verb].update(constrained=False, action=None, backlog=None)
+    unmeasured = {verb for verb, row in output["verbs"].items() if row["backlog"] is None}
+    markdown = render_markdown(reports, lifecycle, unmeasured=unmeasured)
+    metadata = [(verb, row) for verb, row in output["verbs"].items() if row.get("telemetry_source")]
+    if metadata:
+        markdown += "\n| Purpose | Unit | Coverage | Scope | Observed |\n"
+        markdown += "|---|---|---|---|---:|\n"
+        for verb, row in metadata:
+            label = verb.replace("|", "\\|").replace("\n", " ")
+            unit_label = row["unit"].replace("|", "\\|").replace("\n", " ")
+            markdown += (
+                f"| {label} | {unit_label} | {row['coverage']} | "
+                f"{row['scope']} | {row['observed']} |\n"
+            )
     if args.json:
         args.json.write_text(json.dumps(output, indent=2) + "\n")
     if args.markdown:

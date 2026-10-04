@@ -87,12 +87,12 @@ PRs [#1973](https://github.com/BashfulBits/city-meeting-podcasts/pull/1973) and
 The [historical inventory](historical-feed-coverage-2026-10.md) merged in #1975; directions A–F
 are approved but residual policy application is still P0, not completed by merging that inventory.
 
-Maintainer clarification (2026-10-04): specific continuing standing committees should have their
-own feeds, including Council subcommittees; temporary bodies require separate evidence-based treatment.
-[Official CPC research](evidence/addison-cpc-publication-selection-2026-10-04.md) establishes an
-ongoing three-member annual committee. PR #2003's Council-feed placement is superseded and its
-readiness withdrawn; revise the dedicated-feed contract and reconcile July 17, 2025 coverage before
-activation. The approved July 9 UID/date choice remains valid independently of feed placement.
+Maintainer clarification (2026-10-04): specific continuing standing committees, including Council
+subcommittees, have dedicated feeds across cities unless evidence establishes a temporary body.
+Seasonal schedules and Council-only membership do not make a committee temporary. Addison CPC's
+[dedicated-feed contract](51-unexpected-body-remedy-flow.md#addison-cpc-dedicated-feed--l3-implementation-under-validation)
+is L3 under PR #2003 validation; it supersedes Council placement, preserves source identities and
+records historical meeting/recording gaps in its dated evidence packet.
 
 P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) prepares one named-body decision covering
 three verified committee recordings. Exact labels exclude the Open House; CPC duplicate identities
@@ -1199,3 +1199,14 @@ no unknown tokens and seven days for all six established verbs. review/50 is fro
 implementation and acceptance evidence. Registry additions/retirements are automatic diagnostics;
 precise new shared-stage attribution still requires distinct producer telemetry. P1–P7 maturity
 and ordering are unchanged.
+
+
+### Purpose-bound telemetry follow-on (GH#2001, 2026-10-04)
+
+**Shipped / [PR #2004](https://github.com/BashfulBits/city-meeting-podcasts/pull/2004):** the maintainer explicitly requested the shared producer/job
+layer follow-on to P0. [review/52](52-purpose-work-telemetry.md) owns the registration contract,
+eligibility census, shared work handles, aggregate run-event snapshots and automatic report migration.
+This extends frozen review/50's read-only scope without changing P1–P7 ordering or adopting review/49's
+incremental ledger. New purposes need their registration and producer eligibility semantics, while
+telemetry deduplication/submission accounting/report discovery are shared. Research units and partial
+coverage remain explicit; no quota, recipe, pipeline-version, Worker or artifact changes are included.
