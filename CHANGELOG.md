@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Prepare Addison CPC coverage in Council: five recordings publish from six retained observations,
+  using the approved July 9 UID while preserving the July 10 record and all old pages. Exact identity
+  guards prevent a duplicate feed proposal. Render/search caches rebuild for the configured proof;
+  audio keys and stage versions remain unchanged, with no forced backfill.
+
 - Prepare Foundation's approved existing-UID publication selection: three historical recordings
   appear once in dedicated/combined public views, with raw records and pages retained. Correct
   retirement inferred from old clips using current official board activity. Configured proof changes

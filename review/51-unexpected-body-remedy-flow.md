@@ -449,7 +449,7 @@ provider-wide canonicalization and cross-source joining remain outside this cont
 #### Development-ready split and implementation specification
 
 **Inactive machinery: L3. Foundation historical activation: L3 (approved below).**
-**Other city activations and automatic future-member admission: L2.**
+**Addison CPC historical activation: L3 (approved below). PID and future-member admission: L2.**
 This split preserves the maintainer-approved specification-first sequence. Machinery ships with
 no configured groups. No implicit date repair, identity inference or new publication is enabled.
 The approved directions for the three cities remain subject to evidence, not another taxonomy vote.
@@ -598,7 +598,8 @@ Tests use `tests/test_publication_selection.py`, `tests/test_config.py`, `tests/
 
 Inactive machinery may be implemented from this L3 contract. Do not promote city activation or
 future-member auto-admission merely because machinery tests pass. L3 requires the exact reviewed
-winner/proof packet; unresolved Foundation exposure and Addison agenda date remain held.
+winner/proof packet. The approved Foundation/Addison packets and exact scopes are recorded below;
+PID winner selection and automatic future-member admission remain held.
 
 ### Foundation historical activation — L3, implementation under validation
 
@@ -616,6 +617,22 @@ full-source extra-member holds and unchanged unrelated Arlington projections. Fu
 selects Foundation 6→3 and combined/search 1,515→1,512; source namespace remains unchanged.
 Rollback reverts both selector and group activation together. No audio/stage version bump or
 backfill. This approves these three historical groups, not automatic future-member admission.
+
+### Addison CPC historical activation — L3, implementation under validation
+
+Maintainer approval: [#1991 comment 5976979654](https://github.com/BashfulBits/city-meeting-podcasts/issues/1991#issuecomment-5976979654).
+The [dated proof packet](evidence/addison-cpc-publication-selection-2026-10-04.md) establishes
+same-source GUID `393215`, official July 9 date, and historical-unknown exposure.
+Change only Addison Council config: add exact Community Partnership Committee coverage and
+named identity guards, plus one v1 group selecting existing UID `91efc2425e16e017` with
+`date_resolution.official_date: 2026-07-09`. Keep the July 10 alternate record unchanged.
+Council is the search owner. Other five Addison feeds select no CPC observations and need no groups.
+Tests extend `tests/test_publication_selection.py` and a sanitized six-record fixture: actual five-item
+RSS and winner enclosure, untouched six records/fingerprints, Council search ownership, unrelated
+feed preservation, and missing/changed/unexpected member holds. Full 822-record replay selects
+Council 549→555 raw→554 public (five CPC recordings); search 822→821. Source namespace is unchanged.
+Rollback reverts exact selector and group activation together. No audio/stage version bump or
+artifact backfill; this finite historical group does not enable future-member auto-admission.
 
 ### P1 — evaluation harness and physical-route admission (L3)
 
