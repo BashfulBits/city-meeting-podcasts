@@ -10,6 +10,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+import logging
 import re
 import shutil
 import tempfile
@@ -22,6 +23,7 @@ from citypods.bodies import matches, source_body_filter, source_body_inclusions
 from citypods.chapters import episode_served_chapters
 from citypods.feeds import episode_resource_links, meeting_page_url
 from citypods.models import City, Episode
+from citypods.publication_selection import load_selection_index, select_search_publication
 from citypods.records import load_records, record_to_episode, source_key
 from citypods.tags import chapter_id
 
@@ -348,8 +350,12 @@ def _shard_cities(cities: Iterable[City]) -> dict[str, list[City]]:
     return grouped
 
 
-def _city_for_record(candidates: list[City], record: dict[str, Any]) -> City:
+def _city_for_record(
+    candidates: list[City], record: dict[str, Any], *, owner: City | None = None
+) -> City:
     """Prefer a body-specific feed when one shares this source's record store."""
+    if owner is not None:
+        return owner
     body = str(record.get("body") or "").casefold()
     provider_guid = str(record.get("provider_guid") or "")
     for city in candidates:
@@ -412,7 +418,9 @@ def _search_record_inputs(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _shard_hash(records: dict[str, Any], candidates: list[City], base_url: str) -> str:
+def _shard_hash(
+    records: dict[str, Any], candidates: list[City], base_url: str, *, selection: Any = None
+) -> str:
     """Hash only local, durable inputs so unchanged shards skip sidecar reads and writes."""
     payload = {
         "version": SEARCH_CACHE_VERSION,
@@ -434,6 +442,11 @@ def _shard_hash(records: dict[str, Any], candidates: list[City], base_url: str) 
             for city in candidates
         ],
     }
+    if selection is not None and selection.policy_hash:
+        payload["publication_selection"] = {
+            "policy_hash": selection.policy_hash,
+            "selected_uids": selection.selected_uids,
+        }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
     return hashlib.sha256(encoded).hexdigest()
 
@@ -479,10 +492,22 @@ def build_search_index(
     state_dir = Path(state_dir)
     output_dir = Path(output_dir)
     search_dir = output_dir / "data" / "search"
-    search_dir.mkdir(parents=True, exist_ok=True)
     all_cities = list(cities)
     representatives = _shard_source(all_cities)
     candidates_by_source = _shard_cities(all_cities)
+    selection_index = load_selection_index(all_cities)
+    records_by_source = {src_key: load_records(state_dir, src_key) for src_key in representatives}
+    plans = {
+        src_key: select_search_publication(selection_index, src_key, records)
+        for src_key, records in records_by_source.items()
+    }
+    for plan in plans.values():
+        if plan.held:
+            logging.getLogger(__name__).warning(
+                "Search publication selection held: %s", plan.diagnostics
+            )
+            return None
+    search_dir.mkdir(parents=True, exist_ok=True)
     cache_shards = cache.setdefault("shards", {}) if cache is not None else {}
     artifact_cache: dict[str, bytes] = {}
     manifest: list[dict[str, Any]] = []
@@ -494,9 +519,10 @@ def build_search_index(
         filename = f"{src_key}.json"
         wanted_names.add(filename)
         shard_path = search_dir / filename
-        records = load_records(state_dir, src_key)
+        records = records_by_source[src_key]
+        plan = plans[src_key]
         candidates = candidates_by_source[src_key]
-        digest = _shard_hash(records, candidates, base_url)
+        digest = _shard_hash(records, candidates, base_url, selection=plan)
         cached = cache_shards.get(src_key)
         if (
             isinstance(cached, dict)
@@ -509,11 +535,13 @@ def build_search_index(
             continue
 
         documents: list[dict[str, Any]] = []
-        for record in records.values():
+        for record in plan.public_items:
             if stop is not None and stop():
                 return None
             document = _record_to_document(
-                _city_for_record(candidates, record),
+                _city_for_record(
+                    candidates, record, owner=plan.owner_by_uid.get(str(record.get("uid") or ""))
+                ),
                 record,
                 base_url=base_url,
                 storage=storage,

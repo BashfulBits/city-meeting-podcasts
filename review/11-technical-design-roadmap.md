@@ -1,6 +1,7 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-10-04 (Initiative 20 shipped in PRs #1617–#1622 — LLM
+**Status: LIVING · last updated 2026-10-04 (publication-selection machinery under review;
+Initiative 20 shipped in PRs #1617–#1622 — LLM
 endpoint rate-limit characterization & failure-class-aware backoff; review/45 reconciled against
 `main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling +
 `/remedy` deferral fix, §Rate-limited LLM dispatch Worker)**
@@ -113,8 +114,8 @@ P1 implements the approved hidden-owner truth, independent blind-owner mode and 
 input hashes shipped in [PR #1987](https://github.com/BashfulBits/city-meeting-podcasts/pull/1987). No model is admitted and no
 live evaluation has run. Publication-selection inactive machinery is L3
 ([#1997](https://github.com/BashfulBits/city-meeting-podcasts/issues/1997)): strict proof schemas,
-existing UID projection,
-pre-write holds and raw-page preservation. City activations and future-member admission stay L2
+existing UID projection, pre-write holds and raw-page preservation. Its implementation is under
+validation; no city declarations are activated. City activations and future-member admission stay L2
 until exact winner/exposure/date proof and evaluated sticky-winner policies are ready.
 #1986/#1989/#1991 remain held. Shared approved templates and cross-city cases are specified for one resolver/replay path in
 onboarding and maintenance; verified identities and feedback remain city/source-scoped.
