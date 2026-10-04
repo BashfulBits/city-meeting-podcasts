@@ -24,6 +24,15 @@ individual category recommendations; this document owns the improvement plan.
 
 ## Decisions supplied by the maintainer
 
+- Specific continuing standing committees, including Council subcommittees, have dedicated feeds
+  across cities unless official evidence establishes a temporary body. Seasonal schedules and
+  Council-only membership do not make a committee temporary. Addison CPC uses this default;
+  temporary programs retain the approved family-feed policy. This was directed on 2026-10-04.
+- Genuinely jointly convened meetings publish the same recording in each officially participating
+  body's feed, preserving the recording and stable episode identity. This was explicitly approved
+  on 2026-10-04. Membership overlap, a topic mention, or separately convened meetings bundled in
+  one video do not prove joint participation. Existing canonical search ownership stays stable;
+  unresolved ownership/timeline cases require evidence before activation.
 - Aggregate-only Dallas/Fort Worth TIF subscriptions, preserving archive records and migrated URLs.
   One TIF aggregate per city is also the approved default for future cities.
 - Include every legitimate public meeting recording, including sparse and historical bodies.
@@ -449,7 +458,7 @@ provider-wide canonicalization and cross-source joining remain outside this cont
 #### Development-ready split and implementation specification
 
 **Inactive machinery: L3. Foundation historical activation: L3 (approved below).**
-**Other city activations and automatic future-member admission: L2.**
+**Addison CPC historical activation: L3 (approved below). PID and future-member admission: L2.**
 This split preserves the maintainer-approved specification-first sequence. Machinery ships with
 no configured groups. No implicit date repair, identity inference or new publication is enabled.
 The approved directions for the three cities remain subject to evidence, not another taxonomy vote.
@@ -598,7 +607,8 @@ Tests use `tests/test_publication_selection.py`, `tests/test_config.py`, `tests/
 
 Inactive machinery may be implemented from this L3 contract. Do not promote city activation or
 future-member auto-admission merely because machinery tests pass. L3 requires the exact reviewed
-winner/proof packet; unresolved Foundation exposure and Addison agenda date remain held.
+winner/proof packet. The approved Foundation/Addison packets and exact scopes are recorded below;
+PID winner selection and automatic future-member admission remain held.
 
 ### Foundation historical activation — L3, implementation under validation
 
@@ -616,6 +626,50 @@ full-source extra-member holds and unchanged unrelated Arlington projections. Fu
 selects Foundation 6→3 and combined/search 1,515→1,512; source namespace remains unchanged.
 Rollback reverts both selector and group activation together. No audio/stage version bump or
 backfill. This approves these three historical groups, not automatic future-member admission.
+
+### Addison CPC dedicated feed — L3, implementation under validation
+
+Maintainer direction (2026-10-04) supersedes the prior Council-feed placement: create a separate
+feed for CPC, research its historical meetings, and encode minimal automatic classification rules.
+Specific continuing standing committees, including Council subcommittees, have dedicated feeds
+across cities. Seasonal schedules, Council-only membership and sparse recordings do not establish
+a temporary body. Time-limited committees retain the previously approved city/program-family policy.
+Do not infer body equivalence, copy recordings across cities, or bypass identity/exposure gates.
+
+**Exact implementation scope:** new
+`config/feeds/addison-tx-community-partnership-committee.yml`,
+`config/feeds/addison-tx-city-council.yml`, `tests/test_publication_selection.py`, the existing
+`tests/fixtures/addison-cpc-retained.json` if evidence requires it, the dated proof packet below,
+and lifecycle docs. No provider, stage, storage, records or selector-runtime changes.
+
+The new feed has city `addison-tx`, provider `swagit`, existing list URL
+`https://addisontx.new.swagit.com/views/128`, and only
+`source.body_exact: [Community Partnership Committee]`. Use title
+`Addison: Community Partnership Committee`, author `City of Addison, TX`, blank podcast email,
+and a description identifying its annual nonprofit-funding review role. Keep the existing source
+namespace `abbf5e25e078`; do not switch source views or generate replacement UIDs.
+Move CPC's existing `remedy_policy` identity/member guards and publication-selection declaration
+from Council to the new feed. Remove Council's CPC `body_exact`, guards and group; other Council
+selectors remain unchanged. The dedicated feed owns canonical search links. Ordinary new recordings
+with the same exact normalized body label classify automatically; new spelling/format aliases
+remain unresolved, and duplicate identity members require the existing proof hold/approval gates.
+No LLM classification, substring rule, broad topic wildcard, or automatic UID merging is needed.
+
+The [dated proof packet](evidence/addison-cpc-publication-selection-2026-10-04.md) records official
+history and coverage limitations. Its approved same-source GUID `393215` group retains existing
+July 9 UID `91efc2425e16e017`, official date `2026-07-09`, historical-unknown exposure and the
+unchanged July 10 alternate. All six retained observations remain intact, producing five public
+recordings in the dedicated feed. Meetings proven by minutes/agenda but without available recordings
+stay visible coverage gaps, not fabricated episodes or a claim of complete recorded history.
+
+Tests load actual repository config and verify five-item RSS/enclosure, six unchanged records,
+source-key stability, dedicated search ownership, Council exclusion and unrelated-feed preservation.
+Include exact-label positive/negative cases, new unique recording classification, and existing
+missing/changed/unexpected duplicate-member holds. Full retained 822-record replay must preserve
+Council's original 549 selected records, select six raw/five public CPC items and preserve search's
+822 raw/821 public source observations. Rollback removes the dedicated feed and selection together.
+No audio/stage version bump or forced artifact backfill; normal processing of newly discovered
+available recordings is separate from this retained-record activation.
 
 ### P1 — evaluation harness and physical-route admission (L3)
 

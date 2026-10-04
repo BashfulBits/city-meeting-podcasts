@@ -25,6 +25,10 @@ historical identities while documenting unavailable provider media.
 P1 evaluation/physical-route admission implements the approved scoring/hash contracts and is
 ready for review in #1987; P2–P5 have predecessor-gated build contracts. Duplicate publication has
 a separate L2 design gate before affected feeds activate.
+Maintainer preference (2026-10-04): continuing standing committees, including Council subcommittees,
+have dedicated feeds across cities; seasonal activity does not imply a temporary committee.
+Addison CPC's dedicated-feed revision is under validation in #2003, with historical recording gaps
+explicitly retained in its evidence packet. Temporary programs keep their approved family policy.
 Approved policy templates and cross-city regression cases will serve both onboarding and
 maintenance, resolving known rules before model calls while requiring verified local identity.
 Alias qualification is narrow and reviewed; incomplete archives require documented exceptions;

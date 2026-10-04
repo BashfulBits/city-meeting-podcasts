@@ -755,6 +755,8 @@ changing records, audio or source identity. Failed proof preserves prior output 
 Meeting pages retain raw observations; public feed/archive/search views use reviewed winners.
 Foundation's three reviewed historical groups use its existing dedicated-feed RSS UIDs and
 equivalent combined-feed declarations; only the dedicated feed owns canonical search links.
+Addison CPC has its own feed/search ownership and its approved July 9 UID; the July 10 record
+is retained. Exact committee labels classify within the existing Addison source namespace.
 Automatic future-member admission and other city activations remain evidence-gated;
 the evaluation harness does not delete records or merge UIDs.
 
