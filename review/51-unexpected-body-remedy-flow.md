@@ -634,7 +634,11 @@ Council 549→555 raw→554 public (five CPC recordings); search 822→821. Sour
 Rollback reverts exact selector and group activation together. No audio/stage version bump or
 artifact backfill; this finite historical group does not enable future-member auto-admission.
 
-### P1 — evaluation harness and physical-route admission (L3)
+### P1 — evaluation harness shipped; physical-route admission remains L3
+
+Evaluation harness implemented in PR #1987 (merged 2026-10-04). Its strict offline schemas
+satisfy P2’s deterministic predecessor gate. This stamp does not admit any live model route;
+physical-route admission still requires the reports and independent review below.
 
 Tracking issue: [#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979).
 Implementation: [PR #1987](https://github.com/BashfulBits/city-meeting-podcasts/pull/1987),
@@ -840,7 +844,10 @@ Source scope uses current `source_key(city)`. Record deduplication prefers exist
 and adapter recording identity. If neither establishes a shared identity, retain both observations
 and mark uniqueness unknown; no generic GUID stripping or invented cross-provider UID mapping.
 
-New immutable B2 events: `state/remedy/events/<decision_id>/<event_id>.json`.
+New immutable B2 events: `state/remedy/events/<source_key>/<decision_id>/<event_id>.json`.
+The maintainer approved the source segment in chat on 2026-10-04: source-scoped reconstruction
+can list the relevant event prefix directly, without a global scan or a second authoritative
+source-to-decision index. No P2 events exist yet, so this correction requires no migration.
 Decision ID hashes city, source key, policy ID and normalized label. Event ID hashes canonical
 content including parents and external delivery ID. Event fields: schema version, IDs/parent IDs,
 UTC time, actor kind/identity, state, evidence/config/policy hashes, recording refs, model/reviewer

@@ -108,8 +108,8 @@ exact reviewed named bodies. Unknown identities remain held; this does not compl
 inventory or implement P2's persistent ledger.
 
 [review/51](51-unexpected-body-remedy-flow.md), initially merged in #1976, now records the approved
-P1–P5 structure and exact phase build contracts. **P1: L3** (evaluation harness and strict physical-
-route admission, [#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979));
+P1–P5 structure and exact phase build contracts. **P1 harness: Shipped** (#1987); strict physical-
+route admission remains L3 ([#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979)).
 P1 implements the approved hidden-owner truth, independent blind-owner mode and frozen candidate
 input hashes shipped in [PR #1987](https://github.com/BashfulBits/city-meeting-podcasts/pull/1987). No model is admitted and no
 live evaluation has run. Publication-selection inactive machinery is L3
@@ -120,8 +120,9 @@ until exact winner/exposure/date proof and evaluated sticky-winner policies are 
 #1986 has approved historical winners/exposure and L3 activation under validation;
 #1989 remains held for artifact comparison and #1991 has approved July 9 winner/exposure and L3 activation under validation. Shared approved templates and cross-city cases are specified for one resolver/replay path in
 onboarding and maintenance; verified identities and feedback remain city/source-scoped.
-P2–P5 stay predecessor-gated until their
-evidence and issues exist. The 27 seed
+P2 deterministic policy/evidence/ledger work has met its P1 schema prerequisite; its exact scoped
+L3 contracts and issues are being prepared. The maintainer approved source-partitioned immutable
+feedback-event paths on 2026-10-04. P3–P5 stay predecessor-gated until their evidence and issues exist. The 27 seed
 cases are not admission evidence. Narrow alias-type qualification replaces the statistical gate;
 partial historical coverage needs a documented exception; future cities default to separate TIF/PID
 aggregates. Remedy/onboarding stay outside leagues. This is a maintainer-directed follow-up;
