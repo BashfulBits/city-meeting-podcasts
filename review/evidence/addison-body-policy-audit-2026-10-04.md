@@ -717,3 +717,54 @@ preserved. This intentionally avoids a general `CPAC` substring that could absor
 committee-only or public-input recordings. Tests must assert three subscription matches for
 each joint UID, one canonical search entry, unchanged standalone CPAC ownership, and no
 P&Z-only work-session eligibility in Council. No runtime/config edits or review request occurred.
+
+## Settlement decision register
+
+Already approved: continuing named bodies have dedicated subscriptions; genuine joints use the
+same UID/audio in each proven participating feed; temporary programs use approved city families;
+ceremonies/promotions are excluded from meeting feeds. No repeat approval is needed for those rules.
+
+Three concrete migration decisions were presented to the maintainer in chat after the request
+to finish Addison policy. Until answered, the alternatives below remain proposed:
+
+| Decision | Recommended choice | Alternative |
+|---|---|---|
+| Town Meetings presentation | Preserve URL; rename Public Input; separate verified briefings | Keep existing display name |
+| BZA formally serving as Appeals | One feed, display Zoning Adjustment & Appeals | Separate legal-function subscriptions |
+| Unproved recording identity | Preserve current publication; explicit unresolved queue | Hold all corrections for every case |
+
+The first recommendation preserves subscriber URLs while clarifying ownership. It is not a
+license to relabel an unidentified recording. The second relies on formal institutional service,
+not shared members alone. The third isolates unknown evidence without inventing a body or
+quietly deleting already-published material. No response has yet been recorded for these choices.
+
+### Additional proven joint correction
+
+GUID `276855`, UID `4ef85ec6540cf95b`, October 17, 2023 currently matches Council only. The
+[provider's official agenda](https://addisontx.new.swagit.com/videos/276855) explicitly calls
+both Council and P&Z to order and names their presiding officers. The
+[January 16, 2024 P&Z packet](https://agendas.addisontx.gov/docs/2024/PZ/20240116_7229/AGENDApacket__01-16-24_0309_7224.pdf)
+contains the dated joint minutes and identifies both Mayor and Commission chair at adjournment.
+This supports adding the existing recording to P&Z, retaining Council and its canonical search
+ownership. It does not support adding CPAC merely because the comprehensive plan was the topic.
+
+### Generic label boundary
+
+The 30 `Combined Meeting` observations span October 2013 through March 2015. A date range or
+regular Council calendar pattern does not prove which institutions convened. Preserve current
+ownership pending official agenda binding; do not use `Combined` as evidence of a multi-body
+joint. Likewise, no CPAC membership/topic rule should claim those recordings.
+
+### Implementation completion checklist
+
+- Record the three maintainer migration decisions above.
+- Freeze complete exact Council labels and independently bound joint additions; leave unknown
+  generic aliases explicitly unchanged until evidence supports a migration.
+- Name the affected feed files, replay tests, exposure checks and expected UID ownership in
+  review/51; mark only those concrete slices L3 and create their scoped tracking issues.
+- Apply verified Addison corrections in small dependent PRs, preserving records/audio/URLs.
+- Verify the 822-record, 62-label replay, standalone/joint negatives, RSS/search ownership and
+  raw-page preservation; run whole-repository lint/format and offline tests for code changes.
+- Stabilize the shared onboarding rules with cross-city counterexamples already recorded here.
+- Report remaining evidence gaps and ask whether the classification settlement is sufficient
+  to lift the explicit CodeRabbit hold. Do not infer that permission from implementation progress.
