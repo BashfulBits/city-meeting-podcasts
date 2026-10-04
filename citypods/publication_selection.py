@@ -72,6 +72,8 @@ def _mapping(value, keys, context):
 
 
 def _text(value, context, pattern=None):
+    if isinstance(value, date):
+        raise ValueError(f"{context}: quote ISO date/timestamp values in YAML")
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{context}: expected nonempty string")
     if pattern and not re.fullmatch(pattern, value):

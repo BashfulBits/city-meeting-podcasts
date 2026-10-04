@@ -4166,10 +4166,17 @@ def _write_aliases(
     }
     prior_redirects = output_dir / "redirects.json"
     if held_aliases and prior_redirects.exists():
+        try:
+            prior = json.loads(prior_redirects.read_text())
+        except ValueError:
+            prior = []
         redirects.extend(
             row
-            for row in json.loads(prior_redirects.read_text())
-            if row["from"].split("/")[1] in held_aliases
+            for row in (prior if isinstance(prior, list) else [])
+            if isinstance(row, dict)
+            and isinstance(row.get("from"), str)
+            and row["from"].startswith("/")
+            and row["from"].split("/")[1] in held_aliases
         )
     for city in cities:
         if not city.aliases or city.slug in (held_slugs or set()):

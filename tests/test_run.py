@@ -4041,3 +4041,12 @@ def test_held_selection_preserves_alias_redirect_entries(tmp_path):
     run._write_aliases(tmp_path, "https://example.gov", [city], {}, held_slugs={city.slug})
     assert json.loads((tmp_path / "redirects.json").read_text()) == rows
     assert (alias / "index.html").read_bytes() == b"prior alias"
+
+
+@pytest.mark.parametrize("payload", ["{broken", "{}", '[null, {}, {"from": null}, {"from": "x"}]'])
+def test_held_alias_redirects_ignore_malformed_cached_rows(tmp_path, payload):
+    city = _retention_city(max_episodes=1)
+    city.aliases = ["former-slug"]
+    (tmp_path / "redirects.json").write_text(payload)
+    run._write_aliases(tmp_path, "https://example.gov", [city], {}, held_slugs={city.slug})
+    assert json.loads((tmp_path / "redirects.json").read_text()) == []

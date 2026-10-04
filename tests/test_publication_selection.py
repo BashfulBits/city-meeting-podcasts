@@ -286,3 +286,21 @@ def test_equal_dates_require_null_date_resolution():
     plan = select_search_publication(load_selection_index([city]), source_key(city), records)
     assert plan.held
     assert "unresolved-date-conflict" in {d.code for d in plan.diagnostics}
+
+
+@pytest.mark.parametrize("field", ["retrieved_at", "official_date"])
+def test_yaml_native_dates_request_quoted_strings(field):
+    import yaml
+
+    city, _, group = packet()
+    if field == "retrieved_at":
+        group["evidence_refs"][0][field] = yaml.safe_load("2026-01-02T00:00:00Z")
+    else:
+        group["date_resolution"] = {
+            field: yaml.safe_load("2026-01-01"),
+            "evidence_url": group["evidence_refs"][0]["url"],
+        }
+    with pytest.raises(ValueError, match="quote ISO date/timestamp"):
+        parse_publication_selection(
+            city.extra["publication_selection"], source_key=source_key(city), feed_slug=city.slug
+        )
