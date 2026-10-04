@@ -1,6 +1,6 @@
 # Purpose-bound LLM work telemetry
 
-**L3 development-ready · 2026-10-04 · maintainer-directed follow-on to PR #1983**
+**L3 · Implementation PR #2004 · 2026-10-04 · maintainer-directed follow-on to PR #1983**
 
 ## Decision and scope
 

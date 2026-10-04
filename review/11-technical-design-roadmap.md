@@ -1193,7 +1193,7 @@ and ordering are unchanged.
 
 ### Purpose-bound telemetry follow-on (GH#2001, 2026-10-04)
 
-**L3 / implementation in progress:** the maintainer explicitly requested the shared producer/job
+**L3 / [implementation PR #2004](https://github.com/BashfulBits/city-meeting-podcasts/pull/2004):** the maintainer explicitly requested the shared producer/job
 layer follow-on to P0. [review/52](52-purpose-work-telemetry.md) owns the registration contract,
 eligibility census, shared work handles, aggregate run-event snapshots and automatic report migration.
 This extends frozen review/50's read-only scope without changing P1–P7 ordering or adopting review/49's

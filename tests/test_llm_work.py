@@ -256,3 +256,11 @@ def test_report_does_not_recommend_from_old_data_after_partial_newest_run(tmp_pa
     assert report["coverage"] == "partial"
     assert report["action"] is None
     assert not report["constrained"]
+
+
+def test_equal_timestamp_shard_events_do_not_compare_payload_dicts():
+    work = tracker()
+    work.item("new-purpose", "unit", producer="new-stage").defer("queued")
+    events = [explicit(work, shard="0/2"), explicit(work, shard="0/2"), explicit(work, shard="1/2")]
+    assert trend.purpose_points(events, "new-purpose", trend.BacklogParams())[0].backlog == 2
+    assert trend.purpose_points([], "new-purpose", trend.BacklogParams()) == []

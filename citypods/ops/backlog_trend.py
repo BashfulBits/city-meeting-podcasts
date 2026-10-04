@@ -242,7 +242,7 @@ def purpose_points(events, purpose, params, *, through=None):
             daily_runs = full
         else:
             latest = {}
-            for entry in sorted(runs):
+            for entry in sorted(runs, key=lambda entry: entry[0]):
                 latest[entry[1]] = entry
             counts = {int(shard.split("/")[1]) for shard in latest}
             if len(counts) != 1:
@@ -453,7 +453,7 @@ def _unclassified_tokens(
     return result
 
 
-def render_markdown(reports: Mapping[str, VerbReport], lifecycle=None) -> str:
+def render_markdown(reports: Mapping[str, VerbReport], lifecycle=None, *, unmeasured=()) -> str:
     """Render advisory backlog measurements as a Markdown summary table."""
     lines = [
         "| Verb | Backlog | Trend | Drain days | Constrained | Action | "
@@ -470,7 +470,7 @@ def render_markdown(reports: Mapping[str, VerbReport], lifecycle=None) -> str:
         drain = f"{report.drain_days:.2f}" if report.drain_days is not None else "—"
         label = verb.replace("|", "\\|").replace("\n", " ").replace("\r", " ")
         status = (lifecycle or {}).get(verb, "active")
-        backlog = "—" if status == "no_telemetry" else str(report.backlog)
+        backlog = "—" if status == "no_telemetry" or verb in unmeasured else str(report.backlog)
         lines.append(
             f"| {label} | {backlog} | {report.trend} | {drain} | "
             f"{str(report.constrained).lower()} | {report.action or '—'} | "
@@ -599,13 +599,8 @@ def main(argv: list[str] | None = None) -> int:
             if not measured or measured[-1].day != _timestamp(event).date():
                 reports[verb] = replace(reports[verb], constrained=False, action=None)
                 output["verbs"][verb].update(constrained=False, action=None, backlog=None)
-    display_lifecycle = dict(lifecycle)
-    for verb, report in reports.items():
-        if output["verbs"][verb].get("telemetry_source") and (
-            report.days == 0 or output["verbs"][verb]["backlog"] is None
-        ):
-            display_lifecycle[verb] = "no_telemetry"
-    markdown = render_markdown(reports, display_lifecycle)
+    unmeasured = {verb for verb, row in output["verbs"].items() if row["backlog"] is None}
+    markdown = render_markdown(reports, lifecycle, unmeasured=unmeasured)
     metadata = [(verb, row) for verb, row in output["verbs"].items() if row.get("telemetry_source")]
     if metadata:
         markdown += "\n| Purpose | Unit | Coverage | Scope | Observed |\n"
