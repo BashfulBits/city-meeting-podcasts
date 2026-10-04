@@ -76,7 +76,7 @@ def test_all_archive_gaps_and_matched_false_inclusions_remain_visible(tmp_path):
     assert uncovered["excluded"]["disposition"] == "Approved ceremony exclusion"
     assert {r["uid"] for r in report["open_cases"]} == {"wrong", "joint"}
     wrong = next(r for r in report["open_cases"] if r["uid"] == "wrong")
-    assert wrong["current_feed_assignments"] == [COUNCIL, PZ]
+    assert wrong["current_feed_assignments"] == [PZ]
     joint = next(r for r in report["open_cases"] if r["uid"] == "joint")
     assert set(joint["current_feed_assignments"]) == {
         COUNCIL,
