@@ -1356,3 +1356,44 @@ Rollback toggles mode to `shadow` (no external publication), disables affected q
 and retains all events/exclusions/suspensions for investigation. Route qualification withdrawal
 prevents new calls but never deletes artifacts. Reverting a selector is a reviewed feed-config PR
 with historical impact and migration/UID checks. Never use archive deletion as rollback.
+
+## Addison public-input display and verified routing — L3 bounded implementation
+
+Tracking: #2009. Maintainer approved the public-input/briefing migration, combined BZA/Appeals
+presentation, and retention of historical Citizen Advisory material in Public Input. This slice
+implements verified assignments only; remaining dated cases stay in the historical census.
+
+Files and exact changes:
+
+- `config/feeds/addison-tx-town-meetings.yml`: retain slug, URL/source and Citizen Advisory
+  GUID56029. Display `Addison: Public Input` and explain historical community-input recordings.
+  Remove GUID304981 (verified educational seminar) and five explicit non-meeting events:
+  56020 school dedication, 56021/56022 park dedications, 56024 Earth Day, 56025 business award.
+  Existing unknown56026/56027/56028 and applicant/staff presentations stay explicitly under
+  investigation; their current publication is not proof of final classification.
+- `config/feeds/addison-tx-public-briefings.yml`: new existing-schema feed on the same Addison
+  Swagit list URL, slug `addison-tx-public-briefings`, display `Addison: Public Briefings`,
+  `meeting_family: public_briefings`, exact selector `Homelessness Education Seminar`.
+  No generic seminar/education substring. No claim of full-city briefing coverage.
+- `config/feeds/addison-tx-board-of-zoning-adjustment.yml`: display
+  `Addison: Zoning Adjustment & Appeals`; description names both formal functions.
+  Preserve slug, URL/source, selectors and lifecycle.
+- `tests/fixtures/addison-public-input-retained.json`: minimal retained metadata/hosted audio
+  fixture for affected records, preserving original UIDs/titles/dates/video/audio URLs.
+- `tests/test_publication_selection.py`: actual config regression proves Citizen Advisory
+  remains selected with original UID/enclosure and metadata; seminar moves exactly once;
+  five events leave both family subscriptions; normalized exact seminar positives/negatives;
+  BZA source/URL and both formal functions remain; fixture records unchanged after RSS selection.
+- Update `review/11`, ROADMAP, CHANGELOG and ARCHITECTURE to describe prepared, unmerged work.
+
+Do not modify provider, audit resolver, storage, stage/runtime, publication-selection machinery,
+record schema or audio timeline. No new dependencies, stage versions, invalidation or audio backfill.
+Full archived state is read-only for replay; raw meeting pages remain built from stored records
+under the existing writer contract. Preserve URLs for existing subscribers. New briefing feed
+adds a subscription, not a record or audio object. Existing render fingerprints consume feed
+metadata/selectors; offline tests and full CI/preview must verify the change before human merge.
+
+Acceptance: meaningful targeted tests, complete retained822-record ownership comparison, whole
+Ruff/format and offline suite. Explicitly report unresolved old records; no coverage-complete
+claim, no legacy remedy, no new CodeRabbit request while the classification settlement hold applies.
+The separately proposed P2 sweep contracts remain gated; #2009 does not claim to implement them.

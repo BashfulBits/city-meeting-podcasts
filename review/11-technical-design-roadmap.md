@@ -102,6 +102,11 @@ Classification settlement hold (2026-10-04): no further CodeRabbit requests unti
 body policy, cross-city spot checks and onboarding acceptance are stabilized. See the
 [retained-label audit and proposed policy](evidence/addison-body-policy-audit-2026-10-04.md).
 Prepared CPC coverage alone does not complete this city baseline or authorize broader migrations.
+The approved public-input/briefing and BZA presentation slice is L3 in
+[review/51](51-unexpected-body-remedy-flow.md#addison-public-input-display-and-verified-routing--l3-bounded-implementation),
+tracked by #2009. Citizen Advisory remains public input with stable identity and an active
+historical evidence obligation; unknown older recordings are not silently retired.
+
 
 P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) prepares one named-body decision covering
 three verified committee recordings. Exact labels exclude the Open House; CPC duplicate identities
