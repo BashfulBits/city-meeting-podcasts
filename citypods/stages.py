@@ -93,6 +93,7 @@ from citypods import asr as asr_mod
 from citypods.asr import asr_initial_prompt
 from citypods.bodies import canonical_body, rank_by_body
 from citypods.compute import DispatchCoordinator, InferenceJob
+from citypods.compute.llm_work import LLMWorkTracker
 from citypods.compute.local import LocalBackend
 from citypods.diarize import (
     DEFAULT_DIARIZE_MODEL,
@@ -308,6 +309,7 @@ class StageContext:
     # through — ``local`` (in-process faster-whisper/WhisperX) by default; H14 swaps in the
     # Modal/Beam dispatch adapters here with no stage change. None ⇒ build an in-process
     # ``LocalBackend`` on the stage's ``asr_mod`` (keeps the default path behavior-preserving).
+    llm_work: LLMWorkTracker = field(default_factory=LLMWorkTracker)
     compute_backend: object | None = None
     # Optional R5 structured tag backend.  It is deliberately separate from the ASR backend so a
     # catalog build can run deterministic tags without installing or configuring the LLM extra.
@@ -1060,11 +1062,57 @@ def _mark_stage_complete(
         }
 
 
-class MomentsStage:
+class LLMProducerStage:
+    """Required storage-free eligibility census for a registered LLM stage.
+
+    The runner invokes this before filtering/stop gates. Producers implement eligibility only;
+    purpose binding, unit deduplication, backend outcomes and serialization are shared.
+    """
+
+    def telemetry_purposes(self, ctx):
+        raise NotImplementedError("Registered LLM stages must declare their enabled purposes")
+
+    def work_items(self, city, episodes, ctx):
+        raise NotImplementedError("Registered LLM stages must declare eligible work")
+
+    def census(self, city, episodes, ctx):
+        for purpose in self.telemetry_purposes(ctx):
+            ctx.llm_work.activate(purpose, producer=self.name)
+        selected = episodes
+        if self.name in {"tags", "chapter_agenda", "chapter_locator"}:
+            selected = _materialize_set(episodes, city.full_artifact_episodes)
+        for purpose, identity, state in self.work_items(city, selected, ctx):
+            work = ctx.llm_work.item(purpose, identity, producer=self.name, state=state)
+            if state == "reused":
+                work.consumed(reused=True)
+
+
+class MomentsStage(LLMProducerStage):
     """Extract grounded R6 moments and apply the manual/calibrated admission policy."""
 
     name = "moments"
     version = "2"
+
+    def telemetry_purposes(self, ctx):
+        return ("r6-moments",) if ctx.moment_backend is not None and ctx.storage is not None else ()
+
+    def work_items(self, city, episodes, ctx):
+        if not self.telemetry_purposes(ctx):
+            return
+        rollout = (ctx.moment_evaluation_config or {}).get("rollout_meeting_families") or []
+        family = str(city.extra.get("meeting_family") or "default")
+        for ep in episodes:
+            if not (ep.uid or ep.guid):
+                continue
+            state = "ready"
+            if rollout and family not in rollout:
+                state = "policy_held"
+            elif not ep.transcript_key:
+                state = "blocked"
+            elif not stage_is_dirty(self, ep, city):
+                state = "reused"
+            # Exact recipe validation belongs to process(), which already reads source inputs.
+            yield "r6-moments", ep.uid or ep.guid, state
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -1090,6 +1138,7 @@ class MomentsStage:
         )
 
         stats = StageStats(self.name)
+        self.census(city, episodes, ctx)
         if ctx.moment_backend is None or ctx.storage is None:
             return stats
         backend_config = getattr(ctx.moment_backend, "config", None)
@@ -1113,15 +1162,19 @@ class MomentsStage:
         ensure_moment_contract()
 
         for ep in episodes:
+            work = ctx.llm_work.item("r6-moments", ep.uid or ep.guid, producer=self.name)
             if ctx.stop and ctx.stop():
+                work.defer("stopped")
                 stats.defer("stop")
                 continue
             if not ep.transcript_key:
+                work.defer("blocked")
                 stats.quality("shadow-no-transcript")
                 continue
             raw = _read_storage_bytes(ctx.storage, ep.transcript_key)
             segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
             if not segments:
+                work.defer("blocked")
                 stats.quality("shadow-no-captions")
                 continue
             # Served-time word timing, so each quote keeps its exact spoken span for share clips;
@@ -1154,6 +1207,7 @@ class MomentsStage:
                 evaluation_policy="candidate-generation-v1",
             )
             if ep.moments_llm_recipe_hash == moments_recipe:
+                work.consumed(reused=True)
                 stats.reused += 1
                 continue
             messages = [
@@ -1186,9 +1240,10 @@ class MomentsStage:
             )
             admission = _admit_r6_dispatch(ctx, stats, moments_recipe, ep.uid or ep.guid)
             if admission in {"pending", "cap"}:
+                work.defer("queued" if admission == "pending" else "policy_held")
                 continue
             try:
-                outcome = ctx.moment_backend.run_inference(
+                outcome = work.backend(ctx.moment_backend).run_inference(
                     InferenceJob(
                         task="moment-extraction",
                         inputs=inputs,
@@ -1203,6 +1258,7 @@ class MomentsStage:
                 payload = response_payload(outcome.output)
                 model = str(outcome.model or allowed_models[0])
             except Exception as exc:  # noqa: BLE001 - one bad model response cannot stop a feed.
+                work.defer("errored")
                 stats.errors.append(f"{ep.uid or ep.guid}: moment extraction deferred ({exc})")
                 stats.defer("llm-error", sample=ep.uid or ep.guid)
                 continue
@@ -1227,6 +1283,7 @@ class MomentsStage:
                         "recipe_hash": moments_recipe,
                     }
                 )
+                work.defer("errored")
                 stats.quality("summary-chapter-coverage")
                 continue
             ep.moment_summary_candidates = [
@@ -1282,6 +1339,7 @@ class MomentsStage:
                     "calibration_cells": [candidate_matrix_key(row) for row in candidates],
                 }
             )
+            work.consumed()
             stats.ran += 1
         return stats
 
@@ -1335,11 +1393,39 @@ def _admit_r6_dispatch(ctx: StageContext, stats: StageStats, recipe_hash: str, s
     return "admitted"
 
 
-class MomentJudgeStage:
+class MomentJudgeStage(LLMProducerStage):
     """Run independent, candidate-only judges in the background without candidate authority."""
 
     name = "moment-judge"
     version = "1"
+
+    def telemetry_purposes(self, ctx):
+        config = (ctx.moment_evaluation_config or {}).get("judges") or {}
+        return ("r6-judge",) if config.get("enabled") and ctx.moment_backend is not None else ()
+
+    def work_items(self, city, episodes, ctx):
+        from citypods.moment_judging import JUDGE_PROMPT_VERSION, JUDGE_SCHEMA_VERSION, judge_models
+
+        if not self.telemetry_purposes(ctx):
+            return
+        config = (ctx.moment_evaluation_config or {}).get("judges") or {}
+        models = judge_models(tuple(str(model) for model in config.get("models") or ()))
+        for ep in episodes:
+            candidates = [row for row in ep.moment_pullquote_candidates if isinstance(row, dict)]
+            if not candidates or not models or not (ep.uid or ep.guid):
+                continue
+            current = all(
+                any(
+                    row.get("provider_model") == model
+                    and row.get("prompt_version") == JUDGE_PROMPT_VERSION
+                    and row.get("schema_version") == JUDGE_SCHEMA_VERSION
+                    for row in candidate.get("judge_assessments") or []
+                    if isinstance(row, dict)
+                )
+                for candidate in candidates
+                for model in models
+            )
+            yield "r6-judge", ep.uid or ep.guid, "reused" if current else "ready"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -1358,6 +1444,7 @@ class MomentJudgeStage:
         from citypods.moments import parse_transcript_segments
 
         stats = StageStats(self.name)
+        self.census(city, episodes, ctx)
         config = (ctx.moment_evaluation_config or {}).get("judges") or {}
         if not config.get("enabled") or ctx.moment_backend is None or ctx.storage is None:
             return stats
@@ -1367,6 +1454,10 @@ class MomentJudgeStage:
             return stats
         ensure_judge_contract()
         for ep in episodes:
+            if not any(isinstance(row, dict) for row in ep.moment_pullquote_candidates):
+                continue
+            work = ctx.llm_work.item("r6-judge", ep.uid or ep.guid, producer=self.name)
+            consumed_before = stats.ran
             raw = _read_storage_bytes(ctx.storage, ep.transcript_key or "")
             segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
             for candidate in ep.moment_pullquote_candidates:
@@ -1390,13 +1481,17 @@ class MomentJudgeStage:
                     ):
                         continue
                     if ctx.stop and ctx.stop():
+                        work.defer("stopped")
                         stats.defer("stop")
                         break
                     judge_recipe = f"{candidate.get('candidate_id')}:{model}:{JUDGE_PROMPT_VERSION}"
                     admission = _admit_r6_dispatch(ctx, stats, judge_recipe, ep.uid or ep.guid)
                     if admission == "pending":
+                        work.defer("queued")
                         continue
                     if admission == "cap":
+                        ctx.llm_work.defer_remaining("r6-judge", "policy_held")
+                        work.defer("policy_held")
                         return stats
                     inputs: dict[str, Any] = {
                         "messages": [
@@ -1413,7 +1508,7 @@ class MomentJudgeStage:
                         "llm_policy": judge_policy((model,)),
                         "max_tokens": 700,
                     }
-                    outcome = ctx.moment_backend.run_inference(
+                    outcome = work.backend(ctx.moment_backend).run_inference(
                         InferenceJob(
                             task="moment-judge",
                             inputs=inputs,
@@ -1424,6 +1519,7 @@ class MomentJudgeStage:
                         stats.defer("llm-pending", sample=ep.uid or ep.guid)
                         continue
                     if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):
+                        work.defer("errored")
                         stats.quality("judge-invalid-response")
                         continue
                     try:
@@ -1438,6 +1534,7 @@ class MomentJudgeStage:
                             .model_dump()
                         )
                     except (KeyError, IndexError, TypeError, ValueError):
+                        work.defer("errored")
                         stats.quality("judge-invalid-response")
                         continue
                     existing.append(
@@ -1456,6 +1553,19 @@ class MomentJudgeStage:
                         )
                     stats.ran += 1
                 candidate["judge_assessments"] = existing
+            if ep.moment_pullquote_candidates and all(
+                any(
+                    row.get("provider_model") == model
+                    and row.get("prompt_version") == JUDGE_PROMPT_VERSION
+                    and row.get("schema_version") == JUDGE_SCHEMA_VERSION
+                    for row in candidate.get("judge_assessments") or []
+                    if isinstance(row, dict)
+                )
+                for candidate in ep.moment_pullquote_candidates
+                if isinstance(candidate, dict)
+                for model in models
+            ):
+                work.consumed(reused=stats.ran == consumed_before)
         return stats
 
 
@@ -1622,7 +1732,7 @@ class VideoClipsStage:
         return stats
 
 
-class TagsStage:
+class TagsStage(LLMProducerStage):
     """Populate the versioned taxonomy from agenda titles/transcripts.
 
     Rules are cheap and always run. Instructor-backed LLM suggestions are dispatched and retained
@@ -1632,6 +1742,88 @@ class TagsStage:
 
     name = "tags"
     version = "2"
+
+    def telemetry_purposes(self, ctx):
+        if ctx.tag_backend is None:
+            return ()
+        purposes = ["topic-tags:tagger"]
+        config = ctx.llm_evaluation_config.get("prelabeler") or {}
+        if config.get("enabled") and config.get("model"):
+            purposes.append("topic-tags:prelabeler")
+            if config.get("shadow_enabled") and config.get("shadow_model") != config.get("model"):
+                purposes.append("topic-tags:prelabeler-shadow")
+        return tuple(purposes)
+
+    def work_items(self, city, episodes, ctx):
+        from citypods.chapters import episode_served_chapters
+        from citypods.tags import needs_shadow_prelabel, tag_input_fingerprint
+
+        purposes = self.telemetry_purposes(ctx)
+        if not purposes:
+            return
+        config = ctx.llm_evaluation_config.get("prelabeler") or {}
+        model = str(config.get("model") or "")
+        shadow = str(config.get("shadow_model") or "")
+        prompt = str(config.get("prompt_version") or "1")
+        schema = str(config.get("llm_schema_version") or "1")
+        taxonomy = ctx.tag_taxonomy_cache.get("taxonomy")
+        route = (
+            f"{getattr(ctx.tag_backend, 'name', 'litellm')}:"
+            f"{getattr(getattr(ctx.tag_backend, 'config', None), 'model', '')}"
+        )
+        for ep in episodes:
+            uid = ep.uid or ep.guid
+            if not uid:
+                continue
+            current_inputs = False
+            if taxonomy is not None:
+                current_inputs = ep.tags_input_fingerprint == tag_input_fingerprint(
+                    ep,
+                    taxonomy,
+                    llm_enabled=True,
+                    llm_route=route,
+                    admission_policy=ctx.tag_taxonomy_cache.get("admission_policy", ""),
+                )
+            elif ep.tags_llm_recipe_hash:
+                ctx.llm_work.partial(self.name)
+            if episode_served_chapters(ep):
+                yield (
+                    "topic-tags:tagger",
+                    uid,
+                    ("reused" if current_inputs and ep.tags_llm_recipe_hash else "ready"),
+                )
+            candidates = [
+                row
+                for row in ep.llm_tag_candidates or []
+                if isinstance(row, dict)
+                and row.get("candidate_state") != "historical"
+                and (row.get("source_kind", "llm") == "rule" or row.get("chapter_id"))
+            ]
+            if candidates and "topic-tags:prelabeler" in purposes:
+                current = all(
+                    row.get("prelabeler_model") == model
+                    and row.get("prelabeler_prompt_version") == prompt
+                    and row.get("prelabeler_llm_schema_version") == schema
+                    and row.get("prelabeler_decision")
+                    in {"likely_correct", "needs_human_review", "likely_incorrect"}
+                    for row in candidates
+                )
+                yield "topic-tags:prelabeler", uid, "reused" if current else "ready"
+            if "topic-tags:prelabeler-shadow" in purposes and any(
+                needs_shadow_prelabel(
+                    row,
+                    model=model,
+                    shadow_model=shadow,
+                    prompt_version=prompt,
+                    llm_schema_version=schema,
+                )
+                for row in candidates
+            ):
+                yield (
+                    "topic-tags:prelabeler-shadow",
+                    uid,
+                    ("ingress_limited" if ctx.tag_prelabeler_shadow_exhausted() else "ready"),
+                )
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -1868,6 +2060,33 @@ class TagsStage:
                     for candidate in persisted_candidates
                 )
             )
+            self.census(city, [ep], ctx)
+            tag_work = (
+                ctx.llm_work.item(TAGGER_PURPOSE, ep.uid or ep.guid, producer=self.name)
+                if llm_enabled and episode_served_chapters(ep)
+                else None
+            )
+            tag_resolved = False
+            production_work = (
+                ctx.llm_work.item(PRELABELER_PURPOSE, ep.uid or ep.guid, producer=self.name)
+                if prelabeler_pending
+                else None
+            )
+            shadow_owed = prelabeler_shadow_enabled and any(
+                needs_shadow_prelabel(
+                    row,
+                    model=prelabeler_model,
+                    shadow_model=prelabeler_shadow_model,
+                    prompt_version=prelabeler_prompt_version,
+                    llm_schema_version=prelabeler_llm_schema_version,
+                )
+                for row in persisted_candidates
+            )
+            shadow_work = (
+                ctx.llm_work.item(PRELABELER_SHADOW_PURPOSE, ep.uid or ep.guid, producer=self.name)
+                if shadow_owed
+                else None
+            )
             ledger_missing = bool(ep.tags or ep.chapter_tags) and not persisted_candidates
             cheap_fingerprint = tag_input_fingerprint(
                 ep,
@@ -1893,6 +2112,8 @@ class TagsStage:
             # unchanged inputs a set `tags_llm_recipe_hash` means the LLM tag is already current;
             # `None` means it never resolved (dispatched-and-deferred, quota-parked, or errored).
             llm_pending = llm_enabled and ep.tags_llm_recipe_hash is None
+            if tag_work is not None and inputs_unchanged and not llm_pending:
+                tag_work.consumed(reused=True)
 
             if (
                 inputs_unchanged
@@ -1904,6 +2125,8 @@ class TagsStage:
                 # Fully resolved for the current inputs (or LLM disabled). Nothing to do -- skip
                 # WITHOUT any storage fetch. This is the steady state for the whole catalog and has
                 # to stay an in-memory O(1) check, never a storage round trip.
+                if tag_work is not None:
+                    tag_work.consumed(reused=True)
                 stats.reused += 1
                 continue
 
@@ -1911,6 +2134,9 @@ class TagsStage:
                 # Wall-clock budget spent: defer everything still outstanding WITHOUT fetching
                 # (untouched, retried next run) so the pass drains cheaply to its end-of-run
                 # persist instead of grinding the backlog's fetches into GitHub's hard job timeout.
+                for work in (tag_work, production_work, shadow_work):
+                    if work is not None:
+                        work.defer("stopped")
                 stats.defer("tag-budget-stop", sample=ep.uid or ep.guid)
                 continue
 
@@ -1918,6 +2144,7 @@ class TagsStage:
                 prelabeler_pending and ctx.tag_prelabeler_dispatch_exhausted.is_set()
             )
             if inputs_unchanged and prelabeler_unavailable and not llm_pending:
+                production_work.defer("ingress_limited")
                 stats.defer("tag-prelabeler-no-quota", sample=ep.uid or ep.guid)
                 continue
 
@@ -2241,17 +2468,21 @@ class TagsStage:
             final_tags = project_visible_tags(candidate_tags, chapter_annotations)
             final_hash = projection_hash if completed_llm_recipe == llm_recipe else rules_hash
             if llm_enabled and completed_llm_recipe != llm_recipe and chapters:
+                tag_work.defer("ready")
                 if ctx.stop is not None and ctx.stop():
+                    tag_work.defer("stopped")
                     stats.defer("tag-llm-stop", sample=ep.uid or ep.guid)
                     candidate_tags = rule_candidates
                     completed_llm_recipe = None
                 elif ctx.tag_llm_dispatch_exhausted.is_set():
+                    tag_work.defer("ingress_limited")
                     stats.defer("tag-llm-no-quota", sample=ep.uid or ep.guid)
                     # The LLM request is the only unavailable part of this episode. Keep the
                     # deterministic rules and any applicable cached candidates in the ledger and
                     # projection; only the unresolved recipe remains unset for a later run.
                     completed_llm_recipe = None
                 elif not ctx.reserve_tag_dispatch():
+                    tag_work.defer("ingress_limited")
                     stats.defer("tag-llm-no-quota", sample=ep.uid or ep.guid)
                     completed_llm_recipe = None
                 else:
@@ -2276,7 +2507,7 @@ class TagsStage:
                                 dispatched,
                                 resolved_model,
                             ) = llm_tag_suggestions(
-                                ctx.tag_backend,
+                                tag_work.backend(ctx.tag_backend),
                                 taxonomy=taxonomy,
                                 agenda_item_titles="",
                                 agenda_text="",
@@ -2302,6 +2533,9 @@ class TagsStage:
                             reason=(resolved_model or "") if dispatched else "",
                         )
                         if dispatched:
+                            tag_work.defer(
+                                "blocked" if resolved_model == "payload-too-large" else "queued"
+                            )
                             completed_llm_recipe = None
                             stats.defer(
                                 "tag-llm-oversized"
@@ -2310,6 +2544,7 @@ class TagsStage:
                                 sample=ep.uid or ep.guid,
                             )
                         else:
+                            tag_resolved = True
                             # Prefer the scheduler's actually-resolved model (a defensive read,
                             # not a load-bearing one: the policy above pins allowed_models to
                             # exactly the configured route, so the two only diverge if that
@@ -2354,6 +2589,7 @@ class TagsStage:
                             model=llm_route,
                             reason=str(exc)[:500],
                         )
+                        tag_work.defer("errored")
                         stats.errors.append(f"{ep.uid or ep.guid}: LLM tagging failed: {exc}")
                         candidate_tags = rule_candidates
                         completed_llm_recipe = None
@@ -2386,11 +2622,18 @@ class TagsStage:
                     }
                 ]
                 if pending_prelabels:
+                    production_work = ctx.llm_work.item(
+                        PRELABELER_PURPOSE, ep.uid or ep.guid, producer=self.name
+                    )
+                    production_work.defer("ready")
                     if ctx.stop is not None and ctx.stop():
+                        production_work.defer("stopped")
                         stats.defer("tag-prelabeler-stop", sample=ep.uid or ep.guid)
                     elif ctx.tag_prelabeler_dispatch_exhausted.is_set():
+                        production_work.defer("ingress_limited")
                         stats.defer("tag-prelabeler-no-quota", sample=ep.uid or ep.guid)
                     elif not ctx.reserve_tag_prelabeler_dispatch():
+                        production_work.defer("ingress_limited")
                         stats.defer("tag-prelabeler-no-quota", sample=ep.uid or ep.guid)
                     else:
                         prelabel_recipe = hashlib.sha1(
@@ -2421,7 +2664,7 @@ class TagsStage:
                                     prelabel_dispatched,
                                     _prelabel_resolved_model,
                                 ) = llm_prelabel_candidates(
-                                    ctx.tag_backend,
+                                    production_work.backend(ctx.tag_backend),
                                     candidates=pending_prelabels,
                                     taxonomy=taxonomy,
                                     chapters=chapters,
@@ -2461,6 +2704,11 @@ class TagsStage:
                                     for candidate in candidate_tags
                                 ]
                             if prelabel_dispatched:
+                                production_work.defer(
+                                    "blocked"
+                                    if _prelabel_resolved_model == "payload-too-large"
+                                    else "queued"
+                                )
                                 stats.defer(
                                     "tag-prelabeler-oversized"
                                     if _prelabel_resolved_model == "payload-too-large"
@@ -2479,6 +2727,7 @@ class TagsStage:
                                 model=prelabeler_model,
                                 reason=str(exc)[:500],
                             )
+                            production_work.defer("errored")
                             stats.errors.append(
                                 f"{ep.uid or ep.guid}: pre-labeler model={prelabeler_model} "
                                 f"failed: {exc}"
@@ -2500,8 +2749,15 @@ class TagsStage:
                         llm_schema_version=prelabeler_llm_schema_version,
                     )
                 ]
+                if pending_shadow:
+                    shadow_work = ctx.llm_work.item(
+                        PRELABELER_SHADOW_PURPOSE, ep.uid or ep.guid, producer=self.name
+                    )
+                    if ctx.stop is not None and ctx.stop():
+                        shadow_work.defer("stopped")
                 if pending_shadow and not (ctx.stop is not None and ctx.stop()):
                     if not ctx.reserve_tag_prelabeler_shadow_dispatch():
+                        shadow_work.defer("ingress_limited")
                         stats.defer("tag-prelabeler-shadow-no-quota", sample=ep.uid or ep.guid)
                     else:
                         shadow_recipe = hashlib.sha1(
@@ -2527,7 +2783,7 @@ class TagsStage:
                                 shadow_dispatched,
                                 shadow_resolved_model,
                             ) = llm_prelabel_candidates(
-                                ctx.tag_backend,
+                                shadow_work.backend(ctx.tag_backend),
                                 candidates=pending_shadow,
                                 taxonomy=taxonomy,
                                 chapters=chapters,
@@ -2561,6 +2817,11 @@ class TagsStage:
                                     for candidate in candidate_tags
                                 ]
                             if shadow_dispatched:
+                                shadow_work.defer(
+                                    "blocked"
+                                    if shadow_resolved_model == "payload-too-large"
+                                    else "queued"
+                                )
                                 stats.defer(
                                     "tag-prelabeler-shadow-dispatch", sample=ep.uid or ep.guid
                                 )
@@ -2576,6 +2837,7 @@ class TagsStage:
                             )
                             # Deferred, not an error: a shadow failure changes nothing visible
                             # and must not read as a production tagging failure.
+                            shadow_work.defer("errored")
                             stats.defer("tag-prelabeler-shadow-error", sample=ep.uid or ep.guid)
 
             # Re-project after the evaluator attempt. This is intentionally cheap and makes the
@@ -2633,6 +2895,40 @@ class TagsStage:
                 stats.ran += 1
             else:
                 stats.reused += 1
+            if tag_work is not None and completed_llm_recipe == llm_recipe:
+                tag_work.consumed(reused=not tag_resolved)
+            if (
+                production_work is not None
+                and candidate_tags
+                and not any(
+                    row.get("candidate_state") != "historical"
+                    and (row.get("source_kind", "llm") == "rule" or row.get("chapter_id"))
+                    and (
+                        row.get("prelabeler_model") != prelabeler_model
+                        or row.get("prelabeler_prompt_version") != prelabeler_prompt_version
+                        or row.get("prelabeler_llm_schema_version") != prelabeler_llm_schema_version
+                        or row.get("prelabeler_decision")
+                        not in {"likely_correct", "needs_human_review", "likely_incorrect"}
+                    )
+                    for row in candidate_tags
+                )
+            ):
+                production_work.consumed()
+            if (
+                shadow_work is not None
+                and candidate_tags
+                and not any(
+                    needs_shadow_prelabel(
+                        row,
+                        model=prelabeler_model,
+                        shadow_model=prelabeler_shadow_model,
+                        prompt_version=prelabeler_prompt_version,
+                        llm_schema_version=prelabeler_llm_schema_version,
+                    )
+                    for row in candidate_tags
+                )
+            ):
+                shadow_work.consumed()
         return stats
 
 
@@ -8657,11 +8953,25 @@ def _write_chapter_json(storage, key: str, value: dict) -> str:
         return storage.put_file(key, path, "application/json")
 
 
-class AgendaChapterCandidatesStage:
+class AgendaChapterCandidatesStage(LLMProducerStage):
     """Extract source-grounded agenda candidates through the production LLM route."""
 
     name = "chapter_agenda"
     version = CHAPTER_AGENDA_PIPELINE_VERSION
+
+    def telemetry_purposes(self, ctx):
+        return ("chapter-agenda",) if ctx.storage is not None and not ctx.dry_run else ()
+
+    def work_items(self, city, episodes, ctx):
+        if not self.telemetry_purposes(ctx):
+            return
+        for ep in episodes:
+            if ep.source_chapters or not (ep.uid or ep.guid):
+                continue
+            state = "ready" if episode_needs_chapter_agenda(ep) else "reused"
+            if not (ep.links or {}).get("agenda_text_artifact_key"):
+                state = "blocked"
+            yield "chapter-agenda", ep.uid or ep.guid, state
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -8678,6 +8988,7 @@ class AgendaChapterCandidatesStage:
         from citypods.compute.llm_deferred import discard_completed_result, look_up_deferred
 
         stats = StageStats(self.name)
+        self.census(city, episodes, ctx)
         if ctx.dry_run or ctx.storage is None:
             return stats
 
@@ -8721,6 +9032,7 @@ class AgendaChapterCandidatesStage:
             if ep.source_chapters:
                 continue
             uid = ep.uid or ep.guid
+            work = ctx.llm_work.item("chapter-agenda", uid, producer=self.name) if uid else None
             source_artifact = (ep.links or {}).get("agenda_text_artifact_key")
             if not uid or not source_artifact:
                 # DIAGNOSTIC: split out the case that shouldn't be possible on paper -- agenda_text
@@ -8730,8 +9042,12 @@ class AgendaChapterCandidatesStage:
                 # against agenda_text's `[agenda_text] artifact store result` line for the same
                 # uid. Remove once root-caused; see the matching note in `_store_document`.
                 if uid and (ep.agenda_text_quality or {}).get("status") == "accepted":
+                    if work is not None:
+                        work.defer("blocked")
                     stats.defer("missing-agenda-artifact-despite-accepted-quality", sample=uid)
                 else:
+                    if work is not None:
+                        work.defer("blocked")
                     stats.defer("missing-agenda-artifact")
                 continue
 
@@ -8753,6 +9069,8 @@ class AgendaChapterCandidatesStage:
                 and raw_agenda.get("pipeline_version") == CHAPTER_AGENDA_PIPELINE_VERSION
             )
             if agenda_status in {"completed", "accepted", "not_applicable"} and is_current_artifact:
+                if work is not None:
+                    work.consumed(reused=True)
                 stats.reused += 1
                 continue
 
@@ -8783,12 +9101,16 @@ class AgendaChapterCandidatesStage:
                             raw_agenda = dict(raw_agenda)
                             raw_agenda["job_ref"] = cached.ref
                             ep.generated_agenda_candidates = raw_agenda
+                        if work is not None:
+                            work.defer("queued")
                         stats.defer("llm-pending")
                         continue
                     if isinstance(cached, JobResult):
                         is_new_dispatch = False
 
             if is_new_dispatch and not ctx.reserve_chapter_agenda_dispatch():
+                if work is not None:
+                    work.defer("ingress_limited")
                 stats.defer("producer-cap")
                 continue
 
@@ -8800,6 +9122,8 @@ class AgendaChapterCandidatesStage:
                 # the object it points at could not be read back (deleted, wrong bucket/prefix,
                 # transient read error). Kept as its own reason so it doesn't get conflated with
                 # "never had a link" in the aggregate breakdown.
+                if work is not None:
+                    work.defer("blocked")
                 stats.defer("agenda-artifact-key-present-but-unreadable", sample=uid)
                 continue
             agenda_text = raw.decode("utf-8", errors="replace")
@@ -8807,6 +9131,8 @@ class AgendaChapterCandidatesStage:
             if ctx.stop is not None and ctx.stop():
                 if is_new_dispatch:
                     ctx.settle_chapter_agenda_dispatch(dispatched=False)
+                if work is not None:
+                    work.defer("stopped")
                 stats.defer("stop-signal")
                 continue
             try:
@@ -8818,10 +9144,13 @@ class AgendaChapterCandidatesStage:
                 )
             except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort the
                 # build pass for every other episode
+                if work is not None:
+                    work.defer("errored")
                 if is_new_dispatch:
                     ctx.settle_chapter_agenda_dispatch(dispatched=False)
                 stats.errors.append(f"{uid}: agenda chapter extraction: {exc}")
                 continue
+            job = work.bind(job)
             prepared.append((ep, uid, job, agenda_text, source_hash, is_new_dispatch))
 
         if not prepared:
@@ -8836,9 +9165,12 @@ class AgendaChapterCandidatesStage:
         for (ep, uid, job, agenda_text, source_hash, is_new_dispatch), result in zip(
             prepared, results, strict=True
         ):
+            work = ctx.llm_work.item("chapter-agenda", uid, producer=self.name)
             if is_new_dispatch:
                 ctx.settle_chapter_agenda_dispatch(dispatched=not isinstance(result, Exception))
+            work.result(job, result)
             if isinstance(result, Exception):
+                work.defer("errored")
                 stats.errors.append(f"{uid}: agenda chapter extraction: {result}")
                 continue
             if isinstance(result, JobHandle):
@@ -8852,9 +9184,12 @@ class AgendaChapterCandidatesStage:
                     "source_hash": source_hash,
                     "job_ref": result.ref,
                 }
+                if work is not None:
+                    work.defer("queued")
                 stats.defer("llm-pending")
                 continue
             if not isinstance(result, JobResult):
+                work.defer("errored")
                 stats.errors.append(f"{uid}: unexpected agenda job result")
                 continue
             try:
@@ -8867,6 +9202,8 @@ class AgendaChapterCandidatesStage:
                 )
             except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort the
                 # finalize pass for every other episode
+                if work is not None:
+                    work.defer("errored")
                 stats.errors.append(
                     f"{uid}: agenda chapter extraction model={result.model or 'unknown'}: {exc}"
                 )
@@ -8891,6 +9228,8 @@ class AgendaChapterCandidatesStage:
             except Exception as exc:  # noqa: BLE001 -- a storage hiccup on an already-validated
                 # result must not discard a genuinely good completed record or the episode's
                 # still-valid pending pointer to it; simply retry the write next run.
+                if work is not None:
+                    work.defer("errored")
                 stats.errors.append(
                     f"{uid}: agenda chapter extraction model={result.model or 'unknown'}: {exc}"
                 )
@@ -8900,15 +9239,35 @@ class AgendaChapterCandidatesStage:
                 "artifact_key": key,
                 "artifact_url": url,
             }
+            work.consumed()
             stats.ran += 1
         return stats
 
 
-class ChapterBoundaryLocatorStage:
+class ChapterBoundaryLocatorStage(LLMProducerStage):
     """Locate agenda candidates in the complete timed transcript."""
 
     name = "chapter_locator"
     version = CHAPTER_LOCATOR_PIPELINE_VERSION
+
+    def telemetry_purposes(self, ctx):
+        return ("chapter-locator",) if ctx.storage is not None and not ctx.dry_run else ()
+
+    def work_items(self, city, episodes, ctx):
+        if not self.telemetry_purposes(ctx):
+            return
+        for ep in episodes:
+            if ep.source_chapters or not (ep.uid or ep.guid):
+                continue
+            state = "ready" if episode_needs_chapter_locator(ep) else "reused"
+            if (ep.generated_agenda_candidates or {}).get("status") not in {
+                "completed",
+                "accepted",
+            }:
+                state = "blocked"
+            elif not (ep.transcript_key or ep.transcript_words_key):
+                state = "blocked"
+            yield "chapter-locator", ep.uid or ep.guid, state
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -8927,6 +9286,7 @@ class ChapterBoundaryLocatorStage:
         from citypods.compute.llm_deferred import discard_completed_result, look_up_deferred
 
         stats = StageStats(self.name)
+        self.census(city, episodes, ctx)
         if ctx.dry_run or ctx.storage is None:
             return stats
 
@@ -8962,8 +9322,11 @@ class ChapterBoundaryLocatorStage:
                 stats.reused += 1
                 continue
             uid = ep.uid or ep.guid
+            work = ctx.llm_work.item("chapter-locator", uid, producer=self.name) if uid else None
             raw_agenda = ep.generated_agenda_candidates or {}
             if not uid or raw_agenda.get("status") not in {"completed", "accepted"}:
+                if work is not None:
+                    work.defer("blocked")
                 stats.defer("agenda-not-complete")
                 continue
 
@@ -8985,6 +9348,7 @@ class ChapterBoundaryLocatorStage:
                 locator_status in {"completed", "accepted", "not_applicable"}
                 and is_current_locator_artifact
             ):
+                work.consumed(reused=True)
                 stats.reused += 1
                 continue
 
@@ -8997,12 +9361,16 @@ class ChapterBoundaryLocatorStage:
                         raw_agenda = dict(raw_agenda)
                         raw_agenda["locator_job_ref"] = cached.ref
                         ep.generated_agenda_candidates = raw_agenda
+                    if work is not None:
+                        work.defer("queued")
                     stats.defer("llm-pending")
                     continue
                 if isinstance(cached, JobResult):
                     is_new_dispatch = False
 
             if is_new_dispatch and not ctx.reserve_chapter_locator_dispatch():
+                if work is not None:
+                    work.defer("ingress_limited")
                 stats.defer("producer-cap")
                 continue
 
@@ -9012,11 +9380,15 @@ class ChapterBoundaryLocatorStage:
             if not units:
                 if is_new_dispatch:
                     ctx.settle_chapter_locator_dispatch(dispatched=False)
+                if work is not None:
+                    work.defer("blocked")
                 stats.defer("missing-timed-transcript")
                 continue
             if ctx.stop is not None and ctx.stop():
                 if is_new_dispatch:
                     ctx.settle_chapter_locator_dispatch(dispatched=False)
+                if work is not None:
+                    work.defer("stopped")
                 stats.defer("stop-signal")
                 continue
             try:
@@ -9038,6 +9410,8 @@ class ChapterBoundaryLocatorStage:
                     ):
                         if is_new_dispatch:
                             ctx.settle_chapter_locator_dispatch(dispatched=False)
+                        if work is not None:
+                            work.defer("blocked")
                         stats.defer("locator-repair-exhausted")
                         continue
                     raw_agenda = dict(raw_agenda)
@@ -9069,6 +9443,8 @@ class ChapterBoundaryLocatorStage:
                 )
             except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort the
                 # build pass for every other episode
+                if work is not None:
+                    work.defer("errored")
                 if is_new_dispatch:
                     ctx.settle_chapter_locator_dispatch(dispatched=False)
                 stats.errors.append(f"{uid}: chapter locator: {exc}")
@@ -9077,8 +9453,11 @@ class ChapterBoundaryLocatorStage:
             if not is_new_dispatch and locator_recipe != job.recipe_hash:
                 is_new_dispatch = True
                 if not ctx.reserve_chapter_locator_dispatch():
+                    if work is not None:
+                        work.defer("ingress_limited")
                     stats.defer("producer-cap")
                     continue
+            job = work.bind(job)
             prepared.append(
                 (
                     ep,
@@ -9113,9 +9492,12 @@ class ChapterBoundaryLocatorStage:
             raw_agenda,
             is_new_dispatch,
         ), result in zip(prepared, results, strict=True):
+            work = ctx.llm_work.item("chapter-locator", uid, producer=self.name)
             if is_new_dispatch:
                 ctx.settle_chapter_locator_dispatch(dispatched=not isinstance(result, Exception))
+            work.result(job, result)
             if isinstance(result, Exception):
+                work.defer("errored")
                 stats.errors.append(f"{uid}: chapter locator: {result}")
                 continue
             if isinstance(result, JobHandle):
@@ -9128,9 +9510,12 @@ class ChapterBoundaryLocatorStage:
                     }
                 )
                 ep.generated_agenda_candidates = raw_agenda
+                if work is not None:
+                    work.defer("queued")
                 stats.defer("llm-pending")
                 continue
             if not isinstance(result, JobResult):
+                work.defer("errored")
                 stats.errors.append(f"{uid}: unexpected locator job result")
                 continue
             try:
@@ -9143,6 +9528,8 @@ class ChapterBoundaryLocatorStage:
                 )
             except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort the
                 # finalize pass for every other episode
+                if work is not None:
+                    work.defer("errored")
                 stats.errors.append(
                     f"{uid}: chapter locator model={result.model or 'unknown'}: {exc}"
                 )
@@ -9168,6 +9555,8 @@ class ChapterBoundaryLocatorStage:
                     stale["locator_status"] = "retry_exhausted"
                     stale["locator_retry_error"] = str(exc)[:300]
                     ep.generated_agenda_candidates = stale
+                    if work is not None:
+                        work.defer("blocked")
                     stats.defer("locator-repair-exhausted")
                     continue
                 if isinstance(exc, DuplicateLocatorStartError):
@@ -9196,6 +9585,8 @@ class ChapterBoundaryLocatorStage:
             except Exception as exc:  # noqa: BLE001 -- a storage hiccup on an already-validated
                 # result must not discard a genuinely good completed record or the episode's
                 # still-valid pending pointer to it; simply retry the write next run.
+                if work is not None:
+                    work.defer("errored")
                 stats.errors.append(
                     f"{uid}: chapter locator model={result.model or 'unknown'}: {exc}"
                 )
@@ -9245,6 +9636,7 @@ class ChapterBoundaryLocatorStage:
             ep.generated_agenda_candidates.pop("locator_retry_error", None)
             ep.generated_agenda_candidates.pop("locator_retry_policy", None)
             ep.generated_agenda_candidates.pop("locator_retry_input", None)
+            work.consumed()
             stats.ran += 1
         return stats
 
@@ -9433,6 +9825,12 @@ def run_stages(
     for stage in stages:
         if allowed is not None and stage.name not in allowed:
             continue
+        if ctx.llm_work.is_producer(stage.name):
+            if not callable(getattr(stage, "census", None)):
+                raise ValueError(
+                    f"Registered LLM stage {stage.name} requires an eligibility census"
+                )
+            stage.census(city, episodes, ctx)
         dirty = [
             ep
             for ep in episodes
@@ -9465,7 +9863,8 @@ def run_stages(
                 flush=True,
             )
         t0 = time.perf_counter()
-        stat = stage.process(provider, city, dirty, ctx)
+        with ctx.llm_work.producer(stage.name):
+            stat = stage.process(provider, city, dirty, ctx)
         stat.seconds = time.perf_counter() - t0
         stat.reused += clean
         _mark_stage_complete(stage, dirty, city, stat, speaker_config=ctx.speaker_config)

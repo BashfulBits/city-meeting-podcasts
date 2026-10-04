@@ -12,6 +12,16 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Purpose-bound LLM telemetry (GH#2001, review/52).** Require producer, accounting unit,
+  completion and coverage contracts in every LLM lane registration. Shared work handles count
+  eligibility before caps, deduplicate episode/batch replay, record submission outcomes, and count
+  validated producer consumption separately from backend responses or cached reuse. Production
+  stages and research traversals emit aggregate purpose snapshots through existing append-only run
+  events. Reports automatically discover new/retired purposes, retain legacy events, and require
+  complete catalog/shard coverage for capacity recommendations. Research sample units stay explicit.
+  No model, recipe, pipeline-version, quota, Worker, dependency or artifact changes; stored artifacts
+  remain valid and no backfill is triggered. Telemetry begins with new runs.
+
 - **Daily per-verb LLM backlog report (GH#1969, review/50 PR2).**
   Add the read-only 00:20 UTC/manual workflow over durable `run_events/`, using only the nine
   storage secrets. Publish the six-verb Markdown summary and retain the JSON report for 30 days;

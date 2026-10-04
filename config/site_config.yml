@@ -131,6 +131,7 @@ tournament:
 llm_lanes:
   # --- Production enrichment lanes (daily crons; these carry the catalog) ------------------
   chapter-agenda:
+    telemetry: {producer: chapter_agenda, unit: episode, completion: consumed, scope: retained_catalog}
     # A same-priority POOL: the Worker sends each job to the first eligible route with capacity
     # across all `models` (workers/llm-dispatch-v2/src/routes.js modelsForJob/routesEligibleFor),
     # so work flows to whichever of the three is free. On evals/chapter-agenda (main + holdout,
@@ -163,6 +164,7 @@ llm_lanes:
     reserved_write_units: 4800
     daily_write_units: 4800
   chapter-locator:
+    telemetry: {producer: chapter_locator, unit: episode, completion: consumed, scope: retained_catalog}
     # Production selection is size-aware in citypods/chapter_locator.py. DeepSeek V4 Flash is the
     # stable recipe model for packets up to 76,000 internal estimated input tokens; larger packets
     # are pinned to Kimi K3. This empirically-derived cutoff stays below the largest accepted V4
@@ -180,6 +182,7 @@ llm_lanes:
     reserved_write_units: 2170
     daily_write_units: 3200
   topic-tags:tagger:
+    telemetry: {producer: tags, unit: episode, completion: consumed, scope: retained_catalog}
     # Keep tagging pinned to the stable/calibrated Gemini 3.1 route; it is the recipe and
     # calibration-matrix key (models[0]). The two additional models (2026-09-24) are throughput
     # spill onto independent free pools and take the largest transcripts Gemini's ceiling cannot
@@ -195,6 +198,7 @@ llm_lanes:
     # The per-run cap counts episode reservations, while each episode can enqueue many batches.
     daily_write_units: 9600
   topic-tags:prelabeler:
+    telemetry: {producer: tags, unit: episode, completion: consumed, scope: retained_catalog}
     # Mirrors the legacy `tagging.prelabeler.model`. Its own budget, NOT a share of the
     # tagger's -- this split is exactly what the old `topic-tags` key failed to express.
     models: ["google/gemma-4-31b-it"]
@@ -204,6 +208,7 @@ llm_lanes:
     # Batch count depends on candidates and the 10k-token route ceiling; not a measured mean.
     daily_write_units: 9600
   topic-tags:prelabeler-shadow:
+    telemetry: {producer: tags, unit: episode, completion: consumed, scope: retained_catalog}
     # SHADOW evaluator (2026-09-23): gemma-4-26b-a4b-it runs the identical prelabeler prompt on the
     # same candidates as production, on its own free Gemini quota (a separate per-model pool from
     # 31b on both AI Studio projects). Its decisions are stored as `prelabeler_shadow_*` fields and
@@ -218,6 +223,7 @@ llm_lanes:
     # Optional calibration work draws shared headroom; this is not reserved capacity.
     daily_write_units: 9600
   r6-moments:
+    telemetry: {producer: moments, unit: episode, completion: consumed, scope: retained_catalog}
     # Mirrors the legacy `moments.llm_models`; the stage still filters this allowlist by
     # meeting family before dispatching. The two NVIDIA free routes at the end mirror
     # citypods/moments.py:COUNCIL_MOMENT_MODELS's overflow pair -- council feeds run full-meeting
@@ -250,6 +256,7 @@ llm_lanes:
     # 800 eligible meeting jobs x at most twelve ingress units; council jobs index seven models.
     daily_write_units: 9600
   r6-judge:
+    telemetry: {producer: moment-judge, unit: episode, completion: consumed, scope: retained_catalog}
     # A PANEL, not a pool: MomentJudgeStage sends each candidate to every judge pinned to that
     # model, and admission is calibrated per judge. 2026-09-24: glm-4.7-flash (AA 14.9) and
     # gpt-oss-120b (AA 11.6) removed; gemma-4-26b-a4b-it (AA 16.7, ~0.5k-token inputs, two 14,400/day
@@ -269,6 +276,7 @@ llm_lanes:
     daily_write_units: 16000
   # --- Research lanes (bounded, manual or low-cadence; must not starve production) ---------
   tournament:tag:
+    telemetry: {producer: tournament, unit: example, completion: consumed, scope: sample}
     # Replaces citypods/tournament.py:MODELS. These are CONTESTANTS being compared, so the lane
     # fans out one single-route job per model -- pooling them would let the scheduler answer
     # "how does model X tag this chapter?" with model Y and void the comparison.
@@ -293,6 +301,7 @@ llm_lanes:
     reserved_write_units: 310
     daily_write_units: 930
   tournament:tag-judge:
+    telemetry: {producer: tournament, unit: comparison, completion: consumed, scope: sample}
     # Replaces citypods/tournament.py:JUDGE_MODEL. Must stay independent of every candidate
     # route above -- `_build_pairwise_judge_job` rejects a judge that is also a contestant.
     models: ["google/gemma-4-31b-it"]
@@ -300,6 +309,7 @@ llm_lanes:
     reserved_write_units: 620
     daily_write_units: 2790
   r5-benchmark:tag:
+    telemetry: {producer: r5-benchmark, unit: assessment, completion: consumed, scope: sample}
     # Replaces citypods/r5_benchmark.py:DEFAULT_TAGGER_MODELS. Compared, not pooled (see
     # tournament:tag). Manual-dispatch only, so it carries no reservation: it draws purely on
     # unreserved shared headroom and can never displace a scheduled production lane.
@@ -312,6 +322,7 @@ llm_lanes:
     reserved_write_units: 0
     daily_write_units: 2480
   r5-benchmark:judge:
+    telemetry: {producer: r5-benchmark, unit: assessment, completion: consumed, scope: sample}
     # Replaces citypods/r5_benchmark.py:DEFAULT_PRELABELER_MODEL in its judge role.
     models: ["google/gemma-4-31b-it"]
     max_dispatches_per_run: 200

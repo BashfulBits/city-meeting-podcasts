@@ -1326,6 +1326,9 @@ class LiteLLMBackend(Backend):
 
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
         """Run directly through LiteLLM or enqueue through the asynchronous dispatch Worker."""
+        from citypods.compute.llm_work import validate_work_binding
+
+        validate_work_binding(job)
         if job.task not in LLM_TASKS:
             raise ValueError(f"LiteLLM backend does not handle task {job.task!r}")
         if job.inputs.get("reasoning_level") is not None:
@@ -1868,6 +1871,10 @@ class LiteLLMBackend(Backend):
         """
         if not jobs:
             return []
+        from citypods.compute.llm_work import validate_work_binding
+
+        for job in jobs:
+            validate_work_binding(job)
 
         if any(
             isinstance(job.inputs.get("llm_policy"), LLMRequestPolicy)
@@ -3050,6 +3057,9 @@ class BatchingDispatchBackend:
         )
 
     def run_inference(self, job: InferenceJob) -> JobResult | JobHandle:
+        from citypods.compute.llm_work import validate_work_binding
+
+        validate_work_binding(job)
         if not self._can_batch(job):
             return self._backend.run_inference(job)
 
@@ -3134,6 +3144,12 @@ class BatchingDispatchBackend:
                     self._backend, jobs[chunk_start : chunk_start + _WORKER_BATCH_LIMIT]
                 )
             )
+        from citypods.compute.llm_work import validate_work_binding
+
+        for job, result in zip(jobs, results, strict=True):
+            work = validate_work_binding(job)
+            if work is not None:
+                work.result(job, result)
         return [
             BatchDispatchOutcome(job=job, result=result)
             for job, result in zip(jobs, results, strict=True)

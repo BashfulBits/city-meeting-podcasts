@@ -1959,6 +1959,15 @@ def _run_enrich_global_queue(
                 for ep in state["candidate_episodes"]
                 if episode_needs_chapter_agenda(ep) or episode_needs_chapter_locator(ep)
             ]
+    # Census retained work before queue filters, admission caps or stop gates can hide it.
+    for stage in pipeline.stages:
+        if (allowed is None or stage.name in allowed) and ctx.llm_work.is_producer(stage.name):
+            if not callable(getattr(stage, "census", None)):
+                raise ValueError(
+                    f"Registered LLM stage {stage.name} requires an eligibility census"
+                )
+            for state in prepared.values():
+                stage.census(state["city"], state["retained_episodes"], ctx)
     # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout
     # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). TagsStage
     # (works purely off agenda/transcript text) does not read it. Gating this on
@@ -3810,6 +3819,11 @@ def _build_impl(
                 _history_window_min = float(defaults.get("chapter_run_time_budget_minutes", 240))
             _window = _history_window_min * 60 * _history_safety
             print("finalize: recording run history", flush=True)
+            if not interrupt_requested():
+                pipeline.ctx.llm_work.finish()
+            if provider_errors or any(result.status == "error" for result in results):
+                for registered in pipeline.ctx.llm_work.lanes.values():
+                    pipeline.ctx.llm_work.partial(registered.telemetry_producer)
             run_event_path = _record_run_history(
                 state_dir,
                 results,
@@ -3835,9 +3849,11 @@ def _build_impl(
                     "lane": lane,
                     "shard": f"{shard[0]}/{shard[1]}" if shard is not None else None,
                     "source": source,
+                    "city": only_slug,
                     "scoped": scoped,
                 },
                 interrupted=interrupt_requested(),
+                llm_work=pipeline.ctx.llm_work.snapshot(),
             )
             # Persist the derived work manifest (H5) for the status surface + as the H6b lease
             # substrate. Derived fresh from the just-updated records (hybrid model); ordered by
@@ -4343,6 +4359,7 @@ def _record_run_history(
     h16_availability: dict | None = None,
     scope: dict | None = None,
     interrupted: bool = False,
+    llm_work: dict | None = None,
 ) -> str | None:
     """Append one line to ``run_history.jsonl`` (rolling, capped) and write ``run_summary.json``
     (latest only). This is the data spine for the resource projection: it lets the model use a
@@ -4403,6 +4420,7 @@ def _record_run_history(
         "lane": scope.get("lane"),
         "shard": scope.get("shard"),
         "source": scope.get("source"),
+        "city": scope.get("city"),
         "scoped": bool(scope.get("scoped", False)),
         # GH#377: was this run cut short by a termination signal (SIGTERM/cancel)? Lets the
         # projection/audit tell a deliberately-completed run from one that was killed mid-queue
@@ -4420,6 +4438,7 @@ def _record_run_history(
         "materialize_encoded": audio.get("encoded", 0),
         "materialize_seconds": audio.get("seconds", 0.0),
         "stages": stages,
+        "llm_work": llm_work or {"schema_version": 1, "purposes": {}},
         "github_run_id": github_run_id,
         "github_run_url": github_run_url,
         "logical_run_id": logical_run_id,

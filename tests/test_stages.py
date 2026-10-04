@@ -2196,6 +2196,10 @@ def test_tag_no_quota_preserves_rule_tags_and_candidate_ledger(tmp_path):
         for tag in tags
     )
 
+    snapshot = ctx.llm_work.snapshot()["purposes"]["topic-tags:tagger"]
+    assert snapshot["states"] == {"ingress_limited": 1}
+    assert snapshot["consumed"] == 0  # Rules alone are not LLM consumption.
+
 
 def test_tag_prelabeler_quota_defers_before_storage_fetch(tmp_path):
     """A spent evaluator allowance must stop the pass before it re-reads the backlog."""
@@ -2576,3 +2580,9 @@ def test_tag_shadow_prelabeler_records_beside_production_without_changing_displa
     # Run 4: both assessments current -- no further evaluator call.
     run()
     assert len(backend.calls) == 4
+
+    snapshot = ctx.llm_work.snapshot()["purposes"]
+    assert snapshot["topic-tags:tagger"]["consumed"] == 0
+    assert snapshot["topic-tags:prelabeler"]["consumed"] == 1
+    assert snapshot["topic-tags:prelabeler-shadow"]["consumed"] == 1
+    assert snapshot["topic-tags:prelabeler-shadow"]["backlog"] == 0

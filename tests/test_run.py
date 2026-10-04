@@ -1678,6 +1678,10 @@ def test_global_queue_mid_run_checkpoint_fires_on_interval_during_tags_only_pass
     class _TagsStage:
         name = "tags"
 
+        def census(self, *_args):
+            """No LLM work in this queue-only test double."""
+            pass
+
     class _Pipeline:
         def __init__(self):
             self.ctx = StageContext(
@@ -3160,6 +3164,10 @@ def test_tag_lane_pre_filters_candidate_episodes(tmp_path, monkeypatch):
     class _CountingStage:
         name = "tags"
 
+        def census(self, *_args):
+            """No LLM work in this queue-only test double."""
+            pass
+
         def __init__(self):
             self.processed = []
 
@@ -3237,6 +3245,10 @@ def test_tag_lane_candidate_window_with_caps_and_zero_caps(tmp_path, monkeypatch
 
     class _CountingStage:
         name = "tags"
+
+        def census(self, *_args):
+            """No LLM work in this queue-only test double."""
+            pass
 
         def __init__(self):
             self.processed = []
@@ -3345,6 +3357,10 @@ def test_chapter_lanes_pre_filter_candidate_episodes(tmp_path):
         def __init__(self, name):
             self.name = name
             self.processed = []
+
+        def census(self, *_args):
+            """No LLM work in this queue-only test double."""
+            pass
 
         def process(self, provider, city, episodes, ctx):
             self.processed.extend(episodes)
@@ -3719,6 +3735,11 @@ def test_tag_lane_pre_filter_keeps_episodes_with_pending_shadow_prelabels(tmp_pa
     def processed(**ctx_overrides):
         class _CountingStage:
             name = "tags"
+
+            def census(self, *_args):
+                """No LLM work in this queue-only test double."""
+                pass
+
             version = "1"
 
             def __init__(self):

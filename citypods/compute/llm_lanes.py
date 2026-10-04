@@ -62,6 +62,10 @@ class LaneConfig:
     max_dispatches_per_run: int
     reserved_write_units: int
     daily_write_units: int
+    telemetry_producer: str = ""
+    telemetry_unit: str = "episode"
+    telemetry_completion: str = "consumed"
+    telemetry_scope: str = "retained_catalog"
     # How ``models`` maps onto jobs, which decides what one job costs at ingress:
     #
     # ``pooled`` (default) -- one job carries the whole list as its ``allowed_models`` and the
@@ -297,10 +301,35 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                     f"{backup_after_attempts}"
                 )
 
+        telemetry = entry.get("telemetry")
+        if not isinstance(telemetry, Mapping) or set(telemetry) != {
+            "producer",
+            "unit",
+            "completion",
+            "scope",
+        }:
+            raise ValueError(f"llm_lanes[{purpose!r}] requires a telemetry contract")
+        producer = telemetry["producer"]
+        if not isinstance(producer, str) or not producer.strip():
+            raise ValueError(f"llm_lanes[{purpose!r}].telemetry.producer must be non-empty")
+        if not isinstance(telemetry["unit"], str) or not telemetry["unit"].strip():
+            raise ValueError(f"llm_lanes[{purpose!r}].telemetry.unit is invalid")
+        if not isinstance(telemetry["scope"], str) or telemetry["scope"] not in {
+            "retained_catalog",
+            "sample",
+        }:
+            raise ValueError(f"llm_lanes[{purpose!r}].telemetry.scope is invalid")
+        if telemetry["completion"] != "consumed":
+            raise ValueError(f"llm_lanes[{purpose!r}].telemetry.completion must be consumed")
+
         reasoning = _parse_reasoning(entry.get("reasoning"), purpose, {*models, *backup_models})
         lane = LaneConfig(
             purpose=purpose,
             models=models,
+            telemetry_producer=producer,
+            telemetry_unit=telemetry["unit"],
+            telemetry_completion=telemetry["completion"],
+            telemetry_scope=telemetry["scope"],
             max_dispatches_per_run=_coerce_int(
                 entry.get("max_dispatches_per_run"),
                 purpose=purpose,
