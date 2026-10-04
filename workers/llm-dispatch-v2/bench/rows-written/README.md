@@ -50,3 +50,22 @@ for every pool size undercounts multi-model jobs. The corrected design projectio
 Re-run the full lifecycle
 with representative pool sizes before treating its row totals as measured production capacity;
 the existing one-model measurement remains the baseline, not proof for all pools.
+
+## Atomic accounting remeasurement (2026-10-04)
+
+The meter now wraps the raw SQL handle and delegates to the production counting wrapper,
+including its accounting writes. The previous override bypassed production accounting.
+With 60 one-model jobs, four jobs per bundle, and consumption retirement, measured billed
+rows are: enqueue 364, claim 312, attemptStarted 240, completeBatch 318, retire 61;
+**1,295 total / 60 = 21.58 rows per job**. Writing transactions add one singleton accounting
+row; read-only snapshots, replays, and idle braked claims add none. An ordinary idle claim
+writes two rows (claim outcome plus accounting).
+
+```bash
+curl -s "http://127.0.0.1:8799/accounting?name=accounting-recreation"
+```
+
+This recreates coordinator instances against the same workerd SQLite storage between writing
+RPCs and compares the independent billed-write meter with the persisted counter delta.
+Both must match exactly. Worst-case projection constants now include accounting: 8 rows per
+bundle, 28 per leased job, and 5 per cleanup job. Configured quotas and thresholds are unchanged.
