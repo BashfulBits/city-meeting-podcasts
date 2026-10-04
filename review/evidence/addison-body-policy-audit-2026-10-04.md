@@ -612,3 +612,62 @@ Fort Worth: reported 32 taxonomy candidates are NOT 32 committee-only false incl
 Pflugerville: no committee/event labels detected among 481 selected UID rows; two explicit joint meeting labels. This is a limited retained-source/label spot-check, not a city-wide guarantee.
 
 Common root cause: mixed provider namespace is intentionally archived broadly; config added exact exceptional GUID inclusions and family body_any terms to avoid coverage gaps, without a sufficiently narrow institution-versus-event taxonomy gate. Arlington, Dallas, Denton, and Fort Worth Council files were last touched by merged #1590 (566df01a5cfbef39cb74a2b345bda6f934a299fd); Pflugerville was last touched by a9ca7722 (R6 admission and clip safeguards). This finding distinguishes archive presence from feed assignment; selectors prove eligibility, not current public RSS exposure.
+
+## Recording-bound follow-up verification (2026-10-04)
+
+These findings narrow the next config contracts; they do not lift the review hold or change feeds.
+
+### Bond committee: official listed recording census reconciled
+
+The Town's [2026 bond program page](https://www.addisontx.gov/Government/Departments/Finance/Bond-Election-History/2026-Bond-Election)
+separates committee meetings from later Council consideration. Its four listed committee dates
+match all four retained `Bond Advisory Committee` observations:
+
+| Official listed date | Retained GUID | Stable UID |
+|---|---|---|
+| October 30, 2025 | 359742 | `31b194e3b25f0bf8` |
+| November 20, 2025 | 361917 | `1ef623b5f2bc909a` |
+| December 4, 2025 | 362796 | `cb34bf9c6001c32a` |
+| January 8, 2026 | 371625 | `902400566a6637b5` |
+
+This reconciles the official page's listed recordings, not every possible committee gathering.
+The January 13 recommendation was presented during a Council work session; it is not evidence
+for relabeling that Council recording as a standalone committee meeting. The separate October 30
+[provider recording](https://addisontx.new.swagit.com/videos/359742) names the committee's charge.
+This is a bounded bond-program body, with a proposed city bond-family assignment. No config
+activation, new audio work, or assumption of continuing standing status follows from this table.
+The official page was available through the search index; direct retrieval returned HTTP 403.
+
+### Three-body joints: two institution/date bindings established
+
+- January 24, 2024: GUID `295839`, UID `fcc9bde16c7f47fe`, retained label
+  `Joint CPAC, P&Z, and City Council Meeting #1`. The
+  [February 21 P&Z packet](https://agendas.addisontx.gov/docs/2024/PZ/20240221_7244/AGENDApacket__02-21-24_0625_7239.pdf)
+  identifies minutes of the January 24 joint CPAC, P&Z and Council meeting.
+- July 11, 2024: GUID `310072`, UID `c95af66385f6cf31`, retained label
+  `Joint CPAC, P&Z, and City Council Meeting #2`. The
+  [August 8 CPAC packet](https://agendas.addisontx.gov/docs/2024/CPAC/20240808_7343/AGENDApacket__08-08-24_1136_7338.pdf)
+  identifies minutes prepared for consideration for the July 11 joint meeting of all three bodies.
+
+These official references establish joint identity independently of provider substring matching;
+placing minutes on an approval agenda does not itself prove an approval vote. Both recordings
+currently match Council only in the complete retained-label replay. Under the approved global
+joint rule, the proposed subscription correction adds the same stable recording to the existing
+P&Z and CPAC feeds, retains Council, and preserves the current canonical search owner. It does
+not create three records or three audio objects. Before implementation, the scoped L3 contract
+must name exact existing selector fields, replay all retained positives/negatives, and check
+feed exposure and canonical ownership. Remaining joint aliases still need their own binding.
+
+### Narrow next slices and unresolved boundaries
+
+1. Council/P&Z ownership: eliminate the 47 commission-only work-session false Council matches
+   while preserving genuine Council work sessions and all proven joint participation.
+2. Proven three-body joints: add missing subscriptions for the two bindings above; do not
+   broaden generic `Joint` matching to unknown participants.
+3. Temporary bond-family coverage: use the four reconciled recordings and exact committee label;
+   keep subsequent Council deliberations in Council.
+4. TIRZ, ceremonies/public input, Citizen Advisory and remaining generic/joint aliases retain
+   recording-level proof/exposure gates. Unknown cases remain visible in the census.
+
+These slices require documented L3 file/function/test plans before runtime/config edits.
+CodeRabbit remains held until the wider Addison and onboarding settlement is complete.
