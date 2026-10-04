@@ -54,6 +54,17 @@ A–F taxonomy directions in #1975 are approved; individual uncertain identities
 The future-flow structure is approved. Only a phase marked L3 with its predecessor gates satisfied
 is executable; exact phase contracts and tests below replace the earlier open design decisions.
 
+## Classification settlement hold (2026-10-04)
+
+The maintainer paused further CodeRabbit requests until the policy is settled, applied across
+Addison bodies, spot-checked in other cities, and reflected in stable onboarding goals. The
+[all-label Addison audit and shared-policy draft](evidence/addison-body-policy-audit-2026-10-04.md)
+records confirmed selector overlaps, gaps, cross-city examples and proposed acceptance rules.
+This hold supersedes the earlier proactive review cadence; a request already issued for #2003
+at 17:06:20 UTC may finish, but no additional request is authorized during the hold. Its dedicated
+CPC feed is prepared, not evidence that the wider city taxonomy is settled. General standing-body
+preference is approved; ambiguous joint/combined proceedings and exact city migrations stay gated.
+
 ## Why the existing flow produces too much weak work
 
 PR #1747 accepted 35 decisions, deferred 16, requested manual review for 52 and reported 24

@@ -94,6 +94,11 @@ Seasonal schedules and Council-only membership do not make a committee temporary
 is L3 under PR #2003 validation; it supersedes Council placement, preserves source identities and
 records historical meeting/recording gaps in its dated evidence packet.
 
+Classification settlement hold (2026-10-04): no further CodeRabbit requests until full Addison
+body policy, cross-city spot checks and onboarding acceptance are stabilized. See the
+[retained-label audit and proposed policy](evidence/addison-body-policy-audit-2026-10-04.md).
+Prepared CPC coverage alone does not complete this city baseline or authorize broader migrations.
+
 P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) prepares one named-body decision covering
 three verified committee recordings. Exact labels exclude the Open House; CPC duplicate identities
 remain in [#1991](https://github.com/BashfulBits/city-meeting-podcasts/issues/1991). This does not
