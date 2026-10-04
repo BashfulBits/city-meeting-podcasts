@@ -690,8 +690,9 @@ qualifications. Current high/max effort capabilities are unverified in the route
 admission fails closed rather than silently dropping effort or accepting a weaker fallback.
 
 Direct evaluation requests use physical route allowlists checked before quota reservation and pool
-substitution. Dispatch requests reject this direct-only gate. Synchronous `JobResult` adds selected
-route/upstream/effort/parameter provenance; evaluation also validates returned model identity.
+substitution. Only `run_immediate` accepts this gate; deferred and dispatch requests reject it.
+Synchronous `JobResult` adds selected route/upstream/parameter provenance and reports reasoning
+effort only when the route applied its controls; evaluation also validates returned model identity.
 Offline dry runs make zero model observations. Explicit live runs require CAS-capable shared
 scheduler storage, bounded cases and quota bookkeeping; they do not mutate feeds or audio.
 

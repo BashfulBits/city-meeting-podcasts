@@ -12,6 +12,9 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Remedy evaluations report only applied reasoning controls and reject physical-route allowlists
+  on deferred inference paths; immediate evaluation routing remains supported.
+
 - Chapter locator review fixes: scope repair exhaustion to saved policy and input fingerprints;
   changed inputs/policy (including legacy exhaustion without fingerprints) receive a fresh repair
   budget on their next eligible pass. Existing valid artifacts retain their current reuse policy.

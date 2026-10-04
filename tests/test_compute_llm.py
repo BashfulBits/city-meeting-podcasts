@@ -1587,10 +1587,13 @@ def test_explicit_unsupported_effort_never_calls_provider():
         backend._provider_options(job(reasoning_level="high"), route.model, route=route)
 
 
-def test_dispatch_allowlist_rejected_before_storage_or_calls():
+@pytest.mark.parametrize("queue_only", [False, True])
+def test_dispatch_allowlist_rejected_before_storage_or_calls(queue_only):
     backend = LiteLLMBackend(LLMBackendConfig())
-    policy = LLMRequestPolicy(allowed_route_ids=("physical",), queue_only=True)
-    with pytest.raises(ValueError, match="direct-only"):
+    policy = LLMRequestPolicy(
+        allowed_route_ids=("physical",), queue_only=queue_only, require_direct=True
+    )
+    with pytest.raises(ValueError, match="requires run_immediate"):
         backend.run_inference(
             job(messages=[{"role": "user", "content": "evidence"}], llm_policy=policy)
         )
@@ -1695,3 +1698,26 @@ def test_attempt_budget_cannot_be_dropped_by_deferred_or_dispatch_paths():
         backend.run_inference(request)
     with pytest.raises(ValueError, match="cannot enforce max_provider_attempts"):
         backend.enqueue_batch([request])
+
+
+@pytest.mark.parametrize("supported", [False, True])
+def test_provenance_records_only_applied_lane_effort(monkeypatch, supported):
+    from dataclasses import replace
+
+    import citypods.compute.llm as llm_module
+    from citypods.compute.base import JobResult
+    from citypods.remedy_evaluation import canonical_hash
+
+    route = replace(
+        next(iter(ROUTE_REGISTRY.values())),
+        reasoning_controls_json='{"high":{"reasoning_effort":"high"}}' if supported else "",
+    )
+    monkeypatch.setattr(llm_module, "_lane_reasoning_level", lambda job, route: "high")
+    result = llm_module._direct_result_provenance(
+        JobResult(task="llm", recipe_hash="test", output={}), job(), route
+    )
+    assert result.reasoning_level == ("high" if supported else None)
+    params = json.loads(route.request_params_json or "{}")
+    if supported:
+        params["reasoning_effort"] = "high"
+    assert result.request_params_hash == canonical_hash(params)
