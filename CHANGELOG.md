@@ -19,8 +19,8 @@ Once 1.0 ships, entries move under semver tags.
   No producer, queue, model-call, quota, pipeline-version, or durable-state changes.
   Read append-only event keys directly: the snapshot manifest excludes them and previously
   caused every selected file to be skipped. Bound concurrent downloads and count missing or
-  transiently unreadable files; propagate access-denied errors. The new workflow needs to be
-  registered on main before its first manual Actions run. Discover registry purposes and LLM
+  transiently unreadable files; propagate access-denied errors. PR #1983 merged and its first manual
+  Actions acceptance passed on 2026-10-04 (run 37179726987, zero skipped files/unknown tokens). Discover registry purposes and LLM
   stage snapshots automatically, identify retired/unregistered/unmeasured rows, and suppress
   recommendations when attribution is incomplete. Shared-stage purposes without distinct telemetry
   are listed with null backlog. Strict unknown-token checking remains an opt-in CLI diagnostic.
