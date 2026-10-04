@@ -1,7 +1,7 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: approved structure; P1 is L3, P2–P5 have predecessor-gated build contracts.**
-**Revised:** 2026-10-02 after maintainer approval of the final decisions.
+**Status: P1 tooling shipped; inactive publication selection L3; activations and P2–P5 gated.**
+**Revised:** 2026-10-03 after maintainer approval of the remaining evaluation design choices.
 This specification does not itself change production routing or enable auto-merge.
 
 ## Outcome and scope
@@ -10,7 +10,8 @@ Onboard a city's complete available archive once, approve its subscription taxon
 that policy in selectors and regression evaluations. Maintenance should then discover genuinely
 new bodies and formats, rather than repeatedly rediscovering historical spellings. The target is
 manual decisions per established city approaching zero, without hiding unknowns or silently
-excluding legitimate recordings.
+excluding legitimate recordings. Approved reusable policy templates and evaluation cases must
+serve both maintenance and onboarding; reviewed city/source identities remain local.
 
 This is a maintainer-authorized follow-up to PR #1747, outside the usual implementation queue.
 The initial reviews merged as TIF migration (#1973), remedy guard (#1974), historical coverage
@@ -41,6 +42,9 @@ individual category recommendations; this document owns the improvement plan.
 - Routine automation uses free routes. Subscription/frontier-agent work is acceptable for this
   historical cleanup and the initial complete-archive assessment of new cities.
 - Evaluation cases and results live in `evals/`, permitting retirement/replacement comparisons.
+- Shared approved policy templates are defaults for new cities and new historical evidence.
+  Onboarding and maintenance use the same resolver, replay and case catalog; matching an approved
+  rule does not require another LLM decision. This clarification was approved on 2026-10-03.
 
 A–F taxonomy directions in #1975 are approved; individual uncertain identities remain held.
 The future-flow structure is approved. Only a phase marked L3 with its predecessor gates satisfied
@@ -96,6 +100,24 @@ subscription aggregation separate from body equivalence. A policy names the city
 family, permitted selector forms, exclusions, identity constraints, migration behavior and linked
 regression cases. Do not introduce a hardcoded city list or infer a global policy from one city's
 approval. District-family subscription rules must not imply district renames.
+
+Approved reusable defaults are explicit versioned templates, not inferred global ownership.
+A template describes a subscription family or body identity type, permitted selector/alias forms,
+required official proof, exclusion boundaries and positive/negative/transfer cases. A city/source
+instance binds that template to its verified identities and owning feeds. TIF/PID, bond/charter/
+redistricting, public-input and public-briefings defaults are cross-city policy approvals; a local
+board alias or rejected recording remains local unless separately promoted with transfer evidence.
+
+Both onboarding and maintenance load the same templates, instantiate source-scoped policies,
+resolve ownership and replay coverage before model work. Recognized observations update coverage
+under an approved rule. Unknown identity, missing proof, conflicting evidence or new policy scope
+uses the same escalation path in either flow. Shared words or another city's exact names never
+establish a recording's owner. Initial city approval remains a full available-history assessment;
+templates do not waive completeness, exclusions or identity verification.
+
+A newly learned local decision may propose an explicit template improvement with independent
+cross-city positive/negative cases and approval; it must not silently rewrite global defaults.
+This is maintained policy and regression evidence, not training or implicit learning by an LLM.
 
 Maintain an append-only decision history keyed by city/source and normalized label/family, with
 recording references, evidence hash, config/policy version, prompt/schema version, actual model
@@ -274,6 +296,34 @@ Continue the approved A–F inventory in city/family PRs of at most five decisio
 source/agenda evidence, exact positive/negative selector replay, remedy guard changes and cases
 under `evals/remedy/`. G is investigation-first; no automatic catch-all feed is approved.
 
+P0 guard prerequisite extends existing feed-level `remedy_policy` metadata with optional exact
+`identity_names` and the approved `pid`, `bond`, `charter`, `redistricting`, `public_input` and
+`public_briefings` aggregate families alongside `tif`. Identity-only named-body policies omit the
+family. For assignments, exact reviewed owners override competing holding clues; multiple exact
+joint owners remain required. New-feed duplication remains blocked by any relevant policy.
+Only reviewed exact identities authorize non-TIF ownership; family/member clues hold new
+labels for evidence. Known topic-bearing TIF labels also require reviewed identity; unseen topic
+wording can still pass the retained marker rule, so newly matched observation/replay remains P2
+work. These local guards
+are implemented in `citypods/config.py` and `citypods/audit_remedy.py` with their existing tests;
+they do not implement P2's persistent decision ledger or enable model admission/automatic merging.
+
+P0 selector prerequisite: optional `source.body_exact` lists complete normalized labels, rejects
+wildcards/blanks and reuses `matches_exact_body_label`, including repeated provider copies. Its
+union with `body`, `body_any` and `body_includes` restricts exact-only feeds without changing their
+source namespace or UID inputs. It enables separate committee/Open House ownership; it does not
+create an automatic ownership approval channel. Named implementation files are `citypods/bodies.py`
+(`ExactBodyLabel`, selector construction/matching), `citypods/config.py` (validation/source identity),
+`citypods/records.py` (source-key exclusion), `citypods/audit_remedy.py` (evidence, transport exclusion
+and redundant-alias no-op), `citypods/search.py` (selector fingerprint), and their existing tests,
+including `tests/test_search.py` for
+retained-record search ownership. Acceptance includes live/retained selection,
+negative suffix/topic labels, mixed selector unions, unchanged UID/source transport and whole-repo
+checks. Include `body_exact` in search shard fingerprints only when configured, so exact-rule
+changes rebuild cached destinations while legacy selector hashes remain unchanged. This small
+cache integration scope was authorized by the maintainer on 2026-10-03. No feed configuration is
+changed by this generic prerequisite.
+
 The census used for P0 must include both persisted records and all available provider observations,
 with explicitly recorded gaps. Restore historical sources separately where provider migrations
 changed namespaces; no new cross-provider UID joins without their reviewed evidence. Count
@@ -285,10 +335,279 @@ issue, or a documented unavailable-source exception. An unresolved legitimate re
 “covered.” The current 680-row inventory is a starting snapshot, not a permanently complete census.
 P1 can supply evaluation tooling while P0 is being completed; P5 requires an approved city baseline.
 
+### P0 publication selection — inactive machinery L3; activations L2
+
+The maintainer authorized writing this specification; runtime projection changes and affected feed
+publication remain gated. Proceed independently with historical batches whose rendered output has
+no identity conflict. The held groups are Arlington Foundation [#1986](https://github.com/BashfulBits/city-meeting-podcasts/issues/1986),
+Fort Worth PID [#1989](https://github.com/BashfulBits/city-meeting-podcasts/issues/1989) and Addison
+CPC [#1991](https://github.com/BashfulBits/city-meeting-podcasts/issues/1991).
+
+**Chosen approach:** finite, evidence-reviewed publication groups choose one **existing UID** per
+verified recording for named public outputs. Keep every archived observation, UID, official field
+and artifact intact. Do not merge records or assign new UIDs. Foundation/CPC have equal provider
+GUIDs but multiple stored UIDs; PID has different view-specific GUIDs for the same verified clip.
+Body aliases, titles, dates, model agreement and numeric clip IDs alone do not establish identity.
+No automatic global deduplication or cross-provider/source joining is approved.
+
+#### Configuration and proof contract
+
+Use an optional top-level `publication_selection` key in a feed, outside `source` so the namespace
+hash stays unchanged. Version 1 contains explicit groups with:
+
+- `id`, `source_key`, `identity_kind` (`same_provider_guid` or `verified_granicus_clip`), source-scoped
+  `identity_key`, members `{uid, provider_guid, record_fingerprint}`, fixed `preferred_uid`;
+- official `evidence_refs` `{url, retrieved_at, content_hash}`, `approval_ref`, and publication
+  `exposure` `{status, artifacts, rationale}`; exposure status distinguishes known-current,
+  both-published, never-published and historical-unknown cases;
+- explicit `search` opt-in: this feed's lists/RSS use its group, and only approved groups may also
+  collapse their exact members in the source search shard. Other feeds' RSS remain unchanged.
+
+Strictly validate keys/types/version, UID shapes, exact member GUIDs, preferred membership and
+source key. Overlaps, conflicting winners or inconsistent repeated group declarations fail; input
+order never chooses a winner. Fingerprints hash canonical JSON of source key, UID, provider GUID,
+official body/title/date and canonical recording URL, excluding stage bookkeeping/audio/transcript
+changes. No model output may introduce or edit this configuration.
+
+Same-GUID groups require exact full GUID equality inside one source. Granicus groups require equal
+reviewed host/clip identity, explicit views and direct recording/agenda equivalence proof. A future
+view or extra UID is not automatically admitted. Date/title corrections, conflicting agendas,
+changed fingerprints, missing preferred/member records and extra members on an approved identity
+key hold the affected output instead of restoring duplicates silently.
+
+Freeze public RSS/page exposure evidence before selecting existing-feed winners. Preserve the
+previously visible UID when only one is evidenced; both/unknown cases need a recorded maintainer
+choice rather than latest-date/lowest-UID guesses. Addison's date conflict requires official agenda
+verification. The unpublished PID feed can choose a reviewed view per clip explicitly. Missing or
+withheld preferred media never switches UID, splices artifacts or bypasses suppression; normal
+availability is preserved and a different winner needs a new reviewed decision.
+
+#### Future implementation boundary
+
+Only these files/functions are in scope when the implementation gate opens:
+
+- New `citypods/publication_selection.py`: strict `parse_publication_selection`, conflict-checking
+  `load_selection_index(cities)`, `record_identity_fingerprint`, pure `select_feed_publication` and
+  `select_search_publication`. Plans return existing objects, selected UIDs and diagnostic counts;
+  unconfigured and ungrouped items remain unchanged.
+- `citypods/config.py::_build_city` validates the optional metadata in `City.extra`; no UID, author,
+  source-ID or transport changes and no new `City` identity fields.
+- `citypods/run.py::_build_impl` loads the full configured index; `_process_city` validates before
+  writes and separates raw retained episodes from public retained episodes after body selection,
+  **before capping**. RSS/index/archive/speaker lists use public selection. `_write_meeting_pages`
+  retains raw selected UID pages, preventing old URLs from disappearing; chapter sidecars needed
+  by those pages remain usable. `_city_archive_hash` and render cache inputs include policy/proof
+  hashes. `SourcePipeline` caches, ingestion and persisted record stores remain full archives.
+- `citypods/search.py::build_search_index` preflights configured groups before shard writes and
+  projects reviewed source groups before `_record_to_document`. `_city_for_record` uses the group's
+  reviewed owning feed for canonical links, leaving ungrouped ownership unchanged. `_shard_hash`
+  includes proof hashes/selected UIDs. Source search currently reads raw archives, so RSS-only
+  filtering is insufficient. Never combine titles, dates, tags, transcripts or votes across members.
+- New `tests/test_publication_selection.py`, existing config/run/search/feed/record tests, sanitized
+  fixtures and `evals/remedy/` regression cases for the three issues, approved feed activations and
+  lifecycle docs. No provider, record-merge/retention, audio/stage, storage, worker or credential edits.
+
+Invalid selection leaves the affected feed's prior files/cache intact and reports a visible hold;
+new feeds publish nothing. Search selection failure retains the prior complete manifest/shards/cache.
+Validate before writing or pruning outputs, including tests with nonempty prior publication.
+Cheap validation is not gated by the expensive-work stop budget. Static cache-version changes must
+state the render/search rebuild story; no audio/ASR pipeline bump or forced artifact backfill.
+
+#### Acceptance and remaining maturation
+
+Ship machinery first with no active groups and prove unchanged existing output. Activate reviewed
+city groups separately, with at most five decisions per PR. Required acceptance:
+
+1. Full provider/persisted replay and separate legacy accounting; unchanged source namespaces,
+   archived JSON, UIDs, official metadata, audio keys and URLs after rendering.
+2. Actual record-backed audio RSS: Foundation's three affected clips appear once each; Addison CPC
+   publishes five recordings while retaining six records; PID publishes three while retaining six.
+   Selector counts alone do not pass. Verify archive/search/list counts as well.
+3. One canonical search document per activated group; old UID pages/chapter URLs still work;
+   ungrouped records and unrelated feed projections stay unchanged. Calendar/no-video rows unaffected.
+4. Negative tests for wrong-host/source clip collisions, independent recordings with equal dates/
+   titles, new/missing/preferred members, conflicting dates/agendas, changed labels, unavailable media,
+   overlapping policies, cache changes and reordered input. No fallback UID or imported artifacts.
+5. Proof failures preserve prior complete outputs/cache; aliases that would expose duplicates stay
+   held until an approved group exists. Whole Ruff/format, offline tests and real CI preview pass.
+
+Before activation L3, select each group's preferred UID with exposure
+and official-date evidence, and prove output-preservation/cache failure behavior against current
+writer/pruning paths. These are implementation gates, not permission to publish the held feeds now.
+Rollback must freeze the last good public outputs or revert selector activation and group activation
+**together**: removing an active group alone reintroduces duplicates. Archive records/artifacts and
+old UID URLs remain. Winner changes explicitly disclose possible subscriber redownloads.
+
+Risks remain explicit: finite mappings need review on identity changes; a chosen record can have less
+complete artifacts than an alternate; past public UID exposure may be unknowable; raw historical UID
+pages can show duplicate observations while canonical lists show one recording. Finite groups are a bounded historical safety step, not the steady-state maintenance design.
+Before future-member admission L3, define a frozen, evaluated provider/view identity policy
+with a sticky published winner. An approved proof type should cover routine repeats without a
+new human decision; conflicting evidence or a proposed winner change still escalates. General
+provider-wide canonicalization and cross-source joining remain outside this contract.
+
+#### Development-ready split and implementation specification
+
+**Inactive machinery: L3. Historical activation and automatic future-member admission: L2.**
+This split preserves the maintainer-approved specification-first sequence. Machinery ships with
+no configured groups. No implicit date repair, identity inference or new publication is enabled.
+The approved directions for the three cities remain subject to evidence, not another taxonomy vote.
+
+**Exact v1 data schema.** `publication_selection` is an optional mapping with exactly
+`version: 1` and `groups: list[PublicationGroup]`. Empty groups are valid. Each group has exactly
+these required fields; unknown keys and missing keys are errors at every nesting level:
+
+| Field | Type and constraints |
+|---|---|
+| `id` | Nonempty source-local slug, `[a-z0-9][a-z0-9-]{0,63}` |
+| `source_key` | Twelve lowercase hexadecimal characters; equals the declaring feed's source key |
+| `identity_kind` | `same_provider_guid` or `verified_granicus_clip` |
+| `identity_key` | Same-GUID: exact nonempty full GUID. Granicus: `https://host/clip/decimal-id` |
+| `members` | At least two mappings, each exactly `uid`, `provider_guid`, `record_fingerprint` |
+| `preferred_uid` | One explicitly listed member UID; never computed from sorting or availability |
+| `evidence_refs` | Nonempty list of `{url, retrieved_at, content_hash}` |
+| `approval_ref` | HTTPS GitHub issue/comment/PR link recording the reviewed decision |
+| `exposure` | Exactly `{status, artifacts, rationale}`; nonempty rationale |
+| `search` | Boolean; no truthy integer/string coercion |
+| `date_resolution` | `null` or exactly `{official_date, evidence_url}` for a verified discrepancy |
+
+Member UIDs are sixteen lowercase hexadecimal characters; fingerprints/content hashes are
+64 lowercase hexadecimal SHA-256 strings. Provider GUIDs remain opaque exact strings.
+`retrieved_at` is a timezone-aware ISO-8601 timestamp. Evidence URLs must be absolute HTTPS URLs;
+configuration parsing performs no network fetch. Evidence retrieval uses `validate_source_url`.
+Exposure `status` is one of `known-current`, `both-published`, `never-published`,
+`historical-unknown`. `artifacts` lists `{url, retrieved_at, content_hash}` snapshots (may be
+empty only for never-published or historical-unknown). A current absence cannot prove never-published;
+the rationale must distinguish first activation from incomplete historical observation.
+
+The configured feed is the owning feed; no separately editable owner slug is needed. Repeated
+groups are allowed only when their complete canonical declarations agree and `search` is false.
+A source group with `search: true` has exactly one owning feed. No member may occur in two groups;
+nonidentical declarations of the same source-local group ID or identity key are errors. Sort groups
+by `(source_key, id)` and members by UID for hashing; ordering is never precedence.
+
+**Record fingerprint v1.** Hash UTF-8 canonical JSON (`sort_keys=True`, compact separators) of
+exactly `{source_key, uid, provider_guid, body, title, published, recording_url}`.
+Use the stored official values, including the stored timestamp string; missing values are `null`.
+`provider_guid` uses the existing records/body helper's GUID precedence, not the public UID.
+`recording_url` is the exact HTTPS provider_guid URL when present, otherwise stored video_url;
+current retained records have provider_guid and video_url, not meeting_url. Do not rewrite
+URLs or timestamps in records. A normalized URL identity used for proof is separate from this
+exact observation fingerprint. Fixtures pin these verified record field names.
+
+For same-GUID proof, compare the entire GUID and require one source namespace. For Granicus proof,
+parse each official recording URL with `urllib.parse`: exact approved lowercased hostname, HTTPS,
+`MediaPlayer.php`, one decimal `clip_id`, one decimal `view_id`, and no ambiguous duplicate query
+keys. The evidence packet lists permitted views by showing the member URLs and official equivalence.
+The identity_key excludes view only after that equivalence is reviewed. Same numeric clip on another
+host/source is independent. Redirects, alternate provider URL forms or ambiguous GUID conventions
+are not silently normalized into this proof type. Evidence must establish body ownership separately.
+
+**Pure API and diagnostics.** In `citypods/publication_selection.py`, frozen dataclasses
+`PublicationMember`, `PublicationGroup`, `SelectionIndex`, `SelectionDiagnostic` and
+`PublicationPlan` hold parsed values. `PublicationPlan` exposes `held`, `diagnostics`,
+`selected_uids`, `suppressed_uids`, `policy_hash`, `raw_items`, `public_items` and, for search,
+`owner_by_uid`. Collections are immutable tuples/mappings; episode/record objects are returned
+unchanged, never combined or mutated. No network/storage/write operations occur in this module.
+
+`parse_publication_selection(raw, *, source_key, feed_slug)` parses the schema.
+`load_selection_index(cities)` checks global declarations. `record_identity_fingerprint`
+accepts `(source_key, record)`. `select_feed_publication(index, city, items, records)` validates
+against the **full** source records, then suppresses nonpreferred members in body-selected items.
+`select_search_publication(index, source_key, records)` projects only search-opted-in groups.
+Ungrouped records preserve their ordering and ownership behavior. Feed groups do not invent a
+body match: all members must pass that feed's current selector before group activation is accepted.
+
+Syntax errors raise `ValueError` with feed/group context, before a build writes outputs.
+Runtime proof failures return held plans with stable diagnostic codes:
+`missing-source`, `missing-member`, `missing-preferred`, `fingerprint-changed`,
+`guid-mismatch`, `identity-mismatch`, `unexpected-member`, `unresolved-date-conflict`,
+`owner-selector-mismatch`, `group-overlap`, `winner-conflict`.
+Diagnostics identify source/group/UID, never credential values or unrestricted provider payloads.
+Unknown same-GUID or reviewed Granicus-identity members hold the group; do not publish duplicates
+or choose a new winner. Different stored dates require non-null `date_resolution`: official_date is ISO YYYY-MM-DD,
+evidence_url must occur in evidence_refs, and the preferred observation must match that date.
+An approval packet establishes the official date; runtime validates the frozen declaration and
+fingerprints, not the authority of remote content. Equal-date groups use null. Records stay unchanged.
+No runtime fetch of approval/evidence links and no model-derived acceptance are permitted.
+
+**Writer/cache integration verified against current code.** `_process_city` currently body-filters,
+caps, hashes and writes meeting pages, speaker lists, archives, chapter sidecars and RSS. The new
+projection runs after body filtering but before capping and **before every write/cache-hit decision**.
+Keep `raw_retained_eps` for meeting pages and their sidecars; use `public_retained_eps` for
+archive/speakers and its capped subset for RSS/feed lists. Sidecars use the uncapped raw retained
+set so suppression or cap changes cannot prune a still-retained UID's chapter URL. Neither page
+nor sidecar retention extends to invented/nonretained records.
+
+An invalid feed plan returns `CityResult(status="held")`, `new_entry=None`, and visible diagnostics;
+existing city files and that feed's cache entry remain byte-for-byte intact. Existing feed presence
+flags derive from its previous output files so the global index does not falsely hide it. A held
+new feed creates no directory or RSS. `_prune_stale_dirs` must retain configured held slugs and
+aliases; `_write_aliases` must not overwrite held aliases. Add an optional held-slug set to these
+existing helpers and their callers. Successful feeds may continue; cheap proof checks ignore stop().
+
+`build_search_index` must validate all configured search groups against full loaded records before
+`mkdir`, shard/cache mutation, asset writes or pruning. On any selection hold return `None`, emit
+diagnostics, and leave prior complete manifest, shards and passed cache unchanged. Preflight is
+performed even when cached hashes match. This guarantees preservation on **selection proof** failure,
+not a new filesystem-wide transaction guarantee for unrelated crashes or storage errors. Existing
+interrupt-related shard behavior is a separate hardening concern; do not widen this implementation.
+
+`_city_for_record` accepts an optional explicit reviewed owner for projected winners. `_shard_hash`
+and `_city_archive_hash` include canonical policy hash and selected UID list when configured.
+Extend the existing feed render fingerprint per city with the same values before feed_content_hash.
+Unconfigured feeds/shards retain their current cache hashes exactly; no global cache version bump.
+A group/proof/winner change invalidates only affected RSS/pages/lists/search rendering. Audio,
+ASR, stage versions, archived state and content-addressed keys are not invalidated or backfilled.
+
+**Sticky winner and future policy.** v1's fixed existing preferred UID is the sticky winner.
+Absence/unavailable audio holds or suppresses according to normal availability, never promotes an
+alternate. A previously public UID cannot change without explicit review and redownload disclosure.
+Automatic future-member admission is a separate L2 identity-policy extension, exercised through
+P2's shared evidence ledger and frozen evaluations before activation: source/host/view proof,
+unchanged official dates/body ownership, initial winner registration and prior exposure evidence
+are required. Exact repeat of an existing validated observation needs no human decision. A new
+member currently holds; it does not become a new feed proposal. No provider-wide rule, hidden
+registry, extra persistent schema, or cross-source join is introduced by inactive v1 machinery.
+The future extension must specify its persistent sticky-winner ledger before it becomes L3.
+
+**Implementation slices and acceptance.** Implement inactive v1 machinery through
+[#1997](https://github.com/BashfulBits/city-meeting-podcasts/issues/1997), followed by separate
+activation work on #1986/#1989/#1991. Only the previously
+listed files, these named dataclasses/helpers and existing writer helpers may change; add no deps.
+Tests use `tests/test_publication_selection.py`, `tests/test_config.py`, `tests/test_run.py`,
+`tests/test_search.py`, `tests/test_feeds.py`, `tests/test_records.py`, sanitized fixtures and
+`evals/remedy/` cases. Include:
+
+- exact parser/fingerprint vectors; reordered declarations; extra keys/bool-as-version rejection;
+  both proof types; wrong host/view/source; full-source extra member not body-selected;
+- six-to-three/six-to-five record-backed RSS projections with playable stored audio, uncapped page
+  retention, calendar rows, speakers/archive/search counts, no artifact mixing and unavailable winner;
+- nonempty prior feed, page, chapter, manifest, shard and cache snapshots remaining identical on
+  each proof failure; a matching cache must not bypass validation; first-build hold writes nothing;
+- no-config byte-identical feeds/search/cache golden fixtures, unchanged source hashes/UIDs,
+  byte-identical archive snapshots, no stage/audio backfill and repeated-run idempotence;
+- whole Ruff/format, offline pytest and current-head CI/preview. No credentials/live model quota
+  are required for machinery tests. Each activation requires refreshed official proof and current
+  public exposure snapshots, actual retained UID selection and its own replay before publication.
+
+Inactive machinery may be implemented from this L3 contract. Do not promote city activation or
+future-member auto-admission merely because machinery tests pass. L3 requires the exact reviewed
+winner/proof packet; unresolved Foundation exposure and Addison agenda date remain held.
+
 ### P1 — evaluation harness and physical-route admission (L3)
 
 Tracking issue: [#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979).
-Implementation starts after this specification update merges.
+Implementation: [PR #1987](https://github.com/BashfulBits/city-meeting-podcasts/pull/1987),
+ready for review, pending merge. Live comparison/admission remains a separate opt-in activity.
+P1 is ready for review, not complete or frozen. The offline harness and strict direct
+routing/provenance are implemented, with empty shadow admissions and no live model calls.
+The maintainer resolved the three specification clarifications: hidden independently adjudicated
+`expected_owner` truth, explicit blind-owner isolation, and mandatory frozen input hashes for
+all evaluation candidates are implemented requirements. Current route effort capability metadata is
+unverified, so no candidate/admitted route is enabled. Live evaluation requires shared CAS-capable
+quota coordination; “no production writes” below means no feed/audio/catalog mutation, not bypass
+of shared quota bookkeeping.
 
 **Purpose:** compare actual model/effort configurations on fixed truth, safely and rerunnably.
 No production model swap or feed mutation occurs in this phase.
@@ -309,7 +628,10 @@ Synthetic cases are labelled; adapted cases without grounding are regression-onl
 seeds migrate without changing their claims or inventing evidence. `gold.json` never enters a prompt.
 
 Gold schema v2: case ID, nullable `supported`, rationale, evidence refs, adjudicator/provenance,
-policy approval link, critical-error class, revision and superseded revision. Only verified,
+policy approval link, critical-error class, revision and superseded revision. Add optional hidden `expected_owner: str | None`
+(default None); a non-null value is a reviewed feed slug, not a target inferred from the claim.
+Reject blank owner truth. Leave the 27 seed owners unset until independently adjudicated.
+Only verified,
 approved-policy cases contribute to admission. Holdout groups cannot share recordings or near-
 duplicate source/family label variants with tuned seeds. Correcting gold requires a reason and a
 new version; prior results remain immutable.
@@ -318,6 +640,31 @@ New `RemedyEvalAnswer` wire contract: case ID, nullable supported verdict, propo
 evidence-reference IDs, missing-evidence list and bounded rationale. IDs resolve locally against
 inputs; unknown IDs fail the response. For blind reviewer experiments, evaluate independent owner
 selection as well as claim support, and keep those scores separate.
+
+Maintainer-authorized clarification (2026-10-03): `run --mode claim_support|blind_owner`
+(default `claim_support`) selects a distinct experiment and prompt hash. `case_messages` accepts
+the same optional mode. Blind inputs use opaque deterministic case IDs mapped back locally,
+never semantically named seed IDs; omit claim, decision type, split group and proposer/tuning
+metadata. Allow only city/source/body, official evidence/recordings, existing feed taxonomy,
+approved policy fields and completeness. Existing-feed taxonomy exposes only slug/city/title,
+podcast title/description, provider and body/body-any/exact/GUID selectors; omit proposal metadata.
+Support both flat policies and frozen per-feed policy maps, filtered to known feed slugs.
+Policy fields are limited to policy ID/version,
+approval ref, aggregate family, exact identities and member names; seed evidence is omitted.
+Gold is never read by run. Preserve the raw answer and map its opaque ID locally for validation.
+
+`compare_results(..., mode="claim_support")` and the report artifact identify the experiment.
+Owner scoring uses hidden `expected_owner`, independently of whether claim truth is known.
+Missing owner truth is unknown, a null proposed owner is abstention, and failed/unattempted jobs
+never score as correct. Blind-owner results cannot contribute to claim-support accuracy or recall.
+Non-null owner truth must be an existing feed slug in the case taxonomy. No truth is inferred
+from model agreement, the proposed claim or historical seed names.
+
+Every evaluation candidate must supply manifest/prompt/schema/catalog hashes and match the
+frozen run context. Missing hashes fail closed even for dry-run planning. Candidate gold hashes,
+reviewed results and production admission refs may be absent until evaluation is complete;
+production still requires all five hashes, qualified evidence and independent reviewed admission.
+The mode-specific prompt hash prevents comparing differently exposed inputs as the same run.
 
 New interfaces in `citypods/remedy_evaluation.py`:
 
@@ -337,8 +684,14 @@ Planned CLI (not available until P1): `freeze --evidence FILE --policy-root conf
 plan, performs no network calls and reports zero model observations. Freeze cannot overwrite an
 existing set without `--force`; forced output retains the superseded manifest/gold and hashes.
 Rescore writes a separate derived report, never replaces raw responses. Live `run` requires
-`--live` and positive `--max-cases`; quota exhaustion records unattempted cases, rather than
-retrying indefinitely. No production writes are possible from these commands.
+`--live` and positive `--max-cases`, a total logical-case cap across configurations.
+Maintainer-approved on 2026-10-03: evaluation jobs set `max_provider_attempts: 2` in their inputs.
+The immediate backend shares that budget across correction, capacity and pacing retries, disables
+SDK retries, and records actual client invocation counts on results and safe failure rows.
+`JobResult.provider_attempts` is optional/additive; ordinary production defaults are unchanged.
+Non-immediate/dispatch paths reject this input before side effects. Reports distinguish first-call
+and retried completion; remote provider/gateway internal retries are outside the client count.
+Quota exhaustion records unattempted cases, rather than retrying indefinitely. No production writes are possible from these commands.
 
 `config/remedy.yml` schema v1 has `mode: shadow|manual|qualified_alias`, `admissions`,
 `qualified_alias_types`, `limits`, and `onboarding_exceptions`. Initial mode is `shadow`; admissions
@@ -361,8 +714,8 @@ admission. Role names map to `audit-remedy-proposer`, `audit-remedy-reviewer` an
 Add optional `allowed_route_ids: tuple[str, ...] | None = None` to `LLMRequestPolicy`.
 `select_route` rejects physical IDs outside it **before** overflow/`also_serves` pool substitution
 and quota reservation. `None` preserves current behavior; empty tuple admits nothing. P1 uses
-this only for direct calls; no dispatch serialization or Worker change is introduced.
-A non-None allowlist with a queued/dispatch request is rejected at the backend boundary, rather
+this only for `run_immediate`; no deferred serialization or Worker change is introduced.
+A non-None allowlist with any `run_inference` or queued/dispatch request is rejected, rather
 than silently ignored by a transport that does not implement this gate.
 
 Add optional fields to synchronous `JobResult`: `route_id`, `upstream_model`,
@@ -378,7 +731,10 @@ P1 tests: identical inputs across routes; gold never serialized; wrong model thr
 unsupported effort; unknown truth and failed calls never counted correct; candidate execution is permitted only in
 evaluation mode and cannot satisfy production admission; adapted examples cannot
 qualify admission; holdout overlap; missing/disjoint IDs; immutable raw results; offline dry-run.
-Use fake backends/ledger/catalog fixtures; no credential requirement in CI.
+Also test hidden owner truth never enters prompts, opaque IDs and metadata masking, owner truth
+independent of unknown claim truth, owner abstention/failure/unattempted accounting, separate mode
+metrics/hashes and missing candidate hashes. Use fake backends/ledger/catalog fixtures; no
+credential requirement in CI.
 
 P1 exit: offline tests and full checks pass; the harness writes traceable reports and strictly
 constrains direct physical routes. Live evaluation is a separate opt-in run with existing free
@@ -390,17 +746,37 @@ quota/deadlines. No admission result or approved production route is assumed by 
 **Permitted files:** new `citypods/remedy_policy.py`, new `citypods/remedy_ledger.py`,
 `citypods/{config.py,audit.py,audit_remedy.py}`, `scripts/audit_feeds.py`,
 `citypods/storage/routing.py`, `config/remedy.yml`, approved `config/feeds/*.yml`,
-new `tests/test_remedy_policy.py`, new `tests/test_remedy_ledger.py`, existing audit/config/storage
+`citypods/remedy_evaluation.py` (only shared-config/template schema compatibility),
+new `tests/test_remedy_policy.py`, new `tests/test_remedy_ledger.py`,
+`tests/test_remedy_evaluation.py` (only shared-config compatibility), existing audit/config/storage
 routing tests and lifecycle docs. Feed changes are still separate city/family decisions.
 
 Extend validated feed `remedy_policy`: existing `aggregate_family`/`member_names` stay valid;
 new optional `policy_id`, `version`, `identity_names`, `positive_case_ids`, `negative_case_ids`,
-`approval_ref`. Supported families: `tif`, `pid`, `bond`, `charter`, `redistricting`,
+`approval_ref`, plus optional `template_id` and `template_version` identifying the approved
+reusable policy. Supported families: `tif`, `pid`, `bond`, `charter`, `redistricting`,
 `public_input`, `public_briefings`. Identity-only policies omit `aggregate_family`; they do not
 merge independent bodies. Approved marker recognition belongs in `remedy_policy.py`, never in
 an LLM response. Member/topic names are holding clues and cannot establish ownership alone.
 
-New interfaces: `load_policies(feed_paths) -> PolicyIndex`,
+P2 adds optional `policy_templates` to shared `config/remedy.yml` and its strict `RemedyConfig`
+reader, defaulting to an empty list for existing config compatibility. New strict `PolicyTemplate`
+entries contain `id`, `version`, `approval_ref`, approved scope (`cross_city` or `city_source`),
+family/identity type, permitted transformations/selector forms, official-proof requirements,
+exclusion/migration boundaries and positive/negative/transfer case IDs. Known keys/types only;
+unknown templates/versions, unsupported forms and missing required proof fail closed. Templates
+never carry a city's exact body names as global truths or automatically qualify a model/merge.
+Define these types in `citypods/remedy_policy.py`; do not introduce another independent catalog
+or config parser for onboarding. Policy-instance evidence includes template and local revision
+hashes, so a template change replays affected instances and invalidates stale decisions.
+
+New `load_policy_templates(config) -> TemplateIndex` and
+`instantiate_policies(city, source_key, templates, official_evidence) -> PolicyInstances` live in
+`citypods/remedy_policy.py`. Instantiation binds an approved template to verified local ownership;
+it emits an evidence-backed unresolved result if required identity/completeness proof is missing.
+Cross-city template approval does not authorize a new city's publication without its baseline gate.
+
+New interfaces: `load_policies(feed_paths, *, templates=None) -> PolicyIndex`,
 `resolve_owner(label, source_key, policies) -> OwnershipResolution`,
 `replay_coverage(recordings, feeds, policies) -> CoverageReplay`, and
 `material_evidence_hash(evidence) -> str`. Resolution returns verified owner, ambiguous or unknown,
@@ -460,6 +836,14 @@ Material change is new official identity evidence, changed approved policy, or a
 format contradiction. Counts, a new date under the same rule, prompt/model changes or another week
 alone do not regenerate a rejected proposal. Explicit maintainer reopening is recorded as an event.
 Route changes may trigger an eval comparison, not unsolicited reopening of a rejected policy.
+
+P2 shared-default acceptance: the same frozen evidence yields identical ownership, coverage and
+exclusion results through onboarding and maintenance entrypoints. Known normalization/rule matches
+resolve without an LLM call; unknowns preserve evidence and escalate. Test template instantiation
+for a previously unseen city, neighboring wrong-body/topic labels, missing local proof, local
+feedback isolation, unknown/stale template revisions and complete regression replay after changes.
+Cross-city positive/negative cases live under `evals/remedy/` with ordinary gold provenance and
+holdout isolation; city-specific facts are never promoted by agreement alone.
 
 P2 tests: archived-but-unserved labels visible; newly matched false inclusion surfaced; duplicate
 views; no UID invention; shared word not identity; source-scoped negatives; v1 refresh and stale
@@ -604,6 +988,17 @@ recheck config/evidence/qualification and that the PR is still open; changed bas
 replay and fresh review. Independent validation is cached only by all evidence/config/model/prompt
 hashes. Critical error appends a suspension event which overrides `enabled`; report immediately,
 retain evidence and create a reviewed rollback PR. A recovered R2 cache cannot remove a suspension.
+
+P5 wires city onboarding to P2's shared template loader/instantiator, ownership resolver and
+coverage replay before the same P1 evaluation lane. It must not maintain a second prompt-only
+taxonomy or copy city aliases into global defaults. Test identical maintenance/onboarding outcomes
+and transfer to unseen cities using frozen official evidence, including wrong-body/topic negatives.
+
+Qualification identifies the stable template/version, city/source owner and permitted
+transformation scope. Each change still validates its base/prospective instance hashes and replay.
+A new reviewed alias within that enabled scope does not itself require requalifying the entire
+template; changes to ownership rules, template version or permitted transformations do. Applying
+a subscription default to a new city never transfers another city's automatic-merge authorization.
 
 `onboarding_exceptions` entries: city/source, available date range and views, missing periods/caps,
 retrieval attempts with refs, approved issue/PR and maintainer, approval date, visible limitation

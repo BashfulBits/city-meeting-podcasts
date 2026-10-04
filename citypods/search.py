@@ -424,6 +424,9 @@ def _shard_hash(records: dict[str, Any], candidates: list[City], base_url: str) 
                 "body": city.source.get("body"),
                 "body_any": city.source.get("body_any"),
                 "body_includes": city.source.get("body_includes"),
+                **(
+                    {"body_exact": city.source["body_exact"]} if "body_exact" in city.source else {}
+                ),
                 "entity": city.city_entity,
                 "title": city.podcast_title,
                 "author": city.podcast_author,

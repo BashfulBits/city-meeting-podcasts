@@ -547,3 +547,72 @@ def test_invalid_aggregate_remedy_policy_fails_closed(tmp_path, policy):
     _write(tmp_path, "foo-tx.yml", VALID + f"remedy_policy: {policy}\n")
     with pytest.raises(ValueError, match="remedy_policy"):
         load_city_configs(tmp_path, DEFAULTS)
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        "{}",
+        "{aggregate_family: [tif]}",
+        "{aggregate_family: null}",
+        "{member_names: [Council]}",
+        "{identity_names: []}",
+        "{identity_names: ['* Council']}",
+        "{identity_names: ['???']}",
+        "{identity_names: ['---']}",
+        "{identity_names: [null]}",
+        "{identity_names: Council}",
+        "{aggregate_family: bond, identity_names: ['Board?']}",
+    ],
+)
+def test_invalid_named_remedy_policy_fails_closed(tmp_path, policy):
+    _write(tmp_path, "foo-tx.yml", VALID + f"remedy_policy: {policy}\n")
+    with pytest.raises(ValueError, match="remedy_policy"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+@pytest.mark.parametrize(
+    "family", ["tif", "pid", "bond", "charter", "redistricting", "public_input", "public_briefings"]
+)
+def test_approved_aggregate_remedy_families(tmp_path, family):
+    _write(tmp_path, "foo-tx.yml", VALID + f"remedy_policy: {{aggregate_family: {family}}}\n")
+    assert load_city_configs(tmp_path, DEFAULTS)[0].extra["remedy_policy"] == {
+        "aggregate_family": family
+    }
+
+
+def test_named_body_remedy_policy_preserves_exact_reviewed_names(tmp_path):
+    policy = {
+        "identity_names": ["Housing Finance Corporation"],
+        "member_names": ["Housing Finance"],
+    }
+    _write(
+        tmp_path,
+        "foo-tx.yml",
+        VALID + "remedy_policy:\n"
+        "  identity_names: [Housing Finance Corporation]\n"
+        "  member_names: [Housing Finance]\n",
+    )
+    # A named-body policy does not acquire an aggregate family implicitly.
+    assert load_city_configs(tmp_path, DEFAULTS)[0].extra["remedy_policy"] == policy
+
+
+def test_exact_body_selectors_load_without_changing_pinned_source_identity(tmp_path):
+    first = VALID.replace("source:\n", "source:\n  body_exact: [UDC Advisory Committee]\n")
+    second = VALID.replace("slug: foo-tx", "slug: bar-tx")
+    _write(tmp_path, "foo-tx.yml", first + "source_id: shared-source\n")
+    _write(tmp_path, "bar-tx.yml", second + "source_id: shared-source\n")
+    cities = load_city_configs(tmp_path, DEFAULTS)
+    assert {city.source_id for city in cities} == {"shared-source"}
+    assert next(city for city in cities if city.slug == "foo-tx").source["body_exact"] == [
+        "UDC Advisory Committee"
+    ]
+
+
+@pytest.mark.parametrize("invalid", ["[]", "Committee", "[' ']", "['Board *']"])
+def test_invalid_exact_body_selectors_fail_config_validation(tmp_path, invalid):
+    _write(
+        tmp_path, "foo-tx.yml", VALID.replace("source:\n", f"source:\n  body_exact: {invalid}\n")
+    )
+    with pytest.raises(ValueError, match="body_exact"):
+        load_city_configs(tmp_path, DEFAULTS)

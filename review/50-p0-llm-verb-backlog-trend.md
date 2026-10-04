@@ -317,3 +317,22 @@ These are latest per-verb run snapshots, not a sum of unique meetings across lan
 prelabeler, shadow and moments throughput remain marked unreliable under the P0 design; their
 reported drain estimates do not establish achieved meeting throughput. No quotas were changed.
 First manual Actions acceptance still follows workflow registration on the default branch.
+
+
+### Maintainer-directed lifecycle adaptation (2026-10-03, PR #1983)
+
+The maintainer requested automatic discovery of new LLM verbs and tolerance of retired jobs.
+This supersedes P0's fixed six-verb scheduled consumer and fail-on-unclassified requirement.
+The read-only consumer discovers purposes from `llm_lanes` and additional LLM stage snapshots
+from recent run events. Existing shared-stage token ownership remains explicit; generic stage
+reasons are classified only by known semantics. Unknown tokens remain visible, do not fail the
+scheduled report, and suppress capacity recommendations for the affected row. Strict CLI mode
+remains available for diagnostics. Registry removals mark legacy rows retired; historical unknown
+stages are unregistered. Neither recommends capacity. Missing telemetry is shown as unmeasured
+(null backlog), never a measured zero. An empty event window is a successful unmeasured report;
+unreadable input files and storage access failures remain diagnostics/errors.
+
+Run events do not include per-purpose ownership. A new purpose sharing another verb's stage is
+automatically listed but cannot have its backlog attributed until its producer emits distinct
+telemetry. The reader does not guess from model names or aggregate stage counts. Producer telemetry
+changes remain a separate design task; no producer, Worker, schema, quota, or recipe changes here.

@@ -1,0 +1,1468 @@
+{
+  "version": 2,
+  "frozen_at": "2026-10-03T05:17:22.104449+00:00",
+  "split": "regression",
+  "provenance": "Official source-grounded policy seeds; not independently adjudicated admission cases.",
+  "cases": [
+    {
+      "id": "addison-udc-owner",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Unified Development Code (UDC) Advisory Committee",
+      "claim": "Assign these verified committee recordings to the UDC committee feed.",
+      "evidence_refs": [
+        {
+          "id": "provider-303938",
+          "url": "https://addisontx.new.swagit.com/videos/303938",
+          "recording_id": "303938",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-03",
+          "source_span": "{\"body\": \"Unified Development Code (UDC) Advisory Committee\", \"links\": {\"agenda\": \"https://addisontx.new.swagit.com/videos/303938/agenda\", \"canonical_video\": \"https://addisontx.new.swagit.com/videos/303938\"}, \"provider_guid\": \"303938\", \"published\": \"2024-04-30T00:00:00+00:00\", \"title\": \"Unified Development Code (UDC) Advisory Committee \\u2013 Apr 30, 2024\"}",
+          "content_hash": "2b4dbd53e95ac7b12b4f26974602818d4907ee737066de63355b8c02b38ab818"
+        },
+        {
+          "id": "official-agenda-heading-303938",
+          "url": "https://addisontx.new.swagit.com/videos/303938",
+          "recording_id": "303938",
+          "agenda_id": "303938",
+          "retrieved_at": "2026-10-03T05:12:08.159725+00:00",
+          "source_span": "MEETING OF THE UNIFIED DEVELOPMENT CODE (UDC) ADVISORY COMMITTEE TUESDAY, APRIL 30, 2024 ADDISON CONFERENCE CENTER 15650 ADDISON ROAD, ADDISON, TX 75001",
+          "content_hash": "0932f3c2a6c57bea12dc80328a1bde08192ec69d8396a76555aac451f2d75d57"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "4bdafbfb40214fff",
+          "provider_guid": "303938",
+          "body": "Unified Development Code (UDC) Advisory Committee",
+          "title": "Unified Development Code (UDC) Advisory Committee \u2013 Apr 30, 2024",
+          "date": "2024-04-30T00:00:00+00:00",
+          "canonical_url": "https://addisontx.new.swagit.com/videos/303938"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "addison-tx-unified-development-code-advisory-committee",
+          "podcast_title": "Addison: Unified Development Code Advisory Committee",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body_exact": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {
+            "identity_names": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ],
+            "member_names": [
+              "Unified Development Code",
+              "UDC Advisory Committee"
+            ]
+          }
+        },
+        {
+          "slug": "addison-tx-city-council",
+          "podcast_title": "Addison: City Council",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "City Council",
+            "body_any": [
+              "Work Session",
+              "Work Session and Regular Meeting",
+              "Special Meeting",
+              "Fiscal Year * Budget Workshop",
+              "Special Budget Meeting",
+              "Tax & Budget Public Hearing",
+              "Budget Meeting",
+              "Combined Meeting",
+              "Special Council"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "394474",
+                "body": "TIRZ #1 Board Meeting"
+              },
+              {
+                "provider_guid": "297695",
+                "body": "Council Strategic Planning Day 1 & 2"
+              },
+              {
+                "provider_guid": "55874",
+                "body": "Special Emergency Meeting"
+              },
+              {
+                "provider_guid": "55892",
+                "body": "Tax Rate Public Hearing"
+              }
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-planning-and-zoning-commission",
+          "podcast_title": "Addison: Planning and Zoning Commission",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning and Zoning"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-town-meetings",
+          "podcast_title": "Addison: Town Meetings",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Town Meetings",
+            "body_includes": [
+              {
+                "provider_guid": "208554",
+                "body": "Special Community Meeting"
+              },
+              {
+                "provider_guid": "304981",
+                "body": "Homelessness Education Seminar"
+              },
+              {
+                "provider_guid": "56020",
+                "body": "George Herbert Walker Bush Elementary Dedication"
+              },
+              {
+                "provider_guid": "56021",
+                "body": "Spruill Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56022",
+                "body": "Beckert Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56024",
+                "body": "Earth Day"
+              },
+              {
+                "provider_guid": "56025",
+                "body": "Remington's Seafood Grill 30 Years Award"
+              },
+              {
+                "provider_guid": "56026",
+                "body": "Destination Addison"
+              },
+              {
+                "provider_guid": "56027",
+                "body": "Addison Way"
+              },
+              {
+                "provider_guid": "56028",
+                "body": "Vitruvian Park"
+              },
+              {
+                "provider_guid": "56029",
+                "body": "Citizen Advisory Committee"
+              },
+              {
+                "provider_guid": "309011",
+                "body": "Community Meeting #3"
+              },
+              {
+                "provider_guid": "296062",
+                "body": "Community Meeting #2"
+              },
+              {
+                "provider_guid": "277096",
+                "body": "Community Meeting #1"
+              },
+              {
+                "provider_guid": "136129",
+                "body": "Unified Development Code (UDC) Advisory Committee Open House"
+              },
+              {
+                "provider_guid": "56060",
+                "body": "Former Sam's Club Applicant Presentation"
+              },
+              {
+                "provider_guid": "56059",
+                "body": "Former Sam's Club Staff Presentation"
+              }
+            ],
+            "body_any": [
+              "Town Hall Meeting"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/addison-udc-coverage-2026-10.md",
+        "owner": "addison-tx-unified-development-code-advisory-committee",
+        "open_house_not_committee_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 819,
+        "persisted_rows": 822,
+        "unique_recordings": 819,
+        "limitations": "Seed truth, no independent admission holdout. Open House content/aggregate migration separate."
+      },
+      "split_group": "addison-tx:udc"
+    },
+    {
+      "id": "addison-udc-not-council",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Unified Development Code (UDC) Advisory Committee",
+      "claim": "Assign to Council as the same meeting body because Council adopts the code.",
+      "evidence_refs": [
+        {
+          "id": "provider-303938",
+          "url": "https://addisontx.new.swagit.com/videos/303938",
+          "recording_id": "303938",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-03",
+          "source_span": "{\"body\": \"Unified Development Code (UDC) Advisory Committee\", \"links\": {\"agenda\": \"https://addisontx.new.swagit.com/videos/303938/agenda\", \"canonical_video\": \"https://addisontx.new.swagit.com/videos/303938\"}, \"provider_guid\": \"303938\", \"published\": \"2024-04-30T00:00:00+00:00\", \"title\": \"Unified Development Code (UDC) Advisory Committee \\u2013 Apr 30, 2024\"}",
+          "content_hash": "2b4dbd53e95ac7b12b4f26974602818d4907ee737066de63355b8c02b38ab818"
+        },
+        {
+          "id": "official-agenda-heading-303938",
+          "url": "https://addisontx.new.swagit.com/videos/303938",
+          "recording_id": "303938",
+          "agenda_id": "303938",
+          "retrieved_at": "2026-10-03T05:12:08.159725+00:00",
+          "source_span": "MEETING OF THE UNIFIED DEVELOPMENT CODE (UDC) ADVISORY COMMITTEE TUESDAY, APRIL 30, 2024 ADDISON CONFERENCE CENTER 15650 ADDISON ROAD, ADDISON, TX 75001",
+          "content_hash": "0932f3c2a6c57bea12dc80328a1bde08192ec69d8396a76555aac451f2d75d57"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "4bdafbfb40214fff",
+          "provider_guid": "303938",
+          "body": "Unified Development Code (UDC) Advisory Committee",
+          "title": "Unified Development Code (UDC) Advisory Committee \u2013 Apr 30, 2024",
+          "date": "2024-04-30T00:00:00+00:00",
+          "canonical_url": "https://addisontx.new.swagit.com/videos/303938"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "addison-tx-unified-development-code-advisory-committee",
+          "podcast_title": "Addison: Unified Development Code Advisory Committee",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body_exact": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {
+            "identity_names": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ],
+            "member_names": [
+              "Unified Development Code",
+              "UDC Advisory Committee"
+            ]
+          }
+        },
+        {
+          "slug": "addison-tx-city-council",
+          "podcast_title": "Addison: City Council",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "City Council",
+            "body_any": [
+              "Work Session",
+              "Work Session and Regular Meeting",
+              "Special Meeting",
+              "Fiscal Year * Budget Workshop",
+              "Special Budget Meeting",
+              "Tax & Budget Public Hearing",
+              "Budget Meeting",
+              "Combined Meeting",
+              "Special Council"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "394474",
+                "body": "TIRZ #1 Board Meeting"
+              },
+              {
+                "provider_guid": "297695",
+                "body": "Council Strategic Planning Day 1 & 2"
+              },
+              {
+                "provider_guid": "55874",
+                "body": "Special Emergency Meeting"
+              },
+              {
+                "provider_guid": "55892",
+                "body": "Tax Rate Public Hearing"
+              }
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-planning-and-zoning-commission",
+          "podcast_title": "Addison: Planning and Zoning Commission",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning and Zoning"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-town-meetings",
+          "podcast_title": "Addison: Town Meetings",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Town Meetings",
+            "body_includes": [
+              {
+                "provider_guid": "208554",
+                "body": "Special Community Meeting"
+              },
+              {
+                "provider_guid": "304981",
+                "body": "Homelessness Education Seminar"
+              },
+              {
+                "provider_guid": "56020",
+                "body": "George Herbert Walker Bush Elementary Dedication"
+              },
+              {
+                "provider_guid": "56021",
+                "body": "Spruill Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56022",
+                "body": "Beckert Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56024",
+                "body": "Earth Day"
+              },
+              {
+                "provider_guid": "56025",
+                "body": "Remington's Seafood Grill 30 Years Award"
+              },
+              {
+                "provider_guid": "56026",
+                "body": "Destination Addison"
+              },
+              {
+                "provider_guid": "56027",
+                "body": "Addison Way"
+              },
+              {
+                "provider_guid": "56028",
+                "body": "Vitruvian Park"
+              },
+              {
+                "provider_guid": "56029",
+                "body": "Citizen Advisory Committee"
+              },
+              {
+                "provider_guid": "309011",
+                "body": "Community Meeting #3"
+              },
+              {
+                "provider_guid": "296062",
+                "body": "Community Meeting #2"
+              },
+              {
+                "provider_guid": "277096",
+                "body": "Community Meeting #1"
+              },
+              {
+                "provider_guid": "136129",
+                "body": "Unified Development Code (UDC) Advisory Committee Open House"
+              },
+              {
+                "provider_guid": "56060",
+                "body": "Former Sam's Club Applicant Presentation"
+              },
+              {
+                "provider_guid": "56059",
+                "body": "Former Sam's Club Staff Presentation"
+              }
+            ],
+            "body_any": [
+              "Town Hall Meeting"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/addison-udc-coverage-2026-10.md",
+        "owner": "addison-tx-unified-development-code-advisory-committee",
+        "open_house_not_committee_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 819,
+        "persisted_rows": 822,
+        "unique_recordings": 819,
+        "limitations": "Seed truth, no independent admission holdout. Open House content/aggregate migration separate."
+      },
+      "split_group": "addison-tx:udc"
+    },
+    {
+      "id": "addison-udc-not-pz",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Unified Development Code (UDC) Advisory Committee",
+      "claim": "Assign to Planning and Zoning Commission as the same body.",
+      "evidence_refs": [
+        {
+          "id": "provider-303938",
+          "url": "https://addisontx.new.swagit.com/videos/303938",
+          "recording_id": "303938",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-03",
+          "source_span": "{\"body\": \"Unified Development Code (UDC) Advisory Committee\", \"links\": {\"agenda\": \"https://addisontx.new.swagit.com/videos/303938/agenda\", \"canonical_video\": \"https://addisontx.new.swagit.com/videos/303938\"}, \"provider_guid\": \"303938\", \"published\": \"2024-04-30T00:00:00+00:00\", \"title\": \"Unified Development Code (UDC) Advisory Committee \\u2013 Apr 30, 2024\"}",
+          "content_hash": "2b4dbd53e95ac7b12b4f26974602818d4907ee737066de63355b8c02b38ab818"
+        },
+        {
+          "id": "official-agenda-heading-303938",
+          "url": "https://addisontx.new.swagit.com/videos/303938",
+          "recording_id": "303938",
+          "agenda_id": "303938",
+          "retrieved_at": "2026-10-03T05:12:08.159725+00:00",
+          "source_span": "MEETING OF THE UNIFIED DEVELOPMENT CODE (UDC) ADVISORY COMMITTEE TUESDAY, APRIL 30, 2024 ADDISON CONFERENCE CENTER 15650 ADDISON ROAD, ADDISON, TX 75001",
+          "content_hash": "0932f3c2a6c57bea12dc80328a1bde08192ec69d8396a76555aac451f2d75d57"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "4bdafbfb40214fff",
+          "provider_guid": "303938",
+          "body": "Unified Development Code (UDC) Advisory Committee",
+          "title": "Unified Development Code (UDC) Advisory Committee \u2013 Apr 30, 2024",
+          "date": "2024-04-30T00:00:00+00:00",
+          "canonical_url": "https://addisontx.new.swagit.com/videos/303938"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "addison-tx-unified-development-code-advisory-committee",
+          "podcast_title": "Addison: Unified Development Code Advisory Committee",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body_exact": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {
+            "identity_names": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ],
+            "member_names": [
+              "Unified Development Code",
+              "UDC Advisory Committee"
+            ]
+          }
+        },
+        {
+          "slug": "addison-tx-city-council",
+          "podcast_title": "Addison: City Council",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "City Council",
+            "body_any": [
+              "Work Session",
+              "Work Session and Regular Meeting",
+              "Special Meeting",
+              "Fiscal Year * Budget Workshop",
+              "Special Budget Meeting",
+              "Tax & Budget Public Hearing",
+              "Budget Meeting",
+              "Combined Meeting",
+              "Special Council"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "394474",
+                "body": "TIRZ #1 Board Meeting"
+              },
+              {
+                "provider_guid": "297695",
+                "body": "Council Strategic Planning Day 1 & 2"
+              },
+              {
+                "provider_guid": "55874",
+                "body": "Special Emergency Meeting"
+              },
+              {
+                "provider_guid": "55892",
+                "body": "Tax Rate Public Hearing"
+              }
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-planning-and-zoning-commission",
+          "podcast_title": "Addison: Planning and Zoning Commission",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning and Zoning"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-town-meetings",
+          "podcast_title": "Addison: Town Meetings",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Town Meetings",
+            "body_includes": [
+              {
+                "provider_guid": "208554",
+                "body": "Special Community Meeting"
+              },
+              {
+                "provider_guid": "304981",
+                "body": "Homelessness Education Seminar"
+              },
+              {
+                "provider_guid": "56020",
+                "body": "George Herbert Walker Bush Elementary Dedication"
+              },
+              {
+                "provider_guid": "56021",
+                "body": "Spruill Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56022",
+                "body": "Beckert Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56024",
+                "body": "Earth Day"
+              },
+              {
+                "provider_guid": "56025",
+                "body": "Remington's Seafood Grill 30 Years Award"
+              },
+              {
+                "provider_guid": "56026",
+                "body": "Destination Addison"
+              },
+              {
+                "provider_guid": "56027",
+                "body": "Addison Way"
+              },
+              {
+                "provider_guid": "56028",
+                "body": "Vitruvian Park"
+              },
+              {
+                "provider_guid": "56029",
+                "body": "Citizen Advisory Committee"
+              },
+              {
+                "provider_guid": "309011",
+                "body": "Community Meeting #3"
+              },
+              {
+                "provider_guid": "296062",
+                "body": "Community Meeting #2"
+              },
+              {
+                "provider_guid": "277096",
+                "body": "Community Meeting #1"
+              },
+              {
+                "provider_guid": "136129",
+                "body": "Unified Development Code (UDC) Advisory Committee Open House"
+              },
+              {
+                "provider_guid": "56060",
+                "body": "Former Sam's Club Applicant Presentation"
+              },
+              {
+                "provider_guid": "56059",
+                "body": "Former Sam's Club Staff Presentation"
+              }
+            ],
+            "body_any": [
+              "Town Hall Meeting"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/addison-udc-coverage-2026-10.md",
+        "owner": "addison-tx-unified-development-code-advisory-committee",
+        "open_house_not_committee_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 819,
+        "persisted_rows": 822,
+        "unique_recordings": 819,
+        "limitations": "Seed truth, no independent admission holdout. Open House content/aggregate migration separate."
+      },
+      "split_group": "addison-tx:udc"
+    },
+    {
+      "id": "addison-udc-not-new-title-feed",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Unified Development Code (UDC) Advisory Committee",
+      "claim": "Create another feed for this raw provider title.",
+      "evidence_refs": [
+        {
+          "id": "provider-303938",
+          "url": "https://addisontx.new.swagit.com/videos/303938",
+          "recording_id": "303938",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-03",
+          "source_span": "{\"body\": \"Unified Development Code (UDC) Advisory Committee\", \"links\": {\"agenda\": \"https://addisontx.new.swagit.com/videos/303938/agenda\", \"canonical_video\": \"https://addisontx.new.swagit.com/videos/303938\"}, \"provider_guid\": \"303938\", \"published\": \"2024-04-30T00:00:00+00:00\", \"title\": \"Unified Development Code (UDC) Advisory Committee \\u2013 Apr 30, 2024\"}",
+          "content_hash": "2b4dbd53e95ac7b12b4f26974602818d4907ee737066de63355b8c02b38ab818"
+        },
+        {
+          "id": "official-agenda-heading-303938",
+          "url": "https://addisontx.new.swagit.com/videos/303938",
+          "recording_id": "303938",
+          "agenda_id": "303938",
+          "retrieved_at": "2026-10-03T05:12:08.159725+00:00",
+          "source_span": "MEETING OF THE UNIFIED DEVELOPMENT CODE (UDC) ADVISORY COMMITTEE TUESDAY, APRIL 30, 2024 ADDISON CONFERENCE CENTER 15650 ADDISON ROAD, ADDISON, TX 75001",
+          "content_hash": "0932f3c2a6c57bea12dc80328a1bde08192ec69d8396a76555aac451f2d75d57"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "4bdafbfb40214fff",
+          "provider_guid": "303938",
+          "body": "Unified Development Code (UDC) Advisory Committee",
+          "title": "Unified Development Code (UDC) Advisory Committee \u2013 Apr 30, 2024",
+          "date": "2024-04-30T00:00:00+00:00",
+          "canonical_url": "https://addisontx.new.swagit.com/videos/303938"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "addison-tx-unified-development-code-advisory-committee",
+          "podcast_title": "Addison: Unified Development Code Advisory Committee",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body_exact": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {
+            "identity_names": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ],
+            "member_names": [
+              "Unified Development Code",
+              "UDC Advisory Committee"
+            ]
+          }
+        },
+        {
+          "slug": "addison-tx-city-council",
+          "podcast_title": "Addison: City Council",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "City Council",
+            "body_any": [
+              "Work Session",
+              "Work Session and Regular Meeting",
+              "Special Meeting",
+              "Fiscal Year * Budget Workshop",
+              "Special Budget Meeting",
+              "Tax & Budget Public Hearing",
+              "Budget Meeting",
+              "Combined Meeting",
+              "Special Council"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "394474",
+                "body": "TIRZ #1 Board Meeting"
+              },
+              {
+                "provider_guid": "297695",
+                "body": "Council Strategic Planning Day 1 & 2"
+              },
+              {
+                "provider_guid": "55874",
+                "body": "Special Emergency Meeting"
+              },
+              {
+                "provider_guid": "55892",
+                "body": "Tax Rate Public Hearing"
+              }
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-planning-and-zoning-commission",
+          "podcast_title": "Addison: Planning and Zoning Commission",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning and Zoning"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-town-meetings",
+          "podcast_title": "Addison: Town Meetings",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Town Meetings",
+            "body_includes": [
+              {
+                "provider_guid": "208554",
+                "body": "Special Community Meeting"
+              },
+              {
+                "provider_guid": "304981",
+                "body": "Homelessness Education Seminar"
+              },
+              {
+                "provider_guid": "56020",
+                "body": "George Herbert Walker Bush Elementary Dedication"
+              },
+              {
+                "provider_guid": "56021",
+                "body": "Spruill Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56022",
+                "body": "Beckert Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56024",
+                "body": "Earth Day"
+              },
+              {
+                "provider_guid": "56025",
+                "body": "Remington's Seafood Grill 30 Years Award"
+              },
+              {
+                "provider_guid": "56026",
+                "body": "Destination Addison"
+              },
+              {
+                "provider_guid": "56027",
+                "body": "Addison Way"
+              },
+              {
+                "provider_guid": "56028",
+                "body": "Vitruvian Park"
+              },
+              {
+                "provider_guid": "56029",
+                "body": "Citizen Advisory Committee"
+              },
+              {
+                "provider_guid": "309011",
+                "body": "Community Meeting #3"
+              },
+              {
+                "provider_guid": "296062",
+                "body": "Community Meeting #2"
+              },
+              {
+                "provider_guid": "277096",
+                "body": "Community Meeting #1"
+              },
+              {
+                "provider_guid": "136129",
+                "body": "Unified Development Code (UDC) Advisory Committee Open House"
+              },
+              {
+                "provider_guid": "56060",
+                "body": "Former Sam's Club Applicant Presentation"
+              },
+              {
+                "provider_guid": "56059",
+                "body": "Former Sam's Club Staff Presentation"
+              }
+            ],
+            "body_any": [
+              "Town Hall Meeting"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/addison-udc-coverage-2026-10.md",
+        "owner": "addison-tx-unified-development-code-advisory-committee",
+        "open_house_not_committee_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 819,
+        "persisted_rows": 822,
+        "unique_recordings": 819,
+        "limitations": "Seed truth, no independent admission holdout. Open House content/aggregate migration separate."
+      },
+      "split_group": "addison-tx:udc"
+    },
+    {
+      "id": "addison-udc-open-house-not-committee",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Unified Development Code (UDC) Advisory Committee Open House",
+      "claim": "Assign the Open House to the UDC committee feed as the same proceeding.",
+      "evidence_refs": [
+        {
+          "id": "provider-136129",
+          "url": "https://addisontx.new.swagit.com/videos/136129",
+          "recording_id": "136129",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-03",
+          "source_span": "{\"body\": \"Unified Development Code (UDC) Advisory Committee Open House\", \"links\": {\"canonical_video\": \"https://addisontx.new.swagit.com/videos/136129\"}, \"provider_guid\": \"136129\", \"published\": \"2021-08-25T00:00:00+00:00\", \"title\": \"Unified Development Code (UDC) Advisory Committee Open House \\u2013 Aug 25, 2021\"}",
+          "content_hash": "ea9214d5cd72b94db6e0979485f321c0aac115d140a39c6f3222783aa5c68857"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "0057c3dfcacb1f57",
+          "provider_guid": "136129",
+          "body": "Unified Development Code (UDC) Advisory Committee Open House",
+          "title": "Unified Development Code (UDC) Advisory Committee Open House \u2013 Aug 25, 2021",
+          "date": "2021-08-25T00:00:00+00:00",
+          "canonical_url": "https://addisontx.new.swagit.com/videos/136129"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "addison-tx-unified-development-code-advisory-committee",
+          "podcast_title": "Addison: Unified Development Code Advisory Committee",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body_exact": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {
+            "identity_names": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ],
+            "member_names": [
+              "Unified Development Code",
+              "UDC Advisory Committee"
+            ]
+          }
+        },
+        {
+          "slug": "addison-tx-city-council",
+          "podcast_title": "Addison: City Council",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "City Council",
+            "body_any": [
+              "Work Session",
+              "Work Session and Regular Meeting",
+              "Special Meeting",
+              "Fiscal Year * Budget Workshop",
+              "Special Budget Meeting",
+              "Tax & Budget Public Hearing",
+              "Budget Meeting",
+              "Combined Meeting",
+              "Special Council"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "394474",
+                "body": "TIRZ #1 Board Meeting"
+              },
+              {
+                "provider_guid": "297695",
+                "body": "Council Strategic Planning Day 1 & 2"
+              },
+              {
+                "provider_guid": "55874",
+                "body": "Special Emergency Meeting"
+              },
+              {
+                "provider_guid": "55892",
+                "body": "Tax Rate Public Hearing"
+              }
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-planning-and-zoning-commission",
+          "podcast_title": "Addison: Planning and Zoning Commission",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning and Zoning"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-town-meetings",
+          "podcast_title": "Addison: Town Meetings",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Town Meetings",
+            "body_includes": [
+              {
+                "provider_guid": "208554",
+                "body": "Special Community Meeting"
+              },
+              {
+                "provider_guid": "304981",
+                "body": "Homelessness Education Seminar"
+              },
+              {
+                "provider_guid": "56020",
+                "body": "George Herbert Walker Bush Elementary Dedication"
+              },
+              {
+                "provider_guid": "56021",
+                "body": "Spruill Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56022",
+                "body": "Beckert Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56024",
+                "body": "Earth Day"
+              },
+              {
+                "provider_guid": "56025",
+                "body": "Remington's Seafood Grill 30 Years Award"
+              },
+              {
+                "provider_guid": "56026",
+                "body": "Destination Addison"
+              },
+              {
+                "provider_guid": "56027",
+                "body": "Addison Way"
+              },
+              {
+                "provider_guid": "56028",
+                "body": "Vitruvian Park"
+              },
+              {
+                "provider_guid": "56029",
+                "body": "Citizen Advisory Committee"
+              },
+              {
+                "provider_guid": "309011",
+                "body": "Community Meeting #3"
+              },
+              {
+                "provider_guid": "296062",
+                "body": "Community Meeting #2"
+              },
+              {
+                "provider_guid": "277096",
+                "body": "Community Meeting #1"
+              },
+              {
+                "provider_guid": "136129",
+                "body": "Unified Development Code (UDC) Advisory Committee Open House"
+              },
+              {
+                "provider_guid": "56060",
+                "body": "Former Sam's Club Applicant Presentation"
+              },
+              {
+                "provider_guid": "56059",
+                "body": "Former Sam's Club Staff Presentation"
+              }
+            ],
+            "body_any": [
+              "Town Hall Meeting"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/addison-udc-coverage-2026-10.md",
+        "owner": "addison-tx-unified-development-code-advisory-committee",
+        "open_house_not_committee_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 819,
+        "persisted_rows": 822,
+        "unique_recordings": 819,
+        "limitations": "Seed truth, no independent admission holdout. Open House content/aggregate migration separate."
+      },
+      "split_group": "addison-tx:udc"
+    },
+    {
+      "id": "addison-udc-open-house-assessment",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "decision_type": "named_body",
+      "input_kind": "real",
+      "policy_version": "2026-10-03",
+      "policy_status": "provisional",
+      "body_label": "Unified Development Code (UDC) Advisory Committee Open House",
+      "claim": "Migrate this recording to the city public-input aggregate now.",
+      "evidence_refs": [
+        {
+          "id": "provider-136129",
+          "url": "https://addisontx.new.swagit.com/videos/136129",
+          "recording_id": "136129",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-03",
+          "source_span": "{\"body\": \"Unified Development Code (UDC) Advisory Committee Open House\", \"links\": {\"canonical_video\": \"https://addisontx.new.swagit.com/videos/136129\"}, \"provider_guid\": \"136129\", \"published\": \"2021-08-25T00:00:00+00:00\", \"title\": \"Unified Development Code (UDC) Advisory Committee Open House \\u2013 Aug 25, 2021\"}",
+          "content_hash": "ea9214d5cd72b94db6e0979485f321c0aac115d140a39c6f3222783aa5c68857"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "0057c3dfcacb1f57",
+          "provider_guid": "136129",
+          "body": "Unified Development Code (UDC) Advisory Committee Open House",
+          "title": "Unified Development Code (UDC) Advisory Committee Open House \u2013 Aug 25, 2021",
+          "date": "2021-08-25T00:00:00+00:00",
+          "canonical_url": "https://addisontx.new.swagit.com/videos/136129"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "addison-tx-unified-development-code-advisory-committee",
+          "podcast_title": "Addison: Unified Development Code Advisory Committee",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body_exact": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {
+            "identity_names": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ],
+            "member_names": [
+              "Unified Development Code",
+              "UDC Advisory Committee"
+            ]
+          }
+        },
+        {
+          "slug": "addison-tx-city-council",
+          "podcast_title": "Addison: City Council",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "City Council",
+            "body_any": [
+              "Work Session",
+              "Work Session and Regular Meeting",
+              "Special Meeting",
+              "Fiscal Year * Budget Workshop",
+              "Special Budget Meeting",
+              "Tax & Budget Public Hearing",
+              "Budget Meeting",
+              "Combined Meeting",
+              "Special Council"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "394474",
+                "body": "TIRZ #1 Board Meeting"
+              },
+              {
+                "provider_guid": "297695",
+                "body": "Council Strategic Planning Day 1 & 2"
+              },
+              {
+                "provider_guid": "55874",
+                "body": "Special Emergency Meeting"
+              },
+              {
+                "provider_guid": "55892",
+                "body": "Tax Rate Public Hearing"
+              }
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-planning-and-zoning-commission",
+          "podcast_title": "Addison: Planning and Zoning Commission",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning and Zoning"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-town-meetings",
+          "podcast_title": "Addison: Town Meetings",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Town Meetings",
+            "body_includes": [
+              {
+                "provider_guid": "208554",
+                "body": "Special Community Meeting"
+              },
+              {
+                "provider_guid": "304981",
+                "body": "Homelessness Education Seminar"
+              },
+              {
+                "provider_guid": "56020",
+                "body": "George Herbert Walker Bush Elementary Dedication"
+              },
+              {
+                "provider_guid": "56021",
+                "body": "Spruill Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56022",
+                "body": "Beckert Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56024",
+                "body": "Earth Day"
+              },
+              {
+                "provider_guid": "56025",
+                "body": "Remington's Seafood Grill 30 Years Award"
+              },
+              {
+                "provider_guid": "56026",
+                "body": "Destination Addison"
+              },
+              {
+                "provider_guid": "56027",
+                "body": "Addison Way"
+              },
+              {
+                "provider_guid": "56028",
+                "body": "Vitruvian Park"
+              },
+              {
+                "provider_guid": "56029",
+                "body": "Citizen Advisory Committee"
+              },
+              {
+                "provider_guid": "309011",
+                "body": "Community Meeting #3"
+              },
+              {
+                "provider_guid": "296062",
+                "body": "Community Meeting #2"
+              },
+              {
+                "provider_guid": "277096",
+                "body": "Community Meeting #1"
+              },
+              {
+                "provider_guid": "136129",
+                "body": "Unified Development Code (UDC) Advisory Committee Open House"
+              },
+              {
+                "provider_guid": "56060",
+                "body": "Former Sam's Club Applicant Presentation"
+              },
+              {
+                "provider_guid": "56059",
+                "body": "Former Sam's Club Staff Presentation"
+              }
+            ],
+            "body_any": [
+              "Town Hall Meeting"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/addison-udc-coverage-2026-10.md",
+        "owner": "addison-tx-unified-development-code-advisory-committee",
+        "open_house_not_committee_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 819,
+        "persisted_rows": 822,
+        "unique_recordings": 819,
+        "limitations": "Seed truth, no independent admission holdout. Open House content/aggregate migration separate."
+      },
+      "split_group": "addison-tx:udc"
+    },
+    {
+      "id": "addison-udc-duplicated-label",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "decision_type": "named_body",
+      "input_kind": "adapted",
+      "policy_version": "2026-10-03",
+      "policy_status": "approved",
+      "body_label": "Unified Development Code (UDC) Advisory Committee Unified Development Code (UDC) Advisory Committee",
+      "claim": "Treat the provider-duplicated label as the reviewed committee identity.",
+      "evidence_refs": [
+        {
+          "id": "provider-303938",
+          "url": "https://addisontx.new.swagit.com/videos/303938",
+          "recording_id": "303938",
+          "agenda_id": null,
+          "retrieved_at": "2026-10-03",
+          "source_span": "{\"body\": \"Unified Development Code (UDC) Advisory Committee\", \"links\": {\"agenda\": \"https://addisontx.new.swagit.com/videos/303938/agenda\", \"canonical_video\": \"https://addisontx.new.swagit.com/videos/303938\"}, \"provider_guid\": \"303938\", \"published\": \"2024-04-30T00:00:00+00:00\", \"title\": \"Unified Development Code (UDC) Advisory Committee \\u2013 Apr 30, 2024\"}",
+          "content_hash": "2b4dbd53e95ac7b12b4f26974602818d4907ee737066de63355b8c02b38ab818"
+        },
+        {
+          "id": "official-agenda-heading-303938",
+          "url": "https://addisontx.new.swagit.com/videos/303938",
+          "recording_id": "303938",
+          "agenda_id": "303938",
+          "retrieved_at": "2026-10-03T05:12:08.159725+00:00",
+          "source_span": "MEETING OF THE UNIFIED DEVELOPMENT CODE (UDC) ADVISORY COMMITTEE TUESDAY, APRIL 30, 2024 ADDISON CONFERENCE CENTER 15650 ADDISON ROAD, ADDISON, TX 75001",
+          "content_hash": "0932f3c2a6c57bea12dc80328a1bde08192ec69d8396a76555aac451f2d75d57"
+        }
+      ],
+      "recordings": [
+        {
+          "uid": "4bdafbfb40214fff",
+          "provider_guid": "303938",
+          "body": "Unified Development Code (UDC) Advisory Committee",
+          "title": "Unified Development Code (UDC) Advisory Committee \u2013 Apr 30, 2024",
+          "date": "2024-04-30T00:00:00+00:00",
+          "canonical_url": "https://addisontx.new.swagit.com/videos/303938"
+        }
+      ],
+      "existing_feeds": [
+        {
+          "slug": "addison-tx-unified-development-code-advisory-committee",
+          "podcast_title": "Addison: Unified Development Code Advisory Committee",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body_exact": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {
+            "identity_names": [
+              "Unified Development Code (UDC) Advisory Committee"
+            ],
+            "member_names": [
+              "Unified Development Code",
+              "UDC Advisory Committee"
+            ]
+          }
+        },
+        {
+          "slug": "addison-tx-city-council",
+          "podcast_title": "Addison: City Council",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "City Council",
+            "body_any": [
+              "Work Session",
+              "Work Session and Regular Meeting",
+              "Special Meeting",
+              "Fiscal Year * Budget Workshop",
+              "Special Budget Meeting",
+              "Tax & Budget Public Hearing",
+              "Budget Meeting",
+              "Combined Meeting",
+              "Special Council"
+            ],
+            "body_includes": [
+              {
+                "provider_guid": "394474",
+                "body": "TIRZ #1 Board Meeting"
+              },
+              {
+                "provider_guid": "297695",
+                "body": "Council Strategic Planning Day 1 & 2"
+              },
+              {
+                "provider_guid": "55874",
+                "body": "Special Emergency Meeting"
+              },
+              {
+                "provider_guid": "55892",
+                "body": "Tax Rate Public Hearing"
+              }
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-planning-and-zoning-commission",
+          "podcast_title": "Addison: Planning and Zoning Commission",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Planning and Zoning Commission",
+            "body_any": [
+              "Planning and Zoning"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        },
+        {
+          "slug": "addison-tx-town-meetings",
+          "podcast_title": "Addison: Town Meetings",
+          "source": {
+            "list_url": "https://addisontx.new.swagit.com/views/128",
+            "body": "Town Meetings",
+            "body_includes": [
+              {
+                "provider_guid": "208554",
+                "body": "Special Community Meeting"
+              },
+              {
+                "provider_guid": "304981",
+                "body": "Homelessness Education Seminar"
+              },
+              {
+                "provider_guid": "56020",
+                "body": "George Herbert Walker Bush Elementary Dedication"
+              },
+              {
+                "provider_guid": "56021",
+                "body": "Spruill Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56022",
+                "body": "Beckert Park Dedication Ceremony"
+              },
+              {
+                "provider_guid": "56024",
+                "body": "Earth Day"
+              },
+              {
+                "provider_guid": "56025",
+                "body": "Remington's Seafood Grill 30 Years Award"
+              },
+              {
+                "provider_guid": "56026",
+                "body": "Destination Addison"
+              },
+              {
+                "provider_guid": "56027",
+                "body": "Addison Way"
+              },
+              {
+                "provider_guid": "56028",
+                "body": "Vitruvian Park"
+              },
+              {
+                "provider_guid": "56029",
+                "body": "Citizen Advisory Committee"
+              },
+              {
+                "provider_guid": "309011",
+                "body": "Community Meeting #3"
+              },
+              {
+                "provider_guid": "296062",
+                "body": "Community Meeting #2"
+              },
+              {
+                "provider_guid": "277096",
+                "body": "Community Meeting #1"
+              },
+              {
+                "provider_guid": "136129",
+                "body": "Unified Development Code (UDC) Advisory Committee Open House"
+              },
+              {
+                "provider_guid": "56060",
+                "body": "Former Sam's Club Applicant Presentation"
+              },
+              {
+                "provider_guid": "56059",
+                "body": "Former Sam's Club Staff Presentation"
+              }
+            ],
+            "body_any": [
+              "Town Hall Meeting"
+            ]
+          },
+          "source_key": "abbf5e25e078",
+          "remedy_policy": {}
+        }
+      ],
+      "family_policy": {
+        "reference": "review/addison-udc-coverage-2026-10.md",
+        "owner": "addison-tx-unified-development-code-advisory-committee",
+        "open_house_not_committee_identity": true
+      },
+      "completeness": {
+        "status": "provider-and-persisted-snapshots",
+        "provider_rows": 819,
+        "persisted_rows": 822,
+        "unique_recordings": 819,
+        "limitations": "Seed truth, no independent admission holdout. Open House content/aggregate migration separate."
+      },
+      "split_group": "addison-tx:udc"
+    }
+  ],
+  "superseded_hash": null
+}

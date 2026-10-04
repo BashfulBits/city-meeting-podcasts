@@ -242,7 +242,8 @@ def test_main_reads_state_dir_and_writes_json_and_markdown(tmp_path, monkeypatch
         "--markdown",
         str(markdown),
     ]
-    assert trend.main(args) == 2
+    assert trend.main(args) == 0
+    assert trend.main([*args, "--fail-on-unclassified"]) == 2
     (directory / "good.json").write_text(json.dumps(event(reasons={"llm-pending": 5})))
     (directory / "old.json").write_text(json.dumps(event(1)))
     (directory / "broken.json").write_text("bad json")
@@ -350,3 +351,91 @@ def test_main_remote_event_download_failures(tmp_path, monkeypatch, failure):
     else:
         assert trend.main(["--site-config", str(config), "--json", str(output)]) == 2
         assert json.loads(output.read_text())["skipped_files"] == 1
+
+
+def test_registry_discovers_new_verbs_and_retirement_without_code_changes():
+    rows = [
+        {
+            "ts": NOW.isoformat(),
+            "lane": "new-task",
+            "outcome": "completed",
+            "stages": {"new_task": {"ran": 2, "defer_reasons": {"llm-pending": 7}}},
+        }
+    ]
+    specs, tokens, lifecycle = trend.discover_verbs(rows, {"llm_lanes": {"new-task": {}}})
+    report = trend.analyze(rows, "new-task", trend.BacklogParams(), specs=specs, tokens=tokens)
+    assert report.backlog == 7
+    assert lifecycle["new-task"] == "active"
+    assert lifecycle["tagger"] == "retired"
+    specs, tokens, lifecycle = trend.discover_verbs(rows, {"llm_lanes": {}})
+    assert lifecycle["new-task:new_task"] == "unregistered"
+    assert (
+        trend.analyze(
+            rows, "new-task:new_task", trend.BacklogParams(), specs=specs, tokens=tokens
+        ).backlog
+        == 7
+    )
+
+
+def test_registered_purpose_without_telemetry_is_visible():
+    specs, _, lifecycle = trend.discover_verbs([], {"llm_lanes": {"new-shared-purpose": {}}})
+    assert "new-shared-purpose" in specs
+    assert lifecycle["new-shared-purpose"] == "no_telemetry"
+
+
+def test_unknown_tokens_do_not_fail_scheduled_report_or_recommend_capacity(tmp_path, monkeypatch):
+    monkeypatch.setattr(trend, "_now", lambda: NOW)
+    config = tmp_path / "site.yml"
+    config.write_text("llm_lanes:\n  chapter-agenda: {}\n")
+    directory = tmp_path / "run_events"
+    directory.mkdir()
+    for day in range(24, 31):
+        row = event(day, verb="chapter-agenda", reasons={"llm-pending": day * 10})
+        row["stages"]["chapter_agenda"]["defer_reasons"]["new-token"] = 3
+        (directory / f"{day}.json").write_text(json.dumps(row))
+    output = tmp_path / "report.json"
+    args = ["--site-config", str(config), "--state-dir", str(tmp_path), "--json", str(output)]
+    assert trend.main(args) == 0
+    report = json.loads(output.read_text())
+    assert report["unclassified_tokens"]["chapter_agenda"] == {"new-token": 3}
+    assert report["verbs"]["chapter-agenda"]["action"] is None
+    assert report["verbs"]["chapter-agenda"]["constrained"] is False
+    assert trend.main([*args, "--fail-on-unclassified"]) == 1
+
+
+def test_distinct_lanes_with_same_stage_keep_token_ownership():
+    rows = [
+        {
+            "ts": NOW.isoformat(),
+            "lane": lane,
+            "outcome": "completed",
+            "stages": {"new_stage": {"defer_reasons": {"llm-pending": count}}},
+        }
+        for lane, count in [("lane-a", 3), ("lane-b", 8)]
+    ]
+    specs, tokens, lifecycle = trend.discover_verbs(rows, {"llm_lanes": {}})
+    reports = {
+        verb: trend.analyze(rows, verb, PARAMS, specs=specs, tokens=tokens)
+        for verb in ["lane-a:new_stage", "lane-b:new_stage"]
+    }
+    assert reports["lane-a:new_stage"].backlog == 3
+    assert reports["lane-b:new_stage"].backlog == 8
+    assert lifecycle["lane-a:new_stage"] == "unregistered"
+
+
+def test_multiple_stages_cannot_be_attributed_to_one_registry_purpose():
+    rows = [
+        {
+            "ts": NOW.isoformat(),
+            "lane": "new-task",
+            "outcome": "completed",
+            "stages": {
+                stage: {"defer_reasons": {"llm-pending": count}}
+                for stage, count in [("first", 3), ("second", 8)]
+            },
+        }
+    ]
+    specs, _, lifecycle = trend.discover_verbs(rows, {"llm_lanes": {"new-task": {}}})
+    assert lifecycle["new-task"] == "no_telemetry"
+    assert "new-task:first" in specs
+    assert "new-task:second" in specs

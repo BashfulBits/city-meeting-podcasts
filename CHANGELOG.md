@@ -15,12 +15,22 @@ Once 1.0 ships, entries move under semver tags.
 - **Daily per-verb LLM backlog report (GH#1969, review/50 PR2).**
   Add the read-only 00:20 UTC/manual workflow over durable `run_events/`, using only the nine
   storage secrets. Publish the six-verb Markdown summary and retain the JSON report for 30 days;
-  fail on unclassified tokens and preserve diagnostic reports even when the report step fails.
+  report unknown tokens without failing the schedule; preserve reports after report-step failures.
   No producer, queue, model-call, quota, pipeline-version, or durable-state changes.
   Read append-only event keys directly: the snapshot manifest excludes them and previously
   caused every selected file to be skipped. Bound concurrent downloads and count missing or
   transiently unreadable files; propagate access-denied errors. The new workflow needs to be
-  registered on main before its first manual Actions run.
+  registered on main before its first manual Actions run. Discover registry purposes and LLM
+  stage snapshots automatically, identify retired/unregistered/unmeasured rows, and suppress
+  recommendations when attribution is incomplete. Shared-stage purposes without distinct telemetry
+  are listed with null backlog. Strict unknown-token checking remains an opt-in CLI diagnostic.
+
+- Remedy evaluations report only applied reasoning controls and reject physical-route allowlists
+  on deferred inference paths; immediate evaluation routing remains supported.
+
+- Move the 800-meeting LLM capacity analysis into dated supporting evidence under
+  `review/evidence/`, update its references, and identify review/49 as the development-plan owner.
+  Clarify the documentation map so supporting calculations cannot be mistaken for a rollout plan.
 
 - Capacity calculator review fixes: use committed Worker row-budget defaults and the same
   idle-cron/operational allowances in both current and proposed scenarios. The current stress
@@ -38,6 +48,63 @@ _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening
 Phase R (Research-Tool Surface)._
 
 ### Changed
+
+- **Pflugerville Board of Adjustment coverage.** Adds a named-body feed with exact reviewed
+  ownership and fifteen traceable regression cases. Full current/persisted replay selects ten
+  independently identified historical recordings while preserving their UIDs and source namespace.
+  Identity coverage is separate from media availability: older unavailable provider links remain
+  documented, with no media recovery promise or archived-record deletion. No pipeline bump,
+  artifact invalidation or forced backfill. Evidence: `review/pflugerville-boa-coverage-2026-10.md`.
+
+- **Unexpected-body evaluation harness.** Adds schema-v2 freeze/run/report/rescore,
+  direct physical-route allowlists, validated effort controls and synchronous result provenance.
+  Production remedy models and Worker routes are unchanged; shadow config admits no models.
+  Seeds are regression evidence, not admission results. Missing CAS coordination is a visible
+  preflight hold; explicit live runs use shared quota bookkeeping but cannot write feeds/audio.
+  Hidden reviewed owner truth, opaque-ID blind-owner comparisons and claim-support comparisons
+  have separate scores and prompt hashes. Frozen candidate input hashes are mandatory. Safe
+  provider failures retain the exception class without potentially sensitive exception text.
+  Explicit effort is rejected before deferred/dispatch side effects. Bounded evaluation calls
+  interleave configurations under one total logical-case cap; timeouts hold their configuration.
+  Evaluation cases permit two client provider invocations across all retries, with SDK retries
+  disabled and attempt counts reported separately. Production retry defaults remain unchanged.
+  AA effort checks reject partial words and explicitly non-reasoning variants.
+  Git and frozen-version metadata are collected before live attempts.
+  Publication selection is specified at L2; the duplicate-identity feeds remain held.
+  Clarifies future shared policy templates and cross-city evaluations for the same onboarding/
+  maintenance resolver; local identities stay scoped and runtime template activation is still gated.
+  No pipeline-version change, stored-artifact invalidation or historical backfill is introduced.
+
+- **Addison UDC historical committee coverage.** Adds one Unified Development Code Advisory
+  Committee subscription using exact reviewed labels, covering three official committee recordings
+  without selecting its Open House. All provider/stored observations replayed and the three stored
+  UIDs preserved. CPC duplicate identities and public-input migration remain separate holds.
+  No source, record, author, UID algorithm or audio change; no pipeline bump, invalidation or forced
+  backfill. Evidence: `review/addison-udc-coverage-2026-10.md`.
+
+- **Exact feed-body selector rules.** Optional `source.body_exact` matches complete normalized
+  labels and provider-duplicated copies, separating bare committee names from Open House/topic
+  suffixes. It unions with existing selectors/inclusions; remedy retains exact-selector evidence
+  and does not append a broad alias for an already covered exact label. Search accepts individual
+  exact selectors and refreshes cached destinations when an exact rule changes; unconfigured
+  views retain their previous cache hashes. Source transport/hash,
+  author, episode UIDs, records and audio are unchanged. No pipeline bump, artifact invalidation
+  or backfill; no existing feed configuration changes in this prerequisite.
+
+- **Arlington historical named-body coverage.** Adds Housing Finance Corporation and Zoning Board
+  of Adjustment subscriptions with reviewed identity policies. Full provider and persisted-state
+  replay selects one retained recording per feed and preserves its UID. Existing source URL,
+  author, records and audio keys remain unchanged; normal publication requires no forced backfill
+  or artifact invalidation. Foundation duplicate UID aliases and the unidentified Empty clip remain
+  held, as documented in `review/arlington-coverage-2026-10.md`.
+
+- **Approved historical feed policy guards.** Remedy policies now protect city PID, bond, charter,
+  redistricting, public-input and public-briefings aggregates, and exact reviewed named bodies.
+  Unverified identities defer; district/program feed recreation and wrong-owner assignments are
+  blocked locally. Exact reviewed owners override another policy's ambiguous holding clues; joint
+  exact owners remain required. Known topic-bearing TIF labels need reviewed identity rather than marker inference.
+  The remedy recipe changes to `direct-v6-approved-family-policy`; remedy bypasses result caches,
+  so there is no stored-artifact invalidation, audio change or forced historical backfill.
 
 - **Chapter locator baseline routing and evaluation.** Production now uses the baseline prompt, routes
   packets up to 76,000 internal estimated input tokens to DeepSeek V4 Flash, and sends larger packets

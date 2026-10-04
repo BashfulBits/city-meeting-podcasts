@@ -206,3 +206,41 @@ issues, with at most about twelve active decisions across the queue.
 
 The approval response can be: `A/B/C/D/F approved; E change ...; G investigate; PID approved`.
 No approval is inferred from elapsed time or a default option.
+
+
+## Post-stack reconciliation — 2026-10-03 (Central)
+
+The six-PR stack through #1993 is merged. Build & Deploy run 37168512947 succeeded for
+`1822a255f9baf70f2cccc02fb2ee68dc6f8c6196`. A read-only audit restored all 42 configured
+source `episodes.json` files and fetched providers using `--dry-run --unexpected-body-evidence`.
+It produced zero unexpected-body source bundles and no reported provider failures. It did not
+update GitHub, write production state, or dispatch the legacy remedy.
+
+**Zero operational findings does not establish historical coverage.**
+`collect_unexpected_bodies` suppresses unmatched labels already present in retained records,
+unless a reviewed one-off inclusion uses that label. This explains why #1623's older findings
+can disappear after records are archived without their historical feed ownership being resolved.
+Do not use this detector as P0 completion evidence or infer an approved exclusion from silence.
+
+A separate replay of all 680 inventory IDs against deployed selectors and the restored archives
+found 5 selector-covered labels and 675 labels with retained records lacking a selector match.
+The [complete replay](evidence/historical-selector-replay-2026-10-03.csv) retains every inventory ID.
+
+| City | Selector-covered labels | Labels with selector gaps | Unmatched retained UID observations |
+|---|---:|---:|---:|
+| Addison | 1 | 3 | 11 |
+| Arlington | 3 | 0 | 0 |
+| Dallas | 0 | 150 | 573 |
+| Denton | 0 | 183 | 200 |
+| Fort Worth | 0 | 339 | 1,228 |
+| Pflugerville | 1 | 0 | 0 |
+
+These are stored UID observations, not unique recordings or newly approved feeds. Cross-view
+identities can duplicate a recording; selectors alone do not establish publication eligibility,
+media availability, official ownership, or final exclusion. The replay uses each inventory item's
+existing source namespace and normalized label, applies current complete source selectors and
+exact GUID inclusions, and preserves all archived records. It creates no feed changes.
+
+#1623 remains an operational signal to reconcile with a future controlled audit, while this
+inventory remains the historical completion ledger. Preserve held #1986, #1989 and #1991;
+publication-selection proof and the P2 evidence/exclusion ledger remain prerequisites for them.

@@ -44,7 +44,7 @@ jobs:
           python -m citypods.ops.backlog_trend \
             --json "$RUNNER_TEMP/backlog_trend.json" \
             --markdown "$RUNNER_TEMP/backlog_trend.md" \
-            --window-days 7 --fail-on-unclassified
+            --window-days 7
 
       - name: Summarize backlog trends
         if: always()

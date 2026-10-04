@@ -1,0 +1,108 @@
+{
+  "version": 2,
+  "cases": {
+    "addison-udc-owner": {
+      "supported": true,
+      "rationale": "Official committee agendas identify their own proceedings, distinct from Council/P&Z.",
+      "evidence_refs": [
+        "provider-303938",
+        "official-agenda-heading-303938"
+      ],
+      "adjudicator": "agent reviewed official agenda headings and retained archive",
+      "provenance": "seed",
+      "policy_approval_ref": "review/addison-udc-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "addison-udc-not-council": {
+      "supported": false,
+      "rationale": "Council approval of a code does not make the advisory committee Council proceedings.",
+      "evidence_refs": [
+        "provider-303938",
+        "official-agenda-heading-303938"
+      ],
+      "adjudicator": "agent reviewed official agenda headings and retained archive",
+      "provenance": "seed",
+      "policy_approval_ref": "review/addison-udc-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "addison-udc-not-pz": {
+      "supported": false,
+      "rationale": "A separate appointed committee is not the Planning and Zoning Commission.",
+      "evidence_refs": [
+        "provider-303938",
+        "official-agenda-heading-303938"
+      ],
+      "adjudicator": "agent reviewed official agenda headings and retained archive",
+      "provenance": "seed",
+      "policy_approval_ref": "review/addison-udc-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "addison-udc-not-new-title-feed": {
+      "supported": false,
+      "rationale": "A reviewed body owner already covers all three recordings.",
+      "evidence_refs": [
+        "provider-303938",
+        "official-agenda-heading-303938"
+      ],
+      "adjudicator": "agent reviewed official agenda headings and retained archive",
+      "provenance": "seed",
+      "policy_approval_ref": "review/addison-udc-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "addison-udc-open-house-not-committee": {
+      "supported": false,
+      "rationale": "An explicitly named Open House is not established as a committee meeting; exact rules prevent topic capture.",
+      "evidence_refs": [
+        "provider-136129"
+      ],
+      "adjudicator": "agent reviewed official agenda headings and retained archive",
+      "provenance": "seed",
+      "policy_approval_ref": "review/addison-udc-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "addison-udc-open-house-assessment": {
+      "supported": null,
+      "rationale": "The public-input family is approved, but recording-content evidence and the city aggregate migration are separate from this committee batch.",
+      "evidence_refs": [
+        "provider-136129"
+      ],
+      "adjudicator": "agent reviewed official agenda headings and retained archive",
+      "provenance": "seed",
+      "policy_approval_ref": null,
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    },
+    "addison-udc-duplicated-label": {
+      "supported": true,
+      "rationale": "Duplicated normalized label copies do not establish a second body.",
+      "evidence_refs": [
+        "provider-303938",
+        "official-agenda-heading-303938"
+      ],
+      "adjudicator": "agent reviewed official agenda headings and retained archive",
+      "provenance": "seed",
+      "policy_approval_ref": "review/addison-udc-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null
+    }
+  }
+}
