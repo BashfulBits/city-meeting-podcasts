@@ -1403,7 +1403,11 @@ class MomentJudgeStage(LLMProducerStage):
 
     def telemetry_purposes(self, ctx):
         config = (ctx.moment_evaluation_config or {}).get("judges") or {}
-        return ("r6-judge",) if config.get("enabled") and ctx.moment_backend is not None else ()
+        return (
+            ("r6-judge",)
+            if config.get("enabled") and ctx.moment_backend is not None and ctx.storage is not None
+            else ()
+        )
 
     def work_items(self, city, episodes, ctx):
         from citypods.moment_judging import JUDGE_PROMPT_VERSION, JUDGE_SCHEMA_VERSION, judge_models

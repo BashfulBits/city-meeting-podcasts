@@ -760,6 +760,8 @@ def run(
             outputs[model] = chapter_tags.get(chapter_id, [])
             work.consumed()
         if contest_failed or len(outputs) != len(MODELS):
+            # Queued contestants remain queued. Coverage is partial because judge comparison
+            # identities below depend on outputs and have not yet been enumerated for this sample.
             tracker.partial("tournament")
             continue
         # Pass 1: for each of the 12 comparisons (6 CONTESTS x 2 order-swapped pairs), reuse a

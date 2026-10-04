@@ -70,6 +70,20 @@ def test_moment_producers_skip_missing_episode_identity(stage_name, purpose):
     assert work.snapshot()["purposes"][purpose]["observed"] == 0
 
 
+def test_judge_census_requires_storage():
+    from citypods.stages import MomentJudgeStage
+
+    ctx = SimpleNamespace(
+        moment_backend=object(),
+        storage=None,
+        moment_evaluation_config={"judges": {"enabled": True}},
+    )
+    stage = MomentJudgeStage()
+    assert stage.telemetry_purposes(ctx) == ()
+    ctx.storage = object()
+    assert stage.telemetry_purposes(ctx) == ("r6-judge",)
+
+
 def test_registration_requires_telemetry_and_owner():
     work = tracker()
     with pytest.raises(ValueError, match="belongs"):
@@ -192,6 +206,17 @@ def test_new_and_retired_purposes_need_no_reader_mapping():
     assert report.backlog == 1
     assert report.days == 1
     assert report.throughput_per_day is None
+
+
+def test_new_partial_contract_does_not_restore_old_unit_measurements():
+    work = tracker()
+    work.item("new-purpose", "unit", producer="new-stage").defer("queued")
+    work.finish()
+    old = explicit(work, day=1)
+    new = explicit(work, day=2)
+    latest = new["llm_work"]["purposes"]["new-purpose"]
+    latest.update(unit="assessment", coverage="partial")
+    assert trend.purpose_points([old, new], "new-purpose", trend.BacklogParams()) == []
 
 
 def test_shards_require_complete_coverage_and_do_not_overlap_full_census():

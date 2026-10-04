@@ -221,6 +221,8 @@ def purpose_points(events, purpose, params, *, through=None):
     if not events:
         return []
     grouped = defaultdict(list)
+    # The newest contract owns the unit even when its census is partial. Selecting an older
+    # complete row could present obsolete-unit measurements under the current report's unit.
     latest_event = max(events, key=_timestamp)
     unit = latest_event["llm_work"]["purposes"][purpose]["unit"]
     for event in events:
