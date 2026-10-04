@@ -20,6 +20,8 @@ Once 1.0 ships, entries move under semver tags.
   events. Reports automatically discover new/retired purposes, retain legacy events, and require
   complete catalog/shard coverage for capacity recommendations. Research sample units stay explicit.
   Blocked research pairs retain both order-swapped assessment identities when retried.
+  Cached tag census initializes taxonomy/evaluation inputs before classifying retained work;
+  malformed shard scopes and episodes without identities are skipped safely.
   No model, recipe, pipeline-version, quota, Worker, dependency or artifact changes; stored artifacts
   remain valid and no backfill is triggered. Telemetry begins with new runs.
 

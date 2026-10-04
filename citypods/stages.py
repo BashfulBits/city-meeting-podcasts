@@ -1758,6 +1758,71 @@ class TagsStage(LLMProducerStage):
                 purposes.append("topic-tags:prelabeler-shadow")
         return tuple(purposes)
 
+    def _load_cache(self, ctx):
+        """Initialize taxonomy and evaluation inputs before census or processing."""
+        import yaml
+
+        from citypods.llm_evaluation import config_from_mapping, load_state, policy_fingerprint
+        from citypods.tags import load_taxonomy
+
+        # Load the taxonomy + calibration state at most ONCE for the whole run (cached on `ctx`,
+        # which is the same object across every one of this lane's per-episode process() calls --
+        # see `StageContext.tag_taxonomy_cache`), not once per episode. A prior failure is cached
+        # too (as an error string) so a broken taxonomy/state file reports itself on every call
+        # without re-attempting the same failing local-disk read thousands of times.
+        #
+        # The global queue runs this across a worker thread pool sharing one `ctx`, so the whole
+        # check-then-populate sequence is guarded by `tag_taxonomy_cache_lock`: without it, one
+        # thread's cache writes (three separate dict assignments, not atomic as a group) could be
+        # interleaved with another thread's read of a still-incomplete cache -- e.g. a second
+        # thread seeing `evaluation_state` already written but `admission_policy` not yet, skipping
+        # (re-)population entirely, and then KeyError-ing on the read below. Contention only matters
+        # for the first handful of calls (a warm cache read is a fast, lock-guarded dict lookup).
+        with ctx.tag_taxonomy_cache_lock:
+            cache = ctx.tag_taxonomy_cache
+            if "taxonomy_error" in cache:
+                return cache
+            if "eval_error" in cache:
+                return cache
+            if "taxonomy" not in cache:
+                try:
+                    cache["taxonomy"] = load_taxonomy(ctx.taxonomy_path)
+                except (OSError, ValueError, KeyError, IndexError, yaml.YAMLError) as exc:
+                    # yaml.YAMLError (parse/scan errors) is NOT a ValueError subclass, and PyYAML
+                    # is documented to leak raw ValueError/KeyError/IndexError for some malformed
+                    # explicit-tag scalars (e.g. `!!int nope`) instead of wrapping them in
+                    # yaml.YAMLError -- both must be caught here for a genuinely corrupt
+                    # taxonomy.yml to degrade gracefully (cached, reported once) rather than
+                    # propagate uncaught out of every one of this run's per-episode calls.
+                    cache["taxonomy_error"] = f"taxonomy unavailable: {exc}"
+                    return cache
+            if "evaluation_state" not in cache:
+                try:
+                    evaluation_config = config_from_mapping(ctx.llm_evaluation_config)
+                    evaluation_state = (
+                        load_state(ctx.llm_evaluation_state_path)
+                        if ctx.llm_evaluation_state_path is not None
+                        else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
+                    )
+                    cache["evaluation_config"] = evaluation_config
+                    cache["evaluation_state"] = evaluation_state
+                    cache["admission_policy"] = policy_fingerprint(
+                        evaluation_config, evaluation_state
+                    )
+                except (ValueError, TypeError) as exc:
+                    # load_state() fails closed on a corrupted (not merely missing) state file
+                    # rather than silently resetting it -- that protects against this stage's
+                    # caller later clobbering real review history via save_state(), but this stage
+                    # itself only ever *reads* the file, so degrading tagging for this run (retried
+                    # next run once the file is fixed) is the right response here, not crashing the
+                    # whole city's enrich pass. config_from_mapping()/policy_fingerprint() are
+                    # covered too: a malformed tagging.evaluation config (e.g. non-numeric
+                    # minimum_reviews) must degrade the same way, not re-raise on every episode.
+                    cache["eval_error"] = f"LLM evaluation state unavailable: {exc}"
+                    return cache
+
+        return cache
+
     def work_items(self, city, episodes, ctx):
         from citypods.chapters import episode_served_chapters
         from citypods.tags import needs_shadow_prelabel, tag_input_fingerprint
@@ -1770,7 +1835,10 @@ class TagsStage(LLMProducerStage):
         shadow = str(config.get("shadow_model") or "")
         prompt = str(config.get("prompt_version") or "1")
         schema = str(config.get("llm_schema_version") or "1")
-        taxonomy = ctx.tag_taxonomy_cache.get("taxonomy")
+        cache = self._load_cache(ctx)
+        if "taxonomy_error" in cache or "eval_error" in cache:
+            ctx.llm_work.partial(self.name)
+        taxonomy = cache.get("taxonomy")
         route = (
             f"{getattr(ctx.tag_backend, 'name', 'litellm')}:"
             f"{getattr(getattr(ctx.tag_backend, 'config', None), 'model', '')}"
@@ -1788,8 +1856,6 @@ class TagsStage(LLMProducerStage):
                     llm_route=route,
                     admission_policy=ctx.tag_taxonomy_cache.get("admission_policy", ""),
                 )
-            elif ep.tags_llm_recipe_hash:
-                ctx.llm_work.partial(self.name)
             if episode_served_chapters(ep):
                 yield (
                     "topic-tags:tagger",
@@ -1832,14 +1898,10 @@ class TagsStage(LLMProducerStage):
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
-        import yaml
 
         from citypods.chapters import episode_served_chapters
         from citypods.llm_evaluation import (
             apply_admission,
-            config_from_mapping,
-            load_state,
-            policy_fingerprint,
             shadow_prelabel_fields,
             visible_candidates,
         )
@@ -1856,7 +1918,6 @@ class TagsStage(LLMProducerStage):
             episode_tag_inputs,
             llm_prelabel_candidates,
             llm_tag_suggestions,
-            load_taxonomy,
             merge_tag_sources,
             needs_shadow_prelabel,
             rollup_tags,
@@ -1920,66 +1981,13 @@ class TagsStage(LLMProducerStage):
                 payload,
             ][-200:]
 
-        # Load the taxonomy + calibration state at most ONCE for the whole run (cached on `ctx`,
-        # which is the same object across every one of this lane's per-episode process() calls --
-        # see `StageContext.tag_taxonomy_cache`), not once per episode. A prior failure is cached
-        # too (as an error string) so a broken taxonomy/state file reports itself on every call
-        # without re-attempting the same failing local-disk read thousands of times.
-        #
-        # The global queue runs this across a worker thread pool sharing one `ctx`, so the whole
-        # check-then-populate sequence is guarded by `tag_taxonomy_cache_lock`: without it, one
-        # thread's cache writes (three separate dict assignments, not atomic as a group) could be
-        # interleaved with another thread's read of a still-incomplete cache -- e.g. a second
-        # thread seeing `evaluation_state` already written but `admission_policy` not yet, skipping
-        # (re-)population entirely, and then KeyError-ing on the read below. Contention only matters
-        # for the first handful of calls (a warm cache read is a fast, lock-guarded dict lookup).
+        cache = self._load_cache(ctx)
+        for key in ("taxonomy_error", "eval_error"):
+            if key in cache:
+                ctx.llm_work.partial(self.name)
+                stats.errors.append(cache[key])
+                return stats
         with ctx.tag_taxonomy_cache_lock:
-            cache = ctx.tag_taxonomy_cache
-            if "taxonomy_error" in cache:
-                stats.errors.append(cache["taxonomy_error"])
-                return stats
-            if "eval_error" in cache:
-                stats.errors.append(cache["eval_error"])
-                return stats
-            if "taxonomy" not in cache:
-                try:
-                    cache["taxonomy"] = load_taxonomy(ctx.taxonomy_path)
-                except (OSError, ValueError, KeyError, IndexError, yaml.YAMLError) as exc:
-                    # yaml.YAMLError (parse/scan errors) is NOT a ValueError subclass, and PyYAML
-                    # is documented to leak raw ValueError/KeyError/IndexError for some malformed
-                    # explicit-tag scalars (e.g. `!!int nope`) instead of wrapping them in
-                    # yaml.YAMLError -- both must be caught here for a genuinely corrupt
-                    # taxonomy.yml to degrade gracefully (cached, reported once) rather than
-                    # propagate uncaught out of every one of this run's per-episode calls.
-                    cache["taxonomy_error"] = f"taxonomy unavailable: {exc}"
-                    stats.errors.append(cache["taxonomy_error"])
-                    return stats
-            if "evaluation_state" not in cache:
-                try:
-                    evaluation_config = config_from_mapping(ctx.llm_evaluation_config)
-                    evaluation_state = (
-                        load_state(ctx.llm_evaluation_state_path)
-                        if ctx.llm_evaluation_state_path is not None
-                        else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
-                    )
-                    cache["evaluation_config"] = evaluation_config
-                    cache["evaluation_state"] = evaluation_state
-                    cache["admission_policy"] = policy_fingerprint(
-                        evaluation_config, evaluation_state
-                    )
-                except (ValueError, TypeError) as exc:
-                    # load_state() fails closed on a corrupted (not merely missing) state file
-                    # rather than silently resetting it -- that protects against this stage's
-                    # caller later clobbering real review history via save_state(), but this stage
-                    # itself only ever *reads* the file, so degrading tagging for this run (retried
-                    # next run once the file is fixed) is the right response here, not crashing the
-                    # whole city's enrich pass. config_from_mapping()/policy_fingerprint() are
-                    # covered too: a malformed tagging.evaluation config (e.g. non-numeric
-                    # minimum_reviews) must degrade the same way, not re-raise on every episode.
-                    cache["eval_error"] = f"LLM evaluation state unavailable: {exc}"
-                    stats.errors.append(cache["eval_error"])
-                    return stats
-
             taxonomy = cache["taxonomy"]
             evaluation_config = cache["evaluation_config"]
             evaluation_state = cache["evaluation_state"]

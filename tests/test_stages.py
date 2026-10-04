@@ -1290,6 +1290,40 @@ def test_audio_stage_skips_withheld_availability(tmp_path):
     assert withheld.hosted_audio_url is None  # never hosted a bad enclosure
 
 
+def test_cached_tags_census_initializes_inputs_before_completion_skip(tmp_path):
+    from types import SimpleNamespace
+
+    from citypods.llm_evaluation import config_from_mapping, policy_fingerprint
+    from citypods.stages import TagsStage
+    from citypods.tags import load_taxonomy, tag_input_fingerprint
+
+    ctx = _ctx(tmp_path)
+    ctx.tag_backend = SimpleNamespace(name="litellm", config=SimpleNamespace(model="model"))
+    episode = _ep("cached")
+    episode.chapters = [{"start": 0, "title": "Budget"}]
+    episode.tags_llm_recipe_hash = "resolved-recipe"
+    evaluation_state = {"version": 1, "reviews": {}, "matrix": [], "trend": []}
+    episode.tags_input_fingerprint = tag_input_fingerprint(
+        episode,
+        load_taxonomy(ctx.taxonomy_path),
+        llm_enabled=True,
+        llm_route="litellm:model",
+        admission_policy=policy_fingerprint(
+            config_from_mapping(ctx.llm_evaluation_config), evaluation_state
+        ),
+    )
+    stage = TagsStage()
+    city = _city()
+    _mark_stage_complete(stage, [episode], city, StageStats(stage.name))
+    assert ctx.tag_taxonomy_cache == {}
+    stats = run_stages(None, city, [episode], [stage], ctx, quiet=True)
+    ctx.llm_work.finish()
+    assert stats[0].reused == 1
+    row = ctx.llm_work.snapshot()["purposes"]["topic-tags:tagger"]
+    assert row["coverage"] == "complete"
+    assert row["states"] == {"reused": 1}
+
+
 def test_run_stages_returns_stats_per_stage(tmp_path):
     eps = [_ep("g1")]
     stats = run_stages(FakeProvider(), _city(), eps, default_stages(), _ctx(tmp_path))
