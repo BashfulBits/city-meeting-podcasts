@@ -34,6 +34,14 @@ individual category recommendations; this document owns the improvement plan.
   on 2026-10-04. Membership overlap, a topic mention, or separately convened meetings bundled in
   one video do not prove joint participation. Existing canonical search ownership stays stable;
   unresolved ownership/timeline cases require evidence before activation.
+- Addison public-input migration (approved 2026-10-04): preserve the Town Meetings feed URL,
+  display `Addison: Public Input`, and limit it to verified town halls/community meetings/open
+  houses. Verified educational briefings use a separate Public Briefings feed. Verified ceremonies
+  and promotional clips leave podcast feeds while raw records/UIDs remain. Unproved identities
+  retain evidence gates; this is a policy decision, not an executable recording assignment.
+- Addison BZA/Appeals (approved 2026-10-04): retain one subscription and its existing URL,
+  display `Addison: Zoning Adjustment & Appeals`. Official evidence establishes that BZA serves
+  as Appeals; shared members alone would not justify combining other institutions.
 - Aggregate-only Dallas/Fort Worth TIF subscriptions, preserving archive records and migrated URLs.
   One TIF aggregate per city is also the approved default for future cities.
 - Include every legitimate public meeting recording, including sparse and historical bodies.

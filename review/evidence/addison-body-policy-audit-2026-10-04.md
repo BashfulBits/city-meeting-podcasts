@@ -736,7 +736,8 @@ to finish Addison policy. Until answered, the alternatives below remain proposed
 The first recommendation preserves subscriber URLs while clarifying ownership. It is not a
 license to relabel an unidentified recording. The second relies on formal institutional service,
 not shared members alone. The third isolates unknown evidence without inventing a body or
-quietly deleting already-published material. No response has yet been recorded for these choices.
+quietly deleting already-published material. The public-input migration and one clearly named BZA/Appeals feed were explicitly approved
+in chat on 2026-10-04. Only the unresolved-recording boundary choice remains pending.
 
 ### Additional proven joint correction
 
@@ -768,3 +769,20 @@ joint. Likewise, no CPAC membership/topic rule should claim those recordings.
 - Stabilize the shared onboarding rules with cross-city counterexamples already recorded here.
 - Report remaining evidence gaps and ask whether the classification settlement is sufficient
   to lift the explicit CodeRabbit hold. Do not infer that permission from implementation progress.
+
+### Approved public-input migration (2026-10-04)
+
+Maintainer explicitly approved preserving the existing Town Meetings URL while displaying
+`Addison: Public Input`, limiting that subscription to verified town halls, community meetings
+and open houses. Verified educational briefings use a separate Public Briefings subscription.
+Verified ceremonies/promotional recordings leave podcast subscriptions; archived records and
+stable UIDs remain intact. This approval settles the migration direction, not the identity of
+unproved municipal-media/Citizen Advisory recordings. Exact recording dispositions, selector
+contracts, RSS exposure and preservation tests must precede implementation. CodeRabbit stays held.
+
+### Approved BZA/Appeals presentation (2026-10-04)
+
+Maintainer chose one clearly named feed for the formally combined institutional functions.
+Preserve the existing Zoning Adjustment URL and subscriptions; display
+`Addison: Zoning Adjustment & Appeals`. This does not create a general rule that shared membership
+merges separate institutions. Existing six BZA/Appeals retained observations keep their ownership.
