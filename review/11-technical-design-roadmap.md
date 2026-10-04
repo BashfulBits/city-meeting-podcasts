@@ -100,8 +100,8 @@ P0's exact-label selector prerequisite separates bare committee names from disti
 formats. It preserves the source namespace/UIDs and does not change any existing feed configuration.
 
 P0's [Arlington batch](arlington-coverage-2026-10.md) prepares two named-body decisions with
-full provider/persisted replay and retained UID verification. Foundation duplicate UID aliases and
-an unidentified clip remain held; Arlington is not yet a complete approved onboarding baseline.
+full provider/persisted replay and retained UID verification. The three reviewed Foundation duplicate groups shipped in #2002;
+an unidentified clip remains held. Arlington is not yet a complete approved onboarding baseline.
 
 P0's guard prerequisite generalizes local policy protection to the approved aggregate families and
 exact reviewed named bodies. Unknown identities remain held; this does not complete the historical
@@ -117,7 +117,7 @@ live evaluation has run. Publication-selection inactive machinery is **Shipped**
 ([#1997](https://github.com/BashfulBits/city-meeting-podcasts/issues/1997)): strict proof schemas,
 existing UID projection, pre-write holds and raw-page preservation. No city declarations are activated by that machinery PR. City activations and future-member admission stay L2
 until exact winner/exposure/date proof and evaluated sticky-winner policies are ready.
-#1986 has approved historical winners/exposure and L3 activation under validation;
+#1986 historical activation is **Shipped** in [PR #2002](https://github.com/BashfulBits/city-meeting-podcasts/pull/2002);
 #1989 remains held for artifact comparison and #1991 has approved July 9 winner/exposure and L3 activation under validation. Shared approved templates and cross-city cases are specified for one resolver/replay path in
 onboarding and maintenance; verified identities and feedback remain city/source-scoped.
 P2 deterministic policy/evidence/ledger work has met its P1 schema prerequisite; its exact scoped

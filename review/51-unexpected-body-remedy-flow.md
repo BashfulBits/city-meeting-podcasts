@@ -602,7 +602,9 @@ future-member auto-admission merely because machinery tests pass. L3 requires th
 winner/proof packet. The approved Foundation/Addison packets and exact scopes are recorded below;
 PID winner selection and automatic future-member admission remain held.
 
-### Foundation historical activation — L3, implementation under validation
+### Foundation historical activation — shipped
+
+Frozen historical activation contract: **Implemented in PR #2002**, merged 2026-10-04.
 
 Maintainer approval: [#1986 comment 5976979529](https://github.com/BashfulBits/city-meeting-podcasts/issues/1986#issuecomment-5976979529).
 The [dated proof packet](evidence/foundation-publication-selection-2026-10-04.md) records
