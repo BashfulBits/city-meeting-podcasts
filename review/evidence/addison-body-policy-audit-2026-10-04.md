@@ -967,3 +967,18 @@ Additional individually confirmed cases:
   convenes the P&Z work session. It corroborates the commission-only class behind the47
   false Council matches; Council selector narrowing still requires its full positive replay.
   [Cached official agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/01960ed1399198df/backup-dfed4ed93765ef45).
+
+
+## Approved offline sweep implementation (#2013, prepared/unmerged)
+
+The first full cached-state report contains2,104 uncovered raw recordings across restored cities.
+Addison contributes10: five explicitly approved event exclusions, four verified Bond committee
+recordings and Economic Development Luncheon GUID55864. The last case is now actively registered
+for recording-bound briefing/event research; lack of prior inventory attention does not close it.
+The register has99 cases,64 open, including47 currently matched P&Z/Council false inclusions.
+There are no missing registered records or changed assignments against this prepared config
+snapshot. These counts are selector eligibility, not actual deployed RSS or unique meeting counts.
+The register records30 individually resolved Combined Meeting identities and five approved event
+exclusions without deleting their records. Citizen Advisory and ambiguous older media remain open.
+CPC/Finance official meetings with no located recording remain documented evidence obligations
+here rather than fabricated UID entries. The CLI does not scrape, publish or trigger legacy remedy.

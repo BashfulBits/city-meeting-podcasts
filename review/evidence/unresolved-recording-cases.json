@@ -1,0 +1,1621 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "case_id": "addison-394156-01960ed1399198df",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "01960ed1399198df",
+      "provider_guid": "394156",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-56025-02cedb500a3fdb57",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "02cedb500a3fdb57",
+      "provider_guid": "56025",
+      "question": "Explicit ceremony/event excluded from subscription projection",
+      "missing_evidence": "No missing identity evidence",
+      "next_action": "Preserve raw recording and explicit exclusion evidence",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "resolved",
+      "disposition": "Approved public-input migration; explicit ceremony/event title, PR2010 projection correction. Raw record retained; review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-364715-041b680eca8c01c1",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "041b680eca8c01c1",
+      "provider_guid": "364715",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-224232-06bbb874afec6cc0",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "06bbb874afec6cc0",
+      "provider_guid": "224232",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55603-078e31754cb52b70",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "078e31754cb52b70",
+      "provider_guid": "55603",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55602-08f6e5fe62fe9730",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "08f6e5fe62fe9730",
+      "provider_guid": "55602",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-167693-0d0655a79a4e1e10",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "0d0655a79a4e1e10",
+      "provider_guid": "167693",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55623-0d0f97d0a5e4234f",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "0d0f97d0a5e4234f",
+      "provider_guid": "55623",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-156697-0ee826769ea9f6f8",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "0ee826769ea9f6f8",
+      "provider_guid": "156697",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-317783-109ce44a66ecbb9f",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "109ce44a66ecbb9f",
+      "provider_guid": "317783",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55621-1269a0f7dc0f5806",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "1269a0f7dc0f5806",
+      "provider_guid": "55621",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55604-133a684fc4fdf68e",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "133a684fc4fdf68e",
+      "provider_guid": "55604",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55610-14f89773e59f2fd8",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "14f89773e59f2fd8",
+      "provider_guid": "55610",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-355667-1956d71b85fb8371",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "1956d71b85fb8371",
+      "provider_guid": "355667",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55600-1e85dcff232fcba8",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "1e85dcff232fcba8",
+      "provider_guid": "55600",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-349764-1ed43638327380eb",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "1ed43638327380eb",
+      "provider_guid": "349764",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-361917-1ef623b5f2bc909a",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "1ef623b5f2bc909a",
+      "provider_guid": "361917",
+      "question": "Verified temporary Bond committee recording lacks a subscription",
+      "missing_evidence": "Bounded city Bond-family activation contract and exposure replay",
+      "next_action": "Add four verified recordings to city Bond family, preserve Council deliberations",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-56023-1f50e2274a6dd26c",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "1f50e2274a6dd26c",
+      "provider_guid": "56023",
+      "question": "Council swearing-in ceremony included as Council meeting",
+      "missing_evidence": "Exact Council selector correction and full negative/positive replay",
+      "next_action": "Exclude ceremony from podcast projection while preserving raw record",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-320828-2095f0d63e326bf0",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "2095f0d63e326bf0",
+      "provider_guid": "320828",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-56020-235c1c030568dac0",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "235c1c030568dac0",
+      "provider_guid": "56020",
+      "question": "Explicit ceremony/event excluded from subscription projection",
+      "missing_evidence": "No missing identity evidence",
+      "next_action": "Preserve raw recording and explicit exclusion evidence",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "resolved",
+      "disposition": "Approved public-input migration; explicit ceremony/event title, PR2010 projection correction. Raw record retained; review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-56021-24d5e7dc230eb900",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "24d5e7dc230eb900",
+      "provider_guid": "56021",
+      "question": "Explicit ceremony/event excluded from subscription projection",
+      "missing_evidence": "No missing identity evidence",
+      "next_action": "Preserve raw recording and explicit exclusion evidence",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "resolved",
+      "disposition": "Approved public-input migration; explicit ceremony/event title, PR2010 projection correction. Raw record retained; review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-205784-28b12e6b65220f00",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "28b12e6b65220f00",
+      "provider_guid": "205784",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55605-2929e7152647c257",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "2929e7152647c257",
+      "provider_guid": "55605",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-312954-2b50ac2023534681",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "2b50ac2023534681",
+      "provider_guid": "312954",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55618-2f9b5fd70b5514c5",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "2f9b5fd70b5514c5",
+      "provider_guid": "55618",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-359742-31b194e3b25f0bf8",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "31b194e3b25f0bf8",
+      "provider_guid": "359742",
+      "question": "Verified temporary Bond committee recording lacks a subscription",
+      "missing_evidence": "Bounded city Bond-family activation contract and exposure replay",
+      "next_action": "Add four verified recordings to city Bond family, preserve Council deliberations",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55864-35a78fa89c7c5c5c",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "35a78fa89c7c5c5c",
+      "provider_guid": "55864",
+      "question": "Historical Economic Development Luncheon is uncovered",
+      "missing_evidence": "Recording-bound public briefing versus promotional event evidence",
+      "next_action": "Research official luncheon agenda/content before publication decision",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55634-383dfdfed6140400",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "383dfdfed6140400",
+      "provider_guid": "55634",
+      "question": "Verified 2016 Council/P&Z joint lacks Council subscription",
+      "missing_evidence": "Contract preserving current P&Z canonical search owner",
+      "next_action": "Add Council membership with existing UID/audio and preserve P&Z search ownership",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55613-3ba7b24d44e9da7f",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "3ba7b24d44e9da7f",
+      "provider_guid": "55613",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55607-3c114cb1e02ce2c4",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "3c114cb1e02ce2c4",
+      "provider_guid": "55607",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-346014-3c738579c7a5b935",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "3c738579c7a5b935",
+      "provider_guid": "346014",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55615-3cfc07ccaaa89fef",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "3cfc07ccaaa89fef",
+      "provider_guid": "55615",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-302919-3e5d9a3360600836",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "3e5d9a3360600836",
+      "provider_guid": "302919",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55622-47fc5fa46cd0d106",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "47fc5fa46cd0d106",
+      "provider_guid": "55622",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55619-49a790f6c4d1277d",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "49a790f6c4d1277d",
+      "provider_guid": "55619",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55614-4b0c1ed69fcbcdda",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "4b0c1ed69fcbcdda",
+      "provider_guid": "55614",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-148373-4b69d73512792a44",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "4b69d73512792a44",
+      "provider_guid": "148373",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-276855-4ef85ec6540cf95b",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "4ef85ec6540cf95b",
+      "provider_guid": "276855",
+      "question": "Verified joint subscription correction prepared in PR2012",
+      "missing_evidence": "Human merge and deployed projection verification",
+      "next_action": "Merge reviewed dependency stack manually and verify participating subscriptions",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-222435-519328ed1d5a3ca7",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "519328ed1d5a3ca7",
+      "provider_guid": "222435",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-153032-52ec3e810707f814",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "52ec3e810707f814",
+      "provider_guid": "153032",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-184783-564732c5642e0723",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "564732c5642e0723",
+      "provider_guid": "184783",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-337754-56af6e490a958190",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "56af6e490a958190",
+      "provider_guid": "337754",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-276796-57e8c5a0393e87fe",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "57e8c5a0393e87fe",
+      "provider_guid": "276796",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55620-5885503f6962565a",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "5885503f6962565a",
+      "provider_guid": "55620",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-56060-58bbcd2c03cc82b8",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "58bbcd2c03cc82b8",
+      "provider_guid": "56060",
+      "question": "Historical municipal media/presentation classification remains unproved",
+      "missing_evidence": "Recording-bound content and institutional context",
+      "next_action": "Research archived official materials; retain current publication pending evidenced decision",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-town-meetings"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-267232-5a5d09da1bd31bda",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "5a5d09da1bd31bda",
+      "provider_guid": "267232",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-178980-5aa3c2d183ed4f52",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "5aa3c2d183ed4f52",
+      "provider_guid": "178980",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55608-5c3910b54cff845e",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "5c3910b54cff845e",
+      "provider_guid": "55608",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55616-6232efb99cd6894d",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "6232efb99cd6894d",
+      "provider_guid": "55616",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-56029-63b22f80ce9500ff",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "63b22f80ce9500ff",
+      "provider_guid": "56029",
+      "question": "Citizen Advisory historical compilation retained in Public Input",
+      "missing_evidence": "Exact program binding and provider eleven-item versus ten-source-part reconciliation",
+      "next_action": "Reconcile original compilation chapters and official historical program records",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-town-meetings"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-382950-699939eb5a53e258",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "699939eb5a53e258",
+      "provider_guid": "382950",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-305960-6bafb2c16f76603b",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "6bafb2c16f76603b",
+      "provider_guid": "305960",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55612-6d954cb309211df9",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "6d954cb309211df9",
+      "provider_guid": "55612",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-191239-709f0cf53c420a2c",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "709f0cf53c420a2c",
+      "provider_guid": "191239",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-394474-757ab2a4aaf9bbca",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "757ab2a4aaf9bbca",
+      "provider_guid": "394474",
+      "question": "TIRZ board is assigned to Council instead of city TIF family",
+      "missing_evidence": "Bounded TIF activation contract and exposure replay",
+      "next_action": "Route independently convened board to city TIF feed using cached official agenda proof",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55601-78880dfd58cacebd",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "78880dfd58cacebd",
+      "provider_guid": "55601",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-375371-788daedde0f6d9a4",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "788daedde0f6d9a4",
+      "provider_guid": "375371",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-271981-7d335b073b6a11d4",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "7d335b073b6a11d4",
+      "provider_guid": "271981",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-315406-8447e1d9e60fd6a7",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "8447e1d9e60fd6a7",
+      "provider_guid": "315406",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-175924-84c42f696f6dbef9",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "84c42f696f6dbef9",
+      "provider_guid": "175924",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-353043-854622aa2f150a57",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "854622aa2f150a57",
+      "provider_guid": "353043",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-281236-876e9334a9c3d72e",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "876e9334a9c3d72e",
+      "provider_guid": "281236",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55627-87a3548cd62f20d6",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "87a3548cd62f20d6",
+      "provider_guid": "55627",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-358763-894926556b8a5f15",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "894926556b8a5f15",
+      "provider_guid": "358763",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-371625-902400566a6637b5",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "902400566a6637b5",
+      "provider_guid": "371625",
+      "question": "Verified temporary Bond committee recording lacks a subscription",
+      "missing_evidence": "Bounded city Bond-family activation contract and exposure replay",
+      "next_action": "Add four verified recordings to city Bond family, preserve Council deliberations",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55625-9cabf11f0dab1ad5",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "9cabf11f0dab1ad5",
+      "provider_guid": "55625",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55609-a306e5a33a9245c7",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "a306e5a33a9245c7",
+      "provider_guid": "55609",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-245443-a4e00eac785ab695",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "a4e00eac785ab695",
+      "provider_guid": "245443",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-56026-a7ffa0a2ca5e1840",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "a7ffa0a2ca5e1840",
+      "provider_guid": "56026",
+      "question": "Historical municipal media/presentation classification remains unproved",
+      "missing_evidence": "Recording-bound content and institutional context",
+      "next_action": "Research archived official materials; retain current publication pending evidenced decision",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-town-meetings"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-56027-a818b6f650cf4030",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "a818b6f650cf4030",
+      "provider_guid": "56027",
+      "question": "Historical municipal media/presentation classification remains unproved",
+      "missing_evidence": "Recording-bound content and institutional context",
+      "next_action": "Research archived official materials; retain current publication pending evidenced decision",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-town-meetings"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-388458-ab76536c44140f06",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "ab76536c44140f06",
+      "provider_guid": "388458",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-310398-acd22fa4f0f08c91",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "acd22fa4f0f08c91",
+      "provider_guid": "310398",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-208747-ad631855f512ba4f",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "ad631855f512ba4f",
+      "provider_guid": "208747",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-335172-bb056f86d6f26066",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "bb056f86d6f26066",
+      "provider_guid": "335172",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55611-c18e4590c589606f",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "c18e4590c589606f",
+      "provider_guid": "55611",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-56028-c3e05def1b9a737b",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "c3e05def1b9a737b",
+      "provider_guid": "56028",
+      "question": "Historical municipal media/presentation classification remains unproved",
+      "missing_evidence": "Recording-bound content and institutional context",
+      "next_action": "Research archived official materials; retain current publication pending evidenced decision",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-town-meetings"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-205724-c87abe7fbf3e202d",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "c87abe7fbf3e202d",
+      "provider_guid": "205724",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-230288-c8d120c8bdae1a7b",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "c8d120c8bdae1a7b",
+      "provider_guid": "230288",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-310072-c95af66385f6cf31",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "c95af66385f6cf31",
+      "provider_guid": "310072",
+      "question": "Verified joint subscription correction prepared in PR2012",
+      "missing_evidence": "Human merge and deployed projection verification",
+      "next_action": "Merge reviewed dependency stack manually and verify participating subscriptions",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-comprehensive-plan-advisory-committee",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-372562-ca03473c2506f62f",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "ca03473c2506f62f",
+      "provider_guid": "372562",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-177382-ca62ec8b0c2dd613",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "ca62ec8b0c2dd613",
+      "provider_guid": "177382",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-362796-cb34bf9c6001c32a",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "cb34bf9c6001c32a",
+      "provider_guid": "362796",
+      "question": "Verified temporary Bond committee recording lacks a subscription",
+      "missing_evidence": "Bounded city Bond-family activation contract and exposure replay",
+      "next_action": "Add four verified recordings to city Bond family, preserve Council deliberations",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-56024-db2189f7ab620a65",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "db2189f7ab620a65",
+      "provider_guid": "56024",
+      "question": "Explicit ceremony/event excluded from subscription projection",
+      "missing_evidence": "No missing identity evidence",
+      "next_action": "Preserve raw recording and explicit exclusion evidence",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "resolved",
+      "disposition": "Approved public-input migration; explicit ceremony/event title, PR2010 projection correction. Raw record retained; review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55624-dcd12e177bb2d738",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "dcd12e177bb2d738",
+      "provider_guid": "55624",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55606-de282deb731a7361",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "de282deb731a7361",
+      "provider_guid": "55606",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-150744-e2e2e4d8c9b5330c",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "e2e2e4d8c9b5330c",
+      "provider_guid": "150744",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55628-e3725c3d1f32d8c5",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "e3725c3d1f32d8c5",
+      "provider_guid": "55628",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55599-e59549e833479e1d",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "e59549e833479e1d",
+      "provider_guid": "55599",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-269302-e5cbc38145f8131d",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "e5cbc38145f8131d",
+      "provider_guid": "269302",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-56022-ee80c45122c4f9f0",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "ee80c45122c4f9f0",
+      "provider_guid": "56022",
+      "question": "Explicit ceremony/event excluded from subscription projection",
+      "missing_evidence": "No missing identity evidence",
+      "next_action": "Preserve raw recording and explicit exclusion evidence",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [],
+      "status": "resolved",
+      "disposition": "Approved public-input migration; explicit ceremony/event title, PR2010 projection correction. Raw record retained; review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-56059-efe3faf61b7b949a",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "efe3faf61b7b949a",
+      "provider_guid": "56059",
+      "question": "Historical municipal media/presentation classification remains unproved",
+      "missing_evidence": "Recording-bound content and institutional context",
+      "next_action": "Research archived official materials; retain current publication pending evidenced decision",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-town-meetings"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-308298-f72183a5e7102bf1",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "f72183a5e7102bf1",
+      "provider_guid": "308298",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-55617-f86aabec5e474882",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "f86aabec5e474882",
+      "provider_guid": "55617",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-55626-f93e036b3ab247d2",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "f93e036b3ab247d2",
+      "provider_guid": "55626",
+      "question": "Historical Combined Meeting institutional ownership",
+      "missing_evidence": "No missing institutional evidence",
+      "next_action": "Preserve Council assignment",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council"
+      ],
+      "status": "resolved",
+      "disposition": "Individual dated cached official agenda establishes Council regular/work session; GUID/date/artifact table in review/evidence/addison-body-policy-audit-2026-10-04.md."
+    },
+    {
+      "case_id": "addison-186775-f9f99cbaf58c7402",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "f9f99cbaf58c7402",
+      "provider_guid": "186775",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-295839-fcc9bde16c7f47fe",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "fcc9bde16c7f47fe",
+      "provider_guid": "295839",
+      "question": "Verified joint subscription correction prepared in PR2012",
+      "missing_evidence": "Human merge and deployed projection verification",
+      "next_action": "Merge reviewed dependency stack manually and verify participating subscriptions",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-comprehensive-plan-advisory-committee",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-327186-fd1cfcfdff127609",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "fd1cfcfdff127609",
+      "provider_guid": "327186",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-300264-fde86a41f004984a",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "fde86a41f004984a",
+      "provider_guid": "300264",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "addison-154641-ff8eac28f4881cd2",
+      "city": "addison-tx",
+      "source_key": "abbf5e25e078",
+      "uid": "ff8eac28f4881cd2",
+      "provider_guid": "154641",
+      "question": "P&Z-only work session currently included in Council",
+      "missing_evidence": "Full Council positive alias replay before narrowing",
+      "next_action": "Remove broad Council work-session match while preserving proven Council aliases",
+      "last_researched": "2026-10-04",
+      "current_feed_assignments": [
+        "addison-tx-city-council",
+        "addison-tx-planning-and-zoning-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    }
+  ]
+}

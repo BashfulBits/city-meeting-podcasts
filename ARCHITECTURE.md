@@ -1271,3 +1271,11 @@ now join the existing P&Z and CPAC subscriptions; GUID276855 joins P&Z only. Cou
 canonical search ownership, recording UIDs and audio are preserved. Complete822-record replay
 adds exactly three P&Z and two CPAC memberships, with no removals or other feed changes.
 Other historical assignments remain active evidence tasks; CodeRabbit requests remain held.
+
+
+Offline unresolved-recording sweep (#2013) is prepared, unmerged. The committed case register
+keeps known historical and false-inclusion cases visible; the CLI reads every cached source
+once and reports unmatched raw recordings, assignment changes and missing registered records.
+Feed assignments mean selector eligibility under the supplied config snapshot, not verified live
+RSS exposure. Sources absent from local cache remain outside this snapshot. No legacy remedy
+dispatch or scheduled notification is enabled; P2a model-policy schemas remain independently gated.

@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Prepare an offline unresolved-recording sweep (#2013): inspect all cached raw recordings,
+  preserve known historical/false-inclusion obligations in a durable case register, report
+  changed assignments and missing registered records. No network, legacy remedy dispatch,
+  canonical state writes, audio invalidation or backfill. Notifications remain a separate gate.
+
 - Prepare Addison's approved Public Input migration (#2009): preserve the Town Meetings URL
   and historical Citizen Advisory UID/audio, move the verified homelessness seminar to Public
   Briefings, and remove five explicit ceremony/event inclusions while preserving raw records.
