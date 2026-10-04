@@ -1287,7 +1287,8 @@ def _process_city(
             base_url,
             include_generated_chapters=include_generated_chapters,
         )
-        if has_audio:
+        # A valid selection must replace stale alternate items even without playable audio.
+        if has_audio or selection_hash is not None:
             (city_dir / "audio_feed.xml").write_text(
                 build_rss(
                     city,
