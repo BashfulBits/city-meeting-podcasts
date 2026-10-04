@@ -737,7 +737,8 @@ The first recommendation preserves subscriber URLs while clarifying ownership. I
 license to relabel an unidentified recording. The second relies on formal institutional service,
 not shared members alone. The third isolates unknown evidence without inventing a body or
 quietly deleting already-published material. The public-input migration and one clearly named BZA/Appeals feed were explicitly approved
-in chat on 2026-10-04. Only the unresolved-recording boundary choice remains pending.
+in chat on 2026-10-04. The earlier unresolved-recording boundary proposal was superseded by the maintainer’s
+requirement below: historical cases must remain actively tracked and surfaced by sweeps.
 
 ### Additional proven joint correction
 
@@ -786,3 +787,59 @@ Maintainer chose one clearly named feed for the formally combined institutional 
 Preserve the existing Zoning Adjustment URL and subscriptions; display
 `Addison: Zoning Adjustment & Appeals`. This does not create a general rule that shared membership
 merges separate institutions. Existing six BZA/Appeals retained observations keep their ownership.
+
+## Historical uncertainty is an active coverage obligation (superseding prior proposal)
+
+Maintainer direction: unresolved episodes generally concern apparent new bodies with insufficient
+identity proof. This status must not ignore, defer indefinitely or forget older recordings.
+Historical uncertainty is not permission to declare Addison coverage complete. Every such case
+remains in the all-record census and the unresolved-episode sweep, including already archived
+records and labels currently matched by a feed. Record age never removes that obligation.
+
+### Citizen Advisory 56029: additional retained evidence
+
+Source `abbf5e25e078`, stable UID `63b22f80ce9500ff`, provider GUID `56029`, provider date
+June 1, 2007. Reinspection of the actual persisted record establishes ten served chapters and
+ten distinct source parts totaling 31,724.448 seconds. Chapter topics are recreation/community
+facilities, education, business development, environmental design, museums, performing/visual
+arts, public relations, transportation, culinary, and human services. The source media paths
+contain a 2009 upload-directory date; that does not supersede the official provider date.
+Earlier shorthand implying unavailable chapter evidence is superseded by this retained evidence.
+No official transcript or agenda text is stored. Ten parts do not establish ten meeting dates,
+ten institutions, or an authority to split stable episodes. The provider index reports eleven
+items; reconciliation with the ten retained parts remains a concrete completeness question.
+
+The [FY2007–08 Town budget](https://www.addisontx.gov/files/sharedassets/main/v/1/finance/documents/fy-2007-2008-addison-annual-budget.pdf)
+records approximately 85 appointed advisory participants, completion of the advisory process
+in FY2007, and review of its recommendations in FY2008. The
+[June 12, 2007 Council packet](https://agendas.addisontx.gov/docs/2007/CM/20070612_376/373_2007-06-12%20Agenda_Meeting%20Combined%20Meeting.pdf)
+includes June 2 Council minutes discussing receipt of Citizen Advisory recommendations. The
+[May 26, 2009 packet](https://agendas.addisontx.gov/docs/2009/CM/20090526_277/274_2009-05-26%20Agenda_Meeting%20Combined%20Meeting.pdf)
+identifies the 2007 Next Greatest Ideas advisory process as an input to parks planning.
+
+Recommendation: retain this recording in the existing URL's public-input subscription during
+the approved rename, with the provider title/date/UID unchanged. Evidence supports historical
+citizen advisory material; it does not justify full Council ownership or a new continuing-body
+feed. The exact Next Greatest Ideas linkage is an inference, not established recording binding.
+Do not call this an excluded municipal promotion or silently remove it for uncertainty.
+Before final closure, reconcile the provider item count and use the retained source/chapter
+material or an official program report to establish whether this is meetings, recommendations
+or a compiled presentation. Do not spend ASR/provider quota without the relevant approval.
+
+### Required sweep and closure behavior (policy; runtime contract still to mature)
+
+- New apparent bodies lacking proof enter an identity-evidence queue. Historical unresolved
+  recordings enter a coverage/correction queue; neither disappears because its label is archived.
+- Each case identifies city/source, stable UIDs/GUIDs, observed dates, current feed ownership,
+  exact missing evidence, last research result and the next concrete action.
+- Every unresolved sweep highlights both queues, including known historical cases and suspected
+  false inclusions. A previously matched label or old date is never a suppression criterion.
+- Unchanged cases remain visible in the report without posting duplicate issues or notifications.
+  Notify on new evidence, failed recovery, an overdue concrete action or a maintainer decision.
+- Repeated access failure is documented evidence-access failure, not a classification verdict.
+- Close only with an evidenced assignment/exclusion or a specifically approved unresolvable
+  disposition. Preserve raw records in every case; do not close #1623 on zero unexpected labels.
+
+Existing `collect_unexpected_bodies` does not meet this contract: it suppresses archived labels
+and already-covered records. This is a tracked implementation gap under review/51 P2 evidence,
+not a claim that the current automation already performs complete unresolved sweeps.

@@ -42,6 +42,12 @@ individual category recommendations; this document owns the improvement plan.
 - Addison BZA/Appeals (approved 2026-10-04): retain one subscription and its existing URL,
   display `Addison: Zoning Adjustment & Appeals`. Official evidence establishes that BZA serves
   as Appeals; shared members alone would not justify combining other institutions.
+- Historical uncertainty (maintainer direction 2026-10-04): unresolved sweeps must surface known
+  historical recordings and false inclusions as well as apparent new bodies lacking proof.
+  Archived labels, current selector matches and age cannot suppress unresolved cases. Each case
+  retains stable recording IDs, missing evidence and a concrete next action; closure requires
+  an evidenced disposition or explicit approval. Current unexpected-body detection does not
+  satisfy this requirement; mature it in the P2 evidence contract before claiming full coverage.
 - Aggregate-only Dallas/Fort Worth TIF subscriptions, preserving archive records and migrated URLs.
   One TIF aggregate per city is also the approved default for future cities.
 - Include every legitimate public meeting recording, including sparse and historical bodies.
