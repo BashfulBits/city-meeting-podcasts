@@ -65,3 +65,26 @@ reasonable option if the maintainer wants to reduce the first rollout's blast ra
 - [login v4](https://github.com/docker/login-action/releases/tag/v4.0.0)
 - [build-push v7](https://github.com/docker/build-push-action/releases/tag/v7.0.0)
 - [wrangler-action v4](https://github.com/cloudflare/wrangler-action/releases/tag/v4.0.0)
+
+## Nonpublishing smoke results
+
+2026-10-04: both smoke runs succeeded using the exact upgraded action SHAs.
+
+- [Audio image run](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37211586347)
+  ran the existing workflow from branch head `680fe8f3`. Buildx setup and GHCR login succeeded.
+  The real linux/amd64 Dockerfile built with GHA cache import/export and `--load`, without
+  `--push`. Runtime checks passed for Python 3.12.3, ffmpeg/ffprobe 7.1.5, pdftocairo,
+  tesseract and imports of boto3/citypods. No registry image was published.
+- [Worker package run](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37211784142)
+  passed for all four Workers at branch head `e64307b2`. Each job ran Worker tests, then the
+  upgraded Wrangler action with exact version 4.137.0 and `deploy --dry-run`. Jobs used fake
+  credentials, verified a nonempty bundled index.js and checked the installed Wrangler version.
+  No Cloudflare deployment occurred.
+- `.github/workflows/worker-package-smoke.yml` preserves this nondeploying check for future
+  Worker/deploy-workflow PRs. It has read-only repository permissions and uses no secrets.
+
+These results close the build/load and Worker packaging execution gaps above. They do not
+validate a GHCR push, Cloudflare authentication, remote binding availability or live deployment.
+They support merging the action upgrades with those explicit rollout limits; the first production
+runs still require monitoring. The Docker smoke predates the later documentation-only main merge
+and the new Worker smoke workflow; its Dockerfile, action pins and runtime inputs remain unchanged.

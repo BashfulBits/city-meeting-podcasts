@@ -15,7 +15,9 @@ Once 1.0 ships, entries move under semver tags.
 - **GitHub Actions major updates (PR #1497).** Refresh full-SHA action pins across current
   workflows, preserve retired LLM workflows and the dispatch-tuning drift gate, and cover
   workflows added since the original Renovate branch. Validate upstream action inputs and
-  hosted-runner compatibility. No Python/Worker dependency, image, model, pipeline-version or
+  hosted-runner compatibility. Add credential-free Worker packaging smoke checks and verify
+  nonpublishing audio-image build/load plus runtime checks. No Python/Worker dependency, image,
+  model, pipeline-version or
   artifact changes; stored artifacts stay valid and no backfill is triggered.
 
 - **Purpose-bound LLM telemetry (GH#2001, PR #2004, review/52; merged 2026-10-04).** Require producer, accounting unit,
