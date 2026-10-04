@@ -30,12 +30,14 @@ maintenance, resolving known rules before model calls while requiring verified l
 Alias qualification is narrow and reviewed; incomplete archives require documented exceptions;
 TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues.
 
-Purpose-bound telemetry follow-on **GH#2001** is in implementation under
-[review/52](review/52-purpose-work-telemetry.md), following the maintainer's request on 2026-10-04.
-It enforces producer/unit/coverage contracts, shared submission tracking and automatic report discovery
-without promoting the later incremental eligibility ledger or changing P1–P7 sequencing.
-
 ## Recently shipped (summary)
+
+- **Purpose-bound LLM telemetry (GH#2001):** shipped in
+  [PR #2004](https://github.com/BashfulBits/city-meeting-podcasts/pull/2004) on 2026-10-04.
+  Registration enforces producer/unit/coverage contracts; shared work handles track submission
+  and validated consumption, and reports discover new/retired purposes automatically. Research
+  units and partial coverage remain explicit. The later incremental ledger and P1–P7 sequencing
+  are unchanged. Frozen design: [review/52](review/52-purpose-work-telemetry.md).
 
 - **P0 LLM backlog trend:** daily/manual read-only reporting shipped in
   [PR #1983](https://github.com/BashfulBits/city-meeting-podcasts/pull/1983), accepted against live
