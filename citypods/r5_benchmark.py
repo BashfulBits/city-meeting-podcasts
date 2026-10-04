@@ -582,14 +582,9 @@ def _run_pairwise(
         for left, right in itertools.combinations(models, 2):
             left_result = (taggers.get(left, {}).get("examples") or {}).get(example_id) or {}
             right_result = (taggers.get(right, {}).get("examples") or {}).get(example_id) or {}
-            if left_result.get("status") != "resolved" or right_result.get("status") != "resolved":
-                work = tracker.item(
-                    "r5-benchmark:judge",
-                    f"pair:{example_id}:{left}:{right}",
-                    producer="r5-benchmark",
-                )
-                work.defer("blocked")
-                continue
+            blocked = (
+                left_result.get("status") != "resolved" or right_result.get("status") != "resolved"
+            )
             left_tags = [blind_candidate(item) for item in left_result.get("tags") or []]
             right_tags = [blind_candidate(item) for item in right_result.get("tags") or []]
             for first, second in order_swapped_pairs(left, right):
@@ -597,6 +592,9 @@ def _run_pairwise(
                 work = tracker.item(
                     "r5-benchmark:judge", f"pair:{comparison_id}", producer="r5-benchmark"
                 )
+                if blocked:
+                    work.defer("blocked")
+                    continue
                 if comparison_id in resolved_ids:
                     work.consumed(reused=True)
                     continue

@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from citypods.compute.llm import PerModelBatchingBackends
+from citypods.compute.llm_work import LLMWorkTracker
 from citypods.r5_benchmark import (
     CHAPTER_PIPELINE_VERSION,
     PRELABELER_PROMPT_VERSION,
@@ -282,6 +283,53 @@ def test_pairwise_retries_pending_comparisons_and_completion_waits_for_them(monk
     assert len(calls) == 2
     assert len(run["pairwise"]["results"]) == 2
     assert _execution_complete(run, dataset) is True
+
+
+def test_pairwise_blocked_work_keeps_order_swapped_identities_on_retry(monkeypatch):
+    import citypods.r5_benchmark as benchmark
+
+    run = {
+        "run_id": "run-1",
+        "taggers": {
+            "a": {"examples": {"e1": {"status": "pending", "tags": []}}},
+            "b": {"examples": {"e1": {"status": "resolved", "tags": []}}},
+        },
+    }
+    tracker = LLMWorkTracker()
+    calls = []
+    monkeypatch.setattr(
+        benchmark,
+        "pairwise_judge",
+        lambda *_args, **kwargs: (calls.append(kwargs["recipe_hash"]) or {"winner": "a"}, False),
+    )
+    kwargs = {
+        "run": run,
+        "dataset": {"examples": [_example("e1")]},
+        "taxonomy": _taxonomy(),
+        "backends": PerModelBatchingBackends(lambda _model: object()),
+        "models": ("a", "b"),
+        "judge_model": "judge",
+        "sample_size": 1,
+        "allow_paid": False,
+        "deadline_at": datetime.now(UTC) + timedelta(minutes=1),
+        "tracker": tracker,
+    }
+    _run_pairwise(**kwargs)
+    blocked = tracker.snapshot()["purposes"]["r5-benchmark:judge"]
+    assert blocked["observed"] == 2
+    assert blocked["states"] == {"blocked": 2}
+    assert calls == []
+
+    run["taggers"]["a"]["examples"]["e1"]["status"] = "resolved"
+    _run_pairwise(**kwargs)
+    completed = tracker.snapshot()["purposes"]["r5-benchmark:judge"]
+    assert completed["observed"] == 2
+    assert completed["states"] == {"consumed": 2}
+    assert completed["consumed"] == 2
+    assert set(calls) == {
+        _digest(["run-1", "e1", first, second, "judge"])
+        for first, second in (("a", "b"), ("b", "a"))
+    }
 
 
 def test_benchmark_reports_prelabeler_precision_by_source_kind_and_requires_approval():
