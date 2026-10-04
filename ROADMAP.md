@@ -40,6 +40,11 @@ TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues
 
 ## Recently shipped (summary)
 
+- Addison body-policy corrections and historical sweep (#2010, #2012, #2014, #2019–#2021,
+  2026-10-04): Public Input/Briefings, verified joint subscriptions, exact Council ownership,
+  Bond/TIF families and read-only unresolved tracking. Raw records, UIDs and audio preserved.
+  Historical evidence gaps and website joint discovery (#2018, R8) remain follow-ups.
+
 - Foundation historical publication selection (#2002, 2026-10-04): preserve the three existing
   dedicated RSS winners across Foundation/combined search projections, retain every archive UID
   and page, and correct active board lifecycle using official current evidence. Future-member

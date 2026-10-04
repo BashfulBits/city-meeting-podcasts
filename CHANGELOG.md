@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Addison body-policy stack merged (#2010, #2012, #2014, #2019–#2021).** Ship Public Input,
+  Briefings and BZA/Appeals presentation, proven joint subscriptions, exact Council ownership,
+  Bond/TIF feeds and the read-only historical unresolved sweep. Preserve raw records, UIDs,
+  audio and source namespaces. No stage-version bump, artifact invalidation or forced backfill.
+  Remaining historical proof cases stay visible; search/browse redesign follows in #2018.
+
 - Prepare an offline unresolved-recording sweep (#2013): inspect all cached raw recordings,
   preserve known historical/false-inclusion obligations in a durable case register, report
   changed assignments and missing registered records. No network, legacy remedy dispatch,

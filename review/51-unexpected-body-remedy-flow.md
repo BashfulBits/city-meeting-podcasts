@@ -1359,6 +1359,9 @@ with historical impact and migration/UID checks. Never use archive deletion as r
 
 ## Addison public-input display and verified routing — L3 bounded implementation
 
+Frozen bounded implementation contract: **Implemented in PR #2010**, human-merged
+2026-10-04. Remaining evidence/admission gates elsewhere in this document are unchanged.
+
 Tracking: #2009. Maintainer approved the public-input/briefing migration, combined BZA/Appeals
 presentation, and retention of historical Citizen Advisory material in Public Input. This slice
 implements verified assignments only; remaining dated cases stay in the historical census.
@@ -1400,6 +1403,9 @@ The separately proposed P2 sweep contracts remain gated; #2009 does not claim to
 
 ## Verified Addison joint subscriptions — L3 bounded slice (#2011)
 
+Frozen bounded implementation contract: **Implemented in PR #2012**, human-merged
+2026-10-04. Remaining evidence/admission gates elsewhere in this document are unchanged.
+
 The global joint rule is approved. Recording-bound official packets are cited in the Addison
 body-policy audit. Use existing `source.body_includes` in the P&Z feed for GUID295839,
 310072 and276855, with their complete retained body labels. Add only295839 and310072 to
@@ -1418,6 +1424,9 @@ Prepared PRs remain unmerged and all CodeRabbit requests remain held. Other hist
 remain active; this bounded correction is not complete-city coverage.
 
 ## Historical unresolved sweep — L3 approved bounded read-only contract (#2013)
+
+Frozen bounded implementation contract: **Implemented in PR #2014**, human-merged
+2026-10-04. Remaining evidence/admission gates elsewhere in this document are unchanged.
 
 Maintainer explicitly approved this proposal in chat on2026-10-04. Tracking issue #2013.
 Existing unexpected-body
@@ -1479,6 +1488,9 @@ reviewed production configuration is unchanged after two acknowledged/resolved s
 
 ## Addison Council ownership correction — L3 (#2015)
 
+Frozen bounded implementation contract: **Implemented in PR #2019**, human-merged
+2026-10-04. Remaining evidence/admission gates elsewhere in this document are unchanged.
+
 Approved body/event policy applies: exactly47 P&Z work sessions and one ceremony leave Council.
 Replace body/body_any with the complete exact alias list below; keep source URL, metadata and
 all four body_includes unchanged, including TIRZ until #2017.
@@ -1524,6 +1536,9 @@ until evidenced, rather than restoring broad fiscal/strategic wildcards.
 
 ## Addison Bond family — L3 (#2016)
 
+Frozen bounded implementation contract: **Implemented in PR #2020**, human-merged
+2026-10-04. Remaining evidence/admission gates elsewhere in this document are unchanged.
+
 Create config/feeds/addison-tx-bond-committees.yml, city addison-tx, provider swagit,
 meeting_family bond; slug addison-tx-bond-committees; same Swagit list URL128, body_exact
 list containing only Bond Advisory Committee. Display Addison: Bond Committees, author
@@ -1539,6 +1554,9 @@ new-feed memberships; existing feed membership sets remain identical. Update the
 with evidenced prepared dispositions, retaining records. Lifecycle/audit files as in #2015.
 
 ## Addison TIRZ board — L3 (#2017)
+
+Frozen bounded implementation contract: **Implemented in PR #2021**, human-merged
+2026-10-04. Remaining evidence/admission gates elsewhere in this document are unchanged.
 
 Create config/feeds/addison-tx-tif.yml, city addison-tx, provider swagit, meeting_family tif,
 slug addison-tx-tif, same Swagit list URL128; source.body_exact LIST contains only
