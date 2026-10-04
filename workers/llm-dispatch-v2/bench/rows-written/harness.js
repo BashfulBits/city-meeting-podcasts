@@ -22,7 +22,7 @@ function job(i, purpose, model, models) {
 export class MeasureDO extends LLMSchedulerDO {
   _getSql() {
     if (!this._wrapped) {
-      const real = this.ctx.storage.sql;
+      const real = this.sql;
       this._cursors = [];
       const cursors = this._cursors;
       this._wrapped = {
@@ -34,7 +34,8 @@ export class MeasureDO extends LLMSchedulerDO {
         get databaseSize() { return real.databaseSize; },
       };
     }
-    return this._wrapped;
+    this.sql = this._wrapped;
+    return super._getSql();
   }
   _take() {
     // Drain any unconsumed cursors so their counters are final, then total and reset.
@@ -169,11 +170,30 @@ MeasureDO.prototype.measure429 = async function () {
   return { authorize_retry_w: this._take().w };
 };
 
+MeasureDO.prototype.measureAccounting = async function () {
+  await this.claimDispatchWindow(Date.now(), 30);
+  this._take();
+  const count = () => [...this.ctx.storage.sql.exec(
+    "SELECT rows_written_today FROM scheduler WHERE id = 1"
+  )][0].rows_written_today;
+  const before = count();
+  for (let i = 0; i < 5; i++) {
+    // Recreate JS state against the same real SQLite storage, as after hibernation.
+    const fresh = new LLMSchedulerDO(this.ctx, this.env);
+    fresh.sql = this.sql; // Include accounting writes in the independent benchmark meter.
+    await fresh.enqueueBatch([job(i, "chapter-agenda", NEMOTRON)]);
+    await fresh.pauseDispatch({ scope: "global", seconds: 60, reason: "local accounting test" });
+    await fresh.resumeDispatch({ scope: "global" });
+  }
+  return { actual_writes: this._take().w, persisted_delta: count() - before };
+};
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const name = url.searchParams.get("name") || crypto.randomUUID();
     const stub = env.M.get(env.M.idFromName(name));
+    if (url.pathname === "/accounting") return Response.json(await stub.measureAccounting());
     if (url.pathname === "/retry") return Response.json(await stub.measureRetry());
     if (url.pathname === "/r429") return Response.json(await stub.measure429());
     if (url.pathname === "/ingress") return Response.json(await stub.measureIngress({
