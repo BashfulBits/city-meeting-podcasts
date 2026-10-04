@@ -28,6 +28,11 @@ individual category recommendations; this document owns the improvement plan.
   across cities unless official evidence establishes a temporary body. Seasonal schedules and
   Council-only membership do not make a committee temporary. Addison CPC uses this default;
   temporary programs retain the approved family-feed policy. This was directed on 2026-10-04.
+- Genuinely jointly convened meetings publish the same recording in each officially participating
+  body's feed, preserving the recording and stable episode identity. This was explicitly approved
+  on 2026-10-04. Membership overlap, a topic mention, or separately convened meetings bundled in
+  one video do not prove joint participation. Existing canonical search ownership stays stable;
+  unresolved ownership/timeline cases require evidence before activation.
 - Aggregate-only Dallas/Fort Worth TIF subscriptions, preserving archive records and migrated URLs.
   One TIF aggregate per city is also the approved default for future cities.
 - Include every legitimate public meeting recording, including sparse and historical bodies.

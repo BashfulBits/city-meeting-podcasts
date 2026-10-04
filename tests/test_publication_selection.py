@@ -591,10 +591,12 @@ def test_addison_cpc_new_unique_recording_classifies_without_identity_merge():
     records[uid] = {
         **copy.deepcopy(records[ADDISON_CPC_WINNER]),
         "uid": uid,
-        "provider_guid": "new-independent-recording",
+        "provider_guid": "999999",
+        "video_url": "https://addisontx.new.swagit.com/videos/999999/download",
         "title": "Community Partnership Committee – Jul 23, 2026",
         "published": "2026-07-23T00:00:00+00:00",
     }
+    records[uid].pop("audio")
     selector = bodies.source_body_filter(committee.source)
     assert bodies.matches("Community Partnership Committee", selector)
     assert bodies.matches("COMMUNITY PARTNERSHIP COMMITTEE", selector)
@@ -609,5 +611,6 @@ def test_addison_cpc_new_unique_recording_classifies_without_identity_merge():
     )
     assert not plan.held
     assert uid in plan.selected_uids
+    assert next(item for item in plan.public_items if item.uid == uid).audio_url is None
     assert len(plan.public_items) == 6
     assert records == original
