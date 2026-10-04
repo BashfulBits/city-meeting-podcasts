@@ -1397,3 +1397,22 @@ Acceptance: meaningful targeted tests, complete retained822-record ownership com
 Ruff/format and offline suite. Explicitly report unresolved old records; no coverage-complete
 claim, no legacy remedy, no new CodeRabbit request while the classification settlement hold applies.
 The separately proposed P2 sweep contracts remain gated; #2009 does not claim to implement them.
+
+## Verified Addison joint subscriptions — L3 bounded slice (#2011)
+
+The global joint rule is approved. Recording-bound official packets are cited in the Addison
+body-policy audit. Use existing `source.body_includes` in the P&Z feed for GUID295839,
+310072 and276855, with their complete retained body labels. Add only295839 and310072 to
+CPAC: October17,2023 convened Council/P&Z, not CPAC. Preserve all Council selectors in this
+slice. Do not infer participation from agenda topics or generic joint substrings.
+
+Files: the two existing P&Z/CPAC feed YAML files; a minimal retained-record fixture
+`tests/fixtures/addison-joint-retained.json`; actual-config RSS, negative participant and
+canonical-search ownership tests in `tests/test_publication_selection.py`; this specification,
+the body-policy audit, review/11, ROADMAP, CHANGELOG and ARCHITECTURE status descriptions.
+No runtime/provider/storage/stage/record-schema changes or dependencies. Preserve existing
+feed URLs, records, UIDs, dates, audio objects and current Council canonical search owner.
+Replay all822 retained records: the only selector changes are three added P&Z memberships
+and two added CPAC memberships. Whole Ruff/format and offline tests plus current CI must pass.
+Prepared PRs remain unmerged and all CodeRabbit requests remain held. Other historical cases
+remain active; this bounded correction is not complete-city coverage.
