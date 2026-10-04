@@ -1287,3 +1287,10 @@ preserving all genuine Council/joint memberships, records, UIDs and hosted audio
 attribution is corrected where Council previously matched incorrectly. TIRZ stays in Council
 until its separate #2017 correction. Registered cases remain open until human merge/deployment.
 No audio invalidation, pipeline changes or backfill. Full checks precede push/review.
+
+
+Bond family correction (#2016) prepared/unmerged: four verified committee recordings gain
+Addison: Bond Committees subscriptions with original UIDs/audio. Existing other memberships
+are unchanged; canonical search attribution corrects the erroneous unmatched BZA fallback to
+Bond. Council recommendations remain Council-only. No audio backfill or stage invalidation.
+Cases remain open for human merge and deployed projection verification.

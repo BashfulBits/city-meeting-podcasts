@@ -1259,6 +1259,13 @@ attribution is corrected where Council previously matched incorrectly. TIRZ stay
 until its separate #2017 correction. Registered cases remain open until human merge/deployment.
 No audio invalidation, pipeline changes or backfill. Full checks precede push/review.
 
+
+Bond family correction (#2016) prepared/unmerged: four verified committee recordings gain
+Addison: Bond Committees subscriptions with original UIDs/audio. Existing other memberships
+are unchanged; canonical search attribution corrects the erroneous unmatched BZA fallback to
+Bond. Council recommendations remain Council-only. No audio backfill or stage invalidation.
+Cases remain open for human merge and deployed projection verification.
+
 ### Dispatch write-accounting correction (2026-10-04)
 
 A live DO log showed `rows_written_today` falling from 4,620 to 4,590 when the constructor

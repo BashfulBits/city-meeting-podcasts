@@ -1,0 +1,13 @@
+slug: addison-tx-bond-committees
+city: addison-tx
+provider: swagit
+meeting_family: bond
+source:
+  list_url: https://addisontx.new.swagit.com/views/128
+  body_exact:
+    - Bond Advisory Committee
+podcast_title: 'Addison: Bond Committees'
+podcast_author: City of Addison, TX
+podcast_email: ''
+podcast_description: Verified Addison bond-program committee meetings, including the 2026 Police
+  and Courts facility Bond Advisory Committee.
