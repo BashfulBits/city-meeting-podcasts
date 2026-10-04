@@ -266,6 +266,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
       this._initSchema();
     }
+    this._accountingReady = true;
+    this._transactionSync(() => {});
   }
 
   /**
@@ -314,6 +316,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
     cursors.length = 0;
     this._rowsUnflushed = (this._rowsUnflushed || 0) + written;
+    this._rowsSinceLog = (this._rowsSinceLog || 0) + written;
     return written;
   }
 
@@ -324,19 +327,87 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return rows;
   }
 
-  /**
-   * Billed rows this DO has written today: the persisted counter (flushed on the scheduler
-   * writes each claim and enqueue already make, and on a braked claim tick whenever rows are
-   * pending, so tracking it costs almost no extra rows) plus what is still in memory. Every cron
-   * tick flushes, so an eviction loses at most about one tick of writes, which the reserve above
-   * each threshold absorbs.
-   */
+  /** Commit accounting with the writes it describes, before the instance can hibernate. */
+  _transactionSync(callback) {
+    if (!this._accountingReady) return this.ctx.storage.transactionSync(callback);
+    this._drainRowCount();
+    const pendingBefore = this._rowsUnflushed || 0;
+    const loggedBefore = this._rowsSinceLog || 0;
+    const previousNow = this._transactionNow;
+    this._transactionNow = Date.now();
+    try {
+      return this.ctx.storage.transactionSync(() => {
+        const result = callback();
+        this._persistRowCount();
+        return result;
+      });
+    } catch (error) {
+      // SQL rolled back; neither its cursors nor its in-memory increments are committed writes.
+      this._openCursors.length = 0;
+      this._rowsUnflushed = pendingBefore;
+      this._rowsSinceLog = loggedBefore;
+      throw error;
+    } finally {
+      this._transactionNow = previousNow;
+    }
+  }
+
+  _persistRowCount() {
+    this._drainRowCount();
+    const pending = this._rowsUnflushed || 0;
+    if (pending === 0) return; // Read-only calls and idle braked ticks remain write-free.
+    // Completions may be the first writes after midnight. Preserve this transaction's writes
+    // when rolling the rest of the daily scheduler counters, and count the rollover itself.
+    this._rollUtcDayIfNeeded(this._transactionNow);
+    this._rowsUnflushed = pending;
+    this._drainRowCount();
+    const rows = this._takeUnflushedRows();
+    // scheduler has no secondary indexes: updating this singleton writes exactly one row.
+    // Use the raw handle so the accounting write is included once without recursive flushing.
+    const cursor = this.sql.exec(
+      "UPDATE scheduler SET rows_written_today = rows_written_today + ? WHERE id = 1",
+      rows + 1
+    );
+    for (const _row of cursor) {} // Finalize the real runtime's billed-row cursor.
+    this._rowsSinceLog = (this._rowsSinceLog || 0) + (Number(cursor.rowsWritten) || 0);
+  }
+
+  /** Persisted billed rows plus writes in the current, still-open synchronous transaction. */
   _rowsWrittenToday(sched) {
     const persisted =
       sched && sched.utc_day === this._currentUtcDay(Date.now())
         ? Number(sched.rows_written_today) || 0
         : 0;
     return persisted + (this._rowsUnflushed || 0);
+  }
+
+  /** Operator repair: raise today's estimate from a dated platform/log observation. */
+  async reconcileRowBudget({ utc_day, minimum_rows_written, observed_through_at, reason }, now = Date.now()) {
+    const today = this._currentUtcDay(now);
+    if (
+      utc_day !== today ||
+      !Number.isSafeInteger(minimum_rows_written) || minimum_rows_written < 0 ||
+      minimum_rows_written > DO_ROWS_WRITTEN_PLATFORM_LIMIT ||
+      !Number.isSafeInteger(observed_through_at) || observed_through_at > now ||
+      observed_through_at < Date.parse(`${today}T00:00:00Z`) ||
+      typeof reason !== "string" || reason.length < 1 || reason.length > 500
+    ) {
+      return { ok: false, error: "bad_request", detail: "A bounded current-day observation is required" };
+    }
+    const result = this._transactionSync(() => {
+      const sched = this._rollUtcDayIfNeeded(now);
+      const before = this._rowsWrittenToday(sched);
+      if (minimum_rows_written > before) {
+        this._getSql().exec(
+          "UPDATE scheduler SET rows_written_today = MAX(rows_written_today, ?) WHERE id = 1",
+          minimum_rows_written
+        );
+      }
+      return { ok: true, utc_day, before, minimum_rows_written, observed_through_at, reason };
+    });
+    result.rows_written_today = this._readRowsWrittenToday();
+    console.log(JSON.stringify({ event: "do_row_budget_reconciled", ...result }));
+    return result;
   }
 
   /** Read-only variant for handlers that do not otherwise touch the scheduler row. */
@@ -936,7 +1007,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'job_models'"
     )];
     if (!row || /WITHOUT\s+ROWID/i.test(String(row.sql))) return;
-    this.ctx.storage.transactionSync(() => {
+    this._transactionSync(() => {
       sql.exec(`
         CREATE TABLE job_models_clustered (
           job_id      TEXT NOT NULL,
@@ -970,7 +1041,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'bundles'"
     )];
     if (!row || /WITHOUT\s+ROWID/i.test(String(row.sql))) return;
-    this.ctx.storage.transactionSync(() => {
+    this._transactionSync(() => {
       sql.exec(`
         CREATE TABLE bundles_clustered (
           bundle_id            TEXT PRIMARY KEY,
@@ -1101,7 +1172,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ROWS_PER_BUNDLE * (Number(sched.bundle_count_today) || 0) +
       ROWS_PER_LEASE_WORST * (Number(sched.lease_count_today) || 0) +
       ROWS_PER_CLEANUP_JOB * cleanupRuns * this._envInt("PURGE_BATCH_LIMIT", 15) +
-      minutes;
+      2 * minutes; // Each ordinary idle tick writes its outcome and accounting row.
     sql.exec("UPDATE scheduler SET rows_written_today = ? WHERE id = 1", estimate);
   }
 
@@ -1526,7 +1597,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const key = LLMSchedulerDO.pauseScopeKey(scope, target);
     const pausedUntil = now + Math.min(seconds, LLMSchedulerDO.PAUSE_MAX_SECONDS) * 1000;
     const sql = this._getSql();
-    this.ctx.storage.transactionSync(() => {
+    this._transactionSync(() => {
       // Expired rows are removed lazily here rather than by a scheduled sweep: the table only
       // ever holds a few scopes, and this keeps pausing the only thing that writes it.
       sql.exec("DELETE FROM dispatch_pause WHERE paused_until <= ?", now);
@@ -1549,7 +1620,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const key = LLMSchedulerDO.pauseScopeKey(scope, target);
     const sql = this._getSql();
     const existed = this._activePauses(now).some((row) => row.scope === key);
-    this.ctx.storage.transactionSync(() => {
+    this._transactionSync(() => {
       sql.exec("DELETE FROM dispatch_pause WHERE scope = ? OR paused_until <= ?", key, now);
     });
     this._pauseCache = null;
@@ -1679,7 +1750,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
     const catalog = this._dispatchLimits();
     const catalogRoute = catalog.routes_by_id[routeId];
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       let merged = {
         ...catalogRoute,
         ...this._getOrCreateRouteLedger(routeId, now, catalogRoute),
@@ -1728,6 +1799,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * Returns the current (possibly just-reset) scheduler row.
    */
   _rollUtcDayIfNeeded(now) {
+    this._transactionNow = now;
     const sql = this._getSql();
     const today = this._currentUtcDay(now);
     const rows = [...sql.exec(
@@ -1814,7 +1886,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // The whole batch commits or rolls back as one unit -- see review/44 Unit 2 ("one SQLite
     // transaction for the whole batch"). ctx.storage.transactionSync requires its callback to
     // run fully synchronously (no await inside), which this loop already does.
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       this._ensureMigratedJobModels();
       this._ensureQueuedJobCounter();
       const accepted = [];
@@ -2213,7 +2285,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const maxJobsToday = this._maxJobsPerUtcDay();
     const maxIngressWriteUnits = this._maxIngressWriteUnitsPerUtcDay();
 
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       // Derive the correction namespace from the source id rather than the source row. That lets
       // a response-loss retry return the existing correction even after cleanup purged the source.
       const idempotencyKey = `schema-correction-v2:${sourceId}`;
@@ -2388,7 +2460,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
    */
   async stats(now) {
     const sql = this._getSql();
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       this._ensureQueuedJobCounter();
       const one = (query, ...args) => [...sql.exec(query, ...args)][0] || {};
       const scheduler = one(
@@ -2586,7 +2658,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   async detailedStats(now, limit = 20, { failureClasses = null } = {}) {
-    this._ensureQueuedJobCounter();
+    this._transactionSync(() => this._ensureQueuedJobCounter());
     const sql = this._getSql();
     const one = (query, ...args) => [...sql.exec(query, ...args)][0] || {};
 
@@ -2880,7 +2952,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._logRowBudgetStop("cancel");
       return { cancelled: [], in_flight: [...jobIds], not_found: [] };
     }
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       this._ensureQueuedJobCounter();
       const cancelled = [];
       const inFlight = [];
@@ -3717,7 +3789,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // Provider/route pauses: the same catalog minus the paused routes (see _claimDispatchLimits).
     const dispatchLimits = this._claimDispatchLimits(now);
 
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       this._ensureMigratedJobModels();
       this._ensureQueuedJobCounter();
       const maxBundlesPerDay = this._maxBundlesPerUtcDay();
@@ -3806,10 +3878,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       };
       // The daily brake. Past the claim threshold no new lease is claimed, and the empty result
       // is not recorded -- every row left belongs to completing what is already in flight. The
-      // row counter is still persisted when rows are pending (completions, acks and retires keep
-      // writing), since nothing else flushes it past the enqueue threshold and an eviction would
-      // otherwise drop them and reopen the optional-write gate. One row, only when more than one
-      // is pending, so an idle braked tick writes nothing.
+      // transaction wrapper persists any pending writes atomically. An idle braked tick has
+      // no pending writes and remains write-free.
       if (
         rowsToday >= this._claimRowStop() ||
         projectedRowsWithClaim >= accountSafeStop
@@ -3819,12 +3889,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
           claim_row_stop: this._claimRowStop(),
           claim_stop_reached: rowsToday >= this._claimRowStop(),
         });
-        if ((this._rowsUnflushed || 0) > 1) {
-          sql.exec(
-            "UPDATE scheduler SET rows_written_today = rows_written_today + ? WHERE id = 1",
-            this._takeUnflushedRows()
-          );
-        }
         return {
           ...EMPTY,
           claim_result: "empty",
@@ -4411,7 +4475,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
    */
   async attemptStarted(jobId, leaseToken, attemptId, now) {
     const sql = this._getSql();
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       const rows = [...sql.exec(
         "SELECT lease_token, lease_route_id, state FROM jobs WHERE id = ?",
         jobId
@@ -4445,7 +4509,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
    */
   async authorizeRetry(jobId, leaseToken, attemptId, now, retryAfterSeconds, failureClass = "unknown_429") {
     const sql = this._getSql();
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       const jobRows = [...sql.exec(
         "SELECT lease_token, lease_route_id, bundle_id, state, attempts FROM jobs WHERE id = ?",
         jobId
@@ -4661,7 +4725,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
    */
   async completeBatch(bundleId, executionToken, results) {
     const sql = this._getSql();
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       const bundleRows = [...sql.exec(
         "SELECT execution_token FROM bundles WHERE bundle_id = ?",
         bundleId
@@ -5280,7 +5344,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._logRowBudgetStop("queued_recount");
       return { queued: null, skipped: true };
     }
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       this._ensureQueuedJobCounter();
       const actual = [...sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'")][0]?.n || 0;
       sql.exec(
@@ -5301,7 +5365,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
     const retentionDays = this._envInt("COMPLETED_RETENTION_DAYS", 38);
     const cutoff = Date.now() - retentionDays * 86_400_000;
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       // Rows ALREADY in purge_pending come first, and are re-listed on every call until
       // confirmPurge actually removes them. Two ways a job gets there without this pass having
       // put it there: ackResults promoted it (the client consumed its result), or an earlier
@@ -5389,7 +5453,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._logRowBudgetStop("result_ack");
       return { acked: [], ignored: [...jobIds] };
     }
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       const acked = [];
       for (const chunk of this._chunks(jobIds)) {
         const placeholders = chunk.map(() => "?").join(",");
@@ -5432,7 +5496,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._logRowBudgetStop("result_retire");
       return { retired: [], ignored: items.map((item) => item.id) };
     }
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       const retired = [];
       const ignored = [];
       const wanted = new Map(items.map((item) => [item.id, item.result_key]));
@@ -5465,7 +5529,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
   async confirmPurge(jobIds) {
     if (!jobIds || jobIds.length === 0) return { purged: 0 };
     const sql = this._getSql();
-    return this.ctx.storage.transactionSync(() => {
+    return this._transactionSync(() => {
       let purged = 0;
       for (const chunk of this._chunks(jobIds)) {
         const placeholders = chunk.map(() => "?").join(",");
@@ -5510,7 +5574,9 @@ for (const name of Object.getOwnPropertyNames(LLMSchedulerDO.prototype)) {
         try {
           return await original.apply(this, args);
         } finally {
-          const rowsWritten = this._drainRowCount();
+          this._drainRowCount();
+          const rowsWritten = this._rowsSinceLog || 0;
+          this._rowsSinceLog = 0;
           if (rowsWritten > 0) {
             let rowsWrittenToday = null;
             try {

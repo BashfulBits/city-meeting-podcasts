@@ -13,9 +13,9 @@
  * idled dispatch at roughly half the budget on a typical day (~13 rows per lease).
  *
  * The constants below were MEASURED by `bench/rows-written/` (the real `LLMSchedulerDO` under
- * workerd) on 2026-09-24, after the row-write tiers (#1838, #1840, #1842, #1843): a completed
- * first-try job costs ~20 billed rows end to end (44.3 before). They size the ingress quota and
- * are the reference for re-measuring after a schema, index, or lifecycle-statement change.
+ * workerd), remeasured 2026-10-04 after adding atomic accounting: a completed first-try job
+ * costs ~21.6 billed rows end to end (44.3 before the row-write tiers). They size the ingress
+ * quota and are the reference for re-measuring after a schema/index/lifecycle change.
  */
 
 /** The platform's account-wide limit; every threshold must stay below it. */
@@ -31,17 +31,20 @@ export const DO_ROWS_ACCOUNT_RESERVE = 10000;
 export const ROWS_PER_INGRESS_WRITE_UNIT = 2;
 
 /** Fixed per-bundle cost: the bundle row + its index, the claim-outcome scheduler row, and the
- * bundle delete at completion (4.5 claim-side + 1.4 completion-side). */
-export const ROWS_PER_BUNDLE = 6;
+ * bundle delete at completion (4.5 claim-side + 1.4 completion-side), plus one accounting
+ * row in each writing transaction. */
+export const ROWS_PER_BUNDLE = 8;
 
 /** One lease beyond its bundle, worst case: per-job claim 3.8, attemptStarted 3, an in-lease 429
  * retry (authorizeRetry 3 + a second attemptStarted 3), then a requeue completion ~11. A success
- * with its consumption retire is ~13. */
-export const ROWS_PER_LEASE_WORST = 24;
+ * with its consumption retire is ~13. Four additional accounting rows cover attempt/retry/
+ * repeated-attempt/retire RPCs; claim and completion accounting belong to ROWS_PER_BUNDLE. */
+export const ROWS_PER_LEASE_WORST = 28;
 
 /** One job through scheduled cleanup: the purge_pending transition of a failed or aged job (2)
- * plus confirmPurge's row delete (1). A client-retired completion (1 row) never reaches cleanup. */
-export const ROWS_PER_CLEANUP_JOB = 3;
+ * plus confirmPurge's row delete (1), and one accounting row in each transaction (2).
+ * A client-retired completion never reaches cleanup. */
+export const ROWS_PER_CLEANUP_JOB = 5;
 
 export const CRON_TICKS_PER_DAY = 1440;
 

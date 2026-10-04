@@ -1225,3 +1225,31 @@ This extends frozen review/50's read-only scope without changing P1–P7 orderin
 incremental ledger. New purposes need their registration and producer eligibility semantics, while
 telemetry deduplication/submission accounting/report discovery are shared. Research units and partial
 coverage remain explicit; no quota, recipe, pipeline-version, Worker or artifact changes are included.
+
+### Dispatch write-accounting correction (2026-10-04)
+
+A live DO log showed `rows_written_today` falling from 4,620 to 4,590 when the constructor
+ran again. The former in-memory tally waited for a later claim/enqueue flush; repeated
+hibernations discarded it. Cloudflare measured 65,457 writes from 00:00–17:00 UTC, while the
+scheduler reported approximately 4,600. The 05:00–17:00 dashboard window measured 48,945
+writes, consistent with the API; this was a time-window difference, not conflicting billing.
+
+The corrective [PR #2008](https://github.com/BashfulBits/city-meeting-podcasts/pull/2008)
+persists accounting atomically with each writing transaction, includes its
+own row, restores memory on rollback, and provides an authenticated same-day monotone floor
+repair with an observation cutoff and audit reason. The real-runtime benchmark verifies
+recreation and measures 21.58 billed rows per completed first-try job at four jobs per bundle.
+Projection constants include the added writes (8 per bundle, 28 per lease, 5 per cleanup job);
+configured quotas and safe stops remain unchanged. No artifact backfill or pipeline version
+change is required. Historical lost counts require an explicit platform-derived estimate;
+a sparse live-tail sample is insufficient to recover all daily events.
+
+**Maintainer-authorized live repair (2026-10-04, PR #2008 remains open):** deployed commit
+`98b60591` as Worker version `eb7bd989-b393-418e-9cbc-df563ab0d112`. A five-minute,
+automatically expiring global pause held new claims during deployment and repair; it was
+explicitly resumed immediately afterward. Cloudflare's account aggregate for the only live
+DO, from 00:00–17:30 UTC, measured **66,861 billed rows**. The operator raised the floor to
+**67,861** (measured total plus an explicit **1,000-row reporting-gap reserve**); the repair's
+own two writes produced 67,863, and resume's two writes produced **67,865**. The prior live
+counter was 4,681. Both admission gates remained open at the unchanged 90,000-row safe stop.
+This is a conservative repaired estimate, not a claim that sparse logs recover every event.
