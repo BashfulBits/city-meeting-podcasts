@@ -22,7 +22,7 @@ Once 1.0 ships, entries move under semver tags.
   using the approved July 9 UID while preserving the July 10 record and all old pages. Exact identity
   guards preserve the committee identity for future classification. Render/search caches rebuild for the configured proof;
   audio keys and stage versions remain unchanged, with no forced backfill.
-  
+
 - **Durable Object write accounting survives hibernation (PR #2008).** Persist billed row counts in the
   same synchronous transaction as each mutation, including the accounting row; roll back both
   on failure. Read-only calls and replays remain write-free. Add a bounded authenticated,
