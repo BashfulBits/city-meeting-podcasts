@@ -1,6 +1,6 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: P1 tooling shipped; inactive publication selection L3; activations and P2–P5 gated.**
+**Status: P1 tooling shipped; inactive publication selection shipped; activations and P2–P5 gated.**
 **Revised:** 2026-10-03 after maintainer approval of the remaining evaluation design choices.
 This specification does not itself change production routing or enable auto-merge.
 
@@ -335,7 +335,7 @@ issue, or a documented unavailable-source exception. An unresolved legitimate re
 “covered.” The current 680-row inventory is a starting snapshot, not a permanently complete census.
 P1 can supply evaluation tooling while P0 is being completed; P5 requires an approved city baseline.
 
-### P0 publication selection — inactive machinery L3; activations L2
+### P0 publication selection — inactive machinery shipped; activations separately gated
 
 The maintainer authorized writing this specification; runtime projection changes and affected feed
 publication remain gated. Proceed independently with historical batches whose rendered output has
@@ -577,7 +577,8 @@ The future extension must specify its persistent sticky-winner ledger before it 
 activation work on #1986/#1989/#1991. Only the previously
 listed files, these named dataclasses/helpers and existing writer helpers may change; add no deps.
 
-Implementation for #1997 is under validation: parser/index/proof checks, feed/search projection,
+Inactive v1 contract frozen: **Implemented in PR #1999**, merged 2026-10-04.
+Parser/index/proof checks, feed/search projection,
 raw meeting-page retention and pre-write holds are implemented without active city declarations.
 This does not promote activation, future-member admission, or P2–P5 predecessor gates.
 Tests use `tests/test_publication_selection.py`, `tests/test_config.py`, `tests/test_run.py`,

@@ -112,10 +112,10 @@ P1–P5 structure and exact phase build contracts. **P1 harness: Shipped** (#198
 route admission remains L3 ([#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979)).
 P1 implements the approved hidden-owner truth, independent blind-owner mode and frozen candidate
 input hashes shipped in [PR #1987](https://github.com/BashfulBits/city-meeting-podcasts/pull/1987). No model is admitted and no
-live evaluation has run. Publication-selection inactive machinery is L3
+live evaluation has run. Publication-selection inactive machinery is **Shipped** in
+[PR #1999](https://github.com/BashfulBits/city-meeting-podcasts/pull/1999)
 ([#1997](https://github.com/BashfulBits/city-meeting-podcasts/issues/1997)): strict proof schemas,
-existing UID projection, pre-write holds and raw-page preservation. Its implementation is under
-validation; no city declarations are activated. City activations and future-member admission stay L2
+existing UID projection, pre-write holds and raw-page preservation. No city declarations are activated by that machinery PR. City activations and future-member admission stay L2
 until exact winner/exposure/date proof and evaluated sticky-winner policies are ready.
 #1986 has approved historical winners/exposure and L3 activation under validation;
 #1989 remains held for artifact comparison and #1991 has approved July 9 winner/exposure and L3 activation under validation. Shared approved templates and cross-city cases are specified for one resolver/replay path in

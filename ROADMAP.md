@@ -32,6 +32,10 @@ TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues
 
 ## Recently shipped (summary)
 
+- Inactive publication-selection v1 machinery (#1999, 2026-10-04): reviewed existing-UID
+  projection, feed/search pre-write holds and raw-page retention. City activations, future-member
+  admission and the remaining remedy-policy phases retain their separate gates.
+
 - **P0 LLM backlog trend:** daily/manual read-only reporting shipped in
   [PR #1983](https://github.com/BashfulBits/city-meeting-podcasts/pull/1983), accepted against live
   storage on 2026-10-04. Registry additions and retirements are discovered automatically; missing
