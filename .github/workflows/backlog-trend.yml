@@ -1,0 +1,63 @@
+name: LLM backlog trend
+
+on:
+  schedule:
+    - cron: "20 0 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backlog-trend
+  cancel-in-progress: false
+
+jobs:
+  backlog-trend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage]" -c constraints/prod.txt
+
+      - name: Read per-verb backlog trends
+        env:
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: |
+          python -m citypods.ops.backlog_trend \
+            --json "$RUNNER_TEMP/backlog_trend.json" \
+            --markdown "$RUNNER_TEMP/backlog_trend.md" \
+            --window-days 7
+
+      - name: Summarize backlog trends
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/backlog_trend.md" ]; then
+            cat "$RUNNER_TEMP/backlog_trend.md" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload backlog report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: backlog-trend-${{ github.run_id }}
+          path: ${{ runner.temp }}/backlog_trend.json
+          if-no-files-found: error
+          retention-days: 30

@@ -7,7 +7,8 @@ import json
 import tempfile
 from collections import defaultdict
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass, fields
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, dataclass, fields, replace
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from statistics import mean
@@ -134,9 +135,12 @@ def load_events(state_dir: Path, *, since: datetime) -> list[dict]:
     return _read_events(sorted((state_dir / "run_events").glob("*.json")), since=since)[0]
 
 
-def daily_points(events, verb: str, params, *, through: date | None = None) -> list[DayPoint]:
+def daily_points(
+    events, verb: str, params, *, through: date | None = None, specs=None, tokens=None
+) -> list[DayPoint]:
     """Select each day's last completed snapshot and sum all completed daily runs."""
-    spec = VERBS[verb]
+    spec = (VERBS if specs is None else specs)[verb]
+    tokens = STAGE_TOKENS if tokens is None else tokens
     grouped = defaultdict(list)
     for event in events:
         if (
@@ -154,7 +158,7 @@ def daily_points(events, verb: str, params, *, through: date | None = None) -> l
         classes = dict.fromkeys((*_WORKING_CLASSES, *_OTHER_CLASSES), 0)
         unclassified = {}
         for token, count in (latest.get("defer_reasons") or {}).items():
-            owner = STAGE_TOKENS[spec.stage].get(token)
+            owner = tokens.get((spec.lane, spec.stage), tokens.get(spec.stage, {})).get(token)
             if owner is None:
                 unclassified[token] = count
             elif owner[0] == verb:
@@ -171,9 +175,10 @@ def daily_points(events, verb: str, params, *, through: date | None = None) -> l
     return points
 
 
-def analyze(events, verb: str, params) -> VerbReport:
+def analyze(events, verb: str, params, *, specs=None, tokens=None) -> VerbReport:
     """Measure one verb's trend and recommend an action when working backlog remains."""
-    points = daily_points(events, verb, params)
+    specs = VERBS if specs is None else specs
+    points = daily_points(events, verb, params, specs=specs, tokens=tokens)
     latest = points[-1] if points else None
     classes = latest.classes if latest else dict.fromkeys((*_WORKING_CLASSES, *_OTHER_CLASSES), 0)
     backlog = latest.backlog if latest else 0
@@ -199,7 +204,7 @@ def analyze(events, verb: str, params) -> VerbReport:
             backlog > 0
             and (drain is None or drain > params.drain_days_max)
             and trend != "shrinking"
-            if VERBS[verb].throughput_reliable
+            if specs[verb].throughput_reliable
             else trend == "growing"
         )
         if constrained and backlog > 0:
@@ -231,6 +236,89 @@ def analyze_all(events, params) -> dict[str, VerbReport]:
     return {verb: analyze(events, verb, params) for verb in VERBS}
 
 
+# Existing shared-stage ownership remains explicit: run events do not contain purposes.
+_PURPOSES = {
+    "tagger": "topic-tags:tagger",
+    "prelabeler": "topic-tags:prelabeler",
+    "prelabeler-shadow": "topic-tags:prelabeler-shadow",
+    "moments": "r6-moments",
+}
+_GENERIC_CLASSES = {
+    "llm-pending": "queued",
+    "producer-cap": "ingress_limited",
+    "llm-capacity": "ingress_limited",
+    "judge-capacity": "ingress_limited",
+    "stop": "stopped",
+    "stop-signal": "stopped",
+    "rollout-dispatch-cap": "policy_held",
+    "llm-error": "errored",
+}
+
+
+def discover_verbs(events, site_config):
+    """Discover registered purposes and LLM stage telemetry without guessing unknown tokens.
+
+    A registry-only purpose has no telemetry, rather than a measured zero backlog. Historical
+    stage rows remain visible while their events are in the read window. Shared-stage purposes
+    require producer telemetry to distinguish them; unmatched purposes stay visibly unmeasured.
+    """
+    registry = site_config.get("llm_lanes")
+    specs = dict(VERBS)
+    tokens = {stage: dict(rows) for stage, rows in STAGE_TOKENS.items()}
+    lifecycle = {}
+    for verb in specs:
+        purpose = _PURPOSES.get(verb, verb)
+        lifecycle[verb] = "active" if registry is None or purpose in registry else "retired"
+    registered = set(registry or {})
+    mapped = {_PURPOSES.get(verb, verb) for verb in specs}
+    for purpose in sorted(registered - mapped):
+        specs[purpose] = VerbSpec(purpose, purpose, purpose.replace("-", "_"), False)
+        lifecycle[purpose] = "no_telemetry"
+    candidates = defaultdict(set)
+    for event in events:
+        if event.get("outcome") == "interrupted":
+            continue
+        lane = event.get("lane")
+        if not isinstance(lane, str):
+            continue
+        for stage, stats in event.get("stages", {}).items():
+            if stage in STAGE_TOKENS or not isinstance(stats, dict):
+                continue
+            reasons = stats.get("defer_reasons") or {}
+            matches = [
+                purpose
+                for purpose in registered
+                if purpose.replace("-", "_") == stage.replace("-", "_") or purpose == lane
+            ]
+            if not matches and not any(
+                token in {"llm-pending", "llm-capacity", "judge-capacity", "llm-error"}
+                for token in reasons
+            ):
+                continue
+            candidates[(lane, stage)].update(matches)
+    ownership = defaultdict(set)
+    for pair, matches in candidates.items():
+        for purpose in matches:
+            ownership[purpose].add(pair)
+    for (lane, stage), matches in sorted(candidates.items()):
+        unique = len(matches) == 1 and len(ownership[next(iter(matches))]) == 1
+        verb = next(iter(matches)) if unique else f"{lane}:{stage}"
+        specs[verb] = VerbSpec(verb, lane, stage, False)
+        lifecycle[verb] = "active" if unique else "unregistered"
+        tokens[(lane, stage)] = {
+            token: (verb, category) for token, category in _GENERIC_CLASSES.items()
+        }
+    for verb, spec in specs.items():
+        if lifecycle[verb] == "active" and not any(
+            event.get("lane") == spec.lane
+            and spec.stage in event.get("stages", {})
+            and event.get("outcome") != "interrupted"
+            for event in events
+        ):
+            lifecycle[verb] = "no_telemetry"
+    return specs, tokens, lifecycle
+
+
 def params_from_config(site_config: Mapping) -> BacklogParams:
     """Read optional backlog settings, using defaults and rejecting unknown keys."""
     raw = site_config.get("llm_backlog") or {}
@@ -245,22 +333,25 @@ def params_from_config(site_config: Mapping) -> BacklogParams:
     return params
 
 
-def _unclassified_tokens(reports: Mapping[str, VerbReport]) -> dict[str, dict[str, int]]:
+def _unclassified_tokens(
+    reports: Mapping[str, VerbReport], specs=None
+) -> dict[str, dict[str, int]]:
     # Sibling verbs observe the same stage snapshot: record each unknown stage token only once.
     """Collect unknown tokens once per stage rather than once per sibling verb."""
+    specs = VERBS if specs is None else specs
     result: dict[str, dict[str, int]] = {}
     for verb, report in reports.items():
         if report.unclassified:
-            result.setdefault(VERBS[verb].stage, {}).update(report.unclassified)
+            result.setdefault(specs[verb].stage, {}).update(report.unclassified)
     return result
 
 
-def render_markdown(reports: Mapping[str, VerbReport]) -> str:
+def render_markdown(reports: Mapping[str, VerbReport], lifecycle=None) -> str:
     """Render advisory backlog measurements as a Markdown summary table."""
     lines = [
         "| Verb | Backlog | Trend | Drain days | Constrained | Action | "
-        "Blocked/held | Unclassified |",
-        "|---|---:|---|---:|---|---|---|---|",
+        "Blocked/held | Unclassified | Lifecycle |",
+        "|---|---:|---|---:|---|---|---|---|---|",
     ]
     for verb, report in reports.items():
         blocked = ", ".join(
@@ -270,10 +361,13 @@ def render_markdown(reports: Mapping[str, VerbReport]) -> str:
         # Unknown event tokens are untrusted text, including Markdown table delimiters.
         unknown = unknown.replace("|", "\\|").replace("\n", " ").replace("\r", " ")
         drain = f"{report.drain_days:.2f}" if report.drain_days is not None else "—"
+        label = verb.replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+        status = (lifecycle or {}).get(verb, "active")
+        backlog = "—" if status == "no_telemetry" else str(report.backlog)
         lines.append(
-            f"| {verb} | {report.backlog} | {report.trend} | {drain} | "
+            f"| {label} | {backlog} | {report.trend} | {drain} | "
             f"{str(report.constrained).lower()} | {report.action or '—'} | "
-            f"{blocked or '—'} | {unknown or '—'} |"
+            f"{blocked or '—'} | {unknown or '—'} | {status} |"
         )
     return "\n".join(lines) + "\n"
 
@@ -296,7 +390,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--markdown", type=Path)
     parser.add_argument("--fail-on-unclassified", action="store_true")
     args = parser.parse_args(argv)
-    params = params_from_config(load_site_config(args.site_config))
+    site = load_site_config(args.site_config)
+    params = params_from_config(site)
     if args.window_days is not None:
         params = params_from_config(
             {"llm_backlog": {**asdict(params), "window_days": args.window_days}}
@@ -307,8 +402,9 @@ def main(argv: list[str] | None = None) -> int:
         paths = sorted((args.state_dir / "run_events").glob("*.json"))
         events, skipped = _read_events(paths, since=since)
     else:
-        from citypods.statesync import STATE_PREFIX, pull_state
+        from citypods.statesync import STATE_PREFIX
         from citypods.storage import make_storage
+        from citypods.storage.s3 import is_transient_storage_error
 
         site = load_site_config(args.site_config)
         storage = make_storage(site, site.get("base_url", ""), Path(args.output_dir))
@@ -319,15 +415,37 @@ def main(argv: list[str] | None = None) -> int:
         keys = sorted(
             key
             for key, _ in storage.list_objects(prefix)
-            if key.endswith(".json") and Path(key).name[:15] >= cutoff
+            if key.startswith(prefix) and key.endswith(".json") and Path(key).name[:15] >= cutoff
         )
         with tempfile.TemporaryDirectory(prefix="backlog-trend-") as directory:
-            state_dir = Path(directory)
-            rels = [key[len(STATE_PREFIX) + 1 :] for key in keys]
-            pull_state(storage, state_dir, only_paths=rels)
-            events, skipped = _read_events([state_dir / rel for rel in rels], since=since)
-    reports = analyze_all(events, params)
-    unknown = _unclassified_tokens(reports)
+            # Append-only run events are not snapshot-manifest members. Read the listed keys
+            # directly, using local numeric names so remote keys cannot escape the temp directory.
+            paths = [Path(directory) / f"{index:06d}.json" for index in range(len(keys))]
+
+            def download(pair: tuple[str, Path]) -> None:
+                key, path = pair
+                try:
+                    storage.get_file(key, path)
+                except Exception as exc:
+                    if not is_transient_storage_error(exc):
+                        raise
+                    # Missing or transiently unreadable files are counted by _read_events.
+                    path.unlink(missing_ok=True)
+
+            if keys:
+                with ThreadPoolExecutor(max_workers=min(8, len(keys))) as pool:
+                    list(pool.map(download, zip(keys, paths, strict=True)))
+            events, skipped = _read_events(paths, since=since)
+    specs, tokens, lifecycle = discover_verbs(events, site)
+    reports = {verb: analyze(events, verb, params, specs=specs, tokens=tokens) for verb in specs}
+    # Unknown ownership/classification cannot support a capacity recommendation.
+    reports = {
+        verb: replace(report, constrained=False, action=None)
+        if report.unclassified or lifecycle[verb] != "active"
+        else report
+        for verb, report in reports.items()
+    }
+    unknown = _unclassified_tokens(reports, specs)
     output = {
         "generated_at": now.isoformat(),
         "window_days": params.window_days,
@@ -335,15 +453,19 @@ def main(argv: list[str] | None = None) -> int:
         "verbs": {verb: asdict(report) for verb, report in reports.items()},
         "unclassified_tokens": unknown,
         "skipped_files": skipped,
+        "verb_lifecycle": lifecycle,
     }
-    markdown = render_markdown(reports)
+    for verb, status in lifecycle.items():
+        if status == "no_telemetry":
+            output["verbs"][verb]["backlog"] = None
+    markdown = render_markdown(reports, lifecycle)
     if args.json:
         args.json.write_text(json.dumps(output, indent=2) + "\n")
     if args.markdown:
         args.markdown.write_text(markdown)
     if not args.json and not args.markdown:
         print(markdown, end="")
-    if not events:
+    if not events and (skipped or args.fail_on_unclassified):
         return 2
     return 1 if args.fail_on_unclassified and unknown else 0
 

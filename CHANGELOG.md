@@ -12,6 +12,19 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Daily per-verb LLM backlog report (GH#1969, review/50 PR2).**
+  Add the read-only 00:20 UTC/manual workflow over durable `run_events/`, using only the nine
+  storage secrets. Publish the six-verb Markdown summary and retain the JSON report for 30 days;
+  report unknown tokens without failing the schedule; preserve reports after report-step failures.
+  No producer, queue, model-call, quota, pipeline-version, or durable-state changes.
+  Read append-only event keys directly: the snapshot manifest excludes them and previously
+  caused every selected file to be skipped. Bound concurrent downloads and count missing or
+  transiently unreadable files; propagate access-denied errors. The new workflow needs to be
+  registered on main before its first manual Actions run. Discover registry purposes and LLM
+  stage snapshots automatically, identify retired/unregistered/unmeasured rows, and suppress
+  recommendations when attribution is incomplete. Shared-stage purposes without distinct telemetry
+  are listed with null backlog. Strict unknown-token checking remains an opt-in CLI diagnostic.
+
 - Remedy evaluations report only applied reasoning controls and reject physical-route allowlists
   on deferred inference paths; immediate evaluation routing remains supported.
 
