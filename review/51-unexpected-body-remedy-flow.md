@@ -897,6 +897,219 @@ config guards; immutable events; conflicting parents; lost cache recovery; no-CA
 claim loss/concurrent publication; rejection suppression and explicit reopening; exclusions retain
 records. Exit: complete coverage replay and rejection/exclusion persistence work offline without LLMs.
 
+### P2a proposed typed contract — approval pending
+
+**Proposed maturity: L3 after the typed proof-packet decision below is approved and a scoped issue
+is linked.** P1 schemas shipped in #1987 satisfy the predecessor. No model admission is required.
+This is the first independently reviewable P2 slice. Source-partitioned feedback paths are already
+approved, but no ledger or evidence-v2 implementation belongs to this slice.
+
+#### Scope / files
+
+New `citypods/remedy_policy.py`, existing `citypods/config.py`, existing
+`citypods/remedy_evaluation.py` only strict shared-config/template compatibility,
+`citypods/audit_remedy.py` only existing policy guard call sites, new
+`tests/test_remedy_policy.py`, existing `tests/test_config.py`, `tests/test_remedy_evaluation.py`
+and remedy guard tests, `evals/remedy/` sanitized policy-transfer cases, lifecycle docs.
+Shared `config/remedy.yml` gains `policy_templates: []` only. No active feed edits/template
+activations, provider/Worker/catalog changes, new deps, stage versions or archived record writes.
+Do not modify audit.py, audit evidence file schema, queues, ledger, storage or onboarding workflow
+in P2a. Later phases wire their existing entrypoints to this same API; no duplicate resolver.
+
+#### Strict values and compatibility
+
+Public parse failures are ValueError with feed/template context. Frozen dataclasses or strict
+Pydantic models; reject extra keys and coerced booleans/strings. Slug IDs use
+[a-z0-9][a-z0-9-]{0,63}; version is strict positive int. Names remain opaque exact official strings,
+nonempty after body_key; identity_names forbid * and ?. Canonical hashes use existing
+remedy_evaluation.canonical_hash, or identical local canonical JSON without import-cycle changes.
+Sort unordered IDs/forms/references for hashes; retain official names unchanged. No network parsing.
+HTTPS approval refs are GitHub issue/PR/comment URLs. source_key uses existing records.source_key,
+including valid pinned source IDs; do not introduce a 12hex requirement for remedy policy scopes.
+
+Feed remedy_policy preserves current optional aggregate_family/member_names/identity_names.
+New optional fields exactly policy_id/version/positive_case_ids/negative_case_ids/approval_ref/
+template_id/template_version. Unknown keys rejected. policy_id/version/approval_ref form an
+all-or-none reviewed provenance tuple; template_id/template_version form an all-or-none pair and
+require that reviewed tuple. Positive/negative case lists are distinct nonempty strings when set.
+Identity-only requires nonempty identity_names; aggregate must be one of existing seven families.
+Do not silently treat member_names as exact identity names.
+
+Legacy policy declarations continue unchanged, indexed status `legacy_unversioned`, internal ID
+`legacy:<feed-slug>` and hash of their actual declaration. Existing exact-owner/TIF protections
+continue to work; they do not gain verified evaluation truth, template approval or auto-merge
+qualification. No production YAML migration is bundled here.
+
+#### Exact template schema v1
+
+Optional RemedyConfig.policy_templates defaults to []. Define PolicyTemplate in remedy_policy.py;
+RemedyConfig references that type rather than creating another config reader. Template fields:
+
+```
+id: <slug>
+version: <strict positive integer>
+approval_ref: <HTTPS GitHub reviewed template decision>
+scope: cross_city | city_source
+city_source: null | {city: <city-slug>, source_key: <existing-source-key>}
+identity_type: aggregate_family | named_body
+aggregate_family: tif | pid | bond | charter | redistricting | public_input | public_briefings | null
+permitted_transformations: [<closed values below>]
+selector_forms: [body | body_any | body_exact | body_includes]
+official_proof_requirements: [<closed proof values below>]
+exclusion_boundaries: [<closed values below>]
+migration_boundaries: [<closed values below>]
+positive_case_ids: [<case IDs>]
+negative_case_ids: [<case IDs>]
+transfer_case_ids: [<case IDs>]
+```
+All keys required. Aggregate identity requires non-null family; named_body requires null family.
+Lists cannot be empty except transfer_case_ids for city_source templates. Duplicate entries error.
+No literal city names belong to templates. city_source requires a non-null exact city/source binding; cross_city requires null.
+Instantiation checks that binding against its supplied City and existing source_key. It cannot
+transfer across sources merely because names match.
+Cross-city templates must include transfer cases; parser validates IDs/type, approval is not inferred.
+
+Closed initial transformations:
+- normalized_exact_label: existing matches_exact_body_label/body_key normalization only.
+- reviewed_label_alias: explicitly approved additional local exact label.
+- reviewed_recording_inclusion: existing exact body_includes GUID inclusion with official proof.
+- approved_family_marker: existing TIF guarded recognition only; other families fail this form.
+
+No regex DSL, year stripping, fuzzy synonyms or inferred new owner. Runtime rule changes require
+new reviewed template revision/negative/transfer cases. Existing body/body_any substring matches
+remain selectors; they do not become verified ownership for unknown labels.
+
+Proof enums: official_body_identity, recording_is_public_meeting, same_source_namespace,
+complete_available_history, reviewed_positive_negative_cases, exact_provider_guid.
+Every template requires first five; GUID inclusion additionally requires exact_provider_guid.
+Exclusion boundary enums: promotional, ceremony, staff_training, municipal_tv_show, topic_only,
+other_body. All initial templates require six; they require negatives, never execute topic-keyword
+exclusions. Migration boundary enums: source_namespace, uid, official_metadata, archived_records,
+audio_artifacts; all five required, forbidding these mutations through instantiation.
+
+#### Named immutable API/results
+
+- load_policy_templates(config) -> TemplateIndex. Config is parsed RemedyConfig or equivalent
+  strictly validated mapping, not an independent parser. Index by (id,version); duplicate keys
+  fail even if byte-identical. Carries canonical template hashes.
+- load_policies(feed_paths, *, templates=None) -> PolicyIndex. feed_paths is existing
+  feed_paths_by_slug mapping[str,Path]. Load feed models through the existing config loader at the
+  shared config root; no hand-derived alternate namespace. Reject paths from mixed config roots.
+  Build only requested slugs and verify path/model slug correspondence. Empty mapping valid.
+  If templates absent, parse legacy/versioned instance declarations; a referenced template is
+  unresolved rather than guessed. No instantiation without official packet.
+- instantiate_policies(city, source_key, templates, official_evidence) -> PolicyInstances.
+  source_key must equal records.source_key(city), else unresolved source mismatch. Reads the local
+  remedy_policy template reference and supplied proof packet only, never scans network/othercities.
+  Emits resolved instance plus diagnostics or unresolved diagnostics; never feed YAML or selectors.
+- resolve_owner(label,source_key,policies) -> OwnershipResolution. Result fields status
+  verified|ambiguous|unknown, owner_slugs tuple, policy_ids tuple, evidence_refs tuple,
+  holding_owner_slugs tuple, reasons tuple. Verified can contain multiple exact reviewed owners,
+  preserving current intentionally joint subscriptions; it is not silent arbitrary single-owner
+  selection. Ambiguous means contradictory identities/instantiation, not merely legitimate exact
+  shared subscription already present in configuration.
+
+PolicyInstance fields: policy_id, version (nullable legacy), status legacy_unversioned|approved|
+unresolved, owner_slug, city_slug, source_key, aggregate_family, member_names, identity_names,
+approval_ref, case IDs, template id/version/hash, local_declaration_hash, evidence_refs,
+proof_diagnostics. PolicyIndex stores source->instances; references immutable.
+TemplateIndex owns parsed versions/hashes; PolicyInstances owns resolved/unresolved tuples.
+OwnershipResolution returns deterministic sorted refs/owner tuples; no secret/provider payloads.
+
+Pure lookup rules match current guards:
+1. Exact reviewed identity_names match supersedes weaker other-family holding clues; retain every
+   exact reviewed owner for intended joint subscriptions.
+2. Existing TIF markers qualify only if current forbidden-topic/other-body token guard passes.
+   Reuse current code/rules verbatim, no newly inferred marker semantics.
+3. Other-family markers/member_names are holding clues only. Unknown/ambiguous cannot add feeds
+   or assign ownership. A body scoped to another source never matches.
+4. A nonpolicy feed still uses existing coarse selector compatibility in the old remedy guard;
+   do not convert it to proof or widen this slice into all taxonomy inference.
+5. `_aggregate_policy_reason` still considers proposal label/new slug/title for protection against
+   separate aggregate-member feeds. Use shared resolver/holding results rather than copied regexes.
+   `_target_feed_is_compatible` with a policy requires verified membership; unchanged no-policy
+   fallback remains. Reasons retain existing useful diagnostics.
+
+#### Typed official_evidence decision requiring maintainer approval
+
+The existing contract requires instantiate_policies to consume official_evidence but provides no
+serialized proof shape or way to bind names to actual references. This typed packet plus the explicit city_source template binding are the genuinely new
+serialized schema decisions in this policy-only slice. The binding is necessary to enforce the
+already intended city_source approval restriction; an enum alone cannot identify its approved city. Recommend this smallest frozen packet, with existing
+EvidenceRef/Recording schemas unchanged, and explicit binding objects rather than booleans claiming
+that proof exists:
+
+```yaml
+schema_version: 1
+city: example-tx
+source_key: example-source
+approval_ref: https://github.com/BashfulBits/city-meeting-podcasts/issues/NN#issuecomment-NN
+policy_id: example-tx-tif
+policy_version: 1
+template_id: city-tif
+template_version: 1
+identity_bindings:
+  - identity_name: Downtown TIF Board Meeting
+    evidence_ref_ids: [official-board-page, official-agenda]
+    recording_guids: [https://example.granicus.com/MediaPlayer.php?view_id=2&clip_id=7]
+evidence_refs: [<existing EvidenceRef v2 values with bounded official spans/hash>]
+recordings: [<existing Recording v2 values with verbatim body/title/date/GUID>]
+completeness:
+  status: complete_available
+  evidence_ref_ids: [archive-census]
+  exception_refs: []
+positive_case_ids: [example-tif-meeting]
+negative_case_ids: [example-council-tif-topic]
+transfer_case_ids: [unseen-city-tif]
+```
+
+Require source/city/policy/template identity and version to match declaring feed; packet approval
+must match local approval_ref; exact identity names and GUIDs must occur in packet recordings/bindings.
+Missing reference/recording/binding produces unresolved. Do not treat official text/model summary as
+executable rules. Completeness status enum complete_available|incomplete|unknown; evidence IDs always
+resolve. Incomplete/unknown stays unresolved in this slice; detailed exception acceptance belongs to
+P5. Full evidence-v2 schema later can embed this same typed packet without changing P1 seed schemas.
+
+Independent truth/case gate: case IDs checked against frozen manifest/gold supplied in the packet's
+approval evidence, not manufactured by parser. Since the existing instantiate API has no evaluation
+parameter, **recommend do not load gold implicitly**. Validate packet exact case IDs equal the local/
+template lists and retain approval provenance. A later replay/qualification verifies actual case
+truth. This avoids adding an undocumented eval IO side effect to pure template instantiation.
+
+Alternative: arbitrary dict evidence (today's loose case completeness/family_policy). Simpler but
+cannot distinguish an ungrounded `{verified:true}` assertion from auditable local ownership proof.
+Typed packet is therefore recommended before implementation. No maintainer vote needed again on
+already approved families, source partition, exact names or unchanged guard semantics.
+
+#### Tests / acceptance
+
+Parser: all current configurations valid; malformed/extra/coerced metadata errors; paired fields;
+legacy behavior preserved; template unknownrevision unresolved; canonical ordering; no sourceUID
+change. Empty policy_templates accepted and initial production remains empty/shadow.
+Resolver: existing TIF guard tests and all existing exact joint-owner tests unchanged; topic negatives,
+markers only holding for nonTIF, exact identity supersedes holding clue; source-local isolation;
+ambiguous proofpacket cannot acquire owner; unsupported forms reject; no model/network calls.
+Instantiation: previously unseen city with frozen official packet; no local names copied across
+cities; missing reference, incomplete archive, unknown revision, mismatched approval/namespace
+unresolved; packet does not emit config mutations; same policy index yields same lookup outcomes
+through simulated maintenance and onboarding callers.
+Hash compatibility: templates/local revisions contribute hashes only for new policy provenance;
+existing no-config feed/cache hashes untouched. Official record values/UIDs/audio keys unchanged.
+Sanitized evals: explicit regression/transfer cases with ordinary provenance; do not label these
+independent admission truth or qualify auto-merge. No live calls/credentials.
+Whole repository Ruff/format, offline pytest, exact-head CI/preview. One clean code PR then
+CodeRabbit paced >=65 minutes from last requested review, findings verified/fixed and carried forward.
+Docs update review11/CHANGELOG/ARCHITECTURE; stamp only shipped slice, keep P2b/P2c and P3–P5 gated.
+
+#### Deferred exactly
+
+No replay_coverage/material_evidence_hash implementation in P2a. They remain the next complete
+coverage slice; no archived-label skip change, fresh evidence requirement enforcement, persistent
+feedback events, queue publication or automatic city onboarding activation here. Ledger uses
+approved source-partitioned paths later; no remaining question about that path. P3 still requires
+actual independently reviewed model admissions. No claim full historical backlog is complete.
+
+
 ### P3 — diverse reasoning review and bounded escalation
 
 **Gate:** P1 reports support at least one admitted proposer and a reviewer from another family;
