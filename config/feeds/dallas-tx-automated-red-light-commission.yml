@@ -1,0 +1,15 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Automated Red Light Commission is a clearly recurring, distinct body with 11 observed meetings spanning from August 2015 to April 2019.
+slug: dallas-tx-automated-red-light-commission
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Automated Red Light Commission
+lifecycle:
+  status: retired
+  reason: latest observed meeting was 2019-04-30 (2714 days ago)
+podcast_title: 'Dallas: Automated Red Light Commission'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Dallas Automated Red Light Commission.

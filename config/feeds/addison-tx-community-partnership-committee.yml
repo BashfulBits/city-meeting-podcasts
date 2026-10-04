@@ -1,0 +1,12 @@
+# Added by automated unexpected-body remediation.
+# Rationale: The Community Partnership Committee is a recurring public body with five observed meetings spanning 2025 and 2026, which justifies a dedicated new feed.
+slug: addison-tx-community-partnership-committee
+city: addison-tx
+provider: swagit
+source:
+  list_url: https://addisontx.new.swagit.com/views/128
+  body: Community Partnership Committee
+podcast_title: 'Addison: Community Partnership Committee'
+podcast_author: City of Addison, TX
+podcast_email: ''
+podcast_description: Broadcasts of the Addison Community Partnership Committee meetings.

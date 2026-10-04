@@ -1,0 +1,12 @@
+# Added by automated unexpected-body remediation.
+# Rationale: The Bond Advisory Committee has four meetings on record between October 2025 and January 2026. Creating a dedicated feed serves as the approved municipal aggregate for bond-related advisory proceedings.
+slug: addison-tx-bond-advisory-committee
+city: addison-tx
+provider: swagit
+source:
+  list_url: https://addisontx.new.swagit.com/views/128
+  body: Bond Advisory Committee
+podcast_title: 'Addison: Bond Advisory Committee'
+podcast_author: City of Addison, TX
+podcast_email: ''
+podcast_description: Broadcasts of the Addison Bond Advisory Committee meetings.

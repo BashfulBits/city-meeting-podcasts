@@ -1,0 +1,15 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Charter Review Commission is a clearly recurring, distinct body with 30 observed meetings spanning from 2014 to 2024. Respecting approved city aggregates for charter review.
+slug: dallas-tx-charter-review-commission
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Charter Review Commission
+lifecycle:
+  status: retired
+  reason: latest observed meeting was 2024-04-11 (906 days ago)
+podcast_title: 'Dallas: Charter Review Commission'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Dallas Charter Review Commission.
