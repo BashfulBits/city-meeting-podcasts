@@ -365,6 +365,26 @@ def test_non_string_shards_are_skipped_without_losing_valid_events(tmp_path, sha
     assert rows[0]["shard"] == "0/2"
 
 
+@pytest.mark.parametrize("shard", [" 0/2", "0/2 ", "+0/2", "0/-2", "0/0", "2/2"])
+def test_malformed_shard_strings_are_skipped(tmp_path, shard):
+    path = tmp_path / "event.json"
+    path.write_text(json.dumps({**event(), "shard": shard}))
+    rows, skipped = trend._read_events([path], since=NOW - timedelta(days=1))
+    assert rows == []
+    assert skipped == 1
+
+
+def test_equivalent_shard_keys_are_canonicalized(tmp_path):
+    paths = []
+    for index, shard in enumerate(["00/02", "0/2"]):
+        path = tmp_path / f"event-{index}.json"
+        path.write_text(json.dumps({**event(), "shard": shard}))
+        paths.append(path)
+    rows, skipped = trend._read_events(paths, since=NOW - timedelta(days=1))
+    assert skipped == 0
+    assert [row["shard"] for row in rows] == ["0/2", "0/2"]
+
+
 def test_registry_discovers_new_verbs_and_retirement_without_code_changes():
     rows = [
         {

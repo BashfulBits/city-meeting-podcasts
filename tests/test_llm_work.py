@@ -82,6 +82,19 @@ def test_registration_requires_telemetry_and_owner():
         )
 
 
+def test_bulk_deferral_validates_empty_sets_and_preserves_consumed_work():
+    work = tracker()
+    with pytest.raises(ValueError, match="deferral state"):
+        work.defer_remaining("new-purpose", "invalid")
+    work.item("new-purpose", "done", producer="new-stage").consumed()
+    work.item("new-purpose", "pending", producer="new-stage")
+    work.defer_remaining("new-purpose", "policy_held")
+    assert row(work)["states"] == {"consumed": 1, "policy_held": 1}
+    assert row(work)["consumed"] == 1
+    with pytest.raises(ValueError, match="deferral state"):
+        work.defer_remaining("new-purpose", "consumed")
+
+
 def test_pre_submission_cap_and_replay_do_not_inflate_work():
     work = tracker()
 

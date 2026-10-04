@@ -83,10 +83,13 @@ class LLMWorkTracker:
             self._items.setdefault(purpose, {})
 
     def defer_remaining(self, purpose: str, state: str) -> None:
+        if state not in WORKING | HELD:
+            raise ValueError(f"Invalid LLM work deferral state: {state}")
         with self._lock:
-            for identity, item in self._items.get(purpose, {}).items():
+            for item in self._items.get(purpose, {}).values():
                 if item.state == "ready":
-                    WorkItem(self, purpose, identity).defer(state)
+                    item.state = state
+                    item.consumed = False
 
     def item(self, purpose: str, identity: str, *, producer: str, state: str = "ready") -> WorkItem:
         lane = self.lanes.get(purpose)

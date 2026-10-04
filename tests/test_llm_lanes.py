@@ -73,6 +73,33 @@ def _lane(**overrides):
 
 
 class TestParsing:
+    @pytest.mark.parametrize(
+        "change",
+        [
+            None,
+            {"extra": True},
+            {"producer": " "},
+            {"unit": " "},
+            {"scope": "unknown"},
+            {"completion": "queued"},
+        ],
+    )
+    def test_rejects_invalid_telemetry_contracts(self, change):
+        config = _lane()
+        if change is None:
+            config["a-purpose"].pop("telemetry")
+        else:
+            config["a-purpose"]["telemetry"].update(change)
+        with pytest.raises(ValueError, match="telemetry"):
+            parse_lanes(config)
+
+    def test_normalizes_telemetry_identity_fields(self):
+        config = _lane()
+        config["a-purpose"]["telemetry"].update(producer=" test ", unit=" episode ")
+        lane = parse_lanes(config)["a-purpose"]
+        assert lane.telemetry_producer == "test"
+        assert lane.telemetry_unit == "episode"
+
     def test_accepts_a_well_formed_lane(self):
         lanes = parse_lanes(_lane())
         assert lanes["a-purpose"] == LaneConfig(

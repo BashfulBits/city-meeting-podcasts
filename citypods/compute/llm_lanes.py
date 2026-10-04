@@ -312,8 +312,10 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
         producer = telemetry["producer"]
         if not isinstance(producer, str) or not producer.strip():
             raise ValueError(f"llm_lanes[{purpose!r}].telemetry.producer must be non-empty")
+        producer = producer.strip()
         if not isinstance(telemetry["unit"], str) or not telemetry["unit"].strip():
             raise ValueError(f"llm_lanes[{purpose!r}].telemetry.unit is invalid")
+        unit = telemetry["unit"].strip()
         if not isinstance(telemetry["scope"], str) or telemetry["scope"] not in {
             "retained_catalog",
             "sample",
@@ -327,7 +329,7 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
             purpose=purpose,
             models=models,
             telemetry_producer=producer,
-            telemetry_unit=telemetry["unit"],
+            telemetry_unit=unit,
             telemetry_completion=telemetry["completion"],
             telemetry_scope=telemetry["scope"],
             max_dispatches_per_run=_coerce_int(

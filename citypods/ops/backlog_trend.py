@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import tempfile
 from collections import defaultdict
 from collections.abc import Mapping
@@ -150,9 +151,13 @@ def _read_events(paths, *, since: datetime) -> tuple[list[dict], int]:
             if event.get("shard"):
                 if not isinstance(event["shard"], str):
                     raise ValueError("invalid shard scope")
-                index, count = map(int, event["shard"].split("/"))
+                match = re.fullmatch(r"([0-9]+)/([0-9]+)", event["shard"])
+                if not match:
+                    raise ValueError("invalid shard scope")
+                index, count = int(match[1]), int(match[2])
                 if count <= 0 or not 0 <= index < count:
                     raise ValueError("invalid shard scope")
+                event["shard"] = f"{index}/{count}"
             if _timestamp(event) >= since:
                 events.append(event)
         except (OSError, ValueError, TypeError, KeyError):

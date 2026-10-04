@@ -25,6 +25,11 @@ Once 1.0 ships, entries move under semver tags.
   No model, recipe, pipeline-version, quota, Worker, dependency or artifact changes; stored artifacts
   remain valid and no backfill is triggered. Telemetry begins with new runs.
 
+- Prepare Foundation's approved existing-UID publication selection: three historical recordings
+  appear once in dedicated/combined public views, with raw records and pages retained. Correct
+  retirement inferred from old clips using current official board activity. Configured proof changes
+  rebuild render/search outputs only; no audio/stage version bump or artifact backfill.
+
 - Add inactive publication-selection v1 machinery for #1997: strict reviewed proof declarations,
   existing UID projection and pre-write feed/search holds preserve raw records and meeting pages.
   Valid selections also rewrite an empty audio channel when the preferred record is unavailable,

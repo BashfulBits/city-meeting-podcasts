@@ -746,7 +746,9 @@ for verified duplicate observations. Inactive v1 machinery validates frozen proo
 and full source archives before feed or search writes, projecting reviewed existing UIDs without
 changing records, audio or source identity. Failed proof preserves prior output and caches.
 Meeting pages retain raw observations; public feed/archive/search views use reviewed winners.
-No groups are activated. City activation and automatic future-member admission remain L2;
+Foundation's three reviewed historical groups use its existing dedicated-feed RSS UIDs and
+equivalent combined-feed declarations; only the dedicated feed owns canonical search links.
+Automatic future-member admission and other city activations remain evidence-gated;
 the evaluation harness does not delete records or merge UIDs.
 
 #### Exact feed-body labels
