@@ -1231,3 +1231,7 @@ now join the existing P&Z and CPAC subscriptions; GUID276855 joins P&Z only. Cou
 canonical search ownership, recording UIDs and audio are preserved. Complete822-record replay
 adds exactly three P&Z and two CPAC memberships, with no removals or other feed changes.
 Other historical assignments remain active evidence tasks; CodeRabbit requests remain held.
+
+
+Historical unresolved sweep: **L3**, maintainer-approved typed read-only contract in review/51,
+tracked by #2013. Separate from gated P2a model policies and notification automation.

@@ -1417,9 +1417,10 @@ and two added CPAC memberships. Whole Ruff/format and offline tests plus current
 Prepared PRs remain unmerged and all CodeRabbit requests remain held. Other historical cases
 remain active; this bounded correction is not complete-city coverage.
 
-## Historical unresolved sweep — proposed bounded read-only contract
+## Historical unresolved sweep — L3 approved bounded read-only contract (#2013)
 
-Maintainer schema approval requested in chat; this section is not yet L3. Existing unexpected-body
+Maintainer explicitly approved this proposal in chat on2026-10-04. Tracking issue #2013.
+Existing unexpected-body
 remedy collection and dispatch remain unchanged. Do not expose expanded historical coverage to
 legacy automation or infer that the unresolved register grants P2a model-policy approval.
 
@@ -1453,3 +1454,14 @@ Tests: historical uncovered record, matched false-inclusion case, absent body, a
 resolved with evidence, missing cached UID, changed assignment, duplicate register validation,
 multi-feed genuine joint, deterministic rerun and unchanged input bytes. Before implementation,
 create the scoped issue, seed every open Addison case, and record the explicit schema approval.
+
+Implementation functions: `load_cases(path)` strictly validates the register;
+`build_report(state_root, config_root, case_register)` reads cached source files and returns
+the declared report; `main()` parses the four required paths and writes JSON. Date output uses
+the existing stored `published` field. Fail visibly for malformed source files, unknown cached
+source/config bindings, or a register city/GUID inconsistent with its stored source record.
+Configured sources without local cache are outside this offline snapshot; the CLI help must
+state this limitation. Registered missing UIDs still appear in missing_registered_records.
+Uncovered recordings with an evidenced resolved disposition remain reported with that disposition
+so approved exclusions are distinguishable without hiding archived records. Resolve does not
+mean silently erase. Do not overwrite the register or source files with the output path.
