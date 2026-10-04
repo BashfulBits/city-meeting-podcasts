@@ -16,13 +16,11 @@ from citypods.compute.llm import (
     LLMBackendError,
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
-    _messages,
+    LLMUpstreamPassthroughError,
     _pacing_wait_seconds,
     _priced_actual,
     _retry_after_seconds,
     _safe_structured_failure_diagnostic,
-    _schema_variant_model,
-    _strip_schema_keys,
     _usage_tokens,
 )
 from citypods.compute.llm_budget import daily_reset_key, load_llm_budget_cas, mutate_llm_budget
@@ -31,9 +29,9 @@ from citypods.compute.llm_policy import (
     ROUTE_REGISTRY,
     ROUTES,
     LLMRequestPolicy,
-    estimate_tokens,
 )
 from citypods.compute.structured import register_response_model
+from citypods.compute.structured_shaping import strip_schema_keys
 from tests._cas_fake import MemStorage
 
 
@@ -128,6 +126,62 @@ def test_direct_litellm_call_is_normalized():
     assert result.output["choices"][0]["message"]["content"] == "ok"
     assert calls[0]["model"] == "gemini/gemini-3-flash-preview"
     assert calls[0]["stream"] is False
+
+
+@pytest.mark.parametrize("structured", [False, True], ids=["unstructured", "native-structured"])
+def test_direct_litellm_call_gets_a_bounded_default_timeout(structured):
+    """Without a job-level timeout LiteLLM falls back to its 6000 s default, which once hung a
+    run for ~40 minutes on a stalled provider; direct calls must carry the bounded default."""
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response('{"value":"ok"}')
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"), completion=completion
+    )
+    inputs = {"structured_output": "test-output"} if structured else {}
+    backend.run_inference(job(content="meeting text", **inputs))
+
+    assert calls[0]["timeout"] == 720.0
+
+
+@pytest.mark.parametrize("structured", [False, True], ids=["unstructured", "native-structured"])
+def test_job_level_timeout_overrides_the_direct_default(structured):
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response('{"value":"ok"}')
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview", direct_timeout_seconds=300.0),
+        completion=completion,
+    )
+    inputs = {"structured_output": "test-output"} if structured else {}
+    backend.run_inference(job(content="meeting text", timeout=45, **inputs))
+
+    assert calls[0]["timeout"] == 45
+
+
+def test_dispatch_payload_does_not_pick_up_the_direct_timeout_default():
+    backend = LiteLLMBackend(LLMBackendConfig(model="gemini/gemini-3-flash-preview"))
+    payload = backend._payload(
+        job(content="meeting text"), resolved_model="gemini/gemini-3-flash-preview"
+    )
+
+    assert "timeout" not in payload
+
+
+def test_direct_timeout_default_reads_its_own_env_var(monkeypatch):
+    monkeypatch.setenv("LLM_TIMEOUT_SECONDS", "30")
+    monkeypatch.setenv("LLM_DIRECT_TIMEOUT_SECONDS", "900")
+
+    config = LLMBackendConfig.from_env()
+
+    assert config.timeout_seconds == 30.0
+    assert config.direct_timeout_seconds == 900.0
 
 
 def test_policy_route_is_resolved_and_settled_in_cas_ledger():
@@ -301,44 +355,138 @@ def test_direct_mode_429_defers_and_blocks_the_route_reactively():
     assert ledger.blocked_until != ""
 
 
-def test_dispatch_mode_429_defers_and_blocks_the_route_reactively():
-    class Response:
-        def __init__(self, status, body, headers=None):
-            self.status_code = status
-            self._body = body
-            self.headers = headers or {}
+def test_upstream_capacity_429_retries_sibling_route_without_deferring():
+    """An upstream capacity 429 retries an available sibling route rather than deferring,
+    marking the exhausted route in cooldown."""
 
-        def json(self):
-            return self._body
+    class CapacityLimited(Exception):
+        status_code = 429
+        headers = {"retry-after": "15"}
 
-    class Session:
-        def post(self, url, **kwargs):
-            return Response(429, {"error": "rate limited"}, {"retry-after": "45"})
+    call_count = 0
+
+    def completion(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise CapacityLimited("upstream provider overloaded, please try again later")
+        return SimpleNamespace(
+            model_dump=lambda: {
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"total_tokens": 12},
+            }
+        )
 
     storage = MemStorage()
     backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=Session(),
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
         storage=storage,
     )
+    policy = LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",))
+    result = backend.run_inference(job(content="meeting text", llm_policy=policy))
+
+    assert isinstance(result, JobResult)
+    assert result.output["choices"][0]["message"]["content"] == "ok"
+    assert call_count == 2
+    assert result.route_id == "gemini_3_flash_preview_secondary"
+    assert result.upstream_model == ROUTE_REGISTRY[result.route_id].upstream_model
+
+    budget, _ = load_llm_budget_cas(storage)
+    ledger1 = budget.routes["gemini_3_flash_preview_primary"]
+    assert ledger1.inflight == {}
+    assert ledger1.requests_minute == 0
+    assert ledger1.blocked_until != ""
+
+    ledger2 = budget.routes["gemini_3_flash_preview_secondary"]
+    assert ledger2.inflight == {}
+    assert ledger2.requests_minute == 1
+    assert ledger2.blocked_until == ""
+
+
+def test_upstream_capacity_429_retries_across_models_when_all_sibling_routes_capacity_fail():
+    """When both primary and secondary routes for model A hit capacity, the direct loop
+    retries an eligible fallback model B."""
+
+    class CapacityLimited(Exception):
+        status_code = 429
+        headers = {"retry-after": "15"}
+
+    attempted_models: list[str] = []
+
+    def completion(**kwargs):
+        model = kwargs.get("model")
+        attempted_models.append(model)
+        if model == "gemini/gemini-3-flash-preview":
+            raise CapacityLimited("upstream provider overloaded, please try again later")
+        return SimpleNamespace(
+            model_dump=lambda: {
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"total_tokens": 12},
+            }
+        )
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    policy = LLMRequestPolicy(
+        allowed_models=(
+            "gemini/gemini-3-flash-preview",
+            "gemini/gemini-3.5-flash",
+        )
+    )
+    result = backend.run_inference(job(content="meeting text", llm_policy=policy))
+
+    assert isinstance(result, JobResult)
+    assert result.output["choices"][0]["message"]["content"] == "ok"
+    assert attempted_models == [
+        "gemini/gemini-3-flash-preview",
+        "gemini/gemini-3-flash-preview",
+        "gemini/gemini-3.5-flash",
+    ]
+
+    budget, _ = load_llm_budget_cas(storage)
+    assert budget.routes["gemini_3_flash_preview_primary"].blocked_until != ""
+    assert budget.routes["gemini_3_flash_preview_secondary"].blocked_until != ""
+    assert budget.routes["gemini_3_5_flash_primary"].requests_minute == 1
+
+
+def test_own_rpd_429_blocks_until_next_local_midnight():
+    """An own_rpd 429 blocks the route until the provider's next zoned midnight."""
+
+    class RateLimitedRPD(Exception):
+        status_code = 429
+        headers = {"retry-after": "60"}
+
+    def completion(**kwargs):
+        raise RateLimitedRPD(
+            "Resource has been exhausted (e.g. check quota): "
+            "GenerateRequestsPerDayPerProjectPerRegion"
+        )
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    now = datetime.now(UTC)
     result = backend.run_inference(
         job(
             content="meeting text",
-            llm_policy=LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",)),
+            llm_policy=LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",)),
         )
     )
 
     assert isinstance(result, JobHandle)
-    assert result.deferred_request is not None
     budget, _ = load_llm_budget_cas(storage)
-    ledger = _ledger_for(budget, "mistral/mistral-large-2512")
-    assert ledger.inflight == {}
-    assert ledger.requests_minute == 0
+    ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert ledger.blocked_until != ""
+    blocked_until = datetime.fromisoformat(ledger.blocked_until)
+    assert blocked_until > now + timedelta(minutes=5)
 
 
 def test_pacing_wait_seconds_gives_up_when_nothing_will_ever_free_up():
@@ -377,123 +525,6 @@ def test_pacing_wait_seconds_has_no_independent_defense_against_a_past_retry_at(
     stale_past = now - timedelta(hours=2)
     deadline = now + timedelta(hours=1)
     assert _pacing_wait_seconds(stale_past, deadline, now) == 0.0
-
-
-def test_reconcile_settles_actual_requests_after_a_202_dispatch():
-    """A structured dispatch call reserves the worst case (2, matching a direct route's possible
-    corrective retry) even though the dispatch transport is always exactly one real POST -- the
-    202 branch returns a ``JobHandle`` before anything is settled, deliberately leaving the
-    reservation inflight until ``reconcile()`` observes the Worker's terminal response. That later
-    settle must still correct the reservation down to the one real attempt, not leave it frozen at
-    2 forever because the attempt count never reached the handle (CodeRabbit, PR #1007)."""
-
-    class Response:
-        def __init__(self, status, body, headers=None):
-            self.status_code = status
-            self._body = body
-            self.headers = headers or {}
-
-        def json(self):
-            return self._body
-
-    class Session:
-        def post(self, url, **kwargs):
-            return Response(202, {"id": "chatcmpl-1"}, {"location": "/v1/requests/chatcmpl-1"})
-
-        def get(self, url, **kwargs):
-            return Response(200, {"choices": [{"message": {"content": '{"value":"ok"}'}}]})
-
-    storage = MemStorage()
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=Session(),
-        storage=storage,
-    )
-    handle = backend.run_inference(
-        job(
-            content="meeting text",
-            structured_output="test-output",
-            llm_policy=LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",)),
-        )
-    )
-    assert isinstance(handle, JobHandle)
-    assert handle.attempted_requests == 1
-
-    result = backend.reconcile(handle)
-
-    assert result.output["choices"][0]["message"]["content"] == '{"value":"ok"}'
-    budget, _ = load_llm_budget_cas(storage)
-    ledger = _ledger_for(budget, "mistral/mistral-large-2512")
-    assert ledger.inflight == {}
-    assert ledger.requests_minute == 1
-
-
-def test_reconcile_settles_reservation_before_rejecting_malformed_dispatch_output():
-    """A malformed completed reply still consumed its one Worker/provider request.
-
-    The sweep will submit a separate bounded correction, so the original reservation must be
-    settled before local schema validation propagates its error.
-    """
-
-    class Response:
-        status_code = 200
-        headers = {}
-
-        def json(self):
-            return {"choices": [{"message": {"content": '{"value": 3}'}}]}
-
-    class Session:
-        def get(self, _url, **_kwargs):
-            return Response()
-
-    storage = MemStorage()
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=Session(),
-        storage=storage,
-    )
-    route = ROUTES["mistral/mistral-large-2512"]
-    owner = "malformed-owner"
-    mutate_llm_budget(
-        storage,
-        lambda budget, now: budget.reserve(
-            owner,
-            route.route_id or route.model,
-            requests=1,
-            tokens=10,
-            cost=0.0,
-            route=route,
-            now=now,
-        ),
-    )
-
-    with pytest.raises(LLMStructuredOutputError, match="Pydantic validation"):
-        backend.reconcile(
-            JobHandle(
-                task="tag",
-                recipe_hash="recipe-malformed",
-                backend="litellm",
-                ref="chatcmpl-malformed123",
-                structured_output="test-output",
-                model="mistral/mistral-large-2512",
-                owner=owner,
-                route_id=route.route_id,
-                attempted_requests=1,
-            )
-        )
-
-    budget, _ = load_llm_budget_cas(storage)
-    ledger = _ledger_for(budget, "mistral/mistral-large-2512")
-    assert ledger.inflight == {}
-    assert ledger.requests_minute == 1
 
 
 def test_usage_tokens_returns_none_not_zero_for_missing_or_invalid_usage():
@@ -597,9 +628,9 @@ def test_policy_bearing_call_requires_non_empty_recipe_hash():
     storage = MemStorage()
     backend = LiteLLMBackend(
         LLMBackendConfig(
-            model="mistral/mistral-large-2512",
+            model="mistral/codestral-2508",
             mode="dispatch",
-            dispatch_url="https://dispatch.example",
+            dispatch_v2_url="https://dispatch.example",
         ),
         storage=storage,
     )
@@ -612,67 +643,6 @@ def test_policy_bearing_call_requires_non_empty_recipe_hash():
         backend.run_inference(empty_hash_job)
     budget, _ = load_llm_budget_cas(storage)
     assert budget.routes == {}
-
-
-def test_reconcile_prices_actual_usage_from_the_handle_not_live_route_config():
-    """A JobHandle captures the route's pricing at reservation time; a later reconcile() must use
-    those captured rates, not whatever ROUTES says at poll time (Mistral is $0 in ROUTES today,
-    so if reconcile() used live config instead of the handle, cost_used would stay zero here)."""
-    storage = MemStorage()
-    route = ROUTES["mistral/mistral-large-2512"]
-    now = datetime.now(UTC)
-    mutate_llm_budget(
-        storage,
-        lambda budget, attempt_now: budget.reserve(
-            "owner-1", route.model, route=route, requests=1, tokens=100, cost=0.0, now=attempt_now
-        ),
-        now=now,
-    )
-
-    class Response:
-        def __init__(self, status, body):
-            self.status_code = status
-            self._body = body
-
-        def json(self):
-            return self._body
-
-    class Session:
-        def get(self, url, **kwargs):
-            return Response(
-                200,
-                {
-                    "choices": [{"message": {"content": "ok"}}],
-                    "usage": {"total_tokens": 100, "prompt_tokens": 80, "completion_tokens": 20},
-                },
-            )
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=Session(),
-        storage=storage,
-    )
-    handle = JobHandle(
-        task="tag",
-        recipe_hash="recipe-1",
-        backend=backend.name,
-        ref="/v1/requests/chatcmpl-1",
-        model=route.model,
-        owner="owner-1",
-        input_per_token=0.14e-6,
-        output_per_token=0.28e-6,
-    )
-    result = backend.reconcile(handle)
-
-    assert result.output["choices"][0]["message"]["content"] == "ok"
-    budget, _ = load_llm_budget_cas(storage)
-    ledger = budget.routes[route.route_id or route.model]
-    assert ledger.inflight == {}
-    assert ledger.cost_used == pytest.approx(80 * 0.14e-6 + 20 * 0.28e-6)
 
 
 def test_structured_job_uses_native_json_schema_mode_for_gemini():
@@ -738,41 +708,6 @@ def test_gemma_dispatch_payload_uses_the_same_compiled_schema_profile():
     assert payload["response_format"]["type"] == "json_schema"
     assert "minLength" not in rendered
     assert "maximum" not in rendered
-
-
-def test_deepseek_structured_request_includes_schema_in_initial_prompt():
-    calls = []
-
-    def completion(**kwargs):
-        calls.append(kwargs)
-        return structured_response('{"value":"ok"}')
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(model="deepseek/deepseek-v4-flash"), completion=completion
-    )
-    backend.run_inference(job(content="meeting text", structured_output="test-output"))
-
-    sent = calls[0]
-    assert sent["response_format"] == {"type": "json_object"}
-    system = next(message for message in sent["messages"] if message["role"] == "system")
-    assert "JSON Schema" in system["content"]
-    assert json.dumps(ExampleOutput.model_json_schema(), sort_keys=True) in system["content"]
-
-
-def test_deepseek_queue_payload_counts_the_rendered_schema_message():
-    backend = LiteLLMBackend(LLMBackendConfig(model="deepseek/deepseek-v4-flash"))
-    policy = LLMRequestPolicy(allowed_models=("deepseek/deepseek-v4-flash",), queue_only=True)
-    inference_job = job(content="x", structured_output="test-output", max_tokens=1024)
-    payload = backend._payload(
-        inference_job,
-        ExampleOutput,
-        resolved_model="deepseek/deepseek-v4-flash",
-        policy=policy,
-        estimated_tokens=1,
-        input_tokens_estimate=1,
-        output_token_budget=1024,
-    )
-    assert estimate_tokens(payload["messages"]) > estimate_tokens(_messages(inference_job))
 
 
 def test_gemini_structured_request_relaxes_constraint_keywords_only():
@@ -952,7 +887,7 @@ def test_strip_schema_keys_removes_matching_keys_at_every_depth():
             "b": {"type": "array", "items": {"type": "integer", "maximum": 5}},
         },
     }
-    stripped = _strip_schema_keys(schema, frozenset({"minLength", "maximum"}))
+    stripped = strip_schema_keys(schema, frozenset({"minLength", "maximum"}))
     assert stripped == {
         "type": "object",
         "properties": {
@@ -963,38 +898,7 @@ def test_strip_schema_keys_removes_matching_keys_at_every_depth():
     assert schema["properties"]["a"]["minLength"] == 1, "must not mutate the caller's schema"
 
 
-def test_schema_variant_model_preserves_name_and_leaves_original_untouched():
-    Relaxed = _schema_variant_model(
-        ConstrainedOutput,
-        frozenset({"minLength", "maxLength", "minimum", "maximum", "maxItems"}),
-    )
-
-    assert Relaxed.__name__ == "ConstrainedOutput"
-    assert issubclass(Relaxed, ConstrainedOutput)
-    assert "minLength" not in json.dumps(Relaxed.model_json_schema())
-    assert ConstrainedOutput.model_json_schema()["properties"]["value"]["minLength"] == 1
-
-
-def test_deepseek_instructor_json_mode_retries_pydantic_validation_once():
-    calls = []
-
-    def completion(**kwargs):
-        calls.append(kwargs)
-        content = '{"value":42}' if len(calls) == 1 else '{"value":"ok"}'
-        return structured_response(content)
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(model="deepseek/deepseek-v4-flash"), completion=completion
-    )
-    result = backend.run_inference(job(content="meeting text", structured_output="test-output"))
-
-    assert result.output["choices"][0]["message"]["content"] == '{"value":"ok"}'
-    assert len(calls) == 2
-    assert calls[0]["response_format"] == {"type": "json_object"}
-    assert any("validation" in str(message["content"]).lower() for message in calls[1]["messages"])
-
-
-def test_deepseek_invalid_reply_fails_after_one_instructor_retry():
+def test_deepseek_invalid_reply_fails_after_one_corrective_retry():
     calls = []
     private_marker = "untrusted-output-marker"
     invalid = '{"value":42,"extra":"' + private_marker + '"}'
@@ -1024,568 +928,12 @@ def test_blank_actions_variables_preserve_direct_gemini_defaults(monkeypatch):
     assert config.mode == "direct"
 
 
-def test_dispatch_enqueues_pydantic_schema_and_validates_completed_response():
-    requests = []
-
-    class Response:
-        def __init__(self, status, body, headers=None):
-            self.status_code = status
-            self._body = body
-            self.headers = headers or {}
-
-        def json(self):
-            return self._body
-
-    class Session:
-        def post(self, url, **kwargs):
-            requests.append(("post", url, kwargs))
-            return Response(202, {"id": "chatcmpl-1"}, {"location": "/v1/requests/chatcmpl-1"})
-
-        def get(self, url, **kwargs):
-            requests.append(("get", url, kwargs))
-            if len(requests) == 2:
-                return Response(202, {})
-            return Response(200, {"choices": [{"message": {"content": '{"value":"done"}'}}]})
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-            dispatch_auth_token="secret",
-        ),
-        http_session=Session(),
-    )
-    handle = backend.run_inference(
-        job(messages=[{"role": "user", "content": "hi"}], structured_output="test-output")
-    )
-    assert isinstance(handle, JobHandle)
-    assert handle.ref == "/v1/requests/chatcmpl-1"
-    assert handle.structured_output == "test-output"
-    assert (
-        requests[0][2]["json"]["response_format"]["json_schema"]["schema"]
-        == ExampleOutput.model_json_schema()
-    )
-    assert backend.poll(handle) is None
-    assert backend.poll(handle).output["choices"][0]["message"]["content"] == '{"value":"done"}'
-    assert requests[0][2]["headers"]["idempotency-key"] == "recipe-1"
-
-
-def test_dispatch_consumes_completed_idempotent_resubmit():
-    class Response:
-        def __init__(self, status, body, headers=None):
-            self.status_code = status
-            self._body = body
-            self.headers = headers or {}
-
-        def json(self):
-            return self._body
-
-    class Session:
-        def __init__(self):
-            self.posts = 0
-
-        def post(self, *_args, **_kwargs):
-            self.posts += 1
-            if self.posts == 1:
-                return Response(202, {"id": "chatcmpl-1"}, {"location": "/v1/requests/chatcmpl-1"})
-            return Response(200, {"choices": [{"message": {"content": '{"value":"done"}'}}]})
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=Session(),
-    )
-    queued = backend.run_inference(job(content="meeting text", structured_output="test-output"))
-    completed = backend.run_inference(job(content="meeting text", structured_output="test-output"))
-
-    assert isinstance(queued, JobHandle)
-    assert isinstance(completed, JobResult)
-    assert completed.output["choices"][0]["message"]["content"] == '{"value":"done"}'
-
-
-def test_dispatch_rejects_invalid_structured_result():
-    private_marker = "untrusted-dispatch-output-marker"
-
-    class Response:
-        status_code = 200
-        headers = {}
-
-        def json(self):
-            return {
-                "choices": [
-                    {"message": {"content": '{"value":42,"extra":"' + private_marker + '"}'}}
-                ]
-            }
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=SimpleNamespace(get=lambda *_args, **_kwargs: Response()),
-    )
-    with pytest.raises(LLMStructuredOutputError, match="failed Pydantic validation") as raised:
-        backend.reconcile(
-            JobHandle(
-                task="tag",
-                recipe_hash="recipe-1",
-                backend="litellm",
-                ref="request-1",
-                structured_output="test-output",
-            )
-        )
-    traceback_text = "".join(traceback.format_exception(raised.type, raised.value, raised.tb))
-    assert private_marker not in traceback_text
-
-
-def test_schema_correction_enqueue_uses_a_separate_idempotency_key():
-    calls = []
-
-    class Response:
-        status_code = 202
-        headers = {"location": "/v1/requests/chatcmpl-corrected"}
-
-        def json(self):
-            return {"id": "chatcmpl-corrected"}
-
-    class Session:
-        def post(self, url, **kwargs):
-            calls.append((url, kwargs))
-            return Response()
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-            dispatch_auth_token="dispatch-token",
-        ),
-        http_session=Session(),
-    )
-    corrected = backend.retry_malformed_dispatched(
-        JobHandle(
-            task="tag",
-            recipe_hash="recipe-1",
-            backend="litellm",
-            ref="/v1/requests/chatcmpl-original",
-            structured_output="test-output",
-            model="mistral/mistral-large-2512",
-        )
-    )
-
-    assert corrected.ref == "/v1/requests/chatcmpl-corrected"
-    assert corrected.structured_output == "test-output"
-    assert calls == [
-        (
-            "https://dispatch.example/v1/requests/chatcmpl-original/schema-retry",
-            {
-                "json": {},
-                "headers": {
-                    "content-type": "application/json",
-                    "idempotency-key": "recipe-1:schema-correction-v1",
-                    "authorization": "Bearer dispatch-token",
-                },
-                "timeout": 30.0,
-            },
-        )
-    ]
-
-
-def test_schema_correction_rejects_an_invalid_dispatch_reference_before_posting():
-    class Session:
-        def post(self, *_args, **_kwargs):
-            raise AssertionError("invalid refs must not be sent to the Worker")
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=Session(),
-    )
-
-    with pytest.raises(LLMBackendError, match="valid dispatch request reference"):
-        backend.retry_malformed_dispatched(
-            JobHandle(
-                task="tag",
-                recipe_hash="recipe-invalid-ref",
-                backend="litellm",
-                ref="not-a-dispatch-request",
-            )
-        )
-
-
-def test_dispatch_unknown_response_contract_remains_a_version_skew_error():
-    class Response:
-        status_code = 200
-        headers = {}
-
-        def json(self):
-            return {"choices": []}
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=SimpleNamespace(get=lambda *_args, **_kwargs: Response()),
-    )
-
-    with pytest.raises(ValueError, match="unknown structured-output contract"):
-        backend.reconcile(
-            JobHandle(
-                task="tag",
-                recipe_hash="recipe-1",
-                backend="litellm",
-                ref="request-1",
-                structured_output="missing-output",
-            )
-        )
-
-
-def test_dispatch_rejects_malformed_body_and_cross_host_location():
-    class Response:
-        status_code = 202
-        headers = {"location": "https://evil.example/v1/requests/1"}
-
-        def json(self):
-            return None
-
-    class Session:
-        def post(self, *_args, **_kwargs):
-            return Response()
-
-        def get(self, *_args, **_kwargs):
-            return Response()
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=Session(),
-    )
-    handle = backend.run_inference(job(content="hello"))
-    with pytest.raises(LLMBackendError, match="unexpected host"):
-        backend.reconcile(handle)
-
-    class MalformedSession(Session):
-        def post(self, *_args, **_kwargs):
-            response = Response()
-            response.headers = {}
-            return response
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=MalformedSession(),
-    )
-    with pytest.raises(LLMBackendError, match="omitted a request reference"):
-        backend.run_inference(job(content="hello"))
-
-
 def test_rejects_gpu_and_unknown_routes():
     with pytest.raises(ValueError):
         LiteLLMBackend(LLMBackendConfig(model="openai/gpt-4o"))
     backend = LiteLLMBackend(LLMBackendConfig(), completion=lambda **_: {})
     with pytest.raises(ValueError):
         backend.run_inference(InferenceJob(task="transcribe", inputs={}))
-
-
-def test_delete_dispatched_ref_normalizes_ref_formats():
-    """delete_dispatched_ref must accept bare IDs, path-style refs, and full URLs --
-    handles store the `location` header (path-style), not a bare ID."""
-    deleted_urls = []
-
-    class RecordingSession(requests.Session):
-        def delete(self, url, **_kwargs):
-            deleted_urls.append(url)
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-            dispatch_auth_token="test-token",
-        ),
-        http_session=RecordingSession(),
-    )
-
-    # Bare ID
-    backend.delete_dispatched_ref("chatcmpl-abc12345678")
-    assert len(deleted_urls) == 1
-    assert deleted_urls[-1] == "https://dispatch.example/v1/requests/chatcmpl-abc12345678"
-
-    # Path-style ref (what handles actually store from the Worker's location header)
-    backend.delete_dispatched_ref("/v1/requests/chatcmpl-xyz99999999")
-    assert len(deleted_urls) == 2
-    assert deleted_urls[-1] == "https://dispatch.example/v1/requests/chatcmpl-xyz99999999"
-
-    # Full URL ref
-    backend.delete_dispatched_ref("https://dispatch.example/v1/requests/chatcmpl-full00000001")
-    assert len(deleted_urls) == 3
-    assert deleted_urls[-1] == "https://dispatch.example/v1/requests/chatcmpl-full00000001"
-
-    # No-op for non-chatcmpl refs
-    backend.delete_dispatched_ref("something-else")
-    assert len(deleted_urls) == 3
-
-    # No-op for empty ref
-    backend.delete_dispatched_ref("")
-    assert len(deleted_urls) == 3
-
-
-def test_reconcile_purges_r2_after_deferred_write():
-    """reconcile() must DELETE the R2 object after a successful deferred write (the post-persist
-    purge path), including when the handle ref is a path-style location."""
-    deleted_urls = []
-
-    class TrackingSession(requests.Session):
-        def get(self, url, **_kwargs):
-            res = requests.Response()
-            res.status_code = 200
-            res._content = json.dumps(
-                {
-                    "id": "chatcmpl-purge1",
-                    "choices": [{"message": {"content": "ok"}}],
-                }
-            ).encode()
-            return res
-
-        def delete(self, url, **_kwargs):
-            deleted_urls.append(url)
-
-    storage = MemStorage()
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="mistral/mistral-large-2512",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=TrackingSession(),
-        storage=storage,
-    )
-
-    handle = JobHandle(
-        task="summarize",
-        recipe_hash="purge-test-recipe",
-        backend="litellm",
-        ref="/v1/requests/chatcmpl-purge1",
-        model="mistral/mistral-large-2512",
-    )
-
-    result = backend.reconcile(handle)
-    assert result is not None
-    # Should have issued a DELETE for the R2 object
-    assert len(deleted_urls) == 1
-    assert "chatcmpl-purge1" in deleted_urls[0]
-
-
-def test_dispatch_payload_includes_policy_fields_and_estimated_tokens():
-    post_json = None
-
-    class CaptureSession(requests.Session):
-        def post(self, url, json=None, headers=None, timeout=None):
-            nonlocal post_json
-            post_json = json
-            res = requests.Response()
-            res.status_code = 200
-            res._content = b'{"id":"resp-1","choices":[{"message":{"content":"ok"}}]}'
-            return res
-
-    storage = MemStorage()
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="gemini/gemini-3-flash-preview",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=CaptureSession(),
-        storage=storage,
-    )
-
-    # Relative to "now", not a fixed calendar timestamp: a hardcoded absolute deadline that was
-    # comfortably in the future when this test was written silently becomes a past deadline (and
-    # a spurious "deadline gate" rejection -> JobHandle instead of JobResult) once real time
-    # passes it -- exactly what broke this test in CI after this file's own authoring date caught
-    # up to a hardcoded "2026-08-07T12:00:00Z" (review/41).
-    deadline = datetime.now(UTC) + timedelta(hours=1)
-    pol = LLMRequestPolicy(
-        allowed_models=("gemini/gemini-3-flash-preview",),
-        allow_paid=True,
-        allow_batch=True,
-        submit_next=True,
-        deadline_at=deadline,
-        # Gemini also offers `direct`; without this the call would go direct by default
-        # (review/41 -- a dual-transport route only dispatches when a caller opts in), and this
-        # test is specifically exercising the dispatch payload.
-        allow_dispatch_overflow=True,
-    )
-
-    res = backend.run_inference(
-        InferenceJob(
-            task="summarize",
-            recipe_hash="test-recipe-1",
-            inputs={"content": "hello test content", "llm_policy": pol},
-        )
-    )
-
-    assert isinstance(res, JobResult)
-    assert post_json is not None
-    assert post_json["allow_paid"] is True
-    assert post_json["allow_batch"] is True
-    assert post_json["submit_next"] is True
-    assert post_json["deadline_at"] == deadline.isoformat()
-    assert "estimated_tokens" in post_json
-    assert post_json["estimated_tokens"] > 0
-    assert post_json["input_tokens_estimate"] > 0
-    assert post_json["output_token_budget"] == 1024
-
-
-def test_dual_transport_route_prefers_direct_without_opt_in():
-    """A route offering both `direct` and `llm-dispatch` (Gemini) must not dispatch just because
-    the backend has `dispatch_url` configured -- only when the caller explicitly sets
-    `allow_dispatch_overflow`. This is the regression this test guards: a prior version routed
-    every such call over the Worker whenever `dispatch_url` was set at all, which silently broke
-    city discovery's same-run-completion requirement (review/41)."""
-    posted = False
-
-    class NoPostSession(requests.Session):
-        def post(self, *_args, **_kwargs):
-            nonlocal posted
-            posted = True
-            res = requests.Response()
-            res.status_code = 200
-            res._content = b"{}"
-            return res
-
-    storage = MemStorage()
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="gemini/gemini-3-flash-preview",
-            mode="direct",
-            dispatch_url="https://dispatch.example",
-        ),
-        completion=_strict_direct_completion,
-        http_session=NoPostSession(),
-        storage=storage,
-    )
-
-    pol = LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",), allow_paid=False)
-
-    res = backend.run_inference(
-        InferenceJob(
-            task="summarize",
-            recipe_hash="test-recipe-direct-default",
-            inputs={"content": "hello test content", "llm_policy": pol},
-        )
-    )
-
-    assert isinstance(res, JobResult)
-    assert posted is False
-
-
-def test_dual_transport_route_dispatches_with_explicit_overflow_and_reserves_by_recipe_hash():
-    """The Gemini/`allow_dispatch_overflow=True` opt-in path, asserting the ledger reservation
-    owner is the deterministic `recipe_hash` -- not a fresh UUID -- so a retry before settlement
-    resolves to the Worker's own `idempotency-key: recipe_hash` dedup instead of double-reserving
-    (the bug CodeRabbit flagged against `llm_scheduler.py::_owner_for`, review/41)."""
-
-    class PendingSession(requests.Session):
-        def post(self, url, json=None, headers=None, timeout=None):
-            res = requests.Response()
-            res.status_code = 202
-            res._content = b'{"id":"chatcmpl-pending"}'
-            res.headers["location"] = "/v1/requests/chatcmpl-pending"
-            return res
-
-    storage = MemStorage()
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="gemini/gemini-3-flash-preview",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=PendingSession(),
-        storage=storage,
-    )
-
-    pol = LLMRequestPolicy(
-        allowed_models=("gemini/gemini-3-flash-preview",),
-        allow_paid=False,
-        allow_dispatch_overflow=True,
-    )
-    recipe_hash = "test-recipe-overflow-owner"
-
-    res = backend.run_inference(
-        InferenceJob(
-            task="summarize",
-            recipe_hash=recipe_hash,
-            inputs={"content": "hello test content", "llm_policy": pol},
-        )
-    )
-
-    assert isinstance(res, JobHandle)
-    budget, _ = load_llm_budget_cas(storage)
-    ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
-    assert recipe_hash in ledger.inflight
-
-
-def test_queue_only_policy_enqueues_without_a_runner_quota_reservation():
-    """Durable backlog work is accepted by the Worker, not locally rate-limited first."""
-
-    class PendingSession(requests.Session):
-        def post(self, _url, json=None, headers=None, timeout=None):
-            assert json["model"] == "gemini/gemini-3-flash-preview"
-            assert json["allowed_models"] == [
-                "gemini/gemini-3-flash-preview",
-                "gemini/gemini-3.1-flash-lite",
-            ]
-            assert headers["idempotency-key"] == "test-durable-queue:durable-queue-v1"
-            response = requests.Response()
-            response.status_code = 202
-            response._content = b'{"id":"chatcmpl-durable"}'
-            response.headers["location"] = "/v1/requests/chatcmpl-durable"
-            return response
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="gemini/gemini-3-flash-preview",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=PendingSession(),
-        storage=MemStorage(),
-    )
-    result = backend.run_inference(
-        InferenceJob(
-            task="tag",
-            recipe_hash="test-durable-queue",
-            inputs={
-                "content": "meeting text",
-                "llm_policy": LLMRequestPolicy(
-                    allowed_models=(
-                        "gemini/gemini-3-flash-preview",
-                        "gemini/gemini-3.1-flash-lite",
-                    ),
-                    queue_only=True,
-                ),
-            },
-        )
-    )
-    assert isinstance(result, JobHandle)
-    assert result.owner is None
 
 
 def test_require_direct_policy_bypasses_dispatch():
@@ -1605,7 +953,7 @@ def test_require_direct_policy_bypasses_dispatch():
         LLMBackendConfig(
             model="gemini/gemini-3-flash-preview",
             mode="dispatch",
-            dispatch_url="https://dispatch.example",
+            dispatch_v2_url="https://dispatch.example",
         ),
         completion=_strict_direct_completion,
         http_session=NoPostSession(),
@@ -1628,125 +976,6 @@ def test_require_direct_policy_bypasses_dispatch():
     assert isinstance(res, JobResult)
     assert res.output["choices"][0]["message"]["content"] == "direct response"
     assert not posted
-
-
-def test_reconcile_emits_warning_on_retrying_upstream_timeout(capsys):
-    class TimeoutRetrySession(requests.Session):
-        def get(self, *_args, **_kwargs):
-            res = requests.Response()
-            res.status_code = 202
-            res._content = json.dumps(
-                {
-                    "id": "chatcmpl-test-1",
-                    "status": "pending",
-                    "attempts": 2,
-                    "available_at": "2026-08-09T06:00:00Z",
-                    "last_error": {
-                        "code": "upstream_timeout",
-                        "duration_seconds": 720,
-                        "model": "deepseek/deepseek-v4-pro",
-                        "route_id": "deepseek_v4_pro_primary",
-                    },
-                }
-            ).encode()
-            return res
-
-    storage = MemStorage()
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="deepseek/deepseek-v4-pro",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=TimeoutRetrySession(),
-        storage=storage,
-    )
-
-    handle = JobHandle(
-        backend="litellm",
-        task="summarize",
-        recipe_hash="recipe-timeout-retry",
-        ref="chatcmpl-test-1",
-        model="deepseek/deepseek-v4-pro",
-    )
-
-    result = backend.reconcile(handle)
-    assert result is None
-    captured = capsys.readouterr()
-    assert "::warning title=LLM Upstream Timeout Warning::" in captured.out
-    assert "timed out after 720s" in captured.out
-    assert "deepseek_v4_pro_primary" in captured.out
-
-
-def test_reconcile_emits_error_on_terminal_upstream_timeout(capsys):
-    class TimeoutFailedSession(requests.Session):
-        def get(self, *_args, **_kwargs):
-            res = requests.Response()
-            res.status_code = 502
-            res._content = json.dumps(
-                {
-                    "error": {
-                        "code": "upstream_timeout",
-                        "message": (
-                            "Upstream LLM provider timed out after 720s without completing response"
-                        ),
-                        "duration_seconds": 720,
-                        "attempts": 5,
-                        "route_id": "deepseek_v4_pro_primary",
-                    }
-                }
-            ).encode()
-            return res
-
-    storage = MemStorage()
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="deepseek/deepseek-v4-pro",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=TimeoutFailedSession(),
-        storage=storage,
-    )
-
-    handle = JobHandle(
-        backend="litellm",
-        task="summarize",
-        recipe_hash="recipe-terminal-timeout",
-        ref="chatcmpl-test-terminal",
-        model="deepseek/deepseek-v4-pro",
-    )
-
-    with pytest.raises(LLMBackendError, match="timed out after 720s"):
-        backend.reconcile(handle)
-    captured = capsys.readouterr()
-    assert "::error title=LLM Terminal Timeout Failure::" in captured.out
-    assert "failed permanently after 5 attempts exceeding 720s timeout" in captured.out
-
-
-def test_reconcile_treats_an_operator_retired_dispatch_record_as_terminal():
-    class RetiredSession(requests.Session):
-        def get(self, *_args, **_kwargs):
-            res = requests.Response()
-            res.status_code = 410
-            res._content = b'{"error":{"code":"retired"}}'
-            return res
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(model="google/gemma-4-31b-it", mode="dispatch", dispatch_url="https://x"),
-        http_session=RetiredSession(),
-        storage=MemStorage(),
-    )
-    handle = JobHandle(
-        backend="litellm",
-        task="tag",
-        recipe_hash="legacy-prelabel",
-        ref="chatcmpl-retired",
-        model="google/gemma-4-31b-it",
-    )
-
-    with pytest.raises(LLMDispatchTerminalError, match="HTTP 410"):
-        backend.reconcile(handle)
 
 
 @pytest.fixture
@@ -1808,7 +1037,7 @@ def test_every_catalog_route_builds_its_configured_gateway_url(route, gateway_en
 
 def test_sambanova_routes_use_a_single_gateway_attempt(gateway_env):
     route = next(route for route in ROUTE_REGISTRY.values() if route.provider == "sambanova")
-    backend, _ = _recording_backend("meta-llama/llama-3.3-70b-instruct")
+    backend, _ = _recording_backend("google/gemma-4-31b-it")
 
     _, headers = backend._resolve_api_base_and_headers(route, direct=True)
 
@@ -1819,27 +1048,26 @@ def test_sambanova_routes_use_a_single_gateway_attempt(gateway_env):
 
 
 # How each custom provider is registered on the Cloudflare side, and therefore what
-# `ai_gateway_chat_path` has to be. This table exists because AI Gateway does NOT join a Custom
-# Provider's Base URL the way its documentation says: instead of `{base_url}/{provider-path}`, it
-# rewrites the base URL's LAST path segment to a hardcoded `v1` and appends the caller path
-# (established 2026-08-29 by registering a throwaway custom provider against an echo service).
+# `ai_gateway_chat_path` has to be. This table exists because the Cloudflare-side Base URL is not
+# represented in this repo, and the gateway's undocumented join changed on 2026-09-15: it now
+# honors the registered path instead of rewriting its last segment to `v1`.
 # Because the Cloudflare-side Base URL is not represented in this repo, the mapping cannot be
 # derived -- so it is written down here, and a new custom provider trips the completeness check
 # below until someone records how it is registered.
 CUSTOM_PROVIDER_GATEWAY_PATHS = {
-    # Registered at api_base verbatim; the `/v1` in api_base is also the substituted segment, so
-    # the chat path must carry it or the dispatch lands on the origin root and 404s.
-    "siliconflow": "/v1/chat/completions",
-    "sambanova": "/v1/chat/completions",
-    "nvidia": "/v1/chat/completions",
-    "airforce": "/v1/chat/completions",
+    # Registered at api_base verbatim; the `/v1` in each Base URL is preserved by the current
+    # gateway join, so the caller path stays root-relative.
+    "siliconflow": "/chat/completions",
+    "sambanova": "/chat/completions",
+    "nvidia": "/chat/completions",
+    "airforce": "/chat/completions",
+    "orcarouter": "/chat/completions",
     # Registered as `https://api.kilo.ai/api/gateway/v1` -- Kilo serves that path too, so the
-    # forced `v1` substitution lands correctly and the caller path stays bare.
+    # caller path stays bare under either gateway join behavior.
     "kilo": "/chat/completions",
-    # Routed through workers/llm-provider-shim, which restores the real upstream prefix, so the
-    # caller path is bare here as well.
-    "zai": "/chat/completions",
-    "opencode": "/chat/completions",
+    # custom-zai is registered at `https://api.z.ai/api/paas`, which serves at
+    # `/v4/chat/completions`.
+    "zai": "/v4/chat/completions",
 }
 
 
@@ -1850,10 +1078,10 @@ def test_every_custom_provider_records_how_it_is_registered():
         for route in ROUTE_REGISTRY.values()
         if (route.ai_gateway_slug or "").startswith("custom-")
     }
-    assert configured == set(CUSTOM_PROVIDER_GATEWAY_PATHS), (
-        "custom providers changed; record the new provider's Cloudflare-side registration in "
-        "CUSTOM_PROVIDER_GATEWAY_PATHS (and see workers/llm-provider-shim/README.md for why the "
-        "documented base-URL join does not apply)"
+    assert configured <= set(CUSTOM_PROVIDER_GATEWAY_PATHS), (
+        "an active custom provider is missing its Cloudflare-side registration in "
+        "CUSTOM_PROVIDER_GATEWAY_PATHS (and see workers/llm-provider-shim/README.md for the "
+        "gateway join compatibility contract)"
     )
 
 
@@ -1873,9 +1101,9 @@ def test_custom_provider_routes_use_their_recorded_gateway_path(route):
     )
 
 
-# Only single-provider models belong here. A logical model served by several providers (6 of 31 in
-# the catalog -- `deepseek/deepseek-v4-flash` spans deepseek, custom-siliconflow and
-# custom-opencode) has no fixed gateway slug: the scheduler picks whichever physical route has
+# Only single-provider models belong here. A logical model served by several providers -- such as
+# `deepseek/deepseek-v4-flash`, which spans OrcaRouter and custom-nvidia -- has
+# no fixed gateway slug: the scheduler picks whichever physical route has
 # capacity, so pinning one slug end-to-end would assert on scheduler choice rather than on URL
 # construction. The catalog test above covers those routes directly.
 @pytest.mark.parametrize(
@@ -1885,8 +1113,10 @@ def test_custom_provider_routes_use_their_recorded_gateway_path(route):
             "gemini/gemini-3.6-flash",
             f"{_GW}/google-ai-studio/v1beta/models/gemini-3.6-flash:generateContent",
         ),
-        ("mistral/mistral-large-2512", f"{_GW}/mistral/v1/chat/completions"),
-        ("zai/glm-4.7-flash", f"{_GW}/custom-zai/chat/completions"),
+        # Mistral's only configured model (Codestral) is now also served by Airforce, so a
+        # single-provider Groq model stands in for the plain OpenAI-compatible case.
+        ("qwen/qwen3.8-27b", f"{_GW}/groq/chat/completions"),
+        ("zai/glm-4.7-flash", f"{_GW}/custom-zai/v4/chat/completions"),
     ],
 )
 def test_direct_call_requests_the_gateway_url(model, expected_request_url, gateway_env):
@@ -1929,7 +1159,7 @@ def test_gemini_direct_gateway_url_matches_litellm_request(gateway_env):
 
 def test_single_provider_models_used_end_to_end_really_are_single_provider():
     """Guards the parametrization above: a second provider would make those cases flaky."""
-    for model in ("gemini/gemini-3.6-flash", "mistral/mistral-large-2512", "zai/glm-4.7-flash"):
+    for model in ("gemini/gemini-3.6-flash", "qwen/qwen3.8-27b", "zai/glm-4.7-flash"):
         slugs = {route.ai_gateway_slug or route.provider for route in ROUTE_CANDIDATES[model]}
         assert len(slugs) == 1, f"{model} now spans {slugs}; move it to the catalog-level test"
 
@@ -1939,10 +1169,12 @@ def test_direct_call_uses_ai_gateway_base_url_override(monkeypatch):
     monkeypatch.setenv("AI_GATEWAY_BASE_URL", "https://custom-gw.example.com/v1/custom-gw")
     monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
     monkeypatch.delenv("AI_GATEWAY_AUTH_TOKEN", raising=False)
-    backend, calls = _recording_backend("mistral/mistral-large-2512")
+    backend, calls = _recording_backend("gemini/gemini-3.6-flash")
 
     assert isinstance(backend.run_inference(job(content="test")), JobResult)
-    assert calls[0]["api_base"] == "https://custom-gw.example.com/v1/custom-gw/mistral/v1"
+    assert calls[0]["api_base"] == (
+        "https://custom-gw.example.com/v1/custom-gw/google-ai-studio/v1beta"
+    )
     assert not calls[0].get("extra_headers")
 
 
@@ -1965,47 +1197,6 @@ def test_direct_call_without_gateway_configured_keeps_the_provider_upstream(monk
     assert isinstance(backend.run_inference(job(content="test")), JobResult)
     assert calls[0]["api_base"] == "https://generativelanguage.googleapis.com/v1beta"
     assert not calls[0].get("extra_headers")
-
-
-def test_dispatch_payload_is_never_rewritten_for_the_gateway(gateway_env):
-    """The Worker fronts its own providers with the gateway; the payload must stay untouched.
-
-    Handing it a gateway `api_base` would double-proxy the call, and `cf-aig-authorization` is a
-    credential the Worker has no use for and should never receive.
-    """
-    posted = {}
-
-    class Response:
-        status_code = 200
-        headers: dict[str, str] = {}
-        text = ""
-
-        def json(self):
-            return {"choices": [{"message": {"content": json.dumps({"value": "ok"})}}]}
-
-    class Session:
-        def post(self, url, **kwargs):
-            posted.update(kwargs)
-            return Response()
-
-    backend = LiteLLMBackend(
-        LLMBackendConfig(
-            model="gemini/gemini-3.6-flash",
-            mode="dispatch",
-            dispatch_url="https://dispatch.example",
-        ),
-        http_session=Session(),
-        storage=MemStorage(),
-    )
-    backend.run_inference(job(content="test"))
-
-    payload = posted["json"]
-    # The payload has always carried the route's own upstream, and still should -- what must not
-    # leak is the *gateway* rewrite and its credential.
-    assert payload["api_base"] == "https://generativelanguage.googleapis.com/v1beta/openai"
-    assert "gateway.ai.cloudflare.com" not in json.dumps(posted)
-    assert "extra_headers" not in payload
-    assert "cf-aig-authorization" not in json.dumps(posted).lower()
 
 
 def test_dispatch_v2_stats_returns_the_bounded_scheduler_snapshot():
@@ -2039,8 +1230,34 @@ def test_dispatch_v2_stats_returns_the_bounded_scheduler_snapshot():
     assert calls[0][1]["headers"] == {"authorization": "Bearer v2-secret"}
 
 
-@pytest.mark.parametrize("config_name", ["dispatch_url", "dispatch_v2_url"])
-def test_backend_rejects_cleartext_dispatch_urls_before_any_request(config_name):
+def test_dispatch_v2_stats_requests_diagnostics_only_when_explicitly_requested():
+    calls = []
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {"jobs": {"by_state": {"queued": 3}}, "bundles": {"active": 1}}
+
+    class Session:
+        def get(self, url, **kwargs):
+            calls.append((url, kwargs))
+            return Response()
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3.6-flash",
+            dispatch_v2_url="https://dispatch.example/",
+        ),
+        http_session=Session(),
+    )
+
+    backend.dispatch_v2_stats(detail=True)
+
+    assert calls[0][0] == "https://dispatch.example/v2/stats?detail=1&limit=20"
+
+
+def test_backend_rejects_cleartext_dispatch_urls_before_any_request():
     calls = []
 
     class Session:
@@ -2052,7 +1269,7 @@ def test_backend_rejects_cleartext_dispatch_urls_before_any_request(config_name)
         LiteLLMBackend(
             LLMBackendConfig(
                 model="gemini/gemini-3.6-flash",
-                **{config_name: "http://dispatch.example"},
+                dispatch_v2_url="http://dispatch.example",
             ),
             http_session=Session(),
         )
@@ -2083,7 +1300,7 @@ def test_immediate_direct_ignores_poisoned_cache_and_never_persists_results():
         LLMBackendConfig(
             model="gemini/gemini-3.5-flash",
             mode="dispatch",
-            dispatch_url="https://dispatch.example",
+            dispatch_v2_url="https://dispatch.example",
         ),
         completion=completion,
         storage=storage,
@@ -2186,3 +1403,321 @@ def test_immediate_schema_repair_is_local_and_never_persists_a_handle():
     assert "corrected JSON" in calls[1]["messages"][-1]["content"]
     assert result.output["choices"][0]["message"]["content"] == '{"value":"fixed"}'
     assert not any("llm_deferred" in key for key in storage.objs)
+
+
+def test_structured_content_distinguishes_upstream_passthrough_from_malformed_reply():
+    """A stored "completed" result that is actually a provider/gateway error object -- Airforce's
+    HTTP 200 body containing {"error": {"message": "the provider refused this request (HTTP
+    524)", ...}} when its own upstream times out (confirmed live 2026-09, 413 of 6,561 stored v2
+    results during an outage) -- must raise LLMUpstreamPassthroughError, not
+    LLMStructuredOutputError. The two are NOT interchangeable: llm_deferred_sweep.py's
+    recover_terminal routes LLMStructuredOutputError into a "fix your JSON" corrective retry,
+    which is nonsensical when the model never produced output, and burns one of the bounded
+    MAX_TERMINAL_FAILURE_RETRIES attempts on a retry that cannot possibly succeed."""
+    airforce_524 = {
+        "error": {
+            "message": "the provider refused this request (HTTP 524)",
+            "type": "upstream_error",
+            "code": "524",
+        }
+    }
+    with pytest.raises(LLMUpstreamPassthroughError, match="error passthrough"):
+        LiteLLMBackend._structured_content(airforce_524)
+
+    airforce_429 = {
+        "error": {
+            "message": "the provider is at capacity right now — try again shortly",
+            "type": "upstream_error",
+            "code": "429",
+        }
+    }
+    with pytest.raises(LLMUpstreamPassthroughError, match="error passthrough"):
+        LiteLLMBackend._structured_content(airforce_429)
+
+    # A genuinely malformed reply (no error key, no usable content) keeps its original class --
+    # this class of failure legitimately can benefit from the corrective retry.
+    with pytest.raises(LLMStructuredOutputError, match="did not contain message content"):
+        LiteLLMBackend._structured_content({"choices": []})
+    with pytest.raises(LLMStructuredOutputError, match="did not contain message content"):
+        LiteLLMBackend._structured_content({})
+
+    # LLMUpstreamPassthroughError IS a LLMDispatchTerminalError (so every existing
+    # isinstance(result, (LLMStructuredOutputError, LLMDispatchTerminalError)) gate in
+    # scripts/llm_deferred_sweep.py still matches it) but is NOT a LLMStructuredOutputError (so
+    # recover_terminal's isinstance(exc, LLMStructuredOutputError) branch, which triggers the
+    # schema-correction retry, correctly skips it).
+    assert issubclass(LLMUpstreamPassthroughError, LLMDispatchTerminalError)
+    assert not issubclass(LLMUpstreamPassthroughError, LLMStructuredOutputError)
+
+
+def test_completed_dispatch_result_catches_upstream_passthrough_for_an_unstructured_job():
+    """_validate_reconciled returns immediately when structured_output is unset, so it never
+    calls _structured_content at all for an ordinary (non-structured) job -- an error passthrough
+    for one of those used to fall straight through _completed_dispatch_result to a JobResult built
+    directly from the raw {"error": {...}} body, persisted and acknowledged as a genuine
+    successful completion (CodeRabbit, 2026-09-13: the one call site ff936d4 missed)."""
+    backend = LiteLLMBackend(LLMBackendConfig(model="gemini/gemini-3-flash-preview"))
+    airforce_524 = {"error": {"message": "the provider refused this request (HTTP 524)"}}
+    with pytest.raises(LLMUpstreamPassthroughError, match="error passthrough"):
+        backend._completed_dispatch_result(
+            task="chapter-locator",
+            recipe_hash="r1",
+            output=airforce_524,
+            structured_output=None,
+        )
+
+
+def test_validate_reconciled_propagates_upstream_passthrough_uncaught():
+    """_validate_reconciled's except clause only catches (ValueError, TypeError) from Pydantic
+    validation -- LLMUpstreamPassthroughError (a RuntimeError subclass) must pass through
+    unchanged, not get rewrapped as a generic LLMStructuredOutputError."""
+    backend = LiteLLMBackend(LLMBackendConfig(model="gemini/gemini-3-flash-preview"))
+    airforce_524 = {"error": {"message": "the provider refused this request (HTTP 524)"}}
+    with pytest.raises(LLMUpstreamPassthroughError):
+        backend._validate_reconciled(airforce_524, "test-output")
+
+
+@pytest.mark.parametrize("raw", ["0", "-5", "nan", "inf"])
+def test_the_direct_timeout_must_be_a_finite_positive_number(monkeypatch, raw):
+    monkeypatch.setenv("LLM_DIRECT_TIMEOUT_SECONDS", raw)
+    with pytest.raises(ValueError, match="LLM_DIRECT_TIMEOUT_SECONDS"):
+        LLMBackendConfig.from_env()
+
+
+def test_a_blank_direct_timeout_keeps_the_default(monkeypatch):
+    monkeypatch.setenv("LLM_DIRECT_TIMEOUT_SECONDS", " ")
+    assert LLMBackendConfig.from_env().direct_timeout_seconds == 720.0
+
+
+def test_a_rebuilt_deferred_job_keeps_its_lane_timeout_and_output_mode(monkeypatch):
+    # The lane (policy.purpose) picks per-lane reasoning controls on the direct path; a rebuild
+    # without it would send the provider's default for that model.
+    from citypods.compute.llm_policy import DeferredLLMRequest
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(LLMBackendConfig(model="gemini/gemini-3.5-flash"), storage=storage)
+    seen = {}
+
+    def fake_paced(job, policy, structured, messages):
+        seen["inputs"] = dict(job.inputs)
+        return JobResult(task=job.task, recipe_hash=job.recipe_hash, output={}, model="m")
+
+    monkeypatch.setattr(backend, "_run_policy_job_paced", fake_paced)
+    policy = LLMRequestPolicy(purpose="chapter-agenda")
+    backend._reconcile_deferred(
+        JobHandle(
+            task="tag",
+            recipe_hash="r-rebuild",
+            backend="litellm",
+            ref="deferred:r-rebuild",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "hi"},),
+                policy=policy,
+                output_token_budget=16_384,
+                timeout=45.0,
+                max_tokens_mode="route_max",
+            ),
+        )
+    )
+    assert seen["inputs"]["llm_policy"] is policy
+    assert seen["inputs"]["max_tokens"] == 16_384
+    assert seen["inputs"]["timeout"] == 45.0
+    assert seen["inputs"]["max_tokens_mode"] == "route_max"
+
+
+def test_immediate_result_records_physical_route_and_explicit_controls(monkeypatch):
+    from dataclasses import replace
+
+    import citypods.compute.llm as llm_module
+    import citypods.compute.llm_scheduler as scheduler
+    from citypods.remedy_evaluation import canonical_hash
+
+    route = replace(
+        next(iter(ROUTE_REGISTRY.values())),
+        route_id="mock-high",
+        upstream_model="upstream-high",
+        provider_rpm=None,
+        provider_tpm=None,
+        provider_concurrency=None,
+        reasoning_controls_json='{"high":{"reasoning_effort":"high"}}',
+    )
+    monkeypatch.setattr(scheduler, "ROUTE_REGISTRY", {route.route_id: route})
+    monkeypatch.setattr(llm_module, "ROUTE_REGISTRY", {route.route_id: route})
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return {"model": route.upstream_model, "choices": [{"message": {"content": "done"}}]}
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model=route.model), completion=completion, storage=MemStorage()
+    )
+    policy = LLMRequestPolicy(
+        allowed_models=(route.model,),
+        allowed_route_ids=(route.route_id,),
+        require_direct=True,
+        purpose="audit-remedy",
+        deadline_at=datetime.now(UTC) + timedelta(seconds=10),
+    )
+    result = backend.run_immediate(
+        job(
+            messages=[{"role": "user", "content": "evidence"}],
+            llm_policy=policy,
+            reasoning_level="high",
+        )
+    )
+    assert result.route_id == route.route_id
+    assert result.upstream_model == "upstream-high"
+    assert result.reasoning_level == "high"
+    params = json.loads(route.request_params_json or "{}") | {"reasoning_effort": "high"}
+    assert result.request_params_hash == canonical_hash(params)
+    assert calls[0]["extra_body"] == params
+    assert result.model == route.model
+
+
+def test_explicit_unsupported_effort_never_calls_provider():
+    from dataclasses import replace
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(),
+        completion=lambda **kwargs: pytest.fail("unsupported effort called"),
+    )
+    route = replace(next(iter(ROUTE_REGISTRY.values())), reasoning_controls_json="")
+    with pytest.raises(ValueError, match="does not support"):
+        backend._provider_options(job(reasoning_level="high"), route.model, route=route)
+
+
+@pytest.mark.parametrize("queue_only", [False, True])
+def test_dispatch_allowlist_rejected_before_storage_or_calls(queue_only):
+    backend = LiteLLMBackend(LLMBackendConfig())
+    policy = LLMRequestPolicy(
+        allowed_route_ids=("physical",), queue_only=queue_only, require_direct=True
+    )
+    with pytest.raises(ValueError, match="requires run_immediate"):
+        backend.run_inference(
+            job(messages=[{"role": "user", "content": "evidence"}], llm_policy=policy)
+        )
+    with pytest.raises(ValueError, match="dispatch cannot"):
+        backend.enqueue_batch([job(llm_policy=policy)])
+
+
+@pytest.mark.parametrize("policy", [None, LLMRequestPolicy(require_direct=True)])
+def test_explicit_effort_rejected_before_non_immediate_side_effects(policy):
+    backend = LiteLLMBackend(
+        LLMBackendConfig(), completion=lambda **kwargs: pytest.fail("provider called")
+    )
+    request = job(reasoning_level="high", llm_policy=policy)
+    with pytest.raises(ValueError, match="requires run_immediate"):
+        backend.run_inference(request)
+    with pytest.raises(ValueError, match="cannot enforce explicit reasoning_level"):
+        backend.enqueue_batch([request])
+
+
+@pytest.mark.parametrize("limit", [1, 2])
+def test_immediate_attempt_budget_bounds_schema_correction_and_records_count(limit):
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        return structured_response("not json" if len(calls) == 1 else '{"value":"fixed"}')
+
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3.5-flash"),
+        completion=completion,
+        storage=MemStorage(),
+    )
+    request = job(
+        content="test",
+        structured_output="test-output",
+        max_provider_attempts=limit,
+        num_retries=7,
+        llm_policy=LLMRequestPolicy(
+            require_direct=True,
+            allowed_models=("gemini/gemini-3.5-flash",),
+            deadline_at=datetime.now(UTC) + timedelta(seconds=10),
+        ),
+    )
+    if limit == 1:
+        with pytest.raises(LLMBackendError, match="provider-attempt limit") as error:
+            backend.run_immediate(request)
+        assert error.value.provider_attempts == 1
+    else:
+        result = backend.run_immediate(request)
+        assert result.provider_attempts == 2
+    assert len(calls) == limit
+    assert all(call["num_retries"] == 0 for call in calls)
+
+
+def test_immediate_budget_is_shared_across_capacity_and_schema_retries():
+    class CapacityLimited(Exception):
+        status_code = 429
+        headers = {"retry-after": "15"}
+
+    calls = []
+
+    def completion(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            raise CapacityLimited("upstream provider overloaded, please try again later")
+        return structured_response("not json")
+
+    storage = MemStorage()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"),
+        completion=completion,
+        storage=storage,
+    )
+    request = job(
+        content="test",
+        structured_output="test-output",
+        max_provider_attempts=2,
+        llm_policy=LLMRequestPolicy(
+            require_direct=True,
+            allowed_models=("gemini/gemini-3-flash-preview", "gemini/gemini-3.5-flash"),
+            deadline_at=datetime.now(UTC) + timedelta(seconds=10),
+        ),
+    )
+    with pytest.raises(LLMBackendError, match="provider-attempt limit") as error:
+        backend.run_immediate(request)
+    assert error.value.provider_attempts == len(calls) == 2
+    ledger, _ = load_llm_budget_cas(storage)
+    assert all(not route.inflight for route in ledger.routes.values())
+
+
+@pytest.mark.parametrize("limit", [True, 0, -1, "2", 2.5])
+def test_invalid_attempt_budget_rejected_before_io(limit):
+    backend = LiteLLMBackend(LLMBackendConfig())
+    with pytest.raises(ValueError, match="positive integer"):
+        backend.run_immediate(job(max_provider_attempts=limit))
+
+
+def test_attempt_budget_cannot_be_dropped_by_deferred_or_dispatch_paths():
+    backend = LiteLLMBackend(LLMBackendConfig())
+    request = job(max_provider_attempts=2)
+    with pytest.raises(ValueError, match="requires run_immediate"):
+        backend.run_inference(request)
+    with pytest.raises(ValueError, match="cannot enforce max_provider_attempts"):
+        backend.enqueue_batch([request])
+
+
+@pytest.mark.parametrize("supported", [False, True])
+def test_provenance_records_only_applied_lane_effort(monkeypatch, supported):
+    from dataclasses import replace
+
+    import citypods.compute.llm as llm_module
+    from citypods.compute.base import JobResult
+    from citypods.remedy_evaluation import canonical_hash
+
+    route = replace(
+        next(iter(ROUTE_REGISTRY.values())),
+        reasoning_controls_json='{"high":{"reasoning_effort":"high"}}' if supported else "",
+    )
+    monkeypatch.setattr(llm_module, "_lane_reasoning_level", lambda job, route: "high")
+    result = llm_module._direct_result_provenance(
+        JobResult(task="llm", recipe_hash="test", output={}), job(), route
+    )
+    assert result.reasoning_level == ("high" if supported else None)
+    params = json.loads(route.request_params_json or "{}")
+    if supported:
+        params["reasoning_effort"] = "high"
+    assert result.request_params_hash == canonical_hash(params)

@@ -45,6 +45,7 @@ DISPATCHING_PURPOSES = frozenset(
         "chapter-locator",
         "topic-tags:tagger",
         "topic-tags:prelabeler",
+        "topic-tags:prelabeler-shadow",
         "r6-moments",
         "r6-judge",
         "tournament:tag",
@@ -56,12 +57,49 @@ DISPATCHING_PURPOSES = frozenset(
 
 
 def _lane(**overrides):
-    entry = {"models": ["m1"], "max_dispatches_per_run": 10, "daily_write_units": 100}
+    entry = {
+        "models": ["m1"],
+        "max_dispatches_per_run": 10,
+        "daily_write_units": 100,
+        "telemetry": {
+            "producer": "test",
+            "unit": "episode",
+            "completion": "consumed",
+            "scope": "retained_catalog",
+        },
+    }
     entry.update(overrides)
     return {"a-purpose": entry}
 
 
 class TestParsing:
+    @pytest.mark.parametrize(
+        "change",
+        [
+            None,
+            {"extra": True},
+            {"producer": " "},
+            {"unit": " "},
+            {"scope": "unknown"},
+            {"completion": "queued"},
+        ],
+    )
+    def test_rejects_invalid_telemetry_contracts(self, change):
+        config = _lane()
+        if change is None:
+            config["a-purpose"].pop("telemetry")
+        else:
+            config["a-purpose"]["telemetry"].update(change)
+        with pytest.raises(ValueError, match="telemetry"):
+            parse_lanes(config)
+
+    def test_normalizes_telemetry_identity_fields(self):
+        config = _lane()
+        config["a-purpose"]["telemetry"].update(producer=" test ", unit=" episode ")
+        lane = parse_lanes(config)["a-purpose"]
+        assert lane.telemetry_producer == "test"
+        assert lane.telemetry_unit == "episode"
+
     def test_accepts_a_well_formed_lane(self):
         lanes = parse_lanes(_lane())
         assert lanes["a-purpose"] == LaneConfig(
@@ -71,6 +109,7 @@ class TestParsing:
             reserved_write_units=0,
             daily_write_units=100,
             dispatch_shape="pooled",
+            telemetry_producer="test",
         )
 
     @pytest.mark.parametrize("block", [None, {}, [], "nope"])
@@ -128,6 +167,74 @@ class TestParsing:
     def test_rejects_registering_a_non_dispatching_purpose(self):
         with pytest.raises(ValueError, match="never reaches the ingress Worker"):
             parse_lanes({"topic-tags:rules": _lane()["a-purpose"]})
+
+
+class TestBackupModels:
+    """LaneConfig.backup_models/backup_after_attempts: a generic preferred+backup mechanism."""
+
+    def test_accepts_backup_models_with_a_threshold(self):
+        lane = parse_lanes(_lane(backup_models=["m2"], backup_after_attempts=5))["a-purpose"]
+        assert lane.backup_models == ("m2",)
+        assert lane.backup_after_attempts == 5
+
+    def test_defaults_to_no_backup_models(self):
+        lane = parse_lanes(_lane())["a-purpose"]
+        assert lane.backup_models == ()
+        assert lane.backup_after_attempts is None
+
+    def test_rejects_backup_models_without_a_threshold(self):
+        with pytest.raises(ValueError, match="backup_models must be a non-empty list"):
+            parse_lanes(_lane(backup_models=["m2"]))
+
+    def test_rejects_a_threshold_without_backup_models(self):
+        with pytest.raises(ValueError, match="backup_models must be a non-empty list"):
+            parse_lanes(_lane(backup_after_attempts=5))
+
+    def test_allows_a_pooled_model_as_backup_for_its_retry_budget(self):
+        # Repeating a pooled model adds no routes (the Worker de-duplicates them); a non-empty
+        # backup_models is what raises the Worker's retry ceilings for the lane.
+        lane = parse_lanes(_lane(backup_models=["m1"], backup_after_attempts=5))
+        assert lane["a-purpose"].backup_models == ("m1",)
+
+    def test_parses_a_per_model_reasoning_level(self):
+        lanes = parse_lanes(_lane(reasoning={"m1": "off"}))
+        assert lanes["a-purpose"].reasoning_levels == {"m1": "off"}
+
+    @pytest.mark.parametrize(
+        ("reasoning", "match"),
+        [
+            ({"other": "off"}, "not one of the lane"),
+            ({"m1": "max"}, "must be one of"),
+            ({"m1": False}, "quote"),
+        ],
+    )
+    def test_rejects_an_invalid_reasoning_map(self, reasoning, match):
+        with pytest.raises(ValueError, match=match):
+            parse_lanes(_lane(reasoning=reasoning))
+
+    def test_rejects_backup_models_on_a_per_model_lane(self):
+        with pytest.raises(ValueError, match="per_model"):
+            parse_lanes(
+                _lane(
+                    dispatch_shape="per_model",
+                    backup_models=["m2"],
+                    backup_after_attempts=5,
+                )
+            )
+
+    def test_rejects_a_non_positive_threshold(self):
+        with pytest.raises(ValueError, match="backup_after_attempts must be positive"):
+            parse_lanes(_lane(backup_models=["m2"], backup_after_attempts=0))
+
+    def test_rejects_duplicate_backup_models(self):
+        with pytest.raises(ValueError, match="duplicates"):
+            parse_lanes(_lane(backup_models=["m2", "m2"], backup_after_attempts=5))
+
+    def test_backup_models_are_not_counted_in_ingress_write_units(self):
+        lane = parse_lanes(
+            _lane(models=["m1"], backup_models=["m2", "m3"], backup_after_attempts=5)
+        )["a-purpose"]
+        assert lane.ingress_write_units_per_job == 4  # 3 + len(models), backups excluded
 
 
 class TestWriteUnitAccounting:
@@ -221,6 +328,7 @@ class TestRepositoryConfig:
             assert entry["reserved_write_units"] == lane.reserved_write_units
             assert entry["daily_write_units"] == lane.daily_write_units
             assert entry["models"] == list(lane.models)
+            assert entry["backup_models"] == list(lane.backup_models)
 
     def test_every_lane_run_cap_is_funded_by_its_daily_budget(self):
         for lane in load_lanes().values():
@@ -247,8 +355,8 @@ class TestRecipeAffectingModelPins:
     @pytest.mark.parametrize(
         ("purpose", "expected"),
         [
-            ("chapter-agenda", "mistral/mistral-medium-latest"),
-            ("chapter-locator", "gemini/gemini-3.5-flash-lite"),
+            ("chapter-agenda", "nvidia/nemotron-3-ultra-550b-a55b:free"),
+            ("chapter-locator", "deepseek/deepseek-v4-flash"),
             ("topic-tags:tagger", "gemini/gemini-3.1-flash-lite"),
             ("topic-tags:prelabeler", "google/gemma-4-31b-it"),
         ],
@@ -258,10 +366,18 @@ class TestRecipeAffectingModelPins:
 
     def test_constants_resolve_to_their_lane(self):
         from citypods.chapter_locator import PRODUCTION_LOCATOR_MODEL
-        from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL, AGENDA_PRODUCTION_MODELS
+        from citypods.chapter_titles import (
+            AGENDA_BACKUP_AFTER_ATTEMPTS,
+            AGENDA_BACKUP_MODELS,
+            AGENDA_PRODUCTION_MODEL,
+            AGENDA_PRODUCTION_MODELS,
+        )
 
         assert AGENDA_PRODUCTION_MODEL == lane_for("chapter-agenda").primary_model
         assert AGENDA_PRODUCTION_MODELS == lane_for("chapter-agenda").models
+        assert AGENDA_PRODUCTION_MODEL == "nvidia/nemotron-3-ultra-550b-a55b:free"
+        assert AGENDA_BACKUP_MODELS == ("tencent/hy3", "gemini/gemini-3.1-flash-lite")
+        assert AGENDA_BACKUP_AFTER_ATTEMPTS == 12
         assert PRODUCTION_LOCATOR_MODEL == lane_for("chapter-locator").primary_model
 
 
@@ -326,3 +442,60 @@ class TestTournamentSampleBudget:
         assert samples >= 1
         assert samples * len(MODELS) <= tag.max_dispatches_per_run
         assert samples * len(CONTESTS) * 2 <= judge.max_dispatches_per_run
+
+
+# --- Lane <-> route catalog consistency -----------------------------------------------------------
+#
+# A lane naming a model with no dispatchable route is silent at every other layer: the lane
+# compiles, ingress admits the job (the lane check compares model strings, not routes), and the v2
+# coordinator never ranks a model absent from `model_routes_map`, so the job sits `queued` forever.
+# Removing a route (by hand or by the provider-catalog reconciler, review/48) must therefore keep
+# every lane model resolvable. Driven by `load_lanes()`, so a new lane is covered with no edit here.
+
+_WORKER_CATALOG = (
+    Path(__file__).resolve().parents[1] / "workers/llm-dispatch-v2/src/dispatch_limits.json"
+)
+
+
+def _lane_models() -> list[tuple[str, str]]:
+    return [
+        (purpose, model)
+        for purpose, lane in sorted(load_lanes().items())
+        for model in (*lane.models, *lane.backup_models)
+    ]
+
+
+def _worker_routes_for(model: str, catalog: dict) -> list[str]:
+    aliases = catalog.get("model_aliases") or {}
+    seen: set[str] = set()
+    while model in aliases and model not in seen:
+        seen.add(model)
+        model = aliases[model]
+    return list((catalog.get("model_routes_map") or {}).get(model) or [])
+
+
+@pytest.mark.parametrize(("purpose", "model"), _lane_models())
+def test_every_lane_model_has_a_live_worker_route(purpose, model):
+    catalog = json.loads(_WORKER_CATALOG.read_text(encoding="utf-8"))
+    routes = _worker_routes_for(model, catalog)
+    assert routes, f"{purpose}: {model} has no route in the compiled v2 catalog"
+    # rpd: 0 is the catalog's paused-route convention; a model whose every route is paused strands
+    # its queued jobs exactly like a missing one.
+    live = [r for r in routes if catalog["routes_by_id"][r].get("rpd") != 0]
+    assert live, f"{purpose}: every route for {model} is paused (rpd: 0): {routes}"
+
+
+def test_catalog_backup_candidates_defaults_on_and_excludes_per_model_lanes():
+    lanes = load_lanes()
+    assert all(
+        lane.accepts_catalog_backups == (lane.dispatch_shape == "pooled") for lane in lanes.values()
+    )
+    base = {**_lane()["a-purpose"], "models": ["a/b"], "max_dispatches_per_run": 1}
+    assert (
+        parse_lanes({"x": {**base, "catalog_backup_candidates": False}})[
+            "x"
+        ].accepts_catalog_backups
+        is False
+    )
+    with pytest.raises(ValueError, match="catalog_backup_candidates"):
+        parse_lanes({"x": {**base, "catalog_backup_candidates": "yes"}})

@@ -1,0 +1,22 @@
+{
+  // Local-only measurement Worker: `npx wrangler dev --local -c bench/rows-written/wrangler.jsonc`.
+  // Never deployed. Runs the real LLMSchedulerDO under workerd, whose SQL cursors report the
+  // same `rowsWritten` Cloudflare bills. See README.md.
+  "name": "llm-dispatch-v2-rows-written-bench",
+  "main": "harness.js",
+  "compatibility_date": "2026-08-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "durable_objects": { "bindings": [{ "name": "M", "class_name": "MeasureDO" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["MeasureDO"] }],
+  "vars": {
+    // Generous admission so enqueue measurements are never rejected (a rejection writes 0 rows).
+    "MAX_JOBS_PER_UTC_DAY": "20000",
+    "MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY": "100000",
+    "MAX_BUNDLE_JOBS": "5",
+    "MAX_JOBS_PER_ROUTE_PER_BUNDLE": "3",
+    "MAX_ACTIVE_BUNDLES": "3",
+    "MAX_IN_FLIGHT_LLM_CALLS": "12",
+    "ESTIMATED_CALL_DURATION_CEILING_SECONDS": "2",
+    "COMPLETED_RETENTION_DAYS": "38"
+  }
+}

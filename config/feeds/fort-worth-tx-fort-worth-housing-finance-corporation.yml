@@ -4,6 +4,28 @@ provider: granicus
 source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "Fort Worth Housing Finance Corporation"
+  body_includes:
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3670"
+      body: "Fort Worth Local Development Corporation 05-05-2020 Fort Worth Local Development Corporation"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=3670"
+      body: "Fort Worth Local Development Corporation 05-05-2020 Fort Worth Local Development Corporation"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5997"
+      body: "LDC, CCLGC, RILGC, FWHFC LDC, CCLGC, RILGC, FWHFC"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=5997"
+      body: "LDC, CCLGC, RILGC, FWHFC LDC, CCLGC, RILGC, FWHFC"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5641"
+      body: "Local Development Corporation & Research and Innovation Local Government Corporation Local Development Corporation & Research and Innovation Local Government Corporation"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=5641"
+      body: "Local Development Corporation & Research and Innovation Local Government Corporation Local Development Corporation & Research and Innovation Local Government Corporation"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=5564"
+      body: "Fort Worth Local Development Corporation, Central City Local Government Corporation, and Lone Star Local Government Corporation Fort Worth Local Development Corporation, Central City Local Government Corporation, and Lone Star Local Government Corporation"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=5564"
+      body: "Fort Worth Local Development Corporation, Central City Local Government Corporation, and Lone Star Local Government Corporation Fort Worth Local Development Corporation, Central City Local Government Corporation, and Lone Star Local Government Corporation"
+  body_any:
+    - "FW Housing Finance Corp (immediately following the Council meeting beginning at 10 a.m.) FW Housing Finance Corp (immediately following the Council meeting beginning at 10 a.m.)"
+    - "Housing Finance Corporation of April 23, 2024 Housing Finance Corporation of April 23, 2024"
+    - "Housing Finance Corporation of August 22, 2023 Housing Finance Corporation of August 22, 2023"
+    - "Housing Finance Corporation Housing Finance Corporation"
 lifecycle:
   status: paused
   recheck_after: 2026-10-30

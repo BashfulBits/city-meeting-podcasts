@@ -143,9 +143,17 @@ def _extract_pdf(
     """Extract both text and URI annotations from one PdfReader pass."""
     try:
         from pypdf import PdfReader
+        from pypdf.errors import PyPdfError
     except ImportError:
-        text = content.decode("utf-8", errors="ignore")[:MAX_TEXT_CHARS]
-        return text, _links_from_text(text, source_url)
+        # pypdf is a required dependency (pyproject.toml declares "pypdf>=5.0"); its absence here
+        # means a broken environment, not a malformed document. This used to decode the PDF's own
+        # raw bytes as UTF-8 and return that as "extracted text" -- real PDF container syntax and
+        # compressed-stream bytes decode into plausible-looking, keyword-bearing noise rather than
+        # raising, so it slipped past the quality gate (see the %PDF- guard added to
+        # _is_placeholder_text as a second layer) and was persisted as a genuine
+        # agenda_text_artifact. Treat this like any other unreadable native PDF instead: return no
+        # text so assess_agenda_document's existing suspicious-native/OCR path handles it.
+        return "", []
     links: list[DocumentLink] = []
     texts: list[str] = []
     try:
@@ -166,8 +174,20 @@ def _extract_pdf(
                             kind="minutes" if _MINUTES_RE.search(url) else "backup",
                         )
                     )
-    except (TypeError, ValueError, KeyError):
-        pass
+    except (TypeError, ValueError, KeyError, PyPdfError):
+        # PyPdfError (pypdf.errors.PdfReadError, DependencyError, etc.) previously wasn't caught
+        # here, so a genuinely malformed PDF raised straight out of this function instead of
+        # degrading gracefully like every other bad-PDF case does. That didn't produce the
+        # raw-bytes corruption this module now guards against (the uncaught exception propagated
+        # to AgendaTextStage's own per-candidate try/except, which just skips the candidate rather
+        # than decoding anything) -- but it also meant a malformed PDF never got the chance at the
+        # OCR-repair path below, unlike every other "native extraction is untrustworthy" case.
+        #
+        # Discard whatever partial text/links were collected before the failure rather than
+        # returning them: the failure can land after several pages already appended to `texts`,
+        # and if that partial prefix happens to pass the native quality checks on its own,
+        # assess_agenda_document would accept a truncated agenda and skip OCR recovery entirely.
+        return "", []
     text = "\n".join(texts)[:MAX_TEXT_CHARS]
     return text, _dedupe_links(links + _links_from_text(text, source_url))
 
@@ -177,6 +197,14 @@ _PLACEHOLDER_RE = re.compile(
     r"please wait|javascript (?:is )?required|an error occurred|unable to load)",
     re.I,
 )
+# The PDF file signature. Real extracted text never starts with this -- only raw, undecoded PDF
+# container bytes do (e.g. GH's raw-agenda-bytes bug: a pypdf-import failure silently falling back
+# to `content.decode("utf-8", errors="ignore")` on the whole PDF file, see _extract_pdf). That
+# leaked binary reads as substantial, keyword-bearing prose to every heuristic below it -- a
+# compressed content stream decodes into alpha-heavy noise that easily clears the 200-alpha-char
+# and agenda_content_score thresholds by chance -- so it needs its own unambiguous, structural
+# signal rather than relying on the score-based checks to catch it.
+_RAW_PDF_HEADER_RE = re.compile(r"^\s*%PDF-\d")
 _NOTICE_RE = re.compile(
     r"\b(?:cancel(?:led|ed)?|no meeting|meeting (?:is )?(?:postponed|rescheduled)|"
     r"meeting notice|meeting has been canceled)\b",
@@ -216,6 +244,8 @@ def agenda_content_score(text: str) -> int:
 def _is_placeholder_text(text: str) -> bool:
     normalized = _normalize_ws(text)
     if not normalized:
+        return True
+    if _RAW_PDF_HEADER_RE.match(normalized):
         return True
     if _PLACEHOLDER_RE.search(normalized):
         # A real agenda can contain the word "loading" in a footnote, so only classify it as a
@@ -615,7 +645,10 @@ def extract_pdf_layout_text(content: bytes) -> str:
         from pypdf import PdfReader
         from pypdf.errors import DependencyError, PdfReadError
     except ImportError:
-        return content.decode("utf-8", errors="ignore")[:MAX_TEXT_CHARS]
+        # Same reasoning as _extract_pdf's ImportError branch: a missing pypdf is a broken
+        # environment, not a malformed document, and raw PDF bytes must never be handed back as
+        # if they were extracted text.
+        return ""
     try:
         reader = PdfReader(io.BytesIO(content))
         return "\n".join(

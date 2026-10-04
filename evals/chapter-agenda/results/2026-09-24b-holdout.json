@@ -1,0 +1,1561 @@
+{
+ "eval_set_version": 1,
+ "models": {
+  "tencent/hy3": {
+   "episodes": [
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "I.",
+       "evidence_text": "I.\nCALL TO ORDER",
+       "title": "Call to Order"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "II.\nINVOCATION - Dr. Murray Richey, John Knox Presbyterian Church",
+       "title": "Invocation by Dr. Murray Richey"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "III.\nPLEDGE OF ALLEGIANCE",
+       "title": "Pledge of Allegiance"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "IV.\nCONSIDERATION OF MINUTES OF REGULAR MEETING OF TUESDAY, OCTOBER 21, 2008",
+       "title": "Consideration of Minutes of October 21, 2008 Regular Meeting"
+      },
+      {
+       "display_ref": "1.",
+       "evidence_text": "1.\nPresentation by Partners for Sacred Places",
+       "title": "Presentation by Partners for Sacred Places"
+      },
+      {
+       "display_ref": "2.",
+       "evidence_text": "2.\nPresentation by Imagination Celebration",
+       "title": "Presentation by Imagination Celebration"
+      },
+      {
+       "display_ref": "3.",
+       "evidence_text": "3.\nCouncil Member Espino Presented\u00a0a Proclamation for Texas Motor Speedway Full Throttle Fan Days to Eddie Gossage.",
+       "title": "Proclamation for Texas Motor Speedway Full Throttle Fan Days"
+      },
+      {
+       "display_ref": "Notices",
+       "evidence_text": "CONSENT AGENDA\nOCS - 1694 - Notices of Claims for Alleged Damages and/or Injuries\nM&C G-16327 - Authorizing Transfer of Funds in the Amount of $50,000.00 from the Lake Worth Trust Fund to the General Fund and Adopting Appropriation Ordinance No. 18340-10-2008 Increasing Estimated Receipts and Appropriations in the General Fund in the Amount of $50,000.00 for the Purpose of Funding the Lake Worth Vision Workshop.\nM&C G-16328 - Authorizing Transfer of Funds from the North Tarrant Parkway Tax Increment Reinvestment Zone (TIF), the Lancaster Corridor TIF, the East Berry Renaissance TIF and the Woodhaven TIF all in the Special Assessment District Fund and $25,250.00 from the Fort Worth Local Development Corporation to the Special Trust Fund to Fund a Portion of Three Authorized Positions in the Housing and Economic Development Department that are Responsible for the Administration of Tax Increment Reinvestment Zones and the Fort Worth Local Development Corporation; and Adopting Appropriation Ordinance No. 18341-10-2008 Increasing Estimated Receipts and Appropriations in the Special Trust Fund in the Amount of $208,146.00 from Available Funds for the Purpose of Ensuring that Funds are Available for Administration of the TIFs and the Fort Worth Local Development Corporation for the Remainder of the 2008-2009 Fiscal Year.\nM&C G-16329 - Adopting Ordinance No. 18342-10-2008 Vacating, Abandoning and Extinguishing Part of a Floodplain Easement Located within a Portion of Lot 1, Block 1, Tree Tops School Addition, an Addition to the City of Fort Worth, Tarrant County, Texas, and Containing Approximately 1.333 Acres or 58,061 Square Feet of Land.\nM&C P-10873 - Authorizing the Purchase of Pickup Trucks from Caldwell Country Dealerships for the Transportation and Public Works Department Using a Texas Procurement and Support Services Term Contract for a Cost Not to Exceed $104,211.00.\nM&C L-14664 - Authorizing the City Manager to Execute a Water Pipeline Crossing License Agreement with Burlington Northern Santa Fe Railroad Company for a 25-Year Term at a One Time Cost of $3,500.00 for the Installation of a Water Pipeline Between Capps Street and Cantey Street.\nM&C C-23140 - Authorizing the City Manager to Adopt Supplemental Appropriation Ordinance No. 18343-10-2008 Increasing Estimated Receipts and Appropriations in the General Fund in the Amount of $40,000.00 and Decreasing the Unreserved, Designated Fund Balance by the Same Amount, for the Purpose of Executing a Professional Services Agreement with Public Financial Management, Inc., to Conduct Comparative Valuation Services/Analysis of Civil Service Salaries and Benefits.\nM&C C-23141 - Finding that the Statements Set Forth in the Recitals of the Tax Abatement Agreement with Carl A. and Carla Holmes, are True and Correct; and Authorizing the City Manager to Enter into a Five-Year Tax Abatement Agreement with Carl A. and Carla Holmes for the Property Located at 600 Canyon Creek Trail in the Woodhaven Neighborhood Empowerment Zone in Accordance with the Neighborhood Empowerment Zone Tax Abatement Policy and Basic Incentives.\nM&C C-23142 - Finding that the Statements Set Forth in the Recitals of the Tax Abatement Agreement with James B. Freeman are True and Correct; and Authorizing the City Manager to Enter into a Five-Year Tax Abatement Agreement with James B. Freeman for the Property Located at 3137 Wabash Avenue in the Berry/University Neighborhood Empowerment Zone in Accordance with the Neighborhood Empowerment Zone Tax Abatement Policy and Basic Incentives.\nM&C C-23143 - Authorizing the City Manager to Authorize the Acquisition of Approximately 5,400 Square Feet, Owned by Ericka Medina, Known as 3158 Weber Street, Lot 2, Block 19, an Addition to the City of Fort Worth, Tarrant County, Texas; Finding that the Price Offered in the Amount of $15,200.00 for the Parcel, Plus an Estimated Closing Cost of $3,000.00 is Just Compensation; and Authorizing the Acceptance and Recording of Appropriate Instruments.\nM&C C-23144 - Authorizing the Acceptance of One Dedication Deed from Burlington Northern Santa Fe Railroad Company for Right-of-Way Known as Great Southwest Parkway in North Fort Worth,\u00a0Described as a Portion of the David Odum Survey, Abstract No. 1184, Fort Worth, Tarrant County, Texas; and Authorizing the Acceptance and Recording of Appropriate Instruments.\nM&C C-23146 - Adopting Appropriation Ordinance No. 18344-10-2008 Increasing Estimated Receipts and Appropriations in the Park Dedication Fees Fund in the Amount of $150,000.00 for the Purpose of Executing a Contract with Dirtco, LP, d/b/a Styles Contracting for Parking Lot Improvements at Greenbriar Park; and Authorizing the City Manager to Execute\u00a0a Contract with Dirtco, LP, d/b/a Styles Contracting, in the Amount of $259,250.50, for Parking Lot Improvements at Greenbriar Park.",
+       "title": "Consent Agenda Composite of Listed Resolutions and Ordinances"
+      },
+      {
+       "display_ref": "1.",
+       "evidence_text": "1.\nChanges in Membership on Boards and Commissions",
+       "title": "Presentation on Changes in Membership on Boards and Commissions"
+      },
+      {
+       "display_ref": "1.",
+       "evidence_text": "1.\nA Resolution Urging Legislative Action to Permit Greater Local Regulatory Oversight of Intrastate Pipeline Facilities and Intrastate Pipeline Transportation; and Providing an Effective Date (Continued from a Previous Meeting)",
+       "title": "Resolution Urging Legislative Action on Intrastate Pipeline Oversight"
+      },
+      {
+       "display_ref": "2.",
+       "evidence_text": "2.\nA Resolution of the City Council of the City of Fort Worth, Texas, Canceling the City Council Meeting of Tuesday, November 4, 2008; Moving the Zoning Hearing Scheduled for November 4, 2008, at 7:00 P.M. to the City Council Meeting Scheduled for Tuesday, November 11, 2008, at 10:00 A.M.; Setting Tuesday, November 4, 2008, at 8:30 A.M. for a Called - Special Workshop Session for Review and Discussion on Gas Drilling Task Force and City Staff Recommendations; and Setting Monday, November 17, 2008, at 10:00 A.M. for a Called - Special Meeting to Canvass Election Returns and Declare the Results of the Special Election Held on November 4, 2008",
+       "title": "Resolution Canceling November 4 Meeting and Setting Special Sessions"
+      },
+      {
+       "display_ref": "1.",
+       "evidence_text": "1.\nM&C G-16325 - Authorization to Amend Contract with Deloitte and Touche, LLP, to Increase the Fee by $795,126.00 for an Independent Audit of the Financial Records of the City of Fort Worth for Fiscal Year 2007, for a Total Amount not to Exceed $1,110,000.00\u00a0 (Continued from October 21, 2008).",
+       "title": "City Manager Report: Amend Contract with Deloitte"
+      },
+      {
+       "display_ref": "5.",
+       "evidence_text": "5.\nM&C G-16330 - Authorize Reimbursement of Outside Bond Counsel for $22,680.50 for Representation of the City Regarding Internal Revenue Service Audit of Water and Sewer Revenue Refunding Bonds, Series 2003A, in the Amount of $11,793.00 to Kelly, Hart and Hallman, L.L.P.; and in the Amount of $10,887.50 to McCall, Parkhurst and Horton, L.L.P.",
+       "title": "City Manager Report: Reimburse Outside Bond Counsel"
+      },
+      {
+       "display_ref": "6.",
+       "evidence_text": "6.\nIt was the Consensus of the City Council that Mayor and Council Communication No. G-16331 - Adopt\u00a0 Resolution Increasing the Maximum Amount to be Paid to Cantey and Hanger by $200,000.00 for Assisting the City with Legal Issues Including, but not Limited to, Real Estate Concerning Southwest Parkway (State Highway 121T), be\u00a0Continued\u00a0Until the November 11, 2008, Council\u00a0Meeting.",
+       "title": "City Manager Consensus to Continue G-16331"
+      },
+      {
+       "display_ref": "7.",
+       "evidence_text": "7.\nM&C G-16332 - Authorize a $250,000.00 Payment to the Retired Employees\u2019 Group Death Benefit Fund.",
+       "title": "City Manager Report: Payment to Retired Employees Fund"
+      },
+      {
+       "display_ref": "8.",
+       "evidence_text": "8.\nM&C G-16333 - Approve the Proposed Settlement of the Claims in a\u00a0Lawsuit Entitled City of Fort Worth v. West Fork Partners, L.P., a Texas Limited Partnership, et al; Case No. 2007-054266-1 in the amount of $175,000.00\u00a0Arising from the Condemnation of Two Permanent Easements to Install a Pipeline and Junction Boxes to Serve the City\u2019s Village Creek Treatment Plant; Authorize the Additional Payment of $172,000.00, with the Check made Payable to West Fork Partners, L.P., in Addition to the $2,800.00 Previously Deposited with the County Court at Law; and Authorize the Appropriate City Representatives to Execute the Documents Necessary to Complete the Settlement.",
+       "title": "City Manager Report: Settlement with West Fork Partners"
+      },
+      {
+       "display_ref": "9.",
+       "evidence_text": "9.\nM&C G-16334 - Adopt an Ordinance Denying the Rate Schedule Proposed by Oncor Electric Delivery Company LLC, as Reflected in the \u201cApplication of Oncor Electric Delivery Company LLC for Authority to Change Rates\u201d Filed by Oncor Electric Delivery Company LLC on June 27, 2008; Authorizing the Continued Participation in a Consortium of Other Municipalities Served by Oncor Electric Delivery LLC and the Hiring of Consultants and Attorneys to Assist in Any Appeal or Litigation Arising Out of Such Rate Filing or this Ordinance;\u00a0Directing that Oncor Electric Delivery Company LLC Reimburse the City for all Previous and Future Reasonable Expenses Related to Such Rate Case\u00a0 (PUBLIC HEARING).",
+       "title": "City Manager Report: Ordinance Denying Oncor Rate Schedule (Public Hearing)"
+      },
+      {
+       "display_ref": "1.",
+       "evidence_text": "1.\nM&C P-10872 - Authorize\u00a0Purchase Agreements with Fort Worth Star-Telegram, La Vida News - The Black Voice, and La En Casa for the City of Fort Worth for the Printing of the City Page for a Projected Cost Not to Exceed $185,846.00\u00a0 (Continued from October 21, 2008).",
+       "title": "Purchase of Equipment: Printing Contracts with Newspapers"
+      },
+      {
+       "display_ref": "1.",
+       "evidence_text": "1.\nM&C PZ-2800 \u2013 Adopt an Ordinance Changing the Name of a Portion of \u201cStonegate Boulevard\u201d to \u201cClearfork Main Street\u201d from its Intersection with South Hulen Street to Approximately 200 Feet West (PUBLIC HEARING).",
+       "title": "Planning & Zoning: Ordinance Renaming Stonegate Boulevard (Public Hearing)"
+      },
+      {
+       "display_ref": "2.",
+       "evidence_text": "2.\nM&C PZ-2801 - Adopt an Ordinance Changing the Name of a Portion of \u201cStayton Street\u201d to \u201cMuseum Way\u201d Located Adjacent to Lot 1, Block 1, SO7 Addition from its Intersection with West 7th Street to its Terminus in Museum Way (PUBLIC HEARING).",
+       "title": "Planning & Zoning: Ordinance Renaming Stayton Street (Public Hearing)"
+      },
+      {
+       "display_ref": "6.",
+       "evidence_text": "6.\nM&C C-23145 - Authorize the City Manager to Execute a Memorandum of Agreement Between the City of Fort Worth and Chesapeake Operating, Inc., Suspending the \"Lease Use Only\" Provisions of Fort Worth Ordinance No. 16986-06-2006, Section 15-42 A. 26, to Conduct a Disposal Pilot Project for the Management of Saltwater Within the Brentwood Pilot Corridor Area.",
+       "title": "Award of Contract: Memorandum with Chesapeake Operating"
+      },
+      {
+       "display_ref": "8.",
+       "evidence_text": "8.\nM&C C-23147 - Authorize the Transfer of $1,500,000.00 from the Storm Water Capital Fund to the Storm Water Operating Fund; Adopt a Supplemental Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the Storm Water Operating Fund in the Amount of $1,500,000.00 for the Purpose of Funding Integrated Program Management Phase 2; Adopt\u00a0Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the Park Gas Well Leases Fund in the Amount of $100,000.00 from Available Funds, for the Purpose of Funding Integrated Program Management Phase 2; and Authorize the City Manager to Execute a Professional Services Agreement with CH2MHill in the Amount of $4,321,000.00 for Integrated Program Management, Phase 2.",
+       "title": "Award of Contract: Storm Water Transfers and CH2MHill Agreement"
+      },
+      {
+       "display_ref": "9.",
+       "evidence_text": "9.\nM&C C-23148 - Authorize the City Manager to Execute a Public Right-of-Way Use Agreement with Crosstex North Texas Gathering, LP, to Grant a License to Use Certain Portions of Wagley Robertson Road and Public Right-of-Way for the Purpose of Constructing, Maintaining and Operating a Natural Gas Pipeline Across Wagley Robertson Road South of Bonds Ranch Road.",
+       "title": "Award of Contract: Right-of-Way Agreement with Crosstex"
+      },
+      {
+       "display_ref": "10.",
+       "evidence_text": "10.\nM&C C-23149 - Authorize the City Manager to Authorize the Acquisition of Improved Residential Property from Mr. Pete L. Reyes, Known as 3154 Hardy Street, Lot 2B-6, Block 4,\u00a0an Addition to the City of Fort Worth, Tarrant County, Texas for the Lebow Channel Drainage Project; Find that the Price Offered in the Amount of $185,000.00 for the Residence Plus an Estimated Closing Cost of $3,000.00 is Just Compensation; and Authorize the Acceptance and Recording of Appropriate Instruments.",
+       "title": "Award of Contract: Acquisition from Pete Reyes"
+      },
+      {
+       "display_ref": "11.",
+       "evidence_text": "11.\nM&C C-23150 - Authorize the City Manager to Execute a Construction Contract with Northstar Construction, Inc., in an Amount Not to Exceed $247,750.00 for Infrastructure Construction, Lighting, Site Work and Installation of the Lancaster Avenue Median Lighting Project (Avenue of Light).",
+       "title": "Award of Contract: Construction with Northstar"
+      },
+      {
+       "display_ref": "12.",
+       "evidence_text": "12.\nM&C C-23151 - Declare the Necessity of Taking an Interest in a Portion of Land Known as Tract 12D01, William McCowan Survey, Abstract No. 999, Tarrant County, Texas, Owned by David Riddel, O. R. Riddel and Hazel Riddel, Required for the Construction of Drainage Infrastructure Improvements; and Authorize the City Attorney to Institute Condemnation Proceedings to Acquire the Interest in the Land.",
+       "title": "Award of Contract: Condemnation of Tract 12D01"
+      },
+      {
+       "display_ref": "13.",
+       "evidence_text": "13.\nM&C C-23152 - Authorize the City Manager to Execute an Interlocal Agreement with the Fort Worth Independent School District for the City to Provide a School Attendance Court to Adjudicate Fort Worth Independent School District Truancy Cases; and Authorize the City Manager to Accept Reimbursement from the Fort Worth Independent School District in the Amount of $680,905.00 for Personnel and Other Costs Related to the Operation of the School Attendance Court in Fiscal Year 2008-2009.",
+       "title": "Award of Contract: Interlocal for School Attendance Court"
+      },
+      {
+       "display_ref": "14.",
+       "evidence_text": "14.\nM&C C-23153 - Authorize the City Manager to Execute Change Order No. 1 in the Amount of $242,857.78 to City Secretary Contract No. 35906 with Oscar Renda Contracting, Inc., for Southside II Water Transmission Main, Part 1, from South of Alta Mesa Boulevard to Rolling Hills Treatment Plant to Provide for Increased and Additional Pay Item Quantities on the Project, thereby Increasing the Contract Amount to $4,750,907.78 (City Project No. 00303).",
+       "title": "Award of Contract: Change Order to Oscar Renda"
+      },
+      {
+       "display_ref": "15.",
+       "evidence_text": "15.\nM&C C-23154 - Authorize the City Manager to Execute an Interlocal Agreement with Fort Worth Independent School District for the Development and Use of Kingswood Park in Conjunction with Southwest Elementary School.",
+       "title": "Award of Contract: Interlocal for Kingswood Park"
+      },
+      {
+       "display_ref": "1.",
+       "evidence_text": "1.\nFirst Public Hearing for a Proposed City-Initiated Annexation of Approximately 424.7 Acres of Land in Tarrant County, Located South of Cleburne Crowley Road and West of West Cleburne Road (AX-08-010 SH 121/FM 1187 Mixed-Use Growth Center).\na.\nReport of City Staff\nb.\nCitizen Comments",
+       "title": "Public Hearing: Annexation of 424.7 Acres (AX-08-010)"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "XVIII.\nADJOURNMENT",
+       "title": "Adjournment"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Call to Order\", \"evidence_quote\": \"I.\\nCALL TO ORDER\", \"line_start\": 11, \"line_end\": 12}, {\"title\": \"Invocation by Dr. Murray Richey\", \"evidence_quote\": \"II.\\nINVOCATION - Dr. Murray Richey, John Knox Presbyterian Church\", \"line_start\": 13, \"line_end\": 14}, {\"title\": \"Pledge of Allegiance\", \"evidence_quote\": \"III.\\nPLEDGE OF ALLEGIANCE\", \"line_start\": 15, \"line_end\": 16}, {\"title\": \"Consideration of Minutes of October 21, 2008 Regular Meeting\", \"evidence_quote\": \"IV.\\nCONSIDERATION OF MINUTES OF REGULAR MEETING OF TUESDAY, OCTOBER 21, 2008\", \"line_start\": 17, \"line_end\": 18}, {\"title\": \"Presentation by Partners for Sacred Places\", \"evidence_quote\": \"1.\\nPresentation by Partners for Sacred Places\", \"line_start\": 21, \"line_end\": 22}, {\"title\": \"Presentation by Imagination Celebration\", \"evidence_quote\": \"2.\\nPresentation by Imagination Celebration\", \"line_start\": 23, \"line_end\": 24}, {\"title\": \"Proclamation for Texas Motor Speedway Full Throttle Fan Days\", \"evidence_quote\": \"3.\\nCouncil Member Espino Presented\u00a0a Proclamation for Texas Motor Speedway Full Throttle Fan Days to Eddie Gossage.\", \"line_start\": 25, \"line_end\": 26}, {\"title\": \"Consent Agenda Composite of Listed Resolutions and Ordinances\", \"evidence_quote\": \"CONSENT AGENDA\\nOCS - 1694 - Notices of Claims for Alleged Damages and/or Injuries\\nM&C G-16327 - Authorizing Transfer of Funds in the Amount of $50,000.00 from the Lake Worth Trust Fund to the General Fund and Adopting Appropriation Ordinance No. 18340-10-2008 Increasing Estimated Receipts and Appropriations in the General Fund in the Amount of $50,000.00 for the Purpose of Funding the Lake Worth Vision Workshop.\\nM&C G-16328 - Authorizing Transfer of Funds from the North Tarrant Parkway Tax Increment Reinvestment Zone (TIF), the Lancaster Corridor TIF, the East Berry Renaissance TIF and the Woodhaven TIF all in the Special Assessment District Fund and $25,250.00 from the Fort Worth Local Development Corporation to the Special Trust Fund to Fund a Portion of Three Authorized Positions in the Housing and Economic Development Department that are Responsible for the Administration of Tax Increment Reinvestment Zones and the Fort Worth Local Development Corporation; and Adopting Appropriation Ordinance No. 18341-10-2008 Increasing Estimated Receipts and Appropriations in the Special Trust Fund in the Amount of $208,146.00 from Available Funds for the Purpose of Ensuring that Funds are Available for Administration of the TIFs and the Fort Worth Local Development Corporation for the Remainder of the 2008-2009 Fiscal Year.\\nM&C G-16329 - Adopting Ordinance No. 18342-10-2008 Vacating, Abandoning and Extinguishing Part of a Floodplain Easement Located within a Portion of Lot 1, Block 1, Tree Tops School Addition, an Addition to the City of Fort Worth, Tarrant County, Texas, and Containing Approximately 1.333 Acres or 58,061 Square Feet of Land.\\nM&C P-10873 - Authorizing the Purchase of Pickup Trucks from Caldwell Country Dealerships for the Transportation and Public Works Department Using a Texas Procurement and Support Services Term Contract for a Cost Not to Exceed $104,211.00.\\nM&C L-14664 - Authorizing the City Manager to Execute a Water Pipeline Crossing License Agreement with Burlington Northern Santa Fe Railroad Company for a 25-Year Term at a One Time Cost of $3,500.00 for the Installation of a Water Pipeline Between Capps Street and Cantey Street.\\nM&C C-23140 - Authorizing the City Manager to Adopt Supplemental Appropriation Ordinance No. 18343-10-2008 Increasing Estimated Receipts and Appropriations in the General Fund in the Amount of $40,000.00 and Decreasing the Unreserved, Designated Fund Balance by the Same Amount, for the Purpose of Executing a Professional Services Agreement with Public Financial Management, Inc., to Conduct Comparative Valuation Services/Analysis of Civil Service Salaries and Benefits.\\nM&C C-23141 - Finding that the Statements Set Forth in the Recitals of the Tax Abatement Agreement with Carl A. and Carla Holmes, are True and Correct; and Authorizing the City Manager to Enter into a Five-Year Tax Abatement Agreement with Carl A. and Carla Holmes for the Property Located at 600 Canyon Creek Trail in the Woodhaven Neighborhood Empowerment Zone in Accordance with the Neighborhood Empowerment Zone Tax Abatement Policy and Basic Incentives.\\nM&C C-23142 - Finding that the Statements Set Forth in the Recitals of the Tax Abatement Agreement with James B. Freeman are True and Correct; and Authorizing the City Manager to Enter into a Five-Year Tax Abatement Agreement with James B. Freeman for the Property Located at 3137 Wabash Avenue in the Berry/University Neighborhood Empowerment Zone in Accordance with the Neighborhood Empowerment Zone Tax Abatement Policy and Basic Incentives.\\nM&C C-23143 - Authorizing the City Manager to Authorize the Acquisition of Approximately 5,400 Square Feet, Owned by Ericka Medina, Known as 3158 Weber Street, Lot 2, Block 19, an Addition to the City of Fort Worth, Tarrant County, Texas; Finding that the Price Offered in the Amount of $15,200.00 for the Parcel, Plus an Estimated Closing Cost of $3,000.00 is Just Compensation; and Authorizing the Acceptance and Recording of Appropriate Instruments.\\nM&C C-23144 - Authorizing the Acceptance of One Dedication Deed from Burlington Northern Santa Fe Railroad Company for Right-of-Way Known as Great Southwest Parkway in North Fort Worth, Described as a Portion of the David Odum Survey, Abstract No. 1184, Fort Worth, Tarrant County, Texas; and Authorizing the Acceptance and Recording of Appropriate Instruments.\\nM&C C-23146 - Adopting Appropriation Ordinance No. 18344-10-2008 Increasing Estimated Receipts and Appropriations in the Park Dedication Fees Fund in the Amount of $150,000.00 for the Purpose of Executing a Contract with Dirtco, LP, d/b/a Styles Contracting for Parking Lot Improvements at Greenbriar Park; and Authorizing the City Manager to Execute\u00a0a Contract with Dirtco, LP, d/b/a Styles Contracting, in the Amount of $259,250.50, for Parking Lot Improvements at Greenbriar Park.\", \"line_start\": 34, \"line_end\": 46}, {\"title\": \"Presentation on Changes in Membership on Boards and Commissions\", \"evidence_quote\": \"1.\\nChanges in Membership on Boards and Commissions\", \"line_start\": 49, \"line_end\": 50}, {\"title\": \"Resolution Urging Legislative Action on Intrastate Pipeline Oversight\", \"evidence_quote\": \"1.\\nA Resolution Urging Legislative Action to Permit Greater Local Regulatory Oversight of Intrastate Pipeline Facilities and Intrastate Pipeline Transportation; and Providing an Effective Date (Continued from a Previous Meeting)\", \"line_start\": 55, \"line_end\": 56}, {\"title\": \"Resolution Canceling November 4 Meeting and Setting Special Sessions\", \"evidence_quote\": \"2.\\nA Resolution of the City Council of the City of Fort Worth, Texas, Canceling the City Council Meeting of Tuesday, November 4, 2008; Moving the Zoning Hearing Scheduled for November 4, 2008, at 7:00 P.M. to the City Council Meeting Scheduled for Tuesday, November 11, 2008, at 10:00 A.M.; Setting Tuesday, November 4, 2008, at 8:30 A.M. for a Called - Special Workshop Session for Review and Discussion on Gas Drilling Task Force and City Staff Recommendations; and Setting Monday, November 17, 2008, at 10:00 A.M. for a Called - Special Meeting to Canvass Election Returns and Declare the Results of the Special Election Held on November 4, 2008\", \"line_start\": 57, \"line_end\": 58}, {\"title\": \"City Manager Report: Amend Contract with Deloitte\", \"evidence_quote\": \"1.\\nM&C G-16325 - Authorization to Amend Contract with Deloitte and Touche, LLP, to Increase the Fee by $795,126.00 for an Independent Audit of the Financial Records of the City of Fort Worth for Fiscal Year 2007, for a Total Amount not to Exceed $1,110,000.00  (Continued from October 21, 2008).\", \"line_start\": 63, \"line_end\": 64}, {\"title\": \"City Manager Report: Reimburse Outside Bond Counsel\", \"evidence_quote\": \"5.\\nM&C G-16330 - Authorize Reimbursement of Outside Bond Counsel for $22,680.50 for Representation of the City Regarding Internal Revenue Service Audit of Water and Sewer Revenue Refunding Bonds, Series 2003A, in the Amount of $11,793.00 to Kelly, Hart and Hallman, L.L.P.; and in the Amount of $10,887.50 to McCall, Parkhurst and Horton, L.L.P.\", \"line_start\": 65, \"line_end\": 66}, {\"title\": \"City Manager Consensus to Continue G-16331\", \"evidence_quote\": \"6.\\nIt was the Consensus of the City Council that Mayor and Council Communication No. G-16331 - Adopt\u00a0 Resolution Increasing the Maximum Amount to be Paid to Cantey and Hanger by $200,000.00 for Assisting the City with Legal Issues Including, but not Limited to, Real Estate Concerning Southwest Parkway (State Highway 121T), be\u00a0Continued\u00a0Until the November 11, 2008, Council\u00a0Meeting.\", \"line_start\": 67, \"line_end\": 68}, {\"title\": \"City Manager Report: Payment to Retired Employees Fund\", \"evidence_quote\": \"7.\\nM&C G-16332 - Authorize a $250,000.00 Payment to the Retired Employees\u2019 Group Death Benefit Fund.\", \"line_start\": 69, \"line_end\": 70}, {\"title\": \"City Manager Report: Settlement with West Fork Partners\", \"evidence_quote\": \"8.\\nM&C G-16333 - Approve the Proposed Settlement of the Claims in a\u00a0Lawsuit Entitled City of Fort Worth v. West Fork Partners, L.P., a Texas Limited Partnership, et al; Case No. 2007-054266-1 in the amount of $175,000.00\u00a0Arising from the Condemnation of Two Permanent Easements to Install a Pipeline and Junction Boxes to Serve the City\u2019s Village Creek Treatment Plant; Authorize the Additional Payment of $172,000.00, with the Check made Payable to West Fork Partners, L.P., in Addition to the $2,800.00 Previously Deposited with the County Court at Law; and Authorize the Appropriate City Representatives to Execute the Documents Necessary to Complete the Settlement.\", \"line_start\": 71, \"line_end\": 72}, {\"title\": \"City Manager Report: Ordinance Denying Oncor Rate Schedule (Public Hearing)\", \"evidence_quote\": \"9.\\nM&C G-16334 - Adopt an Ordinance Denying the Rate Schedule Proposed by Oncor Electric Delivery Company LLC, as Reflected in the \u201cApplication of Oncor Electric Delivery Company LLC for Authority to Change Rates\u201d Filed by Oncor Electric Delivery Company LLC on June 27, 2008; Authorizing the Continued Participation in a Consortium of Other Municipalities Served by Oncor Electric Delivery LLC and the Hiring of Consultants and Attorneys to Assist in Any Appeal or Litigation Arising Out of Such Rate Filing or this Ordinance;\u00a0Directing that Oncor Electric Delivery Company LLC Reimburse the City for all Previous and Future Reasonable Expenses Related to Such Rate Case\u00a0 (PUBLIC HEARING).\", \"line_start\": 73, \"line_end\": 74}, {\"title\": \"Purchase of Equipment: Printing Contracts with Newspapers\", \"evidence_quote\": \"1.\\nM&C P-10872 - Authorize\u00a0Purchase Agreements with Fort Worth Star-Telegram, La Vida News - The Black Voice, and La En Casa for the City of Fort Worth for the Printing of the City Page for a Projected Cost Not to Exceed $185,846.00\u00a0 (Continued from October 21, 2008).\", \"line_start\": 77, \"line_end\": 78}, {\"title\": \"Planning & Zoning: Ordinance Renaming Stonegate Boulevard (Public Hearing)\", \"evidence_quote\": \"1.\\nM&C PZ-2800 \u2013 Adopt an Ordinance Changing the Name of a Portion of \u201cStonegate Boulevard\u201d to \u201cClearfork Main Street\u201d from its Intersection with South Hulen Street to Approximately 200 Feet West (PUBLIC HEARING).\", \"line_start\": 81, \"line_end\": 82}, {\"title\": \"Planning & Zoning: Ordinance Renaming Stayton Street (Public Hearing)\", \"evidence_quote\": \"2.\\nM&C PZ-2801 - Adopt an Ordinance Changing the Name of a Portion of \u201cStayton Street\u201d to \u201cMuseum Way\u201d Located Adjacent to Lot 1, Block 1, SO7 Addition from its Intersection with West 7th Street to its Terminus in Museum Way (PUBLIC HEARING).\", \"line_start\": 83, \"line_end\": 84}, {\"title\": \"Award of Contract: Memorandum with Chesapeake Operating\", \"evidence_quote\": \"6.\\nM&C C-23145 - Authorize the City Manager to Execute a Memorandum of Agreement Between the City of Fort Worth and Chesapeake Operating, Inc., Suspending the \\\"Lease Use Only\\\" Provisions of Fort Worth Ordinance No. 16986-06-2006, Section 15-42 A. 26, to Conduct a Disposal Pilot Project for the Management of Saltwater Within the Brentwood Pilot Corridor Area.\", \"line_start\": 87, \"line_end\": 88}, {\"title\": \"Award of Contract: Storm Water Transfers and CH2MHill Agreement\", \"evidence_quote\": \"8.\\nM&C C-23147 - Authorize the Transfer of $1,500,000.00 from the Storm Water Capital Fund to the Storm Water Operating Fund; Adopt a Supplemental Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the Storm Water Operating Fund in the Amount of $1,500,000.00 for the Purpose of Funding Integrated Program Management Phase 2; Adopt\u00a0Appropriation Ordinance Increasing Estimated Receipts and Appropriations in the Park Gas Well Leases Fund in the Amount of $100,000.00 from Available Funds, for the Purpose of Funding Integrated Program Management Phase 2; and Authorize the City Manager to Execute a Professional Services Agreement with CH2MHill in the Amount of $4,321,000.00 for Integrated Program Management, Phase 2.\", \"line_start\": 89, \"line_end\": 90}, {\"title\": \"Award of Contract: Right-of-Way Agreement with Crosstex\", \"evidence_quote\": \"9.\\nM&C C-23148 - Authorize the City Manager to Execute a Public Right-of-Way Use Agreement with Crosstex North Texas Gathering, LP, to Grant a License to Use Certain Portions of Wagley Robertson Road and Public Right-of-Way for the Purpose of Constructing, Maintaining and Operating a Natural Gas Pipeline Across Wagley Robertson Road South of Bonds Ranch Road.\", \"line_start\": 91, \"line_end\": 92}, {\"title\": \"Award of Contract: Acquisition from Pete Reyes\", \"evidence_quote\": \"10.\\nM&C C-23149 - Authorize the City Manager to Authorize the Acquisition of Improved Residential Property from Mr. Pete L. Reyes, Known as 3154 Hardy Street, Lot 2B-6, Block 4,\u00a0an Addition to the City of Fort Worth, Tarrant County, Texas for the Lebow Channel Drainage Project; Find that the Price Offered in the Amount of $185,000.00 for the Residence Plus an Estimated Closing Cost of $3,000.00 is Just Compensation; and Authorize the Acceptance and Recording of Appropriate Instruments.\", \"line_start\": 93, \"line_end\": 94}, {\"title\": \"Award of Contract: Construction with Northstar\", \"evidence_quote\": \"11.\\nM&C C-23150 - Authorize the City Manager to Execute a Construction Contract with Northstar Construction, Inc., in an Amount Not to Exceed $247,750.00 for Infrastructure Construction, Lighting, Site Work and Installation of the Lancaster Avenue Median Lighting Project (Avenue of Light).\", \"line_start\": 95, \"line_end\": 96}, {\"title\": \"Award of Contract: Condemnation of Tract 12D01\", \"evidence_quote\": \"12.\\nM&C C-23151 - Declare the Necessity of Taking an Interest in a Portion of Land Known as Tract 12D01, William McCowan Survey, Abstract No. 999, Tarrant County, Texas, Owned by David Riddel, O. R. Riddel and Hazel Riddel, Required for the Construction of Drainage Infrastructure Improvements; and Authorize the City Attorney to Institute Condemnation Proceedings to Acquire the Interest in the Land.\", \"line_start\": 97, \"line_end\": 98}, {\"title\": \"Award of Contract: Interlocal for School Attendance Court\", \"evidence_quote\": \"13.\\nM&C C-23152 - Authorize the City Manager to Execute an Interlocal Agreement with the Fort Worth Independent School District for the City to Provide a School Attendance Court to Adjudicate Fort Worth Independent School District Truancy Cases; and Authorize the City Manager to Accept Reimbursement from the Fort Worth Independent School District in the Amount of $680,905.00 for Personnel and Other Costs Related to the Operation of the School Attendance Court in Fiscal Year 2008-2009.\", \"line_start\": 99, \"line_end\": 100}, {\"title\": \"Award of Contract: Change Order to Oscar Renda\", \"evidence_quote\": \"14.\\nM&C C-23153 - Authorize the City Manager to Execute Change Order No. 1 in the Amount of $242,857.78 to City Secretary Contract No. 35906 with Oscar Renda Contracting, Inc., for Southside II Water Transmission Main, Part 1, from South of Alta Mesa Boulevard to Rolling Hills Treatment Plant to Provide for Increased and Additional Pay Item Quantities on the Project, thereby Increasing the Contract Amount to $4,750,907.78 (City Project No. 00303).\", \"line_start\": 101, \"line_end\": 102}, {\"title\": \"Award of Contract: Interlocal for Kingswood Park\", \"evidence_quote\": \"15.\\nM&C C-23154 - Authorize the City Manager to Execute an Interlocal Agreement with Fort Worth Independent School District for the Development and Use of Kingswood Park in Conjunction with Southwest Elementary School.\", \"line_start\": 103, \"line_end\": 104}, {\"title\": \"Public Hearing: Annexation of 424.7 Acres (AX-08-010)\", \"evidence_quote\": \"1.\\nFirst Public Hearing for a Proposed City-Initiated Annexation of Approximately 424.7 Acres of Land in Tarrant County, Located South of Cleburne Crowley Road and West of West Cleburne Road (AX-08-010 SH 121/FM 1187 Mixed-Use Growth Center).\\na.\\nReport of City Staff\\nb.\\nCitizen Comments\", \"line_start\": 107, \"line_end\": 112}, {\"title\": \"Adjournment\", \"evidence_quote\": \"XVIII.\\nADJOURNMENT\", \"line_start\": 115, \"line_end\": 116}]}",
+     "score": {
+      "chapters": 37,
+      "conflicted": 1,
+      "items": 31,
+      "mapped": 27,
+      "matched": 31
+     },
+     "seconds": 120.1,
+     "uid": "8577385da9f4aa7d",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "I.",
+       "evidence_text": "I.\nCall to Order and Announce a Quorum is Present.",
+       "title": "Call to Order and Announce Quorum Present"
+      },
+      {
+       "display_ref": "a.",
+       "evidence_text": "Canvass Report of the Election Returns for the Special Elections for the Purpose of Submitting to the Qualified Voters of Said City the Questions of Whether or Not to Permit:\na.\nThe Legal Sale of Beer and Wine for Off-Premise Consumption Only within the City of Fort Worth; and\nb.\nThe Legal Sale of Mixed Beverages in Restaurants by Food and Beverage\u00a0Certificate Holders Only within the City of Fort Worth.",
+       "title": "Canvass Report of Special Election Returns for Beer/Wine and Mixed Beverage Questions"
+      },
+      {
+       "display_ref": "November",
+       "evidence_text": "Resolution of the City Council of the City of Fort Worth, Texas, Canvassing the Returns and Declaring the Results of the Special Election Held on November 4, 2008, for the Purpose of Submitting to the Qualified Voters of Said City the Question of Whether or Not to Permit the Legal Sale of Beer and Wine for Off-Premises Consumption Only within the City of Fort Worth.",
+       "title": "Resolution Canvassing Returns for Beer and Wine Off-Premises Sale"
+      },
+      {
+       "display_ref": "November",
+       "evidence_text": "Resolution of the City Council of the City of Fort Worth, Texas, Canvassing the Returns and Declaring the Results of the Special Election Held on November 4, 2008, for the Purpose of Submitting to the Qualified Voters of Said City the Question of Whether or Not to Permit the Legal Sale of Mixed Beverages in Restaurants by Food and Beverage Certificate Holders Only within the City of Fort Worth.",
+       "title": "Resolution Canvassing Returns for Mixed Beverages in Restaurants"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "Adjourn.",
+       "title": "Adjourn Meeting"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Call to Order and Announce Quorum Present\", \"evidence_quote\": \"Call to Order and Announce a Quorum is Present.\", \"line_start\": 11, \"line_end\": 11}, {\"title\": \"Canvass Report of Special Election Returns for Beer/Wine and Mixed Beverage Questions\", \"evidence_quote\": \"Canvass Report of the Election Returns for the Special Elections for the Purpose of Submitting to the Qualified Voters of Said City the Questions of Whether or Not to Permit: a. The Legal Sale of Beer and Wine for Off-Premise Consumption Only within the City of Fort Worth; and b. The Legal Sale of Mixed Beverages in Restaurants by Food and Beverage Certificate Holders Only within the City of Fort Worth.\", \"line_start\": 13, \"line_end\": 17}, {\"title\": \"Resolution Canvassing Returns for Beer and Wine Off-Premises Sale\", \"evidence_quote\": \"Resolution of the City Council of the City of Fort Worth, Texas, Canvassing the Returns and Declaring the Results of the Special Election Held on November 4, 2008, for the Purpose of Submitting to the Qualified Voters of Said City the Question of Whether or Not to Permit the Legal Sale of Beer and Wine for Off-Premises Consumption Only within the City of Fort Worth.\", \"line_start\": 19, \"line_end\": 19}, {\"title\": \"Resolution Canvassing Returns for Mixed Beverages in Restaurants\", \"evidence_quote\": \"Resolution of the City Council of the City of Fort Worth, Texas, Canvassing the Returns and Declaring the Results of the Special Election Held on November 4, 2008, for the Purpose of Submitting to the Qualified Voters of Said City the Question of Whether or Not to Permit the Legal Sale of Mixed Beverages in Restaurants by Food and Beverage Certificate Holders Only within the City of Fort Worth.\", \"line_start\": 21, \"line_end\": 21}, {\"title\": \"Adjourn Meeting\", \"evidence_quote\": \"Adjourn.\", \"line_start\": 23, \"line_end\": 23}]}",
+     "score": {
+      "chapters": 7,
+      "conflicted": 1,
+      "items": 5,
+      "mapped": 4,
+      "matched": 6
+     },
+     "seconds": 19.5,
+     "uid": "f2af1113ddfa5e8b",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "I.",
+       "evidence_text": "I.\nCall to Order - Mayor Mike Moncrief",
+       "title": "Call to Order by Mayor Mike Moncrief"
+      },
+      {
+       "display_ref": "Ill.",
+       "evidence_text": "Ill. General Fund FY 2010 Discussion - Karen Montgomery, Assistant City Manager, \nHoratio Porter, Budget Officer, \nChris Tatham, Executive Vice President, \nETC Institute",
+       "title": "General Fund FY 2010 Discussion with Staff and Consultant"
+      },
+      {
+       "display_ref": "V.",
+       "evidence_text": "V.\nReview Budget Calendar - Horatio Porter, Budget Officer",
+       "title": "Review Budget Calendar by Budget Officer"
+      },
+      {
+       "display_ref": "II.",
+       "evidence_text": "II.\nOverview of FY 2010 Budget - Dale Fisseler, P.E., City Manager",
+       "title": "Overview of FY 2010 Budget Presentation by City Manager"
+      },
+      {
+       "display_ref": "IV.",
+       "evidence_text": "IV.\nDebt Service Fund Discussion - Karen Montgomery, Assistant City Manager",
+       "title": "Debt Service Fund Discussion by Assistant City Manager"
+      },
+      {
+       "display_ref": "VI.",
+       "evidence_text": "VI.\nClosing Comments and Adjournment - Mayor Mike Moncrief",
+       "title": "Closing Comments and Adjournment by Mayor"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"display_ref\": \"I.\", \"title\": \"Call to Order by Mayor Mike Moncrief\", \"evidence_quote\": \"Call to Order - Mayor Mike Moncrief\", \"line_start\": 12, \"line_end\": 12}, {\"display_ref\": \"II.\", \"title\": \"Overview of FY 2010 Budget Presentation by City Manager\", \"evidence_quote\": \"Overview of FY 2010 Budget - Dale Fisseler, P.E., City Manager\", \"line_start\": 14, \"line_end\": 14}, {\"display_ref\": \"Ill.\", \"title\": \"General Fund FY 2010 Discussion with Staff and Consultant\", \"evidence_quote\": \"Ill. General Fund FY 2010 Discussion - Karen Montgomery, Assistant City Manager, \\nHoratio Porter, Budget Officer, \\nChris Tatham, Executive Vice President, \\nETC Institute\", \"line_start\": 15, \"line_end\": 18}, {\"display_ref\": \"IV.\", \"title\": \"Debt Service Fund Discussion by Assistant City Manager\", \"evidence_quote\": \"Debt Service Fund Discussion - Karen Montgomery, Assistant City Manager\", \"line_start\": 20, \"line_end\": 20}, {\"display_ref\": \"V.\", \"title\": \"Review Budget Calendar by Budget Officer\", \"evidence_quote\": \"Review Budget Calendar - Horatio Porter, Budget Officer\", \"line_start\": 22, \"line_end\": 22}, {\"display_ref\": \"VI.\", \"title\": \"Closing Comments and Adjournment by Mayor\", \"evidence_quote\": \"Closing Comments and Adjournment - Mayor Mike Moncrief\", \"line_start\": 24, \"line_end\": 24}]}",
+     "score": {
+      "chapters": 4,
+      "conflicted": 1,
+      "items": 6,
+      "mapped": 4,
+      "matched": 4
+     },
+     "seconds": 25.5,
+     "uid": "06dbd38048a1aba6",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "attempt_errors": [],
+     "error": "LLMStructuredOutputError: structured LLM response failed Pydantic validation",
+     "seconds": 126.3,
+     "uid": "078d5af726de3f87",
+     "valid": false,
+     "validation": {
+      "unparseable": {
+       "attempts": 2,
+       "event": "llm_structured_output_failure",
+       "input_characters": 37142,
+       "model": "openai/tencent/hy3-free",
+       "provider_exception_type": "ValidationError",
+       "provider_status": null,
+       "schema_characters": 802,
+       "schema_has_any_of": true,
+       "schema_has_defaults": true,
+       "schema_has_defs": true,
+       "schema_has_refs": true,
+       "task": "agenda-item-extract",
+       "validation_errors": [
+        {
+         "loc": [
+          "<field>"
+         ],
+         "type": "extra_forbidden"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "answered": true,
+     "attempt_errors": [],
+     "error": "LLMStructuredOutputError: structured LLM response failed Pydantic validation",
+     "seconds": 50.1,
+     "uid": "21560a3df09d3055",
+     "valid": false,
+     "validation": {
+      "unparseable": {
+       "attempts": 2,
+       "event": "llm_structured_output_failure",
+       "input_characters": 5534,
+       "model": "openai/tencent/hy3-free",
+       "provider_exception_type": "ValidationError",
+       "provider_status": null,
+       "schema_characters": 802,
+       "schema_has_any_of": true,
+       "schema_has_defaults": true,
+       "schema_has_defs": true,
+       "schema_has_refs": true,
+       "task": "agenda-item-extract",
+       "validation_errors": [
+        {
+         "loc": [
+          "items"
+         ],
+         "type": "list_type"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "1)",
+       "evidence_text": "1)\nCall to Order - Mike Moncrief, Mayor",
+       "title": "Call to Order by Mayor Mike Moncrief"
+      },
+      {
+       "display_ref": "2)",
+       "evidence_text": "2)\nOpening Comments - Dale Fisseler, City Manager",
+       "title": "Opening Comments by City Manager Dale Fisseler"
+      },
+      {
+       "display_ref": "3)",
+       "evidence_text": "3)\nBudget Retreat Recap - Horatio Porter, Budget Officer",
+       "title": "Budget Retreat Recap by Budget Officer Horatio Porter"
+      },
+      {
+       "display_ref": "4)",
+       "evidence_text": "4)\nBudget Response Review - Horatio Porter, Budget Officer",
+       "title": "Budget Response Review by Budget Officer Horatio Porter"
+      },
+      {
+       "display_ref": "5)",
+       "evidence_text": "5)\nCity Manager\u2019s Healthcare Recommendations - Karen Marshall, Director\nCity Manager\u2019s Healthcare Recommendations Presentation",
+       "title": "City Manager\u2019s Healthcare Recommendations Presentation by Karen Marshall"
+      },
+      {
+       "display_ref": "a.",
+       "evidence_text": "a.\nRetiree Healthcare",
+       "title": "Retiree Healthcare Recommendations"
+      },
+      {
+       "display_ref": "b.",
+       "evidence_text": "b.\nActive Employees Healthcare",
+       "title": "Active Employees Healthcare Recommendations"
+      },
+      {
+       "display_ref": "c.",
+       "evidence_text": "c.\nGroup Health Insurance Fund",
+       "title": "Group Health Insurance Fund Recommendations"
+      },
+      {
+       "display_ref": "d.",
+       "evidence_text": "d.\nUnemployment Insurance Fund",
+       "title": "Unemployment Insurance Fund Recommendations"
+      },
+      {
+       "display_ref": "a.",
+       "evidence_text": "a.\nLibrary and Parks Community Services - Gleniece Robinson, Director\nLibrary Presentation",
+       "title": "Library and Parks Community Services Budget Presentation"
+      },
+      {
+       "display_ref": "b.",
+       "evidence_text": "b.\nCode Compliance - Brandon Bennett, Director",
+       "title": "Code Compliance Budget Presentation"
+      },
+      {
+       "display_ref": "c.",
+       "evidence_text": "c.\nMunicipal Courts - Deidra Emerson, Director",
+       "title": "Municipal Courts Budget Presentation"
+      },
+      {
+       "display_ref": "a.",
+       "evidence_text": "a.\nTransportation and Public Works - William Verkest, Director",
+       "title": "Transportation and Public Works Budget Presentation"
+      },
+      {
+       "display_ref": "8)",
+       "evidence_text": "8)\nWrap-up Discussion",
+       "title": "Wrap-up Discussion"
+      },
+      {
+       "display_ref": "9)",
+       "evidence_text": "9)\nExecutive Session - The City Council may conduct a closed meeting, as necessary, in order to seek the advice of its attorneys concerning the following pending or contemplated litigation or other matters that are exempt from public disclosure under Article X, Section 9 of the Texas State Bar Rules, as authorized by Section 551.071 of the Texas Government Code: (a) legal issues concerning any item listed on this agenda.",
+       "title": "Executive Session on Pending Litigation"
+      },
+      {
+       "display_ref": "10)",
+       "evidence_text": "10)\nAdjourn",
+       "title": "Adjournment"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Call to Order by Mayor Mike Moncrief\", \"evidence_quote\": \"1) Call to Order - Mike Moncrief, Mayor\", \"line_start\": 11, \"line_end\": 12}, {\"title\": \"Opening Comments by City Manager Dale Fisseler\", \"evidence_quote\": \"2) Opening Comments - Dale Fisseler, City Manager\", \"line_start\": 13, \"line_end\": 14}, {\"title\": \"Budget Retreat Recap by Budget Officer Horatio Porter\", \"evidence_quote\": \"3) Budget Retreat Recap - Horatio Porter, Budget Officer\", \"line_start\": 15, \"line_end\": 16}, {\"title\": \"Budget Response Review by Budget Officer Horatio Porter\", \"evidence_quote\": \"4) Budget Response Review - Horatio Porter, Budget Officer\", \"line_start\": 17, \"line_end\": 18}, {\"title\": \"City Manager\u2019s Healthcare Recommendations Presentation by Karen Marshall\", \"evidence_quote\": \"5) City Manager\u2019s Healthcare Recommendations - Karen Marshall, Director\\nCity Manager\u2019s Healthcare Recommendations Presentation\", \"line_start\": 19, \"line_end\": 21}, {\"title\": \"Retiree Healthcare Recommendations\", \"evidence_quote\": \"a. Retiree Healthcare\", \"line_start\": 22, \"line_end\": 23}, {\"title\": \"Active Employees Healthcare Recommendations\", \"evidence_quote\": \"b. Active Employees Healthcare\", \"line_start\": 24, \"line_end\": 25}, {\"title\": \"Group Health Insurance Fund Recommendations\", \"evidence_quote\": \"c. Group Health Insurance Fund\", \"line_start\": 26, \"line_end\": 27}, {\"title\": \"Unemployment Insurance Fund Recommendations\", \"evidence_quote\": \"d. Unemployment Insurance Fund\", \"line_start\": 28, \"line_end\": 29}, {\"title\": \"Library and Parks Community Services Budget Presentation\", \"evidence_quote\": \"a.\\nLibrary and Parks Community Services - Gleniece Robinson, Director\\nLibrary Presentation\", \"line_start\": 32, \"line_end\": 34}, {\"title\": \"Code Compliance Budget Presentation\", \"evidence_quote\": \"b. Code Compliance - Brandon Bennett, Director\", \"line_start\": 35, \"line_end\": 36}, {\"title\": \"Municipal Courts Budget Presentation\", \"evidence_quote\": \"c. Municipal Courts - Deidra Emerson, Director\", \"line_start\": 37, \"line_end\": 38}, {\"title\": \"Transportation and Public Works Budget Presentation\", \"evidence_quote\": \"a. Transportation and Public Works - William Verkest, Director\", \"line_start\": 41, \"line_end\": 42}, {\"title\": \"Wrap-up Discussion\", \"evidence_quote\": \"8) Wrap-up Discussion\", \"line_start\": 43, \"line_end\": 44}, {\"title\": \"Executive Session on Pending Litigation\", \"evidence_quote\": \"9) Executive Session - The City Council may conduct a closed meeting, as necessary, in order to seek the advice of its attorneys concerning the following pending or contemplated litigation or other matters that are exempt from public disclosure under Article X, Section 9 of the Texas State Bar Rules, as authorized by Section 551.071 of the Texas Government Code: (a) legal issues concerning any item listed on this agenda.\", \"line_start\": 45, \"line_end\": 46}, {\"title\": \"Adjournment\", \"evidence_quote\": \"10) Adjourn\", \"line_start\": 47, \"line_end\": 48}]}",
+     "score": {
+      "chapters": 6,
+      "conflicted": 1,
+      "items": 16,
+      "mapped": 5,
+      "matched": 5
+     },
+     "seconds": 37.1,
+     "uid": "6c2ef399e25000e0",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "1)",
+       "evidence_text": "1)\nCall to Order - Mike Moncrief, Mayor",
+       "title": "Call to Order by Mayor"
+      },
+      {
+       "display_ref": "2)",
+       "evidence_text": "2)\nOpening Comments - Dale Fisseler, City Manager",
+       "title": "Opening Comments by City Manager"
+      },
+      {
+       "display_ref": "3)",
+       "evidence_text": "3)\nDiscussion of Retirement Plan Modification Options - Karen L. Montgomery Assistant City Manager",
+       "title": "Discussion of Retirement Plan Modification Options"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "Presentation on the Retirment PLan Modification Options",
+       "title": "Presentation on Retirement Plan Modification Options"
+      },
+      {
+       "display_ref": "4)",
+       "evidence_text": "4)\nExecutive Session -\u00a0 The City Council may conduct a closed meeting as authorized by Section 551.071 of the Texas Government Code to seek the advice of its attorneys on legal issues regarding any matter listed on this Agenda",
+       "title": "Executive Session for Attorney Advice"
+      },
+      {
+       "display_ref": "5)",
+       "evidence_text": "5)\nAdjourn",
+       "title": "Adjournment"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Call to Order by Mayor\", \"evidence_quote\": \"Call to Order - Mike Moncrief, Mayor\", \"line_start\": 12, \"line_end\": 12}, {\"title\": \"Opening Comments by City Manager\", \"evidence_quote\": \"Opening Comments - Dale Fisseler, City Manager\", \"line_start\": 14, \"line_end\": 14}, {\"title\": \"Discussion of Retirement Plan Modification Options\", \"evidence_quote\": \"Discussion of Retirement Plan Modification Options - Karen L. Montgomery Assistant City Manager\", \"line_start\": 16, \"line_end\": 16}, {\"title\": \"Presentation on Retirement Plan Modification Options\", \"evidence_quote\": \"Presentation on the Retirment PLan Modification Options\", \"line_start\": 17, \"line_end\": 17}, {\"title\": \"Executive Session for Attorney Advice\", \"evidence_quote\": \"Executive Session -  The City Council may conduct a closed meeting as authorized by Section 551.071 of the Texas Government Code to seek the advice of its attorneys on legal issues regarding any matter listed on this Agenda\", \"line_start\": 19, \"line_end\": 19}, {\"title\": \"Adjournment\", \"evidence_quote\": \"Adjourn\", \"line_start\": 21, \"line_end\": 21}]}",
+     "score": {
+      "chapters": 3,
+      "conflicted": 0,
+      "items": 6,
+      "mapped": 3,
+      "matched": 3
+     },
+     "seconds": 13.4,
+     "uid": "fc27fd0307a5ade6",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "attempt_errors": [],
+     "error": "LLMStructuredOutputError: structured LLM response failed Pydantic validation",
+     "seconds": 56.6,
+     "uid": "fa1bd4b597d99fba",
+     "valid": false,
+     "validation": {
+      "unparseable": {
+       "attempts": 2,
+       "event": "llm_structured_output_failure",
+       "input_characters": 8623,
+       "model": "openai/tencent/hy3-free",
+       "provider_exception_type": "ValidationError",
+       "provider_status": null,
+       "schema_characters": 802,
+       "schema_has_any_of": true,
+       "schema_has_defaults": true,
+       "schema_has_defs": true,
+       "schema_has_refs": true,
+       "task": "agenda-item-extract",
+       "validation_errors": [
+        {
+         "loc": [
+          "items"
+         ],
+         "type": "list_type"
+        }
+       ]
+      }
+     }
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "A.",
+       "evidence_text": "A.\nReview of Cases on Today\u2019s Agenda",
+       "title": "Review of Cases on Today\u2019s Agenda"
+      },
+      {
+       "display_ref": "A.",
+       "evidence_text": "A.\nApproval of Minutes of June 6th 2012 Hearing\t__________",
+       "title": "Approval of Minutes of June 6th 2012 Hearing"
+      },
+      {
+       "display_ref": "A.",
+       "evidence_text": "A.\nTelecommunication Tower Ordinance??..Staff",
+       "title": "Telecommunication Tower Ordinance Staff Briefing"
+      },
+      {
+       "display_ref": "BAC-12-045",
+       "evidence_text": "1.\nBAC-12-045\u00a0 Bailey Apartments LTD by Alliance Residential Co. \n150 & 160 St Donovan St CD7\nRequest a VARIANCE in a \"MU-1\" Low Intensity Mixed-Use District to permit the construction of new residential buildings with four (4) stories in height where a maximum of three (3) story building height is allowed, excessive by one (1) story.\nRequest a VARIANCE in a \"MU-1\" Low Intensity Mixed-Use District to permit the construction of new residential buildings with fifty eight (58) dwelling units per acre where a maximum of forty (40) dwelling units per acre are allowed, excessive by eighteen (18) dwelling units per acre.",
+       "title": "BAC-12-045 Bailey Apartments Variance Requests"
+      },
+      {
+       "display_ref": "BAC-12-059",
+       "evidence_text": "1.\nBAC-12-059\u00a0 Chesapeake Land Development Company, LLC \n11538 Old Weatherford Rd CD7\nRequest a SPECIAL EXCEPTION in a \"E\" Neighborhood Commercial District to permit the construction of a telecommunications tower.\nRequest a VARIANCE in a \"E\" Neighborhood Commercial District to permit the construction of a telecommunications tower one hundred and eighty (180) feet in height where a maximum of forty five (45) feet height is allowed, excessive by one hundred and thirty five (135) feet.\nRequest a VARIANCE in a \"E\" Neighborhood Commercial District to permit the construction of a telecommunications tower within two hundred and fifty (250) feet of Multifamily district to the east side of the property line.\nRequest a VARIANCE in a \"E\" Neighborhood Commercial District to permit the construction of a telecommunications tower within five hundred (500) feet of One-Family district to the south side of the property line.",
+       "title": "BAC-12-059 Chesapeake Land Development Telecom Tower Requests"
+      },
+      {
+       "display_ref": "BAC-12-060",
+       "evidence_text": "2.\nBAC-12-060\u00a0 CASE HEARD ON JUNE 06, 2012",
+       "title": "BAC-12-060 Case Heard on June 06, 2012"
+      },
+      {
+       "display_ref": "BAC-12-061",
+       "evidence_text": "3.\nBAC-12-061\u00a0 Kommana Vongphakdy \n7105 Marvin Brown St CD7\nRequest a VARIANCE in a \"A-5\" One-Family District to permit the installation of a new carport encroaching approximately sixteen (16) feet into the required twenty (20) foot projected front yard setback, creating an approximate four (4) foot front yard setback along Seth Barwise St.\nRequest a VARIANCE in a \"A-5\" One-Family District to permit the installation of a new carport encroaching approximately six (6) feet into the required ten (10) foot side yard setback, creating an approximate four (4) foot side yard setback along Hereford Dr.",
+       "title": "BAC-12-061 Kommana Vongphakdy Carport Variances"
+      },
+      {
+       "display_ref": "BAC-12-062",
+       "evidence_text": "4.\nBAC-12-062\u00a0 Maria Duran \n3912 E.1ST St CD8\nRequest a VARIANCE in an \"I\" Light Industrial District to permit the construction of a new building providing ten (10) parking spaces where a minimum of fifteen (15) parking spaces are required, deficient by five (5) parking spaces.",
+       "title": "BAC-12-062 Maria Duran Parking Variance"
+      },
+      {
+       "display_ref": "BAC-12-063",
+       "evidence_text": "5.\nBAC-12-063\u00a0 Amy Schuster & Arthur Ruben by Kevin Gaston \n4224 W. Vickery Blvd CD9\nRequest a VARIANCE in an \"E\" Neighborhood Commercial District to permit a commercial business providing forty six (46) parking spaces where a minimum of sixty five (65) parking spaces are required, deficient by nineteen (19) parking spaces.",
+       "title": "BAC-12-063 Amy Schuster & Arthur Ruben Parking Variance"
+      },
+      {
+       "display_ref": "BAC-12-064",
+       "evidence_text": "6.\nBAC-12-064\u00a0 Gryphon Acquisitions Ltd. by Alex Veigel\u00a0 \n2832 Forest Park Blvd CD9\nRequest a SPECIAL EXCEPTION in a \"B\" Two-Family District to permit the installation of an auxiliary parking lot for an apartment.\nRequest a VARIANCE in a \"B\" Two-Family District to permit the installation of an auxiliary parking lot without providing the chained and locked facility at night.\nRequest a VARIANCE in a \"B\" Two-Family District to permit the installation of an auxiliary parking lot without providing the required screening fence.\nRequest a VARIANCE in a \"B\" Two-Family District to permit the installation of an auxiliary parking lot without providing the required landscaped buferyard.\nRequest a VARIANCE in a \"B\" Two-Family District to permit the installation of an auxiliary parking lot without providing the irrigation in the buferyard.",
+       "title": "BAC-12-064 Gryphon Acquisitions Auxiliary Parking Lot Requests"
+      },
+      {
+       "display_ref": "BAC-12-065",
+       "evidence_text": "7.\nBAC-12-065\u00a0 Hulen Risinger Ltd. by Tommy Bell \n8533 S. Hulen St CD6\nRequest a SPECIAL EXCEPTION in a \"E\" Neighborhood Commercial District to permit the installation of an electronic changeable copy sign on a monument sign along west side of the property line.\nRequest a SPECIAL EXCEPTION in a \"E\" Neighborhood Commercial District to permit the installation of an electronic changeable copy sign on a monument sign along south side of the property line.\nRequest a VARIANCE for the installation of monument signs encroaching approximately fifteen (15) feet into the required twenty (20) foot front yard setback creating an approximate five (5) foot front yard setback along South Hulen St.\nRequest a VARIANCE for the installation of monument signs encroaching approximately nineteen (19) feet into the required twenty (20) foot front yard setback creating an approximate one (1) foot front yard setback along West Risinger Rd.",
+       "title": "BAC-12-065 Hulen Risinger Ltd. Electronic Sign and Monument Sign Variances"
+      },
+      {
+       "display_ref": "BAC-12-066",
+       "evidence_text": "8.\nBAC-12-066\u00a0 Tommy Bell \n3700 Basswood Blvd\u00a0 CD4\nRequest a SPECIAL EXCEPTION in a \"E\" Neighborhood Commercial District to permit the installation of an electronic changeable copy sign on a monument sign along west side of the property line.\nRequest a SPECIAL EXCEPTION in a \"E\" Neighborhood Commercial District to permit the installation of an electronic changeable copy sign on a monument sign along north side of the property line.\nRequest a VARIANCE for the installation of monument signs encroaching approximately fifteen (15) feet into the required twenty (20) foot front yard setback creating an approximate five (5) foot front yard setback along Basswood Blvd.\nRequest a VARIANCE for the installation of monument signs encroaching approximately fifteen (15) feet into the required twenty (20) foot front yard setback creating an approximate five (5) foot front yard setback along North Riverside Dr.",
+       "title": "BAC-12-066 Tommy Bell Electronic Sign and Monument Sign Variances"
+      },
+      {
+       "display_ref": "BAC-12-067",
+       "evidence_text": "9.\nBAC-12-067\u00a0 Macy\u2019s Retail Holdings, Inc. by Brian E. Fetz \n4620 S. Hulen St CD3\nRequest a VARIANCE in a \"F\" General Commercial District to permit the installation of an illuminated detached sign providing approximately five hundred and eight four (584) square feet signage area where a maximum of approximate four hundred and twenty three (423) square feet signage area is allowed, excessive by approximately one hundred and sixty one (161) square feet.\nRequest a VARIANCE in a \"F\" General Commercial District to permit the installation of an illuminated detached sign providing twenty five feet six inches (25\u20196\") sign width where a maximum of twenty four (24) foot sign width is allowed, excessive by one foot six inches (1\u20196\")\nRequest a VARIANCE in a \"F\" General Commercial District to permit the installation of an illuminated detached sign providing approximately ninety three (93) square feet non-illuminated materials in the sign face area where a minimum of one hundred and ten (110) square feet area of non-illuminated materials is required in the sign face area, deficient by approximately seventeen (17) square feet.",
+       "title": "BAC-12-067 Macy\u2019s Retail Holdings Illuminated Detached Sign Variances"
+      },
+      {
+       "display_ref": "BAC-12-068",
+       "evidence_text": "10.\nBAC-12-068\u00a0 Zero Twelve Point Four, LP by JLB Contracting LLC \n11508 Alta Vista Rd CD2\nRequest a SPECIAL EXCEPTION in a \"E\" Neighborhood Commercial District to permit the portable concrete batch plant for a period of approximately twenty (20) months.\nRequest a VARIANCE in a \"E\" Neighborhood Commercial District to permit to locate the portable concrete batch plant within six hundred (600) feet of residential homes.",
+       "title": "BAC-12-068 Zero Twelve Point Four Portable Concrete Batch Plant Requests"
+      },
+      {
+       "display_ref": "BAC-12-069",
+       "evidence_text": "11.\nBAC-12-069\u00a0 YMCA Assn. Metropolitan FW by Capital Telecom Acquisition, LLC \n6200 Sand Springs Rd CD7\nRequest a SPECIAL EXCEPTION in a \"A-5\" One-Family District to permit the construction of a stealth telecommunications tower.\nRequest a VARIANCE in a \"A-5\" One-Family District to permit the construction of a stealth telecommunications tower of one hundred (100) feet in height where a maximum of thirty five (35) feet height is allowed, excessive by sixty five (65) feet.\nRequest a VARIANCE in a \"A-5\" One-Family District to permit the construction of a stealth telecommunications tower without providing the required landscaping.",
+       "title": "BAC-12-069 YMCA Assn. Stealth Telecommunications Tower Requests"
+      },
+      {
+       "display_ref": "BAC-12-070",
+       "evidence_text": "12.\nBAC-12-070\u00a0 LT Sports by Scott Ford \n251 Settlement Plaza Rd CD7\nRequest a VARIANCE in a \"PD-410 (G)\" Planned Development District to permit the construction of a new metal building providing zero (0) percent non-metal materials on the exterior building fa\u00e7ade where a minimum of fifty (50) percent non-metal materials are required, deficient by fifty (50) percent.",
+       "title": "BAC-12-070 LT Sports Metal Building Variance"
+      },
+      {
+       "display_ref": "BAC-12-071",
+       "evidence_text": "13.\nBAC-12-071\u00a0 GNL Ridglea, LLC by Signs MFG & Maint Co. \n6300 Ridglea Pl CD3\nRequest a VARIANCE in a \"MU-2\" High Intensity Mixed-Use District to permit the installation of an illuminated attached sign providing approximately three hundred and eleven (311) square feet signage area where a maximum of approximate two hundred and sixty four (264) square feet signage area is allowed, excessive by approximately forty seven (47) square feet.",
+       "title": "BAC-12-071 GNL Ridglea Illuminated Attached Sign Variance"
+      },
+      {
+       "display_ref": "BAC-12-072",
+       "evidence_text": "14.\nBAC-12-072\u00a0 Mental Health Mental Retardation of Tarrant County by John McBride \n2400 NW 24th St CD2\nRequest a VARIANCE in a \"CF\" Community Facilities District to permit the installation of a monument sign twelve (12) feet in height where a maximum of eight (8) feet height is allowed, excessive by four (4) feet.\nRequest a VARIANCE in a \"CF\" Community Facilities District to permit the installation of a monument sign encroaching approximately eighteen (18) feet into the required twenty (20) foot front yard setback, creating an approximate two (2) foot front yard setback.",
+       "title": "BAC-12-072 Mental Health Mental Retardation Monument Sign Variances"
+      },
+      {
+       "display_ref": "BAC-12-073",
+       "evidence_text": "15.\nBAC-12-073\u00a0 Belknap-Beach Ltd by Teague Nall & Perkins, Inc. \n3812 E. Belknap St CD4\nRequest a VARIANCE in a \"E\" Neighborhood Commercial District to permit the construction of a dumpster pad and screening wall encroaching approximately eight (8) feet into the required ten (10) foot rear yard setback, creating an approximate two (2) foot rear yard setback.",
+       "title": "BAC-12-073 Belknap-Beach Dumpster Pad and Screening Wall Variance"
+      },
+      {
+       "display_ref": "BAC-12-074",
+       "evidence_text": "16.\nBAC-12-074\u00a0 D R Horton-Texas Ltd.\u00a0 \n1416 Twisting Star Dr CD7\nRequest a VARIANCE in a \"PD-564\" Planned Development District to permit continued use of a model home within three hundred (300) feet of an occupied residence for a period of three years.",
+       "title": "BAC-12-074 D R Horton Model Home Variance"
+      },
+      {
+       "display_ref": "BAC-12-075",
+       "evidence_text": "17.\nBAC-12-075\u00a0 Kingdom Manifesters \n2401 McCurdy St CD8\nRequest a VARIANCE in a \"I\" Light Industrial District to permit the installation of an illuminated monument sign encroaching approximately eighteen (18) feet into the required twenty (20) foot front yard setback, creating an approximate two (2) foot front yard setback.",
+       "title": "BAC-12-075 Kingdom Manifesters Illuminated Monument Sign Variance"
+      },
+      {
+       "display_ref": "BAC-12-076",
+       "evidence_text": "18.\nBAC-12-076\u00a0 Impression Homes LLC \n5617 Thunder Bay Dr CD5\nRequest a VARIANCE in a \"PD-518\" Planned Development District to permit the construction of a model home within three hundred (300) feet of an occupied residence for a period of three years.",
+       "title": "BAC-12-076 Impression Homes Model Home Variance"
+      },
+      {
+       "display_ref": "BAC-12-077",
+       "evidence_text": "19.\nBAC-12-077\u00a0 White Settlement ISD by Identify Management \n9850 Legacy Dr CD7\nRequest a SPECIAL EXCEPTION in a \"CF\" Community Facilities District to permit the installation of an electronic changeable copy sign on a monument sign.\nRequest a VARIANCE in a \"CF\" Community Facilities District to permit the installation of an illuminated monument sign adjacent to a residential district.",
+       "title": "BAC-12-077 White Settlement ISD Electronic Sign and Illuminated Monument Sign Requests"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "ADJOURNMENT:",
+       "title": "Adjournment"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Review of Cases on Today\u2019s Agenda\", \"evidence_quote\": \"Review of Cases on Today\u2019s Agenda\", \"line_start\": 34, \"line_end\": 34}, {\"title\": \"Approval of Minutes of June 6th 2012 Hearing\", \"evidence_quote\": \"Approval of Minutes of June 6th 2012 Hearing\\t__________\", \"line_start\": 38, \"line_end\": 38}, {\"title\": \"Telecommunication Tower Ordinance Staff Briefing\", \"evidence_quote\": \"Telecommunication Tower Ordinance??..Staff\", \"line_start\": 62, \"line_end\": 62}, {\"title\": \"BAC-12-045 Bailey Apartments Variance Requests\", \"display_ref\": \"BAC-12-045\", \"evidence_quote\": \"BAC-12-045  Bailey Apartments LTD by Alliance Residential Co. \\n150 & 160 St Donovan St CD7\\nRequest a VARIANCE in a \\\"MU-1\\\" Low Intensity Mixed-Use District to permit the construction of new residential buildings with four (4) stories in height where a maximum of three (3) story building height is allowed, excessive by one (1) story.\\nRequest a VARIANCE in a \\\"MU-1\\\" Low Intensity Mixed-Use District to permit the construction of new residential buildings with fifty eight (58) dwelling units per acre where a maximum of forty (40) dwelling units per acre are allowed, excessive by eighteen (18) dwelling units per acre.\", \"line_start\": 67, \"line_end\": 70}, {\"title\": \"BAC-12-059 Chesapeake Land Development Telecom Tower Requests\", \"display_ref\": \"BAC-12-059\", \"evidence_quote\": \"BAC-12-059  Chesapeake Land Development Company, LLC \\n11538 Old Weatherford Rd CD7\\nRequest a SPECIAL EXCEPTION in a \\\"E\\\" Neighborhood Commercial District to permit the construction of a telecommunications tower.\\nRequest a VARIANCE in a \\\"E\\\" Neighborhood Commercial District to permit the construction of a telecommunications tower one hundred and eighty (180) feet in height where a maximum of forty five (45) feet height is allowed, excessive by one hundred and thirty five (135) feet.\\nRequest a VARIANCE in a \\\"E\\\" Neighborhood Commercial District to permit the construction of a telecommunications tower within two hundred and fifty (250) feet of Multifamily district to the east side of the property line.\\nRequest a VARIANCE in a \\\"E\\\" Neighborhood Commercial District to permit the construction of a telecommunications tower within five hundred (500) feet of One-Family district to the south side of the property line.\", \"line_start\": 75, \"line_end\": 80}, {\"title\": \"BAC-12-060 Case Heard on June 06, 2012\", \"display_ref\": \"BAC-12-060\", \"evidence_quote\": \"BAC-12-060  CASE HEARD ON JUNE 06, 2012\", \"line_start\": 82, \"line_end\": 82}, {\"title\": \"BAC-12-061 Kommana Vongphakdy Carport Variances\", \"display_ref\": \"BAC-12-061\", \"evidence_quote\": \"BAC-12-061  Kommana Vongphakdy \\n7105 Marvin Brown St CD7\\nRequest a VARIANCE in a \\\"A-5\\\" One-Family District to permit the installation of a new carport encroaching approximately sixteen (16) feet into the required twenty (20) foot projected front yard setback, creating an approximate four (4) foot front yard setback along Seth Barwise St.\\nRequest a VARIANCE in a \\\"A-5\\\" One-Family District to permit the installation of a new carport encroaching approximately six (6) feet into the required ten (10) foot side yard setback, creating an approximate four (4) foot side yard setback along Hereford Dr.\", \"line_start\": 84, \"line_end\": 87}, {\"title\": \"BAC-12-062 Maria Duran Parking Variance\", \"display_ref\": \"BAC-12-062\", \"evidence_quote\": \"BAC-12-062  Maria Duran \\n3912 E.1ST St CD8\\nRequest a VARIANCE in an \\\"I\\\" Light Industrial District to permit the construction of a new building providing ten (10) parking spaces where a minimum of fifteen (15) parking spaces are required, deficient by five (5) parking spaces.\", \"line_start\": 89, \"line_end\": 91}, {\"title\": \"BAC-12-063 Amy Schuster & Arthur Ruben Parking Variance\", \"display_ref\": \"BAC-12-063\", \"evidence_quote\": \"BAC-12-063  Amy Schuster & Arthur Ruben by Kevin Gaston \\n4224 W. Vickery Blvd CD9\\nRequest a VARIANCE in an \\\"E\\\" Neighborhood Commercial District to permit a commercial business providing forty six (46) parking spaces where a minimum of sixty five (65) parking spaces are required, deficient by nineteen (19) parking spaces.\", \"line_start\": 93, \"line_end\": 95}, {\"title\": \"BAC-12-064 Gryphon Acquisitions Auxiliary Parking Lot Requests\", \"display_ref\": \"BAC-12-064\", \"evidence_quote\": \"BAC-12-064  Gryphon Acquisitions Ltd. by Alex Veigel  \\n2832 Forest Park Blvd CD9\\nRequest a SPECIAL EXCEPTION in a \\\"B\\\" Two-Family District to permit the installation of an auxiliary parking lot for an apartment.\\nRequest a VARIANCE in a \\\"B\\\" Two-Family District to permit the installation of an auxiliary parking lot without providing the chained and locked facility at night.\\nRequest a VARIANCE in a \\\"B\\\" Two-Family District to permit the installation of an auxiliary parking lot without providing the required screening fence.\\nRequest a VARIANCE in a \\\"B\\\" Two-Family District to permit the installation of an auxiliary parking lot without providing the required landscaped buferyard.\\nRequest a VARIANCE in a \\\"B\\\" Two-Family District to permit the installation of an auxiliary parking lot without providing the irrigation in the buferyard.\", \"line_start\": 97, \"line_end\": 103}, {\"title\": \"BAC-12-065 Hulen Risinger Ltd. Electronic Sign and Monument Sign Variances\", \"display_ref\": \"BAC-12-065\", \"evidence_quote\": \"BAC-12-065  Hulen Risinger Ltd. by Tommy Bell \\n8533 S. Hulen St CD6\\nRequest a SPECIAL EXCEPTION in a \\\"E\\\" Neighborhood Commercial District to permit the installation of an electronic changeable copy sign on a monument sign along west side of the property line.\\nRequest a SPECIAL EXCEPTION in a \\\"E\\\" Neighborhood Commercial District to permit the installation of an electronic changeable copy sign on a monument sign along south side of the property line.\\nRequest a VARIANCE for the installation of monument signs encroaching approximately fifteen (15) feet into the required twenty (20) foot front yard setback creating an approximate five (5) foot front yard setback along South Hulen St.\\nRequest a VARIANCE for the installation of monument signs encroaching approximately nineteen (19) feet into the required twenty (20) foot front yard setback creating an approximate one (1) foot front yard setback along West Risinger Rd.\", \"line_start\": 105, \"line_end\": 110}, {\"title\": \"BAC-12-066 Tommy Bell Electronic Sign and Monument Sign Variances\", \"display_ref\": \"BAC-12-066\", \"evidence_quote\": \"BAC-12-066  Tommy Bell \\n3700 Basswood Blvd  CD4\\nRequest a SPECIAL EXCEPTION in a \\\"E\\\" Neighborhood Commercial District to permit the installation of an electronic changeable copy sign on a monument sign along west side of the property line.\\nRequest a SPECIAL EXCEPTION in a \\\"E\\\" Neighborhood Commercial District to permit the installation of an electronic changeable copy sign on a monument sign along north side of the property line.\\nRequest a VARIANCE for the installation of monument signs encroaching approximately fifteen (15) feet into the required twenty (20) foot front yard setback creating an approximate five (5) foot front yard setback along Basswood Blvd.\\nRequest a VARIANCE for the installation of monument signs encroaching approximately fifteen (15) feet into the required twenty (20) foot front yard setback creating an approximate five (5) foot front yard setback along North Riverside Dr.\", \"line_start\": 112, \"line_end\": 117}, {\"title\": \"BAC-12-067 Macy\u2019s Retail Holdings Illuminated Detached Sign Variances\", \"display_ref\": \"BAC-12-067\", \"evidence_quote\": \"BAC-12-067  Macy\u2019s Retail Holdings, Inc. by Brian E. Fetz \\n4620 S. Hulen St CD3\\nRequest a VARIANCE in a \\\"F\\\" General Commercial District to permit the installation of an illuminated detached sign providing approximately five hundred and eight four (584) square feet signage area where a maximum of approximate four hundred and twenty three (423) square feet signage area is allowed, excessive by approximately one hundred and sixty one (161) square feet.\\nRequest a VARIANCE in a \\\"F\\\" General Commercial District to permit the installation of an illuminated detached sign providing twenty five feet six inches (25\u20196\\\") sign width where a maximum of twenty four (24) foot sign width is allowed, excessive by one foot six inches (1\u20196\\\")\\nRequest a VARIANCE in a \\\"F\\\" General Commercial District to permit the installation of an illuminated detached sign providing approximately ninety three (93) square feet non-illuminated materials in the sign face area where a minimum of one hundred and ten (110) square feet area of non-illuminated materials is required in the sign face area, deficient by approximately seventeen (17) square feet.\", \"line_start\": 119, \"line_end\": 123}, {\"title\": \"BAC-12-068 Zero Twelve Point Four Portable Concrete Batch Plant Requests\", \"display_ref\": \"BAC-12-068\", \"evidence_quote\": \"BAC-12-068  Zero Twelve Point Four, LP by JLB Contracting LLC \\n11508 Alta Vista Rd CD2\\nRequest a SPECIAL EXCEPTION in a \\\"E\\\" Neighborhood Commercial District to permit the portable concrete batch plant for a period of approximately twenty (20) months.\\nRequest a VARIANCE in a \\\"E\\\" Neighborhood Commercial District to permit to locate the portable concrete batch plant within six hundred (600) feet of residential homes.\", \"line_start\": 125, \"line_end\": 128}, {\"title\": \"BAC-12-069 YMCA Assn. Stealth Telecommunications Tower Requests\", \"display_ref\": \"BAC-12-069\", \"evidence_quote\": \"BAC-12-069  YMCA Assn. Metropolitan FW by Capital Telecom Acquisition, LLC \\n6200 Sand Springs Rd CD7\\nRequest a SPECIAL EXCEPTION in a \\\"A-5\\\" One-Family District to permit the construction of a stealth telecommunications tower.\\nRequest a VARIANCE in a \\\"A-5\\\" One-Family District to permit the construction of a stealth telecommunications tower of one hundred (100) feet in height where a maximum of thirty five (35) feet height is allowed, excessive by sixty five (65) feet.\\nRequest a VARIANCE in a \\\"A-5\\\" One-Family District to permit the construction of a stealth telecommunications tower without providing the required landscaping.\", \"line_start\": 130, \"line_end\": 134}, {\"title\": \"BAC-12-070 LT Sports Metal Building Variance\", \"display_ref\": \"BAC-12-070\", \"evidence_quote\": \"BAC-12-070  LT Sports by Scott Ford \\n251 Settlement Plaza Rd CD7\\nRequest a VARIANCE in a \\\"PD-410 (G)\\\" Planned Development District to permit the construction of a new metal building providing zero (0) percent non-metal materials on the exterior building fa\u00e7ade where a minimum of fifty (50) percent non-metal materials are required, deficient by fifty (50) percent.\", \"line_start\": 136, \"line_end\": 138}, {\"title\": \"BAC-12-071 GNL Ridglea Illuminated Attached Sign Variance\", \"display_ref\": \"BAC-12-071\", \"evidence_quote\": \"BAC-12-071  GNL Ridglea, LLC by Signs MFG & Maint Co. \\n6300 Ridglea Pl CD3\\nRequest a VARIANCE in a \\\"MU-2\\\" High Intensity Mixed-Use District to permit the installation of an illuminated attached sign providing approximately three hundred and eleven (311) square feet signage area where a maximum of approximate two hundred and sixty four (264) square feet signage area is allowed, excessive by approximately forty seven (47) square feet.\", \"line_start\": 140, \"line_end\": 142}, {\"title\": \"BAC-12-072 Mental Health Mental Retardation Monument Sign Variances\", \"display_ref\": \"BAC-12-072\", \"evidence_quote\": \"BAC-12-072  Mental Health Mental Retardation of Tarrant County by John McBride \\n2400 NW 24th St CD2\\nRequest a VARIANCE in a \\\"CF\\\" Community Facilities District to permit the installation of a monument sign twelve (12) feet in height where a maximum of eight (8) feet height is allowed, excessive by four (4) feet.\\nRequest a VARIANCE in a \\\"CF\\\" Community Facilities District to permit the installation of a monument sign encroaching approximately eighteen (18) feet into the required twenty (20) foot front yard setback, creating an approximate two (2) foot front yard setback.\", \"line_start\": 144, \"line_end\": 147}, {\"title\": \"BAC-12-073 Belknap-Beach Dumpster Pad and Screening Wall Variance\", \"display_ref\": \"BAC-12-073\", \"evidence_quote\": \"BAC-12-073  Belknap-Beach Ltd by Teague Nall & Perkins, Inc. \\n3812 E. Belknap St CD4\\nRequest a VARIANCE in a \\\"E\\\" Neighborhood Commercial District to permit the construction of a dumpster pad and screening wall encroaching approximately eight (8) feet into the required ten (10) foot rear yard setback, creating an approximate two (2) foot rear yard setback.\", \"line_start\": 149, \"line_end\": 151}, {\"title\": \"BAC-12-074 D R Horton Model Home Variance\", \"display_ref\": \"BAC-12-074\", \"evidence_quote\": \"BAC-12-074  D R Horton-Texas Ltd.  \\n1416 Twisting Star Dr CD7\\nRequest a VARIANCE in a \\\"PD-564\\\" Planned Development District to permit continued use of a model home within three hundred (300) feet of an occupied residence for a period of three years.\", \"line_start\": 153, \"line_end\": 155}, {\"title\": \"BAC-12-075 Kingdom Manifesters Illuminated Monument Sign Variance\", \"display_ref\": \"BAC-12-075\", \"evidence_quote\": \"BAC-12-075  Kingdom Manifesters \\n2401 McCurdy St CD8\\nRequest a VARIANCE in a \\\"I\\\" Light Industrial District to permit the installation of an illuminated monument sign encroaching approximately eighteen (18) feet into the required twenty (20) foot front yard setback, creating an approximate two (2) foot front yard setback.\", \"line_start\": 157, \"line_end\": 159}, {\"title\": \"BAC-12-076 Impression Homes Model Home Variance\", \"display_ref\": \"BAC-12-076\", \"evidence_quote\": \"BAC-12-076  Impression Homes LLC \\n5617 Thunder Bay Dr CD5\\nRequest a VARIANCE in a \\\"PD-518\\\" Planned Development District to permit the construction of a model home within three hundred (300) feet of an occupied residence for a period of three years.\", \"line_start\": 161, \"line_end\": 163}, {\"title\": \"BAC-12-077 White Settlement ISD Electronic Sign and Illuminated Monument Sign Requests\", \"display_ref\": \"BAC-12-077\", \"evidence_quote\": \"BAC-12-077  White Settlement ISD by Identify Management \\n9850 Legacy Dr CD7\\nRequest a SPECIAL EXCEPTION in a \\\"CF\\\" Community Facilities District to permit the installation of an electronic changeable copy sign on a monument sign.\\nRequest a VARIANCE in a \\\"CF\\\" Community Facilities District to permit the installation of an illuminated monument sign adjacent to a residential district.\", \"line_start\": 165, \"line_end\": 168}, {\"title\": \"Adjournment\", \"evidence_quote\": \"ADJOURNMENT:\", \"line_start\": 171, \"line_end\": 171}]}",
+     "score": {
+      "chapters": 59,
+      "conflicted": 1,
+      "items": 24,
+      "mapped": 19,
+      "matched": 53
+     },
+     "seconds": 76.1,
+     "uid": "a4ebc391f6f7848d",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "1)",
+       "evidence_text": "1)\nWelcome - Honorable Betsy Price, Mayor",
+       "title": "Welcome by Mayor Betsy Price"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "Party on the Plaza Pictures",
+       "title": "Presentation of Party on the Plaza Pictures"
+      },
+      {
+       "display_ref": "2)",
+       "evidence_text": "2)\nOverview of Day\t- Tom Higgins, City Manager",
+       "title": "Overview of Day by City Manager Tom Higgins"
+      },
+      {
+       "display_ref": "3)",
+       "evidence_text": "3)\nReview of FY2013 Proposed Budget Book and Decision Packages - Horatio Porter, Budget Officer",
+       "title": "Review of FY2013 Proposed Budget Book by Budget Officer Horatio Porter"
+      },
+      {
+       "display_ref": "1.",
+       "evidence_text": "1.\nPublic Safety - Charles Daniels, Asst. City Manager",
+       "title": "Public Safety Service Group Overview by Assistant City Manager Charles Daniels"
+      },
+      {
+       "display_ref": "A.",
+       "evidence_text": "A.\nPolice Department - Jeff Halstead, Police Chief",
+       "title": "Police Department Overview by Chief Jeff Halstead"
+      },
+      {
+       "display_ref": "B.",
+       "evidence_text": "B.\nFire Department - Rudy Jackson, Fire Chief",
+       "title": "Fire Department Overview by Chief Rudy Jackson"
+      },
+      {
+       "display_ref": "C.",
+       "evidence_text": "C.\nCode Compliance Department - Brandon Bennett, Director",
+       "title": "Code Compliance Department Overview by Director Brandon Bennett"
+      },
+      {
+       "display_ref": "2.",
+       "evidence_text": "2.\nInfrastructure - Fernando Costa, Asst. City Manager",
+       "title": "Infrastructure Service Group Overview by Assistant City Manager Fernando Costa"
+      },
+      {
+       "display_ref": "A.",
+       "evidence_text": "A.\nHousing and Economic Development - Jay Chapa, Director",
+       "title": "Housing and Economic Development Overview by Director Jay Chapa"
+      },
+      {
+       "display_ref": "B.",
+       "evidence_text": "B.\nPlanning and Development Department - Randle Harwood, Director",
+       "title": "Planning and Development Department Overview by Director Randle Harwood"
+      },
+      {
+       "display_ref": "C.",
+       "evidence_text": "C.\nTransportation and Public Works - Doug Wiersig, Director Department",
+       "title": "Transportation and Public Works Overview by Director Doug Wiersig"
+      },
+      {
+       "display_ref": "3.",
+       "evidence_text": "3.\nCommunity and Management Services - Susan Alanis, Asst. City Manager",
+       "title": "Community and Management Services Overview by Assistant City Manager Susan Alanis"
+      },
+      {
+       "display_ref": "A.",
+       "evidence_text": "A.\nParks and Community Services Department - Richard Zavala, Director",
+       "title": "Parks and Community Services Department Overview by Director Richard Zavala"
+      },
+      {
+       "display_ref": "5)",
+       "evidence_text": "5)\nPost Employment Benefits & Healthcare Strategies - Susan Alanis, Asst. City Manager\nPowerPoint Presentation - Post Employment Benefits & Healthcare Strategies",
+       "title": "Post Employment Benefits and Healthcare Strategies Presentation by Susan Alanis"
+      },
+      {
+       "display_ref": "A.",
+       "evidence_text": "A.\nWater Department - Frank Crumb, Director\nPowerPoint Presentation - Water Department",
+       "title": "Water Department Presentation by Director Frank Crumb"
+      },
+      {
+       "display_ref": "B.",
+       "evidence_text": "B.\nCulture & Tourism - Kirk Slaughter, Director\nPowerPoint Presentation - Culture & Tourism",
+       "title": "Culture and Tourism Presentation by Director Kirk Slaughter"
+      },
+      {
+       "display_ref": "7)",
+       "evidence_text": "7)\nWrap up discussion - Honorable Betsy Price, Mayor",
+       "title": "Wrap Up Discussion by Mayor Betsy Price"
+      },
+      {
+       "display_ref": "8)",
+       "evidence_text": "8)\nExecutive Session - The City Council may conduct a closed meeting, as necessary, in order to seek the advice of its attorneys concerning legal issues regarding any matters listed on this agenda, which are exempt from public disclosure under Article X, Section 9 of the Texas State Bar Rules, as authorized by Section 551.071 of the Texas Government Code.",
+       "title": "Executive Session for Legal Advice"
+      },
+      {
+       "display_ref": "9)",
+       "evidence_text": "9)\nAdjourn",
+       "title": "Adjournment"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Welcome by Mayor Betsy Price\", \"evidence_quote\": \"1)\\nWelcome - Honorable Betsy Price, Mayor\", \"line_start\": 11, \"line_end\": 12}, {\"title\": \"Presentation of Party on the Plaza Pictures\", \"evidence_quote\": \"Party on the Plaza Pictures\", \"line_start\": 13, \"line_end\": 13}, {\"title\": \"Overview of Day by City Manager Tom Higgins\", \"evidence_quote\": \"2)\\nOverview of Day\\t- Tom Higgins, City Manager\", \"line_start\": 14, \"line_end\": 15}, {\"title\": \"Review of FY2013 Proposed Budget Book by Budget Officer Horatio Porter\", \"evidence_quote\": \"3)\\nReview of FY2013 Proposed Budget Book and Decision Packages - Horatio Porter, Budget Officer\", \"line_start\": 16, \"line_end\": 17}, {\"title\": \"Public Safety Service Group Overview by Assistant City Manager Charles Daniels\", \"evidence_quote\": \"1.\\nPublic Safety - Charles Daniels, Asst. City Manager\", \"line_start\": 20, \"line_end\": 21}, {\"title\": \"Police Department Overview by Chief Jeff Halstead\", \"evidence_quote\": \"A.\\nPolice Department - Jeff Halstead, Police Chief\", \"line_start\": 22, \"line_end\": 23}, {\"title\": \"Fire Department Overview by Chief Rudy Jackson\", \"evidence_quote\": \"B.\\nFire Department - Rudy Jackson, Fire Chief\", \"line_start\": 24, \"line_end\": 25}, {\"title\": \"Code Compliance Department Overview by Director Brandon Bennett\", \"evidence_quote\": \"C.\\nCode Compliance Department - Brandon Bennett, Director\", \"line_start\": 26, \"line_end\": 27}, {\"title\": \"Infrastructure Service Group Overview by Assistant City Manager Fernando Costa\", \"evidence_quote\": \"2.\\nInfrastructure - Fernando Costa, Asst. City Manager\", \"line_start\": 28, \"line_end\": 29}, {\"title\": \"Housing and Economic Development Overview by Director Jay Chapa\", \"evidence_quote\": \"A.\\nHousing and Economic Development - Jay Chapa, Director\", \"line_start\": 30, \"line_end\": 31}, {\"title\": \"Planning and Development Department Overview by Director Randle Harwood\", \"evidence_quote\": \"B.\\nPlanning and Development Department - Randle Harwood, Director\", \"line_start\": 32, \"line_end\": 33}, {\"title\": \"Transportation and Public Works Overview by Director Doug Wiersig\", \"evidence_quote\": \"C.\\nTransportation and Public Works - Doug Wiersig, Director Department\", \"line_start\": 34, \"line_end\": 35}, {\"title\": \"Community and Management Services Overview by Assistant City Manager Susan Alanis\", \"evidence_quote\": \"3.\\nCommunity and Management Services - Susan Alanis, Asst. City Manager\", \"line_start\": 36, \"line_end\": 37}, {\"title\": \"Parks and Community Services Department Overview by Director Richard Zavala\", \"evidence_quote\": \"A.\\nParks and Community Services Department - Richard Zavala, Director\", \"line_start\": 38, \"line_end\": 39}, {\"title\": \"Post Employment Benefits and Healthcare Strategies Presentation by Susan Alanis\", \"evidence_quote\": \"Post Employment Benefits & Healthcare Strategies - Susan Alanis, Asst. City Manager\\nPowerPoint Presentation - Post Employment Benefits & Healthcare Strategies\", \"line_start\": 41, \"line_end\": 42}, {\"title\": \"Water Department Presentation by Director Frank Crumb\", \"evidence_quote\": \"A.\\nWater Department - Frank Crumb, Director\\nPowerPoint Presentation - Water Department\", \"line_start\": 45, \"line_end\": 47}, {\"title\": \"Culture and Tourism Presentation by Director Kirk Slaughter\", \"evidence_quote\": \"B.\\nCulture & Tourism - Kirk Slaughter, Director\\nPowerPoint Presentation - Culture & Tourism\", \"line_start\": 48, \"line_end\": 50}, {\"title\": \"Wrap Up Discussion by Mayor Betsy Price\", \"evidence_quote\": \"7)\\nWrap up discussion - Honorable Betsy Price, Mayor\", \"line_start\": 51, \"line_end\": 52}, {\"title\": \"Executive Session for Legal Advice\", \"evidence_quote\": \"8)\\nExecutive Session - The City Council may conduct a closed meeting, as necessary, in order to seek the advice of its attorneys concerning legal issues regarding any matters listed on this agenda, which are exempt from public disclosure under Article X, Section 9 of the Texas State Bar Rules, as authorized by Section 551.071 of the Texas Government Code.\", \"line_start\": 53, \"line_end\": 54}, {\"title\": \"Adjournment\", \"evidence_quote\": \"9)\\nAdjourn\", \"line_start\": 55, \"line_end\": 56}]}",
+     "score": {
+      "chapters": 8,
+      "conflicted": 4,
+      "items": 20,
+      "mapped": 7,
+      "matched": 7
+     },
+     "seconds": 35.3,
+     "uid": "51d65991e6f1213c",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "I.",
+       "evidence_text": "I.\nCALL TO ORDER",
+       "title": "Call to Order"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "PLEDGE",
+       "title": "Pledge of Allegiance"
+      },
+      {
+       "display_ref": "A.",
+       "evidence_text": "A.\nMinutes of August 7, 2013 P&Z Meeting",
+       "title": "Approval of Minutes of August 7, 2013 P&Z Meeting"
+      },
+      {
+       "display_ref": "A.",
+       "evidence_text": "A.\nPreliminary Plat - Fannin Farm West Addition - Phase III, Section C (Zoned R and R2); generally located north of Hardisty Drive and west of Weaver Drive with the approximate address of 6399 South Cooper Street\nFannin Farms W. Phase III",
+       "title": "Public Hearing for Preliminary Plat Fannin Farm West Addition Phase III Section C"
+      },
+      {
+       "display_ref": "PD13-9",
+       "evidence_text": "A.\nZoning Case PD13-9 (1010 N. Collins - 801 East Randol Mill Road) \n\u00a0  Application to change the zoning on approximately 4.31 acres from Entertainment District-Community Services (ED-CS) and Entertainment District-Neighborhood Services (ED-NS) to Planned Development (PD) for Entertainment District-Community Services (ED-CS) uses plus Night Club, with a Concept Brief; generally located north of East Randol Mill Road and west of North Collins Street.\nPD13-9",
+       "title": "Public Hearing for Zoning Case PD13-9"
+      },
+      {
+       "display_ref": "PD13-11",
+       "evidence_text": "B.\nZoning Case PD13-11 (Express Care Pharmacy - 905 Medical Centre Drive, Suite B) \n\u00a0  Application to change the zoning on approximately 2.92 acres from Office (O) to Planned Development (PD) for all Office (O) uses, plus a Pharmacy use, limited to 1,800 square feet, with a Concept Brief; generally located north of Medical Centre Drive and east of Magnolia Street.\nPD13-11",
+       "title": "Public Hearing for Zoning Case PD13-11"
+      },
+      {
+       "display_ref": "A.",
+       "evidence_text": "A.\nReports from Boards/Commissions Liaisons",
+       "title": "Reports from Boards/Commissions Liaisons"
+      },
+      {
+       "display_ref": "B.",
+       "evidence_text": "B.\nReports from Staff and Announcements",
+       "title": "Reports from Staff and Announcements"
+      },
+      {
+       "display_ref": "C.",
+       "evidence_text": "C.\nDiscussion of Future Meeting Dates and Times",
+       "title": "Discussion of Future Meeting Dates and Times"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "ADJOURN",
+       "title": "Adjournment"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Call to Order\", \"evidence_quote\": \"CALL TO ORDER\", \"line_start\": 10, \"line_end\": 10}, {\"title\": \"Pledge of Allegiance\", \"evidence_quote\": \"PLEDGE\", \"line_start\": 12, \"line_end\": 12}, {\"title\": \"Approval of Minutes of August 7, 2013 P&Z Meeting\", \"evidence_quote\": \"Minutes of August 7, 2013 P&Z Meeting\", \"line_start\": 16, \"line_end\": 16}, {\"title\": \"Public Hearing for Preliminary Plat Fannin Farm West Addition Phase III Section C\", \"evidence_quote\": \"Preliminary Plat - Fannin Farm West Addition - Phase III, Section C (Zoned R and R2); generally located north of Hardisty Drive and west of Weaver Drive with the approximate address of 6399 South Cooper Street\\nFannin Farms W. Phase III\", \"line_start\": 20, \"line_end\": 21}, {\"title\": \"Public Hearing for Zoning Case PD13-9\", \"evidence_quote\": \"Zoning Case PD13-9 (1010 N. Collins - 801 East Randol Mill Road) \\n   Application to change the zoning on approximately 4.31 acres from Entertainment District-Community Services (ED-CS) and Entertainment District-Neighborhood Services (ED-NS) to Planned Development (PD) for Entertainment District-Community Services (ED-CS) uses plus Night Club, with a Concept Brief; generally located north of East Randol Mill Road and west of North Collins Street.\\nPD13-9\", \"line_start\": 25, \"line_end\": 27, \"display_ref\": \"PD13-9\"}, {\"title\": \"Public Hearing for Zoning Case PD13-11\", \"evidence_quote\": \"Zoning Case PD13-11 (Express Care Pharmacy - 905 Medical Centre Drive, Suite B) \\n   Application to change the zoning on approximately 2.92 acres from Office (O) to Planned Development (PD) for all Office (O) uses, plus a Pharmacy use, limited to 1,800 square feet, with a Concept Brief; generally located north of Medical Centre Drive and east of Magnolia Street.\\nPD13-11\", \"line_start\": 29, \"line_end\": 31, \"display_ref\": \"PD13-11\"}, {\"title\": \"Reports from Boards/Commissions Liaisons\", \"evidence_quote\": \"Reports from Boards/Commissions Liaisons\", \"line_start\": 35, \"line_end\": 35}, {\"title\": \"Reports from Staff and Announcements\", \"evidence_quote\": \"Reports from Staff and Announcements\", \"line_start\": 37, \"line_end\": 37}, {\"title\": \"Discussion of Future Meeting Dates and Times\", \"evidence_quote\": \"Discussion of Future Meeting Dates and Times\", \"line_start\": 39, \"line_end\": 39}, {\"title\": \"Adjournment\", \"evidence_quote\": \"ADJOURN\", \"line_start\": 41, \"line_end\": 41}]}",
+     "score": {
+      "chapters": 11,
+      "conflicted": 2,
+      "items": 10,
+      "mapped": 6,
+      "matched": 9
+     },
+     "seconds": 27.6,
+     "uid": "8b37ca9f1725e24b",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "I.",
+       "evidence_text": "I.\nCall to Order",
+       "title": "Call to Order"
+      },
+      {
+       "display_ref": "A.",
+       "evidence_text": "A.\nCertification of Official Returns - Ron Gonzales, Assistant CCPD Board Secretary",
+       "title": "Certification of Official Returns"
+      },
+      {
+       "display_ref": "B.",
+       "evidence_text": "B.\nConsideration and Adoption of Resolution Canvassing Votes and Making Findings Concerning the Results of the Election Held on Saturday, May 10, 2014, on the Continuation of the Fort Worth Crime Control and Prevention District for Five Years and Continuation of the District\u2019s One-Half Cent Sales Tax for Five Years - Ron Gonzales, Assistant CCPD Board Secretary",
+       "title": "Consideration and Adoption of Resolution Canvassing Votes"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "Adjourn",
+       "title": "Adjournment"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Call to Order\", \"evidence_quote\": \"Call to Order\", \"line_start\": 12, \"line_end\": 12}, {\"title\": \"Certification of Official Returns\", \"evidence_quote\": \"Certification of Official Returns - Ron Gonzales, Assistant CCPD Board Secretary\", \"line_start\": 16, \"line_end\": 16, \"display_ref\": \"A.\"}, {\"title\": \"Consideration and Adoption of Resolution Canvassing Votes\", \"evidence_quote\": \"Consideration and Adoption of Resolution Canvassing Votes and Making Findings Concerning the Results of the Election Held on Saturday, May 10, 2014, on the Continuation of the Fort Worth Crime Control and Prevention District for Five Years and Continuation of the District\u2019s One-Half Cent Sales Tax for Five Years - Ron Gonzales, Assistant CCPD Board Secretary\", \"line_start\": 18, \"line_end\": 18, \"display_ref\": \"B.\"}, {\"title\": \"Adjournment\", \"evidence_quote\": \"Adjourn\", \"line_start\": 20, \"line_end\": 20}]}",
+     "score": {
+      "chapters": 4,
+      "conflicted": 0,
+      "items": 4,
+      "mapped": 3,
+      "matched": 3
+     },
+     "seconds": 14.1,
+     "uid": "d85f9a9b71dee9e6",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "1.",
+       "evidence_text": "1.\nClarification of agenda items listed in the Regular Session agenda for this meeting, and discussion of issues not briefed in the written backup materials.",
+       "title": "Work Session: Clarification of Regular Session Agenda Items and Discussion of Unbriefed Issues"
+      },
+      {
+       "display_ref": "1.",
+       "evidence_text": "1.\nPLEDGE OF ALLEGIANCE:\nA.\nU.S. Flag\nB.\nTexas Flag\n\"Honor the Texas Flag - I pledge allegiance to thee, Texas one state under God, one and indivisible.\"",
+       "title": "Pledge of Allegiance to U.S. and Texas Flags"
+      },
+      {
+       "display_ref": "3.",
+       "evidence_text": "3.\nCONSENT AGENDA:\u00a0 Staff recommends approval of the following items because they meet the requirements of the Denton Development Code.\u00a0 Approval of the Consent Agenda includes staff recommendations for approval and authorizes staff to proceed.\u00a0 The Planning and Zoning Commission has reviewed the applications and has had an opportunity to raise questions regarding the items prior to consideration:",
+       "title": "Consent Agenda: Staff Recommendation to Approve Multiple Plats and Conveyance Plats"
+      },
+      {
+       "display_ref": "6.",
+       "evidence_text": "6.\nFUTURE AGENDA ITEMS:\u00a0 Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Planning and Zoning Commission or the public with specific factual information or recitation of policy, or accept a proposal to place the matter on the agenda for an upcoming meeting.",
+       "title": "Future Agenda Items: Inquiries and Proposals per Texas Open Meetings Act"
+      },
+      {
+       "display_ref": "2.A",
+       "evidence_text": "2.\nCONSIDER APPROVAL OF THE PLANNING AND ZONING COMMISSION MINUTES FOR:\nA.\nMarch 10, 2010",
+       "title": "Consider Approval of Planning and Zoning Commission Minutes for March 10, 2010"
+      },
+      {
+       "display_ref": "4.A",
+       "evidence_text": "4.\nITEMS FOR INDIVIDUAL CONSIDERATION:\nA.\nAlternative Development Plan (ADP) for a gas station and convenience store.\u00a0 The approximately 2.32-acre property is located at the southwest corner of West University Drive (U.S. 380) and I-35.\u00a0 The property is located within an Industrial Center Employment (IC-E) zoning district.\u00a0 (ADP09-0008, Texas Blue Saddle/QT #192, Erica Marohnic)",
+       "title": "Individual Consideration: Alternative Development Plan for Gas Station and Convenience Store (ADP09-0008)"
+      },
+      {
+       "display_ref": "5.A",
+       "evidence_text": "5.\nPUBLIC HEARINGS:\u00a0 Hold a public hearing and consider making a recommendation to the Denton City Council on the following items:\nA.\nDetailed Plan amendment to allow a 1,799 square foot addition to an existing 11,144 square foot office within a Planned Development Zoning District (PD-12, I-35/State School).\u00a0 The subject site is generally located on the south side of Interstate 35 East (I-35E), north of the City of Corinth city limit line.\u00a0 (Z10-0001, Classic Chrysler Jeep, Nana Appiah)",
+       "title": "Public Hearing and Recommendation on Detailed Plan Amendment for Classic Chrysler Jeep (Z10-0001)"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Work Session: Clarification of Regular Session Agenda Items and Discussion of Unbriefed Issues\", \"evidence_quote\": \"Clarification of agenda items listed in the Regular Session agenda for this meeting, and discussion of issues not briefed in the written backup materials.\", \"line_start\": 9, \"line_end\": 9, \"display_ref\": \"1.\"}, {\"title\": \"Pledge of Allegiance to U.S. and Texas Flags\", \"evidence_quote\": \"PLEDGE OF ALLEGIANCE:\\nA.\\nU.S. Flag\\nB.\\nTexas Flag\\n\\\"Honor the Texas Flag - I pledge allegiance to thee, Texas one state under God, one and indivisible.\\\"\", \"line_start\": 15, \"line_end\": 20, \"display_ref\": \"1.\"}, {\"title\": \"Consider Approval of Planning and Zoning Commission Minutes for March 10, 2010\", \"evidence_quote\": \"2.\\nCONSIDER APPROVAL OF THE PLANNING AND ZONING COMMISSION MINUTES FOR:\\nA.\\nMarch 10, 2010\", \"line_start\": 21, \"line_end\": 24, \"display_ref\": \"2.A\"}, {\"title\": \"Individual Consideration: Alternative Development Plan for Gas Station and Convenience Store (ADP09-0008)\", \"evidence_quote\": \"A.\\nAlternative Development Plan (ADP) for a gas station and convenience store.  The approximately 2.32-acre property is located at the southwest corner of West University Drive (U.S. 380) and I-35.  The property is located within an Industrial Center Employment (IC-E) zoning district.  (ADP09-0008, Texas Blue Saddle/QT #192, Erica Marohnic)\", \"line_start\": 27, \"line_end\": 28, \"display_ref\": \"4.A\"}, {\"title\": \"Consent Agenda: Staff Recommendation to Approve Multiple Plats and Conveyance Plats\", \"evidence_quote\": \"CONSENT AGENDA:  Staff recommends approval of the following items because they meet the requirements of the Denton Development Code.  Approval of the Consent Agenda includes staff recommendations for approval and authorizes staff to proceed.  The Planning and Zoning Commission has reviewed the applications and has had an opportunity to raise questions regarding the items prior to consideration:\", \"line_start\": 30, \"line_end\": 30, \"display_ref\": \"3.\"}, {\"title\": \"Public Hearing and Recommendation on Detailed Plan Amendment for Classic Chrysler Jeep (Z10-0001)\", \"evidence_quote\": \"A.\\nDetailed Plan amendment to allow a 1,799 square foot addition to an existing 11,144 square foot office within a Planned Development Zoning District (PD-12, I-35/State School).  The subject site is generally located on the south side of Interstate 35 East (I-35E), north of the City of Corinth city limit line.  (Z10-0001, Classic Chrysler Jeep, Nana Appiah)\", \"line_start\": 51, \"line_end\": 52, \"display_ref\": \"5.A\"}, {\"title\": \"Future Agenda Items: Inquiries and Proposals per Texas Open Meetings Act\", \"evidence_quote\": \"6.\\nFUTURE AGENDA ITEMS:  Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Planning and Zoning Commission or the public with specific factual information or recitation of policy, or accept a proposal to place the matter on the agenda for an upcoming meeting.\", \"line_start\": 53, \"line_end\": 54, \"display_ref\": \"6.\"}]}",
+     "score": {
+      "chapters": 12,
+      "conflicted": 0,
+      "items": 7,
+      "mapped": 7,
+      "matched": 12
+     },
+     "seconds": 49.4,
+     "uid": "239398addde9b694",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "Item #1",
+       "evidence_text": "Item #1 - Discussion and consideration of action regarding submittal of \nCommittee recommendations for the May election deadline.",
+       "title": "Discussion and consideration of submittal of Committee recommendations for May election deadline"
+      },
+      {
+       "display_ref": "Item #2",
+       "evidence_text": "Item #2\n - Discussion and consideration of action regarding future meetings \nand processes of the Bond Advisory Committee.",
+       "title": "Discussion and consideration of future meetings and processes of Bond Advisory Committee"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "Adjourn Meeting",
+       "title": "Adjournment of meeting"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"display_ref\": \"Item #1\", \"title\": \"Discussion and consideration of submittal of Committee recommendations for May election deadline\", \"evidence_quote\": \"Item #1 - Discussion and consideration of action regarding submittal of Committee recommendations for the May election deadline.\", \"line_start\": 19, \"line_end\": 20}, {\"display_ref\": \"Item #2\", \"title\": \"Discussion and consideration of future meetings and processes of Bond Advisory Committee\", \"evidence_quote\": \"Item #2 - Discussion and consideration of action regarding future meetings and processes of the Bond Advisory Committee.\", \"line_start\": 22, \"line_end\": 24}, {\"title\": \"Adjournment of meeting\", \"evidence_quote\": \"Adjourn Meeting\", \"line_start\": 28, \"line_end\": 28}]}",
+     "score": {
+      "chapters": 7,
+      "conflicted": 0,
+      "items": 3,
+      "mapped": 0,
+      "matched": 0
+     },
+     "seconds": 11.8,
+     "uid": "e65b938bd028c6b5",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "11",
+       "evidence_text": "11. Discuss legal issues related to Open Government matters (Private \nconsultation with legal counsel pursuant to Section 551.071 of the \nGovernment Code).",
+       "title": "Executive session discussion on Open Government legal issues"
+      },
+      {
+       "display_ref": "12",
+       "evidence_text": "12. Discuss legal issues related to preva iling wage matters on City construction \ncontracts (Private consultation with legal counsel pursuant to Section 551.071 \nof the Government Code)",
+       "title": "Executive session discussion on prevailing wage legal issues"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "Adjourn",
+       "title": "Adjourn City Council meeting"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "1. Approve an ordinance adopting the Operating Budget for Fiscal Year 2012-\n2013, beginning on October 1, 2012, and ending on September 30, 2013. \n \n2. Approve an ordinance adopting the Capi tal Budget for Fiscal Year 2012-2013, \nbeginning on October 1, 2012, and ending on September 30, 2013. \n \n3. Approve an ordinance authorizing fees, fines, and other charges to be set or \ncharged by the City for Fiscal Year 2012-2013, beginning on October 1, 2012, \nand ending on September 30, 2013. \n \n4. Approve an ordinance establishing classifications and positions in the \nclassified service of the Fire Department; creating positions in certain ranks; \nestablishing pay rates; and repealing Ordinance No. 20110912-009 relating to \nthe Fire Department classifications and positions. \n \n5. Approve an ordinance establishing classifications and positions in the \nclassified service of the Austin Police Department, creating certain positions, \nestablishing pay rates and repealing Ordinance No. 20120308-014 relating to \npolice department classifications and positions. \n \n6. Approve a resolution declaring the City of  Austin's official intent to reimburse \nitself from: November 2006 Proposition 1 General Obligation bonds in the \namount of $1,100,000 related to sidewalk reconstruction and improvements \nand traffic signals;  November 2006 Proposition 2 General Obligation bonds \nin the amount of $3,700,000 related to watershed protection master plan \nprojects; November 2006 Proposition 3 General Obligation bonds in the \namount of $2,400,000 related to parks facilities improvements and \nrenovations, parkland acquisition, playscapes, pool improvements and \nrenovations, and trails; November 2006 Proposition 4 General Obligation \n \nbonds in the amount of $2,000,000 related to community and cultural \nfacilities; November 2006 Proposition 6 General Obligation bonds in the \namount of $5,000,000  related to a new central library; Certificates of \nObligation in the amount of $7,125,000 for the Waller Creek Tunnel and \nBuilding Renovations and Improvements; and Contractual Obligations in the \namount of $46,615,000 for City of Austin Telecommunications Network \nUpgrade; the Greater Austin-Travis County Regional Radio System, and \nAustin Fire Department Vehicles. \n \n7. Approve a resolution declaring the City of  Austin's official intent to reimburse \nitself from the proceeds of tax-exempt obligations in an aggregate maximum \nprinciple amount of $131,000,000 for expenditures related to the acquisition \nand construction of electric utility capital improvement projects. \n \n8. Approve a resolution declaring the City of  Austin's official intent to reimburse \nitself from the proceeds of tax-exempt obligations to be issued through \nOctober 2013 for acquisition and construction costs in an aggregate maximum \nprincipal amount of $244,372,000 related to Fiscal Year 2012-2013 Austin \nWater Utility Capital Improvement Projects. \n \n9. Ratify the property tax increase refl ected in the Budget for Fiscal Year 2012-\n2013. \n \n10. Approve an ordinance adopting and le vying a property (ad valorem) tax rate \nfor the City of Austin for Fiscal Year 2012-2013.",
+       "title": "Consent approval of FY 2012-2013 budget ordinances and reimbursement resolutions"
+      },
+      {
+       "display_ref": "13",
+       "evidence_text": "13\n. \nThe Mayor will recess the City Council meeting to conduct a Board of \nDirectors' Meeting of the Austin Housing Finance Corporation. Following \nadjournment of the AHFC Board meeting the City Council will reconvene.",
+       "title": "Recess for Austin Housing Finance Corporation Board Meeting"
+      },
+      {
+       "display_ref": "14",
+       "evidence_text": "14\n. \nThe Mayor will recess the City Council meeting to conduct a Board of \nDirectors' meeting of the Mueller Local Government Corporation. Following \nadjournment of the MLGC Board meeting the City Council will re-convene.",
+       "title": "Recess for Mueller Local Government Corporation Board Meeting"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Consent approval of FY 2012-2013 budget ordinances and reimbursement resolutions\", \"evidence_quote\": \"1. Approve an ordinance adopting the Operating Budget for Fiscal Year 2012- 2013, beginning on October 1, 2012, and ending on September 30, 2013. 2. Approve an ordinance adopting the Capi tal Budget for Fiscal Year 2012-2013, beginning on October 1, 2012, and ending on September 30, 2013. 3. Approve an ordinance authorizing fees, fines, and other charges to be set or charged by the City for Fiscal Year 2012-2013, beginning on October 1, 2012, and ending on September 30, 2013. 4. Approve an ordinance establishing classifications and positions in the classified service of the Fire Department; creating positions in certain ranks; establishing pay rates; and repealing Ordinance No. 20110912-009 relating to the Fire Department classifications and positions. 5. Approve an ordinance establishing classifications and positions in the classified service of the Austin Police Department, creating certain positions, establishing pay rates and repealing Ordinance No. 20120308-014 relating to police department classifications and positions. 6. Approve a resolution declaring the City of  Austin's official intent to reimburse itself from: November 2006 Proposition 1 General Obligation bonds in the amount of $1,100,000 related to sidewalk reconstruction and improvements and traffic signals;  November 2006 Proposition 2 General Obligation bonds in the amount of $3,700,000 related to watershed protection master plan projects; November 2006 Proposition 3 General Obligation bonds in the amount of $2,400,000 related to parks facilities improvements and renovations, parkland acquisition, playscapes, pool improvements and renovations, and trails; November 2006 Proposition 4 General Obligation bonds in the amount of $2,000,000 related to community and cultural facilities; November 2006 Proposition 6 General Obligation bonds in the amount of $5,000,000  related to a new central library; Certificates of Obligation in the amount of $7,125,000 for the Waller Creek Tunnel and Building Renovations and Improvements; and Contractual Obligations in the amount of $46,615,000 for City of Austin Telecommunications Network Upgrade; the Greater Austin-Travis County Regional Radio System, and Austin Fire Department Vehicles. 7. Approve a resolution declaring the City of  Austin's official intent to reimburse itself from the proceeds of tax-exempt obligations in an aggregate maximum principle amount of $131,000,000 for expenditures related to the acquisition and construction of electric utility capital improvement projects. 8. Approve a resolution declaring the City of  Austin's official intent to reimburse itself from the proceeds of tax-exempt obligations to be issued through October 2013 for acquisition and construction costs in an aggregate maximum principal amount of $244,372,000 related to Fiscal Year 2012-2013 Austin Water Utility Capital Improvement Projects. 9. Ratify the property tax increase refl ected in the Budget for Fiscal Year 2012-2013. 10. Approve an ordinance adopting and le vying a property (ad valorem) tax rate for the City of Austin for Fiscal Year 2012-2013.\", \"line_start\": 47, \"line_end\": 101, \"display_ref\": \"Consent\"}, {\"title\": \"Executive session discussion on Open Government legal issues\", \"evidence_quote\": \"11. Discuss legal issues related to Open Government matters (Private consultation with legal counsel pursuant to Section 551.071 of the Government Code). \", \"line_start\": 107, \"line_end\": 109, \"display_ref\": \"11\"}, {\"title\": \"Executive session discussion on prevailing wage legal issues\", \"evidence_quote\": \"12. Discuss legal issues related to preva iling wage matters on City construction contracts (Private consultation with legal counsel pursuant to Section 551.071 of the Government Code) \", \"line_start\": 111, \"line_end\": 113, \"display_ref\": \"12\"}, {\"title\": \"Recess for Austin Housing Finance Corporation Board Meeting\", \"evidence_quote\": \"The Mayor will recess the City Council meeting to conduct a Board of Directors' Meeting of the Austin Housing Finance Corporation. Following adjournment of the AHFC Board meeting the City Council will reconvene.\", \"line_start\": 119, \"line_end\": 121, \"display_ref\": \"13\"}, {\"title\": \"Recess for Mueller Local Government Corporation Board Meeting\", \"evidence_quote\": \"The Mayor will recess the City Council meeting to conduct a Board of Directors' meeting of the Mueller Local Government Corporation. Following adjournment of the MLGC Board meeting the City Council will re-convene.\", \"line_start\": 132, \"line_end\": 134, \"display_ref\": \"14\"}, {\"title\": \"Adjourn City Council meeting\", \"evidence_quote\": \"Adjourn\", \"line_start\": 139, \"line_end\": 139, \"display_ref\": null}]}",
+     "score": {
+      "chapters": 17,
+      "conflicted": 2,
+      "items": 6,
+      "mapped": 3,
+      "matched": 12
+     },
+     "seconds": 47.5,
+     "uid": "036e5f84ac2c41cd",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "1",
+       "evidence_text": "1. CALL TO ORDER",
+       "title": "Call to Order"
+      },
+      {
+       "display_ref": "8",
+       "evidence_text": "8. ADJOURNMENT",
+       "title": "Adjournment"
+      },
+      {
+       "display_ref": "3.a",
+       "evidence_text": "a. Approve the minutes of the Environmental Board regular meeting of April 2, 2014",
+       "title": "Approve Minutes of April 2, 2014 Regular Meeting"
+      },
+      {
+       "display_ref": "3.b",
+       "evidence_text": "b. Environmental Officer\u2019s report on hot topics and past Board actions \u2013 Chuck Lesniak, \nWatershed Protection Department  - Discussion about Environmental Board member to be \nrepresentative on the Water Resource Planning Taskforce.",
+       "title": "Environmental Officer's Report and Taskforce Discussion"
+      },
+      {
+       "display_ref": "3.c",
+       "evidence_text": "c. Report from the Development Committee on a possible Urban Forest Private Tree \nManagement Plan.",
+       "title": "Development Committee Report on Urban Forest Private Tree Management Plan"
+      },
+      {
+       "display_ref": "4.a",
+       "evidence_text": "a. Watershed Protection Department FY 2013 Annual Report - Victoria Li, P. E., \nDirector,  Watershed Protection Department",
+       "title": "Watershed Protection Department FY 2013 Annual Report"
+      },
+      {
+       "display_ref": "5.a",
+       "evidence_text": "a. Status of the Water Quality Protection Land Acquisition Program -  Junie Plummer, \nReal Estate Department and David Johns, P. G. , Watershed ProtectionDepartment",
+       "title": "Status of Water Quality Protection Land Acquisition Program"
+      },
+      {
+       "display_ref": "5.b",
+       "evidence_text": "b. Consider a recommendation to the Planning Commission on the draft Butler Trail at \nthe Southeast Shore Park Master Plan \u2013 Chris Yanez, Parks and Recreation \nDepartment.",
+       "title": "Consider Recommendation on Butler Trail Southeast Shore Park Master Plan"
+      },
+      {
+       "display_ref": "5.c",
+       "evidence_text": "c. Update on the Bicycle Master Plan - Nathan Wilke, Public Works Department",
+       "title": "Update on Bicycle Master Plan"
+      },
+      {
+       "display_ref": "5.d",
+       "evidence_text": "d. Update on the Urban Trails Plan \u2013 Nadia Barrera, Public Works Department",
+       "title": "Update on Urban Trails Plan"
+      },
+      {
+       "display_ref": "6.a",
+       "evidence_text": "a. Update on the Joint Environmental/Parks Board Subcommittee \u2013 Mary Ann Neely, Jennifer \nWalker, and James Schissler, P.E.  No report this week.",
+       "title": "Joint Environmental/Parks Board Subcommittee Update"
+      },
+      {
+       "display_ref": "6.b",
+       "evidence_text": "b. Urban Growth Policy Committee \u2013 Mary Gay Maxwell, James Schissler, P. E., and Marisa \nPerales.  No report this week.",
+       "title": "Urban Growth Policy Committee Report"
+      },
+      {
+       "display_ref": "6.c",
+       "evidence_text": "c. Water Treatment Plant #4 Committee \u2013 Mary Gay Maxwell, Robin Gary and Mary Ann \nNeely - No report this week.",
+       "title": "Water Treatment Plant #4 Committee Report"
+      },
+      {
+       "display_ref": "6.d",
+       "evidence_text": "d. Development Committee \u2013Mary Gay Maxwell, Marisa Perales, Robert Deegan, and James \nSchissler, P.E.  - No report this week.",
+       "title": "Development Committee Report"
+      },
+      {
+       "display_ref": "6.e",
+       "evidence_text": "e. Water Quality Regulations Committee \u2013 Mary Ann Neely, Chair, Robin Gary, and Jennifer \nWalker.  No report this week.",
+       "title": "Water Quality Regulations Committee Report"
+      },
+      {
+       "display_ref": "6.f",
+       "evidence_text": "f. Watershed Protection Budget Committee \u2013 Mary Gay Maxwell and Mary Ann Neely \nNo report this week.",
+       "title": "Watershed Protection Budget Committee Report"
+      },
+      {
+       "display_ref": "6.g",
+       "evidence_text": "g. Other reports from Board members. No report this week.",
+       "title": "Other Board Member Reports"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Call to Order\", \"evidence_quote\": \"1. CALL TO ORDER \", \"line_start\": 22, \"line_end\": 22, \"display_ref\": \"1\"}, {\"title\": \"Approve Minutes of April 2, 2014 Regular Meeting\", \"evidence_quote\": \"a. Approve the minutes of the Environmental Board regular meeting of April 2, 2014 \", \"line_start\": 29, \"line_end\": 29, \"display_ref\": \"3.a\"}, {\"title\": \"Environmental Officer's Report and Taskforce Discussion\", \"evidence_quote\": \"b. Environmental Officer\u2019s report on hot topics and past Board actions \u2013 Chuck Lesniak, Watershed Protection Department  - Discussion about Environmental Board member to be representative on the Water Resource Planning Taskforce. \", \"line_start\": 30, \"line_end\": 32, \"display_ref\": \"3.b\"}, {\"title\": \"Development Committee Report on Urban Forest Private Tree Management Plan\", \"evidence_quote\": \"c. Report from the Development Committee on a possible Urban Forest Private Tree Management Plan. \", \"line_start\": 33, \"line_end\": 34, \"display_ref\": \"3.c\"}, {\"title\": \"Watershed Protection Department FY 2013 Annual Report\", \"evidence_quote\": \"a. Watershed Protection Department FY 2013 Annual Report - Victoria Li, P. E., Director,  Watershed Protection Department \", \"line_start\": 37, \"line_end\": 38, \"display_ref\": \"4.a\"}, {\"title\": \"Status of Water Quality Protection Land Acquisition Program\", \"evidence_quote\": \"a. Status of the Water Quality Protection Land Acquisition Program -  Junie Plummer, Real Estate Department and David Johns, P. G. , Watershed ProtectionDepartment  \", \"line_start\": 41, \"line_end\": 42, \"display_ref\": \"5.a\"}, {\"title\": \"Consider Recommendation on Butler Trail Southeast Shore Park Master Plan\", \"evidence_quote\": \"b. Consider a recommendation to the Planning Commission on the draft Butler Trail at the Southeast Shore Park Master Plan \u2013 Chris Yanez, Parks and Recreation Department. \", \"line_start\": 43, \"line_end\": 45, \"display_ref\": \"5.b\"}, {\"title\": \"Update on Bicycle Master Plan\", \"evidence_quote\": \"c. Update on the Bicycle Master Plan - Nathan Wilke, Public Works Department \", \"line_start\": 46, \"line_end\": 46, \"display_ref\": \"5.c\"}, {\"title\": \"Update on Urban Trails Plan\", \"evidence_quote\": \"d. Update on the Urban Trails Plan \u2013 Nadia Barrera, Public Works Department \", \"line_start\": 47, \"line_end\": 47, \"display_ref\": \"5.d\"}, {\"title\": \"Joint Environmental/Parks Board Subcommittee Update\", \"evidence_quote\": \"a. Update on the Joint Environmental/Parks Board Subcommittee \u2013 Mary Ann Neely, Jennifer Walker, and James Schissler, P.E.  No report this week. \", \"line_start\": 54, \"line_end\": 55, \"display_ref\": \"6.a\"}, {\"title\": \"Urban Growth Policy Committee Report\", \"evidence_quote\": \"b. Urban Growth Policy Committee \u2013 Mary Gay Maxwell, James Schissler, P. E., and Marisa Perales.  No report this week. \", \"line_start\": 57, \"line_end\": 58, \"display_ref\": \"6.b\"}, {\"title\": \"Water Treatment Plant #4 Committee Report\", \"evidence_quote\": \"c. Water Treatment Plant #4 Committee \u2013 Mary Gay Maxwell, Robin Gary and Mary Ann Neely - No report this week. \", \"line_start\": 60, \"line_end\": 61, \"display_ref\": \"6.c\"}, {\"title\": \"Development Committee Report\", \"evidence_quote\": \"d. Development Committee \u2013Mary Gay Maxwell, Marisa Perales, Robert Deegan, and James Schissler, P.E.  - No report this week. \", \"line_start\": 63, \"line_end\": 64, \"display_ref\": \"6.d\"}, {\"title\": \"Water Quality Regulations Committee Report\", \"evidence_quote\": \"e. Water Quality Regulations Committee \u2013 Mary Ann Neely, Chair, Robin Gary, and Jennifer Walker.  No report this week. \", \"line_start\": 66, \"line_end\": 67, \"display_ref\": \"6.e\"}, {\"title\": \"Watershed Protection Budget Committee Report\", \"evidence_quote\": \"f. Watershed Protection Budget Committee \u2013 Mary Gay Maxwell and Mary Ann Neely No report this week. \", \"line_start\": 69, \"line_end\": 70, \"display_ref\": \"6.f\"}, {\"title\": \"Other Board Member Reports\", \"evidence_quote\": \"g. Other reports from Board members. No report this week. \", \"line_start\": 72, \"line_end\": 72, \"display_ref\": \"6.g\"}, {\"title\": \"Adjournment\", \"evidence_quote\": \"8. ADJOURNMENT \", \"line_start\": 78, \"line_end\": 78, \"display_ref\": \"8\"}]}",
+     "score": {
+      "chapters": 8,
+      "conflicted": 0,
+      "items": 17,
+      "mapped": 6,
+      "matched": 6
+     },
+     "seconds": 32.0,
+     "uid": "d921a9aa9d4386a9",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "error": "ValueError: display reference is absent from expanded evidence span",
+     "raw_response": "{\"items\": [{\"title\": \"Call to Order and Introductions\", \"evidence_quote\": \"1. Call to Order and Introductions\", \"line_start\": 14, \"line_end\": 14, \"display_ref\": \"1\"}, {\"title\": \"Citizen Communications\", \"evidence_quote\": \"2. Citizen Communications\", \"line_start\": 15, \"line_end\": 15, \"display_ref\": \"2\"}, {\"title\": \"Approval of Minutes of April 16 2014 Meeting\", \"evidence_quote\": \"3. Approval of Minutes of the April 16, 2014 meeting \\n\uf0b7 Discussion and Action \", \"line_start\": 19, \"line_end\": 20, \"display_ref\": \"3\"}, {\"title\": \"Briefing on Barriers to Activating Downtown Public Plazas by Molly Alexander\", \"evidence_quote\": \"\uf0b7 Briefing by Molly Alexander, Associate Director, Downtown Austin Alliance\", \"line_start\": 22, \"line_end\": 22, \"display_ref\": \"4\"}, {\"title\": \"Discussion and Possible Action on Barriers to Activating Downtown Public Plazas\", \"evidence_quote\": \"\uf0b7 Discussion and possible action\", \"line_start\": 23, \"line_end\": 23, \"display_ref\": \"4\"}, {\"title\": \"Update on Project Connect Central Corridor by Kyle Keahey\", \"evidence_quote\": \"\uf0b7 Update by Kyle Keahey, Project Lead, HNTB\", \"line_start\": 25, \"line_end\": 25, \"display_ref\": \"5\"}, {\"title\": \"Briefing on CodeNEXT Draft Land Development Code Diagnosis by George Zapalac\", \"evidence_quote\": \"\uf0b7 Briefing by George Zapalac, Planning and Development Review Department\", \"line_start\": 27, \"line_end\": 27, \"display_ref\": \"6\"}, {\"title\": \"Briefing on Republic Square Master Plan and Partnership Agreement by Marty Stump\", \"evidence_quote\": \"\uf0b7 Briefing by Marty Stump, Parks and Recreation Department  \", \"line_start\": 29, \"line_end\": 29, \"display_ref\": \"7\"}, {\"title\": \"Discussion and Possible Action on Republic Square Master Plan and Partnership Agreement\", \"evidence_quote\": \"\uf0b7 Discussion and possible action  \", \"line_start\": 30, \"line_end\": 30, \"display_ref\": \"7\"}, {\"title\": \"Briefing on Criteria for Evaluating Requests to Exceed Maximum Floor-to-Area Ratio by Jorge Rousselin\", \"evidence_quote\": \"\uf0b7 Briefing by Jorge Rousselin, City of Austin PDRD\", \"line_start\": 33, \"line_end\": 33, \"display_ref\": \"8\"}, {\"title\": \"Discussion and Possible Action on Criteria for Evaluating Requests to Exceed Maximum Floor-to-Area Ratio\", \"evidence_quote\": \"\uf0b7 Discussion and possible action\", \"line_start\": 34, \"line_end\": 34, \"display_ref\": \"8\"}, {\"title\": \"Report from Downtown Public Open Space Working Group on Plaza Design Standards\", \"evidence_quote\": \"A. Report from the Downtown Public Open Space Working Group \\no Recommendations on the Downtown Density Bonus Program Plaza Design Standards\", \"line_start\": 36, \"line_end\": 37, \"display_ref\": \"9A\"}, {\"title\": \"Discussion and Action on Downtown Public Open Space Working Group Recommendations\", \"evidence_quote\": \"o Discussion and Action\", \"line_start\": 38, \"line_end\": 38, \"display_ref\": \"9A\"}, {\"title\": \"Report from Downtown Plan Implementation Working Group\", \"evidence_quote\": \"B. Report from the Downtown Plan Implementation Working Group\", \"line_start\": 39, \"line_end\": 39, \"display_ref\": \"9B\"}, {\"title\": \"Discussion and Possible Action on Creation of New Working Groups including CodeNEXT Integration\", \"evidence_quote\": \"C. Discussion and possible action on the creation of new working groups \\no Working Group to integrate the Downtown Austin Plan with CodeNEXT  \", \"line_start\": 40, \"line_end\": 41, \"display_ref\": \"9C\"}, {\"title\": \"Board & Commission Transition Taskforce Report\", \"evidence_quote\": \"10. Board & Commission Transition Taskforce Report\", \"line_start\": 45, \"line_end\": 45, \"display_ref\": \"10\"}, {\"title\": \"Discussion and Possible Action on Board & Commission Transition Taskforce Report\", \"evidence_quote\": \"\uf0b7 Discussion and possible action  \", \"line_start\": 46, \"line_end\": 46, \"display_ref\": \"10\"}, {\"title\": \"Items of Information from Commissioners\", \"evidence_quote\": \"11. Items of Information from Commissioners\", \"line_start\": 47, \"line_end\": 47, \"display_ref\": \"11\"}, {\"title\": \"Items from Staff\", \"evidence_quote\": \"12. Items from Staff\", \"line_start\": 48, \"line_end\": 48, \"display_ref\": \"12\"}, {\"title\": \"Potential Future Agenda Item: Waller Creek Tunnel Update Briefing by Gary Jackson\", \"evidence_quote\": \"\uf0b7 Waller Creek Tunnel Update \\no Briefing by Gary Jackson, Public Works Department\", \"line_start\": 50, \"line_end\": 51, \"display_ref\": \"13\"}, {\"title\": \"Potential Future Agenda Item: Wayfinding Project Update\", \"evidence_quote\": \"\uf0b7 Wayfinding Project Update\", \"line_start\": 52, \"line_end\": 52, \"display_ref\": \"13\"}, {\"title\": \"Potential Future Agenda Item: UT Medical School Design\", \"evidence_quote\": \"\uf0b7 UT Medical School design\", \"line_start\": 53, \"line_end\": 53, \"display_ref\": \"13\"}, {\"title\": \"Potential Future Agenda Item: Sobriety Center\", \"evidence_quote\": \"\uf0b7 Sobriety Center\", \"line_start\": 54, \"line_end\": 54, \"display_ref\": \"13\"}, {\"title\": \"Potential Future Agenda Item: Busking Initiative\", \"evidence_quote\": \"\uf0b7 Busking Initiative\", \"line_start\": 55, \"line_end\": 55, \"display_ref\": \"13\"}, {\"title\": \"Adjournment\", \"evidence_quote\": \"14. Adjournment\", \"line_start\": 56, \"line_end\": 56, \"display_ref\": \"14\"}]}",
+     "seconds": 47.6,
+     "uid": "d7236adc8412fff8",
+     "valid": false,
+     "validation": {
+      "raw_response": "{\"items\": [{\"title\": \"Call to Order and Introductions\", \"evidence_quote\": \"1. Call to Order and Introductions\", \"line_start\": 14, \"line_end\": 14, \"display_ref\": \"1\"}, {\"title\": \"Citizen Communications\", \"evidence_quote\": \"2. Citizen Communications\", \"line_start\": 15, \"line_end\": 15, \"display_ref\": \"2\"}, {\"title\": \"Approval of Minutes of April 16 2014 Meeting\", \"evidence_quote\": \"3. Approval of Minutes of the April 16, 2014 meeting \\n\uf0b7 Discussion and Action \", \"line_start\": 19, \"line_end\": 20, \"display_ref\": \"3\"}, {\"title\": \"Briefing on Barriers to Activating Downtown Public Plazas by Molly Alexander\", \"evidence_quote\": \"\uf0b7 Briefing by Molly Alexander, Associate Director, Downtown Austin Alliance\", \"line_start\": 22, \"line_end\": 22, \"display_ref\": \"4\"}, {\"title\": \"Discussion and Possible Action on Barriers to Activating Downtown Public Plazas\", \"evidence_quote\": \"\uf0b7 Discussion and possible action\", \"line_start\": 23, \"line_end\": 23, \"display_ref\": \"4\"}, {\"title\": \"Update on Project Connect Central Corridor by Kyle Keahey\", \"evidence_quote\": \"\uf0b7 Update by Kyle Keahey, Project Lead, HNTB\", \"line_start\": 25, \"line_end\": 25, \"display_ref\": \"5\"}, {\"title\": \"Briefing on CodeNEXT Draft Land Development Code Diagnosis by George Zapalac\", \"evidence_quote\": \"\uf0b7 Briefing by George Zapalac, Planning and Development Review Department\", \"line_start\": 27, \"line_end\": 27, \"display_ref\": \"6\"}, {\"title\": \"Briefing on Republic Square Master Plan and Partnership Agreement by Marty Stump\", \"evidence_quote\": \"\uf0b7 Briefing by Marty Stump, Parks and Recreation Department  \", \"line_start\": 29, \"line_end\": 29, \"display_ref\": \"7\"}, {\"title\": \"Discussion and Possible Action on Republic Square Master Plan and Partnership Agreement\", \"evidence_quote\": \"\uf0b7 Discussion and possible action  \", \"line_start\": 30, \"line_end\": 30, \"display_ref\": \"7\"}, {\"title\": \"Briefing on Criteria for Evaluating Requests to Exceed Maximum Floor-to-Area Ratio by Jorge Rousselin\", \"evidence_quote\": \"\uf0b7 Briefing by Jorge Rousselin, City of Austin PDRD\", \"line_start\": 33, \"line_end\": 33, \"display_ref\": \"8\"}, {\"title\": \"Discussion and Possible Action on Criteria for Evaluating Requests to Exceed Maximum Floor-to-Area Ratio\", \"evidence_quote\": \"\uf0b7 Discussion and possible action\", \"line_start\": 34, \"line_end\": 34, \"display_ref\": \"8\"}, {\"title\": \"Report from Downtown Public Open Space Working Group on Plaza Design Standards\", \"evidence_quote\": \"A. Report from the Downtown Public Open Space Working Group \\no Recommendations on the Downtown Density Bonus Program Plaza Design Standards\", \"line_start\": 36, \"line_end\": 37, \"display_ref\": \"9A\"}, {\"title\": \"Discussion and Action on Downtown Public Open Space Working Group Recommendations\", \"evidence_quote\": \"o Discussion and Action\", \"line_start\": 38, \"line_end\": 38, \"display_ref\": \"9A\"}, {\"title\": \"Report from Downtown Plan Implementation Working Group\", \"evidence_quote\": \"B. Report from the Downtown Plan Implementation Working Group\", \"line_start\": 39, \"line_end\": 39, \"display_ref\": \"9B\"}, {\"title\": \"Discussion and Possible Action on Creation of New Working Groups including CodeNEXT Integration\", \"evidence_quote\": \"C. Discussion and possible action on the creation of new working groups \\no Working Group to integrate the Downtown Austin Plan with CodeNEXT  \", \"line_start\": 40, \"line_end\": 41, \"display_ref\": \"9C\"}, {\"title\": \"Board & Commission Transition Taskforce Report\", \"evidence_quote\": \"10. Board & Commission Transition Taskforce Report\", \"line_start\": 45, \"line_end\": 45, \"display_ref\": \"10\"}, {\"title\": \"Discussion and Possible Action on Board & Commission Transition Taskforce Report\", \"evidence_quote\": \"\uf0b7 Discussion and possible action  \", \"line_start\": 46, \"line_end\": 46, \"display_ref\": \"10\"}, {\"title\": \"Items of Information from Commissioners\", \"evidence_quote\": \"11. Items of Information from Commissioners\", \"line_start\": 47, \"line_end\": 47, \"display_ref\": \"11\"}, {\"title\": \"Items from Staff\", \"evidence_quote\": \"12. Items from Staff\", \"line_start\": 48, \"line_end\": 48, \"display_ref\": \"12\"}, {\"title\": \"Potential Future Agenda Item: Waller Creek Tunnel Update Briefing by Gary Jackson\", \"evidence_quote\": \"\uf0b7 Waller Creek Tunnel Update \\no Briefing by Gary Jackson, Public Works Department\", \"line_start\": 50, \"line_end\": 51, \"display_ref\": \"13\"}, {\"title\": \"Potential Future Agenda Item: Wayfinding Project Update\", \"evidence_quote\": \"\uf0b7 Wayfinding Project Update\", \"line_start\": 52, \"line_end\": 52, \"display_ref\": \"13\"}, {\"title\": \"Potential Future Agenda Item: UT Medical School Design\", \"evidence_quote\": \"\uf0b7 UT Medical School design\", \"line_start\": 53, \"line_end\": 53, \"display_ref\": \"13\"}, {\"title\": \"Potential Future Agenda Item: Sobriety Center\", \"evidence_quote\": \"\uf0b7 Sobriety Center\", \"line_start\": 54, \"line_end\": 54, \"display_ref\": \"13\"}, {\"title\": \"Potential Future Agenda Item: Busking Initiative\", \"evidence_quote\": \"\uf0b7 Busking Initiative\", \"line_start\": 55, \"line_end\": 55, \"display_ref\": \"13\"}, {\"title\": \"Adjournment\", \"evidence_quote\": \"14. Adjournment\", \"line_start\": 56, \"line_end\": 56, \"display_ref\": \"14\"}]}",
+      "recovered_items": 14,
+      "strict_items": 7,
+      "unrecovered": [
+       {
+        "display_ref": "4",
+        "index": 4,
+        "reason": "display reference is absent from expanded evidence span"
+       },
+       {
+        "display_ref": "7",
+        "index": 8,
+        "reason": "display reference is absent from expanded evidence span"
+       },
+       {
+        "display_ref": "8",
+        "index": 10,
+        "reason": "display reference is absent from expanded evidence span"
+       },
+       {
+        "display_ref": "10",
+        "index": 16,
+        "reason": "display reference is absent from expanded evidence span"
+       }
+      ]
+     }
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "1",
+       "evidence_text": "1. Approve the minutes of the Public Utilities Committee meeting of December \n16, 2015.",
+       "title": "Approve minutes of December 16, 2015 Public Utilities Committee meeting"
+      },
+      {
+       "display_ref": "2",
+       "evidence_text": "2. The first five speakers signed up prior to the meeting being called to order \nwill each be allowed three minutes to address their concerns regarding items \nnot posted on the agenda.",
+       "title": "Set speaker time limits for general citizen communication"
+      },
+      {
+       "display_ref": "3",
+       "evidence_text": "3. Approve an ordinance authorizing negotiation and execution of an amended \nwastewater cost reimbursement agreement with Club Deal 120 Whisper \nValley, L.P., for the design and construction of a phased wastewater \n \n \ntreatment plant and wastewater interceptor in an amount not to exceed \n$18,194,779 (which represents an increase of $3,394,779).  This ordinance \nwould supersede ordinances 20070607-004, 20100527-006, 20100826-004, \n20130117-015, and 20140807-013 and would waive City Code Section 25-9-\n33, 25-9-62, 25-9-63, 25-9-64 and resolution 20080214-055.",
+       "title": "Approve ordinance for amended wastewater reimbursement agreement with Club Deal 120 Whisper Valley"
+      },
+      {
+       "display_ref": "4",
+       "evidence_text": "4. Briefing and public comment regarding telecommunication infrastructure.",
+       "title": "Briefing and public comment on telecommunication infrastructure"
+      },
+      {
+       "display_ref": "5",
+       "evidence_text": "5. Briefing and public comment regarding the schedule and status of floodplain \nmap changes.",
+       "title": "Briefing and public comment on floodplain map changes"
+      },
+      {
+       "display_ref": "6",
+       "evidence_text": "6. Briefing and public comment regarding fire demand water charge practices.",
+       "title": "Briefing and public comment on fire demand water charge practices"
+      },
+      {
+       "display_ref": "7",
+       "evidence_text": "7. Briefing on Water Billing Audit.",
+       "title": "Staff briefing on Water Billing Audit"
+      },
+      {
+       "display_ref": "8",
+       "evidence_text": "8. Discussion of future agenda items.",
+       "title": "Discussion of future agenda items"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Approve minutes of December 16, 2015 Public Utilities Committee meeting\", \"display_ref\": \"1\", \"evidence_quote\": \"1. Approve the minutes of the Public Utilities Committee meeting of December 16, 2015.\", \"line_start\": 30, \"line_end\": 31}, {\"title\": \"Set speaker time limits for general citizen communication\", \"display_ref\": \"2\", \"evidence_quote\": \"2. The first five speakers signed up prior to the meeting being called to order will each be allowed three minutes to address their concerns regarding items not posted on the agenda.\", \"line_start\": 35, \"line_end\": 37}, {\"title\": \"Approve ordinance for amended wastewater reimbursement agreement with Club Deal 120 Whisper Valley\", \"display_ref\": \"3\", \"evidence_quote\": \"3. Approve an ordinance authorizing negotiation and execution of an amended wastewater cost reimbursement agreement with Club Deal 120 Whisper Valley, L.P., for the design and construction of a phased wastewater treatment plant and wastewater interceptor in an amount not to exceed $18,194,779 (which represents an increase of $3,394,779).  This ordinance would supersede ordinances 20070607-004, 20100527-006, 20100826-004, 20130117-015, and 20140807-013 and would waive City Code Section 25-9-33, 25-9-62, 25-9-63, 25-9-64 and resolution 20080214-055.\", \"line_start\": 41, \"line_end\": 50}, {\"title\": \"Briefing and public comment on telecommunication infrastructure\", \"display_ref\": \"4\", \"evidence_quote\": \"4. Briefing and public comment regarding telecommunication infrastructure.\", \"line_start\": 54, \"line_end\": 54}, {\"title\": \"Briefing and public comment on floodplain map changes\", \"display_ref\": \"5\", \"evidence_quote\": \"5. Briefing and public comment regarding the schedule and status of floodplain map changes.\", \"line_start\": 56, \"line_end\": 57}, {\"title\": \"Briefing and public comment on fire demand water charge practices\", \"display_ref\": \"6\", \"evidence_quote\": \"6. Briefing and public comment regarding fire demand water charge practices.\", \"line_start\": 59, \"line_end\": 59}, {\"title\": \"Staff briefing on Water Billing Audit\", \"display_ref\": \"7\", \"evidence_quote\": \"7. Briefing on Water Billing Audit.\", \"line_start\": 63, \"line_end\": 63}, {\"title\": \"Discussion of future agenda items\", \"display_ref\": \"8\", \"evidence_quote\": \"8. Discussion of future agenda items.\", \"line_start\": 67, \"line_end\": 67}]}",
+     "score": {
+      "chapters": 9,
+      "conflicted": 0,
+      "items": 8,
+      "mapped": 8,
+      "matched": 8
+     },
+     "seconds": 56.4,
+     "uid": "13a7ccd6cec16a73",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": null,
+       "evidence_text": "CALL\u00a0TO\u00a0ORDER",
+       "title": "Call to order of Planning and Neighborhoods Committee meeting"
+      },
+      {
+       "display_ref": "1",
+       "evidence_text": "1. Approve\u00a0the\u00a0minutes\u00a0of\u00a0the\u00a0Planning\u00a0and\u00a0Neighborhoods\u00a0Committee\nmeeting\u00a0of\u00a0May\u00a024,\u00a02016.",
+       "title": "Approve minutes of May 24, 2016 committee meeting"
+      },
+      {
+       "display_ref": "3",
+       "evidence_text": "3. Discussion\u00a0and\u00a0possible\u00a0action\u00a0regarding\u00a0the\u00a0appointment\u00a0of\u00a0one\ncommunity\u00a0member\u00a0to\u00a0the\u00a0Visitor\u00a0Impact\u00a0Task\u00a0Force.\u00a0\u00a0\n(Notes:\u00a0SPONSOR:\u00a0Council\u00a0Member\u00a0Gregorio\u00a0Casar,\u00a0CO1:\u00a0Council\nMember\u00a0Sabino\u00a0\"Pio\"\u00a0Renteria)",
+       "title": "Discuss and possibly appoint community member to Visitor Impact Task Force"
+      },
+      {
+       "display_ref": "5",
+       "evidence_text": "5. Discussion\u00a0of\u00a0future\u00a0agenda\u00a0items.",
+       "title": "Discuss future agenda items"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "ADJOURN",
+       "title": "Adjourn committee meeting"
+      },
+      {
+       "display_ref": "4",
+       "evidence_text": "4. Discussion\u00a0and\u00a0possible\u00a0action\u00a0regarding\u00a0the\u00a0Planning\u00a0and\u00a0Neighborhoods\nCommittee\u00a0meeting\u00a0schedule\u00a0for\u00a0calendar\u00a0year\u00a02017.\n12/9/2016 <A>\nhttps://austin.siretechnologies.com/sirepub/cache/2/amny1a1r0cqffutod5tv1wze/129812092016061628340.htm 2/2\n(Notes:\u00a0SPONSOR:\u00a0Council\u00a0Member\u00a0Gregorio\u00a0Casar,\u00a0CO\u00a01:\u00a0Mayor\u00a0Pro\nTem\u00a0Kathie\u00a0Tovo)",
+       "title": "Discuss and possibly act on 2017 committee meeting schedule"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Call to order of Planning and Neighborhoods Committee meeting\", \"evidence_quote\": \"CALL TO ORDER\", \"line_start\": 25, \"line_end\": 25}, {\"title\": \"Approve minutes of May 24, 2016 committee meeting\", \"display_ref\": \"1\", \"evidence_quote\": \"1. Approve the minutes of the Planning and Neighborhoods Committee\\nmeeting of May 24, 2016.\", \"line_start\": 29, \"line_end\": 30}, {\"title\": \"Discuss and possibly appoint community member to Visitor Impact Task Force\", \"display_ref\": \"3\", \"evidence_quote\": \"3. Discussion and possible action regarding the appointment of one\\ncommunity member to the Visitor Impact Task Force.  \\n(Notes: SPONSOR: Council Member Gregorio Casar, CO1: Council\\nMember Sabino \\\"Pio\\\" Renteria)\", \"line_start\": 40, \"line_end\": 43}, {\"title\": \"Discuss and possibly act on 2017 committee meeting schedule\", \"display_ref\": \"4\", \"evidence_quote\": \"4. Discussion and possible action regarding the Planning and Neighborhoods\\nCommittee meeting schedule for calendar year 2017.\\n(Notes: SPONSOR: Council Member Gregorio Casar, CO 1: Mayor Pro\\nTem Kathie Tovo)\", \"line_start\": 45, \"line_end\": 50}, {\"title\": \"Discuss future agenda items\", \"display_ref\": \"5\", \"evidence_quote\": \"5. Discussion of future agenda items.\", \"line_start\": 54, \"line_end\": 54}, {\"title\": \"Adjourn committee meeting\", \"evidence_quote\": \"ADJOURN\", \"line_start\": 56, \"line_end\": 56}]}",
+     "score": {
+      "chapters": 4,
+      "conflicted": 0,
+      "items": 6,
+      "mapped": 3,
+      "matched": 3
+     },
+     "seconds": 46.4,
+     "uid": "480e4f4f68a4951f",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": null,
+       "evidence_text": "CALL TO ORDER AND ROLL CALL 6:00 PM",
+       "title": "Call to order and roll call"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "ADJOURNMENT 8:30 PM",
+       "title": "Adjournment"
+      },
+      {
+       "display_ref": "2.b",
+       "evidence_text": "b. Discussion and possible action on the March 27, 2017 meeting minutes;",
+       "title": "Discussion and possible action on March 27, 2017 meeting minutes"
+      },
+      {
+       "display_ref": "3.a",
+       "evidence_text": "a. Discussion and possible action on the 405 Colorado design development submittal, \nlocated at 405 Colorado St., seeking review for substantial compliance with the \nUrban Design Guidelines for Austin in accordance with the Gatekeeper requirements \nof LDC 25-2-586 for the Downtown Density Bonus Program (Michele Haussmann, \nPrincipal, Land Use Solutions)",
+       "title": "Discussion and possible action on 405 Colorado design development submittal"
+      },
+      {
+       "display_ref": "3.b",
+       "evidence_text": "b. Discussion and possible action on the Austin Energy SHINES project, located at 3412 \nZach Scott Street, seeking support for the project under Resolution No. 20071129-\n046 and review of Alternative Equivalent Compliance under Subchapter E of the Land \nDevelopment Code (Greg Ulcak, P.E., Civil Land Group, LLC)",
+       "title": "Discussion and possible action on Austin Energy SHINES project"
+      },
+      {
+       "display_ref": "3.c",
+       "evidence_text": "c. Discussion and possible action on the 4th Street Skybridge project connecting the \n6:30 PM \n\nPage 2 of 3 \nAustin Convention Center and the Hilton Hotel, located at 400 \u00bd  Neches St., seeking \na recommendation to Planning Commission and Council to authorize the approval of \nan encroachment agreement (Nikelle Meade, Partner, Husch Blackwell LLP)",
+       "title": "Discussion and possible action on 4th Street Skybridge project"
+      },
+      {
+       "display_ref": "3.d",
+       "evidence_text": "d. Discussion and possible action on Election of Officers",
+       "title": "Discussion and possible action on Election of Officers"
+      },
+      {
+       "display_ref": "4.a",
+       "evidence_text": "a. Discussion and possible action on the Convention Center expansion plan (C. Kenny)",
+       "title": "Discussion and possible action on Convention Center expansion plan"
+      },
+      {
+       "display_ref": "4.b",
+       "evidence_text": "b. Discussion and possible action on the CodeNEXT draft code and map (D. Carroll)",
+       "title": "Discussion and possible action on CodeNEXT draft code and map"
+      },
+      {
+       "display_ref": "4.c",
+       "evidence_text": "c. Discussion and possible action on the Infrastructure Design Guidelines as directed \nby City Council Resolution No. 20120816-060 including discussion of New York City \nguidelines (Chair Taniguchi)",
+       "title": "Discussion and possible action on Infrastructure Design Guidelines"
+      },
+      {
+       "display_ref": "5.a",
+       "evidence_text": "a. Standing Committees Reports;",
+       "title": "Standing Committees Reports"
+      },
+      {
+       "display_ref": "5.b",
+       "evidence_text": "b. Working Group Reports;",
+       "title": "Working Group Reports"
+      },
+      {
+       "display_ref": "5.c",
+       "evidence_text": "c. Liaison Reports;",
+       "title": "Liaison Reports"
+      },
+      {
+       "display_ref": "5.d",
+       "evidence_text": "d. Appointment of Committee/Working Group members by Chair.",
+       "title": "Appointment of Committee/Working Group members by Chair"
+      },
+      {
+       "display_ref": "6.a",
+       "evidence_text": "a. Tree fund (Raymundo Minjarez, Interim City Architect, COA Public Works Dept.)",
+       "title": "Staff briefing on Tree fund"
+      },
+      {
+       "display_ref": "7.a",
+       "evidence_text": "a. Agent of Change proposal (May 22)",
+       "title": "Future agenda item: Agent of Change proposal"
+      },
+      {
+       "display_ref": "7.b",
+       "evidence_text": "b. CodeNEXT presentation (May 22, June 21, or July 19)",
+       "title": "Future agenda item: CodeNEXT presentation"
+      },
+      {
+       "display_ref": "7.c",
+       "evidence_text": "c. Downtown Commission Liaison",
+       "title": "Future agenda item: Downtown Commission Liaison"
+      },
+      {
+       "display_ref": "8.a",
+       "evidence_text": "8:00 PM \n6. STAFF BRIEFINGS:  \na. Tree fund (Raymundo Minjarez, Interim City Architect, COA Public Works Dept.) \n \n8:10 PM \n7. FUTURE AGENDA ITEMS:  \na. Agent of Change proposal (May 22) \nb. CodeNEXT presentation (May 22, June 21, or July 19) \nc. Downtown Commission Liaison \n \n8:10 PM \n8. ANNOUNCEMENTS: \na. Chair Announcements;",
+       "title": "Chair Announcements"
+      },
+      {
+       "display_ref": "8.b",
+       "evidence_text": "b. Items from Commission Members;",
+       "title": "Items from Commission Members"
+      },
+      {
+       "display_ref": "8.c",
+       "evidence_text": "c. Items from City Staff;",
+       "title": "Items from City Staff"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Call to order and roll call\", \"evidence_quote\": \"CALL TO ORDER AND ROLL CALL 6:00 PM \", \"line_start\": 27, \"line_end\": 27}, {\"title\": \"Discussion and possible action on March 27, 2017 meeting minutes\", \"evidence_quote\": \"b. Discussion and possible action on the March 27, 2017 meeting minutes;  \", \"line_start\": 35, \"line_end\": 35, \"display_ref\": \"2.b\"}, {\"title\": \"Discussion and possible action on 405 Colorado design development submittal\", \"evidence_quote\": \"a. Discussion and possible action on the 405 Colorado design development submittal, located at 405 Colorado St., seeking review for substantial compliance with the Urban Design Guidelines for Austin in accordance with the Gatekeeper requirements of LDC 25-2-586 for the Downtown Density Bonus Program (Michele Haussmann, Principal, Land Use Solutions)  \", \"line_start\": 40, \"line_end\": 44, \"display_ref\": \"3.a\"}, {\"title\": \"Discussion and possible action on Austin Energy SHINES project\", \"evidence_quote\": \"b. Discussion and possible action on the Austin Energy SHINES project, located at 3412 Zach Scott Street, seeking support for the project under Resolution No. 20071129-046 and review of Alternative Equivalent Compliance under Subchapter E of the Land Development Code (Greg Ulcak, P.E., Civil Land Group, LLC) \", \"line_start\": 45, \"line_end\": 48, \"display_ref\": \"3.b\"}, {\"title\": \"Discussion and possible action on 4th Street Skybridge project\", \"evidence_quote\": \"c. Discussion and possible action on the 4th Street Skybridge project connecting the Austin Convention Center and the Hilton Hotel, located at 400 \u00bd  Neches St., seeking a recommendation to Planning Commission and Council to authorize the approval of an encroachment agreement (Nikelle Meade, Partner, Husch Blackwell LLP) \", \"line_start\": 49, \"line_end\": 55, \"display_ref\": \"3.c\"}, {\"title\": \"Discussion and possible action on Election of Officers\", \"evidence_quote\": \"d. Discussion and possible action on Election of Officers\", \"line_start\": 56, \"line_end\": 56, \"display_ref\": \"3.d\"}, {\"title\": \"Discussion and possible action on Convention Center expansion plan\", \"evidence_quote\": \"a. Discussion and possible action on the Convention Center expansion plan (C. Kenny) \", \"line_start\": 59, \"line_end\": 59, \"display_ref\": \"4.a\"}, {\"title\": \"Discussion and possible action on CodeNEXT draft code and map\", \"evidence_quote\": \"b. Discussion and possible action on the CodeNEXT draft code and map (D. Carroll) \", \"line_start\": 60, \"line_end\": 60, \"display_ref\": \"4.b\"}, {\"title\": \"Discussion and possible action on Infrastructure Design Guidelines\", \"evidence_quote\": \"c. Discussion and possible action on the Infrastructure Design Guidelines as directed by City Council Resolution No. 20120816-060 including discussion of New York City guidelines (Chair Taniguchi) \", \"line_start\": 61, \"line_end\": 63, \"display_ref\": \"4.c\"}, {\"title\": \"Standing Committees Reports\", \"evidence_quote\": \"a. Standing Committees Reports; \", \"line_start\": 67, \"line_end\": 67, \"display_ref\": \"5.a\"}, {\"title\": \"Working Group Reports\", \"evidence_quote\": \"b. Working Group Reports; \", \"line_start\": 68, \"line_end\": 68, \"display_ref\": \"5.b\"}, {\"title\": \"Liaison Reports\", \"evidence_quote\": \"c. Liaison Reports;  \", \"line_start\": 69, \"line_end\": 69, \"display_ref\": \"5.c\"}, {\"title\": \"Appointment of Committee/Working Group members by Chair\", \"evidence_quote\": \"d. Appointment of Committee/Working Group members by Chair. \", \"line_start\": 70, \"line_end\": 70, \"display_ref\": \"5.d\"}, {\"title\": \"Staff briefing on Tree fund\", \"evidence_quote\": \"a. Tree fund (Raymundo Minjarez, Interim City Architect, COA Public Works Dept.) \", \"line_start\": 73, \"line_end\": 73, \"display_ref\": \"6.a\"}, {\"title\": \"Future agenda item: Agent of Change proposal\", \"evidence_quote\": \"a. Agent of Change proposal (May 22) \", \"line_start\": 77, \"line_end\": 77, \"display_ref\": \"7.a\"}, {\"title\": \"Future agenda item: CodeNEXT presentation\", \"evidence_quote\": \"b. CodeNEXT presentation (May 22, June 21, or July 19) \", \"line_start\": 78, \"line_end\": 78, \"display_ref\": \"7.b\"}, {\"title\": \"Future agenda item: Downtown Commission Liaison\", \"evidence_quote\": \"c. Downtown Commission Liaison \", \"line_start\": 79, \"line_end\": 79, \"display_ref\": \"7.c\"}, {\"title\": \"Chair Announcements\", \"evidence_quote\": \"a. Chair Announcements; \", \"line_start\": 83, \"line_end\": 83, \"display_ref\": \"8.a\"}, {\"title\": \"Items from Commission Members\", \"evidence_quote\": \"b. Items from Commission Members;  \", \"line_start\": 84, \"line_end\": 84, \"display_ref\": \"8.b\"}, {\"title\": \"Items from City Staff\", \"evidence_quote\": \"c. Items from City Staff; \", \"line_start\": 85, \"line_end\": 85, \"display_ref\": \"8.c\"}, {\"title\": \"Adjournment\", \"evidence_quote\": \"ADJOURNMENT 8:30 PM \", \"line_start\": 88, \"line_end\": 88}]}",
+     "score": {
+      "chapters": 11,
+      "conflicted": 0,
+      "items": 21,
+      "mapped": 8,
+      "matched": 8
+     },
+     "seconds": 71.3,
+     "uid": "78c1b7882e4ef6bb",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": null,
+       "evidence_text": "CALL TO ORDER",
+       "title": "Call to order"
+      },
+      {
+       "display_ref": "1",
+       "evidence_text": "1. Approval of the minutes of the Regional Affordability Committee meeting of January 23, 2019.",
+       "title": "Approval of January 23, 2019 Regional Affordability Committee minutes"
+      },
+      {
+       "display_ref": "3",
+       "evidence_text": "3. Strategic Initiative 1 - Affordable and Attainable Housing: Briefing and discussion by the Austin \nTenant\u2019s Council on evictions in Central Texas\nCo-Sponsors: Chair Garza, Member Ellis, Member Harper-Madison",
+       "title": "Briefing and discussion on evictions in Central Texas by Austin Tenant\u2019s Council"
+      },
+      {
+       "display_ref": "4",
+       "evidence_text": "4. Strategic Initiative 3 - Government Efficiency: Briefing and discussion on the possible impact of \nrevenue caps on the City of Austin budget\nCo-Sponsors: Chair Garza, Member Ellis, Member Harper-Madison",
+       "title": "Briefing and discussion on impact of revenue caps on City of Austin budget"
+      },
+      {
+       "display_ref": "5",
+       "evidence_text": "5. Strategic Initiative 3 - Government Efficiency: Discussion on Regional Affordability Committee \nPriorities\nCo-Sponsors: Chair Garza, Member Ellis, Member Harper-Madison",
+       "title": "Discussion on Regional Affordability Committee priorities"
+      },
+      {
+       "display_ref": "6",
+       "evidence_text": "6. Identify items to be discussed at future meetings.",
+       "title": "Identify items for future meetings"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "ADJOURN",
+       "title": "Adjournment"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Call to order\", \"evidence_quote\": \"CALL TO ORDER\", \"line_start\": 24, \"line_end\": 24, \"display_ref\": null}, {\"title\": \"Approval of January 23, 2019 Regional Affordability Committee minutes\", \"evidence_quote\": \"1. Approval of the minutes of the Regional Affordability Committee meeting of January 23, 2019.\", \"line_start\": 26, \"line_end\": 26, \"display_ref\": \"1\"}, {\"title\": \"Briefing and discussion on evictions in Central Texas by Austin Tenant\u2019s Council\", \"evidence_quote\": \"3. Strategic Initiative 1 - Affordable and Attainable Housing: Briefing and discussion by the Austin Tenant\u2019s Council on evictions in Central Texas\\nCo-Sponsors: Chair Garza, Member Ellis, Member Harper-Madison\", \"line_start\": 31, \"line_end\": 33, \"display_ref\": \"3\"}, {\"title\": \"Briefing and discussion on impact of revenue caps on City of Austin budget\", \"evidence_quote\": \"4. Strategic Initiative 3 - Government Efficiency: Briefing and discussion on the possible impact of revenue caps on the City of Austin budget\\nCo-Sponsors: Chair Garza, Member Ellis, Member Harper-Madison\", \"line_start\": 34, \"line_end\": 36, \"display_ref\": \"4\"}, {\"title\": \"Discussion on Regional Affordability Committee priorities\", \"evidence_quote\": \"5. Strategic Initiative 3 - Government Efficiency: Discussion on Regional Affordability Committee Priorities\\nCo-Sponsors: Chair Garza, Member Ellis, Member Harper-Madison\", \"line_start\": 37, \"line_end\": 39, \"display_ref\": \"5\"}, {\"title\": \"Identify items for future meetings\", \"evidence_quote\": \"6. Identify items to be discussed at future meetings.\", \"line_start\": 41, \"line_end\": 41, \"display_ref\": \"6\"}, {\"title\": \"Adjournment\", \"evidence_quote\": \"ADJOURN\", \"line_start\": 42, \"line_end\": 42, \"display_ref\": null}]}",
+     "score": {
+      "chapters": 6,
+      "conflicted": 0,
+      "items": 7,
+      "mapped": 5,
+      "matched": 6
+     },
+     "seconds": 32.7,
+     "uid": "903005afe8542810",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "TSC19-035",
+       "evidence_text": "Consider the approval of the Traffic Safety Commission meeting minutes of July 1, 2019.TSC19-035",
+       "title": "Consider approval of Traffic Safety Commission meeting minutes of July 1, 2019"
+      },
+      {
+       "display_ref": "TSC19-037",
+       "evidence_text": "Receive a report regarding the installation of NO PARKING signs along Duchess Drive.TSC19-037",
+       "title": "Receive report regarding installation of NO PARKING signs along Duchess Drive"
+      },
+      {
+       "display_ref": "items",
+       "evidence_text": "A.  Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Traffic Safety \nCommission or the public with specific factual information or recitation of policy, or accept a proposal to place \nthe matter on the agenda for an upcoming meeting  AND  Under Section 551.0415 of the Texas Open \nMeetings Act, provide reports about items of community interest regarding which no action will be taken, to \ninclude: expressions of thanks, congratulations, or condolence; information regarding holiday schedules; an \nhonorary or salutary recognition of a public official, public employee, or other citizen; a reminder about an \nupcoming event organized or sponsored by the governing body; information regarding a social, ceremonial, or \ncommunity event organized or sponsored by an entity other than the governing body that was attended or is \nscheduled to be attended by a member of the governing body or an official or employee of the municipality; or \nan announcement involving an imminent threat to the public health and safety of people in the municipality that \nhas arisen after the posting of the agenda.",
+       "title": "Respond to inquiries and provide community interest reports under Texas Open Meetings Act"
+      },
+      {
+       "display_ref": "TSC19-036",
+       "evidence_text": "Receive a report and hold a discussion regarding Article III of the City Code which \ngoverns boards, commissions, and committees and vote on the absence report code for \nDaniel Krutka for the July 1, 2019 meeting date.\nTSC19-036",
+       "title": "Receive report and discuss Article III of City Code and vote on absence report code for Daniel Krutka"
+      },
+      {
+       "display_ref": "TSC19-038",
+       "evidence_text": "Receive a report and hold a discussion about pedestrian, bicycle, and motor vehicle \naccident statistics in the City of Denton.\nTSC19-038",
+       "title": "Receive report and discuss pedestrian, bicycle, and motor vehicle accident statistics"
+      },
+      {
+       "display_ref": "TSC19-040",
+       "evidence_text": "Receive a report, hold a discussion and provide direction to staff regarding the Highland \nStreet protected bike lane demonstration project.\nTSC19-040",
+       "title": "Receive report, discuss, and provide direction on Highland Street protected bike lane demonstration project"
+      },
+      {
+       "display_ref": "TSC19-041",
+       "evidence_text": "Receive a report and hold a discussion regarding the treatment of uncontrolled \nintersections within the City of Denton.\nTSC19-041",
+       "title": "Receive report and discuss treatment of uncontrolled intersections"
+      },
+      {
+       "display_ref": "TSC19-042",
+       "evidence_text": "Receive a report and hold a discussion regarding the Bond Committee ballot proposal \npackage inclusions.\nTSC19-042",
+       "title": "Receive report and discuss Bond Committee ballot proposal package inclusions"
+      },
+      {
+       "display_ref": "TSC19-043",
+       "evidence_text": "Receive nominations and hold an election for a new Chair of the Traffic Safety \nCommission.  If necessary, receive nominations and hold an election for a new Vice -Chair \nof the Traffic Safety Commission.\nTSC19-043",
+       "title": "Receive nominations and hold election for Chair and Vice-Chair of Traffic Safety Commission"
+      },
+      {
+       "display_ref": "TSC19-044",
+       "evidence_text": "1. Street Construction Report\n2. Matrix\nTSC19-044",
+       "title": "Receive Street Construction Report staff report"
+      },
+      {
+       "display_ref": "TSC19-044",
+       "evidence_text": "2. Matrix\nTSC19-044",
+       "title": "Receive Matrix staff report"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Consider approval of Traffic Safety Commission meeting minutes of July 1, 2019\", \"evidence_quote\": \"Consider the approval of the Traffic Safety Commission meeting minutes of July 1, 2019.\", \"line_start\": 13, \"line_end\": 13, \"display_ref\": \"TSC19-035\"}, {\"title\": \"Receive report and discuss Article III of City Code and vote on absence report code for Daniel Krutka\", \"evidence_quote\": \"Receive a report and hold a discussion regarding Article III of the City Code which governs boards, commissions, and committees and vote on the absence report code for Daniel Krutka for the July 1, 2019 meeting date.\", \"line_start\": 15, \"line_end\": 17, \"display_ref\": \"TSC19-036\"}, {\"title\": \"Receive report regarding installation of NO PARKING signs along Duchess Drive\", \"evidence_quote\": \"Receive a report regarding the installation of NO PARKING signs along Duchess Drive.\", \"line_start\": 23, \"line_end\": 23, \"display_ref\": \"TSC19-037\"}, {\"title\": \"Receive report and discuss pedestrian, bicycle, and motor vehicle accident statistics\", \"evidence_quote\": \"Receive a report and hold a discussion about pedestrian, bicycle, and motor vehicle accident statistics in the City of Denton.\", \"line_start\": 27, \"line_end\": 28, \"display_ref\": \"TSC19-038\"}, {\"title\": \"Receive report, discuss, and provide direction on Highland Street protected bike lane demonstration project\", \"evidence_quote\": \"Receive a report, hold a discussion and provide direction to staff regarding the Highland Street protected bike lane demonstration project.\", \"line_start\": 33, \"line_end\": 34, \"display_ref\": \"TSC19-040\"}, {\"title\": \"Receive report and discuss treatment of uncontrolled intersections\", \"evidence_quote\": \"Receive a report and hold a discussion regarding the treatment of uncontrolled intersections within the City of Denton.\", \"line_start\": 39, \"line_end\": 40, \"display_ref\": \"TSC19-041\"}, {\"title\": \"Receive report and discuss Bond Committee ballot proposal package inclusions\", \"evidence_quote\": \"Receive a report and hold a discussion regarding the Bond Committee ballot proposal package inclusions.\", \"line_start\": 45, \"line_end\": 46, \"display_ref\": \"TSC19-042\"}, {\"title\": \"Receive nominations and hold election for Chair and Vice-Chair of Traffic Safety Commission\", \"evidence_quote\": \"Receive nominations and hold an election for a new Chair of the Traffic Safety Commission.  If necessary, receive nominations and hold an election for a new Vice -Chair of the Traffic Safety Commission.\", \"line_start\": 53, \"line_end\": 55, \"display_ref\": \"TSC19-043\"}, {\"title\": \"Receive Street Construction Report staff report\", \"evidence_quote\": \"1. Street Construction Report\", \"line_start\": 59, \"line_end\": 59, \"display_ref\": \"TSC19-044\"}, {\"title\": \"Receive Matrix staff report\", \"evidence_quote\": \"2. Matrix\", \"line_start\": 60, \"line_end\": 60, \"display_ref\": \"TSC19-044\"}, {\"title\": \"Respond to inquiries and provide community interest reports under Texas Open Meetings Act\", \"evidence_quote\": \"A.  Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Traffic Safety Commission or the public with specific factual information or recitation of policy, or accept a proposal to place the matter on the agenda for an upcoming meeting  AND  Under Section 551.0415 of the Texas Open Meetings Act, provide reports about items of community interest regarding which no action will be taken, to include: expressions of thanks, congratulations, or condolence; information regarding holiday schedules; an honorary or salutary recognition of a public official, public employee, or other citizen; a reminder about an upcoming event organized or sponsored by the governing body; information regarding a social, ceremonial, or community event organized or sponsored by an entity other than the governing body that was attended or is scheduled to be attended by a member of the governing body or an official or employee of the municipality; or an announcement involving an imminent threat to the public health and safety of people in the municipality that has arisen after the posting of the agenda.\", \"line_start\": 66, \"line_end\": 76, \"display_ref\": null}]}",
+     "score": {
+      "chapters": 9,
+      "conflicted": 0,
+      "items": 11,
+      "mapped": 9,
+      "matched": 9
+     },
+     "seconds": 41.6,
+     "uid": "4bce4427390b385e",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "1.",
+       "evidence_text": "1.\nHold A Public Hearing, Present, and Discuss the\nTown of Addison's Proposed Property Tax Rate for the Fiscal Year Commencing October 1, 2019 and Ending September 30, 2020.",
+       "title": "Public Hearing and Discussion on Proposed Property Tax Rate FY2020"
+      },
+      {
+       "display_ref": "2.",
+       "evidence_text": "2.\nHold a Public Hearing, Present, and Discuss the\nTown of Addison's Annual Budget for the Fiscal Year Commencing October 1, 2019 and Ending September 30, 2020.",
+       "title": "Public Hearing and Discussion on Annual Budget FY2020"
+      },
+      {
+       "display_ref": null,
+       "evidence_text": "Adjourn Meeting",
+       "title": "Adjourn Meeting"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"display_ref\": \"1.\", \"title\": \"Public Hearing and Discussion on Proposed Property Tax Rate FY2020\", \"evidence_quote\": \"Hold A Public Hearing, Present, and Discuss the\\nTown of Addison's Proposed Property Tax Rate for the Fiscal Year Commencing October 1, 2019 and Ending September 30, 2020.\", \"line_start\": 13, \"line_end\": 14}, {\"display_ref\": \"2.\", \"title\": \"Public Hearing and Discussion on Annual Budget FY2020\", \"evidence_quote\": \"Hold a Public Hearing, Present, and Discuss the\\nTown of Addison's Annual Budget for the Fiscal Year Commencing October 1, 2019 and Ending September 30, 2020.\", \"line_start\": 19, \"line_end\": 20}, {\"title\": \"Adjourn Meeting\", \"evidence_quote\": \"Adjourn Meeting\", \"line_start\": 26, \"line_end\": 26}]}",
+     "score": {
+      "chapters": 3,
+      "conflicted": 0,
+      "items": 3,
+      "mapped": 2,
+      "matched": 2
+     },
+     "seconds": 13.8,
+     "uid": "ab1cfb601c5c94f0",
+     "valid": true
+    },
+    {
+     "answered": true,
+     "items": [
+      {
+       "display_ref": "items",
+       "evidence_text": "After determining that a quorum is present, the Use -Of-Force Ad Hoc Committee of the City of Denton, \nTexas will convene in a Regular Meeting on Thursday, September 10, 2020, at 6:00 p.m. in the Council Work \nSession Room at City Hall, 215 E. McKinney Street, Denton, Texas at which the following items will be \nconsidered:",
+       "title": "Convene regular meeting after quorum determination"
+      },
+      {
+       "display_ref": "A",
+       "evidence_text": "A.  Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Use -Of-Force Ad \nHoc Committee or the public with specific factual information or recitation of policy, or accept a proposal to \nplace the matter on the agenda for an upcoming meeting  AND  Under Section 551.0415 of the Texas Open \nMeetings Act, provide reports about items of community interest regarding which no action will be taken, to \ninclude: expressions of thanks, congratulations, or condolence; information regarding holiday schedules; an \nhonorary or salutary recognition of a public official, public employee, or other citizen; a reminder about an \nupcoming event organized or sponsored by the governing body; information regarding a social, ceremonial, or \ncommunity event organized or sponsored by an entity other than the governing body that was attended or is \nscheduled to be attended by a member of the governing body or an official or employee of the municipality; or \nan announcement involving an imminent threat to the public health and safety of people in the municipality that \nhas arisen after the posting of the agenda.",
+       "title": "Respond to inquiries and provide reports under Texas Open Meetings Act provisions"
+      },
+      {
+       "display_ref": "UOF20-031A",
+       "evidence_text": "Receive a report, hold a discussion, and provide recommendations to staff regarding \npotential options/models for civilian oversight of the City of Denton Police Department.\nUOF20-031A.",
+       "title": "Receive report, discuss, and recommend on civilian oversight models"
+      },
+      {
+       "display_ref": "UOF20-033B",
+       "evidence_text": "Review and discuss Committee requests for information and agenda items for next \nmeeting and future meetings.\nUOF20-033B.",
+       "title": "Review and discuss committee info requests and future agenda items"
+      }
+     ],
+     "raw_response": "{\"items\": [{\"title\": \"Convene regular meeting after quorum determination\", \"evidence_quote\": \"After determining that a quorum is present, the Use -Of-Force Ad Hoc Committee of the City of Denton, Texas will convene in a Regular Meeting on Thursday, September 10, 2020, at 6:00 p.m. in the Council Work Session Room at City Hall, 215 E. McKinney Street, Denton, Texas at which the following items will be considered:\", \"line_start\": 9, \"line_end\": 12, \"display_ref\": null}, {\"title\": \"Receive report, discuss, and recommend on civilian oversight models\", \"evidence_quote\": \"Receive a report, hold a discussion, and provide recommendations to staff regarding potential options/models for civilian oversight of the City of Denton Police Department.\", \"line_start\": 20, \"line_end\": 21, \"display_ref\": \"UOF20-031A\"}, {\"title\": \"Review and discuss committee info requests and future agenda items\", \"evidence_quote\": \"Review and discuss Committee requests for information and agenda items for next meeting and future meetings.\", \"line_start\": 26, \"line_end\": 27, \"display_ref\": \"UOF20-033B\"}, {\"title\": \"Respond to inquiries and provide reports under Texas Open Meetings Act provisions\", \"evidence_quote\": \"A.  Under Section 551.042 of the Texas Open Meetings Act, respond to inquiries from the Use -Of-Force Ad Hoc Committee or the public with specific factual information or recitation of policy, or accept a proposal to place the matter on the agenda for an upcoming meeting  AND  Under Section 551.0415 of the Texas Open Meetings Act, provide reports about items of community interest regarding which no action will be taken, to include: expressions of thanks, congratulations, or condolence; information regarding holiday schedules; an honorary or salutary recognition of a public official, public employee, or other citizen; a reminder about an upcoming event organized or sponsored by the governing body; information regarding a social, ceremonial, or community event organized or sponsored by an entity other than the governing body that was attended or is scheduled to be attended by a member of the governing body or an official or employee of the municipality; or an announcement involving an imminent threat to the public health and safety of people in the municipality that has arisen after the posting of the agenda.\", \"line_start\": 32, \"line_end\": 42, \"display_ref\": \"A\"}]}",
+     "score": {
+      "chapters": 2,
+      "conflicted": 0,
+      "items": 4,
+      "mapped": 1,
+      "matched": 1
+     },
+     "seconds": 20.9,
+     "uid": "3d4dfc142dd4e2a7",
+     "valid": true
+    }
+   ],
+   "summary": {
+    "answered": 24,
+    "chapters": 227,
+    "conflicted": 13,
+    "contended": true,
+    "episodes": 24,
+    "extra_items": 72,
+    "f1": 0.8668,
+    "inconclusive": false,
+    "items": 215,
+    "mapped": 130,
+    "matched": 188,
+    "median_seconds": 41.6,
+    "precision": 0.9091,
+    "providers": [
+     "orcarouter"
+    ],
+    "recall": 0.8282,
+    "rescorable": 21,
+    "valid": 20,
+    "valid_rate": 0.8333
+   }
+  }
+ },
+ "rescored_at": "2026-09-24T23:52:00+00:00",
+ "run_at": "2026-09-24T21:38:27+00:00",
+ "split": "holdout",
+ "task": "chapter-agenda"
+}

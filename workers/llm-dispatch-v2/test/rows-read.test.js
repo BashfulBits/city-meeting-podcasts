@@ -15,8 +15,10 @@ import {
  * in every cron tick full-scanned it, and nothing ever deleted from it -- 6,400 of a tick's
  * 6,424 rows read at 3,200 accumulated bundles.
  *
- * Two invariants, both applied to every RPC entry point rather than to a hand-picked query list,
- * so a NEW method with the same defect is caught without anyone remembering to add a case here:
+ * Two invariants apply to every recurring coordinator RPC rather than to a hand-picked query
+ * list, so a NEW automated method with the same defect is caught without anyone remembering to
+ * add a case here. The explicitly manual `detailedStats` path is excluded: it is never a
+ * workflow dependency and intentionally trades reads for an operator's one-off diagnosis.
  *
  *   1. No statement may SCAN a growable table (jobs/job_models/bundles/attempts).
  *      `routes` and `scheduler` are exempt: both are bounded by static config, not by traffic.
@@ -95,8 +97,18 @@ function seed(history, { liveQueued = 6 } = {}) {
     insJob.run(`bk${i}`, `kbk${i}`, "d", null, "queued", 1, policy, "tags", 500, 200,
       `payloads/bk${i}.json`, null, null, null, null, null, 0, 0, old + i, old + i);
     insJobModel.run(`bk${i}`, "gemini/gemini-flash-lite", 1, old + i);
+    // An acked-but-not-yet-purged backlog (18k rows in production on 2026-09-24): statements
+    // that look jobs up by id and also filter on state must not walk this by the state index.
+    insJob.run(`pp${i}`, `kpp${i}`, "d", null, "purge_pending", 1, policy, "tags", 500, 200,
+      `payloads/pp${i}.json`, `results/pp${i}.json`, null, null, null, null, 1, 0, old, now);
   }
   db.exec("COMMIT");
+  // Seed uses raw SQL to create historical rows, so it deliberately bypasses the production
+  // queued-count triggers. Mirror the completed one-time migration before measuring recurring
+  // operations; an O(history) migration must never be confused with per-RPC telemetry cost.
+  db.prepare(
+    "UPDATE scheduler SET queued_job_count = ?, queued_job_count_initialized = 1 WHERE id = 1"
+  ).run(history);
 
   // Live working set, identical at every scale.
   const jobs = Array.from({ length: liveQueued }, (_, i) => ({
@@ -124,6 +136,7 @@ async function exerciseAll(fixture) {
 
   recorder.start();
   await run("enqueueBatch", () => coordinator.enqueueBatch(jobs));
+  await run("stats", () => coordinator.stats(now));
   const plan = await run("claimDispatchWindow", () => coordinator.claimDispatchWindow(now, 25));
   const claimed = plan.jobs[0];
   await run("pollBatch", () => coordinator.pollBatch(jobs.map((j) => j.id)));
@@ -139,6 +152,11 @@ async function exerciseAll(fixture) {
         observed_input_tokens: 500, observed_output_tokens: 100, outcome: "success",
         provider_status_code: 200, result_key: `results/${job.id}.json`,
       }))));
+  await run("ackResults", () => coordinator.ackResults([plan.jobs[0].id, "nope"]));
+  await run("retireConsumed", () =>
+    coordinator.retireConsumed(plan.jobs.slice(1).map((job) => ({
+      id: job.id, result_key: `results/${job.id}.json`,
+    }))));
   await run("resolveUnknownBatch", () => coordinator.resolveUnknownBatch(["att-1", "nope"]));
   await run("confirmNeverAccepted", () => coordinator.confirmNeverAccepted(["live-0", "nope"]));
   await run("terminalFeed", () => coordinator.terminalFeed({ updated_at: 0, id: "" }, 20));
@@ -155,6 +173,7 @@ test("no coordinator statement ever full-scans a table that grows with traffic",
   assert.ok(all.length > 30, "expected the RPC surface to issue a meaningful number of statements");
 
   const offenders = [];
+  const tempSorts = [];
   for (const statement of all) {
     let plan;
     try {
@@ -167,6 +186,12 @@ test("no coordinator statement ever full-scans a table that grows with traffic",
       if (scan && GROWABLE_TABLES.includes(scan[1])) {
         offenders.push(`${detail}  <-  ${statement.query.slice(0, 110)}`);
       }
+      if (
+        detail.includes("USE TEMP B-TREE FOR ORDER BY") &&
+        GROWABLE_TABLES.some((table) => statement.query.includes(` ${table}`))
+      ) {
+        tempSorts.push(`${detail}  <-  ${statement.query.slice(0, 110)}`);
+      }
     }
   }
   assert.deepEqual(
@@ -174,6 +199,12 @@ test("no coordinator statement ever full-scans a table that grows with traffic",
     [],
     "a statement full-scans a growable table; add an index or bound the predicate:\n" +
       offenders.join("\n")
+  );
+  assert.deepEqual(
+    tempSorts,
+    [],
+    "a statement temp-sorts a growable table; split multi-state queries or add an ordered index:\n" +
+      tempSorts.join("\n")
   );
 });
 
@@ -201,5 +232,96 @@ test("rows read per operation does not grow with accumulated history", async () 
   assert.ok(
     large.total <= small.total + 40,
     `total rows read scaled with history: ${small.total} -> ${large.total}`
+  );
+});
+
+test("bounded stats preserves the trigger-maintained queue count through a claim", async () => {
+  const { coordinator, now, jobs } = seed(200);
+  await coordinator.enqueueBatch(jobs);
+  const beforeClaim = await coordinator.stats(now);
+  assert.equal(beforeClaim.jobs.by_state.queued, 206);
+
+  const plan = await coordinator.claimDispatchWindow(now, 25);
+  const afterClaim = await coordinator.stats(now);
+  assert.equal(afterClaim.jobs.by_state.queued, 206 - plan.jobs.length);
+});
+
+test("route_failures queries use index and catch unindexed scan regression", async () => {
+  // Test both scales: 20 rows (small) vs 200 rows (10x history)
+  for (const scale of [20, 200]) {
+    const { storage, db } = createRecordingSqlStorage();
+    const coordinator = new LLMSchedulerDO({ storage }, withTestReservations());
+    const now = Date.now();
+
+    db.exec("BEGIN");
+    for (let i = 0; i < scale; i++) {
+      const day = new Date(now - i * 86_400_000).toISOString().slice(0, 10);
+      db.prepare(
+        `INSERT INTO route_failures (
+           utc_day, route_id, failure_class, count, last_status, last_seen_at
+         ) VALUES (?, 'route-a', 'own_rpm', 1, 429, ?)`
+      ).run(day, now - i * 86_400_000);
+    }
+    db.exec("COMMIT");
+
+    // 1. stats() query plan check: must use the primary key index
+    const today = new Date(now).toISOString().slice(0, 10);
+    const statsQuery =
+      "SELECT utc_day, route_id, failure_class, count, last_status, last_seen_at" +
+      " FROM route_failures WHERE utc_day = ? ORDER BY count DESC LIMIT 20";
+    const statsPlan = db.prepare(`EXPLAIN QUERY PLAN ${statsQuery}`).all(today);
+    assert.ok(
+      !statsPlan.some((r) => r.detail.includes("SCAN route_failures")),
+      `stats query plan scanned route_failures at scale ${scale}`
+    );
+    assert.ok(
+      statsPlan.some(
+        (r) =>
+          r.detail.includes("SEARCH route_failures USING INDEX") ||
+          r.detail.includes("SEARCH route_failures USING COVERING INDEX")
+      ),
+      `expected indexed search for stats query at scale ${scale}`
+    );
+
+    // 2. prune query plan check: must use the primary key index
+    const pruneQuery =
+      "SELECT utc_day, route_id, failure_class FROM route_failures" +
+      " WHERE utc_day < ? ORDER BY utc_day ASC LIMIT 10";
+    const prunePlan = db.prepare(`EXPLAIN QUERY PLAN ${pruneQuery}`).all(today);
+    assert.ok(
+      !prunePlan.some((r) => r.detail.includes("SCAN route_failures")),
+      `prune query plan scanned route_failures at scale ${scale}`
+    );
+    assert.ok(
+      prunePlan.some(
+        (r) =>
+          r.detail.includes("SEARCH route_failures USING INDEX") ||
+          r.detail.includes("SEARCH route_failures USING COVERING INDEX")
+      ),
+      `expected indexed search for prune query at scale ${scale}`
+    );
+  }
+
+  // 3. Deliberate mutation: recreate table without PRIMARY KEY.
+  // Proves that the test is sensitive and catches an unindexed SCAN regression.
+  const { db } = createRecordingSqlStorage();
+  db.exec(`
+    CREATE TABLE unindexed_route_failures (
+      utc_day       TEXT    NOT NULL,
+      route_id      TEXT    NOT NULL,
+      failure_class TEXT    NOT NULL,
+      count         INTEGER NOT NULL DEFAULT 0,
+      last_status   INTEGER,
+      last_seen_at  INTEGER NOT NULL
+    );
+  `);
+  const mutatedPlan = db.prepare(
+    "EXPLAIN QUERY PLAN SELECT utc_day, route_id, failure_class, count, last_status, last_seen_at" +
+      " FROM unindexed_route_failures WHERE utc_day = ? ORDER BY count DESC LIMIT 20"
+  ).all("2026-09-09");
+  const hasScan = mutatedPlan.some((r) => r.detail.includes("SCAN unindexed_route_failures"));
+  assert.ok(
+    hasScan,
+    "mutation test failed: removing PRIMARY KEY should have resulted in SCAN"
   );
 });

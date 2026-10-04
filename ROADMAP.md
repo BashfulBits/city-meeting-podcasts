@@ -10,7 +10,38 @@ scale; lower number = sooner.
 > full design + the exhaustive backlog in **[`review/11`](review/11-technical-design-roadmap.md)**.
 > The backlog opens for outside contribution after **1.0** (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
+Maintainer-directed follow-up (2026-10-02): Dallas/Fort Worth aggregate TIF feed migration and
+remedy policy enforcement shipped in #1973/#1974; residual categories A–F are approved and
+are being applied in bounded, evidence-backed city batches. The
+[Arlington batch](review/arlington-coverage-2026-10.md) covers two named bodies while retaining
+explicit identity/investigation holds. Exact-label selection separates committee names from
+distinct public-input formats; the
+[Addison UDC batch](review/addison-udc-coverage-2026-10.md) applies it to three historical
+committee recordings. See
+[coverage policy](review/tif-coverage-2026-10.md) and review/11.
+The [Pflugerville BOA batch](review/pflugerville-boa-coverage-2026-10.md) covers ten verified
+historical identities while documenting unavailable provider media.
+[review/51](review/51-unexpected-body-remedy-flow.md) records the approved improvement structure:
+P1 evaluation/physical-route admission implements the approved scoring/hash contracts and is
+ready for review in #1987; P2–P5 have predecessor-gated build contracts. Duplicate publication has
+a separate L2 design gate before affected feeds activate.
+Approved policy templates and cross-city regression cases will serve both onboarding and
+maintenance, resolving known rules before model calls while requiring verified local identity.
+Alias qualification is narrow and reviewed; incomplete archives require documented exceptions;
+TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues.
+
+Purpose-bound telemetry follow-on **GH#2001** is in implementation under
+[review/52](review/52-purpose-work-telemetry.md), following the maintainer's request on 2026-10-04.
+It enforces producer/unit/coverage contracts, shared submission tracking and automatic report discovery
+without promoting the later incremental eligibility ledger or changing P1–P7 sequencing.
+
 ## Recently shipped (summary)
+
+- **P0 LLM backlog trend:** daily/manual read-only reporting shipped in
+  [PR #1983](https://github.com/BashfulBits/city-meeting-podcasts/pull/1983), accepted against live
+  storage on 2026-10-04. Registry additions and retirements are discovered automatically; missing
+  purpose telemetry remains visibly unmeasured. Design and evidence: [review/50](review/50-p0-llm-verb-backlog-trend.md).
+
 Timeline/EDL foundation; **#52** append-only content permanence; audio-cleanup band (**#22** silence
 trim, **#21** loudness, **#23** host-all, **#122** concat, clips); **#1/#110** ASR transcripts (reuse
 provider transcripts first, self-host the rest); **#11** `<podcast:transcript>`; **#124** status

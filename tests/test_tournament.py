@@ -99,6 +99,18 @@ def test_ticket_uses_the_configured_rolling_window_and_counts_chapters_once(tmp_
     assert estimates["new"]["retained_chapters"] == 1
 
 
+def test_tournament_state_paths_include_only_the_ticket_and_configured_sources():
+    cities = [SimpleNamespace(source_id="first"), SimpleNamespace(source_id="second")]
+
+    paths = tournament._tournament_state_paths(cities)
+
+    assert paths == {
+        tournament.STATE,
+        "sources/first/episodes.json",
+        "sources/second/episodes.json",
+    }
+
+
 def test_route_handoff_validates_the_immutable_ticket_challenger_metadata():
     ticket = {"version": 1, "task": "tag", "challengers": ["challenger"]}
     model = base64.urlsafe_b64encode(b"challenger").decode()
@@ -178,23 +190,21 @@ def test_pairwise_judge_uses_durable_queue_policy():
     assert pending is True
     assert seen[0].inputs["llm_policy"].queue_only is True
     assert seen[0].inputs["llm_policy"].deadline_at is None
+    # This job previously had no explicit max_tokens at all, silently relying on
+    # LiteLLMBackend's generic 1024-token default.
+    assert seen[0].inputs["max_tokens"] == tournament.JUDGE_OUTPUT_TOKEN_BUDGET
 
 
 def test_backend_wires_dispatch_v2_url_from_env(monkeypatch):
-    """Regression test for the 2026-08-18 incident: _backend() used to hand-roll only
-    dispatch_url/dispatch_auth_token, leaving dispatch_v2_url/dispatch_v2_auth_token at
-    LLMBackendConfig's None default regardless of the environment -- so pairwise_judge's own
-    queue_only=True policy (see test_pairwise_judge_uses_durable_queue_policy above) always fell
-    through to the legacy v1 dispatch branch. Building from LLMBackendConfig.from_env() fixes
-    this and any future field added there."""
-    monkeypatch.setenv("LLM_DISPATCH_URL", "https://dispatch-v1.example.com")
-    monkeypatch.setenv("LLM_DISPATCH_AUTH_TOKEN", "v1-token")
+    """Regression test for the 2026-08-18 incident: _backend() used to hand-roll its dispatch
+    config, leaving dispatch_v2_url/dispatch_v2_auth_token at LLMBackendConfig's None default
+    regardless of the environment. Building from LLMBackendConfig.from_env() fixes this and any
+    future field added there."""
     monkeypatch.setenv("LLM_DISPATCH_V2_URL", "https://dispatch-v2.example.com")
     monkeypatch.setenv("LLM_DISPATCH_V2_AUTH_TOKEN", "v2-token")
 
     backend = tournament._backend("gemini/gemini-3-flash-preview", storage=None)
 
-    assert backend.config.dispatch_url == "https://dispatch-v1.example.com"
     assert backend.config.dispatch_v2_url == "https://dispatch-v2.example.com"
     assert backend.config.dispatch_v2_auth_token == "v2-token"
     assert backend.config.model == "gemini/gemini-3-flash-preview"
@@ -217,7 +227,7 @@ def test_run_skips_episode_on_llm_backend_error(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
     monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
     episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
-    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "iter_records", lambda *_a, **_k: iter(({},)))
     monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
     monkeypatch.setattr(
         tournament, "episode_tag_inputs", lambda *_a, **_k: ("titles", "agenda", "transcript")
@@ -238,6 +248,9 @@ def test_run_skips_episode_on_llm_backend_error(tmp_path, monkeypatch, capsys):
 
     assert exit_code == 0
     out = capsys.readouterr().out
+    assert "loading configured source records" in out
+    assert "loading chapter evidence" in out
+    assert "selected 0 chapter sample(s)" in out
     assert "skipping 'ep-1'" in out
     assert "completed 0 sample(s)" in out
 
@@ -260,7 +273,7 @@ def test_run_batches_all_judge_comparisons_into_one_enqueue_call(tmp_path, monke
     monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
     monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
     episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
-    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "iter_records", lambda *_a, **_k: iter(({},)))
     monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
     monkeypatch.setattr(
         tournament,
@@ -297,6 +310,11 @@ def test_run_batches_all_judge_comparisons_into_one_enqueue_call(tmp_path, monke
     judge_backend = FakeJudgeBackend()
     monkeypatch.setattr(tournament, "_backend", lambda _model, _storage: judge_backend)
 
+    telemetry_calls = []
+    monkeypatch.setattr(
+        tournament, "record_stage_activity", lambda **kwargs: telemetry_calls.append(kwargs)
+    )
+
     exit_code = tournament.run(
         site_config_path="config/site_config.yml",
         config_dir="config",
@@ -307,6 +325,14 @@ def test_run_batches_all_judge_comparisons_into_one_enqueue_call(tmp_path, monke
     assert exit_code == 0
     assert len(judge_backend.enqueue_calls) == 1  # one call, not per-comparison calls
     assert len(judge_backend.enqueue_calls[0]) == len(tournament.CONTESTS) * 2
+    # Regression: run() previously never emitted llm_submission_stage telemetry at all -- a blind
+    # spot in the same CI dashboard used to diagnose chapter-agenda/chapter-locator's own
+    # validation-error rates.
+    assert len(telemetry_calls) == 1
+    assert telemetry_calls[0]["lane"] == "tournament"
+    assert telemetry_calls[0]["stage"] == "tournament"
+    assert telemetry_calls[0]["ran"] == 1
+    assert telemetry_calls[0]["errors"] == 0
 
 
 def test_run_handles_pending_job_handles_and_skips_sample_finalization(tmp_path, monkeypatch):
@@ -323,7 +349,7 @@ def test_run_handles_pending_job_handles_and_skips_sample_finalization(tmp_path,
     monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
     monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
     episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
-    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "iter_records", lambda *_a, **_k: iter(({},)))
     monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
     monkeypatch.setattr(
         tournament,
@@ -388,7 +414,7 @@ def test_run_reuses_prior_resolved_comparison_without_dispatch(tmp_path, monkeyp
     monkeypatch.setattr(tournament, "load_city_configs", lambda *_a, **_k: [SimpleNamespace()])
     monkeypatch.setattr(tournament, "source_key", lambda _city: "city")
     episode = SimpleNamespace(uid="ep-1", published="2026-01-01", title="Meeting")
-    monkeypatch.setattr(tournament, "load_records", lambda *_a, **_k: {"ep-1": {}})
+    monkeypatch.setattr(tournament, "iter_records", lambda *_a, **_k: iter(({},)))
     monkeypatch.setattr(tournament, "record_to_episode", lambda _rec: episode)
     monkeypatch.setattr(
         tournament,

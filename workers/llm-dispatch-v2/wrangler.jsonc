@@ -33,94 +33,23 @@
   "triggers": {
     "crons": ["* * * * *"]
   },
+  // Only account-specific, non-secret settings live here. Every numeric tunable (window sizes, retry
+  // budgets, retention, daily caps, ingress budget) moved to config/dispatch_tuning.yml and is compiled
+  // into src/dispatch_tuning.json (scripts/compile_dispatch_tuning.py, drift-checked in the deploy
+  // workflow). Workers Free allows 64 variables per Worker, secrets included; 37 of them were tunables.
+  // A Cloudflare variable of the same name as a tuning key still overrides the compiled value, for
+  // deliberate incident response only; `wrangler deploy` removes any dashboard variable that is not
+  // declared here, so such an override lasts until the next deploy.
   "vars": {
-    "MAX_BUNDLE_JOBS": "5",
-    // Read at most this many indexed queue entries for one capacity-ranked model before moving
-    // to the next model. Exact token/lane checks still run only on these small candidate sets.
-    "MAX_JOBS_PER_MODEL_CLAIM": "4",
-    "MAX_JOBS_PER_ROUTE_PER_BUNDLE": "3",
-    "MAX_CONCURRENT_ROUTE_LANES": "5",
-    "DISPATCH_WINDOW_SECONDS": "25",
-    "CRON_TICK_SECONDS": "60",
-    "MAX_ACTIVE_BUNDLES": "2",
-    "MAX_IN_FLIGHT_LLM_CALLS": "8",
-    // 1,400 of the 1,440 daily cron ticks may claim a bundle (validateConfig requires it stay
-    // under the tick count). Raised from 1,000 on 2026-09-03: at 4 jobs/bundle this lifts the
-    // dispatch ceiling from 4,000 to 5,600 LLM calls/day. See review/44's "Throughput
-    // reconciliation (2026-09-03)" for the write-budget arithmetic behind these three knobs --
-    // in particular why MAX_BUNDLE_JOBS is NOT the knob to raise.
-    "MAX_BUNDLES_PER_UTC_DAY": "1400",
-    // Secondary blast-radius cap. The primary admission budget below is measured in pessimistic
-    // DO writes, so a one-model and a multi-model job do not consume the same unaccounted
-    // capacity. Lowered from 12,000 on 2026-09-03 to sit near the executor's real 5,600/day
-    // drain rate: admitting three times what can be dispatched does not raise throughput, it
-    // grows a backlog while spending the DO write budget that would have funded dispatch.
-    "MAX_JOBS_PER_UTC_DAY": "8000",
-    // Lowered from 30,000 on 2026-09-03 to fund the MAX_BUNDLES_PER_UTC_DAY raise above. The
-    // 100,000/day DO row-write budget is shared between ingestion and dispatch-lifecycle, and
-    // it -- not the 50-subrequest-per-invocation ceiling -- is what actually binds throughput:
-    // 24,000 ingress + 5,600 jobs x ~7 lifecycle writes + 1,400 bundles x ~4 = ~68,800, i.e.
-    // 69% of the ceiling, inside the 75% admission-rejection threshold. The lane reservations
-    // compiled from `llm_lanes` total 13,000, well under this.
-    "MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY": "24000",
-    // Per-purpose ingress budgets now live in config/site_config.yml's `llm_lanes` block and are
-    // compiled into src/ingress_reservations.json by scripts/compile_llm_lanes.py (drift-checked
-    // in llm-dispatch-v2-worker-deploy.yml), so this var is gone. It had drifted to reserve
-    // capacity under keys -- "topic-tags", "moments" -- that no client purpose ever matched
-    // ("topic-tags:tagger", "topic-tags:prelabeler", "r6-moments", "r6-judge"), which withheld
-    // 10,000 of 30,000 daily write units from every real lane while being unusable by the lanes
-    // it named. Setting INGRESS_PURPOSE_RESERVATIONS here again is still honored, but only as a
-    // deliberate incident-time override of the compiled map.
-    "ENQUEUE_BATCH_MAX": "1000",
-    "POLL_BATCH_MAX": "1000",
-    "MAX_RESPONSE_SECONDS": "720",
-    "FINALIZATION_RESERVE_SECONDS": "90",
-    "LEASE_DURATION_SECONDS": "840",
-    "CRON_EXECUTION_LIMIT_SECONDS": "900",
-    "MAX_429_RETRIES": "1",
-    "MAX_429_BACKOFF_SECONDS": "60",
-    // AI Gateway handles the fast five-attempt retry series. A final 5xx gets one durable
-    // fallback attempt on a later cron tick. The failed route is unavailable for 60 seconds,
-    // growing to at most five minutes if this outer retry budget is raised.
-    "MAX_5XX_RETRIES": "1",
-    "MAX_5XX_BACKOFF_SECONDS": "300",
-    "MAX_ROUTE_BUFFER_SECONDS": "120",
-    "UNKNOWN_ATTEMPT_POLICY": "hold",
-    "COMPLETED_RETENTION_DAYS": "38",
-    // Retention for the DO's two append-only bookkeeping tables. Neither has a B2 counterpart
-    // or a client-side reader, so both age out entirely inside the DO. Before this existed
-    // nothing ever deleted from either, and `bundles` was full-scanned twice per cron tick --
-    // the 2026-08-27 rows-read overage. Zero on either per-tick cap is an emergency pause.
-    "BUNDLE_RETENTION_DAYS": "7",
-    "ATTEMPT_RETENTION_DAYS": "7",
-    "MAX_BUNDLE_PRUNE_PER_TICK": "50",
-    "MAX_ATTEMPT_PRUNE_PER_TICK": "50",
-    // Terminal-job + B2 object cleanup (purgePendingBatch/confirmPurge). Runs on the cron tick
-    // whose UTC minute is a multiple of this, not every minute, since each purged job costs up to
-    // two B2 delete subrequests (payload + result keys). 15 costs up to 30, leaving headroom
-    // under the 50-subrequest-per-invocation Free ceiling alongside dispatch's own B2 traffic in
-    // the same invocation -- validateConfig enforces this bound against both knobs together.
-    "CLEANUP_INTERVAL_MINUTES": "60",
-    "PURGE_BATCH_LIMIT": "15",
-    // Conservative upper bound on one provider call's duration, used only to keep the DO from
-    // admitting a job whose planned start technically fits before the dispatch window's end but
-    // would still plausibly still be running past it -- see pacing.js and Unit 4's
-    // routeHasCapacityFor. Deliberately well under MAX_RESPONSE_SECONDS, which is the executor's
-    // actual per-call abort deadline, not an admission-time estimate.
-    "ESTIMATED_CALL_DURATION_CEILING_SECONDS": "20",
-    // Not secret -- a gateway slug, not a credential. Matches workers/llm-dispatch-proxy's own
-    // wrangler.jsonc exactly. gateway.js's resolveProviderCredentials() only routes a call through
-    // AI Gateway when both this and the CLOUDFLARE_ACCOUNT_ID secret are present; omitted, it
-    // falls back to calling each provider directly with no error, no log line, and no other
-    // visible symptom -- confirmed as this deployment's actual state until now: every call landed
-    // straight on the provider, never through the gateway, so nothing showed up in the AI Gateway
-    // dashboard even though dispatch itself was working (see "Why cron pull, not Queue" for why
-    // going through the gateway isn't optional here).
-    "AI_GATEWAY_ID": "citypods-dispatch",
-    "AI_GATEWAY_BASE_URL": ""
+    // Not secret -- a gateway slug, not a credential. gateway.js's resolveProviderCredentials()
+    // builds https://gateway.ai.cloudflare.com/v1/<CLOUDFLARE_ACCOUNT_ID>/<AI_GATEWAY_ID> from this and
+    // the CLOUDFLARE_ACCOUNT_ID secret; if either is missing it silently calls each provider directly
+    // (nothing would show up in the AI Gateway dashboard). AI_GATEWAY_BASE_URL, an optional full-URL
+    // override that was declared empty, is intentionally not set: it is equivalent to absent.
+    "AI_GATEWAY_ID": "citypods-dispatch"
   }
   // Secrets (never plain vars -- set with `wrangler secret put <NAME>`, one time, matching
-  // workers/llm-dispatch-proxy's existing pattern): BEARER_TOKEN (ingress auth), every provider's
+  // the retired v1 Worker's pattern): BEARER_TOKEN (ingress auth), every provider's
   // API_KEY_ENV from config/provider_limits.yml (e.g. GEMINI_API_KEY, MISTRAL_API_KEY --
   // whichever routes this deployment actually dispatches to), AI_GATEWAY_AUTH_TOKEN (Cloudflare
   // AI Gateway's own "Authenticated Gateway" token, independent of provider keys), CLOUDFLARE_

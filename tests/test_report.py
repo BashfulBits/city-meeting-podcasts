@@ -583,17 +583,11 @@ def test_build_status_provider_transcript_rollout_metrics(tmp_path):
     assert pt["align"]["confidence"]["medium"] == 1
     assert pt["active_provenance"]["provider-aligned"] == 2
     assert pt["active_text_timing"] == {"provider+computed": 2}
-    assert pt["diarize"]["work"] == {"done": 1, "queued": 1}
-    assert pt["diarize"]["done"] == 1
-    assert pt["diarize"]["errors"] == {"no-speaker-labels": 1}
-    assert pt["diarize"]["confidence"] == {
-        "count": 1,
-        "low": 0,
-        "medium": 0,
-        "high": 1,
-        "min": 1.0,
-        "avg": 1.0,
-    }
+    # ProviderTranscriptDiarizeStage is retired (review/31 §A.5) -- "diarize" is no longer a key
+    # in the status payload. The fixture above still carries stale diarize_* fields from records
+    # written before retirement, on purpose: status must not choke on them, only stop reporting on
+    # them.
+    assert "diarize" not in pt
 
 
 def test_build_status_transcript_quality_metrics(tmp_path):

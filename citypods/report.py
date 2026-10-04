@@ -995,8 +995,14 @@ def _confidence_summary(values: list[float]) -> dict:
 def _provider_transcript_status(records_cache: dict[str, dict], by_work_class: dict) -> dict:
     """Provider-transcript rollout status for PT-PR7.
 
-    The work manifest owns live align/diarize state; records own fetch/candidate/history confidence
-    and rollback counters. Keep this derived from canonical state so `/admin/status` remains static.
+    The work manifest owns live align state; records own fetch/candidate/history confidence and
+    rollback counters. Keep this derived from canonical state so `/admin/status` remains static.
+
+    Provider-transcript *diarize* status was removed here when ProviderTranscriptDiarizeStage was
+    retired (review/31 §A.5): a citywide survey found its `NAME: text` colon-prefix assumption
+    never matched a single real caption provider, so it never produced a usable label. Align
+    status (a separate, unrelated feature reusing the same provider_transcript record) is
+    unaffected and stays below.
     """
     fetch = {
         "linked": 0,
@@ -1008,9 +1014,6 @@ def _provider_transcript_status(records_cache: dict[str, dict], by_work_class: d
         "rejected_history": 0,
     }
     align_conf: list[float] = []
-    diarize_conf: list[float] = []
-    diarize_done = 0
-    diarize_errors: dict[str, int] = {}
     active_provenance = {
         "provider-native": 0,
         "provider-aligned": 0,
@@ -1048,9 +1051,6 @@ def _provider_transcript_status(records_cache: dict[str, dict], by_work_class: d
                 confidence = known_good.get("confidence")
                 if isinstance(confidence, int | float):
                     align_conf.append(float(confidence))
-                diarize_confidence = known_good.get("diarize_confidence")
-                if isinstance(diarize_confidence, int | float):
-                    diarize_conf.append(float(diarize_confidence))
             if candidate:
                 fetch["candidate"] += 1
                 fetch["rollback_candidates"] += 1
@@ -1061,12 +1061,6 @@ def _provider_transcript_status(records_cache: dict[str, dict], by_work_class: d
                 fetch["rollback_candidates"] += 1
                 if item.get("status") == "rejected":
                     fetch["rejected_history"] += 1
-            speakers = rec.get("speakers") or {}
-            if speakers.get("key"):
-                diarize_done += 1
-            if speakers.get("error"):
-                reason = str(speakers.get("error"))
-                diarize_errors[reason] = diarize_errors.get(reason, 0) + 1
 
     return {
         "fetch": fetch,
@@ -1076,18 +1070,10 @@ def _provider_transcript_status(records_cache: dict[str, dict], by_work_class: d
         },
         "active_provenance": active_provenance,
         "active_text_timing": active_text_timing,
-        "diarize": {
-            "work": by_work_class.get("provider-transcript-diarize", {}),
-            "done": diarize_done,
-            "errors": diarize_errors,
-            "confidence": _confidence_summary(diarize_conf),
-        },
         "operator_recovery": [
             "Re-run the transcript lane after fixing provider transcript source links.",
             "Rejected provider candidates remain in provider_transcript.history for "
             "rollback review.",
-            "Diarize failures do not clear the active provider-align/ASR transcript; "
-            "inspect speakers.error.",
         ],
     }
 

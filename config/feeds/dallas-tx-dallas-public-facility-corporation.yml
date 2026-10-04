@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Dallas Public Facility Corporation"
+  body_any:
+    - "Public Facility Corporation Special Called Meeting"
+    - "PFC Board of Directors"
 podcast_title: "Dallas: Dallas Public Facility Corporation"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+import subprocess
+
 import pytest
 
 from citypods.review_issues import (
@@ -37,6 +40,19 @@ def test_bounded_body_is_utf8_safe_and_leaves_a_visible_artifact_hint():
     assert truncated is True
     assert len(body.encode("utf-8")) <= 100
     assert "workflow run artifact" in body
+
+
+def test_bounded_body_links_the_workflow_artifact_when_provided():
+    body, truncated = bounded_body(
+        "x" * 400,
+        limit=250,
+        artifact_url="https://github.com/example/repo/actions/runs/123",
+    )
+
+    assert truncated is True
+    assert "[full body is in this workflow run artifact]" in body
+    assert "https://github.com/example/repo/actions/runs/123" in body
+    assert len(body.encode("utf-8")) <= 250
 
 
 def test_review_choice_requires_exactly_one_checkbox():
@@ -81,3 +97,44 @@ def test_publication_summary_distinguishes_blocked_from_empty_work():
         published=0,
         reasons=("dispatch capacity exhausted",),
     )
+
+
+@pytest.mark.parametrize(
+    ("stderr", "reason"),
+    [
+        ("ValueError: choose exactly one decision", "no_decision"),
+        (
+            "ValueError: H16 candidate differs from durable media availability field state",
+            "stale_candidate",
+        ),
+    ],
+)
+def test_shared_review_resolver_turns_non_actionable_adapter_errors_into_skips(
+    tmp_path, monkeypatch, capsys, stderr, reason
+):
+    from scripts import resolve_review_issue
+
+    body_file = tmp_path / "issue.md"
+    body_file.write_text(
+        append_envelope("", family="h16", candidate_id="candidate"), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        resolve_review_issue.subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 1, "", stderr),
+    )
+
+    assert (
+        resolve_review_issue.main(
+            [
+                "--issue-number",
+                "123",
+                "--actor",
+                "test",
+                "--body-file",
+                str(body_file),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out)["reason"] == reason

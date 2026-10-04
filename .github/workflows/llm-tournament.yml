@@ -22,7 +22,9 @@ concurrency:
 jobs:
   tournament:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The lane now uses its configured ~46-sample budget. Keep a 15-minute tail after the
+    # sampling step for state persistence and champion-ticket publication.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -33,19 +35,25 @@ jobs:
           cache: pip
       - uses: ./.github/actions/setup-gh-cli
       - run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+      - name: Capture starting LLM worker state
+        env:
+          CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE: ${{ runner.temp }}/llm-submission-telemetry.jsonl
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+        run: |
+          echo "CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE=$CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE" >> "$GITHUB_ENV"
+          python scripts/llm_submission_telemetry.py snapshot start
       - name: Run bounded tag samples
-        # Below the 30-minute job timeout so the champion-ticket step below still runs. A
-        # job-level timeout CANCELS the run, which skips every later step: the sampling work
-        # would be spent and no ticket published, reported as a grey "cancelled" that looks
-        # like someone pressed the button. This step now sizes itself from the lane budget
-        # (~46 samples, up from a hard-coded 2), so it is no longer trivially short.
-        timeout-minutes: 22
+        # Below the job timeout so the champion-ticket step below still runs. A job-level timeout
+        # CANCELS the run, which skips every later step: the sampling work would be spent and no
+        # ticket published, reported as a grey "cancelled" that looks like someone pressed the
+        # button. The sample count now comes from the lane budget (~46 samples), so the step needs
+        # the same 165-minute bounded-work window as the other asynchronous LLM lanes.
+        timeout-minutes: 165
         env:
           LLM_SAFE_DIAGNOSTICS: ${{ inputs.safe_diagnostics && '1' || '0' }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          LLM_DISPATCH_URL: ${{ secrets.LLM_DISPATCH_URL }}
-          LLM_DISPATCH_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
           LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
@@ -86,3 +94,20 @@ jobs:
           python scripts/publish_review_ticket.py --family tournament-tag \
             --label tournament-champion-ticket --title "Tournament champion ticket: tag" \
             --body-file tournament-ticket/ticket.md
+      - name: Summarize LLM submission telemetry
+        if: always()
+        env:
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+        run: |
+          python scripts/llm_submission_telemetry.py snapshot end
+          python scripts/llm_submission_telemetry.py report
+
+      - name: Upload LLM submission telemetry
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: llm-submission-telemetry-${{ github.run_id }}
+          path: ${{ runner.temp }}/llm-submission-telemetry.jsonl
+          if-no-files-found: ignore
+          retention-days: 30

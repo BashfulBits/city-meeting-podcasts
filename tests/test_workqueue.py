@@ -776,23 +776,25 @@ def test_build_manifest_provider_transcript_align_not_marked_done_by_stale_asr_k
     assert tx[0].state == "queued"
 
 
-def test_build_manifest_provider_transcript_diarize_queued_after_align_selected():
+def test_build_manifest_still_emits_provider_transcript_align_after_selection():
     recs = {"u": _provider_rec(1, align_spec="align-new", transcript_spec="align-new")}
     tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
     assert [(it.work_class, it.state) for it in tx] == [
         ("provider-transcript-align", "done"),
         ("transcript-asr-comparison", "queued"),
-        ("provider-transcript-diarize", "queued"),
     ]
 
 
-def test_build_manifest_provider_transcript_diarize_waits_for_selected_align():
+def test_build_manifest_provider_transcript_align_waits_for_selected_align():
     recs = {"u": _provider_rec(1, align_spec="align-new", transcript_spec="align-old")}
     tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
     assert [(it.work_class, it.state) for it in tx] == [("provider-transcript-align", "queued")]
 
 
-def test_build_manifest_provider_transcript_diarize_done_when_spec_matches():
+def test_build_manifest_never_emits_provider_transcript_diarize_work():
+    """ProviderTranscriptDiarizeStage is retired (review/31 §A.5): build_manifest must not keep
+    reporting a "queued" backlog for a stage that will never run, even when a record still
+    carries a stale pre-retirement diarize_spec_hash/speakers block."""
     recs = {
         "u": _provider_rec(
             1,
@@ -802,10 +804,9 @@ def test_build_manifest_provider_transcript_diarize_done_when_spec_matches():
         )
     }
     tx = _tx_items(build_manifest([("s", _city("d"), recs)]))
-    assert [(it.work_class, it.state) for it in tx] == [
-        ("provider-transcript-align", "done"),
-        ("transcript-asr-comparison", "queued"),
-        ("provider-transcript-diarize", "done"),
+    assert [it.work_class for it in tx] == [
+        "provider-transcript-align",
+        "transcript-asr-comparison",
     ]
 
 

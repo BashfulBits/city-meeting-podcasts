@@ -983,7 +983,10 @@ This is what lets v2 begin draining jobs ingested in Phase 1 across multiple rou
   singleton Worker read. Legacy queue-only capsules are rebuilt into `InferenceJob`s and sent via
   bounded `enqueue_batch()` calls before their first poll. Start/end JSON summaries split the
   client-owned deferred registry into v1-dispatched, v2-dispatched, v2-deferred, and direct-deferred
-  work; one authenticated `/v2/stats` snapshot adds the coordinator's independent queue state.
+  work; the four-times-daily sweep requests one authenticated `GET /v2/stats?detail=1` snapshot
+  to add the coordinator's independent queue, route, and failure diagnostics. Frequent producer
+  telemetry retains the default constant-cost `/v2/stats` snapshot, rather than repeating those
+  historical reads for every worker invocation.
   V1 intentionally gains no R2 ledger, endpoint, or scan: it remains on its existing temporary
   singleton reaping path while its backlog drains. **Deviation, maintainer-approved 2026-08-30:**
   the scheduled pass is raised from 30 minutes within a 40-minute Actions timeout to 90 minutes
@@ -1224,6 +1227,21 @@ This is the subtle form of the bug class and the reason the guard below needs tw
 query plan says `SEARCH`, not `SCAN`, so it *reads* as correctly indexed while costing
 `O(history)`.
 
+### Follow-up: split terminal state ranges (2026-09-20)
+
+The ordered index removed the original state-only filter cost but did not remove every form of
+history-dependent work. SQLite still built a temp B-tree when `purgePendingBatch` combined
+`completed` and `failed` with one global `ORDER BY updated_at`, so an hourly cleanup could read
+roughly the full terminal history before returning its small batch (about 18,000 rows in the
+observed case).
+
+`purgePendingBatch` now performs separate `completed` and `failed` seeks, each ordered by
+`(updated_at, id)`, and merges at most `2 * limit` rows in memory. Bundle pruning applies the same
+pattern to `completed` and `expired` rows ordered by `created_at`. The whole-surface guard now
+rejects temp B-trees used for ordering on growable tables, and the functional tests verify that
+the two terminal states remain globally age-ordered without changing the batch limit. This is an
+implementation-only fix: no schema migration, pipeline-version bump, or backfill is required.
+
 ### Standing guard: `workers/llm-dispatch-v2/test/rows-read.test.js`
 
 Per-query plan assertions only protect the queries someone thought to assert on. The guard asserts
@@ -1305,9 +1323,13 @@ integration testing.
 ### Unit 1 — SQL schema (`src/coordinator.js`, DO constructor; Phase 1 creates `jobs`+`scheduler`, Phase 2 adds the rest)
 
 All tables are created with `CREATE TABLE IF NOT EXISTS` in the DO constructor, guarded by
-`migrations` with `new_sqlite_classes` per the wrangler config. Timestamps are Unix milliseconds
-(`INTEGER`), not ISO strings — comparisons and arithmetic must stay in integer ms throughout every
-unit below. No table stores payload or response bytes.
+`migrations` with `new_sqlite_classes` per the wrangler config. On cold start, the constructor first
+checks the required tables, compatibility columns, one-time model migration, clustered table
+shapes, and query-critical indexes/triggers through read-only catalog queries. A current schema
+skips DDL and data migrations; an incomplete schema uses the initializer below, which logs the
+specific phase if a storage operation fails. Timestamps are Unix milliseconds (`INTEGER`), not
+ISO strings — comparisons and arithmetic must stay in integer ms throughout every unit below. No
+table stores payload or response bytes.
 
 ```sql
 CREATE TABLE IF NOT EXISTS jobs (
@@ -1992,6 +2014,31 @@ explicit that a knob sized against an assumed ceiling is the bug class to avoid,
 6 points of headroom under the threshold are deliberate and the next change here should be driven by
 a measured `rows written` figure from Workers Logs rather than this estimate.
 
+**2026-09-20 active-bundle concurrency experiment.** `MAX_ACTIVE_BUNDLES` increases from 2 to 3
+while `MAX_BUNDLES_PER_UTC_DAY`, `MAX_JOBS_PER_UTC_DAY`, `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`,
+`MAX_IN_FLIGHT_LLM_CALLS`, and bundle size remain unchanged. The change addresses observed queue
+stalling when two slow bundles occupy both admission slots; it does not increase the daily write
+budget or the number of bundles admitted by itself. Nominally, one additional full bundle costs
+about 32 dispatch-lifecycle row writes at the four-job design baseline, or 39 at the current
+five-job setting, before retry amplification. Roll back to 2 if provider failures, lease expiry,
+or measured DO row writes increase materially.
+
+**2026-09-21 in-flight and chapter-agenda tuning — maintainer-authorized.** Live deferred-sweep
+telemetry recorded `in_flight_call_limit` 706 times while two of the three configured bundle slots
+were active; the active-bundle limit appeared only three times. Raising
+`MAX_IN_FLIGHT_LLM_CALLS` from 8 to 12 therefore removes the primary observed global gate without
+raising `MAX_ACTIVE_BUNDLES`, bundle size, or the daily bundle and job ceilings. Per-provider and
+per-route limits stay in force; a later sweep also showed NVIDIA's provider concurrency and route
+capacity correctly regulating the work that the global gate no longer blocks.
+
+The same telemetry showed chapter-agenda's 1,000-job daily budget (4,000 write units at four units
+per job) deferring 2,589 candidates for `purpose_write_budget_exceeded`. Its daily budget and
+matching per-run cap increase to 6,000 units and 1,500 jobs. The lane's 2,000-unit reservation and
+the dispatcher's 24,000-unit global ingress budget do not change, so this reallocates no reserved
+capacity and does not raise the global daily admission ceiling. There is no recipe, pipeline-version,
+or artifact-backfill effect. Roll back to 8 in-flight calls and the prior 4,000-unit/1,000-job
+chapter-agenda budget if provider failures, lease expiry, or measured DO row writes worsen.
+
 **Not adopted.** Raising toward the ~66,620/day aggregate free-route provider capacity. That is a
 provider-side number; the Free-tier DO write budget is two orders of magnitude tighter and is what
 governs. Reaching it needs Workers Paid or a second DO to shard the write budget, which is
@@ -2070,6 +2117,55 @@ the eight-worker pool sits idle, and re-uploads every source's whole `episodes.j
 rather than skipping unchanged ones. `push_state`/`pull_state` were both given a bounded upload pool
 for exactly this latency-bound cost; `push_records_merged` never was. The duty-cycle bound contains
 the impact by checkpointing less often, which widens the loss window rather than reducing the cost.
+
+## Row-write brake follow-up (2026-09-27/28)
+
+Two consecutive production days exhausted the Free-plan 100,000 billed DO-row limit. A live
+read-only probe of `/v2/stats` and `/v2/ingress-status` returned Cloudflare's
+`Exceeded allowed rows written in Durable Objects free tier` error. The code review found a
+concrete gap in the progressive brake: `enqueueBatch` checked the 90,000-row threshold only once
+at request entry, then accepted up to `ENQUEUE_BATCH_MAX=1000` jobs in the same transaction. A
+large batch starting just below the stop could commit past it before the next claim tick observed
+the new total. Superseding a stale job also rewrote the job and model indexes without consuming
+ingress units, so those writes were absent from the per-purpose and global ingress quotas (though
+they did honor the threshold as sampled at batch entry).
+
+The implementation now reserves conservative billed-row headroom per new job and supersede,
+plus shared batch bookkeeping, inside the transaction. Once the reservation reaches the enqueue
+stop, remaining items are rejected for that request. Exact idempotent replays stay write-free.
+Producer preflight errors now close only the affected lane for new submissions, preventing a
+status outage from being interpreted as unlimited capacity. The build still reconciles completed
+results; the weekly tournament and manual R5 benchmark preflight their registered lanes before
+preparing new samples. This does not claim protection from writes made through Cloudflare Data
+Studio or other account-level tooling, which the coordinator cannot observe.
+
+## Rollover log follow-up (2026-09-28)
+
+The supplied Workers traces show the same outage from 2026-09-27 23:49:54Z through 2026-09-28
+00:59:54Z: 97 requests failed before an RPC method ran, all with the free-tier row-limit error
+during Durable Object schema readiness. The first successful RPC was at 01:01:07Z on the same
+Worker version. This confirms a platform quota lockout that self-cleared after about 71 minutes;
+it does not identify which RPCs consumed the billed rows because the export contains method names
+but no `rowsWritten` values or budget snapshots.
+
+The fixed 97,000 claim stop left only 3,000 rows for already-admitted work, and the account-wide
+limit can also include writers the scheduler cannot count. The follow-up therefore preserves a
+10,000-row account reserve and, before each claim, projects the worst-case write cost of every
+active leased job and bundle plus the next bundle. It closes claim admission when the projection
+reaches the 90,000 safe stop. The same safe stop clamps optional writes, including out-of-band
+route-probe reservations; completions, retry fencing, and safety pauses remain allowed. A
+`do_row_write_budget` structured log records each RPC's billed-row delta and the running counter,
+so future traces can compare the local tally with account-level usage. When an operation is
+actually deferred, a separate `do_row_budget_stop` event names the gate and records remaining
+headroom and its projection. It is rate-limited to one event per gate every five minutes per DO
+instance to keep repeated cron ticks from flooding logs. The 10,000-row reserve is a conservative
+initial setting, not an incident-derived estimate; tune it after comparing these logs with
+account-level usage.
+
+The historical telemetry API was unavailable during the initial investigation (HTTP 403), so the
+account-wide contribution of other Durable Objects remains unverified. The reserve protects
+against that unknown until per-RPC and gate-hit logs can be compared with Cloudflare's account
+usage.
 
 ## Consequences and rejected alternatives
 

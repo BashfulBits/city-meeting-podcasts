@@ -1,0 +1,19 @@
+# Reviewed named-body coverage; see review/addison-udc-coverage-2026-10.md.
+slug: addison-tx-unified-development-code-advisory-committee
+city: addison-tx
+provider: swagit
+source:
+  list_url: https://addisontx.new.swagit.com/views/128
+  body_exact:
+    - Unified Development Code (UDC) Advisory Committee
+remedy_policy:
+  identity_names:
+  - Unified Development Code (UDC) Advisory Committee
+  member_names:
+  - Unified Development Code
+  - UDC Advisory Committee
+podcast_title: 'Addison: Unified Development Code Advisory Committee'
+podcast_author: City of Addison, TX
+podcast_email: ''
+podcast_description: Public meeting recordings of the Unified Development Code (UDC) Advisory
+  Committee in Addison.

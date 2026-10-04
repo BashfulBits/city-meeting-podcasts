@@ -1,0 +1,147 @@
+# LLM Dispatch v2 Worker tuning (non-secret, not account- or URL-specific).
+#
+# Compiled to workers/llm-dispatch-v2/src/dispatch_tuning.json by scripts/compile_dispatch_tuning.py
+# (drift-checked in llm-dispatch-v2-worker-deploy.yml), exactly like dispatch_limits.json and
+# ingress_reservations.json. These used to be Cloudflare `vars` in wrangler.jsonc. Workers Free caps
+# a Worker at 64 variables INCLUDING secrets, and this block alone used 37 of them; moving it here
+# frees those slots and makes every change a reviewed PR instead of a dashboard edit.
+#
+# Precedence at runtime (src/tuning.js): a Cloudflare variable or secret of the same name still wins
+# (a deliberate incident-time override), then this file, then the literal fallback at the read site.
+# Account-, URL- and credential-specific values (AI_GATEWAY_ID, provider keys, B2 settings, the bearer
+# token) are NOT here and never belong in the repository.
+#
+# Daily DO row-write thresholds (DO_ROWS_ENQUEUE_STOP 90000, DO_ROWS_CLAIM_STOP 97000,
+# DO_ROWS_OPTIONAL_STOP 99000) remain code defaults on purpose (see write_budget.js); override only for
+# a deliberate incident response. Keep them out of this file.
+#
+# Keep the values numeric; the Worker reads them with Number().
+
+MAX_BUNDLE_JOBS: 5
+# Read at most this many indexed queue entries for one capacity-ranked model before moving
+# to the next model. Exact token/lane checks still run only on these small candidate sets.
+MAX_JOBS_PER_MODEL_CLAIM: 4
+# When every route of a model that currently has capacity carries a hard_input_ceiling, the
+# claim reads up to this many queue entries (oldest first) to find jobs small enough for one
+# of them, instead of stopping at the first MAX_JOBS_PER_MODEL_CLAIM. Without it a handful of
+# oversized queue-head jobs blocked every smaller job behind them. Bounded, covering-index
+# read: at most ~2 x 32 rows per model per tick, and only for ceiling-bound models.
+MAX_CANDIDATE_LOOKAHEAD: 32
+# A route answering 410 Gone (retired model) is stood down this long. A 404 is treated as a
+# transient upstream fault (escalating 15s-5min cooldown) -- see classify.js rule 8.
+ROUTE_UNAVAILABLE_BLOCK_SECONDS: 21600
+MAX_JOBS_PER_ROUTE_PER_BUNDLE: 3
+MAX_CONCURRENT_ROUTE_LANES: 5
+# Raised 25 -> 30 on 2026-09-23: the largest value validateConfig's lease identity allows
+# (DISPATCH_WINDOW + MAX_RESPONSE 720 + FINALIZATION_RESERVE 90 <= LEASE_DURATION 840). The
+# window bounds only when a call may START; a started call is bounded separately by
+# MAX_RESPONSE_SECONDS, and waiting on a provider costs no Worker CPU time.
+DISPATCH_WINDOW_SECONDS: 30
+CRON_TICK_SECONDS: 60
+# Raised from 2 on 2026-09-20 to let one additional slow bundle overlap. This changes
+# concurrency only; daily bundle/job/write caps remain unchanged.
+MAX_ACTIVE_BUNDLES: 3
+# Live telemetry exhausted the eight-call gate while only two of three bundles were active.
+# Per-provider and per-route limits remain the admission safety boundaries.
+MAX_IN_FLIGHT_LLM_CALLS: 12
+# 1,400 of the 1,440 daily cron ticks may claim a bundle (validateConfig requires it stay
+# under the tick count). Bundles are a concurrency/overlap knob; the daily dispatch limit is
+# DO_ROWS_CLAIM_STOP below.
+MAX_BUNDLES_PER_UTC_DAY: 1400
+# ---------------------------------------------------------------------------------------
+# ---- Daily DO row-write thresholds (runtime; see src/write_budget.js) ------------------
+# The Workers Free plan allows 100,000 billed DO rows written per UTC day, account-wide.
+# Coordinator admission reserves 10,000 rows for other account writers and counter drift,
+# making 90,000 the hard safe stop for this Worker. New claims stop earlier when the sum of
+# actual rows, all active-lease worst-case completion/retry costs, and the next bundle's cost
+# would reach that safe stop. Enqueues, cleanup, route-probe reservations, acks, retires and
+# cancels also stop by 90,000. In-flight completions, retries and safety pauses remain allowed;
+# the active-lease reserve is what leaves them room to drain. Structured Worker logs record
+# each RPC's billed-row delta and running total to compare this coordinator's counter with the
+# account-wide limit.
+#
+# The configured defaults (`DO_ROWS_ENQUEUE_STOP` 90000, `DO_ROWS_CLAIM_STOP` 97000,
+# `DO_ROWS_OPTIONAL_STOP` 99000) remain upper bounds and are deliberately NOT declared as
+# vars: Workers Free allows 64 variables per Worker, secrets included, and declaring defaults
+# pushed this Worker to 66, which rejected every deploy from #1846 on. The runtime clamps all
+# three to the account safe stop; the claim gate can close earlier based on active work.
+# Override only for a deliberate incident response; tests/test_llm_dispatch_worker_limits.py
+# checks the deployed variable count.
+# A blast-radius backstop, not the working limit: MAX_BUNDLES_PER_UTC_DAY x MAX_BUNDLE_JOBS.
+MAX_LEASES_PER_UTC_DAY: 7000
+# Shared free-tier ceilings, NOT an 800-meeting capacity commitment. The full planning scenario
+# requires 20,800 new jobs/day (including enabled shadow and a three-judge/five-quote panel),
+# before retries. Capacity evidence: review/evidence/2026-10-02-llm-800-meeting-capacity.md
+# Reproduce with scripts/llm_capacity_plan.py.
+# Keep the shared cap bounded near measured drain; raising it alone only grows the queue.
+MAX_JOBS_PER_UTC_DAY: 4000
+# Admission units cover enqueue indexes only, not completion/retry/retirement billed rows.
+# This ceiling remains below the static enqueue-row bound and live row headroom gates ingress.
+# Per-lane ceilings can exceed this envelope; their sum is demand, not guaranteed funding.
+MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: 25600
+# Global cap on queued jobs (MAX_QUEUED_JOBS): past it new work waits in the producer, not in
+# the DO. Left at the coordinator's default of 20,000 (`_maxQueuedJobs`), so not declared --
+# see the variable-limit note above.
+# Per-purpose ingress budgets now live in config/site_config.yml's `llm_lanes` block and are
+# compiled into src/ingress_reservations.json by scripts/compile_llm_lanes.py (drift-checked
+# in llm-dispatch-v2-worker-deploy.yml), so this var is gone. It had drifted to reserve
+# capacity under keys -- "topic-tags", "moments" -- that no client purpose ever matched
+# ("topic-tags:tagger", "topic-tags:prelabeler", "r6-moments", "r6-judge"), which withheld
+# 10,000 of 30,000 daily write units from every real lane while being unusable by the lanes
+# it named. Setting INGRESS_PURPOSE_RESERVATIONS here again is still honored, but only as a
+# deliberate incident-time override of the compiled map.
+ENQUEUE_BATCH_MAX: 1000
+POLL_BATCH_MAX: 1000
+MAX_RESPONSE_SECONDS: 720
+FINALIZATION_RESERVE_SECONDS: 90
+LEASE_DURATION_SECONDS: 840
+CRON_EXECUTION_LIMIT_SECONDS: 900
+MAX_429_RETRIES: 1
+MAX_429_BACKOFF_SECONDS: 60
+UPSTREAM_CAPACITY_COOLDOWN_SECONDS: 15
+UPSTREAM_CAPACITY_MAX_COOLDOWN_SECONDS: 300
+# AI Gateway handles the fast five-attempt retry series. A final 5xx gets one durable
+# fallback attempt on a later cron tick. The failed route is unavailable for 60 seconds,
+# growing to at most five minutes if this outer retry budget is raised.
+MAX_UPSTREAM_CAPACITY_RETRIES: 8
+MAX_5XX_RETRIES: 1
+MAX_5XX_BACKOFF_SECONDS: 300
+MAX_ROUTE_BUFFER_SECONDS: 120
+COMPLETED_RETENTION_DAYS: 38
+# Retention for the DO's two append-only bookkeeping tables. Neither has a B2 counterpart
+# or a client-side reader, so both age out entirely inside the DO. Before this existed
+# nothing ever deleted from either, and `bundles` was full-scanned twice per cron tick --
+# the 2026-08-27 rows-read overage. Zero on either per-tick cap is an emergency pause.
+BUNDLE_RETENTION_DAYS: 7
+ATTEMPT_RETENTION_DAYS: 7
+MAX_BUNDLE_PRUNE_PER_TICK: 50
+MAX_ATTEMPT_PRUNE_PER_TICK: 50
+# Terminal-job + B2 object cleanup (purgePendingBatch/confirmPurge). Runs on the cron tick
+# whose UTC minute is a multiple of this, not every minute, since each purged job costs up to
+# two B2 delete subrequests (payload + result keys). 15 costs up to 30, leaving headroom
+# under the 50-subrequest-per-invocation Free ceiling alongside dispatch's own B2 traffic in
+# the same invocation -- validateConfig enforces this bound against both knobs together.
+#
+# Every 10 minutes since 2026-09-24 (60 -> 12 on 2026-09-23, then 10): 6 runs/hour x
+# PURGE_BATCH_LIMIT 15 = 2,160 jobs/day. Completed jobs the client retires by consumption
+# never reach cleanup, so this drains failed jobs, ack fallbacks and the acked backlog; it
+# pauses past DO_ROWS_ENQUEUE_STOP and resumes after the reset. The per-run limit cannot
+# rise (subrequests), so the cadence does.
+CLEANUP_INTERVAL_MINUTES: 10
+PURGE_BATCH_LIMIT: 15
+# Admission-time allowance subtracted from the dispatch window: a job is admitted only if its
+# planned start + this value <= the window's end. Lowered 20 -> 2 on 2026-09-23. At 20 it
+# left only the first 5s of a 25s window usable, although nothing downstream needs the CALL to
+# finish inside the window -- the executor defers a job only when its START would fall past
+# the window (index.js dispatchOneJob), and a started call is already bounded by
+# MAX_RESPONSE_SECONDS inside the lease. The remaining 2s absorbs claim-to-receipt skew so a
+# job planned at the window's very edge is not routinely deferred_late.
+ESTIMATED_CALL_DURATION_CEILING_SECONDS: 2
+# Not secret -- a gateway slug, not a credential. Matched the retired v1 Worker's
+# wrangler.jsonc exactly. gateway.js's resolveProviderCredentials() only routes a call through
+# AI Gateway when both this and the CLOUDFLARE_ACCOUNT_ID secret are present; omitted, it
+# falls back to calling each provider directly with no error, no log line, and no other
+# visible symptom -- confirmed as this deployment's actual state until now: every call landed
+# straight on the provider, never through the gateway, so nothing showed up in the AI Gateway
+# dashboard even though dispatch itself was working (see "Why cron pull, not Queue" for why
+# going through the gateway isn't optional here).

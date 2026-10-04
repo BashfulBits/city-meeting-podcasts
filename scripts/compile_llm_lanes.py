@@ -64,30 +64,26 @@ parse_lanes = _llm_lanes.parse_lanes
 
 INPUT_YAML = REPO_ROOT / "config" / "site_config.yml"
 OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "ingress_reservations.json"
-WRANGLER_JSONC = REPO_ROOT / "workers" / "llm-dispatch-v2" / "wrangler.jsonc"
+TUNING_YAML = REPO_ROOT / "config" / "dispatch_tuning.yml"
 
 
 def _global_ingress_budget() -> int:
-    """Read ``MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`` out of the Worker's wrangler config.
+    """Read ``MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY`` from the Worker's tuning config.
 
-    Parsed from the deployed config rather than duplicated here so the reservation total is checked
-    against the budget the Worker will actually enforce, not a copy of it that can drift. The file
-    is JSONC; only this one numeric var is needed, so it is matched directly instead of pulling in a
-    JSONC parser for a single lookup.
+    Read from ``config/dispatch_tuning.yml`` (the source the Worker's compiled tuning is built from)
+    rather than duplicated here, so the reservation total is checked against the budget the
+    Worker will actually enforce. It was a ``wrangler.jsonc`` var until the tunables moved out of
+    Cloudflare's 64-variable limit.
     """
-    import re
-
-    text = WRANGLER_JSONC.read_text(encoding="utf-8")
-    # Wrangler `vars` accept either a quoted string or a bare JSON number, and both deploy
-    # identically. Matching only the quoted form would send a perfectly valid numeric declaration
-    # down the "does not define" branch below and fail the deploy with a misleading message.
-    match = re.search(r'"MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY"\s*:\s*"?(\d+)"?', text)
-    if not match:
+    raw = yaml.safe_load(TUNING_YAML.read_text(encoding="utf-8")) or {}
+    value = raw.get("MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY")
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         raise SystemExit(
-            f"{WRANGLER_JSONC} does not define MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY; the "
-            "reservation total cannot be validated against a budget that is not declared"
+            f"{TUNING_YAML} does not define a positive integer "
+            "MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY; "
+            "the reservation total cannot be validated against a budget that is not declared"
         )
-    return int(match.group(1))
+    return value
 
 
 def compile_reservations(lanes: dict[str, LaneConfig], budget: int) -> dict[str, object]:
@@ -122,7 +118,18 @@ def compile_reservations(lanes: dict[str, LaneConfig], budget: int) -> dict[str,
                 # Carried for operator legibility in Workers Logs and the /v2/stats snapshot; the
                 # coordinator's admission arithmetic uses only the two budgets above.
                 "models": list(lane.models),
+                # Enforced identically to "models" by coordinator.js's _modelsOutsideLane -- a lane
+                # cannot smuggle an unbudgeted/unreviewed model into production via backup_models
+                # alone, since ingress checks a job's policy_json.backup_models against this too.
+                "backup_models": list(lane.backup_models),
+                # Enforced by coordinator.js's _backupThresholdBelowLaneMinimum: a job whose own
+                # policy_json.backup_after_attempts undercuts this floor is rejected at ingress --
+                # _modelsOutsideLane alone only checks WHICH models a job may name, not WHEN a
+                # caller's own policy says they activate.
+                "backup_after_attempts": lane.backup_after_attempts,
                 "dispatch_shape": lane.dispatch_shape,
+                # Read at send time by index.js's laneReasoningLevel (route reasoning_controls).
+                "reasoning": lane.reasoning_levels,
                 "write_units_per_job": lane.ingress_write_units_per_job,
             }
             for purpose, lane in sorted(lanes.items())

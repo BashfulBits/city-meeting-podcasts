@@ -62,21 +62,55 @@ class LaneConfig:
     max_dispatches_per_run: int
     reserved_write_units: int
     daily_write_units: int
+    telemetry_producer: str = ""
+    telemetry_unit: str = "episode"
+    telemetry_completion: str = "consumed"
+    telemetry_scope: str = "retained_catalog"
     # How ``models`` maps onto jobs, which decides what one job costs at ingress:
     #
     # ``pooled`` (default) -- one job carries the whole list as its ``allowed_models`` and the
     #   scheduler picks whichever route has capacity. Extra routes are pure throughput. This is
     #   the production lanes' shape (tags, moments, chapters).
-    # ``per_model`` -- the caller fans out one job per model, each pinned to a single route,
-    #   because the models are being *compared*, not pooled. This is the research lanes' shape
-    #   (tournament contestants, R5 benchmark taggers). Pooling them would let the scheduler
-    #   answer a "how does model X tag this?" job with model Y and silently invalidate the
-    #   comparison.
+    # ``per_model`` -- each job is pinned to one allowed model and indexes only that model. This
+    #   is used for model comparisons and for production policies that select one model per request
+    #   (for example, size-based routing). It must not be pooled.
     #
     # The distinction is not cosmetic: a pooled job writes one model-index row per allowed model
     # while a per-model job writes exactly one, so charging a four-model per_model lane as if each
     # job indexed four routes would over-reserve its budget by ~75%.
     dispatch_shape: str = "pooled"
+    # Models eligible only once a queued job has failed enough that ``models`` alone looks stuck --
+    # see LLMRequestPolicy.backup_models/backup_after_attempts and workers/llm-dispatch-v2/src/
+    # routes.js's backupModelsActive()/modelsForJob(). Worker (queue_only) dispatch only:
+    # direct-mode calls have no persistent cross-run attempt counter to gate on today. Never part
+    # of a job's indexed model set at enqueue time, so ingress_write_units_per_job stays keyed on
+    # ``models``.
+    backup_models: tuple[str, ...] = ()
+    # How many times a job must have been dispatched without a successful response (Worker
+    # ``jobs.attempts``) before backup_models become eligible -- or, independently, a job that has
+    # already needed one JSON-schema-validation correction (``jobs.schema_retry_count >= 1``) is
+    # eligible immediately, since that failure mode is a model-output problem, not a capacity one.
+    # Required (and only meaningful) together with backup_models.
+    backup_after_attempts: int | None = None
+    # Whether the provider-catalog reconciler (review/48) may offer newly discovered models as
+    # backup_models candidates for this lane. Default on, so a new lane is eligible with no edit;
+    # set false for a lane whose model set must stay fixed. A ``per_model`` lane is never eligible
+    # (it cannot declare backup_models at all) -- see ``accepts_catalog_backups``.
+    catalog_backup_candidates: bool = True
+
+    @property
+    def accepts_catalog_backups(self) -> bool:
+        return self.catalog_backup_candidates and self.dispatch_shape == "pooled"
+
+    # Per-model reasoning level for THIS lane's jobs (e.g. ``{"deepseek/deepseek-v4.1-flash":
+    # "off"}``), applied at send time through the route's ``reasoning_controls``. A model without
+    # an entry keeps its provider default, so a model can think in one job type and not another.
+    # Stored as sorted pairs to keep the frozen config hashable; see ``reasoning_levels``.
+    reasoning: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def reasoning_levels(self) -> dict[str, str]:
+        return dict(self.reasoning)
 
     @property
     def primary_model(self) -> str:
@@ -134,6 +168,37 @@ def _coerce_int(raw: Any, *, purpose: str, field: str) -> int:
     return raw
 
 
+def _coerce_bool(raw: Any, *, purpose: str, field: str) -> bool:
+    if not isinstance(raw, bool):
+        raise ValueError(f"llm_lanes[{purpose!r}].{field} must be true or false, got {raw!r}")
+    return raw
+
+
+REASONING_LEVELS = frozenset({"off", "low"})
+
+
+def _parse_reasoning(raw: Any, purpose: str, lane_models: set[str]) -> tuple[tuple[str, str], ...]:
+    """Validate a lane's ``reasoning`` map: only this lane's models, only known levels."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, dict):
+        raise ValueError(f"llm_lanes[{purpose!r}].reasoning must be a mapping of model -> level")
+    pairs: list[tuple[str, str]] = []
+    for model, level in raw.items():
+        if model not in lane_models:
+            raise ValueError(
+                f"llm_lanes[{purpose!r}].reasoning names {model!r}, which is not one of the lane's "
+                "models or backup_models"
+            )
+        if level not in REASONING_LEVELS:
+            raise ValueError(
+                f"llm_lanes[{purpose!r}].reasoning[{model!r}] must be one of "
+                f'{sorted(REASONING_LEVELS)}, got {level!r} (quote "off": bare off is YAML false)'
+            )
+        pairs.append((model, level))
+    return tuple(sorted(pairs))
+
+
 def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
     """Validate and normalize a raw ``llm_lanes`` mapping.
 
@@ -189,9 +254,84 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                 f"llm_lanes[{purpose!r}].dispatch_shape must be 'pooled' or 'per_model', "
                 f"got {shape!r}"
             )
+
+        raw_backup_models = entry.get("backup_models")
+        backup_after_attempts = entry.get("backup_after_attempts")
+        has_backup_models = raw_backup_models is not None
+        has_threshold = backup_after_attempts is not None
+        if not has_backup_models and not has_threshold:
+            backup_models: tuple[str, ...] = ()
+        else:
+            if has_backup_models != has_threshold or (
+                not isinstance(raw_backup_models, (list, tuple)) or not raw_backup_models
+            ):
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}].backup_models must be a non-empty list when "
+                    "backup_after_attempts is set (and vice versa)"
+                )
+            backup_models = ()
+            for index, model in enumerate(raw_backup_models):
+                if not isinstance(model, str) or not model.strip():
+                    raise ValueError(
+                        f"llm_lanes[{purpose!r}].backup_models[{index}] must be a non-empty "
+                        f"string, got {model!r}"
+                    )
+                backup_models += (model.strip(),)
+            if len(set(backup_models)) != len(backup_models):
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}].backup_models contains duplicates: {backup_models}"
+                )
+            # A backup may also be one of the lane's own `models`. That adds no routes -- the
+            # Worker de-duplicates them (routes.js routesEligibleFor) -- but a non-empty
+            # backup_models is what raises the Worker's per-class retry ceilings to
+            # backup_after_attempts + base (coordinator.js `_retryCeiling`), so a pooled lane can
+            # keep that retry budget without dedicating a weaker model as a fallback.
+            if shape == "per_model":
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}] is dispatch_shape 'per_model' (one pinned route "
+                    "per request) and cannot also declare backup_models (a failure-based "
+                    "fallback)"
+                )
+            backup_after_attempts = _coerce_int(
+                backup_after_attempts, purpose=purpose, field="backup_after_attempts"
+            )
+            if backup_after_attempts <= 0:
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}].backup_after_attempts must be positive, got "
+                    f"{backup_after_attempts}"
+                )
+
+        telemetry = entry.get("telemetry")
+        if not isinstance(telemetry, Mapping) or set(telemetry) != {
+            "producer",
+            "unit",
+            "completion",
+            "scope",
+        }:
+            raise ValueError(f"llm_lanes[{purpose!r}] requires a telemetry contract")
+        producer = telemetry["producer"]
+        if not isinstance(producer, str) or not producer.strip():
+            raise ValueError(f"llm_lanes[{purpose!r}].telemetry.producer must be non-empty")
+        producer = producer.strip()
+        if not isinstance(telemetry["unit"], str) or not telemetry["unit"].strip():
+            raise ValueError(f"llm_lanes[{purpose!r}].telemetry.unit is invalid")
+        unit = telemetry["unit"].strip()
+        if not isinstance(telemetry["scope"], str) or telemetry["scope"] not in {
+            "retained_catalog",
+            "sample",
+        }:
+            raise ValueError(f"llm_lanes[{purpose!r}].telemetry.scope is invalid")
+        if telemetry["completion"] != "consumed":
+            raise ValueError(f"llm_lanes[{purpose!r}].telemetry.completion must be consumed")
+
+        reasoning = _parse_reasoning(entry.get("reasoning"), purpose, {*models, *backup_models})
         lane = LaneConfig(
             purpose=purpose,
             models=models,
+            telemetry_producer=producer,
+            telemetry_unit=unit,
+            telemetry_completion=telemetry["completion"],
+            telemetry_scope=telemetry["scope"],
             max_dispatches_per_run=_coerce_int(
                 entry.get("max_dispatches_per_run"),
                 purpose=purpose,
@@ -200,6 +340,14 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
             reserved_write_units=reserved,
             daily_write_units=daily,
             dispatch_shape=shape,
+            backup_models=backup_models,
+            backup_after_attempts=backup_after_attempts,
+            catalog_backup_candidates=_coerce_bool(
+                entry.get("catalog_backup_candidates", True),
+                purpose=purpose,
+                field="catalog_backup_candidates",
+            ),
+            reasoning=reasoning,
         )
         if daily < lane.ingress_write_units_per_job:
             raise ValueError(

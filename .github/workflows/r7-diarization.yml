@@ -105,6 +105,26 @@ jobs:
           SWAGIT_PROXY_TOKEN: ${{ secrets.SWAGIT_PROXY_TOKEN }}
         run: python -m citypods.cli enrich --city denton-tx --lane diarize
 
+      # `if: always()`: this must still run when the diarize step above is externally cancelled
+      # (GH Actions runs `always()` steps during its cancellation sequence, before the runner is
+      # torn down), not just on success/failure -- that's exactly the case review/31 §A.4's
+      # recurring SIGTERM investigation needs kernel-level evidence for. Our own app-level
+      # memory logging (heartbeat, `MemoryReservation`, `run_diarize_job`'s peak-RSS line) can
+      # only report what Python observed; a genuine OOM-kill is the *kernel* reaping this
+      # process before any of that code runs again, and only the kernel's own log names the
+      # victim and its RSS at time of death -- `dmesg`'s "Out of memory: Killed process ..." (or
+      # its absence, which is equally informative: it would mean the SIGTERM was not the kernel
+      # OOM-killer at all, pointing back at an external/control-plane cause instead).
+      - name: Capture kernel memory log (OOM proof, review/31 §A.4)
+        if: always()
+        run: |
+          echo "--- dmesg (kernel ring buffer, filtered for memory events) ---"
+          sudo dmesg -T 2>/dev/null | grep -iE "oom|out of memory|killed process|memory cgroup" | tail -100 || true
+          echo "--- free -h ---"
+          free -h || true
+          echo "--- /proc/meminfo (first 10 lines) ---"
+          head -n 10 /proc/meminfo || true
+
       - name: Project speaker identities and queue review candidates
         env:
           GITHUB_TOKEN: ${{ github.token }}

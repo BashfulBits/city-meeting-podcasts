@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 
 from citypods.models import Episode
@@ -203,33 +204,26 @@ def test_prelabeler_excerpt_centers_tail_evidence():
     transcript = "prefix " * 3000 + " target evidence " + "suffix " * 100
 
     class Backend:
+        def __init__(self, bare_list=False):
+            self.bare_list = bare_list
+
         def run_inference(self, job):
             captured["messages"] = job.inputs["messages"]
             captured["recipe_hash"] = job.recipe_hash
+            assessments = [
+                {
+                    "candidate_id": "subject-1",
+                    "decision": "likely_correct",
+                    "confidence": 0.9,
+                    "reason": "supported",
+                    "evidence_supported": True,
+                }
+            ]
+            content = assessments if self.bare_list else {"assessments": assessments}
             return JobResult(
                 task=job.task,
                 recipe_hash=job.recipe_hash,
-                output={
-                    "choices": [
-                        {
-                            "message": {
-                                "content": json.dumps(
-                                    {
-                                        "assessments": [
-                                            {
-                                                "candidate_id": "subject-1",
-                                                "decision": "likely_correct",
-                                                "confidence": 0.9,
-                                                "reason": "supported",
-                                                "evidence_supported": True,
-                                            }
-                                        ]
-                                    }
-                                )
-                            }
-                        }
-                    ]
-                },
+                output={"choices": [{"message": {"content": json.dumps(content)}}]},
             )
 
     result, pending, _ = llm_prelabel_candidates(
@@ -275,6 +269,115 @@ def test_prelabeler_excerpt_centers_tail_evidence():
     payload = json.loads(captured["messages"][1]["content"])
     excerpt = payload["candidates"][0]["source_excerpt"]
     assert "target evidence" in excerpt
+    bare_result, bare_pending, _ = llm_prelabel_candidates(
+        Backend(bare_list=True),
+        candidates=[candidate],
+        taxonomy=taxonomy,
+        chapters=[
+            {
+                "chapter_id": "ch-1",
+                "title": "Housing",
+                "agenda_text": "housing agenda",
+                "transcript_text": transcript,
+                "transcript_segments": [],
+            }
+        ],
+        recipe_hash="bare-recipe",
+        model="reviewer",
+        llm_schema_version="2",
+    )
+    assert not bare_pending
+    assert bare_result["subject-1"]["prelabeler_decision"] == "likely_correct"
+
+
+def test_prelabeler_output_token_budget_scales_with_batch_size():
+    """A batch can hold up to Response.assessments' max_length (100) items, each with a reason
+    field up to 500 chars. A flat 1024-token output budget regardless of batch size silently cut
+    off any batch past roughly six items mid-JSON -- exactly the "not valid JSON"/multi-field
+    Pydantic validation failures seen in production. The dispatched request must scale with the
+    number of candidates actually being assessed."""
+    import json
+
+    from citypods.compute.base import JobResult
+    from citypods.tags import (
+        PRELABELER_OUTPUT_TOKEN_OVERHEAD,
+        PRELABELER_OUTPUT_TOKENS_PER_ITEM,
+        llm_prelabel_candidates,
+    )
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [
+                {
+                    "id": "housing",
+                    "source_refs": ["example"],
+                    "rules": {"include": ["housing"]},
+                }
+            ],
+        }
+    )
+    candidate_count = 10
+    candidates = [
+        {
+            "candidate_id": f"subject-{i}",
+            "id": "housing",
+            "source_kind": "llm",
+            "scope": "chapter",
+            "chapter_id": "ch-1",
+            "evidence": [{"where": "transcript", "quote": "target evidence"}],
+            "explanation": "The chapter discusses housing.",
+        }
+        for i in range(candidate_count)
+    ]
+
+    captured = {}
+
+    class Backend:
+        def run_inference(self, job):
+            captured["max_tokens"] = job.inputs["max_tokens"]
+            assessments = [
+                {
+                    "candidate_id": c["candidate_id"],
+                    "decision": "likely_correct",
+                    "confidence": 0.9,
+                    "reason": "supported",
+                    "evidence_supported": True,
+                }
+                for c in candidates
+            ]
+            content = json.dumps({"assessments": assessments})
+            return JobResult(
+                task=job.task,
+                recipe_hash=job.recipe_hash,
+                output={"choices": [{"message": {"content": content}}]},
+            )
+
+    llm_prelabel_candidates(
+        Backend(),
+        candidates=candidates,
+        taxonomy=taxonomy,
+        chapters=[
+            {
+                "chapter_id": "ch-1",
+                "title": "Housing",
+                "agenda_text": "housing agenda",
+                "transcript_text": "some transcript text",
+                "transcript_segments": [],
+            }
+        ],
+        recipe_hash="recipe",
+        # A real production route with a large output_context_limit so the scaled budget below
+        # isn't clamped back down by the route ceiling itself.
+        model="google/gemma-4-31b-it",
+        llm_schema_version="2",
+    )
+    expected = (
+        PRELABELER_OUTPUT_TOKEN_OVERHEAD + PRELABELER_OUTPUT_TOKENS_PER_ITEM * candidate_count
+    )
+    assert captured["max_tokens"] == expected
+    assert captured["max_tokens"] > 1024
 
 
 def test_exclude_terms_suppress_a_match_found_in_a_different_source():
@@ -1073,21 +1176,21 @@ def test_chapter_tagger_admits_a_batch_that_fits_an_additional_allowed_route(mon
     fallback = "test/fallback"
     primary_route = LLMRoute(
         model=primary,
-        transport="llm-dispatch",
+        transport="llm-dispatch-v2",
         free=True,
         quota=QuotaPolicy(tpm=10_000),
         pricing=PricingPolicy(),
         input_context_limit=10_000,
-        output_context_limit=1_024,
+        output_context_limit=65_536,
     )
     fallback_route = LLMRoute(
         model=fallback,
-        transport="llm-dispatch",
+        transport="llm-dispatch-v2",
         free=True,
         quota=QuotaPolicy(tpm=100_000),
         pricing=PricingPolicy(),
         input_context_limit=100_000,
-        output_context_limit=1_024,
+        output_context_limit=65_536,
     )
     monkeypatch.setitem(llm_policy.ROUTES, primary, primary_route)
     monkeypatch.setitem(llm_policy.ROUTES, fallback, fallback_route)
@@ -1237,3 +1340,191 @@ def test_episode_needs_tagging_evaluates_correctly():
         )
         is True
     )
+
+
+def test_prelabeler_sizes_gemma_batches_to_the_ai_studio_ceiling():
+    """Gemma prelabeler batches must fit the 10k-token ceiling of the 14,400-RPD AI Studio
+    routes in Gemma's own tokenizer units, with the reserved input+output inside one minute of
+    that route's TPM -- not `tpm - 1024` of whichever route happened to be listed first."""
+    from citypods.tags import prelabeler_batch_limits, prelabeler_sizing_route
+
+    route = prelabeler_sizing_route("google/gemma-4-31b-it")
+    assert route.provider == "gemini"
+    assert route.quota.rpd == 14400
+    limits = prelabeler_batch_limits(route)
+    assert limits.input_token_ratio == route.input_token_ratio
+    assert (
+        math.ceil(limits.max_raw_input_tokens * route.input_token_ratio) <= route.hard_input_ceiling
+    )
+    assert limits.max_reserved_tokens == route.quota.tpm
+    assert limits.fits_reservation(limits.max_raw_input_tokens, 1)
+    assert not limits.fits_reservation(limits.max_raw_input_tokens, 60)
+
+
+def test_prelabeler_sizes_to_the_workers_learned_ratio_with_margin():
+    """The Worker checks the ceiling at its learned ratio; batches sized at the prior alone were
+    refused on every ceilinged route once that ratio rose above it (2026-09-25)."""
+    import pytest
+
+    from citypods.tags import (
+        PRELABELER_LEARNED_RATIO_MARGIN,
+        prelabeler_batch_limits,
+        prelabeler_sizing_route,
+    )
+
+    route = prelabeler_sizing_route("google/gemma-4-31b-it")
+    prior = prelabeler_batch_limits(route)
+    learned = prelabeler_batch_limits(route, 1.56)
+    assert learned.input_token_ratio == pytest.approx(1.56 * PRELABELER_LEARNED_RATIO_MARGIN)
+    assert learned.max_raw_input_tokens < prior.max_raw_input_tokens
+    # A full-size batch now fits the Worker's own check at the learned ratio.
+    assert learned.max_raw_input_tokens * 1.56 <= route.hard_input_ceiling
+    # A learned ratio below the prior never loosens sizing past the prior.
+    low = prelabeler_batch_limits(route, 1.0)
+    assert low.input_token_ratio == pytest.approx(
+        route.input_token_ratio * PRELABELER_LEARNED_RATIO_MARGIN
+    )
+
+
+def test_prelabeler_batches_use_the_learned_ratio(monkeypatch):
+    from citypods.compute import llm
+    from citypods.compute.base import JobHandle
+    from citypods.compute.llm_policy import estimate_tokens
+    from citypods.tags import (
+        llm_prelabel_candidates,
+        prelabeler_batch_limits,
+        prelabeler_sizing_route,
+    )
+
+    asked = []
+
+    def fake_ratio(route_id, family, *, backend=None):
+        asked.append((route_id, family))
+        return 1.56
+
+    monkeypatch.setattr(llm, "dispatch_v2_learned_input_ratio", fake_ratio)
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["example"], "rules": {"include": ["x"]}}],
+        }
+    )
+    candidates = [
+        {
+            "candidate_id": f"subject-{i}",
+            "id": "housing",
+            "source_kind": "llm",
+            "scope": "chapter",
+            "chapter_id": "ch-1",
+            "evidence": [{"where": "transcript", "quote": "housing " * 400}],
+            "explanation": "The chapter discusses housing.",
+        }
+        for i in range(40)
+    ]
+    jobs = []
+
+    class _Backend:
+        storage = None
+
+        def run_inference(self, job):
+            jobs.append(job)
+            return JobHandle(task=job.task, recipe_hash=job.recipe_hash, backend="x", ref="r")
+
+    llm_prelabel_candidates(
+        _Backend(),
+        candidates=candidates,
+        taxonomy=taxonomy,
+        chapters=[{"chapter_id": "ch-1", "title": "Housing", "transcript_text": "housing " * 5000}],
+        recipe_hash="r",
+        model="google/gemma-4-31b-it",
+    )
+    route = prelabeler_sizing_route("google/gemma-4-31b-it")
+    assert asked == [(route.route_id, "tag")]
+    limits = prelabeler_batch_limits(route, 1.56)
+    assert jobs
+    for job in jobs:
+        assert estimate_tokens(job.inputs["messages"]) <= limits.max_raw_input_tokens
+
+
+def test_prelabeler_sizing_ignores_paused_routes():
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES
+    from citypods.tags import prelabeler_sizing_route
+
+    route = prelabeler_sizing_route("google/gemma-4-31b-it")
+    paused = {r.route_id for r in ROUTE_CANDIDATES["google/gemma-4-31b-it"] if r.quota.rpd == 0}
+    assert "nvidia_gemma_4_31b_it_free" in paused
+    assert route.route_id not in paused
+
+
+def test_prelabeler_batches_split_to_fit_the_sizing_route(monkeypatch):
+    import json
+
+    from citypods.compute.base import JobHandle
+    from citypods.tags import llm_prelabel_candidates, prelabeler_batch_limits
+
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["example"], "rules": {"include": ["x"]}}],
+        }
+    )
+    candidates = [
+        {
+            "candidate_id": f"subject-{i}",
+            "id": "housing",
+            "source_kind": "llm",
+            "scope": "chapter",
+            "chapter_id": "ch-1",
+            "evidence": [{"where": "transcript", "quote": "housing " * 400}],
+            "explanation": "The chapter discusses housing.",
+        }
+        for i in range(40)
+    ]
+    jobs = []
+
+    class _Backend:
+        storage = None
+
+        def run_inference(self, job):
+            jobs.append(job)
+            return JobHandle(task=job.task, recipe_hash=job.recipe_hash, backend="x", ref="r")
+
+    _, pending, _ = llm_prelabel_candidates(
+        _Backend(),
+        candidates=candidates,
+        taxonomy=taxonomy,
+        chapters=[{"chapter_id": "ch-1", "title": "Housing", "transcript_text": "housing " * 5000}],
+        recipe_hash="r",
+        model="google/gemma-4-31b-it",
+    )
+    assert pending and len(jobs) > 1
+    from citypods.compute.llm_policy import estimate_tokens
+    from citypods.tags import prelabeler_sizing_route
+
+    limits = prelabeler_batch_limits(prelabeler_sizing_route("google/gemma-4-31b-it"))
+    for job in jobs:
+        raw = estimate_tokens(job.inputs["messages"])
+        count = len(json.loads(job.inputs["messages"][-1]["content"])["candidates"])
+        assert raw <= limits.max_raw_input_tokens
+        assert limits.fits_reservation(raw, count)
+
+
+def test_prelabeler_batch_limits_reject_a_route_with_no_input_budget():
+    from types import SimpleNamespace
+
+    import pytest
+
+    from citypods.compute.llm_policy import QuotaPolicy
+    from citypods.tags import prelabeler_batch_limits
+
+    starved = SimpleNamespace(
+        route_id="tiny",
+        input_token_ratio=1.0,
+        input_context_limit=32768,
+        hard_input_ceiling=None,
+        quota=QuotaPolicy(tpm=300),  # less than the 400-token minimum output reserve
+    )
+    with pytest.raises(ValueError, match="no input budget"):
+        prelabeler_batch_limits(starved)

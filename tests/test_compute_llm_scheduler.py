@@ -12,7 +12,6 @@ from citypods.compute.llm_budget import (
     serialize_llm_budget,
 )
 from citypods.compute.llm_policy import (
-    ROUTE_CANDIDATES,
     ROUTE_REGISTRY,
     ROUTES,
     LLMRequestPolicy,
@@ -28,7 +27,7 @@ from tests._cas_fake import MemCAS
 
 NOW = datetime(2026, 7, 16, 12, tzinfo=UTC)
 DIRECT = frozenset({"direct"})
-BOTH_TRANSPORTS = frozenset({"direct", "mistral-dispatch", "llm-dispatch"})
+BOTH_TRANSPORTS = frozenset({"direct", "llm-dispatch-v2"})
 
 
 def _all_free_direct_routes_exhausted() -> LLMBudget:
@@ -61,7 +60,35 @@ def _all_free_direct_routes_exhausted() -> LLMBudget:
 
 
 def _deepseek_direct_route(model: str) -> LLMRoute:
-    return next(route for route in ROUTE_CANDIDATES[model] if route.provider == "deepseek")
+    # The production catalog intentionally has no paid routes. These tests still exercise the
+    # generic scheduler's pricing-window behavior with an isolated paid fixture.
+    return LLMRoute(
+        model=model,
+        transport="direct",
+        free=False,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(
+            input_per_token=0.14e-6,
+            output_per_token=0.28e-6,
+            periods=(
+                PricingPeriod(
+                    effective_at=datetime(1970, 1, 1, tzinfo=UTC),
+                    input_per_token=0.14e-6,
+                    output_per_token=0.28e-6,
+                    windows=(PeakWindow("UTC", time(1), time(4), 2),),
+                ),
+                PricingPeriod(
+                    effective_at=datetime(2026, 8, 16, 16, tzinfo=UTC),
+                    input_per_token=0.22e-6,
+                    output_per_token=0.66e-6,
+                    windows=(
+                        PeakWindow("UTC", time(1), time(4), 2),
+                        PeakWindow("UTC", time(6), time(10), 2),
+                    ),
+                ),
+            ),
+        ),
+    )
 
 
 def test_direct_selection_skips_physical_routes_with_insufficient_context():
@@ -168,50 +195,6 @@ def test_hard_input_ceiling_unset_never_blocks_a_route_that_only_has_tpm():
     assert ("test/model", "hard input ceiling") not in result.rejected
 
 
-def test_paid_route_wins_when_free_quota_cannot_reset_before_deadline():
-    result = select_route(
-        LLMRequestPolicy(allow_paid=True, deadline_at=NOW + timedelta(hours=1)),
-        routes=ROUTES,
-        ledger=_all_free_direct_routes_exhausted(),
-        available_transports=DIRECT,
-        estimated_tokens=1024,
-        now=NOW,
-    )
-    assert result.model in {
-        "deepseek/deepseek-v4-flash",
-        "deepseek/deepseek-v4-pro",
-    }
-    assert any(model == "gemini/gemini-3-flash-preview" for model, _ in result.rejected)
-
-
-def test_ranking_prefers_free_route_over_a_simultaneously_eligible_paid_route():
-    """Distinct from the exhausted-Gemini scenarios above: here Gemini has full quota *and*
-    DeepSeek is inside its own off-peak window (so it's cheap and immediately eligible too) --
-    ranking (§5 gate 6) must still pick the free route over an equally-eligible paid one."""
-    inside_deepseek_window = datetime(2026, 7, 16, 18, tzinfo=UTC)
-    result = select_route(
-        LLMRequestPolicy(
-            allow_paid=True,
-            allowed_models=(
-                "gemini/gemini-3-flash-preview",
-                "deepseek/deepseek-v4-flash",
-                "deepseek/deepseek-v4-pro",
-            ),
-        ),
-        routes=ROUTES,
-        ledger=LLMBudget(),
-        available_transports=DIRECT,
-        estimated_tokens=1024,
-        now=inside_deepseek_window,
-    )
-    assert result.model == "gemini/gemini-3-flash-preview"
-    assert any(
-        model in {"deepseek/deepseek-v4-flash", "deepseek/deepseek-v4-pro"}
-        and reason == "lower-ranked eligible route"
-        for model, reason in result.rejected
-    )
-
-
 def test_no_route_is_selected_when_free_routes_are_exhausted_and_paid_is_disallowed():
     result = select_route(
         LLMRequestPolicy(allow_paid=False, deadline_at=NOW + timedelta(hours=24)),
@@ -222,13 +205,13 @@ def test_no_route_is_selected_when_free_routes_are_exhausted_and_paid_is_disallo
         now=NOW,
     )
     assert result.model is None
-    assert any("paid model disallowed" in reason for _, reason in result.rejected)
+    assert all(reason == "quota or budget exhausted" for _, reason in result.rejected)
 
 
-def test_allowlist_can_force_one_paid_evaluation_model():
-    model = "deepseek/deepseek-v4-pro"
+def test_allowlist_can_select_the_free_deepseek_v41_route():
+    model = "deepseek/deepseek-v4.1-flash"
     result = select_route(
-        LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
+        LLMRequestPolicy(allowed_models=(model,), allow_paid=False),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=DIRECT,
@@ -236,44 +219,9 @@ def test_allowlist_can_force_one_paid_evaluation_model():
         now=datetime(2026, 7, 16, 18, tzinfo=UTC),
     )
     assert result.model == model
-
-
-def test_deepseek_off_peak_preference_and_deadline_override():
-    model = "deepseek/deepseek-v4-flash"
-    route = _deepseek_direct_route(model)
-    routes = {route.route_id or route.model: route}
-    outside = select_route(
-        LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
-        routes=routes,
-        ledger=LLMBudget(),
-        available_transports=DIRECT,
-        estimated_tokens=1024,
-        now=NOW,
-    )
-    assert outside.model is None
-    assert "price-window" in outside.rejected[0][1]
-
-    inside = select_route(
-        LLMRequestPolicy(allowed_models=(model,), allow_paid=True),
-        routes=routes,
-        ledger=LLMBudget(),
-        available_transports=DIRECT,
-        estimated_tokens=1024,
-        now=datetime(2026, 7, 16, 18, tzinfo=UTC),
-    )
-    assert inside.model == model
-
-    urgent = select_route(
-        LLMRequestPolicy(
-            allowed_models=(model,), allow_paid=True, deadline_at=NOW + timedelta(hours=1)
-        ),
-        routes=routes,
-        ledger=LLMBudget(),
-        available_transports=DIRECT,
-        estimated_tokens=1024,
-        now=NOW,
-    )
-    assert urgent.model == model
+    # One pool name per DeepSeek version (2026-09-24): v4.1 is served only by NVIDIA's route.
+    assert result.route.route_id == "nvidia_deepseek_v4_1_flash_free"
+    assert result.route.model == model
 
 
 def test_deepseek_peak_waits_for_the_next_cheapest_window():
@@ -367,22 +315,22 @@ def test_price_gate_precedes_peak_rate_daily_cost_admission():
 
 def test_direct_transport_selects_a_direct_capable_route():
     result = select_route(
-        LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",), allow_paid=True),
+        LLMRequestPolicy(allowed_models=("mistral/codestral-2508",), allow_paid=True),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=DIRECT,
         estimated_tokens=1024,
         now=NOW,
     )
-    assert result.model == "mistral/mistral-large-2512"
+    assert result.model == "mistral/codestral-2508"
     assert result.transport == "direct"
 
 
 def test_transport_gate_rejects_a_dispatch_only_route_from_a_direct_caller():
     route = LLMRoute(
         model="example/dispatch-only",
-        transport="llm-dispatch",
-        transports=("llm-dispatch",),
+        transport="llm-dispatch-v2",
+        transports=("llm-dispatch-v2",),
         free=True,
         quota=QuotaPolicy(rpm=1),
         pricing=PricingPolicy(),
@@ -399,17 +347,19 @@ def test_transport_gate_rejects_a_dispatch_only_route_from_a_direct_caller():
     assert (route.model, "transport gate") in result.rejected
 
 
-def test_mistral_large_policy_matches_the_deployed_dispatch_worker_ceiling():
-    """Mistral Large route matches the upstream 0.07-RPS (4 RPM) ceiling with split-cap lifted."""
-    route = ROUTES["mistral/mistral-large-2512"]
+def test_codestral_policy_is_paced_at_the_airforce_ceiling():
+    """Codestral is served only by the Airforce route (1 RPM, one request in flight).
+
+    (Native Mistral, this test's former subject, was removed 2026-09-30.)"""
+    route = ROUTES["mistral/codestral-2508"]
     assert route.transport == "direct"
-    assert set(route.transports) == {"direct", "llm-dispatch"}
-    assert route.quota.rpm == 4
+    assert set(route.transports) == {"direct"}
+    assert route.quota.rpm == 1
 
 
 def test_owner_for_keys_off_the_selected_transport_not_route_capability():
     """The owner must key off the *actually selected* transport for this call, not merely whether
-    the route is capable of dispatch -- a Gemini route can dispatch over `llm-dispatch`, but a
+    the route is capable of dispatch -- a route may dispatch over `llm-dispatch-v2`, but a
     *direct* call to that same route (the default, `allow_dispatch_overflow=False`) has no
     server-side dedup and must reserve its own unique slot. Keying off route capability alone was
     a real bug (CodeRabbit, review/41): it deduped two genuinely concurrent direct calls sharing a
@@ -417,8 +367,7 @@ def test_owner_for_keys_off_the_selected_transport_not_route_capability():
     original double-reservation bug this whole mechanism exists to prevent."""
     from citypods.compute.llm_scheduler import _owner_for
 
-    assert _owner_for("abc123", "llm-dispatch") == "abc123"
-    assert _owner_for("abc123", "mistral-dispatch") == "abc123"
+    assert _owner_for("abc123", "llm-dispatch-v2") == "abc123"
     owner = _owner_for("abc123", "direct")
     assert owner != "abc123"
     assert owner.startswith("abc123:")
@@ -429,61 +378,35 @@ def test_owner_for_keys_off_the_selected_transport_not_route_capability():
 def test_selected_transport_prefers_direct_unless_overflow_is_explicit():
     from citypods.compute.llm_scheduler import _selected_transport
 
-    gemini_route = ROUTES["gemini/gemini-3-flash-preview"]
-    both = frozenset({"direct", "llm-dispatch"})
-    assert _selected_transport(gemini_route, both, allow_dispatch_overflow=False) == "direct"
-    assert _selected_transport(gemini_route, both, allow_dispatch_overflow=True) == "llm-dispatch"
+    dual_route = LLMRoute(
+        model="example/dual",
+        transport="direct",
+        transports=("direct", "llm-dispatch-v2"),
+        free=True,
+        quota=QuotaPolicy(rpm=1),
+        pricing=PricingPolicy(),
+    )
+    both = frozenset({"direct", "llm-dispatch-v2"})
+    assert _selected_transport(dual_route, both, allow_dispatch_overflow=False) == "direct"
+    assert _selected_transport(dual_route, both, allow_dispatch_overflow=True) == "llm-dispatch-v2"
     # Overflow requested but the Worker isn't actually reachable -- direct is all there is.
-    assert _selected_transport(gemini_route, DIRECT, allow_dispatch_overflow=True) == "direct"
-
-    mistral_route = ROUTES["mistral/mistral-large-2512"]
-    dispatch_only = frozenset({"llm-dispatch"})
-    assert _selected_transport(mistral_route, dispatch_only, allow_dispatch_overflow=False) == (
-        "llm-dispatch"
+    assert _selected_transport(dual_route, DIRECT, allow_dispatch_overflow=True) == "direct"
+    dispatch_only = frozenset({"llm-dispatch-v2"})
+    assert _selected_transport(dual_route, dispatch_only, allow_dispatch_overflow=False) == (
+        "llm-dispatch-v2"
     )
 
-    direct_only_route = ROUTES["deepseek/deepseek-v4-flash"]
-    assert _selected_transport(direct_only_route, DIRECT, allow_dispatch_overflow=True) == "direct"
+    # Compiled routes are direct-only: overflow never moves them onto a dispatch transport.
+    gemini_route = ROUTES["gemini/gemini-3-flash-preview"]
+    assert _selected_transport(gemini_route, both, allow_dispatch_overflow=True) == "direct"
 
     # Nothing reachable at all.
-    assert _selected_transport(gemini_route, frozenset(), allow_dispatch_overflow=True) is None
+    assert _selected_transport(dual_route, frozenset(), allow_dispatch_overflow=True) is None
 
 
-def test_select_and_reserve_dual_transport_direct_vs_overflow_owner():
-    """End-to-end through `select_and_reserve`, both Gemini paths: a plain direct selection
-    reserves under a unique owner (no policy opt-in), while `allow_dispatch_overflow=True`
-    reserves under `recipe_hash` -- matching the Worker's own idempotency-key dedup."""
-    storage = MemCAS()
-    both_transports = frozenset({"direct", "llm-dispatch"})
-
-    direct_selection = select_and_reserve(
-        storage,
-        "recipe-direct",
-        LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",)),
-        available_transports=both_transports,
-        estimated_tokens=1024,
-        now=NOW,
-    )
-    assert direct_selection.transport == "direct"
-    assert direct_selection.owner != "recipe-direct"
-    assert direct_selection.owner.startswith("recipe-direct:")
-
-    overflow_selection = select_and_reserve(
-        storage,
-        "recipe-overflow",
-        LLMRequestPolicy(
-            allowed_models=("gemini/gemini-3-flash-preview",),
-            allow_dispatch_overflow=True,
-        ),
-        available_transports=both_transports,
-        estimated_tokens=1024,
-        now=NOW,
-    )
-    assert overflow_selection.transport == "llm-dispatch"
-    assert overflow_selection.owner == "recipe-overflow"
-
-    model = "mistral/mistral-medium-2508"
-    canonical = "mistral/mistral-medium-latest"
+def test_select_route_resolves_a_model_alias_to_its_canonical_pool():
+    model = "orcarouter/deepseek-v4-flash"  # an alias of the canonical pool name
+    canonical = "deepseek/deepseek-v4-flash"
     direct = select_route(
         LLMRequestPolicy(allowed_models=(model,)),
         routes=ROUTES,
@@ -909,14 +832,14 @@ def test_a_caller_reaching_both_transports_can_select_either():
     what lets a single backend instance service pending records regardless of which provider
     originally claimed them."""
     result = select_route(
-        LLMRequestPolicy(allowed_models=("mistral/mistral-large-2512",), allow_paid=True),
+        LLMRequestPolicy(allowed_models=("mistral/codestral-2508",), allow_paid=True),
         routes=ROUTES,
         ledger=LLMBudget(),
         available_transports=BOTH_TRANSPORTS,
         estimated_tokens=1024,
         now=NOW,
     )
-    assert result.model == "mistral/mistral-large-2512"
+    assert result.model == "mistral/codestral-2508"
 
 
 def test_select_and_reserve_retries_after_one_cas_conflict():
@@ -1018,8 +941,11 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner(
     resolve to the model it originally reserved, even if a fresh selection pass, run against
     updated ledger state, would now pick differently (e.g. a previously-exhausted free route
     recovering)."""
+    from dataclasses import replace
+
     gemini = ROUTES["gemini/gemini-3-flash-preview"]
-    mistral = ROUTES["mistral/mistral-large-2512"]
+    # Compiled routes are direct-only; reuse only applies to a route that advertises dispatch.
+    mistral = replace(ROUTES["mistral/codestral-2508"], transports=("direct", "llm-dispatch-v2"))
     routes = {
         gemini.route_id or gemini.model: gemini,
         mistral.route_id or mistral.model: mistral,
@@ -1060,3 +986,77 @@ def test_select_and_reserve_reuses_route_for_an_already_inflight_dispatch_owner(
     assert (gemini.route_id or gemini.model) not in budget.routes or budget.routes[
         gemini.route_id or gemini.model
     ].inflight_count == 0
+
+
+def test_select_route_compares_ceilings_in_the_routes_tokenizer_units():
+    """A Gemma AI Studio route's 14,400-token ceiling is in Gemma tokens. 10,500 chars/4 tokens is
+    14,700 Gemma tokens at its measured 1.4 ratio, so that route must be skipped even though the
+    raw estimate is under the ceiling -- the Worker makes the same call (calibration.js)."""
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES
+
+    gemini = [r for r in ROUTE_CANDIDATES["google/gemma-4-31b-it"] if r.provider == "gemini"]
+    routes = {route.route_id: route for route in gemini}
+    assert all(route.input_token_ratio == 1.4 for route in gemini)
+
+    def pick(input_tokens):
+        return select_route(
+            LLMRequestPolicy(allowed_models=("google/gemma-4-31b-it",), allow_paid=False),
+            routes=routes,
+            ledger=LLMBudget(),
+            available_transports=DIRECT,
+            estimated_tokens=input_tokens + 500,
+            input_tokens=input_tokens,
+            output_tokens=500,
+            now=datetime(2026, 9, 23, 18, tzinfo=UTC),
+        )
+
+    assert pick(10_000).route is not None
+    rejected = pick(10_500)
+    assert rejected.route is None
+    assert {reason for _, reason in rejected.rejected} == {"hard input ceiling"}
+
+
+def test_physical_allowlist_precedes_overflow_and_also_serves(monkeypatch):
+    weak = LLMRoute(
+        model="weak",
+        route_id="weak-route",
+        also_serves=("strong",),
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(),
+    )
+    monkeypatch.setattr(llm_scheduler, "MODEL_ROUTING", {"strong": ("weak",)})
+    policy = LLMRequestPolicy(allowed_models=("strong",), allowed_route_ids=("strong-route",))
+    result = select_route(
+        policy,
+        routes={"weak-route": weak},
+        ledger=LLMBudget(),
+        available_transports=DIRECT,
+        estimated_tokens=1,
+        now=NOW,
+    )
+    assert result.route is None
+    assert result.rejected == (("weak", "physical route allowlist gate"),)
+    assert result.retry_at is None
+
+
+def test_physical_allowlist_none_and_empty_semantics():
+    route = LLMRoute(
+        model="test",
+        route_id="test-route",
+        transport="direct",
+        free=True,
+        quota=QuotaPolicy(),
+        pricing=PricingPolicy(),
+    )
+    for allowed, expected in ((None, route), ((), None), (("test-route",), route)):
+        result = select_route(
+            LLMRequestPolicy(allowed_route_ids=allowed),
+            routes={"test-route": route},
+            ledger=LLMBudget(),
+            available_transports=DIRECT,
+            estimated_tokens=1,
+            now=NOW,
+        )
+        assert result.route == expected

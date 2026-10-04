@@ -29,10 +29,11 @@ class LLMRequestPolicy:
     # dispatch payload for forward compatibility only; nothing currently reads it to change
     # routing behavior.
     allow_batch: bool = True
-    # Explicit, caller-opted-in permission to dispatch a route that also offers `direct` (today
-    # only Gemini) over the Worker's `llm-dispatch` transport instead of calling the provider
-    # directly. Default False: a route that can be reached directly always is, matching
-    # review/33 §7's decision that Gemini's own free tier needs no Worker ("only build a
+    # Explicit, caller-opted-in permission to dispatch a route that also offers `direct` over a
+    # synchronous Worker transport instead of calling the provider directly. No route offers one
+    # since the v1 `llm-dispatch` Worker was retired, so this is inert until a route lists a
+    # non-direct transport again. Default False: a route that can be reached directly always is,
+    # matching review/33 §7's decision that Gemini's own free tier needs no Worker ("only build a
     # dedicated Gemini Worker later, and only if real usage shows it's needed"). This flag is the
     # sanctioned way for a future caller to reach *additional* capacity a direct call can't see --
     # concretely, a second configured account (`GEMINI_API_KEY_SECONDARY`) the Worker's per-route
@@ -53,6 +54,15 @@ class LLMRequestPolicy:
     # only at submission (LiteLLMBackend.enqueue_batch reads this field directly); there is
     # deliberately no API to edit priority on an already-queued job.
     priority: Literal[0, 1] = 1
+    # Models eligible only once a queued job looks stuck on `allowed_models` alone -- mirrors
+    # `LaneConfig.backup_models`/`backup_after_attempts` (citypods/compute/llm_lanes.py). Only takes
+    # effect for `queue_only=True` requests: the Worker's `jobs.attempts`/`schema_retry_count`
+    # columns are the durable, cross-lease counters this gates on (see
+    # workers/llm-dispatch-v2/src/routes.js's `backupModelsActive`/`modelsForJob`); direct-mode
+    # dispatch has no equivalent persistent counter today and ignores these fields.
+    backup_models: tuple[str, ...] = ()
+    backup_after_attempts: int | None = None
+    allowed_route_ids: tuple[str, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -71,6 +81,12 @@ class DeferredLLMRequest:
     messages: tuple[Mapping[str, Any], ...]
     policy: LLMRequestPolicy
     output_token_budget: int = DEFAULT_OUTPUT_TOKEN_MARGIN
+    # The job's own ``inputs["timeout"]`` (e.g. a deadline-aware budget), so a rebuilt job keeps
+    # it instead of falling back to the direct-call default. ``None`` when the job set none.
+    timeout: float | None = None
+    # ``"route_max"`` when the job asked for the route's own output limit (see
+    # ``route_output_tokens``); a rebuilt job must keep it or it truncates at its reservation.
+    max_tokens_mode: str | None = None
 
 
 @dataclass(frozen=True)
@@ -146,7 +162,7 @@ class QuotaPolicy:
 @dataclass(frozen=True)
 class LLMRoute:
     model: str
-    transport: Literal["direct", "mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"]
+    transport: Literal["direct", "llm-dispatch-v2"]
     free: bool
     quota: QuotaPolicy
     pricing: PricingPolicy
@@ -155,9 +171,7 @@ class LLMRoute:
     # exactly one upstream request and must reserve only that one, even when the caller's
     # structured-output contract is present.
     max_provider_attempts: int | None = None
-    transports: tuple[
-        Literal["direct", "mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"], ...
-    ] = ("direct",)
+    transports: tuple[Literal["direct", "llm-dispatch-v2"], ...] = ("direct",)
     # Physical route identity and direct LiteLLM adapter metadata.  Empty defaults preserve the
     # small hand-built routes used by unit tests and old callers; generated routes always fill all
     # fields and use ``route_id`` as their shared-ledger key.
@@ -175,14 +189,19 @@ class LLMRoute:
     chat_path: str = "/v1/chat/completions"
     api_key_env: str = ""
     account_id: str = ""
-    # Structured-output behavior is compiled from the provider/route capability profile rather
-    # than inferred from a model or route name.  The profile's resolved fields are carried here
-    # so direct and queued transports make the same request-format decision.
-    structured_output_profile: str = "standard_json_schema"
-    structured_output_response_format: Literal["json_schema", "json_object"] = "json_schema"
-    structured_output_direct_handler: Literal["instructor", "native"] = "instructor"
+    # Structured-output METHOD (review/48 R10), resolved by the compiler per route: the route's own
+    # verified method, else one verified for the same model elsewhere, else the provider's.
+    # Direct calls shape requests from these fields exactly as the v2 Worker does.
+    structured_output_method: str = "json_schema"
+    structured_output_response_format: Literal["json_schema", "json_object", "none"] = "json_schema"
     structured_output_include_schema_in_prompt: bool = False
     structured_output_schema_strip_keys: tuple[str, ...] = ()
+    # Provider-specific request parameters this route always sends (compile-validated allowlist,
+    # e.g. `chat_template_kwargs: {enable_thinking: false}`). Stored as a JSON string so the frozen
+    # route stays hashable; `request_params` decodes it.
+    request_params_json: str = ""
+    # How this route expresses each reasoning level a lane may ask for (JSON, like request_params).
+    reasoning_controls_json: str = ""
     # Conservative defaults for hand-authored/test routes. Generated route catalogs materialize
     # provider- or route-specific values for every physical route.
     input_context_limit: int = 32768
@@ -196,6 +215,21 @@ class LLMRoute:
     # automatically -- only set it where a provider's hard-reject behavior has actually been
     # verified. `None` (the default) means "no extra ceiling beyond `input_context_limit`."
     hard_input_ceiling: int | None = None
+    # Provider tokens per `estimate_tokens` unit (chars/4) for this route's model family, measured
+    # from real payload/result pairs. Multiply a raw estimate by this before comparing it with
+    # `hard_input_ceiling`, `input_context_limit`, or `quota.tpm` (see `route_input_tokens`).
+    input_token_ratio: float = 1.0
+    # Additional logical model pools this one physical route serves (`also_serves` in
+    # config/provider_limits.yml). The route keeps one ledger; it is simply a candidate in each.
+    also_serves: tuple[str, ...] = ()
+    # Characterization measurements (PR-5 / Initiative 20). All optional, defaulting to None.
+    observed_on: str | None = None
+    observed_rpm: float | None = None
+    observed_burst: int | None = None
+    observed_input_ceiling: int | None = None
+    observed_recovery_seconds: float | None = None
+    retry_after_trustworthy: bool | None = None
+    upstream_429_default: str | None = None
 
     def __post_init__(self) -> None:
         # Hand-built fallback and test routes intentionally omit provider adapter metadata.  They
@@ -303,14 +337,9 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                 chat_path=str(item.get("chat_path", "/v1/chat/completions")),
                 api_key_env=str(item.get("api_key_env", "")),
                 account_id=str(item.get("account_id", "")),
-                structured_output_profile=str(
-                    item.get("structured_output_profile", "standard_json_schema")
-                ),
+                structured_output_method=str(item.get("structured_output_method", "json_schema")),
                 structured_output_response_format=str(
                     item.get("structured_output_response_format", "json_schema")
-                ),
-                structured_output_direct_handler=str(
-                    item.get("structured_output_direct_handler", "instructor")
                 ),
                 structured_output_include_schema_in_prompt=bool(
                     item.get("structured_output_include_schema_in_prompt", False)
@@ -320,9 +349,50 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                 ),
                 input_context_limit=max(1, int(item.get("input_context_limit", 32768) or 32768)),
                 output_context_limit=max(1, int(item.get("output_context_limit", 1024) or 1024)),
+                request_params_json=(
+                    json.dumps(item["request_params"], sort_keys=True)
+                    if item.get("request_params")
+                    else ""
+                ),
+                reasoning_controls_json=(
+                    json.dumps(item["reasoning_controls"], sort_keys=True)
+                    if item.get("reasoning_controls")
+                    else ""
+                ),
                 hard_input_ceiling=(
                     int(item["hard_input_ceiling"])
                     if item.get("hard_input_ceiling") is not None
+                    else None
+                ),
+                input_token_ratio=float(item.get("input_token_ratio") or 1.0),
+                also_serves=tuple(str(model) for model in item.get("also_serves") or ()),
+                observed_on=(
+                    str(item["observed_on"]) if item.get("observed_on") is not None else None
+                ),
+                observed_rpm=(
+                    float(item["observed_rpm"]) if item.get("observed_rpm") is not None else None
+                ),
+                observed_burst=(
+                    int(item["observed_burst"]) if item.get("observed_burst") is not None else None
+                ),
+                observed_input_ceiling=(
+                    int(item["observed_input_ceiling"])
+                    if item.get("observed_input_ceiling") is not None
+                    else None
+                ),
+                observed_recovery_seconds=(
+                    float(item["observed_recovery_seconds"])
+                    if item.get("observed_recovery_seconds") is not None
+                    else None
+                ),
+                retry_after_trustworthy=(
+                    bool(item["retry_after_trustworthy"])
+                    if item.get("retry_after_trustworthy") is not None
+                    else None
+                ),
+                upstream_429_default=(
+                    str(item["upstream_429_default"])
+                    if item.get("upstream_429_default") is not None
                     else None
                 ),
             )
@@ -364,20 +434,26 @@ ROUTE_CANDIDATES: dict[str, tuple[LLMRoute, ...]] = {}
 for _route in _GENERATED_ROUTES:
     ROUTE_CANDIDATES.setdefault(_route.model, tuple())
     ROUTE_CANDIDATES[_route.model] += (_route,)
+# Secondary pools after every primary one, matching the compiler's model_routes_map order: a pool's
+# own routes stay first, and ``ROUTES``' primary-route view below prefers them.
+for _route in _GENERATED_ROUTES:
+    for _pool in _route.also_serves:
+        ROUTE_CANDIDATES.setdefault(_pool, tuple())
+        ROUTE_CANDIDATES[_pool] += (_route,)
 
 ROUTES: dict[str, LLMRoute] = {
     model: candidates[0] for model, candidates in ROUTE_CANDIDATES.items()
 }
 
 # Source fallback for a checkout that has not run the compiler yet.  This is intentionally kept
-# below the generated catalog and only supplies the original 14 routes during local development;
+# below the generated catalog and only supplies 11 routes during local development;
 # CI and packaging always compile and commit ``llm_routes.json``.
 if not _GENERATED_ROUTES:
     ROUTES = {
         "gemini/gemini-3-flash-preview": LLMRoute(
             model="gemini/gemini-3-flash-preview",
             transport="direct",
-            transports=("direct", "llm-dispatch"),
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(
                 rpm=5,
@@ -390,7 +466,7 @@ if not _GENERATED_ROUTES:
         "gemini/gemini-3.1-flash-lite": LLMRoute(
             model="gemini/gemini-3.1-flash-lite",
             transport="direct",
-            transports=("direct", "llm-dispatch"),
+            transports=("direct",),
             free=True,
             # Real free-tier allowance for this route (raised from the initial rpd=20 safety ceiling
             # now that the tag lane paces within its per-minute budget rather than bursting and
@@ -402,7 +478,7 @@ if not _GENERATED_ROUTES:
         "gemini/gemini-3.5-flash-lite": LLMRoute(
             model="gemini/gemini-3.5-flash-lite",
             transport="direct",
-            transports=("direct", "llm-dispatch"),
+            transports=("direct",),
             free=True,
             # Independent free-tier pool from 3.1-flash-lite (separate model = separate provider
             # quota), so the tag lane can spill onto it once 3.1's per-minute/day window fills --
@@ -411,46 +487,10 @@ if not _GENERATED_ROUTES:
             quota=QuotaPolicy(rpm=15, rpd=500, tpm=250_000, reset_timezone="America/Los_Angeles"),
             pricing=PricingPolicy(),
         ),
-        "deepseek/deepseek-v4-flash": LLMRoute(
-            model="deepseek/deepseek-v4-flash",
-            transport="direct",
-            transports=("direct",),
-            free=False,
-            # Paid route: the maintainer confirmed there is no provider daily request allowance.
-            # Cost telemetry remains active, but a speculative calendar-day ceiling must not stall
-            # bounded research or later explicitly authorized paid work.
-            quota=QuotaPolicy(),
-            pricing=PricingPolicy(
-                input_per_token=0.14e-6,
-                output_per_token=0.28e-6,
-                windows=(_DEEPSEEK_WINDOW,),
-            ),
-        ),
-        "deepseek/deepseek-v4-pro": LLMRoute(
-            model="deepseek/deepseek-v4-pro",
-            transport="direct",
-            transports=("direct",),
-            free=False,
-            quota=QuotaPolicy(),
-            pricing=PricingPolicy(
-                input_per_token=0.435e-6,
-                output_per_token=0.87e-6,
-                windows=(_DEEPSEEK_WINDOW,),
-            ),
-        ),
         "mistral/mistral-large-2512": LLMRoute(
             model="mistral/mistral-large-2512",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
-            free=True,
-            quota=QuotaPolicy(rpm=4, tpm=250_000),
-            pricing=PricingPolicy(),
-            max_provider_attempts=1,
-        ),
-        "mistral/mistral-large-3": LLMRoute(
-            model="mistral/mistral-large-3",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
+            transport="direct",
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(rpm=4, tpm=250_000),
             pricing=PricingPolicy(),
@@ -458,11 +498,8 @@ if not _GENERATED_ROUTES:
         ),
         "mistral/mistral-medium-latest": LLMRoute(
             model="mistral/mistral-medium-latest",
-            # Production agenda extraction is submitted through the shared deferred Worker so a
-            # GitHub runner never holds a Mistral pacing sleep and the same job registry can
-            # retry or finalize it later.
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
+            transport="direct",
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(rpm=50, tpm=25_000),
             pricing=PricingPolicy(),
@@ -470,8 +507,8 @@ if not _GENERATED_ROUTES:
         ),
         "kilo/stepfun/step-3.7-flash:free": LLMRoute(
             model="kilo/stepfun/step-3.7-flash:free",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
+            transport="direct",
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
             pricing=PricingPolicy(),
@@ -479,44 +516,26 @@ if not _GENERATED_ROUTES:
         ),
         "kilo/nvidia/nemotron-3-ultra-550b-a55b:free": LLMRoute(
             model="kilo/nvidia/nemotron-3-ultra-550b-a55b:free",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
+            transport="direct",
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
-            pricing=PricingPolicy(),
-            max_provider_attempts=1,
-        ),
-        "opencode/deepseek-v4-flash-free": LLMRoute(
-            model="opencode/deepseek-v4-flash-free",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
-            free=True,
-            quota=QuotaPolicy(rpm=30, rpd=500, tpm=250_000),
             pricing=PricingPolicy(),
             max_provider_attempts=1,
         ),
         "opencode/mimo-v2.5-free": LLMRoute(
             model="opencode/mimo-v2.5-free",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
+            transport="direct",
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(rpm=30, rpd=500, tpm=100_000),
             pricing=PricingPolicy(),
             max_provider_attempts=1,
         ),
-        "opencode/longcat-2.0-free": LLMRoute(
-            model="opencode/longcat-2.0-free",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
-            free=True,
-            quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
-            pricing=PricingPolicy(),
-            max_provider_attempts=1,
-        ),
         "opencode/nemotron-3-ultra-free": LLMRoute(
             model="opencode/nemotron-3-ultra-free",
-            transport="llm-dispatch",
-            transports=("llm-dispatch",),
+            transport="direct",
+            transports=("direct",),
             free=True,
             quota=QuotaPolicy(rpm=20, rpd=200, tpm=100_000),
             pricing=PricingPolicy(),
@@ -528,9 +547,20 @@ if not _GENERATED_ROUTES:
 
 
 def estimate_tokens(messages: list[Mapping[str, Any]]) -> int:
-    """Estimate input tokens conservatively from message content."""
+    """Estimate input tokens from message content with the shared chars/4 heuristic.
+
+    This raw, model-agnostic figure is what jobs carry as ``input_token_estimate``; the dispatch
+    Worker scales it per route. Use ``route_input_tokens`` wherever a producer compares an
+    estimate against one route's real limits.
+    """
     characters = sum(len(str(message.get("content", ""))) for message in messages)
     return math.ceil(characters / 4)
+
+
+def route_input_tokens(raw_estimate: int, route: LLMRoute | None) -> int:
+    """Scale a raw ``estimate_tokens`` figure into ``route``'s own tokenizer units."""
+    ratio = float(getattr(route, "input_token_ratio", 1.0) or 1.0)
+    return math.ceil(max(0, raw_estimate) * ratio)
 
 
 __all__ = [
@@ -549,4 +579,43 @@ __all__ = [
     "ROUTE_REGISTRY",
     "canonical_model",
     "estimate_tokens",
+    "route_input_tokens",
 ]
+
+
+def route_request_params(route: object) -> dict[str, Any]:
+    """The provider-specific request parameters a compiled route always sends (may be empty)."""
+    raw = getattr(route, "request_params_json", "") or ""
+    return json.loads(raw) if raw else {}
+
+
+def route_reasoning_controls(route: object, level: str | None) -> dict[str, Any]:
+    """Request parameters that express ``level`` on this route (empty when unsupported/unset)."""
+    raw = getattr(route, "reasoning_controls_json", "") or ""
+    if not level or not raw:
+        return {}
+    return dict(json.loads(raw).get(level) or {})
+
+
+# The most output a "route_max" job is ever sent, whatever the route allows (a runaway reasoning
+# loop should stop at a length limit and be reported, not run to the Worker's 720 s ceiling).
+# Twin of gateway.js MAX_ROUTE_OUTPUT_TOKENS.
+MAX_ROUTE_OUTPUT_TOKENS = 65_536
+
+
+def route_output_tokens(route: object, requested: int, input_tokens: int) -> int:
+    """The route's output limit, bounded by the room its input leaves in the context window.
+
+    ``input_tokens`` is a raw ``estimate_tokens`` figure of the messages actually sent; it is
+    scaled to the route's tokenizer first. When the input leaves no room the request keeps
+    ``requested`` (the provider then rejects it as too large, as it did before route_max).
+    Mirrors workers/llm-dispatch-v2/src/gateway.js:outputTokensForRoute for direct calls.
+    """
+    output_limit = min(int(getattr(route, "output_context_limit", 0) or 0), MAX_ROUTE_OUTPUT_TOKENS)
+    if not output_limit:
+        return requested
+    input_limit = int(getattr(route, "input_context_limit", 0) or 0)
+    if not input_limit or not input_tokens:
+        return output_limit
+    room = input_limit - route_input_tokens(input_tokens, route)
+    return min(output_limit, room) if room > 0 else requested

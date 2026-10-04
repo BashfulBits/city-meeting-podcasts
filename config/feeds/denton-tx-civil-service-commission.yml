@@ -1,0 +1,13 @@
+# Added by automated unexpected-body remediation.
+# Rationale: The label 'Civil Service Commission on 2020-06-15 11:00 AM' represents a meeting of the Civil Service Commission, a distinct municipal body observed across 3 meetings in May and June 2020. No existing feed matches this body, so a new feed 'denton-tx-civil-service-commission' is proposed.
+slug: denton-tx-civil-service-commission
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body: "Civil Service Commission on *"
+podcast_title: 'Denton: Civil Service Commission'
+podcast_author: City of Denton, TX
+podcast_email: ''
+podcast_description: Meetings of the Civil Service Commission for the City of Denton,
+  TX.

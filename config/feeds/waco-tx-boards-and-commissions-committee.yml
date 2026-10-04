@@ -4,6 +4,8 @@ provider: swagit
 source:
   list_url: https://wacotx.new.swagit.com/views/851
   body: "Boards and Commissions Committee Meeting"
+  body_any:
+    - "City of Waco and Waco ISD Intergovernmental Relations Committee Meeting"
   body_includes:
     # One-off advisory-board recording on the same Swagit view (#1231). It belongs with the
     # boards/commissions feed rather than City Council, which carries only Council sessions and

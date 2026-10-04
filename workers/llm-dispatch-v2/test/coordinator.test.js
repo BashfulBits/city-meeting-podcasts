@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
-import { createMockSqlStorage, withTestReservations } from "./helpers.js";
+import { createMockSqlStorage, createRecordingSqlStorage, withTestReservations } from "./helpers.js";
 
 function makeCoordinator(env, { sql, storage } = createMockSqlStorage()) {
   return { coordinator: new LLMSchedulerDO({ storage }, withTestReservations(env)), sql, storage };
@@ -72,6 +72,76 @@ test("enqueueBatch admits new jobs and updates scheduler counter", async () => {
   assert.equal(rows[0].state, "queued");
   assert.equal(rows[0].priority, 1);
   assert.equal(rows[1].priority, 0);
+});
+
+test("queued counter heals direct SQLite state edits at the hourly recount", async () => {
+  // The counter is maintained by explicit deltas on the RPC paths, not per-row triggers (each
+  // trigger write was a billed DO row). A direct Data Studio edit bypasses those deltas, so the
+  // hourly exact recount (recountQueuedJobs, called by the scheduled cleanup) corrects it.
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([
+    {
+      id: "direct-state",
+      idempotency_key: "direct-state-key",
+      request_digest: "direct-state-digest",
+      policy_json: "{}",
+      prompt_family: "tags",
+      input_token_estimate: 100,
+      max_output_token_estimate: 50,
+      payload_key: "payloads/direct-state/request.json",
+    },
+  ]);
+
+  const queued = async () => (await coordinator.stats(Date.now())).jobs.by_state.queued;
+  assert.equal(await queued(), 1);
+  sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'direct-state'");
+  await coordinator.recountQueuedJobs();
+  assert.equal(await queued(), 0);
+  sql.exec("UPDATE jobs SET state = 'queued' WHERE id = 'direct-state'");
+  await coordinator.recountQueuedJobs();
+  assert.equal(await queued(), 1);
+  sql.exec("DELETE FROM jobs WHERE id = 'direct-state'");
+  await coordinator.recountQueuedJobs();
+  assert.equal(await queued(), 0);
+});
+
+test("queued counter tracks enqueue, claim, requeue and cancel without triggers", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const truth = () => sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'")[0].n;
+  const stored = async () => (await coordinator.stats(Date.now())).jobs.by_state.queued;
+  const job = (id) => ({
+    id,
+    idempotency_key: `${id}-key`,
+    request_digest: `${id}-digest`,
+    policy_json: JSON.stringify({ allowed_models: ["gemini/gemini-3.1-flash-lite"], purpose: "topic-tags:tagger" }),
+    prompt_family: "tags",
+    input_token_estimate: 100,
+    max_output_token_estimate: 50,
+    payload_key: `payloads/${id}/request.json`,
+  });
+  await coordinator.enqueueBatch([job("a"), job("b"), job("c")]);
+  assert.equal(await stored(), truth());
+  const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.ok(plan.jobs.length > 0);
+  assert.equal(await stored(), truth());
+  // Requeue one leased job through completeBatch.
+  const leased = plan.jobs[0];
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+    {
+      job_id: leased.id,
+      lease_token: leased.lease_token,
+      attempt_id: "att-1",
+      planned_at: leased.not_before_at,
+      outcome: "deferred_late",
+    },
+  ]);
+  assert.equal(await stored(), truth());
+  await coordinator.cancelBatch(["c"]);
+  assert.equal(await stored(), truth());
+  assert.equal(
+    sql.exec("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'trg_jobs_queued_count_%'")[0].n,
+    0
+  );
 });
 
 test("enqueueBatch indexes every canonical allowed model without model_routing", async () => {
@@ -491,6 +561,40 @@ test("schemaRetry obeys the same ingress write budget as enqueueBatch", async ()
   assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM jobs")][0].n, 1);
 });
 
+test("schemaRetry charges ingress for the backup-model index rows its own clone activates", async () => {
+  // A schema-correction clone's schema_retry_count becomes 1, which backupModelsActive()
+  // (routes.js) treats as an immediate trigger -- so _indexQueuedJobModels indexes BOTH the
+  // primary and backup models for the new row. The write-unit charge computed for admission must
+  // reflect that same count, not the source's pre-correction schema_retry_count (0), which would
+  // only index the primary and undercount the charge.
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_BACKUP_THRESHOLD,
+  });
+  await coordinator.enqueueBatch([backupPolicyJob("source", 12)]);
+  sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'source'");
+  const before = [...sql.exec("SELECT ingress_write_units_today FROM scheduler WHERE id = 1")][0]
+    .ingress_write_units_today;
+
+  const result = await coordinator.schemaRetry("source", {
+    corrected_payload_key: "payloads/retry/request.json",
+    corrected_request_digest: "retry-digest",
+    corrected_input_token_estimate: 1,
+  });
+  assert.equal(result.status, "accepted");
+
+  const cloneModels = [...sql.exec(
+    "SELECT model FROM job_models WHERE job_id = ? ORDER BY model",
+    result.id
+  )].map((row) => row.model);
+  assert.deepEqual(cloneModels, ["backup/model", "primary/model"]);
+
+  const after = [...sql.exec("SELECT ingress_write_units_today FROM scheduler WHERE id = 1")][0]
+    .ingress_write_units_today;
+  // 3 (job row + purpose ledger + scheduler counter) + 2 model-index rows = 5, not 4.
+  assert.equal(after - before, 5);
+});
+
 test("enqueueBatch rolls the whole batch back if a mid-batch exception is thrown", async () => {
   const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
 
@@ -576,6 +680,42 @@ test("pollBatch returns statuses and omits absent IDs", async () => {
   assert.equal(pollRes.statuses[0].id, "j1");
   assert.equal(pollRes.statuses[0].state, "completed");
   assert.equal(pollRes.statuses[0].result_key, "results/j1/lt1.json");
+});
+
+test("pollBatch reports the model the completed route actually served, not just the primary", async () => {
+  // A completed job's lease_route_id names the PHYSICAL route it ran on -- which, once a backup
+  // model activates, need not be the job's own allowed_models[0]. Without pollBatch resolving and
+  // returning that route's model, the client would record every completion as the primary model
+  // (JobHandle.model, guessed at enqueue time), silently misattributing a backup's result.
+  const CATALOG = {
+    model_aliases: {},
+    model_routes_map: {
+      "primary/model": ["primary-route"],
+      "backup/model": ["backup-route"],
+    },
+    routes_by_id: {
+      "primary-route": { free: true, rpm: 20, rpd: 1000, tpm: 100000, input_context_limit: 10000, output_context_limit: 10000 },
+      "backup-route": { free: true, rpm: 20, rpd: 1000, tpm: 100000, input_context_limit: 10000, output_context_limit: 10000 },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    DISPATCH_LIMITS_OVERRIDE: CATALOG,
+  });
+  await coordinator.enqueueBatch([{
+    id: "j1", idempotency_key: "k1", request_digest: "d1",
+    policy_json: JSON.stringify({ allowed_models: ["primary/model"] }),
+    prompt_family: "tags", input_token_estimate: 100, max_output_token_estimate: 50,
+    payload_key: "payloads/j1/request.json",
+  }]);
+  // Simulate the job having completed on the backup route (as if it escalated there after
+  // enough failed attempts): lease_route_id names the backup, not the primary.
+  sql.exec(
+    "UPDATE jobs SET state = 'completed', result_key = 'results/j1/lt1.json', lease_route_id = 'backup-route' WHERE id = 'j1'"
+  );
+
+  const pollRes = await coordinator.pollBatch(["j1"]);
+  assert.equal(pollRes.statuses[0].model, "backup/model");
 });
 
 test("terminalFeed is keyset paginated and cancelBatch removes queued work from dispatch", async () => {
@@ -1149,4 +1289,1276 @@ test("schemaRetry applies the lane route allowlist, not just the registration ga
   assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM jobs")][0].n, 1);
   const sched = [...sql.exec("SELECT jobs_ingested_today FROM scheduler WHERE id = 1")][0];
   assert.equal(sched.jobs_ingested_today, 1);
+});
+
+// --- backup_after_attempts ingress enforcement -------------------------------------------------
+
+const LANE_WITH_BACKUP_THRESHOLD = JSON.stringify({
+  "chapter-agenda": {
+    reserved_write_units: 0,
+    daily_write_units: 10000,
+    models: ["primary/model"],
+    backup_models: ["backup/model"],
+    backup_after_attempts: 12,
+  },
+});
+
+function backupPolicyJob(id, backupAfterAttempts) {
+  return {
+    id,
+    idempotency_key: `k-${id}`,
+    request_digest: `d-${id}`,
+    policy_json: JSON.stringify({
+      purpose: "chapter-agenda",
+      allowed_models: ["primary/model"],
+      backup_models: ["backup/model"],
+      backup_after_attempts: backupAfterAttempts,
+    }),
+    prompt_family: "agenda",
+    input_token_estimate: 100,
+    max_output_token_estimate: 50,
+    payload_key: `payloads/${id}/request.json`,
+  };
+}
+
+test("enqueueBatch rejects a job whose backup_after_attempts undercuts its lane's minimum", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_BACKUP_THRESHOLD,
+  });
+
+  const res = await coordinator.enqueueBatch([
+    backupPolicyJob("j-at-minimum", 12),
+    backupPolicyJob("j-below-minimum", 1),
+  ]);
+
+  assert.deepEqual(
+    res.accepted.map((row) => row.id),
+    ["j-at-minimum"]
+  );
+  const rejected = res.rejected.find((entry) => entry.id === "j-below-minimum");
+  assert.ok(rejected, "a lower-than-declared threshold must be rejected, not silently honored");
+  assert.equal(rejected.reason, "backup_after_attempts_below_lane_minimum");
+  assert.deepEqual([...sql.exec("SELECT id FROM jobs ORDER BY id")].map((row) => row.id), [
+    "j-at-minimum",
+  ]);
+});
+
+test("enqueueBatch admits a job that omits backup_models even when its lane declares a minimum", async () => {
+  // The lane minimum only constrains a job that actually names backup models -- a job with none
+  // has nothing to widen.
+  const { coordinator } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_BACKUP_THRESHOLD,
+  });
+  const job = {
+    id: "j-no-backups", idempotency_key: "k1", request_digest: "d1",
+    policy_json: JSON.stringify({ purpose: "chapter-agenda", allowed_models: ["primary/model"] }),
+    prompt_family: "agenda", input_token_estimate: 100, max_output_token_estimate: 50,
+    payload_key: "payloads/j-no-backups/request.json",
+  };
+  const res = await coordinator.enqueueBatch([job]);
+  assert.deepEqual(res.rejected, []);
+});
+
+test("schemaRetry applies the same backup_after_attempts floor as enqueueBatch", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    MAX_JOBS_PER_UTC_DAY: "100",
+    INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_BACKUP_THRESHOLD,
+  });
+  await coordinator.enqueueBatch([backupPolicyJob("retry-source", 12)]);
+  sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'retry-source'");
+
+  // The lane raises its minimum between the original admission and the retry.
+  coordinator.env.INGRESS_PURPOSE_RESERVATIONS = JSON.stringify({
+    "chapter-agenda": {
+      reserved_write_units: 0,
+      daily_write_units: 10000,
+      models: ["primary/model"],
+      backup_models: ["backup/model"],
+      backup_after_attempts: 20,
+    },
+  });
+
+  assert.deepEqual(
+    await coordinator.schemaRetry("retry-source", {
+      corrected_payload_key: "payloads/retry/request.json",
+      corrected_request_digest: "retry-digest",
+      corrected_input_token_estimate: 1,
+    }),
+    { status: "backup_after_attempts_below_lane_minimum" }
+  );
+  assert.equal([...sql.exec("SELECT COUNT(*) AS n FROM jobs")][0].n, 1);
+});
+
+// --- Initiative 20 PR-3 (Failure-class aware backoff & terminal 429 requeue) ---
+
+test("authorizeRetry with own_rpd refuses in-window retry and sets midnight blocked_until", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const bundleDeadline = now + 60_000;
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    bundleDeadline, bundleDeadline, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-rpd', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'gemini_3_5_flash_primary',
+      'ltok', 'tags', 100, 50, 'payloads/j-rpd/request.json', ?, ?
+    )`,
+    now, now
+  );
+
+  const auth = await coordinator.authorizeRetry("j-rpd", "ltok", "att-1", now, null, "own_rpd");
+  assert.equal(auth.authorized, false);
+  assert.equal(auth.retry_not_before, null);
+
+  const row = [...sql.exec("SELECT throttle_streak, buffer_seconds, rpd_count, blocked_until, last_failure_class FROM routes WHERE route_id = 'gemini_3_5_flash_primary'")][0];
+  assert.equal(row.throttle_streak, 0, "own_rpd must not increment throttle_streak");
+  assert.equal(row.buffer_seconds, 0, "own_rpd must not set buffer_seconds");
+  assert.ok(row.rpd_count > 0, "rpd_count must be set to route rpd limit");
+  assert.ok(row.blocked_until > now, "blocked_until must be set to next midnight");
+  assert.equal(row.last_failure_class, "own_rpd");
+});
+
+test("authorizeRetry with own_tpm zeroes token budget and refuses in-window retry", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const bundleDeadline = now + 60_000;
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    bundleDeadline, bundleDeadline, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-tpm', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'gemini_3_5_flash_primary',
+      'ltok', 'tags', 100, 50, 'payloads/j-tpm/request.json', ?, ?
+    )`,
+    now, now
+  );
+
+  const auth = await coordinator.authorizeRetry("j-tpm", "ltok", "att-1", now, null, "own_tpm");
+  assert.equal(auth.authorized, false);
+  assert.equal(auth.retry_not_before, null);
+
+  const row = [...sql.exec("SELECT throttle_streak, buffer_seconds, full_token_budget, last_failure_class FROM routes WHERE route_id = 'gemini_3_5_flash_primary'")][0];
+  assert.equal(row.throttle_streak, 0);
+  assert.equal(row.buffer_seconds, 0);
+  assert.equal(row.full_token_budget, 0);
+  assert.equal(row.last_failure_class, "own_tpm");
+});
+
+test("authorizeRetry with payment_required sets the billing day cooldown, not a short own_rpm backoff", async () => {
+  // A 429 the classifier reads as payment_required (zero-provisioned-limit, insufficient-budget)
+  // used to fall into authorizeRetry's default branch alongside own_rpm/unknown_429, buying only
+  // a short retry-friendly buffer instead of the day/week/month billing ladder a state that
+  // "does not clear on a retry cadence" actually needs (CodeRabbit, 2026-09-13).
+  const { coordinator, sql } = makeCoordinator();
+  // Fix the clock away from midnight: the first billing rung is the next UTC midnight, which can
+  // legitimately be less than an hour away in production.
+  const now = Date.UTC(2026, 8, 14, 12, 0, 0);
+  const bundleDeadline = now + 60_000;
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    bundleDeadline, bundleDeadline, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-pr', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'gemini_3_5_flash_primary',
+      'ltok', 'tags', 100, 50, 'payloads/j-pr/request.json', ?, ?
+    )`,
+    now, now
+  );
+
+  const auth = await coordinator.authorizeRetry("j-pr", "ltok", "att-1", now, null, "payment_required");
+  assert.equal(auth.authorized, false);
+  assert.equal(auth.retry_not_before, null);
+
+  const row = [...sql.exec("SELECT throttle_streak, buffer_seconds, payment_required_streak, blocked_until, last_failure_class FROM routes WHERE route_id = 'gemini_3_5_flash_primary'")][0];
+  assert.equal(row.throttle_streak, 0, "payment_required must not go through the own_rpm buffer path");
+  assert.equal(row.buffer_seconds, 0);
+  assert.equal(row.payment_required_streak, 1);
+  // The first billing rung is exactly the next UTC midnight, not the short own_rpm buffer.
+  assert.equal(row.blocked_until, Date.UTC(2026, 8, 15));
+  assert.equal(row.last_failure_class, "payment_required");
+});
+
+test("authorizeRetry with upstream_capacity sets cooldown and preserves healthy route stats", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const bundleDeadline = now + 60_000;
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    bundleDeadline, bundleDeadline, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-up', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
+      'ltok', 'tags', 100, 50, 'payloads/j-up/request.json', ?, ?
+    )`,
+    now, now
+  );
+
+  const auth = await coordinator.authorizeRetry("j-up", "ltok", "att-1", now, null, "upstream_capacity");
+  assert.equal(auth.authorized, false);
+  assert.equal(auth.retry_not_before, null);
+
+  const row = [...sql.exec("SELECT throttle_streak, buffer_seconds, upstream_capacity_streak, blocked_until, last_failure_class FROM routes WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")][0];
+  assert.equal(row.throttle_streak, 0, "upstream_capacity must not increase throttle_streak");
+  assert.equal(row.buffer_seconds, 0, "upstream_capacity must not add buffer_seconds");
+  assert.equal(row.upstream_capacity_streak, 1);
+  assert.ok(row.blocked_until >= now + 15_000, "cooldown must be at least 15s");
+  assert.equal(row.last_failure_class, "upstream_capacity");
+});
+
+test("a non-consuming refund does not decrement a route window newer than the one it reserved", async () => {
+  // claimDispatchWindow stores only lease_route_id/token_reservation on the job -- not the
+  // reservation's own rpm/rpd/tpm window identity. If the route's window rolls over between claim
+  // and this refund (a slow provider call spanning a window boundary is enough), an unconditional
+  // decrement would undercount a NEWER reservation with nothing to do with this one, which can
+  // admit excess requests (CodeRabbit, 2026-09-13, "Heavy lift"). full_token_budget has no such
+  // risk -- it is a continuously-refilling bucket, not a discrete window-keyed counter -- so it
+  // still refunds unconditionally.
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const routeId = "gemini_3_5_flash_primary"; // a real route with tpm configured
+  coordinator._getOrCreateRouteLedger(routeId, now, {});
+  // Simulate the route having rolled into a brand-new window since this job's claim, already
+  // carrying its own usage that a blind decrement would corrupt.
+  sql.exec(
+    `UPDATE routes SET rpm_window_start = ?, rpm_count = 5, rpd_day_key = '2099-01-01',
+                       rpd_count = 3, tpm_window_start = ?, tpm_reserved = 1000,
+                       full_token_budget = 100 WHERE route_id = ?`,
+    now + 60_000,
+    now + 60_000,
+    routeId
+  );
+
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, token_reservation,
+      reservation_rpm_window_start, reservation_rpd_day_key, reservation_tpm_window_start
+    ) VALUES (
+      'j-stale-window', 'idem-1', 'digest-1', '{}', 'leased', 'b1', ?,
+      'ltok', 'tags', 100, 50, 'payloads/j-stale-window/request.json', ?, ?, 500, 1000, '2020-01-01', 1000
+    )`,
+    routeId, now, now
+  );
+
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-stale-window",
+      lease_token: "ltok",
+      attempt_id: "att-stale",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "retryable_error",
+      provider_status_code: 200,
+      failure_class: "upstream_capacity",
+    },
+  ]);
+
+  const row = [...sql.exec(
+    "SELECT rpm_count, rpd_count, tpm_reserved, full_token_budget FROM routes WHERE route_id = ?",
+    routeId
+  )][0];
+  assert.equal(row.rpm_count, 5, "a mismatched rpm window must not be decremented");
+  assert.equal(row.rpd_count, 3, "a mismatched rpd day must not be decremented");
+  assert.equal(row.tpm_reserved, 1000, "a mismatched tpm window must not be decremented");
+  assert.equal(row.full_token_budget, 600, "the token bucket refunds unconditionally regardless of window");
+});
+
+test("completeBatch requeues terminal 429 under transient retry budget instead of failing", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_5XX_RETRIES: "2" });
+  const now = Date.now();
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, transient_retry_count
+    ) VALUES (
+      'j-429-requeue', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
+      'ltok', 'tags', 100, 50, 'payloads/j-429/request.json', ?, ?, 0
+    )`,
+    now, now
+  );
+
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-429-requeue",
+      lease_token: "ltok",
+      attempt_id: "att-term",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "terminal_error",
+      provider_status_code: 429,
+    },
+  ]);
+
+  const job = [...sql.exec("SELECT state, transient_retry_count, lease_token FROM jobs WHERE id = 'j-429-requeue'")][0];
+  assert.equal(job.state, "queued", "terminal 429 must be requeued");
+  assert.equal(job.transient_retry_count, 1, "transient_retry_count must be incremented");
+  assert.equal(job.lease_token, null, "lease_token must be cleared on requeue");
+
+  const models = [...sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id = 'j-429-requeue'")][0].n;
+  assert.ok(models > 0, "job must be re-indexed in job_models for future claims");
+});
+
+test("completeBatch applies the upstream_capacity cooldown to a 2xx with no usable completion", async () => {
+  // c7a1a6c classifies an empty-2xx response upstream_capacity, but isTransientRouteFailure only
+  // covered that failure class arriving as a 400 (gateway.js's upstreamCapacityFailure) -- this
+  // status-200 shape fell through to a branch that only records last_provider_status, with no
+  // cooldown at all. The same saturated route could be reselected on the very next tick and burn
+  // through the whole upstream-capacity retry budget back to back (CodeRabbit, 2026-09-13).
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, transient_retry_count
+    ) VALUES (
+      'j-empty-2xx', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
+      'ltok', 'tags', 100, 50, 'payloads/j-empty-2xx/request.json', ?, ?, 0
+    )`,
+    now, now
+  );
+
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-empty-2xx",
+      lease_token: "ltok",
+      attempt_id: "att-empty",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "retryable_error",
+      provider_status_code: 200,
+      failure_class: "upstream_capacity",
+    },
+  ]);
+
+  const row = [...sql.exec("SELECT upstream_capacity_streak, blocked_until FROM routes WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")][0];
+  assert.equal(row.upstream_capacity_streak, 1);
+  assert.ok(row.blocked_until >= now + 15_000, "cooldown must be at least the base 15s, same as authorizeRetry's");
+});
+
+test("an empty structured reply requeues the job, stands the route down and is counted (review/48 R10)", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, transient_retry_count
+    ) VALUES (
+      'j-empty-json', 'idem-1', 'digest-1', '{"allowed_models":["google/gemma-4-31b-it"]}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
+      'ltok', 'tags', 100, 50, 'payloads/j-empty-json/request.json', ?, ?, 0
+    )`,
+    now, now
+  );
+
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-empty-json",
+      lease_token: "ltok",
+      attempt_id: "att-empty-json",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "retryable_error",
+      provider_status_code: 200,
+      failure_class: "structured_output_empty",
+    },
+  ]);
+
+  const job = [...sql.exec("SELECT state FROM jobs WHERE id = 'j-empty-json'")][0];
+  assert.equal(job.state, "queued", "the job must retry, not complete with a non-answer or fail");
+  // Requeued under a model a route can actually claim, not the __unroutable__ sentinel.
+  const indexed = [...sql.exec("SELECT model FROM job_models WHERE job_id = 'j-empty-json'")];
+  assert.deepEqual(indexed.map((row) => row.model), ["google/gemma-4-31b-it"]);
+  const route = [...sql.exec("SELECT upstream_capacity_streak, blocked_until FROM routes WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")][0];
+  assert.equal(route.upstream_capacity_streak, 1);
+  assert.ok(route.blocked_until >= now + 15_000, "the route cools down so the job can move elsewhere");
+  const failures = [...sql.exec("SELECT failure_class, count FROM route_failures WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")];
+  assert.deepEqual(
+    failures.map((row) => [row.failure_class, row.count]),
+    [["structured_output_empty", 1]]
+  );
+});
+
+test("a reply cut off at its output limit requeues without cooling the route down, and is counted", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, transient_retry_count
+    ) VALUES (
+      'j-length', 'idem-len', 'digest-len', '{"allowed_models":["google/gemma-4-31b-it"]}', 'leased', 'b1', 'openrouter_google_gemma_4_31b_it_free',
+      'ltok', 'tags', 100, 50, 'payloads/j-length/request.json', ?, ?, 0
+    )`,
+    now, now
+  );
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-length",
+      lease_token: "ltok",
+      attempt_id: "att-length",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "retryable_error",
+      provider_status_code: 200,
+      failure_class: "output_budget_exhausted",
+    },
+  ]);
+  const job = [...sql.exec("SELECT state FROM jobs WHERE id = 'j-length'")][0];
+  assert.equal(job.state, "queued");
+  const route = [...sql.exec("SELECT blocked_until, upstream_capacity_streak FROM routes WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")][0];
+  assert.ok(!route || !route.blocked_until, "the job's budget is not the route's fault");
+  const failures = [...sql.exec("SELECT failure_class, count FROM route_failures WHERE route_id = 'openrouter_google_gemma_4_31b_it_free'")];
+  assert.deepEqual(failures.map((row) => [row.failure_class, row.count]), [["output_budget_exhausted", 1]]);
+});
+
+test("completeBatch success clears upstream_capacity_streak and last_failure_class", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-success', 'idem-1', 'digest-1', '{}', 'leased', 'b1', 'route-suc',
+      'ltok', 'tags', 100, 50, 'payloads/j-suc/request.json', ?, ?
+    )`,
+    now, now
+  );
+  sql.exec(
+    `INSERT INTO routes (
+      route_id, upstream_capacity_streak, last_failure_class, throttle_streak, buffer_seconds
+    ) VALUES ('route-suc', 3, 'upstream_capacity', 2, 45)`
+  );
+
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-success",
+      lease_token: "ltok",
+      attempt_id: "att-ok",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "success",
+      provider_status_code: 200,
+      observed_input_tokens: 10,
+      observed_output_tokens: 20,
+    },
+  ]);
+
+  const route = [...sql.exec("SELECT upstream_capacity_streak, last_failure_class, throttle_streak, buffer_seconds FROM routes WHERE route_id = 'route-suc'")][0];
+  assert.equal(route.upstream_capacity_streak, 0);
+  assert.equal(route.last_failure_class, "");
+  assert.equal(route.throttle_streak, 0);
+  assert.equal(route.buffer_seconds, 0);
+});
+
+test("authorizeRetry records route_failures telemetry for 429s", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  sql.exec(
+    `INSERT INTO bundles (
+      bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at
+    ) VALUES ('b-telem', 'tok', 'active', ?, ?, ?)`,
+    now + 60_000,
+    now + 60_000,
+    now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-telem', 'idem-1', 'digest-1', '{}', 'leased', 'b-telem', 'route-telem',
+      'ltok', 'tags', 100, 50, 'payloads/j-telem/request.json', ?, ?
+    )`,
+    now,
+    now
+  );
+
+  // First 429 encounter
+  await coordinator.authorizeRetry("j-telem", "ltok", "att-1", now, null, "upstream_capacity");
+  let rows = [...sql.exec(
+    "SELECT * FROM route_failures WHERE utc_day = ? AND route_id = 'route-telem'",
+    today
+  )];
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].failure_class, "upstream_capacity");
+  assert.equal(rows[0].count, 1);
+  assert.equal(rows[0].last_status, 429);
+  assert.equal(rows[0].last_seen_at, now);
+
+  // Second 429 encounter on the same route/class increments count
+  await coordinator.authorizeRetry(
+    "j-telem", "ltok", "att-2", now + 1000, null, "upstream_capacity"
+  );
+  rows = [...sql.exec(
+    "SELECT * FROM route_failures WHERE utc_day = ? AND route_id = 'route-telem'",
+    today
+  )];
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].count, 2);
+  assert.equal(rows[0].last_seen_at, now + 1000);
+});
+
+test("completeBatch records route_failures telemetry for non-429 failures", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  sql.exec(
+    `INSERT INTO bundles (
+      bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at
+    ) VALUES ('b-batch-fail', 'tok', 'active', ?, ?, ?)`,
+    now + 60_000,
+    now + 60_000,
+    now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-402', 'idem-402', 'digest-402', '{}', 'leased', 'b-batch-fail', 'route-402',
+      'tok-402', 'tags', 100, 50, 'payloads/402.json', ?, ?
+    ), (
+      'j-500', 'idem-500', 'digest-500', '{}', 'leased', 'b-batch-fail', 'route-500',
+      'tok-500', 'tags', 100, 50, 'payloads/500.json', ?, ?
+    ), (
+      'j-400', 'idem-400', 'digest-400', '{}', 'leased', 'b-batch-fail', 'route-400',
+      'tok-400', 'tags', 100, 50, 'payloads/400.json', ?, ?
+    )`,
+    now, now, now, now, now, now
+  );
+
+  await coordinator.completeBatch("b-batch-fail", "tok", [
+    {
+      job_id: "j-402",
+      lease_token: "tok-402",
+      attempt_id: "att-402",
+      planned_at: now,
+      outcome: "retryable_error",
+      provider_status_code: 402,
+    },
+    {
+      job_id: "j-500",
+      lease_token: "tok-500",
+      attempt_id: "att-500",
+      planned_at: now,
+      outcome: "retryable_error",
+      provider_status_code: 503,
+    },
+    {
+      job_id: "j-400",
+      lease_token: "tok-400",
+      attempt_id: "att-400",
+      planned_at: now,
+      outcome: "retryable_error",
+      provider_status_code: 400,
+      failure_class: "upstream_capacity",
+    },
+  ]);
+
+  const rows = [...sql.exec(
+    "SELECT route_id, failure_class, count, last_status FROM route_failures WHERE utc_day = ?",
+    today
+  )];
+  assert.equal(rows.length, 3);
+
+  const row402 = rows.find((r) => r.route_id === "route-402");
+  assert.ok(row402);
+  assert.equal(row402.failure_class, "payment_required");
+  assert.equal(row402.last_status, 402);
+  assert.equal(row402.count, 1);
+
+  const row500 = rows.find((r) => r.route_id === "route-500");
+  assert.ok(row500);
+  assert.equal(row500.failure_class, "server_error");
+  assert.equal(row500.last_status, 503);
+  assert.equal(row500.count, 1);
+
+  const row400 = rows.find((r) => r.route_id === "route-400");
+  assert.ok(row400);
+  assert.equal(row400.failure_class, "upstream_capacity");
+  assert.equal(row400.last_status, 400);
+  assert.equal(row400.count, 1);
+});
+
+test("_pruneTerminalRecords prunes route_failures older than attempt retention", async () => {
+  const { coordinator, sql } = makeCoordinator({
+    ATTEMPT_RETENTION_DAYS: "7",
+    MAX_ATTEMPT_PRUNE_PER_TICK: "10",
+  });
+  const now = Date.now();
+  const staleDay = new Date(now - 14 * 86_400_000).toISOString().slice(0, 10);
+  const today = new Date(now).toISOString().slice(0, 10);
+
+  sql.exec(
+    `INSERT INTO route_failures (utc_day, route_id, failure_class, count, last_status, last_seen_at)
+     VALUES (?, 'route-stale', 'own_rpm', 5, 429, ?),
+            (?, 'route-fresh', 'own_rpm', 2, 429, ?)`,
+    staleDay,
+    now - 14 * 86_400_000,
+    today,
+    now
+  );
+
+  const result = coordinator._pruneTerminalRecords(now);
+  assert.equal(result.routeFailuresDeleted, 1);
+
+  const remaining = [...sql.exec("SELECT utc_day, route_id FROM route_failures")];
+  assert.equal(remaining.length, 1);
+  assert.equal(remaining[0].utc_day, today);
+  assert.equal(remaining[0].route_id, "route-fresh");
+});
+
+test("stats exposes today's route_failures ordered by count DESC capped at limit", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const yesterday = new Date(now - 86_400_000).toISOString().slice(0, 10);
+
+  sql.exec(
+    `INSERT INTO route_failures (utc_day, route_id, failure_class, count, last_status, last_seen_at)
+     VALUES (?, 'r-1', 'own_rpm', 10, 429, ?),
+            (?, 'r-2', 'upstream_capacity', 25, 429, ?),
+            (?, 'r-3', 'payment_required', 5, 402, ?),
+            (?, 'r-old', 'own_rpm', 99, 429, ?)`,
+    today,
+    now,
+    today,
+    now,
+    today,
+    now,
+    yesterday,
+    now - 86_400_000
+  );
+
+  const s = await coordinator.detailedStats(now, 2);
+  assert.ok(Array.isArray(s.route_failures), "stats must include route_failures");
+  assert.equal(s.route_failures.length, 2, "must be capped at limit=2");
+  assert.equal(s.route_failures[0].route_id, "r-2");
+  assert.equal(s.route_failures[0].count, 25);
+  assert.equal(s.route_failures[1].route_id, "r-1");
+  assert.equal(s.route_failures[1].count, 10);
+  assert.ok(!s.route_failures.some((r) => r.utc_day === yesterday), "must only include today");
+});
+
+test("authorizeRetry overrides untrustworthy Retry-After with observed_recovery_seconds", async () => {
+  const dispatchOverride = {
+    routes_by_id: {
+      "r-untrustworthy": {
+        route_id: "r-untrustworthy",
+        provider: "mock",
+        retry_after_trustworthy: false,
+        observed_recovery_seconds: 45,
+      },
+    },
+  };
+  const { coordinator, sql } = makeCoordinator({
+    DISPATCH_LIMITS_OVERRIDE: dispatchOverride,
+  });
+  const now = Date.now();
+  sql.exec(
+    `INSERT INTO bundles (
+      bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at
+    ) VALUES ('b-untrust', 'tok', 'active', ?, ?, ?)`,
+    now + 60_000,
+    now + 60_000,
+    now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at
+    ) VALUES (
+      'j-untrust', 'idem-1', 'digest-1', '{}', 'leased', 'b-untrust', 'r-untrustworthy',
+      'ltok', 'tags', 100, 50, 'payloads/j-untrust/request.json', ?, ?
+    )`,
+    now,
+    now
+  );
+
+  // Provider claims Retry-After is 5s, but route is measured untrustworthy with 45s recovery.
+  const auth = await coordinator.authorizeRetry(
+    "j-untrust", "ltok", "att-1", now, 5, "unknown_429"
+  );
+  assert.equal(auth.authorized, true);
+  // Must back off by at least 45 seconds (not 5 seconds).
+  assert.ok(auth.retry_not_before >= now + 45_000);
+
+  const routeRow = [
+    ...sql.exec(
+      "SELECT buffer_seconds, blocked_until FROM routes WHERE route_id='r-untrustworthy'"
+    ),
+  ][0];
+  assert.ok(routeRow.blocked_until >= now + 45_000);
+});
+
+
+// ---------------------------------------------------------------------------
+// Regressions from the 2026-09-09 Initiative 20 review.
+// ---------------------------------------------------------------------------
+
+test("a route with no declared rpd is unlimited on that axis, not treated as paused", () => {
+  // THE bug: `Number(null) === 0`, and this repo uses an explicit 0 to mean "paused/exhausted",
+  // so a route whose compiled JSON carried `"rpd": null` scored capacity 0. claimDispatchWindow
+  // filters `score > 0`, so those routes were never ranked, never claimed, never dispatched --
+  // with no blocked_until and no error. That was 34 of 69 catalog routes, including all 14
+  // Mistral routes, behind which 21,287 jobs sat queued for 22 days.
+  const { coordinator } = makeCoordinator({});
+  const now = Date.now();
+
+  const unlimited = coordinator._capacityFraction(
+    { route_id: "r", rpm: 60, rpd: null, tpm: null, rpm_window_start: 0, rpd_day_key: "" },
+    now,
+    25
+  );
+  assert.ok(unlimited > 0, "rpd:null must not zero the route out of the ranking");
+
+  const paused = coordinator._capacityFraction(
+    { route_id: "r", rpm: 60, rpd: 0, tpm: null, rpm_window_start: 0, rpd_day_key: "" },
+    now,
+    25
+  );
+  assert.equal(paused, 0, "an explicit rpd:0 is still the repository's paused convention");
+});
+
+test("a route with no declared rpm is unlimited on that axis, not treated as paused", () => {
+  const { coordinator } = makeCoordinator({});
+  const score = coordinator._capacityFraction(
+    { route_id: "r", rpm: null, rpd: 500, tpm: null, rpd_day_key: "" },
+    Date.now(),
+    25
+  );
+  assert.ok(score > 0, "rpm:null must not zero the route out of the ranking");
+});
+
+test("every catalog route can be ranked (no route is silently unclaimable)", async () => {
+  // A fleet-wide guard: if any compiled route scores 0 on a clean ledger, it can never be
+  // dispatched and no operator surface would say why.
+  const { default: limits } = await import("../src/dispatch_limits.json", {
+    with: { type: "json" },
+  });
+  const { coordinator } = makeCoordinator({});
+  const now = Date.now();
+  const dead = Object.values(limits.routes_by_id)
+    .filter((r) => Number(r.rpd) !== 0)
+    .filter((r) => coordinator._capacityFraction({ ...r, rpd_day_key: "" }, now, 25) === 0)
+    .map((r) => r.route_id);
+  assert.deepEqual(dead, [], `routes unrankable on a clean ledger: ${dead.join(", ")}`);
+});
+
+test("_rankModelsByCapacity does not drop a model whose every route declares no rpd", () => {
+  // Number(null) === 0, so a route with no rpd configured -- unlimited on that axis, per
+  // _capacityFraction's own treatment of the same field -- was silently weighted zero here.
+  // A model whose every route declares neither rpd nor rpm (several real NVIDIA/DeepSeek/zai
+  // routes today) got totalWeight === 0, forcing score to 0 and dropping the model out of ranking
+  // entirely via the `score > 0` filter (CodeRabbit, 2026-09-13) -- not merely under-weighted, but
+  // invisible to dispatch no matter how available its routes actually were.
+  const { coordinator } = makeCoordinator({});
+  const dispatchLimits = {
+    providers: {},
+    routes_by_id: {
+      unlimited_route: {
+        route_id: "unlimited_route",
+        provider: "x",
+        rpd: null,
+        rpm: null,
+        tpm: null,
+      },
+    },
+    model_routes_map: { "x/unlimited": ["unlimited_route"] },
+  };
+  const ranked = coordinator._rankModelsByCapacity(Date.now(), 25, dispatchLimits);
+  const entry = ranked.find((r) => r.model === "x/unlimited");
+  assert.ok(entry, "a model with no rpd/rpm/tpm on any route must still appear in ranking");
+  assert.ok(entry.score > 0, "its score must be positive, not the hardcoded zero-weight fallback");
+});
+
+test("unconfigured account credentials are reported, never used to gate dispatch", () => {
+  // This is a DIAGNOSTIC, deliberately not a dispatch gate. Gating on secret presence would mean
+  // that if the DO env ever failed to expose secrets the way this assumes, the whole catalog would
+  // drop out of the ranking silently -- the same failure shape as the `rpd: null` coercion fixed
+  // in this review. Reporting it lets an operator see an unconfigured account without risking that.
+  const { coordinator } = makeCoordinator({ PRESENT_KEY: "sk-real" });
+  const limits = {
+    providers: {
+      p: { accounts: [{ id: "primary", api_key_env: "PRESENT_KEY" }, { id: "second", api_key_env: "ABSENT_KEY" }] },
+    },
+  };
+
+  assert.equal(
+    coordinator._routeCredentialConfigured({ provider: "p", account_id: "primary" }, limits),
+    true
+  );
+  assert.equal(
+    coordinator._routeCredentialConfigured({ provider: "p", account_id: "second" }, limits),
+    false
+  );
+  // An account_id that does not exist at all must not fall through to "configured".
+  assert.equal(
+    coordinator._routeCredentialConfigured({ provider: "p", account_id: "ghost" }, limits),
+    false
+  );
+  // A provider declaring no accounts is not something this gate can judge; leave it rankable.
+  assert.equal(
+    coordinator._routeCredentialConfigured({ provider: "q" }, { providers: { q: {} } }),
+    true
+  );
+});
+
+test("stats() names accounts whose secret is not set in this deployment", async () => {
+  const { coordinator } = makeCoordinator({
+    PRESENT_KEY: "sk-real",
+    DISPATCH_LIMITS_OVERRIDE: {
+      providers: {
+        p: {
+          accounts: [
+            { id: "primary", api_key_env: "PRESENT_KEY" },
+            { id: "tertiary", api_key_env: "ABSENT_KEY" },
+          ],
+        },
+      },
+      routes_by_id: {},
+      model_routes_map: {},
+    },
+  });
+  const stats = await coordinator.detailedStats(Date.now(), 20);
+  assert.deepEqual(stats.unconfigured_accounts, ["p:tertiary (ABSENT_KEY)"]);
+});
+
+test("jobs carries exactly one secondary state index; retired indexes are dropped on startup", () => {
+  // Every index on jobs is a billed DO row on each insert and state change (write_budget.js /
+  // bench/rows-written). Adding one back must be a deliberate, re-measured decision.
+  const { storage, sql } = createMockSqlStorage();
+  // An already-deployed coordinator still carries the retired indexes.
+  new LLMSchedulerDO({ storage }, withTestReservations({}));
+  sql.exec("CREATE INDEX IF NOT EXISTS idx_jobs_state_updated ON jobs (state, updated_at)");
+  sql.exec("CREATE INDEX IF NOT EXISTS idx_jobs_state_priority_created ON jobs (state, priority, created_at)");
+  sql.exec("CREATE INDEX IF NOT EXISTS idx_jobs_purpose_state_created ON jobs (purpose, state, created_at)");
+  new LLMSchedulerDO({ storage }, withTestReservations({}));
+  const names = sql
+    .exec("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'jobs'")
+    .map((row) => row.name)
+    .filter((name) => !name.startsWith("sqlite_autoindex_"))
+    .sort();
+  assert.deepEqual(names, ["idx_jobs_state_updated_id"]);
+});
+
+test("an existing rowid job_models is rebuilt clustered, keeping rows, uniqueness and the priority trigger", async () => {
+  const { storage, sql } = createMockSqlStorage();
+  // A pre-2026-09-23 coordinator: rowid job_models + separate scan index.
+  sql.exec(`
+    CREATE TABLE job_models (
+      job_id TEXT NOT NULL, model TEXT NOT NULL, priority INTEGER NOT NULL,
+      created_at INTEGER NOT NULL, PRIMARY KEY (job_id, model)
+    );
+    CREATE INDEX idx_job_models_model_priority_created
+      ON job_models (model, priority, created_at, job_id);
+    INSERT INTO job_models (job_id, model, priority, created_at)
+      VALUES ('queued-before-deploy', 'gemini/gemini-flash-lite', 1, 42);
+  `);
+  const { coordinator } = makeCoordinator({}, { storage, sql });
+  // The copy is the one migration step that could lose queued work: every column must survive.
+  assert.deepEqual(
+    sql
+      .exec(
+        "SELECT job_id, model, priority, created_at FROM job_models WHERE job_id = 'queued-before-deploy'"
+      )
+      .map((row) => ({ ...row })),
+    [{ job_id: "queued-before-deploy", model: "gemini/gemini-flash-lite", priority: 1, created_at: 42 }]
+  );
+  await coordinator.enqueueBatch([
+    {
+      id: "legacy-1",
+      idempotency_key: "k1",
+      request_digest: "d1",
+      policy_json: JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"] }),
+      prompt_family: "tags",
+      input_token_estimate: 10,
+      max_output_token_estimate: 10,
+      payload_key: "p1",
+    },
+  ].map((job) => ({ ...job })));
+  // Rebuild happens at construction; a second construction must be a no-op.
+  const rowsBefore = sql.exec("SELECT * FROM job_models ORDER BY job_id").map((row) => ({ ...row }));
+  makeCoordinator({}, { storage, sql });
+  assert.deepEqual(
+    sql.exec("SELECT * FROM job_models ORDER BY job_id").map((row) => ({ ...row })),
+    rowsBefore
+  );
+  const ddl = sql.exec("SELECT sql FROM sqlite_master WHERE name = 'job_models'")[0].sql;
+  assert.match(ddl, /WITHOUT ROWID/i);
+  const indexes = sql
+    .exec("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'job_models'")
+    .map((row) => row.name)
+    .filter((name) => !name.startsWith("sqlite_autoindex_"));
+  assert.deepEqual(indexes, ["idx_job_models_job_model"]);
+  // Uniqueness per job/model survives: a duplicate insert is ignored.
+  const before = sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n;
+  sql.exec(
+    "INSERT OR IGNORE INTO job_models (job_id, model, priority, created_at) SELECT job_id, model, priority + 0, created_at + 1 FROM job_models"
+  );
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n, before);
+  // The priority-sync trigger still reaches the rebuilt table.
+  sql.exec("UPDATE jobs SET priority = 0 WHERE id IN (SELECT job_id FROM job_models)");
+  assert.ok(
+    sql
+      .exec("SELECT priority FROM job_models WHERE job_id = 'legacy-1'")
+      .every((row) => row.priority === 0)
+  );
+  // The admission scan reads the clustered key in order: no temp sort.
+  const plan = sql
+    .exec(
+      "EXPLAIN QUERY PLAN SELECT jobs.* FROM job_models JOIN jobs ON jobs.id = job_models.job_id WHERE job_models.model = 'm' AND jobs.state = 'queued' ORDER BY job_models.priority, job_models.created_at, job_models.job_id LIMIT 4"
+    )
+    .map((row) => row.detail)
+    .join(" | ");
+  assert.ok(!plan.includes("TEMP B-TREE"), plan);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Dispatch pause (POST /v2/dispatch:pause|resume, pause-status, reserve)
+// ---------------------------------------------------------------------------------------------
+
+const PAUSE_MODEL = "gemini/gemini-3.1-flash-lite";
+const pauseJob = (id) => ({
+  id,
+  idempotency_key: `${id}-key`,
+  request_digest: `${id}-digest`,
+  policy_json: JSON.stringify({ allowed_models: [PAUSE_MODEL], purpose: "topic-tags:tagger" }),
+  prompt_family: "tags",
+  input_token_estimate: 100,
+  max_output_token_estimate: 50,
+  payload_key: `payloads/${id}/request.json`,
+});
+
+test("a provider pause stops claims on that provider until resumed", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([pauseJob("p1"), pauseJob("p2")]);
+  const now = Date.now();
+
+  const paused = await coordinator.pauseDispatch(
+    { scope: "provider", target: "gemini", seconds: 600, reason: "canary" },
+    now
+  );
+  assert.equal(paused.ok, true);
+  assert.equal(paused.scope, "provider:gemini");
+  const blocked = await coordinator.claimDispatchWindow(now, 30);
+  assert.deepEqual(blocked.jobs, []);
+
+  const resumed = await coordinator.resumeDispatch({ scope: "provider", target: "gemini" }, now);
+  assert.equal(resumed.resumed, true);
+  const claimed = await coordinator.claimDispatchWindow(now, 30);
+  assert.ok(claimed.jobs.length > 0);
+});
+
+test("a route pause leaves the model's other routes claimable", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([pauseJob("r1"), pauseJob("r2")]);
+  const now = Date.now();
+  await coordinator.pauseDispatch(
+    { scope: "route", target: "gemini_3_1_flash_lite_primary", seconds: 600 },
+    now
+  );
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.ok(plan.jobs.length > 0);
+  for (const job of plan.jobs) {
+    assert.equal(job.route_id ?? job.lease_route_id, "gemini_3_1_flash_lite_secondary");
+  }
+});
+
+test("a pause expires by itself", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([pauseJob("t1")]);
+  const now = Date.now();
+  await coordinator.pauseDispatch({ scope: "global", seconds: 60 }, now);
+  assert.equal((await coordinator.claimDispatchWindow(now + 59_000, 30)).claim_reason, "dispatch_paused");
+  const after = await coordinator.claimDispatchWindow(now + 61_000, 30);
+  assert.ok(after.jobs.length > 0);
+  assert.deepEqual((await coordinator.dispatchPauseStatus({}, now + 61_000)).pauses, []);
+});
+
+test("a globally paused claim tick executes no SQL at all, so it writes no rows", async () => {
+  const { sql, storage, recorder } = createRecordingSqlStorage();
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" }, { sql, storage });
+  await coordinator.enqueueBatch([pauseJob("g1")]);
+  const now = Date.now();
+  await coordinator.pauseDispatch({ scope: "global", seconds: 600, reason: "incident" }, now);
+  await coordinator.claimDispatchWindow(now, 30); // warms nothing: the pause cache is already fresh
+  recorder.start();
+  const plan = await coordinator.claimDispatchWindow(now + 1000, 30);
+  assert.equal(plan.claim_reason, "dispatch_paused");
+  assert.deepEqual(plan.jobs, []);
+  assert.deepEqual(recorder.statements, []);
+});
+
+test("pause and status reject targets the catalog does not know", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const bad = await coordinator.pauseDispatch({ scope: "provider", target: "nope", seconds: 60 });
+  assert.equal(bad.ok, false);
+  assert.equal(bad.error, "unknown_target");
+  const badRoute = await coordinator.dispatchPauseStatus({ scope: "route", target: "nope" });
+  assert.equal(badRoute.ok, false);
+});
+
+test("pause-status reports the selection's in-flight count and each route's daily quota", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([pauseJob("s1"), pauseJob("s2")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.ok(plan.jobs.length > 0);
+
+  const status = await coordinator.dispatchPauseStatus({ scope: "provider", target: "gemini" }, now);
+  assert.equal(status.ok, true);
+  assert.equal(status.selection, "provider:gemini");
+  assert.equal(status.in_flight, plan.jobs.length);
+  const route = status.routes.gemini_3_1_flash_lite_primary;
+  assert.equal(route.rpd_limit, 500);
+  assert.equal(route.rpd_remaining, 500 - route.rpd_used);
+  assert.ok(route.rpd_resets_at > now);
+
+  const other = await coordinator.dispatchPauseStatus({ scope: "provider", target: "nvidia" }, now);
+  assert.equal(other.in_flight, 0);
+
+  const stats = await coordinator.stats(now);
+  assert.equal(stats.in_flight.by_provider.gemini, plan.jobs.length);
+});
+
+test("reserve charges out-of-band calls to the route's daily ledger, on the provider's day", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  // 2026-09-24 12:00 America/Los_Angeles (19:00 UTC); Gemini resets at Pacific midnight.
+  const noonPacific = Date.UTC(2026, 8, 24, 19, 0, 0);
+  const reserved = await coordinator.reserveRouteRequests(
+    { route_id: "gemini_3_1_flash_lite_primary", requests: 2 },
+    noonPacific
+  );
+  assert.equal(reserved.ok, true);
+  assert.equal(reserved.rpd_count, 2);
+  assert.equal(reserved.rpd_day_key, "2026-09-24");
+
+  const selection = { scope: "route", target: "gemini_3_1_flash_lite_primary" };
+  const sameDay = await coordinator.dispatchPauseStatus(selection, noonPacific + 60_000);
+  assert.equal(sameDay.routes.gemini_3_1_flash_lite_primary.rpd_remaining, 498);
+  // Midnight PDT, to nextZonedMidnightMs's one-minute resolution.
+  const resetsAt = sameDay.routes.gemini_3_1_flash_lite_primary.rpd_resets_at;
+  const midnightPdt = Date.UTC(2026, 8, 25, 7, 0, 0);
+  assert.ok(resetsAt >= midnightPdt && resetsAt < midnightPdt + 60_000, String(resetsAt));
+  // 20:00 Pacific is already 2026-09-25 in UTC but still the same provider day.
+  const eveningPacific = Date.UTC(2026, 8, 25, 3, 0, 0);
+  const evening = await coordinator.dispatchPauseStatus(selection, eveningPacific);
+  assert.equal(evening.routes.gemini_3_1_flash_lite_primary.rpd_used, 2);
+  const nextDay = await coordinator.dispatchPauseStatus(selection, Date.UTC(2026, 8, 25, 8, 0, 0));
+  assert.equal(nextDay.routes.gemini_3_1_flash_lite_primary.rpd_used, 0);
+  assert.equal(nextDay.routes.gemini_3_1_flash_lite_primary.rpd_remaining, 500);
+});
+
+test("pause targets must be own catalog entries, not Object.prototype members", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  for (const target of ["constructor", "toString", "__proto__"]) {
+    assert.equal((await coordinator.pauseDispatch({ scope: "route", target, seconds: 60 })).ok, false);
+    assert.equal((await coordinator.pauseDispatch({ scope: "provider", target, seconds: 60 })).ok, false);
+    assert.equal((await coordinator.reserveRouteRequests({ route_id: target, requests: 1 })).ok, false);
+  }
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM routes WHERE route_id = 'constructor'")[0].n, 0);
+});
+
+test("the drain signal ignores expired leases, which a global pause never reaps", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([pauseJob("e1"), pauseJob("e2")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 30);
+  assert.ok(plan.jobs.length > 0);
+  await coordinator.pauseDispatch({ scope: "global", seconds: 3600 }, now);
+  const live = await coordinator.dispatchPauseStatus({ scope: "provider", target: "gemini" }, now);
+  assert.equal(live.in_flight, plan.jobs.length);
+
+  // The bundle dies: its leases pass lease_expires_at while still `leased`.
+  const expiry = sql.exec("SELECT MAX(lease_expires_at) AS t FROM jobs WHERE state = 'leased'")[0].t;
+  const later = expiry + 1;
+  assert.equal((await coordinator.claimDispatchWindow(later, 30)).claim_reason, "dispatch_paused");
+  const dead = await coordinator.dispatchPauseStatus({ scope: "provider", target: "gemini" }, later);
+  assert.equal(dead.in_flight, 0);
+  assert.equal((await coordinator.stats(later)).in_flight.by_provider.gemini, undefined);
+});
+
+
+test("detailedStats reports today's usage per lane and route from existing attempt rows", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const dayStart = Date.parse(`${new Date(now).toISOString().slice(0, 10)}T00:00:00Z`);
+  const insertJob = (id, purpose, reserved) => sql.exec(
+    `INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, prompt_family,
+       input_token_estimate, max_output_token_estimate, payload_key, created_at, updated_at, purpose)
+     VALUES (?, ?, 'd', ?, 'completed', 'x', 100, ?, ?, ?, ?, ?)`,
+    id, `idem-${id}`, JSON.stringify({ purpose }), reserved, `payloads/${id}.json`, now, now, purpose
+  );
+  const insertAttempt = (id, jobId, route, output, durationMs, createdAt) => sql.exec(
+    `INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, actual_start_at, actual_end_at,
+       observed_output_tokens, start_state, outcome, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'started', 'success', ?)`,
+    id, jobId, route, createdAt, createdAt, createdAt + durationMs, output, createdAt
+  );
+  insertJob("j1", "chapter-agenda", 16384);
+  insertJob("j2", "chapter-agenda", 16384);
+  insertJob("j3", "topic-tags:tagger", 8192);
+  insertAttempt("old", "j1", "route-a", 99999, 1000, dayStart - 1000); // yesterday: excluded
+  insertAttempt("a1", "j1", "route-a", 2000, 30_000, now - 3000);
+  insertAttempt("a2", "j2", "route-a", 20000, 650_000, now - 2000); // over reservation, slow
+  insertAttempt("a3", "j3", "route-b", 500, 5_000, now - 1000);
+
+  const usage = (await coordinator.detailedStats(now, 50)).usage_today;
+  const agenda = usage.find((row) => row.purpose === "chapter-agenda");
+  assert.equal(agenda.route_id, "route-a");
+  assert.equal(agenda.calls, 2);
+  assert.equal(agenda.reserved_output_mean, 16384);
+  assert.equal(agenda.over_reservation_calls, 1);
+  assert.equal(agenda.slow_calls, 1);
+  assert.equal(agenda.output_tokens_max, 20000);
+  const tagger = usage.find((row) => row.purpose === "topic-tags:tagger");
+  assert.deepEqual([tagger.calls, tagger.output_tokens_p90, tagger.slow_calls], [1, 500, 0]);
+});
+
+test("a length-truncated reply settles the token bucket to its measured usage", async () => {
+  // A route_max reply can use far more than its reservation; leaving the bucket at the
+  // reservation would admit the next claim against capacity already spent.
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const routeId = "gemini_3_5_flash_primary"; // a real route with tpm configured
+  coordinator._getOrCreateRouteLedger(routeId, now, {});
+  sql.exec("UPDATE routes SET full_token_budget = 100000 WHERE route_id = ?", routeId);
+  sql.exec(
+    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
+    now + 60_000, now + 60_000, now
+  );
+  sql.exec(
+    `INSERT INTO jobs (
+      id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
+      lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+      payload_key, created_at, updated_at, transient_retry_count, token_reservation, purpose
+    ) VALUES (
+      'j-long', 'idem-long', 'digest-long', '{"purpose":"chapter-agenda"}', 'leased', 'b1', ?,
+      'ltok', 'agenda', 1000, 16384, 'payloads/j-long/request.json', ?, ?, 0, 17384, 'chapter-agenda'
+    )`,
+    routeId, now, now
+  );
+  await coordinator.completeBatch("b1", "tok", [
+    {
+      job_id: "j-long",
+      lease_token: "ltok",
+      attempt_id: "att-long",
+      planned_at: now,
+      actual_start_at: now,
+      actual_end_at: now + 500,
+      outcome: "retryable_error",
+      provider_status_code: 200,
+      failure_class: "output_budget_exhausted",
+      observed_input_tokens: 1000,
+      observed_output_tokens: 65536,
+    },
+  ]);
+  const route = sql.exec("SELECT full_token_budget FROM routes WHERE route_id = ?", routeId)[0];
+  assert.equal(route.full_token_budget, 100000 + 17384 - 66536);
+  // The attempt keeps the lane and reservation for usage_today after the job row is retired.
+  const attempt = sql.exec("SELECT purpose, reserved_output_tokens FROM attempts WHERE attempt_id = 'att-long'")[0];
+  assert.deepEqual([attempt.purpose, attempt.reserved_output_tokens], ["chapter-agenda", 16384]);
+});
+
+test("usage_today keeps a retired job's lane and leaves unmeasured calls out of the percentiles", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const insertAttempt = (id, output, purpose, reserved) => sql.exec(
+    `INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, actual_start_at, actual_end_at,
+       observed_output_tokens, start_state, outcome, created_at, purpose, reserved_output_tokens)
+     VALUES (?, 'gone', 'route-a', ?, ?, ?, ?, 'started', 'success', ?, ?, ?)`,
+    id, now - 1000, now - 1000, now - 500, output, now - 1000, purpose, reserved
+  );
+  // No jobs row at all: the job was retired after its result was consumed.
+  insertAttempt("m1", 12000, "chapter-agenda", 16384);
+  insertAttempt("m2", null, "chapter-agenda", 16384); // failed before usage came back
+  insertAttempt("m3", null, "chapter-agenda", 16384);
+  const [row] = (await coordinator.detailedStats(now, 50)).usage_today;
+  assert.equal(row.purpose, "chapter-agenda");
+  assert.equal(row.calls, 3);
+  assert.equal(row.measured_calls, 1);
+  assert.equal(row.output_tokens_p50, 12000);
+  assert.equal(row.reserved_output_mean, 16384);
+});
+
+test("detailedStats can restrict route_failures to named classes past the row limit", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const today = new Date(now).toISOString().slice(0, 10);
+  const insert = (route, cls, count) => sql.exec(
+    `INSERT INTO route_failures (utc_day, route_id, failure_class, count, last_status, last_seen_at)
+     VALUES (?, ?, ?, ?, 429, ?)`,
+    today, route, cls, count, now
+  );
+  for (let i = 0; i < 5; i++) insert(`busy-${i}`, "upstream_capacity", 1000 + i);
+  insert("cut", "output_budget_exhausted", 3);
+  const unfiltered = (await coordinator.detailedStats(now, 2)).route_failures;
+  assert.equal(unfiltered.some((row) => row.failure_class === "output_budget_exhausted"), false);
+  const filtered = (
+    await coordinator.detailedStats(now, 2, { failureClasses: ["output_budget_exhausted"] })
+  ).route_failures;
+  assert.deepEqual(filtered.map((row) => row.route_id), ["cut"]);
 });

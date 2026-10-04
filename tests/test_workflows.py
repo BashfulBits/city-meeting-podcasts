@@ -154,6 +154,31 @@ def test_issue_command_workflows_share_exact_repository_permission_gate():
         assert "--permission actor-permission.json" in run
 
 
+def test_shared_review_resolution_isolates_one_bad_child_and_still_finalizes():
+    _wf, job = _job("review-issue-resolve.yml", "resolve")
+    run = next(
+        step["run"] for step in job["steps"] if "resolve_review_issue.py" in step.get("run", "")
+    )
+    assert 'if ! gh issue view "$issue"' in run
+    assert "if ! python scripts/resolve_review_issue.py" in run
+    assert 'if ! gh issue close "$issue"' in run
+    assert "continue" in run
+    assert "finalize_review_batches.py" in next(
+        step["run"] for step in job["steps"] if "finalize_review_batches.py" in step.get("run", "")
+    )
+
+
+def test_llm_tournament_timeout_covers_configured_sample_budget():
+    _wf, job = _job("llm-tournament.yml", "tournament")
+    sampling = next(step for step in job["steps"] if step.get("name") == "Run bounded tag samples")
+
+    assert job["timeout-minutes"] == 180
+    assert sampling["timeout-minutes"] == 165
+    assert "python -m citypods.tournament" in sampling["run"]
+    assert "--samples 2" not in sampling["run"]
+    assert sampling["timeout-minutes"] < job["timeout-minutes"]
+
+
 # H6b split the combined enrich into two sharded, lane-pinned workflows.
 # Third element is the job name within the workflow file (audio.yml has a wait-for-contracts
 # pre-job so the heavy job must be addressed by name, not by position).
@@ -270,7 +295,7 @@ def test_city_discovery_llm_route_is_committed_task_config_not_repo_variables():
     assert "vars.LLM_MODEL" not in workflow
     assert "vars.LLM_MODE" not in workflow
     assert site["city_discovery"] == {
-        "llm_model": "gemini/gemini-3-flash-preview",
+        "llm_model": "gemini/gemini-3.7-flash",
         "llm_mode": "direct",
     }
 
@@ -282,6 +307,16 @@ def test_city_discovery_defers_invalid_model_output_but_surfaces_unexpected_fail
     assert workflow.count('if [ "$status" -eq "$DISCOVERY_DEFERRED" ]; then') == 2
     assert workflow.count("failures=$((failures + 1))") == 2
     assert workflow.count('if [ "$failures" -ne 0 ]; then') >= 2
+
+
+def test_city_discovery_auxiliary_body_is_bounded_and_uploaded():
+    workflow = (WORKFLOWS / "city-discovery.yml").read_text()
+
+    assert "scripts/r12_bound_issue_body.py" in workflow
+    assert "city-discovery/aux/issue-body-full.md" in workflow
+    assert "city-discovery-aux-body-${{ github.run_id }}" in workflow
+    assert "actions/upload-artifact@" in workflow
+    assert "if: ${{ always() }}" in workflow
 
 
 @pytest.mark.parametrize(
@@ -820,7 +855,6 @@ def test_ci_runs_granicus_worker_unit_tests():
     expected_workers = {
         "Test Granicus Cloudflare Worker": "workers/granicus-media-proxy",
         "Test Swagit List Proxy Worker": "workers/swagit-list-proxy",
-        "Test LLM Dispatch v1 Worker": "workers/llm-dispatch-proxy",
         "Test LLM Dispatch v2 Worker": "workers/llm-dispatch-v2",
         "Test City Request Intake Worker": "workers/city-request-intake",
     }
@@ -852,15 +886,22 @@ def test_tag_lane_uses_async_llm_dispatch_and_keeps_provider_key_off_runner():
         if step.get("name") == "Produce bounded LLM topic-tag candidates"
     )
     env = step["env"]
-    assert env["LLM_DISPATCH_URL"] == "${{ secrets.LLM_DISPATCH_URL }}"
-    assert env["LLM_DISPATCH_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_AUTH_TOKEN }}"
-    assert "GEMINI_API_KEY" not in env
+    assert env["LLM_DISPATCH_V2_URL"] == "${{ secrets.LLM_DISPATCH_V2_URL }}"
+    assert env["LLM_DISPATCH_V2_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}"
+    assert "LLM_DISPATCH_URL" not in env  # the v1 dispatch Worker is retired
+    for key in ("GEMINI_API_KEY", "KILO_API_KEY", "ORCAROUTER_API_KEY"):
+        assert key not in env  # every tagger model is dispatched by the Worker, never the runner
 
     site = yaml.safe_load((WORKFLOWS.parent.parent / "config" / "site_config.yml").read_text())
     assert site["tagging"]["llm_mode"] == "dispatch"
     # The tag lane's routes moved out of `tagging.llm_model`/`llm_models` and into the canonical
     # `llm_lanes` registry, which also carries the lane's ingress write budget (review/44 Phase 4).
-    assert site["llm_lanes"]["topic-tags:tagger"]["models"] == ["gemini/gemini-3.1-flash-lite"]
+    # models[0] is the recipe/calibration key; the rest are throughput spill (2026-09-24).
+    assert site["llm_lanes"]["topic-tags:tagger"]["models"] == [
+        "gemini/gemini-3.1-flash-lite",
+        "kilo/stepfun/step-3.7-flash:free",
+        "deepseek/deepseek-v4-flash",
+    ]
 
 
 def test_granicus_worker_deploy_is_path_scoped_and_uses_cloudflare_secrets():
@@ -1173,6 +1214,19 @@ def test_chapter_workflows_have_independent_concurrency_groups(workflow, expecte
     assert wf["concurrency"] == {"group": expected_group, "cancel-in-progress": False}
 
 
+@pytest.mark.parametrize(
+    ("workflow", "job_name"),
+    [("chapter-agenda.yml", "extract"), ("chapter-locator.yml", "locate")],
+)
+def test_chapter_workflows_wire_graceful_yield(workflow, job_name):
+    """Chapter producers also use the bounded StopSignal path, so they need Actions API access
+    to yield when a newer run is queued instead of waiting for the full wall-clock window."""
+    wf, job = _job(workflow, job_name)
+    assert wf["permissions"] == {"contents": "read", "actions": "read"}
+    step = next(s for s in job["steps"] if "enrich --lane" in str(s.get("run", "")))
+    assert step["env"]["GITHUB_TOKEN"] == "${{ github.token }}"
+
+
 def test_chapter_workflows_use_alternating_two_hour_schedules():
     agenda, _agenda_job = _job("chapter-agenda.yml")
     locator, _locator_job = _job("chapter-locator.yml")
@@ -1189,7 +1243,17 @@ def test_moments_workflow_is_bounded_and_uses_v2_dispatch():
         if item.get("name") == "Produce bounded R6 moment candidates and judge assessments"
     )
 
-    assert _on(wf)["schedule"] == [{"cron": "45 19 * * *"}]
+    assert [item["cron"] for item in _on(wf)["schedule"]] == [
+        "45 0 * * *",
+        "25 3 * * *",
+        "05 6 * * *",
+        "45 8 * * *",
+        "25 11 * * *",
+        "05 14 * * *",
+        "45 16 * * *",
+        "25 19 * * *",
+        "05 22 * * *",
+    ]
     assert wf["permissions"] == {"contents": "read", "actions": "read"}
     assert wf["concurrency"] == {
         "group": "r7-speaker-evaluation-state",
@@ -1280,18 +1344,15 @@ def test_reclaim_transcript_workflow_guards_write_to_main():
     inputs = _on(wf)["workflow_dispatch"]["inputs"]
     assert inputs["operation"]["type"] == "choice"
     assert inputs["operation"]["default"] == "reclaim-transcript"
-    assert "requeue-failed-llm-dispatch" in inputs["operation"]["options"]
-    assert "retire-legacy-prelabeler-dispatch" in inputs["operation"]["options"]
-    assert inputs["llm_model_prefix"]["default"] == "google/gemma-4-"
-    assert inputs["legacy_created_before"]["default"] == "2026-08-15T00:00:00Z"
+    assert inputs["operation"]["options"] == ["reclaim-transcript", "requeue-failed-work-leases"]
+    assert "llm_model_prefix" not in inputs
+    assert "legacy_created_before" not in inputs
     assert inputs["source_key"]["required"] is False
     assert inputs["episode_uid"]["required"] is False
     assert inputs["work_class"]["default"] == "provider-transcript-align"
     assert 'python -m citypods.cli compute requeue-failed-work-leases "${args[@]}"' in run
-    assert "R2_RECLAIM_ACCESS_KEY" in step["env"]
-    assert "R2_RECLAIM_SECRET_ACCESS_KEY" in step["env"]
-    assert "scripts/requeue_failed_llm_dispatch.py" in run
-    assert "scripts/retire_legacy_prelabeler_dispatch.py" in run
+    assert "R2_RECLAIM_ACCESS_KEY" not in step["env"]
+    assert "llm-dispatch" not in run
     assert '"$GIT_REF" != "refs/heads/main"' in run
     assert "source_key and episode_uid are required" in run
     assert job["env"]["AUDIO_STORAGE_BACKEND"] == "routing"
@@ -1473,3 +1534,122 @@ def test_remedy_has_direct_diagnostics_verification_tools_and_bounded_fallback()
     assert "always()" in fallback["if"]
     assert "remedy-comment-posted" in fallback["run"]
     subprocess.run(["bash", "-n"], input=fallback["run"], text=True, check=True)
+
+
+def test_llm_rate_probe_workflow_contract():
+    """Static contract test for llm-rate-probe.yml per review/45 §20.10."""
+    wf, job = _job("llm-rate-probe.yml", "probe")
+    assert wf["permissions"] == {"contents": "read"}
+    assert job["timeout-minutes"] == 30
+    assert wf.get("concurrency", {}).get("group") == "llm-rate-probe"
+
+    for step in job["steps"]:
+        uses = step.get("uses", "")
+        if uses:
+            assert _PINNED_SHA.search(uses), f"Unpinned action: {uses}"
+
+
+def test_deferred_llm_producers_run_at_least_three_times_daily():
+    """Producer cadence must give each production deferred lane repeated quota opportunities."""
+    expected_minimums = {
+        "chapter-agenda.yml": 3,
+        "chapter-locator.yml": 3,
+        "tag.yml": 3,
+        "moments.yml": 3,
+        "llm-deferred-sweep.yml": 3,
+    }
+
+    def daily_occurrences(cron: str) -> int:
+        hours = cron.split()[1]
+        if hours.startswith("*/"):
+            return 24 // int(hours[2:])
+        total = 0
+        for value in hours.split(","):
+            if "-" in value:
+                span, _, raw_step = value.partition("/")
+                start, end = (int(part) for part in span.split("-"))
+                total += ((end - start) // int(raw_step or "1")) + 1
+            else:
+                total += 1
+        return total
+
+    for workflow, minimum in expected_minimums.items():
+        schedules = _on(yaml.safe_load((WORKFLOWS / workflow).read_text())).get("schedule", [])
+        occurrences = sum(daily_occurrences(item["cron"]) for item in schedules)
+        assert occurrences >= minimum, f"{workflow} has only {occurrences} daily runs"
+
+
+def test_stuck_chapter_agenda_workflow_is_dry_run_by_default():
+    wf, job = _job("reconcile-stuck-chapter-agenda.yml", "reconcile")
+    assert job["timeout-minutes"] == 120
+    inputs = _on(wf)["workflow_dispatch"]["inputs"]
+    assert inputs["apply"]["type"] == "boolean"
+    assert inputs["apply"]["default"] is False
+    assert inputs["older_than_hours"]["default"] == 24
+    assert inputs["max_row_writes"]["default"] == 25000
+    step = next(
+        item
+        for item in job["steps"]
+        if item.get("name") == "Classify and optionally supersede stale chapter-agenda handles"
+    )
+    assert step["timeout-minutes"] == 110
+    assert "args=(--dry-run)" in step["run"]
+    assert "args=(--apply)" in step["run"]
+    assert '--max-row-writes "$MAX_ROW_WRITES"' in step["run"]
+    assert step["env"]["MAX_ROW_WRITES"] == "${{ inputs.max_row_writes }}"
+    assert step["env"]["LLM_DISPATCH_V2_AUTH_TOKEN"] == "${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}"
+
+
+def test_deferred_full_prune_workflow_runs_weekly_and_is_main_only():
+    wf, job = _job("llm-deferred-full-prune.yml", "prune")
+    schedules = _on(wf)["schedule"]
+    assert schedules == [{"cron": "30 4 * * 0"}]
+    assert job["if"] == "github.ref == 'refs/heads/main'"
+    assert job["timeout-minutes"] == 180
+    step = next(
+        item for item in job["steps"] if item.get("name") == "Prune expired deferred records"
+    )
+    assert step["timeout-minutes"] == 165
+    assert "--full-prune-only" in step["run"]
+    assert "--run-time-budget-minutes 120" in step["run"]
+
+
+def test_provider_catalog_reconcile_is_issue_only_paused_and_keyed_from_config():
+    """review/48 Slice 1: observe/propose only, and every configured route can be health-checked.
+
+    The key secrets are derived from config/provider_limits.yml, so adding a provider or account
+    without wiring its key here fails CI instead of silently skipping that route's health check.
+    """
+    wf, job = _job("provider-catalog-reconcile.yml", "reconcile")
+    assert wf["permissions"] == {}
+    assert job["permissions"] == {"contents": "read", "issues": "write"}
+    crons = {entry["cron"] for entry in _on(wf)["schedule"]}
+    assert crons == {"17 10 * * 1", "20 8 * * *"}
+    step = job["steps"][_step_index(job, "reconcile_provider_routes.py")]
+    assert "--sync-issues" in step["run"] and "--due-only" in step["run"]
+    assert "--apply" not in step["run"] and "--open-pr" not in step["run"]
+    env = step["env"]
+    for name in (
+        "LLM_DISPATCH_V2_URL",
+        "LLM_DISPATCH_V2_AUTH_TOKEN",
+        "ARTIFICIAL_ANALYSIS_API_KEY",
+    ):
+        assert env.get(name) == f"${{{{ secrets.{name} }}}}"
+    limits = yaml.safe_load((REPO_ROOT / "config" / "provider_limits.yml").read_text())
+    # The planner health-checks the first unpaused route per (provider, upstream model), with that
+    # route's own account key; catalogs and candidates use each provider's first account.
+    needed = {
+        cfg["accounts"][0]["api_key_env"]
+        for cfg in limits["providers"].values()
+        if cfg.get("accounts")
+    }
+    seen = set()
+    for route in limits["routes"]:
+        key = (route["provider"], route["upstream_model"])
+        if route.get("rpd") == 0 or key in seen:
+            continue
+        seen.add(key)
+        accounts = limits["providers"][route["provider"]].get("accounts") or []
+        needed |= {a["api_key_env"] for a in accounts if a["id"] == route.get("account_id")}
+    for name in sorted(needed):
+        assert env.get(name) == f"${{{{ secrets.{name} }}}}", name

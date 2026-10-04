@@ -7,12 +7,14 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from citypods.chapter_artifacts import (
     AgendaCandidate,
     AgendaCandidatesArtifact,
 )
-from citypods.chapter_jobs import build_locator_job
-from citypods.chapter_locator import build_locator_units
+from citypods.chapter_jobs import LOCATOR_MODELS, build_locator_job
+from citypods.chapter_locator import LOCATOR_ROUTING_VERSION, build_locator_units
 from citypods.compute.base import JobHandle, JobResult
 from citypods.models import City, Episode
 from citypods.stages import (
@@ -306,6 +308,174 @@ def test_locator_stage_finalizes_and_filters_non_accepted_items(tmp_path: Path):
     assert boundary_key.startswith("state/generated_chapters/boundary/ep-filter-")
     assert storage.exists(boundary_key)
 
+    # A completed result records the model/prompt_version it was produced under, so a later
+    # LOCATOR_PROMPT_VERSION/LOCATOR_MODEL bump can tell this artifact apart from a stale one
+    # (see test_locator_stage_reprocesses_a_completed_episode_under_stale_policy below).
+    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+
+    assert ep.generated_agenda_candidates["locator_model"] == LOCATOR_MODEL
+    assert ep.generated_agenda_candidates["locator_prompt_version"] == LOCATOR_PROMPT_VERSION
+    assert ep.generated_agenda_candidates["locator_routing_version"] == LOCATOR_ROUTING_VERSION
+
+
+@pytest.mark.parametrize(
+    ("stale_field", "stale_value"),
+    [
+        ("locator_model", "gemini/gemini-3.5-flash-lite"),
+        ("locator_prompt_version", "locator-v1"),
+        ("locator_routing_version", "size-split-retired"),
+        ("locator_routing_version", None),
+    ],
+)
+def test_locator_stage_reprocesses_a_completed_episode_under_stale_policy(
+    tmp_path: Path, stale_field: str, stale_value: str | None
+):
+    """Stale model, prompt, or routing metadata must not be re-stamped as current on reuse."""
+    from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-stale-locator-completed")
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    ep.generated_agenda_candidates.update(
+        {
+            "locator_status": "completed",
+            "locator_model": LOCATOR_MODEL,
+            "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+            "locator_routing_version": LOCATOR_ROUTING_VERSION,
+            "boundary_artifact_key": "state/generated_chapters/boundary/stale-key",
+        }
+    )
+    if stale_value is None:
+        ep.generated_agenda_candidates.pop(stale_field)
+    else:
+        ep.generated_agenda_candidates[stale_field] = stale_value
+
+    model_output = json.dumps(
+        {
+            "anchors": [
+                {
+                    "agenda_item_index": 0,
+                    "unit_id": "u00001",
+                    "transition_quote": "Meeting is called to order",
+                    "confidence": 0.95,
+                    "rationale": "Chair calls to order",
+                }
+            ]
+        }
+    )
+    result = JobResult(
+        task="agenda-chapter-locate",
+        recipe_hash="recipe-locator-fresh-1",
+        output={"choices": [{"message": {"content": model_output}}]},
+    )
+    backend = FakeBackend(result)
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.ran == 1
+    assert stats.reused == 0
+
+    assert ep.generated_agenda_candidates["locator_model"] == LOCATOR_MODEL
+    assert ep.generated_agenda_candidates["locator_prompt_version"] == LOCATOR_PROMPT_VERSION
+    assert ep.generated_agenda_candidates["locator_routing_version"] == LOCATOR_ROUTING_VERSION
+
+
+@pytest.mark.parametrize("model", LOCATOR_MODELS)
+@pytest.mark.parametrize("status", ["completed", "accepted"])
+def test_locator_stage_reuses_a_completed_episode_that_is_already_current(
+    tmp_path: Path, model: str, status: str
+):
+    from citypods.chapter_jobs import LOCATOR_PROMPT_VERSION
+
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-current-locator-completed")
+    ep.generated_agenda_candidates.update(
+        {
+            "locator_status": status,
+            "locator_model": model,
+            "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+            "locator_routing_version": LOCATOR_ROUTING_VERSION,
+        }
+    )
+    backend = FakeBackend()  # must never be called
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.reused == 1
+    assert stats.ran == 0
+    assert backend.enqueue_calls == []
+
+
+def test_locator_stage_clears_pending_state_when_finalize_fails(tmp_path: Path):
+    """A JobResult that fails finalize_locator_job (e.g. an out-of-range/hallucinated unit
+    reference) must not leave the episode wedged in "pending" pointing at the same dead
+    locator_recipe -- retrying it next run would just refetch the identical broken content and
+    fail identically forever. Only the locator-owned fields should be cleared: chapter-agenda's
+    own fields on the same dict must survive so that stage's own reuse check is unaffected.
+
+    It also must not leave the underlying "completed" registry record in place -- see
+    AgendaChapterCandidatesStage's own test_stage_clears_pending_state_when_finalize_fails for
+    why: without deleting it, a future submission under this exact recipe would just replay the
+    identical bad content forever via enqueue_batch's cached_completed short-circuit."""
+    from citypods.compute.llm_deferred import look_up_deferred, write_deferred
+
+    stage = ChapterBoundaryLocatorStage()
+    city = _make_city()
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode("ep-broken-locator")
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    agenda_recipe_before = ep.generated_agenda_candidates["recipe"]
+    ep.generated_agenda_candidates.update(
+        {
+            "locator_status": "pending",
+            "locator_recipe": "recipe-locator-broken-1",
+            "locator_job_ref": "ref-locator-broken-1",
+        }
+    )
+
+    # unit_id "u09999" does not exist among this episode's locator units -- a hallucinated
+    # reference finalize_locator_job's validate_locator_response rejects outright.
+    model_output = json.dumps(
+        {
+            "anchors": [
+                {
+                    "agenda_item_index": 0,
+                    "unit_id": "u09999",
+                    "transition_quote": "Meeting is called to order",
+                    "confidence": 0.95,
+                    "rationale": "Chair calls to order",
+                }
+            ]
+        }
+    )
+    result = JobResult(
+        task="agenda-chapter-locate",
+        recipe_hash="recipe-locator-broken-1",
+        output={"choices": [{"message": {"content": model_output}}]},
+    )
+    # Mirrors what a real Worker dispatch would have durably recorded once this job resolved.
+    write_deferred(storage, "recipe-locator-broken-1", result)
+    backend = FakeBackend(result)
+    ctx = _ctx(storage=storage, dry_run=False)
+    ctx.chapter_llm_backend = backend
+
+    stats = stage.process(None, city, [ep], ctx)
+    assert stats.ran == 0
+    assert len(stats.errors) == 1
+    assert "locator_status" not in ep.generated_agenda_candidates
+    assert "locator_recipe" not in ep.generated_agenda_candidates
+    assert "locator_job_ref" not in ep.generated_agenda_candidates
+    # chapter-agenda's own fields (produced by a different stage) must survive untouched.
+    assert ep.generated_agenda_candidates["status"] == "completed"
+    assert ep.generated_agenda_candidates["recipe"] == agenda_recipe_before
+    assert look_up_deferred(storage, "recipe-locator-broken-1") is None
+
 
 def test_locator_stage_batches_multiple_episodes_into_one_enqueue_call(tmp_path: Path):
     """The actual point of this refactor (see review/44's 2026-08-18 incident retrospective):
@@ -466,7 +636,9 @@ def test_locator_stage_failed_batch_job_does_not_consume_dispatch_quota(tmp_path
     assert not ctx.chapter_locator_dispatch_exhausted.is_set()
 
 
-def test_episode_needs_chapter_locator_evaluates_correctly():
+@pytest.mark.parametrize("model", LOCATOR_MODELS)
+def test_episode_needs_chapter_locator_evaluates_correctly(model: str):
+    from citypods.chapter_jobs import LOCATOR_PROMPT_VERSION
     from citypods.stages import episode_needs_chapter_locator
 
     ep = _make_episode("ep-loc-eval")
@@ -483,11 +655,50 @@ def test_episode_needs_chapter_locator_evaluates_correctly():
     ep.generated_agenda_candidates = {"status": "pending"}
     assert episode_needs_chapter_locator(ep) is False
 
-    # Locator already completed or accepted
+    # Both selected models are reusable with the current prompt and routing versions.
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "locator_status": "completed",
+        "locator_model": model,
+        "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+        "locator_routing_version": LOCATOR_ROUTING_VERSION,
+    }
+    assert episode_needs_chapter_locator(ep) is False
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "locator_status": "accepted",
+        "locator_model": model,
+        "locator_prompt_version": LOCATOR_PROMPT_VERSION,
+        "locator_routing_version": LOCATOR_ROUTING_VERSION,
+    }
+    assert episode_needs_chapter_locator(ep) is False
+
+    # Missing or stale routing metadata must requeue even with the current model and prompt.
+    del ep.generated_agenda_candidates["locator_routing_version"]
+    assert episode_needs_chapter_locator(ep) is True
+    ep.generated_agenda_candidates["locator_routing_version"] = "size-split-retired"
+    assert episode_needs_chapter_locator(ep) is True
+    ep.generated_agenda_candidates["locator_routing_version"] = LOCATOR_ROUTING_VERSION
+    ep.generated_agenda_candidates["locator_model"] = "gemini/gemini-3.5-flash-lite"
+    assert episode_needs_chapter_locator(ep) is True
+
+    # Completed under a STALE locator_prompt_version -- this is the actual pre-filter `run.py`
+    # applies before ChapterBoundaryLocatorStage.process() ever runs (--lane chapter-locator/
+    # chapter); without this check a completed-but-stale episode would never reach that stage's
+    # own is_current_locator_artifact check, silently defeating a LOCATOR_PROMPT_VERSION bump.
+    ep.generated_agenda_candidates = {
+        "status": "completed",
+        "locator_status": "completed",
+        "locator_model": model,
+        "locator_prompt_version": "locator-v0-stale",
+        "locator_routing_version": LOCATOR_ROUTING_VERSION,
+    }
+    assert episode_needs_chapter_locator(ep) is True
+
+    # Completed with no recorded model/version at all (legacy data predating this check) is
+    # treated the same as stale -- it cannot be confirmed current, so it is redone.
     ep.generated_agenda_candidates = {"status": "completed", "locator_status": "completed"}
-    assert episode_needs_chapter_locator(ep) is False
-    ep.generated_agenda_candidates = {"status": "completed", "locator_status": "accepted"}
-    assert episode_needs_chapter_locator(ep) is False
+    assert episode_needs_chapter_locator(ep) is True
 
     # Provider chapters present but not yet reconciled
     ep.source_chapters = [{"start": 0, "title": "Call to order"}]
@@ -497,3 +708,75 @@ def test_episode_needs_chapter_locator_evaluates_correctly():
     # Provider chapters already reconciled to not_applicable
     ep.generated_agenda_candidates = {"status": "completed", "locator_status": "not_applicable"}
     assert episode_needs_chapter_locator(ep) is False
+
+
+@pytest.mark.parametrize("change", ["unchanged", "transcript", "agenda", "policy", "legacy"])
+def test_exhausted_locator_reopens_only_for_changed_identity(tmp_path, monkeypatch, change):
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    ep = _make_episode()
+    _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+    ep.generated_agenda_candidates.update(
+        {"locator_retry_count": 1, "locator_retry_hint": "Repair conflicting anchors"}
+    )
+    invalid = JobResult(task="agenda-chapter-locate", recipe_hash="invalid", output={"anchors": []})
+    backend = FakeBackend(invalid)
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+    stage = ChapterBoundaryLocatorStage()
+    stage.process(None, _make_city(), [ep], ctx)
+    assert ep.generated_agenda_candidates["locator_status"] == "retry_exhausted"
+    assert ep.generated_agenda_candidates["locator_retry_policy"]
+    assert ep.generated_agenda_candidates["locator_retry_input"]
+    if change == "transcript":
+        _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT + b"\n")
+    elif change == "agenda":
+        ep.generated_agenda_candidates["items"][0]["title"] = "Opening remarks"
+    elif change == "policy":
+        monkeypatch.setattr("citypods.chapter_jobs.LOCATOR_ROUTING_VERSION", "next-policy")
+    elif change == "legacy":
+        ep.generated_agenda_candidates.pop("locator_retry_policy")
+        ep.generated_agenda_candidates.pop("locator_retry_input")
+    backend = FakeBackend(
+        JobHandle(task="agenda-chapter-locate", ref="fresh", recipe_hash="fresh", backend="fake")
+    )
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+    stats = stage.process(None, _make_city(), [ep], ctx)
+    if change == "unchanged":
+        assert not backend.submitted_jobs
+        assert stats.defer_reasons["locator-repair-exhausted"] == 1
+    else:
+        assert len(backend.submitted_jobs) == 1
+        assert ep.generated_agenda_candidates["locator_status"] == "pending"
+        assert "locator_retry_count" not in ep.generated_agenda_candidates
+        assert "locator_retry_hint" not in ep.generated_agenda_candidates
+        assert "locator_retry_error" not in ep.generated_agenda_candidates
+
+
+def test_old_completed_pending_recipe_consumes_current_dispatch_slot(tmp_path):
+    from citypods.compute.llm_deferred import write_deferred
+
+    storage = LocalStorage(root=tmp_path / "s", url_prefix="https://cdn")
+    episodes = [_make_episode(f"old-{i}") for i in range(2)]
+    for ep in episodes:
+        _put_storage_bytes(storage, ep.transcript_key, SAMPLE_VTT)
+        old_recipe = f"old-policy-{ep.uid}"
+        ep.generated_agenda_candidates.update(
+            {"locator_status": "pending", "locator_recipe": old_recipe}
+        )
+        write_deferred(
+            storage,
+            old_recipe,
+            JobResult(task="agenda-chapter-locate", recipe_hash=old_recipe, output={}),
+        )
+    backend = FakeBackend(
+        JobHandle(
+            task="agenda-chapter-locate", ref="current", recipe_hash="current", backend="fake"
+        )
+    )
+    ctx = _ctx(storage)
+    ctx.chapter_llm_backend = backend
+    ctx.chapter_locator_max_dispatches = 1
+    stats = ChapterBoundaryLocatorStage().process(None, _make_city(), episodes, ctx)
+    assert len(backend.submitted_jobs) == 1
+    assert stats.defer_reasons["producer-cap"] == 1

@@ -5,15 +5,27 @@
 
 import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
+import { withTuning } from "./tuning.js";
 import { LLMSchedulerDO } from "./coordinator.js";
 import {
   validateEnqueueBatchRequest,
   validatePollBatchRequest,
+  validateRetireBatchRequest,
   validateResolveUnknownBatchRequest,
   validateSchemaRetryRequest,
+  validatePauseRequest,
+  validateResumeRequest,
+  validateReserveRequest,
 } from "./protocol.js";
 import { B2Client } from "./b2.js";
-import { callAiGateway, observedTokens, upstreamCapacityFailure } from "./gateway.js";
+import { callAiGateway, observedTokens, upstreamCapacityFailure, upstreamEmptyCompletion } from "./gateway.js";
+import { isStructuredPayload, structuredReplyProblem } from "./structured_output.js";
+import { classifyProviderFailure } from "./classify.js";
+import {
+  DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
+  DO_ROWS_WRITTEN_PLATFORM_LIMIT,
+  ROWS_PER_INGRESS_WRITE_UNIT,
+} from "./write_budget.js";
 
 export { LLMSchedulerDO };
 
@@ -67,7 +79,9 @@ export function validateConfig(env) {
   const maxJobsPerModelClaim = Number(env.MAX_JOBS_PER_MODEL_CLAIM || maxBundleJobs);
   const maxConcurrentLanes = Number(env.MAX_CONCURRENT_ROUTE_LANES || 5);
   const maxJobsPerDay = Number(env.MAX_JOBS_PER_UTC_DAY || 5000);
-  const maxIngressWriteUnits = Number(env.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY || maxJobsPerDay * 3);
+  // Same fallback as the coordinator's _maxIngressWriteUnitsPerUtcDay, so an unset budget is judged
+  // exactly as it would be enforced (and fails the row-budget check below).
+  const maxIngressWriteUnits = Number(env.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY || maxJobsPerDay * 4);
   const max5xxRetries = Number(env.MAX_5XX_RETRIES || 1);
   const max5xxBackoffSeconds = Number(env.MAX_5XX_BACKOFF_SECONDS || 300);
 
@@ -99,6 +113,82 @@ export function validateConfig(env) {
     throw new Error(
       `Invalid config: MAX_JOBS_PER_MODEL_CLAIM (${maxJobsPerModelClaim}) must be an integer ` +
       `from 1 to MAX_BUNDLE_JOBS (${maxBundleJobs})`
+    );
+  }
+
+  // The account-wide DO row-write budget (Free plan: 100,000 billed rows/day) is enforced at
+  // runtime against the rows the coordinator actually writes. Configured thresholds remain
+  // ordered upper bounds; the coordinator clamps them to the account reserve and also projects
+  // the remaining cost of active leases before admitting another bundle.
+  const enqueueRowStop = Number(env.DO_ROWS_ENQUEUE_STOP ?? 90000);
+  const claimRowStop = Number(env.DO_ROWS_CLAIM_STOP ?? 97000);
+  const optionalRowStop = Number(env.DO_ROWS_OPTIONAL_STOP ?? 99000);
+  const accountReserveRows = Number(
+    env.DO_ROWS_ACCOUNT_RESERVE ?? DO_ROWS_ACCOUNT_RESERVE_DEFAULT
+  );
+  if (
+    !Number.isInteger(accountReserveRows) ||
+    accountReserveRows < 1 ||
+    accountReserveRows >= DO_ROWS_WRITTEN_PLATFORM_LIMIT
+  ) {
+    throw new Error(
+      `Invalid config: DO_ROWS_ACCOUNT_RESERVE (${accountReserveRows}) must be a positive ` +
+      `integer below ${DO_ROWS_WRITTEN_PLATFORM_LIMIT}`
+    );
+  }
+  const accountSafeStop = DO_ROWS_WRITTEN_PLATFORM_LIMIT - accountReserveRows;
+  if (
+    ![enqueueRowStop, claimRowStop, optionalRowStop].every(Number.isInteger) ||
+    !(enqueueRowStop > 0 && enqueueRowStop <= claimRowStop && claimRowStop <= optionalRowStop) ||
+    optionalRowStop >= DO_ROWS_WRITTEN_PLATFORM_LIMIT
+  ) {
+    throw new Error(
+      `Invalid config: DO_ROWS_ENQUEUE_STOP (${enqueueRowStop}) <= DO_ROWS_CLAIM_STOP ` +
+      `(${claimRowStop}) <= DO_ROWS_OPTIONAL_STOP (${optionalRowStop}) must hold, all positive ` +
+      `integers below the platform's ${DO_ROWS_WRITTEN_PLATFORM_LIMIT} rows/day`
+    );
+  }
+  if (enqueueRowStop > accountSafeStop) {
+    throw new Error(
+      `Invalid config: DO_ROWS_ENQUEUE_STOP (${enqueueRowStop}) must not exceed the account ` +
+      `safety stop (${accountSafeStop})`
+    );
+  }
+  // A full day of admitted ingress must fit under the enqueue threshold on its own.
+  if (ROWS_PER_INGRESS_WRITE_UNIT * maxIngressWriteUnits > enqueueRowStop) {
+    throw new Error(
+      `Invalid config: MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY (${maxIngressWriteUnits}) can write up ` +
+      `to ${ROWS_PER_INGRESS_WRITE_UNIT * maxIngressWriteUnits} rows, past DO_ROWS_ENQUEUE_STOP ` +
+      `(${enqueueRowStop})`
+    );
+  }
+  const maxQueuedJobs = Number(env.MAX_QUEUED_JOBS ?? 20000);
+  if (!Number.isInteger(maxQueuedJobs) || maxQueuedJobs < 1 || maxQueuedJobs > 100000) {
+    throw new Error("Invalid config: MAX_QUEUED_JOBS must be an integer from 1 to 100000");
+  }
+  // A blast-radius backstop only, not the working limit; unset means the bundle ceiling itself.
+  const maxLeasesPerDay = Number(env.MAX_LEASES_PER_UTC_DAY || maxBundlesPerDay * maxBundleJobs);
+  if (
+    !Number.isInteger(maxLeasesPerDay) ||
+    maxLeasesPerDay < 1 ||
+    maxLeasesPerDay > maxBundlesPerDay * maxBundleJobs
+  ) {
+    throw new Error(
+      `Invalid config: MAX_LEASES_PER_UTC_DAY (${maxLeasesPerDay}) must be an integer from 1 to ` +
+      `MAX_BUNDLES_PER_UTC_DAY x MAX_BUNDLE_JOBS (${maxBundlesPerDay * maxBundleJobs})`
+    );
+  }
+
+  const candidateLookahead = Number(env.MAX_CANDIDATE_LOOKAHEAD || 32);
+  if (
+    !Number.isInteger(candidateLookahead) ||
+    candidateLookahead < maxJobsPerModelClaim ||
+    candidateLookahead > 256
+  ) {
+    throw new Error(
+      `Invalid config: MAX_CANDIDATE_LOOKAHEAD (${candidateLookahead}) must be an integer from ` +
+      `MAX_JOBS_PER_MODEL_CLAIM (${maxJobsPerModelClaim}) to 256 -- it bounds the rows one ` +
+      "claim may read per model when looking past queue-head jobs no available route can take"
     );
   }
 
@@ -205,7 +295,7 @@ export function validateConfig(env) {
   // Divisors of 60 only: getUTCMinutes() % intervalMinutes === 0 does not fire evenly spaced
   // ticks for a non-divisor (e.g. 7 fires at :00,:07,...,:56, then :00 again -- a 4-minute gap,
   // not 7). Every other value in [1, 60] repeats an identical, evenly-spaced pattern every hour.
-  const cleanupInterval = Number(env.CLEANUP_INTERVAL_MINUTES ?? 60);
+  const cleanupInterval = Number(env.CLEANUP_INTERVAL_MINUTES ?? 10);
   if (
     !Number.isInteger(cleanupInterval) ||
     cleanupInterval < 1 ||
@@ -264,7 +354,7 @@ async function hasValidBearer(request, env) {
 
   // Hash both unconditionally, and fold the length difference into the diff accumulator below,
   // rather than returning early on a byteLength mismatch -- an early return leaks the expected
-  // token's exact length to a timing attacker (matches workers/llm-dispatch-proxy's approach).
+  // token's exact length to a timing attacker (the retired v1 Worker's approach).
   const expectedHash = await crypto.subtle.digest("SHA-256", expectedEncoder);
   const tokenHash = await crypto.subtle.digest("SHA-256", tokenEncoder);
 
@@ -303,15 +393,109 @@ export async function handleRequest(request, env) {
 
   const coordinator = getCoordinator(env);
 
-  // Operator probe. Authenticated like every other /v2 route -- queue depths and route health are
-  // operational detail, not public -- and read-only: it takes no parameters that change state.
+  // The default probe is the bounded recurring snapshot used by producer workflows. Historical
+  // queue diagnosis is deliberate opt-in: it can inspect retained work and must never become a
+  // scheduled telemetry dependency again.
   if (request.method === "GET" && path === "/v2/stats") {
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
+    const detailed = url.searchParams.get("detail") === "1";
+    // `failure_class=a,b` restricts route_failures to those classes (at most 10 names).
+    const failureClasses = (url.searchParams.get("failure_class") || "")
+      .split(",")
+      .map((name) => name.trim())
+      .filter((name) => /^[a-z0-9_]{1,64}$/.test(name))
+      .slice(0, 10);
     try {
-      return jsonResponse(await coordinator.stats(Date.now(), limit), 200);
+      const snapshot = detailed
+        ? await coordinator.detailedStats(Date.now(), limit, { failureClasses })
+        : await coordinator.stats(Date.now());
+      return jsonResponse(snapshot, 200);
     } catch (err) {
       const detail = describeError(err);
       console.error(`stats failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
+  // Producer preflight: is ingress open for this purpose right now? Read-only; enqueue-batch
+  // re-checks every condition.
+  if (request.method === "GET" && path === "/v2/ingress-status") {
+    try {
+      const status = await coordinator.ingressStatus(url.searchParams.get("purpose") || null, Date.now());
+      return jsonResponse(status, 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`ingress-status failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
+  // Producer preflight: the input ratio the claim applies to a route and prompt family.
+  if (request.method === "GET" && path === "/v2/calibration") {
+    const routeId = url.searchParams.get("route_id") || "";
+    const promptFamily = url.searchParams.get("prompt_family") || "";
+    if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(routeId) || promptFamily.length > 128) {
+      return errorResponse(400, "bad_request", "route_id and prompt_family are required");
+    }
+    try {
+      const status = await coordinator.calibrationStatus(routeId, promptFamily);
+      if (!status) return errorResponse(404, "unknown_route", `Unknown route_id ${routeId}`);
+      return jsonResponse(status, 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`calibration failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
+  // Operator dispatch pause (see LLMSchedulerDO's "Dispatch pause" block). A probe pauses one
+  // provider or route, waits for pause-status `in_flight` to reach 0, runs, reserves what it
+  // spent against the route's ledger, and resumes; every pause also expires by itself.
+  const pauseHandlers = {
+    "/v2/dispatch:pause": [validatePauseRequest, (body) => coordinator.pauseDispatch(body, Date.now())],
+    "/v2/dispatch:resume": [validateResumeRequest, (body) => coordinator.resumeDispatch(body, Date.now())],
+    "/v2/dispatch:reserve": [
+      validateReserveRequest,
+      (body) => coordinator.reserveRouteRequests(body, Date.now()),
+    ],
+  };
+  if (request.method === "POST" && Object.hasOwn(pauseHandlers, path)) {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+    }
+    const [validate, run] = pauseHandlers[path];
+    const validation = validate(body);
+    if (!validation.valid) {
+      return errorResponse(400, validation.error, validation.detail);
+    }
+    try {
+      const result = await run(body);
+      return result.ok ? jsonResponse(result, 200) : errorResponse(400, result.error, result.detail);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`${path} failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
+  if (request.method === "GET" && path === "/v2/dispatch:pause-status") {
+    const selection = {
+      scope: url.searchParams.get("scope") || "global",
+      target: url.searchParams.get("target"),
+    };
+    const validation = validateResumeRequest(selection.scope === "global" ? { scope: "global" } : selection);
+    if (!validation.valid) {
+      return errorResponse(400, validation.error, validation.detail);
+    }
+    try {
+      const status = await coordinator.dispatchPauseStatus(selection, Date.now());
+      return status.ok ? jsonResponse(status, 200) : errorResponse(400, status.error, status.detail);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`dispatchPauseStatus failed: ${detail}`);
       return errorResponse(500, "coordinator_error", detail);
     }
   }
@@ -410,6 +594,30 @@ export async function handleRequest(request, env) {
     }
   }
 
+  if (request.method === "POST" && path === "/v2/jobs:retire-batch") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+    }
+    const maxBatch = Number(env.POLL_BATCH_MAX || 1000);
+    const validation = validateRetireBatchRequest(body, maxBatch);
+    if (!validation.valid) {
+      return errorResponse(400, validation.error, validation.detail);
+    }
+    try {
+      const result = await coordinator.retireConsumed(
+        body.items.map((item) => ({ id: item.id, result_key: item.result_key }))
+      );
+      return jsonResponse(result, 200);
+    } catch (err) {
+      const detail = describeError(err);
+      console.error(`retireConsumed failed: ${detail}`);
+      return errorResponse(500, "coordinator_error", detail);
+    }
+  }
+
   if (request.method === "POST" && path === "/v2/jobs:cancel-batch") {
     let body;
     try {
@@ -495,6 +703,29 @@ export async function handleRequest(request, env) {
       if (result.status === "daily_cap_exceeded") {
         return errorResponse(429, "daily_cap_exceeded", "Daily job admission cap exceeded");
       }
+      // These four were already returned by coordinator.schemaRetry() but fell through to a
+      // misleading 200 with id/idempotency_key both undefined (they share the same admission
+      // gates as enqueueBatch, which -- unlike this single-job endpoint -- reports rejections in
+      // a per-job array rather than the HTTP status, so there was no existing precedent to copy).
+      if (result.status === "purpose_not_registered") {
+        return errorResponse(422, "purpose_not_registered", "Source job's purpose has no llm_lanes entry");
+      }
+      if (result.status === "model_not_in_lane") {
+        return errorResponse(422, "model_not_in_lane", "Source job names a model outside its lane");
+      }
+      if (result.status === "backup_after_attempts_below_lane_minimum") {
+        return errorResponse(
+          422,
+          "backup_after_attempts_below_lane_minimum",
+          "Source job's backup_after_attempts is below its lane's configured minimum"
+        );
+      }
+      if (result.status === "purpose_write_budget_exceeded") {
+        return errorResponse(429, "purpose_write_budget_exceeded", "Purpose's daily write-unit budget exceeded");
+      }
+      if (result.status === "ingress_write_budget_reserved") {
+        return errorResponse(429, "ingress_write_budget_reserved", "Global ingress write-unit budget exceeded");
+      }
       return jsonResponse({ id: result.id, idempotency_key: result.idempotency_key }, 200);
     } catch (err) {
       const detail = describeError(err);
@@ -555,6 +786,12 @@ function b2ClientFromEnv(env) {
   });
 }
 
+/** A lane's configured reasoning level for this route's model (compiled from llm_lanes). */
+function laneReasoningLevel(purpose, route) {
+  const lane = purpose ? INGRESS_RESERVATIONS.reservations?.[purpose] : null;
+  return lane?.reasoning?.[route?.model] || null;
+}
+
 function routeForId(routeId, dispatchLimits) {
   const stored = dispatchLimits.routes_by_id?.[routeId];
   return stored ? { ...stored, route_id: routeId } : null;
@@ -570,6 +807,7 @@ function baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, outcome) 
     actual_end_at: actualEndAt,
     observed_input_tokens: null,
     observed_output_tokens: null,
+    reserved_output_tokens: Number(job.reserved_output_tokens) || 0,
     outcome,
     provider_status_code: null,
     gateway_correlation_id: null,
@@ -595,21 +833,104 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
   const timeout = setTimeout(() => controller.abort(), maxResponseMs);
   let response;
   try {
-    response = await callAiGateway({ env, route, payload: job.payload, dispatchLimits, idempotencyKey, signal: controller.signal });
+    response = await callAiGateway({
+      env,
+      route,
+      payload: job.payload,
+      dispatchLimits,
+      idempotencyKey,
+      signal: controller.signal,
+      shaping: {
+        inputTokens: job.input_token_estimate || 0,
+        reasoningLevel: laneReasoningLevel(job.purpose, route),
+      },
+    });
   } catch (err) {
-    return { result: baseAttemptResult(job, attemptId, actualStartAt, Date.now(), "retryable_error") };
+    return {
+      result: {
+        ...baseAttemptResult(job, attemptId, actualStartAt, Date.now(), "retryable_error"),
+        failure_class: "server_error",
+      },
+    };
   } finally {
     clearTimeout(timeout);
   }
   const actualEndAt = Date.now();
 
   if (response.status === 429) {
+    const cls = classifyProviderFailure({
+      status: 429,
+      body: response.body,
+      headers: response.headers,
+      route,
+    });
     return {
       retry429: true,
       actualStartAt,
       actualEndAt,
       correlationId: response.correlationId,
-      retryAfterSeconds: response.retryAfterSeconds,
+      retryAfterSeconds: cls.retry_after_seconds ?? response.retryAfterSeconds,
+      failureClass: cls.failure_class,
+      ruleId: cls.rule_id,
+    };
+  }
+
+  if (upstreamEmptyCompletion(response.status, response.body)) {
+    // A 2xx carrying no completion. Never settle this as success: doing so stores a non-answer as
+    // the job's durable result AND clears the route's backoff, so a provider serving nothing looks
+    // healthy. Retryable, and classified as the provider's problem rather than the job's.
+    const cls = classifyProviderFailure({
+      status: response.status,
+      body: response.body,
+      headers: response.headers,
+      route,
+    });
+    return {
+      result: {
+        ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "retryable_error"),
+        provider_status_code: response.status,
+        gateway_correlation_id: response.correlationId,
+        failure_class: "upstream_capacity",
+        classify_rule_id: cls.rule_id,
+      },
+    };
+  }
+
+  if (response.ok && response.body?.choices?.[0]?.finish_reason === "length") {
+    // The reply stopped at its output-token limit: whatever it holds is cut off. Never stored as a
+    // result; retried, and counted per route as output_budget_exhausted so the token-budget
+    // monitor can tell a too-small lane budget from a model reasoning without end.
+    const usage = observedTokens(response.body);
+    return {
+      result: {
+        ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "retryable_error"),
+        observed_input_tokens: usage.input,
+        observed_output_tokens: usage.output,
+        provider_status_code: response.status,
+        gateway_correlation_id: response.correlationId,
+        failure_class: "output_budget_exhausted",
+      },
+    };
+  }
+
+  const structuredProblem =
+    response.ok && isStructuredPayload(job.payload) ? structuredReplyProblem(response.body) : null;
+  if (structuredProblem) {
+    // A 200 whose content is empty or not JSON, on a request that must return JSON (review/48
+    // R10). Never settle it as success: that stores a non-answer and clears the route's backoff,
+    // which is how NVIDIA's deepseek-v4.1-flash failed silently. The coordinator treats it as an
+    // upstream-class failure -- the job retries (on another route while this one cools down) and
+    // the class is counted in route_failures, so a route whose method is wrong shows up.
+    const usage = observedTokens(response.body);
+    return {
+      result: {
+        ...baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, "retryable_error"),
+        observed_input_tokens: usage.input,
+        observed_output_tokens: usage.output,
+        provider_status_code: response.status,
+        gateway_correlation_id: response.correlationId,
+        failure_class: structuredProblem,
+      },
     };
   }
 
@@ -637,10 +958,18 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
           observed_output_tokens: usage.output,
           provider_status_code: response.status,
           gateway_correlation_id: response.correlationId,
+          failure_class: "server_error",
         },
       };
     }
   }
+
+  const cls = classifyProviderFailure({
+    status: response.status,
+    body: response.body,
+    headers: response.headers,
+    route,
+  });
 
   return {
     result: {
@@ -658,14 +987,20 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
         // This Worker is the only layer that sees response bodies -- the DO holds job rows and
         // never a payload -- so the sniffing happens here and completeBatch keys off the pair
         // (retryable_error, 400) alone.
-        response.status >= 500 ||
+        (response.status >= 500 && cls.failure_class !== "route_input_limit") ||
         response.status === 402 ||
+        // A 410 (model retired) or 404 (upstream fault) is the route's problem, not this job's;
+        // the coordinator requeues it (classify.js rule 8).
+        cls.failure_class === "route_unavailable" ||
+        (response.status === 404 && cls.failure_class === "upstream_capacity") ||
         upstreamCapacityFailure(response.status, response.body)
           ? "retryable_error"
           : "terminal_error"
       ),
       provider_status_code: response.status,
       gateway_correlation_id: response.correlationId,
+      failure_class: cls.failure_class,
+      rule_id: cls.rule_id,
     },
   };
 }
@@ -745,13 +1080,22 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
       job.lease_token,
       attemptId,
       Date.now(),
-      outcome.retryAfterSeconds
+      outcome.retryAfterSeconds,
+      outcome.failureClass
     );
     if (!auth.authorized || auth.retry_not_before > bundleDeadline) {
       return {
-        ...baseAttemptResult(job, attemptId, outcome.actualStartAt, outcome.actualEndAt, "terminal_error"),
+        ...baseAttemptResult(
+          job,
+          attemptId,
+          outcome.actualStartAt,
+          outcome.actualEndAt,
+          "terminal_error"
+        ),
         provider_status_code: 429,
         gateway_correlation_id: outcome.correlationId,
+        failure_class: outcome.failureClass,
+        rule_id: outcome.ruleId,
       };
     }
     laneState.retryBarrier = auth.retry_not_before;
@@ -777,7 +1121,16 @@ async function runScheduledDispatch(env) {
   const dispatchWindowSeconds = Number(env.DISPATCH_WINDOW_SECONDS || 25);
 
   const plan = await coordinator.claimDispatchWindow(Date.now(), dispatchWindowSeconds);
-  if (!plan.jobs || plan.jobs.length === 0) return; // no B2 access, no further DO calls
+  if (!plan.jobs || plan.jobs.length === 0) {
+    // Keep empty cron ticks explainable in Workers Logs. The DO also persists this snapshot for
+    // /v2/stats, but the log puts the reason next to the scheduled invocation that observed it.
+    console.log(JSON.stringify({
+      event: "scheduled_claim_empty",
+      reason: plan.claim_reason || "unknown",
+      diagnostics: plan.claim_diagnostics || {},
+    }));
+    return; // no B2 access, no further DO calls
+  }
 
   const receivedAt = Date.now(); // wait_ms is relative to THIS instant, not plan-build time
   const bundleDeadline = receivedAt + dispatchWindowSeconds * 1000;
@@ -845,16 +1198,24 @@ async function runScheduledDispatch(env) {
  * to read.
  */
 async function runScheduledCleanup(env, scheduledTime) {
-  const intervalMinutes = Number(env.CLEANUP_INTERVAL_MINUTES || 60);
+  const intervalMinutes = Number(env.CLEANUP_INTERVAL_MINUTES || 10);
   if (!Number.isFinite(intervalMinutes) || intervalMinutes <= 0) return;
   // Cloudflare always supplies scheduledTime for a real cron firing. Without it we cannot know
   // where in the cadence we are, so skip rather than run this on every single tick.
   if (!Number.isFinite(scheduledTime)) return;
   if (new Date(scheduledTime).getUTCMinutes() % intervalMinutes !== 0) return;
 
+  const coordinator = getCoordinator(env);
+  // Hourly exact recount of the queued-job counter (maintained by explicit deltas, not triggers).
+  if (new Date(scheduledTime).getUTCMinutes() === 0) {
+    try {
+      await coordinator.recountQueuedJobs();
+    } catch (err) {
+      console.error(`scheduled: recountQueuedJobs failed: ${describeError(err)}`);
+    }
+  }
   const b2 = b2ClientFromEnv(env);
   if (!b2) return;
-  const coordinator = getCoordinator(env);
   // Matches validateConfig's default and its subrequest-budget bound (2 B2 deletes per job).
   const limit = Number(env.PURGE_BATCH_LIMIT || 15);
 
@@ -890,7 +1251,8 @@ async function runScheduledCleanup(env, scheduledTime) {
 
 
 export default {
-  async fetch(request, env, ctx) {
+  async fetch(request, rawEnv, ctx) {
+    const env = withTuning(rawEnv);
     try {
       validateConfig(env);
     } catch (err) {
@@ -899,7 +1261,8 @@ export default {
     return handleRequest(request, env, ctx);
   },
 
-  async scheduled(event, env, ctx) {
+  async scheduled(event, rawEnv, ctx) {
+    const env = withTuning(rawEnv);
     try {
       validateConfig(env);
     } catch (err) {

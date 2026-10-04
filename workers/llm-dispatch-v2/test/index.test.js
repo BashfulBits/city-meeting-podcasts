@@ -21,8 +21,11 @@ function createMockEnv(overrides = {}) {
     CRON_EXECUTION_LIMIT_SECONDS: "900",
     CRON_TICK_SECONDS: "60",
     MAX_BUNDLES_PER_UTC_DAY: "1000",
+    MAX_BUNDLE_JOBS: "4",
+    MAX_LEASES_PER_UTC_DAY: "4000",
     MAX_CONCURRENT_ROUTE_LANES: "5",
     MAX_JOBS_PER_UTC_DAY: "5000",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "18000",
     ENQUEUE_BATCH_MAX: "1000",
     POLL_BATCH_MAX: "1000",
     ...overrides,
@@ -84,6 +87,9 @@ test("validateConfig accepts valid configuration and rejects invalid", () => {
     )
   );
 
+  assert.throws(() => validateConfig(createMockEnv({ MAX_CANDIDATE_LOOKAHEAD: "2" })));
+  assert.throws(() => validateConfig(createMockEnv({ MAX_CANDIDATE_LOOKAHEAD: "1000" })));
+
   // BEARER_TOKEN unset must fail closed at startup, not silently disable auth per-request.
   const noTokenEnv = createMockEnv();
   delete noTokenEnv.BEARER_TOKEN;
@@ -94,8 +100,14 @@ test("validateConfig rejects a CLEANUP_INTERVAL_MINUTES that does not evenly div
   // 7 fires at :00, :07, ..., :56, then wraps to :00 -- a 4-minute gap, not the claimed 7-minute
   // cadence. Only divisors of 60 repeat an identical, evenly-spaced pattern every hour.
   assert.throws(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "7" })));
-  assert.doesNotThrow(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "20" })));
-  assert.doesNotThrow(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "1" })));
+  // Divisors are accepted: 20 -> 1,080 jobs/day, 12 -> 1,800, 10 -> 2,160.
+  assert.doesNotThrow(() =>
+    validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "20", MAX_LEASES_PER_UTC_DAY: "1000" }))
+  );
+  assert.doesNotThrow(() =>
+    validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "12", MAX_LEASES_PER_UTC_DAY: "1800" }))
+  );
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ CLEANUP_INTERVAL_MINUTES: "10" })));
 });
 
 test("validateConfig rejects a PURGE_BATCH_LIMIT that would exceed the 50-subrequest Free ceiling", () => {
@@ -338,7 +350,7 @@ test("POST /v2/jobs/{id}:schema-retry rejects a non-completed source", async () 
   assert.equal((await res.json()).error, "not_found");
 });
 
-test("GET /v2/stats requires auth and returns a snapshot", async () => {
+test("GET /v2/stats requires auth and returns the bounded snapshot by default", async () => {
   const env = createMockEnv();
 
   // Queue depths and route health are operational detail, not public.
@@ -355,25 +367,214 @@ test("GET /v2/stats requires auth and returns a snapshot", async () => {
   const body = await res.json();
   assert.ok(Number.isFinite(body.now));
   assert.ok(body.jobs && typeof body.jobs.by_state === "object");
-  assert.equal(body.jobs.queued_without_model_index, 0);
-  assert.ok(Array.isArray(body.queued_by_model));
-  assert.ok(Array.isArray(body.routes.blocked));
   assert.ok(body.bundles && body.scheduler);
+  assert.equal(body.queued_by_model, undefined);
 });
 
-test("GET /v2/stats clamps limit to a sane range", async () => {
-  // The listings are bounded so an operator cannot turn a debug probe into the rows-read
-  // overage it exists to help diagnose.
+test("GET /v2/ingress-status requires auth and reports the admission preflight", async () => {
+  const env = createMockEnv();
+  const unauthRes = await worker.fetch(
+    new Request("http://localhost/v2/ingress-status?purpose=chapter-agenda"),
+    env
+  );
+  assert.equal(unauthRes.status, 401);
+
+  const res = await worker.fetch(
+    new Request("http://localhost/v2/ingress-status?purpose=chapter-agenda", {
+      headers: { authorization: "Bearer secret-token" },
+    }),
+    env
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.purpose, "chapter-agenda");
+  assert.equal(typeof body.open, "boolean");
+  assert.ok(Array.isArray(body.reasons));
+  assert.ok(body.row_budget && Number.isFinite(body.row_budget.rows_written_today));
+});
+
+test("GET /v2/calibration reports the ratio the claim applies to a route and prompt family", async () => {
+  const env = createMockEnv();
+  const get = (qs, auth = true) =>
+    worker.fetch(
+      new Request(`http://localhost/v2/calibration?${qs}`, {
+        headers: auth ? { authorization: "Bearer secret-token" } : {},
+      }),
+      env
+    );
+  assert.equal((await get("route_id=gemma_4_31b_primary&prompt_family=tag", false)).status, 401);
+  assert.equal((await get("prompt_family=tag")).status, 400);
+  assert.equal((await get("route_id=no_such_route&prompt_family=tag")).status, 404);
+
+  const env2 = createMockEnv();
+  const coordinator = env2.LLM_SCHEDULER.get();
+  coordinator._getSql().exec(
+    `INSERT INTO estimates (key, margin_tokens, sample_count, recent_observed_summary, updated_at)
+     VALUES (?, 0, 16, ?, 0)`,
+    "gemma_4_31b_primary:google/gemma-4-31b-it:tag",
+    JSON.stringify({ r: Array(16).fill(1.3), o: Array(16).fill(200) })
+  );
+  const res = await worker.fetch(
+    new Request("http://localhost/v2/calibration?route_id=gemma_4_31b_primary&prompt_family=tag", {
+      headers: { authorization: "Bearer secret-token" },
+    }),
+    env2
+  );
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.model, "google/gemma-4-31b-it");
+  assert.equal(body.input_ratio_prior, 1.4);
+  assert.equal(body.input_ratio_p95, 1.3);
+  assert.equal(body.input_ratio_samples, 16);
+  // Gemma's 1.2x headroom on the learned p95 lifts it above the 1.4 prior.
+  assert.ok(Math.abs(body.input_ratio_effective - 1.56) < 1e-9);
+  assert.equal(body.hard_input_ceiling, 14400);
+  assert.equal(body.hard_input_ceiling_tolerance, 0.1);
+});
+
+test("GET /v2/stats makes historical diagnostics explicit and clamps their limit", async () => {
   const env = createMockEnv();
   const call = async (qs) =>
     (await worker.fetch(
-      new Request(`http://localhost/v2/stats${qs}`, {
+      new Request(`http://localhost/v2/stats?detail=1&${qs}`, {
         headers: { authorization: "Bearer secret-token" },
       }),
       env
     )).status;
 
-  assert.equal(await call("?limit=99999"), 200);
-  assert.equal(await call("?limit=0"), 200);
-  assert.equal(await call("?limit=notanumber"), 200);
+  assert.equal(await call("limit=99999"), 200);
+  assert.equal(await call("limit=0"), 200);
+  assert.equal(await call("limit=notanumber"), 200);
+});
+
+test("the committed wrangler.jsonc vars plus compiled tuning pass validateConfig", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const raw = await readFile(new URL("../wrangler.jsonc", import.meta.url), "utf8");
+  // Strip // line comments that are not inside a string, then parse as JSON.
+  const stripped = raw
+    .split("\n")
+    .map((line) => line.replace(/^(\s*)\/\/.*$/, "$1").replace(/("(?:[^"\\]|\\.)*"\s*[,:]?\s*)\/\/.*$/, "$1"))
+    .join("\n");
+  const declared = JSON.parse(stripped).vars;
+  // Tunables now come from src/dispatch_tuning.json (config/dispatch_tuning.yml), surfaced as
+  // strings exactly like dashboard vars, with any declared var winning.
+  const { default: tuning } = await import("../src/dispatch_tuning.json", { with: { type: "json" } });
+  const vars = {
+    ...Object.fromEntries(Object.entries(tuning.values).map(([k, v]) => [k, String(v)])),
+    ...declared,
+  };
+  assert.equal(vars.DISPATCH_WINDOW_SECONDS, "30");
+  // The configured upper bounds are ordered, the effective stops preserve the account reserve,
+  // and a full day of admitted ingress fits under the enqueue threshold on its own.
+  const { DO_ROWS_WRITTEN_PLATFORM_LIMIT, ROWS_PER_INGRESS_WRITE_UNIT } = await import(
+    "../src/write_budget.js"
+  );
+  // The thresholds run at the coordinator's code defaults and are not declared as vars (Workers
+  // Free counts every var and secret against a 64-variable limit), so check the EFFECTIVE value:
+  // the declared one if a deployment overrides it, the default otherwise.
+  const { LLMSchedulerDO } = await import("../src/coordinator.js");
+  const { createMockSqlStorage } = await import("./helpers.js");
+  const effective = new LLMSchedulerDO({ storage: createMockSqlStorage().storage }, { ...vars });
+  assert.equal(effective._enqueueRowStop(), 90000);
+  assert.equal(effective._claimRowStop(), 90000);
+  assert.equal(effective._optionalRowStop(), 90000);
+  assert.equal(effective._accountRowsStop(), 90000);
+  assert.equal(effective._maxQueuedJobs(), 20000);
+  assert.ok(effective._optionalRowStop() < DO_ROWS_WRITTEN_PLATFORM_LIMIT);
+  assert.ok(
+    ROWS_PER_INGRESS_WRITE_UNIT * Number(vars.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY) <=
+      effective._enqueueRowStop()
+  );
+  assert.equal(vars.ESTIMATED_CALL_DURATION_CEILING_SECONDS, "2");
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ ...vars })));
+});
+
+
+test("validateConfig requires ordered daily row thresholds under the platform limit", () => {
+  assert.doesNotThrow(() => validateConfig(createMockEnv()));
+  // Claims must not stop before enqueues, nor optional writes before claims.
+  assert.throws(
+    () => validateConfig(createMockEnv({ DO_ROWS_ENQUEUE_STOP: "98000", DO_ROWS_CLAIM_STOP: "97000" })),
+    /DO_ROWS_ENQUEUE_STOP/
+  );
+  assert.throws(
+    () => validateConfig(createMockEnv({ DO_ROWS_CLAIM_STOP: "99500", DO_ROWS_OPTIONAL_STOP: "99000" })),
+    /DO_ROWS_ENQUEUE_STOP/
+  );
+  // Nothing may be allowed to reach the platform's own cutoff.
+  assert.throws(
+    () => validateConfig(createMockEnv({ DO_ROWS_OPTIONAL_STOP: "100000" })),
+    /below the platform/
+  );
+  assert.throws(() => validateConfig(createMockEnv({ DO_ROWS_CLAIM_STOP: "abc" })));
+});
+
+test("validateConfig keeps a full day of ingress under the enqueue threshold", () => {
+  // 2 rows per unit: 40,000 units could write 80,000 rows, past a 70,000 enqueue stop.
+  assert.throws(
+    () =>
+      validateConfig(
+        createMockEnv({ MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "40000", DO_ROWS_ENQUEUE_STOP: "70000" })
+      ),
+    /past DO_ROWS_ENQUEUE_STOP/
+  );
+  assert.doesNotThrow(() =>
+    validateConfig(createMockEnv({ MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "18000" }))
+  );
+});
+
+test("validateConfig bounds MAX_QUEUED_JOBS", () => {
+  assert.throws(() => validateConfig(createMockEnv({ MAX_QUEUED_JOBS: "0" })));
+  assert.throws(() => validateConfig(createMockEnv({ MAX_QUEUED_JOBS: "200000" })));
+  assert.doesNotThrow(() => validateConfig(createMockEnv({ MAX_QUEUED_JOBS: "20000" })));
+});
+
+test("dispatch pause endpoints: auth, validation, pause, status and resume", async () => {
+  const env = createMockEnv();
+  const call = (method, path, body, token = "secret-token") =>
+    worker.fetch(
+      new Request(`https://example.test${path}`, {
+        method,
+        headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
+      env
+    );
+
+  assert.equal((await call("POST", "/v2/dispatch:pause", { scope: "global", seconds: 60 }, "wrong")).status, 401);
+  assert.equal((await call("POST", "/v2/dispatch:pause", { scope: "global" })).status, 400);
+  assert.equal((await call("POST", "/v2/dispatch:pause", { scope: "global", seconds: 3601 })).status, 400);
+  assert.equal((await call("POST", "/v2/dispatch:pause", { scope: "provider", seconds: 60 })).status, 400);
+  const unknown = await call("POST", "/v2/dispatch:pause", { scope: "provider", target: "nope", seconds: 60 });
+  assert.equal(unknown.status, 400);
+  assert.equal((await unknown.json()).error, "unknown_target");
+
+  const paused = await call("POST", "/v2/dispatch:pause", {
+    scope: "provider",
+    target: "gemini",
+    seconds: 120,
+    reason: "catalog canary",
+  });
+  assert.equal(paused.status, 200);
+  assert.equal((await paused.json()).scope, "provider:gemini");
+
+  const status = await call("GET", "/v2/dispatch:pause-status?scope=provider&target=gemini");
+  assert.equal(status.status, 200);
+  const statusBody = await status.json();
+  assert.equal(statusBody.in_flight, 0);
+  assert.equal(statusBody.pauses[0].scope, "provider:gemini");
+  assert.ok(Object.keys(statusBody.routes).length > 0);
+  assert.equal((await call("GET", "/v2/dispatch:pause-status?scope=provider")).status, 400);
+
+  const reserve = await call("POST", "/v2/dispatch:reserve", {
+    route_id: "gemini_3_1_flash_lite_primary",
+    requests: 1,
+  });
+  assert.equal(reserve.status, 200);
+  assert.equal((await call("POST", "/v2/dispatch:reserve", { route_id: "x", requests: 6 })).status, 400);
+
+  const resumed = await call("POST", "/v2/dispatch:resume", { scope: "provider", target: "gemini" });
+  assert.equal((await resumed.json()).resumed, true);
+  const statsBody = await (await call("GET", "/v2/stats")).json();
+  assert.deepEqual(statsBody.dispatch_pauses, []);
 });

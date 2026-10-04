@@ -93,6 +93,7 @@ from citypods import asr as asr_mod
 from citypods.asr import asr_initial_prompt
 from citypods.bodies import canonical_body, rank_by_body
 from citypods.compute import DispatchCoordinator, InferenceJob
+from citypods.compute.llm_work import LLMWorkTracker
 from citypods.compute.local import LocalBackend
 from citypods.diarize import (
     DEFAULT_DIARIZE_MODEL,
@@ -142,6 +143,7 @@ from citypods.records import (
 from citypods.resources import MemoryReservation, NativeWorkGate, ResourceAdmission
 from citypods.security import MAX_REDIRECTS, validate_source_url
 from citypods.speakers import IDENTITY_PIPELINE_VERSION, TITLE_CUE_KINDS
+from citypods.storage import StorageReadUnavailable
 from citypods.timeline import Timeline, edl_duration, remap, timeline_digest
 from citypods.transcript_quality import (
     TranscriptQualityRoute,
@@ -174,8 +176,8 @@ def _materialize_set(
     whether this call is a transcript-producing stage (any value in
     ``workqueue.DURATION_AWARE_WORK_CLASSES``) so the ``long_first`` comparator can tell it apart
     from a non-transcript stage's call. Defaults to ``"audio"``: every caller except
-    ``TranscriptStage`` / ``ProviderTranscriptDiarizeStage`` processes audio-adjacent work that
-    duration-based external-GPU prioritization should never reorder."""
+    ``TranscriptStage`` processes audio-adjacent work that duration-based external-GPU
+    prioritization should never reorder."""
     out: list[Episode] = []
     ranked: list[tuple[Episode, str]] = []
     visible = max_per_body if feed_visible_per_body is None else feed_visible_per_body
@@ -307,6 +309,7 @@ class StageContext:
     # through — ``local`` (in-process faster-whisper/WhisperX) by default; H14 swaps in the
     # Modal/Beam dispatch adapters here with no stage change. None ⇒ build an in-process
     # ``LocalBackend`` on the stage's ``asr_mod`` (keeps the default path behavior-preserving).
+    llm_work: LLMWorkTracker = field(default_factory=LLMWorkTracker)
     compute_backend: object | None = None
     # Optional R5 structured tag backend.  It is deliberately separate from the ASR backend so a
     # catalog build can run deterministic tags without installing or configuring the LLM extra.
@@ -505,6 +508,11 @@ class StageContext:
     tag_prelabeler_dispatches_count: int = 0
     tag_prelabeler_dispatches_reserved: int = 0
     tag_prelabeler_dispatches_lock: threading.Lock = field(default_factory=threading.Lock)
+    # The shadow evaluator (`topic-tags:prelabeler-shadow`) is a third, independently budgeted
+    # purpose. Counted at reservation: it is audit-only, so an unused slot is not worth reclaiming.
+    tag_prelabeler_shadow_max_dispatches: int | None = None
+    tag_prelabeler_shadow_dispatches_count: int = 0
+    tag_prelabeler_shadow_lock: threading.Lock = field(default_factory=threading.Lock)
     # Per-run producer cap for chapter agenda candidate extraction to bound runner submissions
     # to what the Worker's daily write budget funds (site_config.yml llm_lanes: chapter-agenda).
     chapter_agenda_dispatch_exhausted: threading.Event = field(default_factory=threading.Event)
@@ -580,6 +588,26 @@ class StageContext:
                 and self.tag_prelabeler_dispatches_count >= self.tag_prelabeler_max_dispatches
             ):
                 self.tag_prelabeler_dispatch_exhausted.set()
+
+    def tag_prelabeler_shadow_exhausted(self) -> bool:
+        with self.tag_prelabeler_shadow_lock:
+            return (
+                self.tag_prelabeler_shadow_max_dispatches is not None
+                and self.tag_prelabeler_shadow_dispatches_count
+                >= self.tag_prelabeler_shadow_max_dispatches
+            )
+
+    def reserve_tag_prelabeler_shadow_dispatch(self) -> bool:
+        """Reserve one per-run shadow-evaluator dispatch slot; False once the cap is reached."""
+        with self.tag_prelabeler_shadow_lock:
+            if (
+                self.tag_prelabeler_shadow_max_dispatches is not None
+                and self.tag_prelabeler_shadow_dispatches_count
+                >= self.tag_prelabeler_shadow_max_dispatches
+            ):
+                return False
+            self.tag_prelabeler_shadow_dispatches_count += 1
+            return True
 
     def reserve_chapter_agenda_dispatch(self) -> bool:
         """Atomically reserve one per-run chapter-agenda dispatch slot before submitting work."""
@@ -805,12 +833,6 @@ def stage_input_fingerprint(
             "recipe": TRANSCRIPT_PIPELINE_VERSION,
             "word_validation": TIMED_WORDS_VALIDATION_VERSION,
         }
-    elif name == "diarize":
-        payload = {
-            **common,
-            "transcript": ep.transcript_key or ep.transcript_hosted_url,
-            "recipe": PROVIDER_DIARIZE_PIPELINE_VERSION,
-        }
     elif name == "native_diarize":
         config = speaker_config or {}
         from citypods.speakers import PILOT_SCOPE_VERSION
@@ -841,9 +863,13 @@ def stage_input_fingerprint(
             "recipe": recipe,
         }
     elif name in {"chapter_locator", "generated_chapters"}:
-        from citypods.chapter_jobs import LOCATOR_MODEL, LOCATOR_PROMPT_VERSION
+        from citypods.chapter_jobs import LOCATOR_MODELS, LOCATOR_PROMPT_VERSION
+        from citypods.chapter_locator import LOCATOR_ROUTING_VERSION
 
-        recipe = f"{LOCATOR_PROMPT_VERSION}:{LOCATOR_MODEL}:{CHAPTER_LOCATOR_PIPELINE_VERSION}"
+        recipe = (
+            f"{LOCATOR_PROMPT_VERSION}:{','.join(LOCATOR_MODELS)}:"
+            f"{LOCATOR_ROUTING_VERSION}:{CHAPTER_LOCATOR_PIPELINE_VERSION}"
+        )
         payload = {
             **common,
             "agenda_recipe": (ep.generated_agenda_candidates or {}).get("recipe"),
@@ -957,6 +983,7 @@ def stage_is_dirty(
     city: City,
     *,
     speaker_config: Mapping[str, Any] | None = None,
+    evaluation_config: Mapping[str, Any] | None = None,
 ) -> bool:
     # Admission state and asynchronous judge results are external to episode inputs. Both stages
     # are cheap projections, so always revisit them rather than making a human decision wait for a
@@ -970,6 +997,13 @@ def stage_is_dirty(
         return (ep.generated_agenda_candidates or {}).get("status") != "not_applicable"
     if stage.name in {"chapter_locator", "generated_chapters"} and ep.source_chapters:
         return (ep.generated_agenda_candidates or {}).get("locator_status") != "not_applicable"
+    # The tags marker fingerprints tag inputs only. Evaluator work (a production pre-labeler
+    # model/schema change, or an enabled shadow evaluator) keeps the episode dirty until done.
+    if stage.name == "tags" and evaluation_config is not None:
+        from citypods.tags import episode_evaluator_work_pending
+
+        if episode_evaluator_work_pending(ep, dict(evaluation_config.get("prelabeler") or {})):
+            return True
     marker = ep.stage_completion.get(stage.name) if isinstance(ep.stage_completion, dict) else None
     if stage.name == "native_diarize" and isinstance(marker, dict):
         # A prior R7 run could have marked an unselected or prerequisite-missing episode complete
@@ -1028,11 +1062,57 @@ def _mark_stage_complete(
         }
 
 
-class MomentsStage:
+class LLMProducerStage:
+    """Required storage-free eligibility census for a registered LLM stage.
+
+    The runner invokes this before filtering/stop gates. Producers implement eligibility only;
+    purpose binding, unit deduplication, backend outcomes and serialization are shared.
+    """
+
+    def telemetry_purposes(self, ctx):
+        raise NotImplementedError("Registered LLM stages must declare their enabled purposes")
+
+    def work_items(self, city, episodes, ctx):
+        raise NotImplementedError("Registered LLM stages must declare eligible work")
+
+    def census(self, city, episodes, ctx):
+        for purpose in self.telemetry_purposes(ctx):
+            ctx.llm_work.activate(purpose, producer=self.name)
+        selected = episodes
+        if self.name in {"tags", "chapter_agenda", "chapter_locator"}:
+            selected = _materialize_set(episodes, city.full_artifact_episodes)
+        for purpose, identity, state in self.work_items(city, selected, ctx):
+            work = ctx.llm_work.item(purpose, identity, producer=self.name, state=state)
+            if state == "reused":
+                work.consumed(reused=True)
+
+
+class MomentsStage(LLMProducerStage):
     """Extract grounded R6 moments and apply the manual/calibrated admission policy."""
 
     name = "moments"
     version = "2"
+
+    def telemetry_purposes(self, ctx):
+        return ("r6-moments",) if ctx.moment_backend is not None and ctx.storage is not None else ()
+
+    def work_items(self, city, episodes, ctx):
+        if not self.telemetry_purposes(ctx):
+            return
+        rollout = (ctx.moment_evaluation_config or {}).get("rollout_meeting_families") or []
+        family = str(city.extra.get("meeting_family") or "default")
+        for ep in episodes:
+            if not (ep.uid or ep.guid):
+                continue
+            state = "ready"
+            if rollout and family not in rollout:
+                state = "policy_held"
+            elif not ep.transcript_key:
+                state = "blocked"
+            elif not stage_is_dirty(self, ep, city):
+                state = "reused"
+            # Exact recipe validation belongs to process(), which already reads source inputs.
+            yield "r6-moments", ep.uid or ep.guid, state
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -1044,16 +1124,21 @@ class MomentsStage:
             COUNCIL_MOMENT_MODELS,
             DEFAULT_MOMENT_MODELS,
             MOMENTS_CONTRACT,
+            MOMENTS_OUTPUT_TOKEN_BUDGET,
+            MOMENTS_PROMPT_VERSION,
+            MOMENTS_SYSTEM_PROMPT,
             candidate_matrix_key,
             ensure_moment_contract,
             normalize_decision_candidate,
             normalize_quote_candidate,
             parse_transcript_segments,
+            parse_words_sidecar,
             recipe_hash,
             response_payload,
         )
 
         stats = StageStats(self.name)
+        self.census(city, episodes, ctx)
         if ctx.moment_backend is None or ctx.storage is None:
             return stats
         backend_config = getattr(ctx.moment_backend, "config", None)
@@ -1077,17 +1162,28 @@ class MomentsStage:
         ensure_moment_contract()
 
         for ep in episodes:
+            if not (ep.uid or ep.guid):
+                continue
+            work = ctx.llm_work.item("r6-moments", ep.uid or ep.guid, producer=self.name)
             if ctx.stop and ctx.stop():
+                work.defer("stopped")
                 stats.defer("stop")
                 continue
             if not ep.transcript_key:
+                work.defer("blocked")
                 stats.quality("shadow-no-transcript")
                 continue
             raw = _read_storage_bytes(ctx.storage, ep.transcript_key)
             segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
             if not segments:
+                work.defer("blocked")
                 stats.quality("shadow-no-captions")
                 continue
+            # Served-time word timing, so each quote keeps its exact spoken span for share clips;
+            # cue-level timing remains the fallback when there is no sidecar.
+            words = parse_words_sidecar(
+                _read_storage_bytes(ctx.storage, ep.transcript_words_key or "")
+            )
             chapters = episode_served_chapters(ep)
             chapter_rows = [
                 {
@@ -1113,18 +1209,11 @@ class MomentsStage:
                 evaluation_policy="candidate-generation-v1",
             )
             if ep.moments_llm_recipe_hash == moments_recipe:
+                work.consumed(reused=True)
                 stats.reused += 1
                 continue
             messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        "You extract civic meeting moments. Quote only exact contiguous wording "
-                        "from the transcript. Return one summary point per supplied chapter. "
-                        "Do not invent "
-                        "votes, decisions, names, times, or outcomes."
-                    ),
-                },
+                {"role": "system", "content": MOMENTS_SYSTEM_PROMPT},
                 {
                     "role": "user",
                     "content": json.dumps(
@@ -1141,7 +1230,8 @@ class MomentsStage:
             inputs: dict[str, Any] = {
                 "messages": messages,
                 "structured_output": MOMENTS_CONTRACT,
-                "max_tokens": 4096,
+                "max_tokens": MOMENTS_OUTPUT_TOKEN_BUDGET,
+                "max_tokens_mode": "route_max",
             }
             inputs["llm_policy"] = LLMRequestPolicy(
                 allowed_models=allowed_models,
@@ -1150,13 +1240,12 @@ class MomentsStage:
                 queue_only=True,
                 timeout_class="long",
             )
-            with ctx.moment_dispatch_lock:
-                if ctx.moment_dispatches >= ctx.moment_max_dispatches:
-                    stats.defer("rollout-dispatch-cap", sample=ep.uid or ep.guid)
-                    continue
-                ctx.moment_dispatches += 1
+            admission = _admit_r6_dispatch(ctx, stats, moments_recipe, ep.uid or ep.guid)
+            if admission in {"pending", "cap"}:
+                work.defer("queued" if admission == "pending" else "policy_held")
+                continue
             try:
-                outcome = ctx.moment_backend.run_inference(
+                outcome = work.backend(ctx.moment_backend).run_inference(
                     InferenceJob(
                         task="moment-extraction",
                         inputs=inputs,
@@ -1164,13 +1253,14 @@ class MomentsStage:
                     )
                 )
                 if isinstance(outcome, JobHandle):
-                    stats.defer("llm-capacity", sample=ep.uid or ep.guid)
+                    stats.defer("llm-pending", sample=ep.uid or ep.guid)
                     continue
                 if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):
                     raise ValueError("moment backend returned an invalid result")
                 payload = response_payload(outcome.output)
                 model = str(outcome.model or allowed_models[0])
             except Exception as exc:  # noqa: BLE001 - one bad model response cannot stop a feed.
+                work.defer("errored")
                 stats.errors.append(f"{ep.uid or ep.guid}: moment extraction deferred ({exc})")
                 stats.defer("llm-error", sample=ep.uid or ep.guid)
                 continue
@@ -1195,6 +1285,7 @@ class MomentsStage:
                         "recipe_hash": moments_recipe,
                     }
                 )
+                work.defer("errored")
                 stats.quality("summary-chapter-coverage")
                 continue
             ep.moment_summary_candidates = [
@@ -1204,7 +1295,7 @@ class MomentsStage:
                     "confidence": row.get("confidence", 0.0),
                     "source_kind": "llm",
                     "provider_model": model,
-                    "prompt_version": "1",
+                    "prompt_version": MOMENTS_PROMPT_VERSION,
                 }
                 for row in summary_by_chapter.values()
                 if row.get("chapter_id") in {item["chapter_id"] for item in chapter_rows}
@@ -1220,6 +1311,7 @@ class MomentsStage:
                     recipe=moments_recipe,
                     meeting_family=family,
                     transcript_segments=segments,
+                    transcript_words=words,
                 )
                 if candidate:
                     candidates.append(candidate)
@@ -1230,7 +1322,10 @@ class MomentsStage:
                 if isinstance(row, dict)
                 if (
                     normalized := normalize_decision_candidate(
-                        row, provider_model=model, transcript_segments=segments
+                        row,
+                        provider_model=model,
+                        transcript_segments=segments,
+                        transcript_words=words,
                     )
                 )
                 is not None
@@ -1246,6 +1341,7 @@ class MomentsStage:
                     "calibration_cells": [candidate_matrix_key(row) for row in candidates],
                 }
             )
+            work.consumed()
             stats.ran += 1
         return stats
 
@@ -1280,11 +1376,62 @@ def _moment_source(
     return resolved, f"{source_id}:{identity}"
 
 
-class MomentJudgeStage:
+def _admit_r6_dispatch(ctx: StageContext, stats: StageStats, recipe_hash: str, sample: str) -> str:
+    """Reserve the shared R6 budget only for a genuinely new queue admission."""
+    from citypods.compute.base import JobHandle, JobResult
+    from citypods.compute.llm_deferred import look_up_deferred
+
+    existing = look_up_deferred(ctx.storage, recipe_hash)
+    if isinstance(existing, JobHandle):
+        stats.defer("llm-pending", sample=sample)
+        return "pending"
+    if isinstance(existing, JobResult):
+        return "cached"
+    with ctx.moment_dispatch_lock:
+        if ctx.moment_dispatches >= ctx.moment_max_dispatches:
+            stats.defer("rollout-dispatch-cap", sample=sample)
+            return "cap"
+        ctx.moment_dispatches += 1
+    return "admitted"
+
+
+class MomentJudgeStage(LLMProducerStage):
     """Run independent, candidate-only judges in the background without candidate authority."""
 
     name = "moment-judge"
     version = "1"
+
+    def telemetry_purposes(self, ctx):
+        config = (ctx.moment_evaluation_config or {}).get("judges") or {}
+        return (
+            ("r6-judge",)
+            if config.get("enabled") and ctx.moment_backend is not None and ctx.storage is not None
+            else ()
+        )
+
+    def work_items(self, city, episodes, ctx):
+        from citypods.moment_judging import JUDGE_PROMPT_VERSION, JUDGE_SCHEMA_VERSION, judge_models
+
+        if not self.telemetry_purposes(ctx):
+            return
+        config = (ctx.moment_evaluation_config or {}).get("judges") or {}
+        models = judge_models(tuple(str(model) for model in config.get("models") or ()))
+        for ep in episodes:
+            candidates = [row for row in ep.moment_pullquote_candidates if isinstance(row, dict)]
+            if not candidates or not models or not (ep.uid or ep.guid):
+                continue
+            current = all(
+                any(
+                    row.get("provider_model") == model
+                    and row.get("prompt_version") == JUDGE_PROMPT_VERSION
+                    and row.get("schema_version") == JUDGE_SCHEMA_VERSION
+                    for row in candidate.get("judge_assessments") or []
+                    if isinstance(row, dict)
+                )
+                for candidate in candidates
+                for model in models
+            )
+            yield "r6-judge", ep.uid or ep.guid, "reused" if current else "ready"
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
@@ -1294,6 +1441,7 @@ class MomentJudgeStage:
             JUDGE_CONTRACT,
             JUDGE_PROMPT_VERSION,
             JUDGE_SCHEMA_VERSION,
+            JUDGE_SYSTEM_PROMPT,
             ensure_judge_contract,
             judge_input,
             judge_models,
@@ -1302,6 +1450,7 @@ class MomentJudgeStage:
         from citypods.moments import parse_transcript_segments
 
         stats = StageStats(self.name)
+        self.census(city, episodes, ctx)
         config = (ctx.moment_evaluation_config or {}).get("judges") or {}
         if not config.get("enabled") or ctx.moment_backend is None or ctx.storage is None:
             return stats
@@ -1311,6 +1460,12 @@ class MomentJudgeStage:
             return stats
         ensure_judge_contract()
         for ep in episodes:
+            if not (ep.uid or ep.guid):
+                continue
+            if not any(isinstance(row, dict) for row in ep.moment_pullquote_candidates):
+                continue
+            work = ctx.llm_work.item("r6-judge", ep.uid or ep.guid, producer=self.name)
+            consumed_before = stats.ran
             raw = _read_storage_bytes(ctx.storage, ep.transcript_key or "")
             segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
             for candidate in ep.moment_pullquote_candidates:
@@ -1334,21 +1489,23 @@ class MomentJudgeStage:
                     ):
                         continue
                     if ctx.stop and ctx.stop():
+                        work.defer("stopped")
                         stats.defer("stop")
                         break
-                    with ctx.moment_dispatch_lock:
-                        if ctx.moment_dispatches >= ctx.moment_max_dispatches:
-                            stats.defer("rollout-dispatch-cap", sample=ep.uid or ep.guid)
-                            return stats
-                        ctx.moment_dispatches += 1
+                    judge_recipe = f"{candidate.get('candidate_id')}:{model}:{JUDGE_PROMPT_VERSION}"
+                    admission = _admit_r6_dispatch(ctx, stats, judge_recipe, ep.uid or ep.guid)
+                    if admission == "pending":
+                        work.defer("queued")
+                        continue
+                    if admission == "cap":
+                        ctx.llm_work.defer_remaining("r6-judge", "policy_held")
+                        work.defer("policy_held")
+                        return stats
                     inputs: dict[str, Any] = {
                         "messages": [
                             {
                                 "role": "system",
-                                "content": (
-                                    "You are an independent civic-publication judge. Score only "
-                                    "the candidate and evidence. Never rewrite or create one."
-                                ),
+                                "content": JUDGE_SYSTEM_PROMPT,
                             },
                             {
                                 "role": "user",
@@ -1359,23 +1516,33 @@ class MomentJudgeStage:
                         "llm_policy": judge_policy((model,)),
                         "max_tokens": 700,
                     }
-                    outcome = ctx.moment_backend.run_inference(
+                    outcome = work.backend(ctx.moment_backend).run_inference(
                         InferenceJob(
                             task="moment-judge",
                             inputs=inputs,
-                            recipe_hash=f"{candidate.get('candidate_id')}:{model}:{JUDGE_PROMPT_VERSION}",
+                            recipe_hash=judge_recipe,
                         )
                     )
                     if isinstance(outcome, JobHandle):
-                        stats.defer("judge-capacity", sample=ep.uid or ep.guid)
+                        stats.defer("llm-pending", sample=ep.uid or ep.guid)
                         continue
                     if not isinstance(outcome, JobResult) or not isinstance(outcome.output, dict):
+                        work.defer("errored")
                         stats.quality("judge-invalid-response")
                         continue
                     try:
                         content = outcome.output["choices"][0]["message"]["content"]
-                        payload = ensure_judge_contract().model_validate_json(content).model_dump()
+                        from citypods.compute.structured import parse_structured_json
+
+                        payload = (
+                            ensure_judge_contract()
+                            .model_validate(
+                                parse_structured_json(content, context="moment judge response")
+                            )
+                            .model_dump()
+                        )
                     except (KeyError, IndexError, TypeError, ValueError):
+                        work.defer("errored")
                         stats.quality("judge-invalid-response")
                         continue
                     existing.append(
@@ -1394,6 +1561,19 @@ class MomentJudgeStage:
                         )
                     stats.ran += 1
                 candidate["judge_assessments"] = existing
+            if ep.moment_pullquote_candidates and all(
+                any(
+                    row.get("provider_model") == model
+                    and row.get("prompt_version") == JUDGE_PROMPT_VERSION
+                    and row.get("schema_version") == JUDGE_SCHEMA_VERSION
+                    for row in candidate.get("judge_assessments") or []
+                    if isinstance(row, dict)
+                )
+                for candidate in ep.moment_pullquote_candidates
+                if isinstance(candidate, dict)
+                for model in models
+            ):
+                work.consumed(reused=stats.ran == consumed_before)
         return stats
 
 
@@ -1479,7 +1659,7 @@ class VideoClipsStage:
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
-        from citypods.moments import parse_transcript_segments
+        from citypods.moments import parse_transcript_segments, parse_words_sidecar
         from citypods.video_clips import render_video_clip
 
         stats = StageStats(self.name)
@@ -1505,6 +1685,10 @@ class VideoClipsStage:
             )
             raw = _read_storage_bytes(ctx.storage, ep.transcript_key or "")
             segments = parse_transcript_segments(raw or b"", ep.transcript_format or "vtt")
+            # Word timing bounds the captions to speech inside the clip window.
+            words = parse_words_sidecar(
+                _read_storage_bytes(ctx.storage, ep.transcript_words_key or "")
+            )
             try:
                 source = _moment_source(provider, city, ep, selected)
             except Exception:  # noqa: BLE001 - provider resolution is a text-only failure.
@@ -1527,6 +1711,7 @@ class VideoClipsStage:
                     crop_anchor=selected.get("crop_anchor"),
                     caption_override=selected.get("caption"),
                     profile=str(selected.get("output_profile") or "vertical-9x16-square-pane-v1"),
+                    words=words,
                 )
             if clip.get("status") == "ready":
                 ep.moment_video_clip = {
@@ -1555,7 +1740,7 @@ class VideoClipsStage:
         return stats
 
 
-class TagsStage:
+class TagsStage(LLMProducerStage):
     """Populate the versioned taxonomy from agenda titles/transcripts.
 
     Rules are cheap and always run. Instructor-backed LLM suggestions are dispatched and retained
@@ -1566,21 +1751,167 @@ class TagsStage:
     name = "tags"
     version = "2"
 
+    def telemetry_purposes(self, ctx):
+        if ctx.tag_backend is None:
+            return ()
+        purposes = ["topic-tags:tagger"]
+        config = ctx.llm_evaluation_config.get("prelabeler") or {}
+        if config.get("enabled") and config.get("model"):
+            purposes.append("topic-tags:prelabeler")
+            if config.get("shadow_enabled") and config.get("shadow_model") != config.get("model"):
+                purposes.append("topic-tags:prelabeler-shadow")
+        return tuple(purposes)
+
+    def _load_cache(self, ctx):
+        """Initialize taxonomy and evaluation inputs before census or processing."""
+        import yaml
+
+        from citypods.llm_evaluation import config_from_mapping, load_state, policy_fingerprint
+        from citypods.tags import load_taxonomy
+
+        # Load the taxonomy + calibration state at most ONCE for the whole run (cached on `ctx`,
+        # which is the same object across every one of this lane's per-episode process() calls --
+        # see `StageContext.tag_taxonomy_cache`), not once per episode. A prior failure is cached
+        # too (as an error string) so a broken taxonomy/state file reports itself on every call
+        # without re-attempting the same failing local-disk read thousands of times.
+        #
+        # The global queue runs this across a worker thread pool sharing one `ctx`, so the whole
+        # check-then-populate sequence is guarded by `tag_taxonomy_cache_lock`: without it, one
+        # thread's cache writes (three separate dict assignments, not atomic as a group) could be
+        # interleaved with another thread's read of a still-incomplete cache -- e.g. a second
+        # thread seeing `evaluation_state` already written but `admission_policy` not yet, skipping
+        # (re-)population entirely, and then KeyError-ing on the read below. Contention only matters
+        # for the first handful of calls (a warm cache read is a fast, lock-guarded dict lookup).
+        with ctx.tag_taxonomy_cache_lock:
+            cache = ctx.tag_taxonomy_cache
+            if "taxonomy_error" in cache:
+                return cache
+            if "eval_error" in cache:
+                return cache
+            if "taxonomy" not in cache:
+                try:
+                    cache["taxonomy"] = load_taxonomy(ctx.taxonomy_path)
+                except (OSError, ValueError, KeyError, IndexError, yaml.YAMLError) as exc:
+                    # yaml.YAMLError (parse/scan errors) is NOT a ValueError subclass, and PyYAML
+                    # is documented to leak raw ValueError/KeyError/IndexError for some malformed
+                    # explicit-tag scalars (e.g. `!!int nope`) instead of wrapping them in
+                    # yaml.YAMLError -- both must be caught here for a genuinely corrupt
+                    # taxonomy.yml to degrade gracefully (cached, reported once) rather than
+                    # propagate uncaught out of every one of this run's per-episode calls.
+                    cache["taxonomy_error"] = f"taxonomy unavailable: {exc}"
+                    return cache
+            if "evaluation_state" not in cache:
+                try:
+                    evaluation_config = config_from_mapping(ctx.llm_evaluation_config)
+                    evaluation_state = (
+                        load_state(ctx.llm_evaluation_state_path)
+                        if ctx.llm_evaluation_state_path is not None
+                        else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
+                    )
+                    cache["evaluation_config"] = evaluation_config
+                    cache["evaluation_state"] = evaluation_state
+                    cache["admission_policy"] = policy_fingerprint(
+                        evaluation_config, evaluation_state
+                    )
+                except (ValueError, TypeError) as exc:
+                    # load_state() fails closed on a corrupted (not merely missing) state file
+                    # rather than silently resetting it -- that protects against this stage's
+                    # caller later clobbering real review history via save_state(), but this stage
+                    # itself only ever *reads* the file, so degrading tagging for this run (retried
+                    # next run once the file is fixed) is the right response here, not crashing the
+                    # whole city's enrich pass. config_from_mapping()/policy_fingerprint() are
+                    # covered too: a malformed tagging.evaluation config (e.g. non-numeric
+                    # minimum_reviews) must degrade the same way, not re-raise on every episode.
+                    cache["eval_error"] = f"LLM evaluation state unavailable: {exc}"
+                    return cache
+
+        return cache
+
+    def work_items(self, city, episodes, ctx):
+        from citypods.chapters import episode_served_chapters
+        from citypods.tags import needs_shadow_prelabel, tag_input_fingerprint
+
+        purposes = self.telemetry_purposes(ctx)
+        if not purposes:
+            return
+        config = ctx.llm_evaluation_config.get("prelabeler") or {}
+        model = str(config.get("model") or "")
+        shadow = str(config.get("shadow_model") or "")
+        prompt = str(config.get("prompt_version") or "1")
+        schema = str(config.get("llm_schema_version") or "1")
+        cache = self._load_cache(ctx)
+        if "taxonomy_error" in cache or "eval_error" in cache:
+            ctx.llm_work.partial(self.name)
+        taxonomy = cache.get("taxonomy")
+        route = (
+            f"{getattr(ctx.tag_backend, 'name', 'litellm')}:"
+            f"{getattr(getattr(ctx.tag_backend, 'config', None), 'model', '')}"
+        )
+        for ep in episodes:
+            uid = ep.uid or ep.guid
+            if not uid:
+                continue
+            current_inputs = False
+            if taxonomy is not None:
+                current_inputs = ep.tags_input_fingerprint == tag_input_fingerprint(
+                    ep,
+                    taxonomy,
+                    llm_enabled=True,
+                    llm_route=route,
+                    admission_policy=ctx.tag_taxonomy_cache.get("admission_policy", ""),
+                )
+            if episode_served_chapters(ep):
+                yield (
+                    "topic-tags:tagger",
+                    uid,
+                    ("reused" if current_inputs and ep.tags_llm_recipe_hash else "ready"),
+                )
+            candidates = [
+                row
+                for row in ep.llm_tag_candidates or []
+                if isinstance(row, dict)
+                and row.get("candidate_state") != "historical"
+                and (row.get("source_kind", "llm") == "rule" or row.get("chapter_id"))
+            ]
+            if candidates and "topic-tags:prelabeler" in purposes:
+                current = all(
+                    row.get("prelabeler_model") == model
+                    and row.get("prelabeler_prompt_version") == prompt
+                    and row.get("prelabeler_llm_schema_version") == schema
+                    and row.get("prelabeler_decision")
+                    in {"likely_correct", "needs_human_review", "likely_incorrect"}
+                    for row in candidates
+                )
+                yield "topic-tags:prelabeler", uid, "reused" if current else "ready"
+            if "topic-tags:prelabeler-shadow" in purposes and any(
+                needs_shadow_prelabel(
+                    row,
+                    model=model,
+                    shadow_model=shadow,
+                    prompt_version=prompt,
+                    llm_schema_version=schema,
+                )
+                for row in candidates
+            ):
+                yield (
+                    "topic-tags:prelabeler-shadow",
+                    uid,
+                    ("ingress_limited" if ctx.tag_prelabeler_shadow_exhausted() else "ready"),
+                )
+
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
-        import yaml
 
         from citypods.chapters import episode_served_chapters
         from citypods.llm_evaluation import (
             apply_admission,
-            config_from_mapping,
-            load_state,
-            policy_fingerprint,
+            shadow_prelabel_fields,
             visible_candidates,
         )
         from citypods.tags import (
             PRELABELER_PURPOSE,
+            PRELABELER_SHADOW_PURPOSE,
             TAG_PROMPT_VERSION,
             TAGGER_PURPOSE,
             TAGGER_VERSION,
@@ -1591,8 +1922,8 @@ class TagsStage:
             episode_tag_inputs,
             llm_prelabel_candidates,
             llm_tag_suggestions,
-            load_taxonomy,
             merge_tag_sources,
+            needs_shadow_prelabel,
             rollup_tags,
             rule_phrase_audit,
             tag_episode,
@@ -1654,66 +1985,13 @@ class TagsStage:
                 payload,
             ][-200:]
 
-        # Load the taxonomy + calibration state at most ONCE for the whole run (cached on `ctx`,
-        # which is the same object across every one of this lane's per-episode process() calls --
-        # see `StageContext.tag_taxonomy_cache`), not once per episode. A prior failure is cached
-        # too (as an error string) so a broken taxonomy/state file reports itself on every call
-        # without re-attempting the same failing local-disk read thousands of times.
-        #
-        # The global queue runs this across a worker thread pool sharing one `ctx`, so the whole
-        # check-then-populate sequence is guarded by `tag_taxonomy_cache_lock`: without it, one
-        # thread's cache writes (three separate dict assignments, not atomic as a group) could be
-        # interleaved with another thread's read of a still-incomplete cache -- e.g. a second
-        # thread seeing `evaluation_state` already written but `admission_policy` not yet, skipping
-        # (re-)population entirely, and then KeyError-ing on the read below. Contention only matters
-        # for the first handful of calls (a warm cache read is a fast, lock-guarded dict lookup).
+        cache = self._load_cache(ctx)
+        for key in ("taxonomy_error", "eval_error"):
+            if key in cache:
+                ctx.llm_work.partial(self.name)
+                stats.errors.append(cache[key])
+                return stats
         with ctx.tag_taxonomy_cache_lock:
-            cache = ctx.tag_taxonomy_cache
-            if "taxonomy_error" in cache:
-                stats.errors.append(cache["taxonomy_error"])
-                return stats
-            if "eval_error" in cache:
-                stats.errors.append(cache["eval_error"])
-                return stats
-            if "taxonomy" not in cache:
-                try:
-                    cache["taxonomy"] = load_taxonomy(ctx.taxonomy_path)
-                except (OSError, ValueError, KeyError, IndexError, yaml.YAMLError) as exc:
-                    # yaml.YAMLError (parse/scan errors) is NOT a ValueError subclass, and PyYAML
-                    # is documented to leak raw ValueError/KeyError/IndexError for some malformed
-                    # explicit-tag scalars (e.g. `!!int nope`) instead of wrapping them in
-                    # yaml.YAMLError -- both must be caught here for a genuinely corrupt
-                    # taxonomy.yml to degrade gracefully (cached, reported once) rather than
-                    # propagate uncaught out of every one of this run's per-episode calls.
-                    cache["taxonomy_error"] = f"taxonomy unavailable: {exc}"
-                    stats.errors.append(cache["taxonomy_error"])
-                    return stats
-            if "evaluation_state" not in cache:
-                try:
-                    evaluation_config = config_from_mapping(ctx.llm_evaluation_config)
-                    evaluation_state = (
-                        load_state(ctx.llm_evaluation_state_path)
-                        if ctx.llm_evaluation_state_path is not None
-                        else {"version": 1, "reviews": {}, "matrix": [], "trend": []}
-                    )
-                    cache["evaluation_config"] = evaluation_config
-                    cache["evaluation_state"] = evaluation_state
-                    cache["admission_policy"] = policy_fingerprint(
-                        evaluation_config, evaluation_state
-                    )
-                except (ValueError, TypeError) as exc:
-                    # load_state() fails closed on a corrupted (not merely missing) state file
-                    # rather than silently resetting it -- that protects against this stage's
-                    # caller later clobbering real review history via save_state(), but this stage
-                    # itself only ever *reads* the file, so degrading tagging for this run (retried
-                    # next run once the file is fixed) is the right response here, not crashing the
-                    # whole city's enrich pass. config_from_mapping()/policy_fingerprint() are
-                    # covered too: a malformed tagging.evaluation config (e.g. non-numeric
-                    # minimum_reviews) must degrade the same way, not re-raise on every episode.
-                    cache["eval_error"] = f"LLM evaluation state unavailable: {exc}"
-                    stats.errors.append(cache["eval_error"])
-                    return stats
-
             taxonomy = cache["taxonomy"]
             evaluation_config = cache["evaluation_config"]
             evaluation_state = cache["evaluation_state"]
@@ -1725,6 +2003,13 @@ class TagsStage:
             prelabeler_model = str(prelabeler_config.get("model") or "")
             prelabeler_prompt_version = str(prelabeler_config.get("prompt_version") or "1")
             prelabeler_llm_schema_version = str(prelabeler_config.get("llm_schema_version") or "1")
+            prelabeler_shadow_model = str(prelabeler_config.get("shadow_model") or "")
+            prelabeler_shadow_enabled = (
+                prelabeler_enabled
+                and bool(prelabeler_config.get("shadow_enabled", False))
+                and bool(prelabeler_shadow_model)
+                and prelabeler_shadow_model != prelabeler_model
+            )
 
         for ep in _materialize_set(
             episodes,
@@ -1773,6 +2058,51 @@ class TagsStage:
                 )
                 for candidate in persisted_candidates
             )
+            # Shadow evaluator backlog: subjects whose PRODUCTION assessment is current but whose
+            # shadow assessment is missing or stale. Once this run's shadow allowance is spent it
+            # no longer forces the storage fetch below -- shadow work is audit-only.
+            shadow_pending = (
+                prelabeler_shadow_enabled
+                and not ctx.tag_prelabeler_shadow_exhausted()
+                and any(
+                    candidate.get("candidate_state") != "historical"
+                    and needs_shadow_prelabel(
+                        candidate,
+                        model=prelabeler_model,
+                        shadow_model=prelabeler_shadow_model,
+                        prompt_version=prelabeler_prompt_version,
+                        llm_schema_version=prelabeler_llm_schema_version,
+                    )
+                    for candidate in persisted_candidates
+                )
+            )
+            self.census(city, [ep], ctx)
+            tag_work = (
+                ctx.llm_work.item(TAGGER_PURPOSE, ep.uid or ep.guid, producer=self.name)
+                if llm_enabled and episode_served_chapters(ep)
+                else None
+            )
+            tag_resolved = False
+            production_work = (
+                ctx.llm_work.item(PRELABELER_PURPOSE, ep.uid or ep.guid, producer=self.name)
+                if prelabeler_pending
+                else None
+            )
+            shadow_owed = prelabeler_shadow_enabled and any(
+                needs_shadow_prelabel(
+                    row,
+                    model=prelabeler_model,
+                    shadow_model=prelabeler_shadow_model,
+                    prompt_version=prelabeler_prompt_version,
+                    llm_schema_version=prelabeler_llm_schema_version,
+                )
+                for row in persisted_candidates
+            )
+            shadow_work = (
+                ctx.llm_work.item(PRELABELER_SHADOW_PURPOSE, ep.uid or ep.guid, producer=self.name)
+                if shadow_owed
+                else None
+            )
             ledger_missing = bool(ep.tags or ep.chapter_tags) and not persisted_candidates
             cheap_fingerprint = tag_input_fingerprint(
                 ep,
@@ -1798,16 +2128,21 @@ class TagsStage:
             # unchanged inputs a set `tags_llm_recipe_hash` means the LLM tag is already current;
             # `None` means it never resolved (dispatched-and-deferred, quota-parked, or errored).
             llm_pending = llm_enabled and ep.tags_llm_recipe_hash is None
+            if tag_work is not None and inputs_unchanged and not llm_pending:
+                tag_work.consumed(reused=True)
 
             if (
                 inputs_unchanged
                 and not llm_pending
                 and not prelabeler_pending
+                and not shadow_pending
                 and not ledger_missing
             ):
                 # Fully resolved for the current inputs (or LLM disabled). Nothing to do -- skip
                 # WITHOUT any storage fetch. This is the steady state for the whole catalog and has
                 # to stay an in-memory O(1) check, never a storage round trip.
+                if tag_work is not None:
+                    tag_work.consumed(reused=True)
                 stats.reused += 1
                 continue
 
@@ -1815,6 +2150,9 @@ class TagsStage:
                 # Wall-clock budget spent: defer everything still outstanding WITHOUT fetching
                 # (untouched, retried next run) so the pass drains cheaply to its end-of-run
                 # persist instead of grinding the backlog's fetches into GitHub's hard job timeout.
+                for work in (tag_work, production_work, shadow_work):
+                    if work is not None:
+                        work.defer("stopped")
                 stats.defer("tag-budget-stop", sample=ep.uid or ep.guid)
                 continue
 
@@ -1822,6 +2160,7 @@ class TagsStage:
                 prelabeler_pending and ctx.tag_prelabeler_dispatch_exhausted.is_set()
             )
             if inputs_unchanged and prelabeler_unavailable and not llm_pending:
+                production_work.defer("ingress_limited")
                 stats.defer("tag-prelabeler-no-quota", sample=ep.uid or ep.guid)
                 continue
 
@@ -1880,6 +2219,7 @@ class TagsStage:
                 ep.tags_spec_hash == projection_hash
                 and (not chapters or ep.chapter_tags)
                 and not prelabeler_pending
+                and not shadow_pending
                 and not ledger_missing
             ):
                 # Backfill the cheap fingerprint so the pre-check above can short-circuit this
@@ -2051,6 +2391,17 @@ class TagsStage:
                         "prelabeler_evidence_supported",
                         "prelabeler_input_digest",
                         "prelabeler_batch_index",
+                        # The shadow evaluator's result is kept the same way, or every re-project
+                        # would re-dispatch it.
+                        "prelabeler_shadow_model",
+                        "prelabeler_shadow_prompt_version",
+                        "prelabeler_shadow_llm_schema_version",
+                        "prelabeler_shadow_decision",
+                        "prelabeler_shadow_confidence",
+                        "prelabeler_shadow_reason",
+                        "prelabeler_shadow_evidence_supported",
+                        "prelabeler_shadow_input_digest",
+                        "prelabeler_shadow_batch_index",
                     ):
                         if field in prior:
                             current[field] = prior[field]
@@ -2133,17 +2484,21 @@ class TagsStage:
             final_tags = project_visible_tags(candidate_tags, chapter_annotations)
             final_hash = projection_hash if completed_llm_recipe == llm_recipe else rules_hash
             if llm_enabled and completed_llm_recipe != llm_recipe and chapters:
+                tag_work.defer("ready")
                 if ctx.stop is not None and ctx.stop():
+                    tag_work.defer("stopped")
                     stats.defer("tag-llm-stop", sample=ep.uid or ep.guid)
                     candidate_tags = rule_candidates
                     completed_llm_recipe = None
                 elif ctx.tag_llm_dispatch_exhausted.is_set():
+                    tag_work.defer("ingress_limited")
                     stats.defer("tag-llm-no-quota", sample=ep.uid or ep.guid)
                     # The LLM request is the only unavailable part of this episode. Keep the
                     # deterministic rules and any applicable cached candidates in the ledger and
                     # projection; only the unresolved recipe remains unset for a later run.
                     completed_llm_recipe = None
                 elif not ctx.reserve_tag_dispatch():
+                    tag_work.defer("ingress_limited")
                     stats.defer("tag-llm-no-quota", sample=ep.uid or ep.guid)
                     completed_llm_recipe = None
                 else:
@@ -2168,7 +2523,7 @@ class TagsStage:
                                 dispatched,
                                 resolved_model,
                             ) = llm_tag_suggestions(
-                                ctx.tag_backend,
+                                tag_work.backend(ctx.tag_backend),
                                 taxonomy=taxonomy,
                                 agenda_item_titles="",
                                 agenda_text="",
@@ -2194,6 +2549,9 @@ class TagsStage:
                             reason=(resolved_model or "") if dispatched else "",
                         )
                         if dispatched:
+                            tag_work.defer(
+                                "blocked" if resolved_model == "payload-too-large" else "queued"
+                            )
                             completed_llm_recipe = None
                             stats.defer(
                                 "tag-llm-oversized"
@@ -2202,6 +2560,7 @@ class TagsStage:
                                 sample=ep.uid or ep.guid,
                             )
                         else:
+                            tag_resolved = True
                             # Prefer the scheduler's actually-resolved model (a defensive read,
                             # not a load-bearing one: the policy above pins allowed_models to
                             # exactly the configured route, so the two only diverge if that
@@ -2246,6 +2605,7 @@ class TagsStage:
                             model=llm_route,
                             reason=str(exc)[:500],
                         )
+                        tag_work.defer("errored")
                         stats.errors.append(f"{ep.uid or ep.guid}: LLM tagging failed: {exc}")
                         candidate_tags = rule_candidates
                         completed_llm_recipe = None
@@ -2278,11 +2638,18 @@ class TagsStage:
                     }
                 ]
                 if pending_prelabels:
+                    production_work = ctx.llm_work.item(
+                        PRELABELER_PURPOSE, ep.uid or ep.guid, producer=self.name
+                    )
+                    production_work.defer("ready")
                     if ctx.stop is not None and ctx.stop():
+                        production_work.defer("stopped")
                         stats.defer("tag-prelabeler-stop", sample=ep.uid or ep.guid)
                     elif ctx.tag_prelabeler_dispatch_exhausted.is_set():
+                        production_work.defer("ingress_limited")
                         stats.defer("tag-prelabeler-no-quota", sample=ep.uid or ep.guid)
                     elif not ctx.reserve_tag_prelabeler_dispatch():
+                        production_work.defer("ingress_limited")
                         stats.defer("tag-prelabeler-no-quota", sample=ep.uid or ep.guid)
                     else:
                         prelabel_recipe = hashlib.sha1(
@@ -2313,7 +2680,7 @@ class TagsStage:
                                     prelabel_dispatched,
                                     _prelabel_resolved_model,
                                 ) = llm_prelabel_candidates(
-                                    ctx.tag_backend,
+                                    production_work.backend(ctx.tag_backend),
                                     candidates=pending_prelabels,
                                     taxonomy=taxonomy,
                                     chapters=chapters,
@@ -2353,6 +2720,11 @@ class TagsStage:
                                     for candidate in candidate_tags
                                 ]
                             if prelabel_dispatched:
+                                production_work.defer(
+                                    "blocked"
+                                    if _prelabel_resolved_model == "payload-too-large"
+                                    else "queued"
+                                )
                                 stats.defer(
                                     "tag-prelabeler-oversized"
                                     if _prelabel_resolved_model == "payload-too-large"
@@ -2371,7 +2743,118 @@ class TagsStage:
                                 model=prelabeler_model,
                                 reason=str(exc)[:500],
                             )
-                            stats.errors.append(f"{ep.uid or ep.guid}: pre-labeler failed: {exc}")
+                            production_work.defer("errored")
+                            stats.errors.append(
+                                f"{ep.uid or ep.guid}: pre-labeler model={prelabeler_model} "
+                                f"failed: {exc}"
+                            )
+
+            # Shadow evaluator: the same prompt on a second model, for candidates whose production
+            # assessment is already current. Stored under `prelabeler_shadow_*` only, so it can
+            # never change admission or display; human reviews of these subjects are mirrored into
+            # its own calibration row (llm_evaluation.mirror_shadow_prelabeler_review).
+            if prelabeler_shadow_enabled and candidate_tags:
+                pending_shadow = [
+                    candidate
+                    for candidate in candidate_tags
+                    if needs_shadow_prelabel(
+                        candidate,
+                        model=prelabeler_model,
+                        shadow_model=prelabeler_shadow_model,
+                        prompt_version=prelabeler_prompt_version,
+                        llm_schema_version=prelabeler_llm_schema_version,
+                    )
+                ]
+                if pending_shadow:
+                    shadow_work = ctx.llm_work.item(
+                        PRELABELER_SHADOW_PURPOSE, ep.uid or ep.guid, producer=self.name
+                    )
+                    if ctx.stop is not None and ctx.stop():
+                        shadow_work.defer("stopped")
+                if pending_shadow and not (ctx.stop is not None and ctx.stop()):
+                    if not ctx.reserve_tag_prelabeler_shadow_dispatch():
+                        shadow_work.defer("ingress_limited")
+                        stats.defer("tag-prelabeler-shadow-no-quota", sample=ep.uid or ep.guid)
+                    else:
+                        shadow_recipe = hashlib.sha1(
+                            json.dumps(
+                                {
+                                    "llm_recipe": llm_recipe,
+                                    "model": prelabeler_shadow_model,
+                                    "role": "shadow",
+                                    "prompt_version": prelabeler_prompt_version,
+                                    "llm_schema_version": prelabeler_llm_schema_version,
+                                    "candidates": sorted(
+                                        str(item.get("candidate_id")) for item in pending_shadow
+                                    ),
+                                },
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ).encode()
+                        ).hexdigest()[:16]
+                        shadow_call_metadata: dict[str, Any] = {}
+                        try:
+                            (
+                                shadow_prelabels,
+                                shadow_dispatched,
+                                shadow_resolved_model,
+                            ) = llm_prelabel_candidates(
+                                shadow_work.backend(ctx.tag_backend),
+                                candidates=pending_shadow,
+                                taxonomy=taxonomy,
+                                chapters=chapters,
+                                agenda_text=agenda_text,
+                                transcript_text=transcript_text,
+                                recipe_hash=shadow_recipe,
+                                model=prelabeler_shadow_model,
+                                prompt_version=prelabeler_prompt_version,
+                                llm_schema_version=prelabeler_llm_schema_version,
+                                call_metadata_out=shadow_call_metadata,
+                                purpose=PRELABELER_SHADOW_PURPOSE,
+                            )
+                            remember_call_attempt(
+                                ep,
+                                purpose=PRELABELER_SHADOW_PURPOSE,
+                                recipe_hash=shadow_recipe,
+                                status="deferred" if shadow_dispatched else "resolved",
+                                metadata=shadow_call_metadata,
+                                model=shadow_resolved_model or prelabeler_shadow_model,
+                            )
+                            if shadow_prelabels:
+                                candidate_tags = [
+                                    {
+                                        **candidate,
+                                        **shadow_prelabel_fields(
+                                            shadow_prelabels.get(
+                                                str(candidate.get("candidate_id")), {}
+                                            )
+                                        ),
+                                    }
+                                    for candidate in candidate_tags
+                                ]
+                            if shadow_dispatched:
+                                shadow_work.defer(
+                                    "blocked"
+                                    if shadow_resolved_model == "payload-too-large"
+                                    else "queued"
+                                )
+                                stats.defer(
+                                    "tag-prelabeler-shadow-dispatch", sample=ep.uid or ep.guid
+                                )
+                        except Exception as exc:  # noqa: BLE001 -- shadow is audit-only
+                            remember_call_attempt(
+                                ep,
+                                purpose=PRELABELER_SHADOW_PURPOSE,
+                                recipe_hash=shadow_recipe,
+                                status="error",
+                                metadata=shadow_call_metadata,
+                                model=prelabeler_shadow_model,
+                                reason=str(exc)[:500],
+                            )
+                            # Deferred, not an error: a shadow failure changes nothing visible
+                            # and must not read as a production tagging failure.
+                            shadow_work.defer("errored")
+                            stats.defer("tag-prelabeler-shadow-error", sample=ep.uid or ep.guid)
 
             # Re-project after the evaluator attempt. This is intentionally cheap and makes the
             # overlay a pure function of the persisted ledger + calibration state; a deferred or
@@ -2428,6 +2911,40 @@ class TagsStage:
                 stats.ran += 1
             else:
                 stats.reused += 1
+            if tag_work is not None and completed_llm_recipe == llm_recipe:
+                tag_work.consumed(reused=not tag_resolved)
+            if (
+                production_work is not None
+                and candidate_tags
+                and not any(
+                    row.get("candidate_state") != "historical"
+                    and (row.get("source_kind", "llm") == "rule" or row.get("chapter_id"))
+                    and (
+                        row.get("prelabeler_model") != prelabeler_model
+                        or row.get("prelabeler_prompt_version") != prelabeler_prompt_version
+                        or row.get("prelabeler_llm_schema_version") != prelabeler_llm_schema_version
+                        or row.get("prelabeler_decision")
+                        not in {"likely_correct", "needs_human_review", "likely_incorrect"}
+                    )
+                    for row in candidate_tags
+                )
+            ):
+                production_work.consumed()
+            if (
+                shadow_work is not None
+                and candidate_tags
+                and not any(
+                    needs_shadow_prelabel(
+                        row,
+                        model=prelabeler_model,
+                        shadow_model=prelabeler_shadow_model,
+                        prompt_version=prelabeler_prompt_version,
+                        llm_schema_version=prelabeler_llm_schema_version,
+                    )
+                    for row in candidate_tags
+                )
+            ):
+                shadow_work.consumed()
         return stats
 
 
@@ -2703,6 +3220,11 @@ class _DiarizeCandidate:
     # hands out a candidate it could *not* currently reserve and `_run_one`'s blocking
     # `reserve()` call is still what makes the worker wait for it.
     memory_reserved: bool = False
+    # Set by `_DiarizeAdmission.claim()` -- the default (1 when several workers run at once) or
+    # `_DIARIZE_SOLO_THREADS` (2) when this one candidate's own memory need is large enough that
+    # it is effectively running with the pool's spare CPU otherwise sitting idle behind it (see
+    # `claim()`'s own comment). `_run_one` reads this instead of a pool-wide constant.
+    threads: int = 1
 
 
 class _DiarizeAdmission:
@@ -2734,6 +3256,25 @@ class _DiarizeAdmission:
 
     Estimates are re-read from the runtime log on every claim, so measured samples from items
     that already finished this run immediately sharpen later admission decisions.
+
+    **Adaptive threads for a memory-dominant candidate (2026-09-07).** Observed in production
+    (denton-tx): a candidate needing most of the memory budget by itself (the 15.09h outlier at
+    ~9.9GiB against an ~8.7-13.7GiB ceiling, depending on the configured spike margin) leaves the
+    *other* configured workers with nothing they can concurrently fit -- they sit blocked in
+    `reserve()`, their CPU capacity going entirely unused, while the one running candidate uses
+    only its single thread. `claim()` now gives such a candidate `_DIARIZE_SOLO_THREADS` (2)
+    instead of 1 -- the same single-job latency optimum §A.4 already measured -- since the CPU
+    those other workers would have used is otherwise wasted, not competed for. This is
+    deliberately NOT the per-worker adaptive scheme #1496 shipped and #1507 had to revert: that
+    design let *every* worker independently decide "am I running alone" and could race two
+    workers into both bumping at once, oversubscribing the runner's own agent past what it could
+    service (review/31 §A.4). This one is decided once, centrally, under `claim()`'s own lock,
+    as a pure function of one candidate's own memory need against the fixed budget -- no worker
+    ever reacts to another's live state -- and `_committed_threads` (tracked under the same lock,
+    released in lockstep with the memory reservation) is a hard, real-time ceiling: a bump is
+    granted only when it is *proven*, at the moment of granting, to keep the pool's total
+    committed thread count at or under the runner's real vCPU count, never assumed safe from a
+    static worst case.
     """
 
     def __init__(
@@ -2743,6 +3284,8 @@ class _DiarizeAdmission:
         ctx: StageContext,
         runtime_log: DiarizeRuntimeLog,
         recipe: str,
+        default_threads: int = 1,
+        max_total_threads: int | None = None,
     ):
         # Longest first: claim() can then take the first candidate that fits.
         self._pending = sorted(candidates, key=lambda item: item.recording_seconds, reverse=True)
@@ -2751,6 +3294,12 @@ class _DiarizeAdmission:
         self._recipe = recipe
         self._deferred: list[tuple[_DiarizeCandidate, str]] = []
         self._lock = threading.Lock()
+        self._default_threads = max(1, default_threads)
+        # The real vCPU count, not the configured `workers` (which may be set higher) -- CPU
+        # oversubscription is a hardware constraint, not a config one, and that mismatch is
+        # exactly what #1496/#1507 got wrong.
+        self._max_total_threads = max(1, max_total_threads or os.cpu_count() or 4)
+        self._committed_threads = 0
 
     @property
     def deferred(self) -> list[tuple[_DiarizeCandidate, str]]:
@@ -2778,8 +3327,11 @@ class _DiarizeAdmission:
                     continue
                 if reservation is None:
                     # No memory gate configured (`memory_budget_mb: 0`) -- time budget alone
-                    # decides, exactly as before this candidate ever considered memory.
-                    return self._pending.pop(index)
+                    # decides, exactly as before this candidate ever considered memory, and
+                    # there is no budget to measure "dominant" against.
+                    claimed = self._pending.pop(index)
+                    claimed.threads = self._default_threads
+                    return claimed
                 if fallback_index is None:
                     # Longest time-fitting candidate seen so far: the forward-progress fallback
                     # if nothing pending fits the memory that's free right now.
@@ -2788,13 +3340,17 @@ class _DiarizeAdmission:
                 if reservation.try_reserve(need, label=candidate.uid):
                     claimed = self._pending.pop(index)
                     claimed.memory_reserved = True
+                    claimed.threads = self._choose_threads_locked(reservation, need)
                     return claimed
             if fallback_index is not None:
                 # Every time-fitting candidate was too big for the memory free right now.
                 # Hand out the longest one anyway (unreserved) so its worker blocks in
                 # `reserve()` -- there is genuinely no smaller work available to run instead,
                 # and blocking is what lets it start the moment another job frees enough.
-                return self._pending.pop(fallback_index)
+                claimed = self._pending.pop(fallback_index)
+                need = estimate_diarize_rss_bytes(claimed.recording_seconds)
+                claimed.threads = self._choose_threads_locked(reservation, need)
+                return claimed
             # Nothing fits the *time* budget at all, and the remaining budget only shrinks from
             # here, so nothing ever will: defer the whole tail now rather than re-checking it
             # per freed worker.
@@ -2804,6 +3360,36 @@ class _DiarizeAdmission:
                 flush=True,
             )
             return self._drain_locked("runtime-budget")
+
+    def _choose_threads_locked(self, reservation: MemoryReservation, need: int) -> int:
+        """Called only from inside `claim()`'s own lock -- see that method and this class's
+        docstring for the full reasoning. `need > 65%` of the total budget is the signal that
+        this candidate is memory-dominant enough that little or no *other* concurrent work can
+        fit alongside it, so the CPU those other workers would have used is otherwise idle
+        behind it; `_committed_threads` is the hard, live check that granting the bump still
+        keeps the pool's total at or under the real vCPU count, checked at the moment of
+        granting, never assumed from a static worst case.
+
+        Every candidate that reaches this method -- bumped or not -- adds its own `.threads` to
+        `_committed_threads` before returning: the ceiling check below is only meaningful if the
+        running total it compares against already reflects *every* concurrently-claimed
+        candidate's contribution, not just previously-bumped ones. An unconditional increment
+        here (rather than only inside the "bumped" branch) is what makes that true.
+        """
+        budget = reservation.budget_bytes
+        threads = self._default_threads
+        if budget > 0 and need > 0.65 * budget:
+            bumped = _DIARIZE_SOLO_THREADS
+            if self._committed_threads + bumped <= self._max_total_threads:
+                threads = bumped
+        self._committed_threads += threads
+        return threads
+
+    def release_threads(self, n: int) -> None:
+        """Give back a candidate's thread commitment once it finishes or errors -- called from
+        `_run_one`'s `finally`, in lockstep with the memory reservation's own `release()`."""
+        with self._lock:
+            self._committed_threads = max(0, self._committed_threads - n)
 
     def close(self, reason: str) -> None:
         """Stop admitting new work (a backstop timeout); defer whatever is left."""
@@ -2870,9 +3456,21 @@ def _diarize_executor(workers: int):
     `TimeoutError` -- on a single-vCPU runner (or `speakers.workers: 1`) one hung inference would
     hold the job until Actions sends SIGTERM, which is precisely the failure the backstop exists
     to bound. Tests that need the call in-process monkeypatch this function directly.
+
+    `max_tasks_per_child=1`: without it, `ProcessPoolExecutor` reuses a worker process across
+    every candidate it's ever handed, for the pool's whole lifetime. `run_diarize_job`'s
+    peak-RSS log line (review/31 §A.4 addendum) needs to mean "this candidate's own peak," not
+    "the highest peak any candidate this worker has ever processed reached" -- `ru_maxrss`/
+    `VmHWM` are both monotonic for the life of a process, so without a fresh process per
+    candidate a small job scheduled after a huge one would silently inherit and report the
+    huge one's number. The extra `spawn` (re-import citypods + sherpa_onnx + numpy) this costs
+    per candidate is on the order of seconds against diarize runtimes measured in minutes to
+    hours -- immaterial.
     """
     return ProcessPoolExecutor(
-        max_workers=max(1, workers), mp_context=multiprocessing.get_context("spawn")
+        max_workers=max(1, workers),
+        mp_context=multiprocessing.get_context("spawn"),
+        max_tasks_per_child=1,
     )
 
 
@@ -4273,13 +4871,55 @@ MINUTES_ROSTER_PARSER_VERSION = "2"
 MINUTES_ROSTER_PIPELINE_VERSION = "1"
 KNOWN_TEXT_ALIGN_PIPELINE_VERSION = PROVIDER_ALIGN_PIPELINE_VERSION
 PROVIDER_NATIVE_PIPELINE_VERSION = "1"
-PROVIDER_DIARIZE_PIPELINE_VERSION = "1"
 # Bumped "1"->"2": citypods/diarize.py's DEFAULT_WINDOW_SHIFT_RATIO changed sherpa-onnx's
 # pyannote segmentation windowing (0.1 -> 0.3), which changes the actual computation, not just
 # bookkeeping -- artifacts diarized under the old default must be re-diarized, not reused.
-DIARIZE_PIPELINE_VERSION = "2"
+#
+# Bumped "2"->"3", 2026-09-07: `_attach_embeddings` gained the same onnxruntime error-level-
+# diagnostic detection `process()` already had -- confirmed live in production (this exact gap,
+# on real Denton meetings, before this fix) as five separate episodes each silently accepting a
+# corrupted embedding for at least one turn and reporting a normal `speakers_synced=True`
+# completion. `process()`'s own check never covers this call, and the segmentation/clustering
+# each of those five episodes produced is unaffected (proven, not assumed: `process()`'s
+# existing check would have raised and marked them `speakers_error` had the error occurred
+# there instead) -- only the corrupted turn(s)' embeddings are at risk, feeding the separate R7
+# identity layer. There is no way to know which *other*, already-`speakers_synced=True`
+# episodes silently hit this same gap in earlier runs -- the failure mode is silent by
+# definition -- so a version bump (not a targeted reprocess of just the five uids caught live
+# here) is what actually guarantees every historically-affected episode gets a chance to
+# either succeed cleanly or now correctly fail loud, at the cost of also re-diarizing episodes
+# that were already fine.
+DIARIZE_PIPELINE_VERSION = "3"
 ASR_PIPELINE_VERSION = "3"  # H12: segment VTT + word-JSON sidecar; version-aware re-transcribe
-CHAPTER_AGENDA_PIPELINE_VERSION = "1"
+# Bumped 1 -> 2: chapter-agenda's model swapped from Mistral Medium to NVIDIA Nemotron 3 Ultra
+# (plus Gemini Flash Lite backups), and finalize_agenda_job now runs the GH#1078 recovery-shadow
+# layer instead of strict-only validation -- a post-processing behavior change independent of
+# which model produced the response. AgendaChapterCandidatesStage.process() now compares both
+# AGENDA_PRODUCTION_MODEL and this version against each completed episode's stored artifact
+# before reusing it (see the stage's own `is_current_artifact` check), so this bump is what
+# actually re-queues the back catalog -- gradually, bounded by the lane's own
+# max_dispatches_per_run/daily budget, not instantly. See chapter_titles.py's block comment.
+#
+# Bumped 2 -> 3: every dispatched agenda job was missing an explicit max_tokens, silently falling
+# back to LiteLLMBackend's generic 1024-token default -- far below the 32768 the production model
+# was benchmarked at (see chapter_titles.py's AGENDA_OUTPUT_TOKEN_BUDGET). Most responses were
+# truncated mid-JSON; a "completed" artifact from before this fix may also just be silently
+# undercounting agenda items (the model closing valid-but-incomplete JSON before the token cap),
+# not only the ones that errored outright. This bump is what forces `is_current_artifact` to
+# treat every pre-fix artifact as stale so the whole catalog gets a fair re-extraction under the
+# real budget -- gradually, bounded by the lane's own max_dispatches_per_run/daily budget.
+# Combined with AgendaChapterCandidatesStage's finalize-failure state reset (which clears an
+# episode wedged in "pending" on a dead recipe instead of leaving it there forever), this is also
+# what unsticks the backlog that accumulated from the max_tokens bug.
+CHAPTER_AGENDA_PIPELINE_VERSION = "3"
+# NOTE: unlike CHAPTER_AGENDA_PIPELINE_VERSION, this constant is NOT wired into the locator job's
+# own recipe_hash (build_locator_job's recipe_parts never includes it) -- the real lever for
+# forcing a fresh locator recipe is chapter_jobs.py's LOCATOR_PROMPT_VERSION, which IS in the job
+# recipe; see its own bump comment for the backfill story. ChapterBoundaryLocatorStage.process()
+# now has its own is_current_locator_artifact check (mirroring chapter-agenda's is_current_artifact
+# against LOCATOR_MODEL/LOCATOR_PROMPT_VERSION, not this constant), so a LOCATOR_PROMPT_VERSION
+# bump does correctly force re-extraction of historical "completed" locator results, the same way
+# a CHAPTER_AGENDA_PIPELINE_VERSION bump does for chapter-agenda's own catalog.
 CHAPTER_LOCATOR_PIPELINE_VERSION = "1"
 
 # MIME types used for the <podcast:transcript> tag and the stored object's content-type.
@@ -4524,28 +5164,6 @@ def _parse_swagit_coarse_cues(ep: Episode, content: bytes) -> list[dict]:
     # A single usable block is no better than full alignment: it provides no meaningful search
     # partition, so deliberately use the existing safe fallback.
     return cues if len(cues) >= 2 else []
-
-
-def _provider_diarize_spec_hash(ep: Episode, artifact: dict) -> str:
-    spec = {
-        "v": PROVIDER_DIARIZE_PIPELINE_VERSION,
-        "transcript": ep.transcript_spec_hash,
-        "provider_align": artifact.get("align_spec_hash"),
-        "minutes_roster": sorted(
-            (
-                {"name": item.get("name"), "status": item.get("status")}
-                for item in ep.minutes_roster
-                if isinstance(item, dict) and item.get("name")
-            ),
-            key=lambda item: (str(item["name"]).casefold(), str(item.get("status") or "")),
-        ),
-    }
-    blob = json.dumps(spec, separators=(",", ":"), sort_keys=True)
-    return hashlib.sha1(blob.encode()).hexdigest()[:12]
-
-
-def _provider_diarize_object_key(src_key: str, uid: str, spec: str) -> str:
-    return f"transcripts/{src_key}/{uid}-provider-diarize-{spec}.speakers.json"
 
 
 def _provider_transcript_history(history: object, *, limit: int = 5) -> list[dict]:
@@ -4923,35 +5541,6 @@ def _provider_cues_to_vtt(cues: list[dict]) -> bytes:
         lines.extend(str(cue.get("text") or "").splitlines() or [""])
         lines.append("")
     return ("\n".join(lines)).encode("utf-8")
-
-
-_SPEAKER_PREFIX_RE = re.compile(r"^\s*([A-Z][A-Za-z0-9 .,'&/-]{1,80}?):\s+(.+)$")
-
-
-def _speaker_turns_from_cues(cues: list[dict]) -> tuple[list[dict], float | None]:
-    turns: list[dict] = []
-    for cue in cues:
-        text = str(cue.get("text") or "").strip()
-        if not text:
-            continue
-        match = _SPEAKER_PREFIX_RE.match(text.replace("\n", " "))
-        if not match:
-            continue
-        speaker = re.sub(r"\s+", " ", match.group(1)).strip()
-        spoken = match.group(2).strip()
-        if not speaker or not spoken:
-            continue
-        turns.append(
-            {
-                "speaker": speaker,
-                "start": round(float(cue["start"]), 3),
-                "end": round(float(cue["end"]), 3),
-                "text": spoken,
-            }
-        )
-    if not cues:
-        return [], None
-    return turns, max(0.0, min(1.0, len(turns) / len(cues)))
 
 
 def _confidence_rank(value: object) -> float:
@@ -7037,129 +7626,6 @@ class TranscriptStage:
         return stats
 
 
-class ProviderTranscriptDiarizeStage:
-    """Derive speaker turns from selected provider-aligned transcripts.
-
-    PT-PR6 keeps this deliberately conservative: provider transcripts that already encode
-    speaker labels (`SPEAKER: words`) produce a content-addressed `speakers.json`; transcripts
-    without usable speaker labels record a speakers error but keep serving the successful
-    transcript text.
-    """
-
-    name = "diarize"
-    version = PROVIDER_DIARIZE_PIPELINE_VERSION
-
-    def process(
-        self, provider, city: City, episodes: list[Episode], ctx: StageContext
-    ) -> StageStats:
-        from citypods.records import source_key as _src_key
-
-        stats = StageStats(self.name)
-        if ctx.dry_run or ctx.storage is None:
-            return stats
-
-        src_key = _src_key(city)
-        for ep in _materialize_set(
-            episodes,
-            city.full_artifact_episodes,
-            feed_visible_per_body=city.max_episodes,
-            policy=ctx.backlog_policy,
-            city_slug=city.city_entity or city.slug,
-            work_class="provider-transcript-diarize",
-        ):
-            label = ep.uid or ep.guid
-            registry = ep.provider_transcript or {}
-            known_good = registry.get("known_good") if isinstance(registry, dict) else None
-            if not (
-                isinstance(known_good, dict)
-                and ep.transcript_key
-                and ep.transcript_synced
-                and "-provider-align-" in ep.transcript_key
-            ):
-                continue
-            spec = _provider_diarize_spec_hash(ep, known_good)
-            key = _provider_diarize_object_key(src_key, label, spec)
-            if (
-                ep.speakers_key == key
-                and ep.speakers_synced
-                and ctx.storage.exists(ep.speakers_key)
-            ):
-                ep.speakers_url = ctx.storage.public_url(key)
-                stats.reused += 1
-                continue
-            if ctx.stop is not None and ctx.stop():
-                stats.defer("stop-signal")
-                continue
-
-            content = _read_storage_bytes(ctx.storage, ep.transcript_key)
-            if content is None:
-                ep.speakers_error = "missing-provider-aligned-transcript"
-                stats.errors.append(f"{label}: missing provider-aligned transcript")
-                continue
-            try:
-                cues = _parse_timed_transcript(content, ep.transcript_format or "vtt")
-                turns, confidence = _speaker_turns_from_cues(cues)
-            except Exception as exc:  # noqa: BLE001
-                ep.speakers_error = f"parse-error: {exc}"
-                stats.errors.append(f"{label}: speaker parse: {exc}")
-                continue
-            if not turns:
-                ep.speakers_key = None
-                ep.speakers_url = None
-                ep.speakers_spec_hash = spec
-                ep.speakers_format = "json"
-                ep.speakers_synced = False
-                ep.speakers_confidence = confidence
-                ep.speakers_pipeline_version = PROVIDER_DIARIZE_PIPELINE_VERSION
-                ep.speakers_error = "no-speaker-labels"
-                known_good = {**known_good, "diarize_status": "no-speaker-labels"}
-                registry = dict(ep.provider_transcript or {})
-                registry["known_good"] = known_good
-                ep.provider_transcript = registry
-                stats.defer("no-speaker-labels")
-                continue
-
-            payload = {
-                "schema": "1",
-                "basis": "served",
-                "source": "provider-transcript",
-                "confidence": confidence,
-                "turns": turns,
-                # Minutes rosters are candidate vocabulary for future diarization/identity
-                # assignment. They never rewrite provider speaker labels by themselves.
-                "candidate_members": [
-                    member.get("name")
-                    for member in ep.minutes_roster
-                    if isinstance(member, dict) and member.get("name")
-                ],
-            }
-            with tempfile.TemporaryDirectory() as t:
-                dest = Path(t) / "speakers.json"
-                dest.write_text(json.dumps(payload, separators=(",", ":"), sort_keys=True))
-                url = ctx.storage.put_file(key, dest, "application/json")
-
-            ep.speakers_key = key
-            ep.speakers_url = url
-            ep.speakers_spec_hash = spec
-            ep.speakers_format = "json"
-            ep.speakers_synced = True
-            ep.speakers_confidence = confidence
-            ep.speakers_pipeline_version = PROVIDER_DIARIZE_PIPELINE_VERSION
-            ep.speakers_error = None
-            ep.speakers_source = "provider"
-            known_good = {
-                **known_good,
-                "diarize_spec_hash": spec,
-                "diarize_confidence": confidence,
-                "diarize_status": "known_good",
-            }
-            registry = dict(ep.provider_transcript or {})
-            registry["known_good"] = known_good
-            ep.provider_transcript = registry
-            stats.ran += 1
-        return stats
-
-
 def _diarize_spec_hash(ep: Episode, model: str, embedding_model: str) -> str:
     spec = {
         "v": DIARIZE_PIPELINE_VERSION,
@@ -7266,6 +7732,30 @@ class NativeDiarizeStage:
             work_class="transcript-diarize",
         ):
             uid = ep.uid or ep.guid
+            if ep.speakers_source == "provider":
+                # ProviderTranscriptDiarizeStage (the "diarize" stage) is retired: a citywide
+                # survey (review/31 §A.5) found the caption-provider colon-prefix format it
+                # depended on (`NAME: text`) never once matched real data across every provider
+                # currently integrated -- captions come back either fully unmarked or with a bare
+                # `>>` speaker-change chevron, never a named label. Every one of its outputs is
+                # unvalidated guesswork by construction (any `Word:`-shaped line could match), so
+                # an episode still carrying its stale `speakers_source="provider"` artifact must
+                # not keep being treated as done -- clear it here, before the pilot_selected gate
+                # below, not after: a non-pilot body's episode hits that gate's own `continue` and
+                # would otherwise never reach this clearing at all, leaving a retired, unvalidated
+                # artifact exposed indefinitely for every body outside the R7 pilot (native
+                # diarization is never going to touch it either, so nothing else would ever clear
+                # it). Clearing here is unconditional; whether the episode goes on to become a
+                # real diarize candidate is still entirely up to the pilot_selected check below.
+                ep.speakers_key = None
+                ep.speakers_url = None
+                ep.speakers_spec_hash = None
+                ep.speakers_format = None
+                ep.speakers_synced = False
+                ep.speakers_confidence = None
+                ep.speakers_pipeline_version = None
+                ep.speakers_error = None
+                ep.speakers_source = None
             if not pilot_selected(config, canonical_city_slug, ep.body):
                 # Clear stale no-output markers from the old exact-body matcher. A later pass will
                 # see newly selected bodies immediately, while valid selected artifacts reuse.
@@ -7274,15 +7764,24 @@ class NativeDiarizeStage:
                     ep.stage_completion.pop(self.name, None)
                 stats.quality("pilot-not-selected")
                 continue
-            if ep.speakers_source == "provider" and ep.speakers_synced:
-                stats.reused += 1
-                continue
             if not (ep.hosted_audio_url and ep.transcript_synced and ep.transcript_words_key):
                 stats.defer("missing-timed-words", sample=uid)
                 continue
             # Validate now, but let the bytes go: see _DiarizeCandidate on why they are re-read
             # at admission rather than retained for every pending candidate.
-            words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
+            try:
+                words_raw = _read_storage_bytes(ctx.storage, ep.transcript_words_key)
+            except StorageReadUnavailable as exc:
+                # The words object passed its HEAD check, but its data transfer exhausted the
+                # storage adapter's retry budget. This is a transient prerequisite outage, not
+                # a bad transcript or a reason to abort the rest of the pilot queue.
+                stats.defer("timed-words-unavailable", sample=uid)
+                print(
+                    f"[enrich] diarize defer uid={uid} timed-words-unavailable "
+                    f"key={ep.transcript_words_key!r} error={exc}",
+                    flush=True,
+                )
+                continue
             words_valid = words_raw is not None and has_valid_timed_words(words_raw)
             del words_raw
             if not words_valid:
@@ -7332,9 +7831,6 @@ class NativeDiarizeStage:
         from citypods.diarize import prepare_models
 
         workers = _diarize_worker_count(ctx)
-        admission = _DiarizeAdmission(
-            candidates, ctx=ctx, runtime_log=runtime_log, recipe=runtime_recipe
-        )
         # One thread per worker slot, each claiming and then blocking on its own subprocess.
         # Threads (not a bare future-juggling loop) so every in-flight item gets its own
         # PROGRESS entry -- that registry is keyed by thread, and the heartbeat's "active work"
@@ -7342,10 +7838,20 @@ class NativeDiarizeStage:
         # Each worker is single-threaded when several run at once: measured across three GH
         # Actions CPUs, N single-threaded processes beat every other split on aggregate
         # throughput, including the same 2-thread single-job optimum run N-wide (review/31 §A.4).
-        threads_per_worker = 1 if workers > 1 else _DIARIZE_SOLO_THREADS
+        # This is the *default* -- `_DiarizeAdmission.claim()` can still grant an individual
+        # memory-dominant candidate `_DIARIZE_SOLO_THREADS` instead, bounded by that class's own
+        # real-time vCPU ceiling (its docstring has the full reasoning).
+        default_threads = 1 if workers > 1 else _DIARIZE_SOLO_THREADS
+        admission = _DiarizeAdmission(
+            candidates,
+            ctx=ctx,
+            runtime_log=runtime_log,
+            recipe=runtime_recipe,
+            default_threads=default_threads,
+        )
         print(
             f"[enrich] diarize pool: {len(candidates)} candidate(s), workers={workers} "
-            f"threads_per_worker={threads_per_worker} recipe={runtime_recipe}",
+            f"default_threads_per_worker={default_threads} recipe={runtime_recipe}",
             flush=True,
         )
         # Warm the model cache once in the parent; otherwise every spawned worker misses the
@@ -7376,7 +7882,6 @@ class NativeDiarizeStage:
                             "model": model,
                             "embedding_model": embedding_model,
                             "canonical_city_slug": canonical_city_slug,
-                            "threads_per_worker": threads_per_worker,
                         },
                         daemon=True,
                     )
@@ -7399,7 +7904,6 @@ class NativeDiarizeStage:
                     model=model,
                     embedding_model=embedding_model,
                     canonical_city_slug=canonical_city_slug,
-                    threads_per_worker=threads_per_worker,
                 )
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
@@ -7435,7 +7939,6 @@ class NativeDiarizeStage:
         model: str,
         embedding_model: str,
         canonical_city_slug: str,
-        threads_per_worker: int,
     ) -> None:
         from citypods import diarize as diarize_mod
 
@@ -7451,6 +7954,7 @@ class NativeDiarizeStage:
         # currently fit, because nothing pending did) still needs to block for it.
         if not candidate.memory_reserved and reservation is not None:
             if not reservation.reserve(reserved_bytes, label=uid, stop=ctx.stop):
+                admission.release_threads(candidate.threads)
                 with finalize_lock:
                     stats.defer("memory-reservation", sample=uid)
                 return
@@ -7465,6 +7969,7 @@ class NativeDiarizeStage:
         if not fits:
             if reservation is not None:
                 reservation.release(reserved_bytes)
+            admission.release_threads(candidate.threads)
             with finalize_lock:
                 stats.defer("runtime-budget", sample=uid)
             print(
@@ -7506,7 +8011,8 @@ class NativeDiarizeStage:
                     str(audio_path),
                     model=model,
                     embedding_model=embedding_model,
-                    num_threads=threads_per_worker,
+                    num_threads=candidate.threads,
+                    log_label=uid,
                 )
                 # The audio temp file must outlive the call, so the wait stays inside the
                 # download context.
@@ -7534,6 +8040,17 @@ class NativeDiarizeStage:
                     embedding_model=embedding_model,
                     elapsed=time.monotonic() - started_at,
                 )
+        except StorageReadUnavailable as exc:
+            # Like the collection-time validation read, an intermittent B2/R2 download must
+            # remain retryable. Do not turn it into a persisted speakers_error: that would
+            # describe a healthy episode as a diarization failure until another run repairs it.
+            with finalize_lock:
+                stats.defer("timed-words-unavailable", sample=uid)
+            print(
+                f"[enrich] diarize defer uid={uid} timed-words-unavailable "
+                f"key={candidate.words_key!r} error={exc}",
+                flush=True,
+            )
         except FuturesTimeoutError:
             # The backstop fired for this item. The subprocess is abandoned rather than killed
             # (portably terminating a pool worker needs 3.14's terminate_workers); it dies with
@@ -7576,6 +8093,7 @@ class NativeDiarizeStage:
         finally:
             if reservation is not None:
                 reservation.release(reserved_bytes)
+            admission.release_threads(candidate.threads)
 
     def _finalize(
         self,
@@ -8451,23 +8969,42 @@ def _write_chapter_json(storage, key: str, value: dict) -> str:
         return storage.put_file(key, path, "application/json")
 
 
-class AgendaChapterCandidatesStage:
-    """Extract source-grounded agenda candidates through the production Mistral route."""
+class AgendaChapterCandidatesStage(LLMProducerStage):
+    """Extract source-grounded agenda candidates through the production LLM route."""
 
     name = "chapter_agenda"
     version = CHAPTER_AGENDA_PIPELINE_VERSION
+
+    def telemetry_purposes(self, ctx):
+        return ("chapter-agenda",) if ctx.storage is not None and not ctx.dry_run else ()
+
+    def work_items(self, city, episodes, ctx):
+        if not self.telemetry_purposes(ctx):
+            return
+        for ep in episodes:
+            if ep.source_chapters or not (ep.uid or ep.guid):
+                continue
+            state = "ready" if episode_needs_chapter_agenda(ep) else "reused"
+            if not (ep.links or {}).get("agenda_text_artifact_key"):
+                state = "blocked"
+            yield "chapter-agenda", ep.uid or ep.guid, state
 
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
         from citypods.chapter_artifacts import artifact_key
         from citypods.chapter_jobs import build_agenda_job, finalize_agenda_job
-        from citypods.chapter_titles import AGENDA_PRODUCTION_MODEL
+        from citypods.chapter_titles import (
+            AGENDA_BACKUP_MODELS,
+            AGENDA_PRODUCTION_MODEL,
+            AGENDA_PRODUCTION_MODELS,
+        )
         from citypods.compute.base import JobHandle, JobResult
         from citypods.compute.llm import dispatch_job_batch
-        from citypods.compute.llm_deferred import look_up_deferred
+        from citypods.compute.llm_deferred import discard_completed_result, look_up_deferred
 
         stats = StageStats(self.name)
+        self.census(city, episodes, ctx)
         if ctx.dry_run or ctx.storage is None:
             return stats
 
@@ -8511,6 +9048,7 @@ class AgendaChapterCandidatesStage:
             if ep.source_chapters:
                 continue
             uid = ep.uid or ep.guid
+            work = ctx.llm_work.item("chapter-agenda", uid, producer=self.name) if uid else None
             source_artifact = (ep.links or {}).get("agenda_text_artifact_key")
             if not uid or not source_artifact:
                 # DIAGNOSTIC: split out the case that shouldn't be possible on paper -- agenda_text
@@ -8520,14 +9058,35 @@ class AgendaChapterCandidatesStage:
                 # against agenda_text's `[agenda_text] artifact store result` line for the same
                 # uid. Remove once root-caused; see the matching note in `_store_document`.
                 if uid and (ep.agenda_text_quality or {}).get("status") == "accepted":
+                    if work is not None:
+                        work.defer("blocked")
                     stats.defer("missing-agenda-artifact-despite-accepted-quality", sample=uid)
                 else:
+                    if work is not None:
+                        work.defer("blocked")
                     stats.defer("missing-agenda-artifact")
                 continue
 
             raw_agenda = ep.generated_agenda_candidates or {}
             agenda_status = raw_agenda.get("status")
-            if agenda_status in {"completed", "accepted", "not_applicable"}:
+            # A completed/accepted artifact is only current -- and therefore safe to reuse without
+            # redoing the extraction -- if it was produced by a CURRENTLY valid production model
+            # (primary or backup: finalize_agenda_job legitimately records result.model as a
+            # backup model once one completes the job, and that must not look stale just because
+            # it isn't the primary) under the CURRENT pipeline version. Either changing means real
+            # work: a new model to dispatch to, or (e.g. the recovery-shadow-layer wiring) new
+            # post-processing behavior applied to what a model already returned. Without this
+            # check, stage_is_dirty's own fingerprint (which does bake in both) makes every such
+            # episode dirty, process() would reach this branch, "reuse" it anyway, and
+            # _mark_stage_complete would then re-stamp it under the fresh fingerprint --
+            # permanently laundering stale output as current.
+            is_current_artifact = agenda_status == "not_applicable" or (
+                raw_agenda.get("model") in {*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS}
+                and raw_agenda.get("pipeline_version") == CHAPTER_AGENDA_PIPELINE_VERSION
+            )
+            if agenda_status in {"completed", "accepted", "not_applicable"} and is_current_artifact:
+                if work is not None:
+                    work.consumed(reused=True)
                 stats.reused += 1
                 continue
 
@@ -8536,18 +9095,38 @@ class AgendaChapterCandidatesStage:
             agenda_recipe = raw_agenda.get("recipe")
             is_new_dispatch = True
             if agenda_status == "pending" and isinstance(agenda_recipe, str):
-                cached = look_up_deferred(ctx.storage, agenda_recipe)
-                if isinstance(cached, JobHandle):
-                    if cached.ref and cached.ref != raw_agenda.get("job_ref"):
-                        raw_agenda = dict(raw_agenda)
-                        raw_agenda["job_ref"] = cached.ref
-                        ep.generated_agenda_candidates = raw_agenda
-                    stats.defer("llm-pending")
-                    continue
-                if isinstance(cached, JobResult):
-                    is_new_dispatch = False
+                pending_model = raw_agenda.get("model")
+                current_models = {*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS}
+                if isinstance(pending_model, str) and pending_model not in current_models:
+                    # This job was dispatched under a model no longer in production rotation (e.g.
+                    # Mistral, now blocked by an account-tier issue) -- deferring to it forever
+                    # would never pick up the current model. Retire it and fall through to a fresh
+                    # build_agenda_job() dispatch below, same as an episode with no prior attempt.
+                    # Membership is checked against the union of primary + backup models so a job
+                    # that already legitimately escalated to a backup is left alone.
+                    stale_state = {"recipe": agenda_recipe, "job_ref": raw_agenda.get("job_ref")}
+                    _cancel_chapter_fallbacks(ctx, stats, [stale_state])
+                    raw_agenda = {}
+                    ep.generated_agenda_candidates = {}
+                    agenda_status = None
+                    agenda_recipe = None
+                else:
+                    cached = look_up_deferred(ctx.storage, agenda_recipe)
+                    if isinstance(cached, JobHandle):
+                        if cached.ref and cached.ref != raw_agenda.get("job_ref"):
+                            raw_agenda = dict(raw_agenda)
+                            raw_agenda["job_ref"] = cached.ref
+                            ep.generated_agenda_candidates = raw_agenda
+                        if work is not None:
+                            work.defer("queued")
+                        stats.defer("llm-pending")
+                        continue
+                    if isinstance(cached, JobResult):
+                        is_new_dispatch = False
 
             if is_new_dispatch and not ctx.reserve_chapter_agenda_dispatch():
+                if work is not None:
+                    work.defer("ingress_limited")
                 stats.defer("producer-cap")
                 continue
 
@@ -8559,6 +9138,8 @@ class AgendaChapterCandidatesStage:
                 # the object it points at could not be read back (deleted, wrong bucket/prefix,
                 # transient read error). Kept as its own reason so it doesn't get conflated with
                 # "never had a link" in the aggregate breakdown.
+                if work is not None:
+                    work.defer("blocked")
                 stats.defer("agenda-artifact-key-present-but-unreadable", sample=uid)
                 continue
             agenda_text = raw.decode("utf-8", errors="replace")
@@ -8566,6 +9147,8 @@ class AgendaChapterCandidatesStage:
             if ctx.stop is not None and ctx.stop():
                 if is_new_dispatch:
                     ctx.settle_chapter_agenda_dispatch(dispatched=False)
+                if work is not None:
+                    work.defer("stopped")
                 stats.defer("stop-signal")
                 continue
             try:
@@ -8573,13 +9156,17 @@ class AgendaChapterCandidatesStage:
                     episode_uid=uid,
                     agenda_text=agenda_text,
                     agenda_source_hash=source_hash,
+                    pipeline_version=CHAPTER_AGENDA_PIPELINE_VERSION,
                 )
             except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort the
                 # build pass for every other episode
+                if work is not None:
+                    work.defer("errored")
                 if is_new_dispatch:
                     ctx.settle_chapter_agenda_dispatch(dispatched=False)
                 stats.errors.append(f"{uid}: agenda chapter extraction: {exc}")
                 continue
+            job = work.bind(job)
             prepared.append((ep, uid, job, agenda_text, source_hash, is_new_dispatch))
 
         if not prepared:
@@ -8594,65 +9181,128 @@ class AgendaChapterCandidatesStage:
         for (ep, uid, job, agenda_text, source_hash, is_new_dispatch), result in zip(
             prepared, results, strict=True
         ):
+            work = ctx.llm_work.item("chapter-agenda", uid, producer=self.name)
             if is_new_dispatch:
                 ctx.settle_chapter_agenda_dispatch(dispatched=not isinstance(result, Exception))
+            work.result(job, result)
             if isinstance(result, Exception):
+                work.defer("errored")
                 stats.errors.append(f"{uid}: agenda chapter extraction: {result}")
                 continue
+            if isinstance(result, JobHandle):
+                ep.generated_agenda_candidates = {
+                    "status": "pending",
+                    "recipe": job.recipe_hash,
+                    # AGENDA_PRODUCTION_MODELS (R13) now offers more than one same-priority
+                    # candidate; record the model the scheduler actually reserved for this
+                    # dispatch, not just the first/label candidate.
+                    "model": result.model or AGENDA_PRODUCTION_MODEL,
+                    "source_hash": source_hash,
+                    "job_ref": result.ref,
+                }
+                if work is not None:
+                    work.defer("queued")
+                stats.defer("llm-pending")
+                continue
+            if not isinstance(result, JobResult):
+                work.defer("errored")
+                stats.errors.append(f"{uid}: unexpected agenda job result")
+                continue
             try:
-                if isinstance(result, JobHandle):
-                    ep.generated_agenda_candidates = {
-                        "status": "pending",
-                        "recipe": job.recipe_hash,
-                        # AGENDA_PRODUCTION_MODELS (R13) now offers more than one same-priority
-                        # candidate; record the model the scheduler actually reserved for this
-                        # dispatch, not just the first/label candidate.
-                        "model": result.model or AGENDA_PRODUCTION_MODEL,
-                        "source_hash": source_hash,
-                        "job_ref": result.ref,
-                    }
-                    stats.defer("llm-pending")
-                    continue
-                if not isinstance(result, JobResult):
-                    stats.errors.append(f"{uid}: unexpected agenda job result")
-                    continue
                 artifact = finalize_agenda_job(
                     result,
                     episode_uid=uid,
                     agenda_text=agenda_text,
                     agenda_source_hash=source_hash,
+                    pipeline_version=CHAPTER_AGENDA_PIPELINE_VERSION,
                 )
-                key = artifact_key("agenda", uid, artifact.recipe)
-                url = _write_chapter_json(ctx.storage, key, artifact.to_dict())
-                ep.generated_agenda_candidates = {
-                    **artifact.to_dict(),
-                    "artifact_key": key,
-                    "artifact_url": url,
-                }
-                stats.ran += 1
             except Exception as exc:  # noqa: BLE001 -- one malformed agenda must not abort the
                 # finalize pass for every other episode
-                stats.errors.append(f"{uid}: agenda chapter extraction: {exc}")
+                if work is not None:
+                    work.defer("errored")
+                stats.errors.append(
+                    f"{uid}: agenda chapter extraction model={result.model or 'unknown'}: {exc}"
+                )
+                # write_deferred never downgrades a completed record, and enqueue_batch serves any
+                # look_up_deferred hit that is a JobResult straight back out (`cached_completed`)
+                # without ever calling the LLM again -- so unless the stored "completed" record
+                # for this exact (content-addressed) recipe is deleted, EVERY future submission
+                # under it, no matter how many times this episode is retried or its own state
+                # reset, would just replay this identical bad content forever. Discard it first.
+                discard_completed_result(ctx.storage, result.recipe_hash, result)
+                # `result` is already a terminally-resolved JobResult -- re-fetching it next run
+                # (Pass 1's `agenda_status == "pending"` branch, keyed on this same stored recipe)
+                # would hand finalize_agenda_job the identical content and fail identically,
+                # forever. Clear the episode's own pointer so the next run treats it as
+                # never-attempted and builds a genuinely fresh job instead of wedging on a dead
+                # recipe that can never finalize.
+                ep.generated_agenda_candidates = {}
+                continue
+            try:
+                key = artifact_key("agenda", uid, artifact.recipe)
+                url = _write_chapter_json(ctx.storage, key, artifact.to_dict())
+            except Exception as exc:  # noqa: BLE001 -- a storage hiccup on an already-validated
+                # result must not discard a genuinely good completed record or the episode's
+                # still-valid pending pointer to it; simply retry the write next run.
+                if work is not None:
+                    work.defer("errored")
+                stats.errors.append(
+                    f"{uid}: agenda chapter extraction model={result.model or 'unknown'}: {exc}"
+                )
+                continue
+            ep.generated_agenda_candidates = {
+                **artifact.to_dict(),
+                "artifact_key": key,
+                "artifact_url": url,
+            }
+            work.consumed()
+            stats.ran += 1
         return stats
 
 
-class ChapterBoundaryLocatorStage:
+class ChapterBoundaryLocatorStage(LLMProducerStage):
     """Locate agenda candidates in the complete timed transcript."""
 
     name = "chapter_locator"
     version = CHAPTER_LOCATOR_PIPELINE_VERSION
 
+    def telemetry_purposes(self, ctx):
+        return ("chapter-locator",) if ctx.storage is not None and not ctx.dry_run else ()
+
+    def work_items(self, city, episodes, ctx):
+        if not self.telemetry_purposes(ctx):
+            return
+        for ep in episodes:
+            if ep.source_chapters or not (ep.uid or ep.guid):
+                continue
+            state = "ready" if episode_needs_chapter_locator(ep) else "reused"
+            if (ep.generated_agenda_candidates or {}).get("status") not in {
+                "completed",
+                "accepted",
+            }:
+                state = "blocked"
+            elif not (ep.transcript_key or ep.transcript_words_key):
+                state = "blocked"
+            yield "chapter-locator", ep.uid or ep.guid, state
+
     def process(
         self, provider, city: City, episodes: list[Episode], ctx: StageContext
     ) -> StageStats:
         from citypods.chapter_artifacts import AgendaCandidatesArtifact, artifact_key
-        from citypods.chapter_jobs import build_locator_job, finalize_locator_job
-        from citypods.chapter_locator import build_locator_units
+        from citypods.chapter_jobs import (
+            LOCATOR_MODELS,
+            LOCATOR_PROMPT_VERSION,
+            LOCATOR_ROUTING_VERSION,
+            build_locator_job,
+            finalize_locator_job,
+        )
+        from citypods.chapter_locator import DuplicateLocatorStartError, build_locator_units
         from citypods.compute.base import JobHandle, JobResult
         from citypods.compute.llm import dispatch_job_batch
-        from citypods.compute.llm_deferred import look_up_deferred
+        from citypods.compute.llm_deferred import discard_completed_result, look_up_deferred
 
         stats = StageStats(self.name)
+        self.census(city, episodes, ctx)
         if ctx.dry_run or ctx.storage is None:
             return stats
 
@@ -8688,13 +9338,33 @@ class ChapterBoundaryLocatorStage:
                 stats.reused += 1
                 continue
             uid = ep.uid or ep.guid
+            work = ctx.llm_work.item("chapter-locator", uid, producer=self.name) if uid else None
             raw_agenda = ep.generated_agenda_candidates or {}
             if not uid or raw_agenda.get("status") not in {"completed", "accepted"}:
+                if work is not None:
+                    work.defer("blocked")
                 stats.defer("agenda-not-complete")
                 continue
 
             locator_status = raw_agenda.get("locator_status")
-            if locator_status in {"completed", "accepted", "not_applicable"}:
+            # Mirrors AgendaChapterCandidatesStage's own is_current_artifact check (see its
+            # comment): a completed/accepted locator result is only safe to reuse if it was
+            # produced by the CURRENTLY configured model under the CURRENT prompt version.
+            # LOCATOR_PROMPT_VERSION feeds build_locator_job's own recipe hash directly (see that
+            # constant's bump comment), so without this check a version bump would only dirty
+            # stage_is_dirty's outer marker -- process() would reach this branch, "reuse" the
+            # stale result anyway, and _mark_stage_complete would re-stamp it under the fresh
+            # fingerprint, permanently laundering stale output as current.
+            is_current_locator_artifact = locator_status == "not_applicable" or (
+                raw_agenda.get("locator_model") in LOCATOR_MODELS
+                and raw_agenda.get("locator_prompt_version") == LOCATOR_PROMPT_VERSION
+                and raw_agenda.get("locator_routing_version") == LOCATOR_ROUTING_VERSION
+            )
+            if (
+                locator_status in {"completed", "accepted", "not_applicable"}
+                and is_current_locator_artifact
+            ):
+                work.consumed(reused=True)
                 stats.reused += 1
                 continue
 
@@ -8707,12 +9377,16 @@ class ChapterBoundaryLocatorStage:
                         raw_agenda = dict(raw_agenda)
                         raw_agenda["locator_job_ref"] = cached.ref
                         ep.generated_agenda_candidates = raw_agenda
+                    if work is not None:
+                        work.defer("queued")
                     stats.defer("llm-pending")
                     continue
                 if isinstance(cached, JobResult):
                     is_new_dispatch = False
 
             if is_new_dispatch and not ctx.reserve_chapter_locator_dispatch():
+                if work is not None:
+                    work.defer("ingress_limited")
                 stats.defer("producer-cap")
                 continue
 
@@ -8722,29 +9396,84 @@ class ChapterBoundaryLocatorStage:
             if not units:
                 if is_new_dispatch:
                     ctx.settle_chapter_locator_dispatch(dispatched=False)
+                if work is not None:
+                    work.defer("blocked")
                 stats.defer("missing-timed-transcript")
                 continue
             if ctx.stop is not None and ctx.stop():
                 if is_new_dispatch:
                     ctx.settle_chapter_locator_dispatch(dispatched=False)
+                if work is not None:
+                    work.defer("stopped")
                 stats.defer("stop-signal")
                 continue
             try:
                 agenda = AgendaCandidatesArtifact.from_dict(raw_agenda)
                 selected_data = words if unit_source == "words" else vtt
                 transcript_hash = hashlib.sha256(selected_data or b"").hexdigest()
+                policy_fingerprint = hashlib.sha256(
+                    json.dumps(
+                        [LOCATOR_PROMPT_VERSION, LOCATOR_ROUTING_VERSION, LOCATOR_MODELS]
+                    ).encode()
+                ).hexdigest()
+                input_fingerprint = hashlib.sha256(
+                    json.dumps([uid, agenda.to_dict(), transcript_hash], sort_keys=True).encode()
+                ).hexdigest()
+                if locator_status == "retry_exhausted":
+                    if (
+                        raw_agenda.get("locator_retry_policy") == policy_fingerprint
+                        and raw_agenda.get("locator_retry_input") == input_fingerprint
+                    ):
+                        if is_new_dispatch:
+                            ctx.settle_chapter_locator_dispatch(dispatched=False)
+                        if work is not None:
+                            work.defer("blocked")
+                        stats.defer("locator-repair-exhausted")
+                        continue
+                    raw_agenda = dict(raw_agenda)
+                    for field in (
+                        "locator_status",
+                        "locator_retry_count",
+                        "locator_retry_hint",
+                        "locator_retry_error",
+                        "locator_retry_policy",
+                        "locator_retry_input",
+                    ):
+                        raw_agenda.pop(field, None)
+                    ep.generated_agenda_candidates = raw_agenda
+                raw_agenda = {
+                    **raw_agenda,
+                    "locator_retry_policy": policy_fingerprint,
+                    "locator_retry_input": input_fingerprint,
+                }
                 job = build_locator_job(
                     episode_uid=uid,
                     agenda=agenda,
                     transcript_hash=transcript_hash,
                     units=units,
+                    retry_hint=(
+                        raw_agenda.get("locator_retry_hint")
+                        if isinstance(raw_agenda.get("locator_retry_hint"), str)
+                        else None
+                    ),
                 )
             except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort the
                 # build pass for every other episode
+                if work is not None:
+                    work.defer("errored")
                 if is_new_dispatch:
                     ctx.settle_chapter_locator_dispatch(dispatched=False)
                 stats.errors.append(f"{uid}: chapter locator: {exc}")
                 continue
+            # A completed pending recipe is a replay only for this exact current job.
+            if not is_new_dispatch and locator_recipe != job.recipe_hash:
+                is_new_dispatch = True
+                if not ctx.reserve_chapter_locator_dispatch():
+                    if work is not None:
+                        work.defer("ingress_limited")
+                    stats.defer("producer-cap")
+                    continue
+            job = work.bind(job)
             prepared.append(
                 (
                     ep,
@@ -8779,27 +9508,33 @@ class ChapterBoundaryLocatorStage:
             raw_agenda,
             is_new_dispatch,
         ), result in zip(prepared, results, strict=True):
+            work = ctx.llm_work.item("chapter-locator", uid, producer=self.name)
             if is_new_dispatch:
                 ctx.settle_chapter_locator_dispatch(dispatched=not isinstance(result, Exception))
+            work.result(job, result)
             if isinstance(result, Exception):
+                work.defer("errored")
                 stats.errors.append(f"{uid}: chapter locator: {result}")
                 continue
+            if isinstance(result, JobHandle):
+                raw_agenda = dict(raw_agenda)
+                raw_agenda.update(
+                    {
+                        "locator_status": "pending",
+                        "locator_recipe": job.recipe_hash,
+                        "locator_job_ref": result.ref,
+                    }
+                )
+                ep.generated_agenda_candidates = raw_agenda
+                if work is not None:
+                    work.defer("queued")
+                stats.defer("llm-pending")
+                continue
+            if not isinstance(result, JobResult):
+                work.defer("errored")
+                stats.errors.append(f"{uid}: unexpected locator job result")
+                continue
             try:
-                if isinstance(result, JobHandle):
-                    raw_agenda = dict(raw_agenda)
-                    raw_agenda.update(
-                        {
-                            "locator_status": "pending",
-                            "locator_recipe": job.recipe_hash,
-                            "locator_job_ref": result.ref,
-                        }
-                    )
-                    ep.generated_agenda_candidates = raw_agenda
-                    stats.defer("llm-pending")
-                    continue
-                if not isinstance(result, JobResult):
-                    stats.errors.append(f"{uid}: unexpected locator job result")
-                    continue
                 boundary = finalize_locator_job(
                     result,
                     episode_uid=uid,
@@ -8807,62 +9542,161 @@ class ChapterBoundaryLocatorStage:
                     transcript_hash=transcript_hash,
                     units=units,
                 )
-                boundary_key = artifact_key("boundary", uid, boundary.recipe)
-                boundary_url = _write_chapter_json(ctx.storage, boundary_key, boundary.to_dict())
-                items = {item.index: item for item in agenda.items}
-                generated = []
-                for anchor in boundary.anchors:
-                    item = items.get(anchor.get("agenda_item_index"))
-                    start = anchor.get("start")
-                    # BoundaryResultArtifact schema ensures start is always set, but guard
-                    # defensively so a malformed persisted anchor cannot cause a TypeError in
-                    # episode_public_chapters (which calls float(start) unconditionally).
-                    if item is None or item.status != "accepted" or start is None:
-                        continue
-                    generated.append(
-                        {
-                            "start": start,
-                            "title": item.title,
-                            "agenda_item_index": item.index,
-                            "display_ref": item.display_ref,
-                            "evidence_text": item.evidence_text,
-                            "unit_id": anchor.get("unit_id"),
-                            "transition_quote": anchor.get("transition_quote"),
-                            "basis": anchor.get("basis", "served"),
-                            "generated": True,
-                            "model": boundary.model,
-                            "prompt_version": boundary.prompt_version,
-                            "artifact_key": boundary_key,
-                        }
-                    )
-                ep.generated_chapters = generated
-                ep.generated_chapters_spec_hash = boundary.recipe
-                ep.generated_agenda_candidates = {
-                    **dict(raw_agenda),
-                    "locator_status": "completed",
-                    "boundary_artifact_key": boundary_key,
-                    "boundary_artifact_url": boundary_url,
-                    "transcript_unit_source": unit_source,
-                }
-                stats.ran += 1
             except Exception as exc:  # noqa: BLE001 -- one locator failure must not abort the
                 # finalize pass for every other episode
-                stats.errors.append(f"{uid}: chapter locator: {exc}")
+                if work is not None:
+                    work.defer("errored")
+                stats.errors.append(
+                    f"{uid}: chapter locator model={result.model or 'unknown'}: {exc}"
+                )
+                # write_deferred never downgrades a completed record, and enqueue_batch serves any
+                # look_up_deferred hit that is a JobResult straight back out (`cached_completed`)
+                # without ever calling the LLM again -- so unless the stored "completed" record
+                # for this exact (content-addressed) recipe is deleted, EVERY future submission
+                # under it would just replay this identical bad content forever. Discard it first.
+                discard_completed_result(ctx.storage, result.recipe_hash, result)
+                # Same reasoning as AgendaChapterCandidatesStage's own finalize except-clause:
+                # `result` is already terminal, so retrying next run against the same stored
+                # locator_recipe would just refetch the identical content and fail identically
+                # forever. Clear only the locator-owned fields -- the agenda fields in raw_agenda
+                # (chapter-agenda's own output) must survive so that stage's own reuse check is
+                # unaffected -- so the next run dispatches a genuinely fresh locator job.
+                stale = dict(raw_agenda)
+                stale.pop("locator_status", None)
+                stale.pop("locator_recipe", None)
+                stale.pop("locator_job_ref", None)
+                retry_count = stale.get("locator_retry_count", 0)
+                retry_count = retry_count if isinstance(retry_count, int) else 0
+                if retry_count >= 1:
+                    stale["locator_status"] = "retry_exhausted"
+                    stale["locator_retry_error"] = str(exc)[:300]
+                    ep.generated_agenda_candidates = stale
+                    if work is not None:
+                        work.defer("blocked")
+                    stats.defer("locator-repair-exhausted")
+                    continue
+                if isinstance(exc, DuplicateLocatorStartError):
+                    first, second = exc.agenda_item_indices
+                    stale["locator_retry_count"] = 1
+                    stale["locator_retry_hint"] = (
+                        "Repair only the conflicting anchors for agenda items "
+                        f"{first} and {second}, whose selected units both start at "
+                        f"{exc.start:.3f} seconds. Reconsider only these anchors. Use a "
+                        "different supplied unit only if its transcript text shows a real "
+                        "later substantive start. Otherwise keep the strongest, most "
+                        "specific chapter and omit the more general duplicate section "
+                        "heading. Never invent or offset a timestamp. Return the complete "
+                        "corrected JSON object in assistant message content, matching the "
+                        "requested schema."
+                    )
+                    stale["locator_status"] = "repair_pending"
+                    ep.generated_agenda_candidates = stale
+                    stats.defer("locator-repair-pending")
+                    continue
+                ep.generated_agenda_candidates = stale
+                continue
+            try:
+                boundary_key = artifact_key("boundary", uid, boundary.recipe)
+                boundary_url = _write_chapter_json(ctx.storage, boundary_key, boundary.to_dict())
+            except Exception as exc:  # noqa: BLE001 -- a storage hiccup on an already-validated
+                # result must not discard a genuinely good completed record or the episode's
+                # still-valid pending pointer to it; simply retry the write next run.
+                if work is not None:
+                    work.defer("errored")
+                stats.errors.append(
+                    f"{uid}: chapter locator model={result.model or 'unknown'}: {exc}"
+                )
+                continue
+            items = {item.index: item for item in agenda.items}
+            generated = []
+            for anchor in boundary.anchors:
+                item = items.get(anchor.get("agenda_item_index"))
+                start = anchor.get("start")
+                # BoundaryResultArtifact schema ensures start is always set, but guard
+                # defensively so a malformed persisted anchor cannot cause a TypeError in
+                # episode_public_chapters (which calls float(start) unconditionally).
+                if item is None or item.status != "accepted" or start is None:
+                    continue
+                generated.append(
+                    {
+                        "start": start,
+                        "title": item.title,
+                        "agenda_item_index": item.index,
+                        "display_ref": item.display_ref,
+                        "evidence_text": item.evidence_text,
+                        "unit_id": anchor.get("unit_id"),
+                        "transition_quote": anchor.get("transition_quote"),
+                        "basis": anchor.get("basis", "served"),
+                        "generated": True,
+                        "model": boundary.model,
+                        "prompt_version": boundary.prompt_version,
+                        "artifact_key": boundary_key,
+                    }
+                )
+            ep.generated_chapters = generated
+            ep.generated_chapters_spec_hash = boundary.recipe
+            ep.generated_agenda_candidates = {
+                **dict(raw_agenda),
+                "locator_status": "completed",
+                # Recorded so the reuse check above (is_current_locator_artifact) can tell a
+                # stale completion from a current one on a later run.
+                "locator_model": boundary.model,
+                "locator_prompt_version": boundary.prompt_version,
+                "locator_routing_version": LOCATOR_ROUTING_VERSION,
+                "boundary_artifact_key": boundary_key,
+                "boundary_artifact_url": boundary_url,
+                "transcript_unit_source": unit_source,
+            }
+            ep.generated_agenda_candidates.pop("locator_retry_count", None)
+            ep.generated_agenda_candidates.pop("locator_retry_hint", None)
+            ep.generated_agenda_candidates.pop("locator_retry_error", None)
+            ep.generated_agenda_candidates.pop("locator_retry_policy", None)
+            ep.generated_agenda_candidates.pop("locator_retry_input", None)
+            work.consumed()
+            stats.ran += 1
         return stats
 
 
 def episode_needs_chapter_agenda(ep: Episode) -> bool:
-    """Return True if episode requires agenda chapter extraction or status reconciliation."""
+    """Return True if episode requires agenda chapter extraction or status reconciliation.
+
+    This is the pre-filter `run.py` applies to `state["candidate_episodes"]` *before*
+    `AgendaChapterCandidatesStage.process()` ever sees an episode (`--lane chapter-agenda`/
+    `chapter` invocations, i.e. every production chapter-agenda workflow run). It must apply the
+    same staleness check that stage's own `is_current_artifact` does -- otherwise a completed
+    episode produced under a retired model or a since-bumped CHAPTER_AGENDA_PIPELINE_VERSION would
+    never reach the stage at all, silently defeating that stage's own reuse-eligibility check and
+    leaving the "current artifacts get re-extracted" backfill promise (see
+    CHAPTER_AGENDA_PIPELINE_VERSION's own bump comment) unfulfilled for this lane invocation.
+    """
     if ep.source_chapters:
         return (ep.generated_agenda_candidates or {}).get("status") != "not_applicable"
     if not (ep.links or {}).get("agenda_text_artifact_key"):
         return False
-    status = (ep.generated_agenda_candidates or {}).get("status")
-    return status not in {"completed", "accepted", "not_applicable"}
+    raw_agenda = ep.generated_agenda_candidates or {}
+    status = raw_agenda.get("status")
+    if status not in {"completed", "accepted", "not_applicable"}:
+        return True
+    if status == "not_applicable":
+        return False
+    from citypods.chapter_titles import AGENDA_BACKUP_MODELS, AGENDA_PRODUCTION_MODELS
+
+    is_current_artifact = (
+        raw_agenda.get("model") in {*AGENDA_PRODUCTION_MODELS, *AGENDA_BACKUP_MODELS}
+        and raw_agenda.get("pipeline_version") == CHAPTER_AGENDA_PIPELINE_VERSION
+    )
+    return not is_current_artifact
 
 
 def episode_needs_chapter_locator(ep: Episode) -> bool:
-    """Return True if episode requires chapter boundary location in its timed transcript."""
+    """Return True if episode requires chapter boundary location in its timed transcript.
+
+    Same reasoning as `episode_needs_chapter_agenda` above, mirrored against
+    `ChapterBoundaryLocatorStage.process()`'s own `is_current_locator_artifact` check: this
+    pre-filter must recognize a stale completed locator result (produced under a since-bumped
+    LOCATOR_PROMPT_VERSION, routing version, or a retired model) as still needing work, or it never
+    reaches that stage's own check at all.
+    """
     if ep.source_chapters:
         return (ep.generated_agenda_candidates or {}).get("locator_status") != "not_applicable"
     raw_agenda = ep.generated_agenda_candidates or {}
@@ -8871,7 +9705,19 @@ def episode_needs_chapter_locator(ep: Episode) -> bool:
     if not ep.transcript_words_key and not ep.transcript_key:
         return False
     locator_status = raw_agenda.get("locator_status")
-    return locator_status not in {"completed", "accepted", "not_applicable"}
+    if locator_status not in {"completed", "accepted", "not_applicable"}:
+        return True
+    if locator_status == "not_applicable":
+        return False
+    from citypods.chapter_jobs import LOCATOR_MODELS, LOCATOR_PROMPT_VERSION
+    from citypods.chapter_locator import LOCATOR_ROUTING_VERSION
+
+    is_current_locator_artifact = (
+        raw_agenda.get("locator_model") in LOCATOR_MODELS
+        and raw_agenda.get("locator_prompt_version") == LOCATOR_PROMPT_VERSION
+        and raw_agenda.get("locator_routing_version") == LOCATOR_ROUTING_VERSION
+    )
+    return not is_current_locator_artifact
 
 
 def default_stages() -> list[EnrichmentStage]:
@@ -8895,7 +9741,6 @@ def default_stages() -> list[EnrichmentStage]:
         LinksStage(),
         AgendaTextStage(),
         MinutesTextStage(),
-        ProviderTranscriptDiarizeStage(),
         TagsStage(),
     ]
 
@@ -8928,7 +9773,6 @@ def enrich_stages() -> list[EnrichmentStage]:
         LinksStage(),
         AgendaTextStage(),
         MinutesTextStage(),
-        ProviderTranscriptDiarizeStage(),
         TagsStage(),
     ]
 
@@ -8966,7 +9810,7 @@ LANE_STAGES: dict[str, frozenset[str]] = {
     ),
     "transcribe": frozenset({"transcript"}),
     "align": frozenset({"transcript"}),
-    "diarize": frozenset({"diarize", "native_diarize"}),
+    "diarize": frozenset({"native_diarize"}),
     "speaker-identity": frozenset({"speaker_identity"}),
     "tag": frozenset({"tags"}),
     "moments": frozenset({"moments", "moment-judge", "moment-admission", "video-clips"}),
@@ -8997,10 +9841,25 @@ def run_stages(
     for stage in stages:
         if allowed is not None and stage.name not in allowed:
             continue
+        if ctx.llm_work.is_producer(stage.name):
+            if not callable(getattr(stage, "census", None)):
+                raise ValueError(
+                    f"Registered LLM stage {stage.name} requires an eligibility census"
+                )
+            stage.census(city, episodes, ctx)
         dirty = [
             ep
             for ep in episodes
-            if stage_is_dirty(stage, ep, city, speaker_config=ctx.speaker_config)
+            if stage_is_dirty(
+                stage,
+                ep,
+                city,
+                speaker_config=ctx.speaker_config,
+                # Evaluator work only counts when a tag backend could actually perform it.
+                evaluation_config=(
+                    ctx.llm_evaluation_config if ctx.tag_backend is not None else None
+                ),
+            )
         ]
         clean = len(episodes) - len(dirty)
         if not dirty:
@@ -9020,7 +9879,8 @@ def run_stages(
                 flush=True,
             )
         t0 = time.perf_counter()
-        stat = stage.process(provider, city, dirty, ctx)
+        with ctx.llm_work.producer(stage.name):
+            stat = stage.process(provider, city, dirty, ctx)
         stat.seconds = time.perf_counter() - t0
         stat.reused += clean
         _mark_stage_complete(stage, dirty, city, stat, speaker_config=ctx.speaker_config)

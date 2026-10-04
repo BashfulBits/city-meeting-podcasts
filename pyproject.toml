@@ -72,13 +72,9 @@ chapter-research = ["scikit-learn>=1.5"]
 llm = [
     "pydantic>=2.8",                # task-owned structured-output contracts
     # gemini-3.5-flash-lite support (day-0 pricing/provider registration) landed in litellm main
-    # 2026-07-21 (BerriAI/litellm@59ebe043c2) but no *stable* release contains it yet as of
-    # 2026-07-23 -- v1.93.0 (2026-07-19) predates the fix. Floor pinned to the first pre-release
-    # that has it (1.94.0rc3, 2026-07-22) rather than the usual abstract >= so pip-compile resolves
-    # into prerelease space for just this package (PEP 440: a prerelease lower bound opts a
-    # requirement into prereleases without a blanket --pre). Revisit and relax once litellm cuts a
-    # stable release containing this commit.
-    "litellm>=1.94.0rc3",            # provider-neutral model routing
+    # 2026-07-21 (BerriAI/litellm@59ebe043c2) and was stabilized in 1.94.0+. We floor at 1.101.0
+    # (stable) to eliminate reliance on ephemeral .dev/.rc prereleases on PyPI.
+    "litellm>=1.101.0",             # provider-neutral model routing
     # Extra dropped (not just the version): instructor==1.15.4 (its own latest release) pins its
     # `[litellm]` extra to `litellm<=1.83.7`, which conflicts with the floor above and blocks
     # pip-compile outright -- there is no newer instructor release with a higher cap. The extra

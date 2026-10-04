@@ -1,0 +1,4694 @@
+{
+ "_about": "Trimmed real run_events/*.json from durable storage, 2026-09-22..2026-09-30 (lanes tag, chapter-agenda, chapter-locator, moments; stage ran/reused/backlog/defer_reasons only). Fixture for review/50 (backlog trend).",
+ "events": [
+  {
+   "ts": "2026-09-22T00:38:53.195582+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 6923,
+     "defer_reasons": {
+      "llm-pending": 5669,
+      "producer-cap": 1254
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T01:07:51.732909+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23864,
+     "backlog": 1257,
+     "defer_reasons": {
+      "llm-error": 16,
+      "llm-pending": 34,
+      "rollout-dispatch-cap": 1207
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 181,
+     "defer_reasons": {
+      "llm-pending": 180,
+      "rollout-dispatch-cap": 1
+     }
+    },
+    "moment-admission": {
+     "ran": 27,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T05:45:46.615168+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23847,
+     "backlog": 1257,
+     "defer_reasons": {
+      "llm-error": 20,
+      "llm-pending": 38,
+      "rollout-dispatch-cap": 1199
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 183,
+     "defer_reasons": {
+      "llm-pending": 182,
+      "rollout-dispatch-cap": 1
+     }
+    },
+    "moment-admission": {
+     "ran": 27,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T05:53:17.729614+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 5,
+     "reused": 1,
+     "backlog": 3,
+     "defer_reasons": {
+      "llm-pending": 3
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T07:20:11.885769+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 6,
+     "reused": 0,
+     "backlog": 6915,
+     "defer_reasons": {
+      "llm-pending": 4392,
+      "producer-cap": 2523
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T09:04:03.477100+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23852,
+     "backlog": 1257,
+     "defer_reasons": {
+      "llm-error": 20,
+      "llm-pending": 48,
+      "rollout-dispatch-cap": 1189
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 192,
+     "defer_reasons": {
+      "llm-pending": 192
+     }
+    },
+    "moment-admission": {
+     "ran": 27,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T11:46:45.936151+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 1,
+     "reused": 23866,
+     "backlog": 1256,
+     "defer_reasons": {
+      "llm-error": 16,
+      "llm-pending": 43,
+      "rollout-dispatch-cap": 1197
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 182,
+     "defer_reasons": {
+      "llm-pending": 180,
+      "rollout-dispatch-cap": 2
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T12:09:39.727094+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 212,
+     "reused": 2288,
+     "backlog": 599,
+     "defer_reasons": {
+      "tag-llm-dispatch": 166,
+      "tag-llm-oversized": 1,
+      "tag-prelabeler-dispatch": 432
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T12:23:25.235114+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 5,
+     "defer_reasons": {
+      "llm-pending": 5
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T13:09:06.672444+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 101,
+     "reused": 0,
+     "backlog": 6775,
+     "defer_reasons": {
+      "llm-pending": 4951,
+      "producer-cap": 1824
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T13:54:13.887253+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23864,
+     "backlog": 1256,
+     "defer_reasons": {
+      "llm-error": 20,
+      "llm-pending": 46,
+      "rollout-dispatch-cap": 1190
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 198,
+     "defer_reasons": {
+      "llm-pending": 197,
+      "rollout-dispatch-cap": 1
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T15:53:47.823457+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 1,
+     "reused": 23864,
+     "backlog": 1255,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 54,
+      "rollout-dispatch-cap": 1177
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T17:30:06.627620+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 157,
+     "reused": 2343,
+     "backlog": 588,
+     "defer_reasons": {
+      "tag-llm-dispatch": 154,
+      "tag-llm-oversized": 1,
+      "tag-prelabeler-dispatch": 433
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T17:34:34.816551+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 3,
+     "reused": 0,
+     "backlog": 35,
+     "defer_reasons": {
+      "llm-pending": 35
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T18:00:24.131927+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 37,
+     "reused": 0,
+     "backlog": 6757,
+     "defer_reasons": {
+      "llm-pending": 5689,
+      "producer-cap": 1068
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T18:25:03.206881+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23857,
+     "backlog": 1255,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 62,
+      "rollout-dispatch-cap": 1169
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T20:17:03.863460+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23865,
+     "backlog": 1255,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 78,
+      "rollout-dispatch-cap": 1153
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T20:53:22.415054+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 41,
+     "reused": 2,
+     "backlog": 6723,
+     "defer_reasons": {
+      "llm-pending": 6382,
+      "producer-cap": 341
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T21:43:57.466391+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 96,
+     "reused": 2404,
+     "backlog": 596,
+     "defer_reasons": {
+      "tag-llm-dispatch": 157,
+      "tag-llm-oversized": 1,
+      "tag-prelabeler-dispatch": 438
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T21:49:23.688601+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 24,
+     "reused": 0,
+     "backlog": 23,
+     "defer_reasons": {
+      "llm-pending": 23
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-22T22:38:00.038647+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23863,
+     "backlog": 1257,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 74,
+      "rollout-dispatch-cap": 1159
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T00:07:55.637588+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 1,
+     "backlog": 6740,
+     "defer_reasons": {
+      "llm-pending": 6740
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T00:45:21.597366+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23864,
+     "backlog": 1257,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 90,
+      "rollout-dispatch-cap": 1143
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T01:16:55.969368+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 30,
+     "defer_reasons": {
+      "llm-pending": 30
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T03:42:25.645451+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 17,
+     "reused": 0,
+     "backlog": 6602,
+     "defer_reasons": {
+      "llm-pending": 6602
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T05:28:38.517884+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 1,
+     "reused": 23847,
+     "backlog": 1257,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 79,
+      "rollout-dispatch-cap": 1154
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T08:19:00.816776+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 10,
+     "reused": 3,
+     "backlog": 26,
+     "defer_reasons": {
+      "llm-pending": 26
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T08:59:48.167300+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23867,
+     "backlog": 1258,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 95,
+      "rollout-dispatch-cap": 1139
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T09:08:54.282066+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 6724,
+     "defer_reasons": {
+      "llm-pending": 6724
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T11:50:35.284262+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 1,
+     "reused": 23877,
+     "backlog": 1257,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 106,
+      "rollout-dispatch-cap": 1127
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T12:41:11.304660+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 795,
+     "reused": 1705,
+     "backlog": 2089,
+     "defer_reasons": {
+      "tag-llm-dispatch": 117,
+      "tag-llm-oversized": 1,
+      "tag-prelabeler-dispatch": 836,
+      "tag-prelabeler-oversized": 1,
+      "tag-prelabeler-shadow-dispatch": 1000,
+      "tag-prelabeler-shadow-no-quota": 134
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T14:07:09.511879+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 16,
+     "reused": 0,
+     "backlog": 11,
+     "defer_reasons": {
+      "llm-pending": 11
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T14:08:08.363966+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23870,
+     "backlog": 1257,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 122,
+      "rollout-dispatch-cap": 1111
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T14:42:08.515225+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 14,
+     "reused": 0,
+     "backlog": 6496,
+     "defer_reasons": {
+      "llm-pending": 6496
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T15:44:09.459919+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23878,
+     "backlog": 1257,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 138,
+      "rollout-dispatch-cap": 1095
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T17:26:44.880906+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 24,
+     "reused": 2476,
+     "backlog": 2030,
+     "defer_reasons": {
+      "tag-llm-dispatch": 117,
+      "tag-llm-oversized": 1,
+      "tag-prelabeler-dispatch": 836,
+      "tag-prelabeler-oversized": 1,
+      "tag-prelabeler-shadow-dispatch": 1000,
+      "tag-prelabeler-shadow-no-quota": 75
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T18:33:37.106654+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23869,
+     "backlog": 1258,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 154,
+      "rollout-dispatch-cap": 1080
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T18:51:39.314277+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 11,
+     "defer_reasons": {
+      "llm-pending": 11
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T19:29:18.890782+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 6496,
+     "defer_reasons": {
+      "llm-pending": 6496
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T20:08:10.660022+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23872,
+     "backlog": 1258,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 154,
+      "rollout-dispatch-cap": 1080
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T21:36:14.193573+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 3,
+     "reused": 372,
+     "backlog": 200,
+     "defer_reasons": {
+      "tag-llm-dispatch": 29,
+      "tag-prelabeler-dispatch": 96,
+      "tag-prelabeler-shadow-dispatch": 60,
+      "tag-prelabeler-shadow-no-quota": 15
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T22:04:16.661929+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 1,
+     "backlog": 11,
+     "defer_reasons": {
+      "llm-pending": 11
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T22:43:52.245580+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 6496,
+     "defer_reasons": {
+      "llm-pending": 6496
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-23T22:44:36.967013+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23873,
+     "backlog": 1259,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 154,
+      "rollout-dispatch-cap": 1081
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T00:45:02.026221+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23871,
+     "backlog": 1259,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 154,
+      "rollout-dispatch-cap": 1081
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T01:05:34.340998+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 23,
+     "defer_reasons": {
+      "llm-pending": 23
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T02:53:06.187432+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 6713,
+     "defer_reasons": {
+      "llm-pending": 6713
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T05:33:56.953757+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 23,
+     "defer_reasons": {
+      "llm-pending": 23
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T05:37:27.170066+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 6717,
+     "defer_reasons": {
+      "llm-pending": 6717
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T05:38:52.603621+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 7,
+     "reused": 368,
+     "backlog": 193,
+     "defer_reasons": {
+      "tag-llm-dispatch": 25,
+      "tag-prelabeler-dispatch": 91,
+      "tag-prelabeler-shadow-dispatch": 60,
+      "tag-prelabeler-shadow-no-quota": 17
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T05:50:17.384061+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23858,
+     "backlog": 1260,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 170,
+      "rollout-dispatch-cap": 1066
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T08:10:25.052556+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 23,
+     "defer_reasons": {
+      "llm-pending": 23
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T08:59:18.973463+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23870,
+     "backlog": 1260,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 186,
+      "rollout-dispatch-cap": 1050
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T09:03:56.815353+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 6717,
+     "defer_reasons": {
+      "llm-pending": 6717
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T11:43:23.254608+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 2,
+     "reused": 244,
+     "backlog": 254,
+     "defer_reasons": {
+      "tag-llm-dispatch": 49,
+      "tag-llm-oversized": 1,
+      "tag-prelabeler-no-quota": 172,
+      "tag-prelabeler-shadow-no-quota": 32
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T11:59:29.742735+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23874,
+     "backlog": 1260,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 202,
+      "rollout-dispatch-cap": 1034
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T14:03:08.487739+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 23,
+     "defer_reasons": {
+      "llm-pending": 23
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T14:13:00.096747+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23873,
+     "backlog": 1261,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 218,
+      "rollout-dispatch-cap": 1019
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T14:40:52.661466+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 6718,
+     "defer_reasons": {
+      "llm-pending": 6717,
+      "producer-cap": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T16:09:05.153697+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23882,
+     "backlog": 1261,
+     "defer_reasons": {
+      "llm-error": 24,
+      "llm-pending": 234,
+      "rollout-dispatch-cap": 1003
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 200,
+     "defer_reasons": {
+      "llm-pending": 200
+     }
+    },
+    "moment-admission": {
+     "ran": 28,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T17:11:19.060336+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 22,
+     "reused": 223,
+     "backlog": 237,
+     "defer_reasons": {
+      "tag-llm-dispatch": 30,
+      "tag-llm-oversized": 1,
+      "tag-prelabeler-no-quota": 174,
+      "tag-prelabeler-shadow-no-quota": 32
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T18:36:44.862046+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 3,
+     "reused": 23870,
+     "backlog": 1260,
+     "defer_reasons": {
+      "llm-error": 26,
+      "llm-pending": 229,
+      "rollout-dispatch-cap": 1005
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 214,
+     "defer_reasons": {
+      "llm-pending": 211,
+      "rollout-dispatch-cap": 3
+     }
+    },
+    "moment-admission": {
+     "ran": 31,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T18:52:10.483053+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 23,
+     "defer_reasons": {
+      "llm-pending": 23
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T19:50:17.226141+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 14,
+     "reused": 0,
+     "backlog": 6476,
+     "defer_reasons": {
+      "llm-pending": 6475,
+      "producer-cap": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T20:22:13.548786+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23879,
+     "backlog": 1261,
+     "defer_reasons": {
+      "llm-error": 26,
+      "llm-pending": 230,
+      "rollout-dispatch-cap": 1005
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 224,
+     "defer_reasons": {
+      "llm-pending": 224
+     }
+    },
+    "moment-admission": {
+     "ran": 31,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T21:32:34.995150+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 6,
+     "reused": 224,
+     "backlog": 235,
+     "defer_reasons": {
+      "tag-llm-dispatch": 30,
+      "tag-llm-oversized": 1,
+      "tag-prelabeler-no-quota": 172,
+      "tag-prelabeler-shadow-no-quota": 32
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T22:00:20.299139+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 10,
+     "reused": 1,
+     "backlog": 22,
+     "defer_reasons": {
+      "llm-pending": 22
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T22:56:50.367483+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 33,
+     "reused": 23870,
+     "backlog": 1227,
+     "defer_reasons": {
+      "llm-error": 29,
+      "llm-pending": 153,
+      "rollout-dispatch-cap": 1045
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 231,
+     "defer_reasons": {
+      "llm-pending": 215,
+      "rollout-dispatch-cap": 16
+     }
+    },
+    "moment-admission": {
+     "ran": 45,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-24T23:05:17.360196+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 200,
+     "reused": 0,
+     "backlog": 6193,
+     "defer_reasons": {
+      "llm-pending": 5938,
+      "producer-cap": 255
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T00:47:25.970599+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23909,
+     "backlog": 1227,
+     "defer_reasons": {
+      "llm-error": 30,
+      "llm-pending": 158,
+      "rollout-dispatch-cap": 1039
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 236,
+     "defer_reasons": {
+      "llm-pending": 221,
+      "rollout-dispatch-cap": 15
+     }
+    },
+    "moment-admission": {
+     "ran": 45,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T01:11:21.340127+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 1,
+     "backlog": 86,
+     "defer_reasons": {
+      "llm-pending": 86
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T03:06:40.217270+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 68,
+     "reused": 0,
+     "backlog": 6370,
+     "defer_reasons": {
+      "llm-pending": 5801,
+      "producer-cap": 569
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T05:50:43.687799+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 1,
+     "backlog": 6436,
+     "defer_reasons": {
+      "llm-pending": 504,
+      "producer-cap": 5932
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T05:53:51.294250+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 1317,
+     "defer_reasons": {
+      "llm-pending": 13,
+      "rollout-dispatch-cap": 1304
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 69,
+     "defer_reasons": {
+      "llm-pending": 27,
+      "rollout-dispatch-cap": 42
+     }
+    },
+    "moment-admission": {
+     "ran": 45,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T08:34:26.267650+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 38,
+     "reused": 0,
+     "backlog": 60,
+     "defer_reasons": {
+      "llm-pending": 60
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T09:14:27.497983+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23820,
+     "backlog": 1318,
+     "defer_reasons": {
+      "llm-pending": 25,
+      "rollout-dispatch-cap": 1293
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 90,
+     "defer_reasons": {
+      "llm-pending": 55,
+      "rollout-dispatch-cap": 35
+     }
+    },
+    "moment-admission": {
+     "ran": 45,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T09:21:19.983205+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 6436,
+     "defer_reasons": {
+      "llm-pending": 422,
+      "producer-cap": 6014
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T11:49:23.269698+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 6,
+     "reused": 219,
+     "backlog": 241,
+     "defer_reasons": {
+      "tag-llm-dispatch": 31,
+      "tag-llm-oversized": 2,
+      "tag-prelabeler-no-quota": 176,
+      "tag-prelabeler-shadow-no-quota": 32
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T12:13:00.276593+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 12,
+     "reused": 23824,
+     "backlog": 1306,
+     "defer_reasons": {
+      "llm-pending": 13,
+      "rollout-dispatch-cap": 1293
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 104,
+     "defer_reasons": {
+      "llm-pending": 65,
+      "rollout-dispatch-cap": 39
+     }
+    },
+    "moment-admission": {
+     "ran": 46,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T14:28:05.118505+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 5,
+     "reused": 0,
+     "backlog": 55,
+     "defer_reasons": {
+      "llm-pending": 55
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T14:38:17.017494+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23833,
+     "backlog": 1307,
+     "defer_reasons": {
+      "llm-pending": 13,
+      "rollout-dispatch-cap": 1294
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 142,
+     "defer_reasons": {
+      "llm-pending": 105,
+      "rollout-dispatch-cap": 37
+     }
+    },
+    "moment-admission": {
+     "ran": 46,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T14:59:23.369705+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 153,
+     "reused": 0,
+     "backlog": 6246,
+     "defer_reasons": {
+      "llm-pending": 232,
+      "producer-cap": 6014
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T16:19:09.624075+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23838,
+     "backlog": 1309,
+     "defer_reasons": {
+      "llm-pending": 25,
+      "rollout-dispatch-cap": 1284
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 164,
+     "defer_reasons": {
+      "llm-pending": 133,
+      "rollout-dispatch-cap": 31
+     }
+    },
+    "moment-admission": {
+     "ran": 46,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T17:11:08.766807+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 1,
+     "reused": 223,
+     "backlog": 242,
+     "defer_reasons": {
+      "tag-llm-dispatch": 32,
+      "tag-llm-oversized": 2,
+      "tag-prelabeler-no-quota": 176,
+      "tag-prelabeler-shadow-no-quota": 32
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T18:05:06.106900+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 6283,
+     "defer_reasons": {
+      "llm-pending": 232,
+      "producer-cap": 6051
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T18:26:19.278321+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23824,
+     "backlog": 1309,
+     "defer_reasons": {
+      "llm-pending": 43,
+      "rollout-dispatch-cap": 1266
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 181,
+     "defer_reasons": {
+      "llm-pending": 155,
+      "rollout-dispatch-cap": 26
+     }
+    },
+    "moment-admission": {
+     "ran": 46,
+     "reused": 0,
+     "backlog": 7171,
+     "defer_reasons": {
+      "stop": 7171
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T18:56:25.901894+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 12,
+     "reused": 23838,
+     "backlog": 1297,
+     "defer_reasons": {
+      "llm-pending": 31,
+      "rollout-dispatch-cap": 1266
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 198,
+     "defer_reasons": {
+      "llm-pending": 165,
+      "rollout-dispatch-cap": 33
+     }
+    },
+    "moment-admission": {
+     "ran": 49,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T19:11:31.094509+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 9,
+     "reused": 0,
+     "backlog": 129,
+     "defer_reasons": {
+      "llm-pending": 129
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T19:51:35.137474+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 186,
+     "reused": 0,
+     "backlog": 6070,
+     "defer_reasons": {
+      "llm-pending": 19,
+      "producer-cap": 6051
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T20:26:04.637440+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23849,
+     "backlog": 1297,
+     "defer_reasons": {
+      "llm-pending": 31,
+      "rollout-dispatch-cap": 1266
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 235,
+     "defer_reasons": {
+      "llm-pending": 205,
+      "rollout-dispatch-cap": 30
+     }
+    },
+    "moment-admission": {
+     "ran": 49,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T21:36:37.943037+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 5,
+     "reused": 219,
+     "backlog": 241,
+     "defer_reasons": {
+      "tag-llm-dispatch": 31,
+      "tag-llm-oversized": 2,
+      "tag-prelabeler-no-quota": 176,
+      "tag-prelabeler-shadow-no-quota": 32
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T23:03:48.646616+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 18,
+     "reused": 23838,
+     "backlog": 1278,
+     "defer_reasons": {
+      "llm-pending": 1,
+      "rollout-dispatch-cap": 1277
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 224,
+     "defer_reasons": {
+      "llm-pending": 180,
+      "rollout-dispatch-cap": 44
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T23:04:19.431527+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 1,
+     "backlog": 6097,
+     "defer_reasons": {
+      "llm-pending": 19,
+      "producer-cap": 6078
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-25T23:51:48.210035+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 67,
+     "reused": 1,
+     "backlog": 157,
+     "defer_reasons": {
+      "llm-pending": 156,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T00:56:08.792258+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 18,
+     "reused": 23841,
+     "backlog": 1278,
+     "defer_reasons": {
+      "llm-pending": 1,
+      "rollout-dispatch-cap": 1277
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 262,
+     "defer_reasons": {
+      "llm-pending": 220,
+      "rollout-dispatch-cap": 42
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T03:12:34.404001+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 6098,
+     "defer_reasons": {
+      "llm-pending": 519,
+      "producer-cap": 5579
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T05:58:53.291107+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 75,
+     "defer_reasons": {
+      "llm-pending": 74,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T06:26:42.666375+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23617,
+     "backlog": 1235,
+     "defer_reasons": {
+      "llm-pending": 2,
+      "rollout-dispatch-cap": 1233
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 257,
+     "defer_reasons": {
+      "llm-pending": 217,
+      "rollout-dispatch-cap": 40
+     }
+    },
+    "moment-admission": {
+     "ran": 53,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T09:14:02.629359+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 2,
+     "backlog": 6088,
+     "defer_reasons": {
+      "llm-pending": 1010,
+      "producer-cap": 5078
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T09:51:08.715841+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23704,
+     "backlog": 1238,
+     "defer_reasons": {
+      "llm-pending": 5,
+      "rollout-dispatch-cap": 1233
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 298,
+     "defer_reasons": {
+      "llm-pending": 262,
+      "rollout-dispatch-cap": 36
+     }
+    },
+    "moment-admission": {
+     "ran": 53,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T11:25:43.373543+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 276,
+     "reused": 99,
+     "backlog": 299,
+     "defer_reasons": {
+      "tag-llm-dispatch": 10,
+      "tag-prelabeler-no-quota": 92,
+      "tag-prelabeler-shadow-no-quota": 197
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T11:46:37.087777+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23864,
+     "backlog": 1282,
+     "defer_reasons": {
+      "llm-pending": 7,
+      "rollout-dispatch-cap": 1275
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 366,
+     "defer_reasons": {
+      "llm-pending": 332,
+      "rollout-dispatch-cap": 34
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T12:06:06.007892+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 1,
+     "reused": 1,
+     "backlog": 82,
+     "defer_reasons": {
+      "llm-pending": 81,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T13:51:52.935629+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23849,
+     "backlog": 1284,
+     "defer_reasons": {
+      "llm-pending": 8,
+      "rollout-dispatch-cap": 1276
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 403,
+     "defer_reasons": {
+      "llm-pending": 371,
+      "rollout-dispatch-cap": 32
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T14:07:02.859904+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 6097,
+     "defer_reasons": {
+      "llm-pending": 1515,
+      "producer-cap": 4582
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T15:23:03.988126+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23860,
+     "backlog": 1284,
+     "defer_reasons": {
+      "llm-pending": 9,
+      "rollout-dispatch-cap": 1275
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 441,
+     "defer_reasons": {
+      "llm-pending": 410,
+      "rollout-dispatch-cap": 31
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T16:23:50.087946+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 199,
+     "reused": 122,
+     "backlog": 284,
+     "defer_reasons": {
+      "tag-llm-dispatch": 10,
+      "tag-prelabeler-no-quota": 82,
+      "tag-prelabeler-shadow-no-quota": 192
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T16:55:23.001214+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 18,
+     "reused": 0,
+     "backlog": 55,
+     "defer_reasons": {
+      "llm-pending": 54,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T18:03:47.654161+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 4,
+     "reused": 23863,
+     "backlog": 1279,
+     "defer_reasons": {
+      "llm-pending": 4,
+      "rollout-dispatch-cap": 1275
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 253,
+     "defer_reasons": {
+      "llm-pending": 210,
+      "rollout-dispatch-cap": 43
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T19:11:24.760152+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 766,
+     "reused": 0,
+     "backlog": 5221,
+     "defer_reasons": {
+      "llm-pending": 1048,
+      "producer-cap": 4173
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T19:40:52.126448+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 419,
+     "defer_reasons": {
+      "llm-pending": 348,
+      "missing-timed-transcript": 1,
+      "producer-cap": 70
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T19:45:26.491531+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23845,
+     "backlog": 1279,
+     "defer_reasons": {
+      "llm-pending": 4,
+      "rollout-dispatch-cap": 1275
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 303,
+     "defer_reasons": {
+      "llm-pending": 263,
+      "rollout-dispatch-cap": 40
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T21:11:04.115382+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 72,
+     "reused": 217,
+     "backlog": 220,
+     "defer_reasons": {
+      "tag-llm-dispatch": 16,
+      "tag-llm-oversized": 1,
+      "tag-prelabeler-no-quota": 123,
+      "tag-prelabeler-shadow-no-quota": 80
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T22:25:57.775829+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 154,
+     "reused": 0,
+     "backlog": 5156,
+     "defer_reasons": {
+      "llm-pending": 1341,
+      "producer-cap": 3815
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T22:32:22.656798+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23859,
+     "backlog": 1279,
+     "defer_reasons": {
+      "llm-pending": 4,
+      "rollout-dispatch-cap": 1275
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 336,
+     "defer_reasons": {
+      "llm-pending": 298,
+      "rollout-dispatch-cap": 38
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-26T23:26:33.988178+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 31,
+     "reused": 0,
+     "backlog": 413,
+     "defer_reasons": {
+      "llm-pending": 412,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T00:50:40.393919+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23867,
+     "backlog": 1280,
+     "defer_reasons": {
+      "llm-pending": 4,
+      "rollout-dispatch-cap": 1276
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 385,
+     "defer_reasons": {
+      "llm-pending": 349,
+      "rollout-dispatch-cap": 36
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T03:20:32.058061+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 95,
+     "reused": 0,
+     "backlog": 5061,
+     "defer_reasons": {
+      "llm-pending": 1706,
+      "producer-cap": 3355
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T06:15:08.806118+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 122,
+     "reused": 0,
+     "backlog": 312,
+     "defer_reasons": {
+      "llm-pending": 311,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T06:16:07.847088+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23854,
+     "backlog": 1281,
+     "defer_reasons": {
+      "llm-pending": 4,
+      "rollout-dispatch-cap": 1277
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 363,
+     "defer_reasons": {
+      "llm-pending": 326,
+      "rollout-dispatch-cap": 37
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T09:52:05.130656+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 5082,
+     "defer_reasons": {
+      "llm-pending": 2206,
+      "producer-cap": 2876
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T09:52:31.148468+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23857,
+     "backlog": 1282,
+     "defer_reasons": {
+      "llm-pending": 4,
+      "rollout-dispatch-cap": 1278
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 419,
+     "defer_reasons": {
+      "llm-pending": 386,
+      "rollout-dispatch-cap": 33
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T12:08:22.116919+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 54,
+     "reused": 321,
+     "backlog": 238,
+     "defer_reasons": {
+      "tag-llm-dispatch": 17,
+      "tag-llm-oversized": 1,
+      "tag-prelabeler-dispatch": 127,
+      "tag-prelabeler-shadow-no-quota": 93
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T12:25:34.848064+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23867,
+     "backlog": 1282,
+     "defer_reasons": {
+      "llm-pending": 4,
+      "rollout-dispatch-cap": 1278
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 440,
+     "defer_reasons": {
+      "llm-pending": 408,
+      "rollout-dispatch-cap": 32
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T12:47:37.425403+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 120,
+     "reused": 0,
+     "backlog": 188,
+     "defer_reasons": {
+      "llm-pending": 187,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T14:47:23.799948+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23862,
+     "backlog": 1283,
+     "defer_reasons": {
+      "llm-pending": 5,
+      "rollout-dispatch-cap": 1278
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 486,
+     "defer_reasons": {
+      "llm-pending": 455,
+      "rollout-dispatch-cap": 31
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T15:05:52.354755+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 489,
+     "reused": 0,
+     "backlog": 4532,
+     "defer_reasons": {
+      "llm-pending": 2127,
+      "producer-cap": 2405
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T16:03:07.534567+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23865,
+     "backlog": 1284,
+     "defer_reasons": {
+      "llm-pending": 7,
+      "rollout-dispatch-cap": 1277
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 524,
+     "defer_reasons": {
+      "llm-pending": 497,
+      "rollout-dispatch-cap": 27
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T17:04:03.637970+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 51,
+     "reused": 324,
+     "backlog": 227,
+     "defer_reasons": {
+      "tag-llm-dispatch": 19,
+      "tag-prelabeler-dispatch": 121,
+      "tag-prelabeler-shadow-no-quota": 87
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T17:31:39.712476+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 19,
+     "reused": 0,
+     "backlog": 346,
+     "defer_reasons": {
+      "llm-pending": 312,
+      "missing-timed-transcript": 1,
+      "producer-cap": 33
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T18:28:21.128256+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23866,
+     "backlog": 1257,
+     "defer_reasons": {
+      "llm-pending": 12,
+      "rollout-dispatch-cap": 1245
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 505,
+     "defer_reasons": {
+      "llm-pending": 483,
+      "rollout-dispatch-cap": 22
+     }
+    },
+    "moment-admission": {
+     "ran": 53,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T19:37:17.062382+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 113,
+     "reused": 0,
+     "backlog": 4454,
+     "defer_reasons": {
+      "llm-pending": 2457,
+      "producer-cap": 1997
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T20:21:11.288284+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23869,
+     "backlog": 1284,
+     "defer_reasons": {
+      "llm-pending": 35,
+      "rollout-dispatch-cap": 1249
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 550,
+     "defer_reasons": {
+      "llm-pending": 527,
+      "rollout-dispatch-cap": 23
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T21:27:00.996531+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 38,
+     "reused": 337,
+     "backlog": 227,
+     "defer_reasons": {
+      "tag-llm-dispatch": 19,
+      "tag-prelabeler-dispatch": 131,
+      "tag-prelabeler-shadow-no-quota": 77
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T21:54:29.669008+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 384,
+     "defer_reasons": {
+      "llm-pending": 383,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T22:45:08.834472+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23858,
+     "backlog": 1285,
+     "defer_reasons": {
+      "llm-pending": 61,
+      "rollout-dispatch-cap": 1224
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 561,
+     "defer_reasons": {
+      "llm-pending": 541,
+      "rollout-dispatch-cap": 20
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-27T22:51:27.503442+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 4480,
+     "defer_reasons": {
+      "llm-pending": 2957,
+      "producer-cap": 1523
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T00:56:58.430919+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23866,
+     "backlog": 1285,
+     "defer_reasons": {
+      "llm-pending": 90,
+      "rollout-dispatch-cap": 1195
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 570,
+     "defer_reasons": {
+      "llm-pending": 552,
+      "rollout-dispatch-cap": 18
+     }
+    },
+    "moment-admission": {
+     "ran": 56,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T01:25:59.892243+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 387,
+     "defer_reasons": {
+      "llm-pending": 386,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T03:16:59.357698+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 267,
+     "reused": 0,
+     "backlog": 4156,
+     "defer_reasons": {
+      "llm-pending": 3084,
+      "producer-cap": 1072
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T06:24:41.705300+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 34,
+     "reused": 23850,
+     "backlog": 1248,
+     "defer_reasons": {
+      "llm-pending": 16,
+      "rollout-dispatch-cap": 1232
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 565,
+     "defer_reasons": {
+      "llm-pending": 520,
+      "rollout-dispatch-cap": 45
+     }
+    },
+    "moment-admission": {
+     "ran": 75,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T09:23:54.604613+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 72,
+     "reused": 0,
+     "backlog": 378,
+     "defer_reasons": {
+      "llm-pending": 377,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T10:20:24.944556+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23883,
+     "backlog": 1248,
+     "defer_reasons": {
+      "llm-pending": 16,
+      "rollout-dispatch-cap": 1232
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 602,
+     "defer_reasons": {
+      "llm-pending": 561,
+      "rollout-dispatch-cap": 41
+     }
+    },
+    "moment-admission": {
+     "ran": 75,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T10:33:12.924281+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 4213,
+     "defer_reasons": {
+      "llm-pending": 3584,
+      "producer-cap": 629
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T13:54:35.342599+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 98,
+     "reused": 277,
+     "backlog": 267,
+     "defer_reasons": {
+      "tag-llm-dispatch": 20,
+      "tag-prelabeler-dispatch": 109,
+      "tag-prelabeler-shadow-no-quota": 138
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T14:07:07.331047+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 6,
+     "reused": 23899,
+     "backlog": 1243,
+     "defer_reasons": {
+      "llm-pending": 7,
+      "rollout-dispatch-cap": 1236
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 600,
+     "defer_reasons": {
+      "llm-pending": 555,
+      "rollout-dispatch-cap": 45
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T17:22:43.753129+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23904,
+     "backlog": 1243,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 7,
+      "rollout-dispatch-cap": 1235
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 642,
+     "defer_reasons": {
+      "llm-pending": 600,
+      "rollout-dispatch-cap": 42
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T18:29:01.376085+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 24,
+     "reused": 0,
+     "backlog": 354,
+     "defer_reasons": {
+      "llm-pending": 353,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T19:06:28.094769+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23910,
+     "backlog": 1243,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 8,
+      "rollout-dispatch-cap": 1234
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 678,
+     "defer_reasons": {
+      "llm-pending": 639,
+      "rollout-dispatch-cap": 39
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T19:15:37.907804+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 531,
+     "reused": 0,
+     "backlog": 3566,
+     "defer_reasons": {
+      "llm-pending": 3407,
+      "producer-cap": 159
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T20:47:27.570536+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23910,
+     "backlog": 1243,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 9,
+      "rollout-dispatch-cap": 1233
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 714,
+     "defer_reasons": {
+      "llm-pending": 679,
+      "rollout-dispatch-cap": 35
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T22:41:55.605759+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23910,
+     "backlog": 1243,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 9,
+      "rollout-dispatch-cap": 1233
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 750,
+     "defer_reasons": {
+      "llm-pending": 718,
+      "rollout-dispatch-cap": 32
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T23:21:46.743726+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 109,
+     "reused": 266,
+     "backlog": 259,
+     "defer_reasons": {
+      "tag-llm-dispatch": 21,
+      "tag-prelabeler-dispatch": 102,
+      "tag-prelabeler-shadow-no-quota": 136
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-28T23:46:31.305551+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 77,
+     "reused": 0,
+     "backlog": 417,
+     "defer_reasons": {
+      "llm-pending": 412,
+      "missing-timed-transcript": 1,
+      "producer-cap": 4
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T00:17:36.773391+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 271,
+     "reused": 0,
+     "backlog": 3339,
+     "defer_reasons": {
+      "llm-pending": 3339
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T00:23:33.111840+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23903,
+     "backlog": 1243,
+     "defer_reasons": {
+      "llm-pending": 9,
+      "rollout-dispatch-cap": 1234
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 634,
+     "defer_reasons": {
+      "llm-pending": 591,
+      "rollout-dispatch-cap": 43
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T02:20:40.857567+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23897,
+     "backlog": 1243,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 9,
+      "rollout-dispatch-cap": 1233
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 687,
+     "defer_reasons": {
+      "llm-pending": 649,
+      "rollout-dispatch-cap": 38
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T06:34:43.620872+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23912,
+     "backlog": 1243,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 9,
+      "rollout-dispatch-cap": 1233
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 723,
+     "defer_reasons": {
+      "llm-pending": 688,
+      "rollout-dispatch-cap": 35
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T06:38:19.357575+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 26,
+     "reused": 3,
+     "backlog": 492,
+     "defer_reasons": {
+      "llm-pending": 491,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T07:55:02.616117+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 248,
+     "reused": 0,
+     "backlog": 3083,
+     "defer_reasons": {
+      "llm-pending": 3083
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T10:21:08.054309+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23910,
+     "backlog": 1243,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 9,
+      "rollout-dispatch-cap": 1233
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 768,
+     "defer_reasons": {
+      "llm-pending": 736,
+      "rollout-dispatch-cap": 32
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T12:54:36.624605+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 88,
+     "reused": 287,
+     "backlog": 247,
+     "defer_reasons": {
+      "tag-llm-dispatch": 24,
+      "tag-llm-oversized": 2,
+      "tag-prelabeler-dispatch": 87,
+      "tag-prelabeler-shadow-no-quota": 134
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T13:12:59.017094+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23915,
+     "backlog": 1243,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 10,
+      "rollout-dispatch-cap": 1232
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 797,
+     "defer_reasons": {
+      "llm-pending": 766,
+      "rollout-dispatch-cap": 31
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T13:48:15.801123+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 44,
+     "reused": 0,
+     "backlog": 545,
+     "defer_reasons": {
+      "llm-pending": 544,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T14:42:19.061892+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 211,
+     "reused": 0,
+     "backlog": 2882,
+     "defer_reasons": {
+      "llm-pending": 2882
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T15:28:02.727148+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23906,
+     "backlog": 1244,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 14,
+      "rollout-dispatch-cap": 1229
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 828,
+     "defer_reasons": {
+      "llm-pending": 801,
+      "rollout-dispatch-cap": 27
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T17:17:38.727601+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23914,
+     "backlog": 1245,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 15,
+      "rollout-dispatch-cap": 1229
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 861,
+     "defer_reasons": {
+      "llm-pending": 839,
+      "rollout-dispatch-cap": 22
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T19:39:29.713089+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23918,
+     "backlog": 1245,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 15,
+      "rollout-dispatch-cap": 1229
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 850,
+     "defer_reasons": {
+      "llm-pending": 826,
+      "rollout-dispatch-cap": 24
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T19:50:57.439162+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 55,
+     "reused": 0,
+     "backlog": 549,
+     "defer_reasons": {
+      "llm-pending": 548,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T20:29:40.258957+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 95,
+     "reused": 0,
+     "backlog": 2823,
+     "defer_reasons": {
+      "llm-pending": 2823
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T21:28:08.525598+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23918,
+     "backlog": 1245,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 15,
+      "rollout-dispatch-cap": 1229
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 893,
+     "defer_reasons": {
+      "llm-pending": 873,
+      "rollout-dispatch-cap": 20
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T22:18:00.727154+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 77,
+     "reused": 298,
+     "backlog": 229,
+     "defer_reasons": {
+      "tag-llm-dispatch": 24,
+      "tag-llm-oversized": 2,
+      "tag-prelabeler-dispatch": 79,
+      "tag-prelabeler-shadow-no-quota": 124
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-29T23:25:19.778605+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23907,
+     "backlog": 1247,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 15,
+      "rollout-dispatch-cap": 1231
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 898,
+     "defer_reasons": {
+      "llm-pending": 878,
+      "rollout-dispatch-cap": 20
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-30T00:08:37.050771+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 83,
+     "reused": 1,
+     "backlog": 496,
+     "defer_reasons": {
+      "llm-pending": 495,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-30T01:03:26.365647+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 308,
+     "reused": 0,
+     "backlog": 2474,
+     "defer_reasons": {
+      "llm-pending": 2474
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-30T01:40:39.391048+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23911,
+     "backlog": 1248,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 44,
+      "rollout-dispatch-cap": 1203
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 906,
+     "defer_reasons": {
+      "llm-pending": 888,
+      "rollout-dispatch-cap": 18
+     }
+    },
+    "moment-admission": {
+     "ran": 78,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-30T06:21:12.454165+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 121,
+     "reused": 0,
+     "backlog": 443,
+     "defer_reasons": {
+      "llm-pending": 442,
+      "missing-timed-transcript": 1
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-30T06:31:31.003721+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 19,
+     "reused": 23900,
+     "backlog": 1230,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 20,
+      "rollout-dispatch-cap": 1209
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 933,
+     "defer_reasons": {
+      "llm-pending": 902,
+      "rollout-dispatch-cap": 31
+     }
+    },
+    "moment-admission": {
+     "ran": 91,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-30T07:55:29.273169+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 311,
+     "reused": 0,
+     "backlog": 2196,
+     "defer_reasons": {
+      "llm-pending": 2196
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-30T10:14:49.905655+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 0,
+     "reused": 23929,
+     "backlog": 1231,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 21,
+      "rollout-dispatch-cap": 1209
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 967,
+     "defer_reasons": {
+      "llm-pending": 940,
+      "rollout-dispatch-cap": 27
+     }
+    },
+    "moment-admission": {
+     "ran": 91,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-30T12:38:06.481739+00:00",
+   "phase": "enrich",
+   "lane": "tag",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "tags": {
+     "ran": 71,
+     "reused": 304,
+     "backlog": 217,
+     "defer_reasons": {
+      "tag-llm-dispatch": 25,
+      "tag-llm-oversized": 2,
+      "tag-prelabeler-dispatch": 68,
+      "tag-prelabeler-shadow-no-quota": 122
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-30T12:47:17.880821+00:00",
+   "phase": "enrich",
+   "lane": "moments",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "moments": {
+     "ran": 3,
+     "reused": 23937,
+     "backlog": 1228,
+     "defer_reasons": {
+      "llm-error": 1,
+      "llm-pending": 17,
+      "rollout-dispatch-cap": 1210
+     }
+    },
+    "moment-judge": {
+     "ran": 0,
+     "reused": 0,
+     "backlog": 959,
+     "defer_reasons": {
+      "llm-pending": 929,
+      "rollout-dispatch-cap": 30
+     }
+    },
+    "moment-admission": {
+     "ran": 93,
+     "reused": 0,
+     "backlog": 0,
+     "defer_reasons": {}
+    }
+   }
+  },
+  {
+   "ts": "2026-09-30T13:23:51.050734+00:00",
+   "phase": "enrich",
+   "lane": "chapter-locator",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_locator": {
+     "ran": 80,
+     "reused": 0,
+     "backlog": 557,
+     "defer_reasons": {
+      "llm-pending": 470,
+      "missing-timed-transcript": 1,
+      "producer-cap": 86
+     }
+    }
+   }
+  },
+  {
+   "ts": "2026-09-30T14:38:25.210241+00:00",
+   "phase": "enrich",
+   "lane": "chapter-agenda",
+   "shard": null,
+   "scoped": true,
+   "outcome": "completed",
+   "stages": {
+    "chapter_agenda": {
+     "ran": 517,
+     "reused": 0,
+     "backlog": 1625,
+     "defer_reasons": {
+      "llm-pending": 1625
+     }
+    }
+   }
+  }
+ ]
+}

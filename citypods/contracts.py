@@ -14,14 +14,18 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from citypods.providers import get_provider
+from citypods.providers.base import is_transient_provider_error
 
 # Seconds of audio the media-fetch check copies — a *truncated* download that proves the endpoint is
 # reachable + serves real media without pulling a whole meeting.
 _MEDIA_FETCH_SECONDS = 3.0
+_LIST_CONFIRMATION_ATTEMPTS = 2
+_LIST_CONFIRMATION_DELAY_SECONDS = 1.0
 
 
 @dataclass
@@ -88,6 +92,23 @@ def _media_fetch_detail(
     return "\n".join(details)
 
 
+def _fetch_episodes_with_confirmation(provider, source: dict) -> tuple[list, int]:
+    """Fetch episodes, confirming one transient listing failure before reporting it.
+
+    Provider sessions already retry transport failures internally. This second, separate request
+    is deliberately limited to one confirmation attempt so a brief upstream timeout does not file
+    a false contract issue, while a persistent failure still fails promptly and remains visible.
+    """
+    for attempt in range(_LIST_CONFIRMATION_ATTEMPTS):
+        try:
+            return provider.fetch_episodes(source), attempt
+        except Exception as exc:  # noqa: BLE001 — preserve the original provider failure
+            if attempt + 1 >= _LIST_CONFIRMATION_ATTEMPTS or not is_transient_provider_error(exc):
+                raise
+            time.sleep(_LIST_CONFIRMATION_DELAY_SECONDS)
+    raise AssertionError("unreachable: the final listing attempt must return or raise")
+
+
 def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]:
     """Run the contract checks applicable to one city's provider. Each check is isolated so one
     broken endpoint doesn't mask the others."""
@@ -103,9 +124,12 @@ def check_city(slug: str, provider_name: str, source: dict) -> list[CheckResult]
 
     # 1. Listing endpoint — must yield episodes with a usable media reference.
     try:
-        episodes = provider.fetch_episodes(source)
+        episodes, confirmation_retries = _fetch_episodes_with_confirmation(provider, source)
         ok = bool(episodes) and all(e.video_url for e in episodes[:5])
-        out.append(_r(provider_name, slug, "list", ok, f"{len(episodes)} episodes"))
+        detail = f"{len(episodes)} episodes"
+        if confirmation_retries:
+            detail += f" (after {confirmation_retries} transient retry)"
+        out.append(_r(provider_name, slug, "list", ok, detail))
     except Exception as exc:  # noqa: BLE001 — the failure IS the finding
         return [_r(provider_name, slug, "list", False, repr(exc))]
 

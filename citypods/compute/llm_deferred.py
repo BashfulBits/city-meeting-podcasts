@@ -17,8 +17,11 @@ from __future__ import annotations
 
 import json
 import tempfile
+import time
+import uuid
 from collections.abc import Callable, Mapping
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -36,6 +39,9 @@ DEFERRED_INDEX_V2_REF_PREFIX = f"{DEFERRED_INDEX_PREFIX}v2-ref/"
 DEFERRED_INDEX_V2_TERMINAL_CURSOR_KEY = f"{DEFERRED_INDEX_PREFIX}v2-terminal-cursor.json"
 DEFERRED_INDEX_MIGRATION_KEY = f"{DEFERRED_INDEX_PREFIX}migration-complete.json"
 DEFERRED_FAILURE_PREFIX = "state/llm_deferred_failures/"
+DEFERRED_RECORD_LOCK_PREFIX = "maintenance-leases/llm-deferred/"
+DEFERRED_RECORD_LOCK_TTL_SECONDS = 300
+DEFERRED_RECORD_LOCK_WAIT_SECONDS = 30
 
 # A malformed terminal response is worth retrying: providers occasionally produce a bad JSON
 # object or fail an individual request.  It must not, however, turn every future producer pass
@@ -225,6 +231,43 @@ def _best_effort_delete_index(storage, data: Mapping[str, Any], recipe_hash: str
     _delete_pointer_keys(storage, _index_keys(data, recipe_hash=recipe_hash))
 
 
+@contextmanager
+def _deferred_record_lock(storage, recipe_hash: str):
+    """Serialize canonical-record writes and deletes through the R2 coordination plane.
+
+    B2 does not enforce conditional deletes, so a read-then-delete on the canonical registry can
+    remove a newer record written by a producer. Production's routing backend provides real CAS on
+    the ``maintenance-leases/`` prefix; local or B2-only test backends retain their old
+    single-process behavior when no coordination plane is available.
+    """
+    if not getattr(storage, "cas_capable", False):
+        yield
+        return
+
+    from citypods.ops.maintenance_leases import MaintenanceLeaseBusy, acquire
+
+    owner = f"llm-deferred:{uuid.uuid4().hex}"
+    key = f"{DEFERRED_RECORD_LOCK_PREFIX}{recipe_hash}.json"
+    deadline = time.monotonic() + DEFERRED_RECORD_LOCK_WAIT_SECONDS
+    while True:
+        try:
+            lease = acquire(
+                storage,
+                owner=owner,
+                key=key,
+                ttl_seconds=DEFERRED_RECORD_LOCK_TTL_SECONDS,
+            )
+            break
+        except MaintenanceLeaseBusy:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.1)
+    try:
+        yield
+    finally:
+        lease.release()
+
+
 def terminal_failure_retry_allowed(storage, recipe_hash: str) -> bool:
     """Whether another fresh submission is allowed for this recipe lineage.
 
@@ -335,7 +378,6 @@ def discard_terminal_failure(
     handle: JobHandle,
     error: BaseException,
     *,
-    backend=None,
     exhausted: bool = False,
     now: datetime | None = None,
 ) -> int:
@@ -388,11 +430,6 @@ def discard_terminal_failure(
         deferred_failure_key(handle.recipe_hash),
         (json.dumps(marker, indent=2, sort_keys=True) + "\n").encode(),
     )
-    if backend is not None and handle.ref:
-        try:
-            backend.delete_dispatched_ref(handle.ref)
-        except Exception:  # noqa: BLE001 -- stale Worker state must not retain the B2 handle
-            pass
     storage.delete(entry.key)
     _best_effort_delete_index(storage, entry.data, handle.recipe_hash)
     return count
@@ -473,6 +510,13 @@ def _record_for(result: JobResult | JobHandle) -> dict[str, Any]:
     if isinstance(deferred, DeferredLLMRequest):
         record["messages"] = [dict(m) for m in deferred.messages]
         record["policy"] = _serialize_policy(deferred.policy)
+        # Without these a rebuilt job fell back to the 1,024-token default margin and the
+        # direct-call default timeout, dropping the job's own budget and deadline.
+        record["output_token_budget"] = deferred.output_token_budget
+        if deferred.timeout is not None:
+            record["timeout"] = deferred.timeout
+        if deferred.max_tokens_mode is not None:
+            record["max_tokens_mode"] = deferred.max_tokens_mode
     return record
 
 
@@ -503,8 +547,23 @@ def _decode_record(data: Any) -> JobResult | JobHandle | None:
                 return None
             deferred = None
             if "messages" in data and "policy" in data:
+                budget = data.get("output_token_budget")
+                timeout = data.get("timeout")
                 deferred = DeferredLLMRequest(
-                    messages=tuple(data["messages"]), policy=_deserialize_policy(data["policy"])
+                    messages=tuple(data["messages"]),
+                    policy=_deserialize_policy(data["policy"]),
+                    # Records written before these fields existed keep the old defaults.
+                    **(
+                        {"output_token_budget": budget}
+                        if type(budget) is int and budget > 0
+                        else {}
+                    ),
+                    timeout=float(timeout)
+                    if isinstance(timeout, (int, float)) and not isinstance(timeout, bool)
+                    else None,
+                    max_tokens_mode="route_max"
+                    if data.get("max_tokens_mode") == "route_max"
+                    else None,
                 )
             return JobHandle(
                 task=data["task"],
@@ -566,34 +625,35 @@ def write_deferred(
     request lineage, not just the most recent attempt.
     """
     now = now or datetime.now(UTC)
-    existing_raw = _read_json(storage, deferred_key(recipe_hash))
-    if (
-        isinstance(existing_raw, Mapping)
-        and existing_raw.get("status") == "completed"
-        and isinstance(result, JobHandle)
-    ):
-        return
-    record = _record_for(result)
-    created_at = existing_raw.get("created_at") if isinstance(existing_raw, Mapping) else None
-    record["created_at"] = (
-        created_at if isinstance(created_at, str) and created_at else now.isoformat()
-    )
-    body = (json.dumps(record, indent=2, sort_keys=True) + "\n").encode()
-    old_keys = (
-        set(_index_keys(existing_raw, recipe_hash=recipe_hash))
-        if isinstance(existing_raw, Mapping)
-        else set()
-    )
-    new_keys = set(_index_keys(record, recipe_hash=recipe_hash))
-    # New pointers first, then the canonical record, then only the now-stale old pointers --
-    # never the reverse. A crash between any two of these steps leaves either a pointer with
-    # nothing (yet) behind it (harmless: a canonical GET on a missing/stale-status key is just
-    # treated as absent) or a stale extra pointer (harmless: advisory, cleaned up by the next
-    # write or `repair_deferred_index`) -- but never a valid pending canonical record reachable
-    # by zero pointers, which the old delete-old/write-canonical/write-new order could produce.
-    _write_pointer_keys(storage, new_keys - old_keys, recipe_hash)
-    _write_json(storage, deferred_key(recipe_hash), body)
-    _delete_pointer_keys(storage, old_keys - new_keys)
+    with _deferred_record_lock(storage, recipe_hash):
+        existing_raw = _read_json(storage, deferred_key(recipe_hash))
+        if (
+            isinstance(existing_raw, Mapping)
+            and existing_raw.get("status") == "completed"
+            and isinstance(result, JobHandle)
+        ):
+            return
+        record = _record_for(result)
+        created_at = existing_raw.get("created_at") if isinstance(existing_raw, Mapping) else None
+        record["created_at"] = (
+            created_at if isinstance(created_at, str) and created_at else now.isoformat()
+        )
+        body = (json.dumps(record, indent=2, sort_keys=True) + "\n").encode()
+        old_keys = (
+            set(_index_keys(existing_raw, recipe_hash=recipe_hash))
+            if isinstance(existing_raw, Mapping)
+            else set()
+        )
+        new_keys = set(_index_keys(record, recipe_hash=recipe_hash))
+        # New pointers first, then the canonical record, then only the now-stale old pointers --
+        # never the reverse. A crash between any two of these steps leaves either a pointer with
+        # nothing (yet) behind it (harmless: a canonical GET on a missing/stale-status key is just
+        # treated as absent) or a stale extra pointer (harmless: advisory, cleaned up by the next
+        # write or `repair_deferred_index`) -- but never a valid pending canonical record reachable
+        # by zero pointers.
+        _write_pointer_keys(storage, new_keys - old_keys, recipe_hash)
+        _write_json(storage, deferred_key(recipe_hash), body)
+        _delete_pointer_keys(storage, old_keys - new_keys)
 
 
 def look_up_deferred(storage, recipe_hash: str) -> JobResult | JobHandle | None:
@@ -607,15 +667,45 @@ def discard_deferred(storage, recipe_hash: str, *, expected_ref: str | None = No
     The expected reference makes the operation safe against a producer that re-submitted the same
     recipe while cancellation was in flight: a newer handle remains authoritative and untouched.
     """
-    key = deferred_key(recipe_hash)
-    data = _read_json(storage, key)
-    if not isinstance(data, Mapping) or data.get("status") != "pending":
-        return False
-    if expected_ref is not None and data.get("ref") != expected_ref:
-        return False
-    storage.delete(key)
-    _best_effort_delete_index(storage, data, recipe_hash)
-    return True
+    with _deferred_record_lock(storage, recipe_hash):
+        key = deferred_key(recipe_hash)
+        data = _read_json(storage, key)
+        if not isinstance(data, Mapping) or data.get("status") != "pending":
+            return False
+        if expected_ref is not None and data.get("ref") != expected_ref:
+            return False
+        storage.delete(key)
+        _best_effort_delete_index(storage, data, recipe_hash)
+        return True
+
+
+def discard_completed_result(storage, recipe_hash: str, expected_result: JobResult) -> bool:
+    """Remove a completed record whose content failed the caller's own local validation.
+
+    ``write_deferred`` never downgrades a completed record, and ``enqueue_batch`` short-circuits
+    on any ``look_up_deferred`` hit that is a ``JobResult`` -- so once a bad response is written
+    as "completed" for a recipe, every future submission under that *same* recipe (content-
+    addressed: same episode/source/model/prompt/pipeline version) replays the identical bad
+    content forever, with no new LLM call ever made, regardless of how many times the caller
+    retries or how it resets its own bookkeeping. A caller whose downstream validation (schema,
+    grounding, ...) rejects a completed result must discard the record itself, not just its own
+    pointer to it, or a retry can never actually happen.
+
+    Only deletes when the stored record still decodes to exactly ``expected_result`` -- if a
+    different completed record is present (e.g. a concurrent writer already replaced it, or a
+    caller reads a stale copy), this is a no-op: a caller's validation of an old read must never
+    clobber a newer write for the same recipe.
+    """
+    with _deferred_record_lock(storage, recipe_hash):
+        key = deferred_key(recipe_hash)
+        data = _read_json(storage, key)
+        if not isinstance(data, Mapping) or data.get("status") != "completed":
+            return False
+        if _decode_record(data) != expected_result:
+            return False
+        storage.delete(key)
+        _best_effort_delete_index(storage, data, recipe_hash)
+        return True
 
 
 def iter_pending_deferred(storage, *, unavailable: list[StorageReadUnavailable] | None = None):
@@ -887,6 +977,7 @@ def load_deferred_snapshot(
     should_stop: Callable[[], bool] | None = None,
     read_workers: int = SNAPSHOT_READ_WORKERS,
     reconcile_only: bool = False,
+    include_ineligible: bool = False,
 ) -> DeferredSnapshot:
     """Read canonical records once, using the advisory index after migration.
 
@@ -894,7 +985,21 @@ def load_deferred_snapshot(
     makes rollout safe for existing records and for a repair that is interrupted halfway through.
     A transiently unavailable canonical object is retained as an unavailable snapshot entry so
     independent records can still be reconciled; callers should inspect ``unavailable_reads``.
+
+    ``include_ineligible`` is an operator-maintenance escape hatch. The ordinary indexed path
+    lists only route partitions with current capacity, which is ideal for reconciliation but would
+    hide records pinned to a currently exhausted or paused route from a cleanup/classification
+    pass. It deliberately performs a full canonical-prefix listing and should not be used by the
+    recurring sweep.
     """
+    if include_ineligible:
+        return _load_snapshot_from_keys(
+            storage,
+            storage.list_objects(DEFERRED_PREFIX),
+            deadline_at=deadline_at,
+            should_stop=should_stop,
+            read_workers=read_workers,
+        )
     if reconcile_only:
         return load_reconcile_snapshot(
             storage,
@@ -1031,14 +1136,8 @@ def prune_expired_deferred_snapshot(
     *,
     now: datetime | None = None,
     ttl_days: float = DEFAULT_TTL_DAYS,
-    backend=None,
 ) -> int:
-    """Prune records using an already-loaded snapshot, without a second registry traversal.
-
-    If *backend* is supplied (a ``LiteLLMBackend`` instance), any expired handle whose ``ref``
-    points to a Cloudflare Worker dispatch object is deleted from R2 via a best-effort
-    ``DELETE /v1/requests/{id}`` call (Layer 3 sweep orphan reaping).
-    """
+    """Prune records using an already-loaded snapshot, without a second registry traversal."""
     now = now or datetime.now(UTC)
     deleted = 0
     for entry in snapshot.entries:
@@ -1071,14 +1170,6 @@ def prune_expired_deferred_snapshot(
             if _read_json(storage, key) != data:
                 continue
             _release_abandoned_reservation(storage, data, now=now)
-            # Layer 3 sweep orphan reaping: purge the R2 object for orphaned dispatch handles
-            if backend is not None:
-                ref = data.get("ref")
-                if ref and isinstance(ref, str):
-                    try:
-                        backend.delete_dispatched_ref(ref)
-                    except Exception:
-                        pass
             storage.delete(key)
             _best_effort_delete_index(storage, data, key[len(DEFERRED_PREFIX) : -len(".json")])
             entry.deleted = True
@@ -1125,6 +1216,7 @@ __all__ = [
     "MAX_TERMINAL_FAILURE_RETRIES",
     "discard_terminal_failure",
     "discard_deferred",
+    "discard_completed_result",
     "deferred_key",
     "deferred_failure_key",
     "load_deferred_snapshot",

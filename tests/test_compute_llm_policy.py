@@ -11,6 +11,7 @@ from citypods.compute.llm_policy import (
     PeakWindow,
     PricingPolicy,
     QuotaPolicy,
+    _load_generated_catalog,
     canonical_model,
     estimate_tokens,
 )
@@ -43,55 +44,68 @@ def test_policy_and_route_dataclasses_and_token_estimate():
 
 
 def test_generated_catalog_deduplicates_logical_models_across_direct_routes():
-    # groq_llama_3_3_70b_versatile_primary removed 2026-08-26 (config/provider_limits.yml):
-    # Groq stopped serving llama-3.3-70b-versatile, so this pool is down to two providers.
-    candidates = ROUTE_CANDIDATES["meta-llama/llama-3.3-70b-instruct"]
-    assert {candidate.provider for candidate in candidates} == {"sambanova", "openrouter"}
-    assert all(set(candidate.transports) == {"direct", "llm-dispatch"} for candidate in candidates)
+    # One logical model, five physical routes across four providers (the llama-3.3 example this
+    # test used was removed with its last, paused route on 2026-09-24).
+    candidates = ROUTE_CANDIDATES["google/gemma-4-31b-it"]
+    assert {candidate.provider for candidate in candidates} == {
+        "gemini",
+        "sambanova",
+        "openrouter",
+        "nvidia",
+    }
+    assert len({candidate.route_id for candidate in candidates}) == len(candidates)
+    assert all(set(candidate.transports) == {"direct"} for candidate in candidates)
     assert all(candidate.route_id and candidate.direct_model for candidate in candidates)
 
 
 def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
     # NVIDIA build's leg for this model (added 2026-08-29) was briefly commented out the same day
-    # on a misdiagnosis -- the 404s were NOT NVIDIA-side model gating but a dropped `/v1` in the
-    # Cloudflare AI Gateway custom-provider path (see config/provider_limits.yml's `nvidia` block).
-    # Restored once the path fix was verified end-to-end against the live gateway.
+    # on a misdiagnosis -- the 404s were NOT NVIDIA-side model gating but a custom-provider path
+    # mismatch in Cloudflare AI Gateway (see config/provider_limits.yml's `nvidia` block). Restored
+    # once the path fix was verified end-to-end against the live gateway. Paid routes are absent.
+    # One pool name per DeepSeek version (2026-09-24): v4 is OrcaRouter only, v4.1 NVIDIA only,
+    # and the old `v4-pro` alias pool is retired.
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
-    assert {candidate.provider for candidate in deepseek} == {
-        "deepseek",
-        "siliconflow",
-        "opencode",
-        "nvidia",
-    }
-    assert canonical_model("opencode/deepseek-v4-flash-free") == "deepseek/deepseek-v4-flash"
-    assert MODEL_ALIASES["deepseek/deepseek-v4-flash-0731"] == "deepseek/deepseek-v4-flash"
+    assert {candidate.provider for candidate in deepseek} == {"orcarouter"}
+    assert canonical_model("orcarouter/deepseek-v4-flash") == "deepseek/deepseek-v4-flash"
+    assert MODEL_ALIASES["nvidia/deepseek-v4.1-flash"] == "deepseek/deepseek-v4.1-flash"
+    assert "deepseek/deepseek-v4-pro" not in ROUTE_CANDIDATES
+    assert [route.route_id for route in ROUTE_CANDIDATES["deepseek/deepseek-v4.1-flash"]] == [
+        "nvidia_deepseek_v4_1_flash_free"
+    ]
 
-    # NVIDIA build's direct Nemotron 3 Ultra leg (added 2026-08-29) bypasses the OpenRouter/Kilo/
-    # OpenCode broker legs -- see nvidia_nemotron_3_ultra_550b_a55b_free.
+    # NVIDIA build's direct Nemotron 3 Ultra leg (added 2026-08-29) bypasses the OpenRouter/Kilo
+    # broker legs -- see nvidia_nemotron_3_ultra_550b_a55b_free.
     nemotron = ROUTE_CANDIDATES["nvidia/nemotron-3-ultra-550b-a55b:free"]
     assert {candidate.provider for candidate in nemotron} == {
         "openrouter",
         "kilo",
-        "opencode",
         "nvidia",
     }
-    assert (
-        canonical_model("opencode/nemotron-3-ultra-free")
-        == "nvidia/nemotron-3-ultra-550b-a55b:free"
-    )
 
 
-def test_deepseek_pricing_selects_the_effective_period_and_peak_windows():
-    route = next(
-        candidate
-        for candidate in ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
-        if candidate.provider == "deepseek"
+def test_generated_deepseek_routes_are_all_free_after_paid_catalog_removal():
+    assert all(route.free for route in ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"])
+
+
+def test_generated_catalog_includes_observed_characterization_fields() -> None:
+    routes, _, _ = _load_generated_catalog()
+    groq = next((r for r in routes if r.route_id == "groq_gpt_oss_120b_primary"), None)
+    assert groq is not None
+    assert groq.observed_burst == 30
+    # The 1,000 recorded on 2026-09-09 was the ceiling search's own floor, not a measurement --
+    # removed. Re-measured 2026-09-12 by a throttle-tolerant 3h endurance probe (contention
+    # confirmed absent): the route conclusively accepts up to 7,125 estimated input tokens,
+    # consistent with Groq's own quoted 8,000 TPM budget once output tokens are accounted for.
+    # Written explicitly here (not auto-promoted -- review/45 §20.8 still requires a
+    # human-reviewed promotion for every route; this one was).
+    assert groq.observed_on == "2026-09-12"
+    assert groq.observed_input_ceiling == 7125
+    assert groq.hard_input_ceiling == 7125
+
+    codestral = next(
+        (r for r in routes if r.route_id == "mistral_codestral_airforce_primary"), None
     )
-    before = route.pricing.rates_at(datetime(2026, 8, 16, 15, 59, tzinfo=UTC))
-    after = route.pricing.rates_at(datetime(2026, 8, 16, 16, 0, tzinfo=UTC))
-    assert before[:2] == (0.14e-6, 0.28e-6)
-    assert after[:2] == (0.22e-6, 0.66e-6)
-    assert [(window.start.isoformat(), window.end.isoformat()) for window in after[2]] == [
-        ("01:00:00", "04:00:00"),
-        ("06:00:00", "10:00:00"),
-    ]
+    assert codestral is not None
+    assert codestral.observed_on == "2026-09-16"
+    assert codestral.observed_recovery_seconds == 111

@@ -1,6 +1,7 @@
 # Centralized Provider & Model Rate Limits Configuration
 # Replaces config/mistral_model_limits.yml.
-# Used by scripts/compile_llm_limits.py to generate workers/llm-dispatch-proxy/src/dispatch_limits.json
+# Used by scripts/compile_llm_limits.py to generate workers/llm-dispatch-v2/src/dispatch_limits.json
+# and citypods/compute/llm_routes.json
 
 source: Centralized provider limits registry
 observed_on: 2026-08-29
@@ -9,33 +10,35 @@ observed_on: 2026-08-29
 # compilation to safeguard against token estimation drift and prevent 429 rate limit spikes.
 token_estimate_buffer: 0.90
 
-# Split-cap multiplier applied during Phase 2/3 coexistence (review/44) so that aggregate usage
-# across both v1 and v2 dispatchers does not exceed 100% of underlying provider rate limits.
-# Halves RPM, RPD, TPM, and monthly_tpm across all shared routes. Set to 1.0 (or omitted) to
-# restore full 1x capacity once legacy v1 backlog is drained (Phase 3).
+# Split-cap multiplier from the v1/v2 coexistence phase (review/44): scales RPM, RPD, TPM and
+# monthly_tpm across all routes. The v1 Worker is retired, so v2 is the only dispatcher and this
+# stays at 1.0 (full capacity).
 split_cap_multiplier: 1.0
 
 # Context ceilings are required on every physical route below. They are not provider defaults:
 # model families differ, and a gateway/account can expose a lower ceiling than the native model.
 
-# Structured-output profiles are provider capabilities, not model-name conventions. A provider or
-# individual route may select one; the compiler materializes the resolved behavior on every route
-# consumed by Python and the dispatch Worker.
-structured_output_profiles:
-  standard_json_schema:
+# Structured-output METHODS (review/48 R10). Producers never choose how to ask for JSON: a
+# durable v2 job carries only its response schema, and the v2 Worker shapes the request for the
+# route it actually dispatches to (a pooled job can land on any route in the pool, so a format
+# chosen at enqueue time for the pool's first model was wrong for the rest). Python's direct path
+# applies the same shaping. The set is closed -- the compiler rejects any other name -- and every
+# method is exercised by the shared fixture tests/fixtures/structured_output_shaping.json, which
+# both the Python and the Worker suites assert.
+#
+# Resolution per route (compile_llm_limits.py): the route's own `structured_output_method` (with
+# `structured_output_verified_on`, the date a live request proved it) -> a method verified for the
+# same model on another route -> the provider's `structured_output_method` -> `prompt_only`, the
+# one shape every chat endpoint accepts. Provider methods below are today's inherited
+# configuration, not verifications; the provider-catalog canary (review/48 Slice 1) verifies them.
+structured_output_methods:
+  json_schema:
     response_format: json_schema
-    direct_handler: instructor
     include_schema_in_prompt: false
     strip_schema_keys: []
-  json_object:
-    response_format: json_object
-    direct_handler: native
-    include_schema_in_prompt: true
-    strip_schema_keys: []
-  relaxed_json_schema:
+  json_schema_relaxed:
     # Google accepts the nested Pydantic schema, but rejects JSON Schema size/range keywords.
     response_format: json_schema
-    direct_handler: native
     include_schema_in_prompt: false
     strip_schema_keys:
       - minLength
@@ -44,48 +47,44 @@ structured_output_profiles:
       - maximum
       - minItems
       - maxItems
+  json_object:
+    # JSON-object mode guarantees JSON syntax, not the schema, so the schema goes in the prompt.
+    response_format: json_object
+    include_schema_in_prompt: true
+    strip_schema_keys: []
+  prompt_only:
+    # No response_format at all. NVIDIA's deepseek-v4.1-flash returns EMPTY content to both
+    # json_schema and json_object (verified 2026-09-24) and valid JSON only without one.
+    response_format: none
+    include_schema_in_prompt: true
+    strip_schema_keys: []
 
 # Optional cross-model overflow routing. A key names a model whose callers may also be satisfied
 # by any of its listed target models once its own routes are exhausted/unavailable -- extra daily
 # capacity for a job pinned to one model (`allowed_models=(source,)`), without editing the job or
 # caller at all. The compiler resolves both sides through `model_aliases` the same way a route's
 # own `model` selector does, and fails the compile if either side is unknown. Both the Python
-# scheduler (`select_route`) and the `llm-dispatch-proxy` Worker (`normalizeChatRequest`) expand a
+# scheduler (`select_route`) and the `llm-dispatch-v2` Worker (`routes.js`) expand a
 # request's allowed models with this map, so it takes effect for every transport uniformly.
-#
-# Mistral Medium jobs route strictly to native Mistral and Airforce Mistral routes.
-model_routing: {}
+model_routing:
+  gemini/gemini-3.7-flash:
+    - gemini/gemini-3.6-flash
+    - gemini/gemini-3.8-flash
+    - gemini/gemini-3.5-flash
 
 
 # `api_base`/`chat_path` are the OpenAI-shaped upstream every account of that provider is called
-# through -- required for every provider, not just Mistral.
+# through -- required for every provider.
 providers:
-  mistral:
-    api_base: https://api.mistral.ai
-    ai_gateway_slug: mistral
-    ai_gateway_chat_path: /v1/chat/completions
-    chat_path: /v1/chat/completions
-    # Mistral's account-wide limit is 60 RPM (one submission per second), shared by every model.
-    rpm: 60
-    # HOTFIX (2026-08-18): Mistral switched to account-wide monthly token metering (effective
-    # until the policy is re-evaluated after their next billing cycle reset on 2026-08-31).
-    # Zeroed out as a stopgap to stop consumption until a real monthly allowance is sized -- see
-    # AGENTS.md / review/11 for the follow-up to pick a real value.
-    monthly_tpm: 0
-    reset_day: 1
-    accounts:
-      - id: primary
-        api_key_env: MISTRAL_API_KEY
-      - id: secondary
-        api_key_env: MISTRAL_API_KEY_SECONDARY
-  # Airforce custom provider: serves Mistral Medium 3.5. At 1 RPM, more than one in-flight
-  # request cannot increase sustainable throughput and can race the upstream limiter.
-  # While published docs claimed 20 RPM, live 429 error responses report 1 RPM (plan_rpm: 1),
-  # so rpm: 1 is used here.
+  # Airforce custom provider: provides free OpenAI-compatible endpoints.
+  # At 1 RPM account-wide, more than one in-flight request cannot increase sustainable throughput
+  # and can race the upstream limiter. Live 429 error responses report 1 RPM (plan_rpm: 1),
+  # so rpm: 1 and concurrency: 1 are used here.
   airforce:
+    structured_output_method: json_schema
     api_base: https://api.airforce/v1
     ai_gateway_slug: custom-airforce
-    ai_gateway_chat_path: /v1/chat/completions
+    ai_gateway_chat_path: /chat/completions
     chat_path: /v1/chat/completions
     reset_timezone: UTC
     rpm: 1
@@ -100,7 +99,7 @@ providers:
     ai_gateway_chat_path: /v1beta/openai/chat/completions
     chat_path: /chat/completions
     reset_timezone: America/Los_Angeles
-    structured_output_profile: relaxed_json_schema
+    structured_output_method: json_schema_relaxed
     accounts:
       - id: project_primary
         api_key_env: GEMINI_API_KEY
@@ -114,25 +113,21 @@ providers:
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
-    structured_output_profile: json_object
+    structured_output_method: json_object
     accounts:
       - id: primary
         api_key_env: DEEPSEEK_API_KEY
   siliconflow:
+    structured_output_method: json_schema
     # The GLOBAL platform (`.com`), which is a different service from `siliconflow.cn` with its own
     # accounts -- a `.com` key is rejected by `.cn` with 401 "Api key is invalid". Only `.cn` offers
-    # free models, gated behind Chinese real-name ID verification, so nothing here is free: every
-    # SiliconFlow route below is `free: false` and stops working at a zero account balance (402
-    # code 30001 on every model, verified 2026-08-29). SiliconFlow is carried as the *cheapest paid*
-    # leg of deepseek/deepseek-v4-flash ($0.049/M vs DeepSeek Direct's $0.14/M), not as capacity --
-    # route selection tries every free leg first, so these are reached only by a job that sets
-    # `allow_paid` once no free route has capacity.
+    # Free SiliconFlow models require Chinese real-name ID verification. Paid SiliconFlow routes
+    # are intentionally absent from this catalog; retain the provider block for future re-probing.
     api_base: https://api.siliconflow.com/v1
     ai_gateway_slug: custom-siliconflow
-    # Full path from the origin root (see the `nvidia` block). SiliconFlow serves the same
-    # endpoint at both `/chat/completions` and `/v1/chat/completions`, which is the only reason
-    # the old root-relative value worked; this states the intended URL explicitly.
-    ai_gateway_chat_path: /v1/chat/completions
+    # The registered Base URL ends in `/v1`, and the gateway now honors that path. Keep the
+    # caller path root-relative so it does not double the version segment.
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
@@ -144,17 +139,17 @@ providers:
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
-    structured_output_profile: json_object
+    structured_output_method: json_object
     accounts:
       - id: primary
         api_key_env: GROQ_API_KEY
   sambanova:
+    structured_output_method: json_schema
     api_base: https://api.sambanova.ai/v1
     ai_gateway_slug: custom-sambanova
-    # Full path from the origin root -- see the `nvidia` block below for why. Verified 2026-08-29:
-    # `/chat/completions` through the gateway returns SambaNova's plain-text `404 page not found`,
-    # `/v1/chat/completions` reaches the real API (a genuine 429 rate-limit JSON came back).
-    ai_gateway_chat_path: /v1/chat/completions
+    # The registered Base URL ends in `/v1`, and the gateway now honors that path. A root-relative
+    # caller path therefore reaches `/v1/chat/completions` without a duplicated version segment.
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     # SambaNova's documented Free-tier ceiling is 20 requests/minute. Keep this provider-wide
     # because both configured models share the same API key, and let the split-cap compiler divide
@@ -168,21 +163,19 @@ providers:
       - id: primary
         api_key_env: SAMBANOVA_API_KEY
   zai:
+    structured_output_method: json_schema
     api_base: https://api.z.ai/api/paas/v4
     ai_gateway_slug: custom-zai
-    # Routed through `workers/llm-provider-shim`, not straight at api_base: AI Gateway rewrites the
-    # last segment of a Custom Provider's Base URL to a hardcoded `v1`, which turns z.ai's
-    # `/api/paas/v4` into `/api/paas/v1` (a real 404). No Base URL can express `/api/paas/v4`, so
-    # the shim restores it. The registered Base URL is
-    # `https://citypods-llm-provider-shim.citypods.workers.dev/<SHIM_TOKEN>/zai/x` -- the trailing
-    # `x` is sacrificial (the gateway eats it and substitutes `v1`). Verified 2026-08-29: HTTP 200.
-    ai_gateway_chat_path: /chat/completions
+    # Cloudflare AI Gateway Base URL for custom-zai is configured to `https://api.z.ai/api/paas`,
+    # so the caller path must supply `/v4/chat/completions` (verified 2026-09-15: HTTP 200).
+    ai_gateway_chat_path: /v4/chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
       - id: primary
         api_key_env: ZAI_API_KEY
   openrouter:
+    structured_output_method: json_schema
     api_base: https://openrouter.ai/api/v1
     ai_gateway_slug: openrouter
     ai_gateway_chat_path: /chat/completions
@@ -194,44 +187,30 @@ providers:
       - id: primary
         api_key_env: OPENROUTER_API_KEY
   kilo:
+    structured_output_method: json_schema
     api_base: https://api.kilo.ai/api/gateway
     ai_gateway_slug: custom-kilo
-    # The registered Base URL is `https://api.kilo.ai/api/gateway/v1`, not api_base: AI Gateway
-    # rewrites a Custom Provider Base URL's last segment to a hardcoded `v1`, so registering
-    # `/api/gateway` dispatched to `/api/v1` (a real 404). Kilo also serves `/api/gateway/v1`, so
-    # registering that lands correctly and no shim is needed. Verified 2026-08-29: HTTP 200.
+    # The registered Base URL is `https://api.kilo.ai/api/gateway/v1`, not api_base. Kilo serves
+    # that path, so it remains correct under both the former forced-`v1` rewrite and the current
+    # path-preserving join; no shim is needed.
     ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
     accounts:
       - id: primary
         api_key_env: KILO_API_KEY
-  opencode:
-    api_base: https://opencode.ai/zen/v1
-    ai_gateway_slug: custom-opencode
-    # Routed through `workers/llm-provider-shim` alongside z.ai. OpenCode's own prefix (`/zen/v1`)
-    # survives the gateway's `v1` substitution unchanged, yet direct gateway calls still 404'd for a
-    # cause never identified from outside -- replaying the gateway's full header set on a direct
-    # call would not reproduce it. Going through the shim resolves it, which also ruled out the
-    # leading theory that opencode.ai rejects Cloudflare-edge traffic (the shim is a Worker too).
-    # Registered Base URL: `https://.../<SHIM_TOKEN>/opencode/x`. Verified 2026-08-29: a genuine
-    # upstream 429 (free-tier quota) in place of the routing 404.
-    ai_gateway_chat_path: /chat/completions
-    chat_path: /chat/completions
-    reset_timezone: UTC
-    accounts:
-      - id: primary
-        api_key_env: OPENCODE_API_KEY
+
   # NVIDIA build.nvidia.com (API Catalog / NIM hosted endpoints). Unlike every other provider
   # above, NVIDIA publishes no rate-limit table at all -- the community-reported baseline is
   # ~40 RPM, account-wide, "dependent on model, use-case, and current overall traffic" per
   # NVIDIA's own developer-forum staff replies, and developers report 429s even under light load.
   # Treat this whole provider as best-effort capacity, never a committed SLA:
-  #   - `rpm: 12` is a *self-imposed* 30% cap of the ~40 RPM community baseline (40 * 0.30 = 12),
-  #     not a limit NVIDIA documents. This is the one number this account actually enforces via
-  #     the shared `ProviderLedger` (see `citypods/compute/llm_budget.py`), pacing every model and
-  #     route below off one account-wide clock -- mirroring how the Mistral provider block already
-  #     paces every Mistral model off one shared account limit.
+  #   - `rpm: 35` is a self-imposed provider-wide safety net, set above the actual sum of every
+  #     route's own `rpm` below (8 routes at 4 + 1 at 0.5 = 32.5) so per-route pacing -- not this
+  #     account-wide clock -- stays the binding constraint (see the comment on `rpm` itself below
+  #     for the full reasoning; this is the one number this account actually enforces via the
+  #     shared `ProviderLedger`, see `citypods/compute/llm_budget.py`), mirroring how the Mistral
+  #     provider block already paces every Mistral model off one shared account limit.
   #   - Every route below also declares `tpm: 100000` as a second, independent self-imposed cap.
   #     NOTE: this is an *approximation*, not a true provider-level TPM ledger -- the schema/code
   #     (`LLMBudget`/`ProviderLedger`) only actually enforces a shared limit for `rpm`
@@ -246,31 +225,60 @@ providers:
   # OpenAI-compatible direct-adapter path as Kilo/OpenCode/SiliconFlow (see `_direct_model` in
   # `scripts/compile_llm_limits.py`).
   nvidia:
+    structured_output_method: json_schema
     api_base: https://integrate.api.nvidia.com/v1
     ai_gateway_slug: custom-nvidia
-    # Full path from the origin root, NOT just /chat/completions: Cloudflare AI Gateway ignores
-    # the path component of a Custom Provider's registered Base URL and joins the caller-supplied
-    # path at the origin root, so `https://integrate.api.nvidia.com/v1` + `/chat/completions`
-    # dispatches to `https://integrate.api.nvidia.com/chat/completions` -- NVIDIA's ELB answers
-    # that with an empty-body `text/plain` 404. Verified 2026-08-29 by curl. The other custom
-    # providers keep `/chat/completions` only because their upstreams happen to serve the same
-    # endpoint at the origin root too; NVIDIA's does not.
-    ai_gateway_chat_path: /v1/chat/completions
+    # The registered Base URL ends in `/v1`, and the gateway now honors that path. Keep the
+    # caller path root-relative so it reaches NVIDIA's `/v1/chat/completions` exactly once.
+    ai_gateway_chat_path: /chat/completions
     chat_path: /chat/completions
     reset_timezone: UTC
-    # Provider-wide safety net only -- the REAL limit is per route (0.5 rpm each). NVIDIA's quota
-    # is per MODEL, not per account: verified 2026-08-29 on one key, `deepseek-v4-pro` returned 429
-    # nine times out of nine while `nemotron-3-super` returned 200 three times, twice inside the
-    # same minute (16:58:14 ok / 16:58:50 429). A tight provider-wide cap would therefore be the
-    # wrong instrument -- it would make nine models share one model's budget. This only has to sit
-    # clear of the ~40 RPM community-reported account baseline while staying above the sum of the
-    # route rates (9 x 0.5 = 4.5), leaving per-route pacing as the binding constraint.
-    rpm: 6
+    # Provider-wide safety net only -- the REAL limit is per route. On 2026-08-29 8 of the then 9
+    # routes were `rpm: 4` and the since-retired `deepseek-v4-pro` route was `rpm: 0.5`, a real
+    # per-route sum of 32.5, not a flat "9 routes at the same rate". NVIDIA's quota is per MODEL,
+    # not per account: on the same day, `deepseek-v4-pro`
+    # returned 429 nine times out of nine while `nemotron-3-super` returned 200 three times, twice
+    # inside the same minute (16:58:14 ok / 16:58:50 429). A tight provider-wide cap would
+    # therefore be the wrong instrument -- it would make nine models share one model's budget.
+    # This field only has to clear the real 32.5 per-route sum with margin while staying under the
+    # ~40 RPM community-reported account baseline, leaving per-route pacing as the binding
+    # constraint -- which a value below the real sum (the previous `rpm: 6`, itself inconsistent
+    # with the stale "0.5 rpm each" arithmetic once written here) defeats by becoming the
+    # accidental binding constraint instead.
+    rpm: 35
     tpm: 100000
-    concurrency: 2
+    # Raised 2 -> 3 on 2026-09-23 so Nemotron 3 Ultra -- the chapter-agenda lane's only route
+    # with headroom beyond two 200-RPD pools -- always has a slot. The other NVIDIA routes that
+    # carry slow overflow work (kimi-k3 ~590s, deepseek-v4.1-flash) are capped at concurrency 1
+    # each, and the Gemma route (172s median) is paused, so at most two slots can be held by
+    # non-Nemotron work. AI Gateway logs for 2026-09-21/22 put NVIDIA's average in-flight count
+    # at 0.5-0.65, so 3 remains well inside what the account has absorbed.
+    concurrency: 3
     accounts:
       - id: primary
         api_key_env: NVIDIA_API_KEY
+  orcarouter:
+    api_base: https://api.orcarouter.ai/v1
+    ai_gateway_slug: custom-orcarouter
+    # The registered Base URL ends in `/v1`, and the gateway now honors that path. Keep the
+    # caller path root-relative so it reaches `/v1/chat/completions` without a duplicated segment.
+    ai_gateway_chat_path: /chat/completions
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    # OrcaRouter publishes free-tier limits live at GET api.orcarouter.ai/api/free-package/public
+    # (`free_tier.tiers`, per model): lifetime spend $0 -> 10 rpm / 50 rpd plus a small unpublished
+    # per-request prompt cap; >= $20 -> 20 rpm / 800 rpd. This account is on the $20 tier (topped
+    # up; confirmed by the maintainer 2026-09-25). No concurrency or in-flight limit is published
+    # anywhere (docs, pricing, model pages, the endpoint), and free traffic carries no
+    # X-RateLimit-* headers. rpm 10 and concurrency 2 are deliberate choices below the tier, not
+    # provider limits: at ~40 s (hy3), ~10 s (DeepSeek v4) and ~5 s (GLM 5.3) per call, three
+    # models at 800/day use ~25% of two shared slots, so 800/day per model is reachable as is.
+    rpm: 10
+    concurrency: 2
+    structured_output_method: json_object
+    accounts:
+      - id: primary
+        api_key_env: ORCAROUTER_API_KEY
 routes:
   # ==========================================
   # GEMINI & GEMMA ROUTES (Google AI Studio)
@@ -282,12 +290,17 @@ routes:
     upstream_model: gemini-3.5-flash-lite
     input_context_limit: 1048576
     output_context_limit: 65536
+    # Gemini 3.5 Flash Lite vs chars/4: p50 1.70 / p95 2.15 over 106 paired jobs (2026-09-23).
+    input_token_ratio: 2.15
     account_id: project_primary
     rpm: 15
     rpd: 500
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
+    observed_on: "2026-09-12"
+    observed_burst: 10
+    observed_input_ceiling: 218875
 
   - route_id: gemini_3_5_flash_lite_secondary
     model: gemini/gemini-3.5-flash-lite
@@ -295,12 +308,17 @@ routes:
     upstream_model: gemini-3.5-flash-lite
     input_context_limit: 1048576
     output_context_limit: 65536
+    # Gemini 3.5 Flash Lite vs chars/4: p50 1.70 / p95 2.15 over 106 paired jobs (2026-09-23).
+    input_token_ratio: 2.15
     account_id: project_secondary
     rpm: 15
     rpd: 500
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
+    observed_on: "2026-09-12"
+    observed_burst: 10
+    observed_input_ceiling: 218875
 
   - route_id: gemini_3_1_flash_lite_primary
     model: gemini/gemini-3.1-flash-lite
@@ -308,12 +326,17 @@ routes:
     upstream_model: gemini-3.1-flash-lite
     input_context_limit: 1048576
     output_context_limit: 65536
+    # Gemini 3.1 Flash Lite vs chars/4: p50 1.06 / p95 1.59 over 339 paired jobs (2026-09-23).
+    input_token_ratio: 1.6
     account_id: project_primary
     rpm: 15
     rpd: 500
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
+    observed_on: "2026-09-12"
+    observed_burst: 1
+    observed_input_ceiling: 218875
 
   - route_id: gemini_3_1_flash_lite_secondary
     model: gemini/gemini-3.1-flash-lite
@@ -321,26 +344,51 @@ routes:
     upstream_model: gemini-3.1-flash-lite
     input_context_limit: 1048576
     output_context_limit: 65536
+    # Gemini 3.1 Flash Lite vs chars/4: p50 1.06 / p95 1.59 over 339 paired jobs (2026-09-23).
+    input_token_ratio: 1.6
     account_id: project_secondary
     rpm: 15
     rpd: 500
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
+    observed_on: "2026-09-12"
+    observed_burst: 1
+    observed_input_ceiling: 218875
 
   # Gemma 4 Massive Free Quota Pools (14.4k RPD / 30 RPM each)
+  #
+  # Google quota probe (2026-09-12, secondary key): provider_reported_tpm 16000, with no observed
+  # contention. This is an aggregate per-model input-token/minute quota, not a per-request size
+  # boundary. Keep 10% headroom by setting hard_input_ceiling to 14400; the scheduler's rolling
+  # TPM reservation accounts for aggregate input plus output use. This replaces the earlier
+  # 10000 stopgap, which unnecessarily sent otherwise admissible jobs to fallback routes.
+  # observed_input_ceiling below remains the historical probe observation; it is not promoted to
+  # the new hard ceiling because this quota probe did not measure a per-request maximum.
+  # hard_input_ceiling_tolerance 0.1: when a claim finds nothing else to dispatch, the Worker still
+  # tries a job whose calibrated size is up to 10% over 14400 (15840, still under the 16000 quota),
+  # one per route per claim. The calibrated size is itself an estimate (learned p95 x headroom);
+  # refusing near misses outright left them queued with no route once SambaNova's 20/day was spent
+  # (2026-09-25).
   - route_id: gemma_4_26b_primary
     model: google/gemma-4-26b-a4b-it
     provider: gemini
     upstream_model: gemma-4-26b-a4b-it
     input_context_limit: 262144
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    # Prior covers the measured upper tail within the 10% TPM safety margin.
+    input_token_ratio: 1.4
     account_id: project_primary
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 8000
+    hard_input_ceiling: 14400
+    hard_input_ceiling_tolerance: 0.1
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 10000
+    observed_burst: 31
 
   - route_id: gemma_4_26b_secondary
     model: google/gemma-4-26b-a4b-it
@@ -348,12 +396,19 @@ routes:
     upstream_model: gemma-4-26b-a4b-it
     input_context_limit: 262144
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    # Prior covers the measured upper tail within the 10% TPM safety margin.
+    input_token_ratio: 1.4
     account_id: project_secondary
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 8000
+    hard_input_ceiling: 14400
+    hard_input_ceiling_tolerance: 0.1
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 10000
+    observed_burst: 31
 
   - route_id: gemma_4_31b_primary
     model: google/gemma-4-31b-it
@@ -361,12 +416,19 @@ routes:
     upstream_model: gemma-4-31b-it
     input_context_limit: 262144
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    # Prior covers the measured upper tail within the 10% TPM safety margin.
+    input_token_ratio: 1.4
     account_id: project_primary
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 8000
+    hard_input_ceiling: 14400
+    hard_input_ceiling_tolerance: 0.1
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 10000
+    observed_burst: 2
 
   - route_id: gemma_4_31b_secondary
     model: google/gemma-4-31b-it
@@ -374,12 +436,19 @@ routes:
     upstream_model: gemma-4-31b-it
     input_context_limit: 262144
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    # Prior covers the measured upper tail within the 10% TPM safety margin.
+    input_token_ratio: 1.4
     account_id: project_secondary
     rpm: 30
     rpd: 14400
     tpm: 16000
-    hard_input_ceiling: 8000
+    hard_input_ceiling: 14400
+    hard_input_ceiling_tolerance: 0.1
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 10000
+    observed_burst: 2
 
   # Additional Free Flash Burst Pools (20 RPD / 5-10 RPM each)
   - route_id: gemini_3_flash_preview_primary
@@ -392,8 +461,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
+    observed_on: "2026-09-12"
+    observed_burst: 6
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_flash_preview_secondary
     model: gemini/gemini-3-flash-preview
@@ -405,8 +477,77 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
+    observed_on: "2026-09-12"
+    observed_burst: 6
+    observed_input_ceiling: 234437
+
+  - route_id: gemini_3_8_flash_primary
+    model: gemini/gemini-3.8-flash
+    provider: gemini
+    upstream_model: gemini-3.8-flash
+    input_context_limit: 1048576
+    output_context_limit: 65536
+    account_id: project_primary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
+    hard_input_ceiling: 218875
+    free: true
+    observed_on: "2026-09-12"
+    observed_burst: 0
+    observed_input_ceiling: 218875
+    upstream_429_default: upstream_capacity
+
+  - route_id: gemini_3_8_flash_secondary
+    model: gemini/gemini-3.8-flash
+    provider: gemini
+    upstream_model: gemini-3.8-flash
+    input_context_limit: 1048576
+    output_context_limit: 65536
+    account_id: project_secondary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
+    hard_input_ceiling: 218875
+    free: true
+    observed_on: "2026-09-12"
+    observed_burst: 0
+    observed_input_ceiling: 218875
+    upstream_429_default: upstream_capacity
+
+  - route_id: gemini_3_7_flash_primary
+    model: gemini/gemini-3.7-flash
+    provider: gemini
+    upstream_model: gemini-3.7-flash
+    input_context_limit: 1048576
+    output_context_limit: 65536
+    account_id: project_primary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
+    hard_input_ceiling: 234437
+    free: true
+    observed_on: "2026-09-12"
+    observed_burst: 7
+    observed_input_ceiling: 234437
+
+  - route_id: gemini_3_7_flash_secondary
+    model: gemini/gemini-3.7-flash
+    provider: gemini
+    upstream_model: gemini-3.7-flash
+    input_context_limit: 1048576
+    output_context_limit: 65536
+    account_id: project_secondary
+    rpm: 5
+    rpd: 20
+    tpm: 250000
+    hard_input_ceiling: 234437
+    free: true
+    observed_on: "2026-09-12"
+    observed_burst: 7
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_6_flash_primary
     model: gemini/gemini-3.6-flash
@@ -418,8 +559,12 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
+    observed_on: "2026-09-12"
+    observed_burst: 0
+    observed_input_ceiling: 218875
+    upstream_429_default: upstream_capacity
 
   - route_id: gemini_3_6_flash_secondary
     model: gemini/gemini-3.6-flash
@@ -431,8 +576,12 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 218875
     free: true
+    observed_on: "2026-09-12"
+    observed_burst: 0
+    observed_input_ceiling: 218875
+    upstream_429_default: upstream_capacity
 
   - route_id: gemini_3_5_flash_primary
     model: gemini/gemini-3.5-flash
@@ -444,8 +593,11 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
+    observed_on: "2026-09-12"
+    observed_burst: 1
+    observed_input_ceiling: 234437
 
   - route_id: gemini_3_5_flash_secondary
     model: gemini/gemini-3.5-flash
@@ -457,49 +609,35 @@ routes:
     rpm: 5
     rpd: 20
     tpm: 250000
-    hard_input_ceiling: 120000
+    hard_input_ceiling: 234437
     free: true
+    observed_on: "2026-09-12"
+    observed_burst: 1
+    observed_input_ceiling: 234437
 
   # ==========================================
+  # SAMBANOVA GEMMA 4 ROUTE
   # ==========================================
-  # LLAMA 3.3 70B MULTI-PROVIDER POOL (SambaNova + OpenRouter)
-  # ==========================================
-  # groq_llama_3_3_70b_versatile_primary removed 2026-08-26: Groq has stopped serving
-  # llama-3.3-70b-versatile -- every dispatch attempt against it errored with Groq's own
-  # "does not exist or you do not have access to it" (model_not_found), confirmed against Groq's
-  # current published rate-limit table, which no longer lists any llama-3.3-70b model at all.
-  # Groq's current chat-completions catalog (per that same table) is allam-2-7b, groq/compound,
-  # groq/compound-mini, meta-llama/llama-prompt-guard-2-{22m,86m}, openai/gpt-oss-{120b,20b,
-  # safeguard-20b}, and qwen/qwen3.6-27b -- none of which is a drop-in replacement for this pool's
-  # logical model, so this is a removal, not a swap. (openai/gpt-oss-120b, one of those current
-  # models, is added as its own route below -- it was already a referenced judge model with no
-  # route at all, unrelated to this pool.)
-  - route_id: sambanova_llama_3_3_70b_instruct_primary
-    model: meta-llama/llama-3.3-70b-instruct
+  # Live probe 2026-09-18: gemma-4-31B-it returned HTTP 200 with a valid completion. Use the
+  # same conservative shared-key pacing envelope as the other SambaNova free routes until a
+  # model-specific quota measurement is available.
+  - route_id: sambanova_gemma_4_31b_it_primary
+    model: google/gemma-4-31b-it
     provider: sambanova
-    upstream_model: Meta-Llama-3.3-70B-Instruct
+    upstream_model: gemma-4-31B-it
     input_context_limit: 131072
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    input_token_ratio: 1.2
     account_id: primary
     concurrency: 1
     rpm: 20
-    # SambaNova Free tier: 20 requests/day for this model. The split-cap compiler emits 10 per
-    # dispatcher while v1/v2 coexist, preserving the 20-request provider budget in aggregate.
     rpd: 20
     tpm: 100000
     free: true
-
-  - route_id: openrouter_meta_llama_llama_3_3_70b_instruct
-    model: meta-llama/llama-3.3-70b-instruct
-    provider: openrouter
-    upstream_model: meta-llama/llama-3.3-70b-instruct
-    input_context_limit: 131072
-    output_context_limit: 16384
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.00000010
-    output_per_token: 0.00000040
+    observed_on: "2026-09-18"
+    observed_burst: 1
+    upstream_429_default: upstream_capacity
 
   # ==========================================
   # GROQ HIGH-CAPABILITY FREE ROUTES (Groq API)
@@ -515,7 +653,11 @@ routes:
     rpm: 30
     rpd: 1000
     tpm: 8000
+    hard_input_ceiling: 7125
     free: true
+    observed_on: "2026-09-12"
+    observed_burst: 30
+    observed_input_ceiling: 7125
 
   - route_id: groq_qwen_3_6_27b_primary
     model: qwen/qwen3.6-27b
@@ -526,8 +668,19 @@ routes:
     account_id: primary
     rpm: 30
     rpd: 1000
-    tpm: 8000
+    # Distinct from gpt-oss-120b's 8000: this model's error body reports a separate, stricter
+    # "input tokens per minute (ITPM): Limit 7000" (confirmed live 2026-09-12, reproduced twice).
+    # 8000 (Groq's general per-model TPM header, which this route previously copied from
+    # gpt-oss-120b) overstates what this specific model actually allows.
+    tpm: 7000
+    # Same 7000 figure as tpm above: the binary-search ceiling probe converged near 7125 (an
+    # estimate from char/4 token counting), but the directly-quoted ITPM=7000 is exact and
+    # stricter, so it is used here instead of the noisier estimate.
+    hard_input_ceiling: 7000
     free: true
+    observed_on: "2026-09-12"
+    observed_burst: 30
+    observed_input_ceiling: 7000
 
   - route_id: groq_qwen_3_8_27b_primary
     model: qwen/qwen3.8-27b
@@ -538,384 +691,17 @@ routes:
     account_id: primary
     rpm: 30
     rpd: 1000
-    tpm: 8000
+    # Same correction as qwen3.6-27b above: "input tokens per minute (ITPM): Limit 7000"
+    # (confirmed live 2026-09-12), stricter than the 8000 previously copied from gpt-oss-120b.
+    tpm: 7000
+    # Same 7000 figure as tpm above: the binary-search ceiling probe converged near 7125 (an
+    # estimate from char/4 token counting), but the directly-quoted ITPM=7000 is exact and
+    # stricter, so it is used here instead of the noisier estimate.
+    hard_input_ceiling: 7000
     free: true
-
-  # ==========================================
-  # QWEN 2.5 72B MULTI-PROVIDER POOL (SambaNova + SiliconFlow)
-  # ==========================================
-  - route_id: sambanova_qwen_2_5_72b_instruct_primary
-    model: qwen/qwen-2.5-72b-instruct
-    provider: sambanova
-    upstream_model: Qwen2.5-72B-Instruct
-    input_context_limit: 131072
-    output_context_limit: 8192
-    account_id: primary
-    concurrency: 1
-    rpm: 20
-    # Keep the same conservative Free-tier daily ceiling for this shared-key fallback route.
-    rpd: 20
-    tpm: 100000
-    free: true
-
-  - route_id: siliconflow_qwen_2_5_72b_primary
-    model: qwen/qwen-2.5-72b-instruct
-    provider: siliconflow
-    upstream_model: Qwen/Qwen2.5-72B-Instruct
-    input_context_limit: 33000
-    output_context_limit: 4000
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.00000007 # $0.07 / MTok
-    output_per_token: 0.00000028 # $0.28 / MTok
-
-  # ==========================================
-  # DEEPSEEK V4 FLASH MULTI-PROVIDER POOL (SiliconFlow + DeepSeek Direct)
-  # Current V4 Flash API identifier (1M context window).
-  # ==========================================
-  - route_id: siliconflow_deepseek_v4_flash_primary
-    model: deepseek/deepseek-v4-flash
-    model_key: deepseek/deepseek-v4-flash
-    provider: siliconflow
-    structured_output_profile: json_object
-    upstream_model: deepseek-ai/DeepSeek-V4-Flash-0731
-    input_context_limit: 1000000
-    output_context_limit: 384000
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.000000049 # $0.049 / MTok (Promo)
-    output_per_token: 0.000000196 # $0.196 / MTok
-
-  - route_id: siliconflow_deepseek_v4_flash_0731_primary
-    model: deepseek/deepseek-v4-flash-0731
-    model_key: deepseek/deepseek-v4-flash
-    provider: siliconflow
-    structured_output_profile: json_object
-    upstream_model: deepseek-ai/DeepSeek-V4-Flash-0731
-    input_context_limit: 1000000
-    output_context_limit: 384000
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.000000049
-    output_per_token: 0.000000196
-
-  - route_id: deepseek_v4_flash_primary
-    model: deepseek/deepseek-v4-flash
-    model_key: deepseek/deepseek-v4-flash
-    provider: deepseek
-    structured_output_profile: json_object
-    upstream_model: deepseek-v4-flash
-    input_context_limit: 1000000
-    output_context_limit: 384000
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.00000014 # Direct pre-cutover input rate
-    output_per_token: 0.00000028
-    # Rates are USD per token. The first period preserves the pre-cutover card; the second is
-    # effective at the timestamp announced by DeepSeek.
-    pricing:
-      periods:
-        - effective_at: 1970-01-01T00:00:00Z
-          input_per_token: 0.00000014
-          output_per_token: 0.00000028
-        - effective_at: 2026-08-16T16:00:00Z
-          input_per_token: 0.00000022
-          output_per_token: 0.00000066
-          windows:
-            - tz: UTC
-              start: "01:00"
-              end: "04:00"
-              multiplier: 2.0
-            - tz: UTC
-              start: "06:00"
-              end: "10:00"
-              multiplier: 2.0
-
-  - route_id: deepseek_v4_flash_0731_primary
-    model: deepseek/deepseek-v4-flash-0731
-    model_key: deepseek/deepseek-v4-flash
-    provider: deepseek
-    structured_output_profile: json_object
-    upstream_model: deepseek-v4-flash
-    input_context_limit: 1000000
-    output_context_limit: 384000
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.00000014
-    output_per_token: 0.00000028
-    pricing:
-      periods:
-        - effective_at: 1970-01-01T00:00:00Z
-          input_per_token: 0.00000014
-          output_per_token: 0.00000028
-        - effective_at: 2026-08-16T16:00:00Z
-          input_per_token: 0.00000022
-          output_per_token: 0.00000066
-          windows:
-            - tz: UTC
-              start: "01:00"
-              end: "04:00"
-              multiplier: 2.0
-            - tz: UTC
-              start: "06:00"
-              end: "10:00"
-              multiplier: 2.0
-
-  - route_id: deepseek_v4_pro_primary
-    model: deepseek/deepseek-v4-pro
-    provider: deepseek
-    structured_output_profile: json_object
-    upstream_model: deepseek-v4-pro
-    input_context_limit: 1000000
-    output_context_limit: 384000
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.000000435
-    output_per_token: 0.00000087
-    pricing:
-      periods:
-        - effective_at: 1970-01-01T00:00:00Z
-          input_per_token: 0.000000435
-          output_per_token: 0.00000087
-        - effective_at: 2026-08-16T16:00:00Z
-          input_per_token: 0.00000066
-          output_per_token: 0.00000198
-          windows:
-            - tz: UTC
-              start: "01:00"
-              end: "04:00"
-              multiplier: 2.0
-            - tz: UTC
-              start: "06:00"
-              end: "10:00"
-              multiplier: 2.0
-
-  # ==========================================
-  # MISTRAL ROUTES (Audited Exact Quotas)
-  # ==========================================
-  # HOTFIX (2026-08-18): the primary Mistral account's monthly token allowance is exhausted. Its
-  # `rpd: 0` pins every primary route's
-  # daily request quota to zero, which the scheduler already treats as ordinary quota exhaustion:
-  # `select_route`/`llm_budget.available()` reject every dispatch and the deferred-request sweep
-  # retries at each local midnight (see `_next_quota_reset`) rather than hard-failing callers like
-  # `AgendaChapterCandidatesStage` (chapter_titles.AGENDA_PRODUCTION_MODEL) that dispatch to
-  # Mistral unconditionally. Secondary-account routes retain the same limits the primary routes
-  # had before the pause, allowing the independent secondary quota to drain the backlog.
-  #
-  # Codestral 2508: 2.08 RPS (124 RPM), 625k TPM
-  - route_id: mistral_codestral_2508_primary
-    model: mistral/codestral-2508
-    provider: mistral
-    upstream_model: codestral-2508
-    input_context_limit: 256000
-    output_context_limit: 256000
-    account_id: primary
-    rpm: 124
-    tpm: 625000
-    free: true
-
-  # Devstral 2512: 0.83 RPS (49 RPM), 1,000,000 TPM
-  - route_id: mistral_devstral_2512_primary
-    model: mistral/devstral-2512
-    provider: mistral
-    upstream_model: devstral-2512
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: primary
-    rpm: 49
-    tpm: 1000000
-    free: true
-
-  # Mistral Small 2603: 0.83 RPS (49 RPM), 50k TPM
-  - route_id: mistral_small_2603_primary
-    model: mistral/mistral-small-2603
-    provider: mistral
-    upstream_model: mistral-small-2603
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: primary
-    rpm: 49
-    tpm: 50000
-    free: true
-
-  # Mistral Medium Latest: 0.83 RPS (50 RPM), 25k TPM
-  - route_id: mistral_medium_latest_primary
-    model: mistral/mistral-medium-latest
-    provider: mistral
-    upstream_model: mistral-medium-latest
-    input_context_limit: 131072
-    output_context_limit: 8192
-    account_id: primary
-    rpm: 50
-    tpm: 25000
-    free: true
-
-  # Airforce Mistral Medium 3.5 (free tier): alias for mistral/mistral-medium-latest
-  # While documentation reported 20 RPM, error bodies returned 1 RPM (plan_rpm: 1); rpm: 1 is used.
-  - route_id: airforce_mistral_medium_3_5_primary
-    model: mistral/mistral-medium-3-5
-    model_key: mistral/mistral-medium-latest
-    provider: airforce
-    upstream_model: mistral-medium-3.5
-    input_context_limit: 131072
-    output_context_limit: 8192
-    account_id: primary
-    rpm: 1
-    tpm: 200000
-    rpd: 1000
-    # Preserve the 1 RPM request-time limit, then leave a small clock-skew margin before the
-    # next start. This is deliberately not response-time pacing: Airforce accepts successful
-    # pairs less than one minute apart measured from the prior response.
-    request_start_margin_seconds: 2
-    concurrency: 1
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-
-  # Legacy Medium aliases mapping to mistral/mistral-medium-latest
-  - route_id: mistral_medium_2508_alias_primary
-    model: mistral/mistral-medium-2508
-    model_key: mistral/mistral-medium-latest
-    provider: mistral
-    upstream_model: mistral-medium-latest
-    input_context_limit: 131072
-    output_context_limit: 8192
-    account_id: primary
-    rpm: 50
-    tpm: 25000
-    free: true
-
-  - route_id: mistral_medium_2505_alias_primary
-    model: mistral/mistral-medium-2505
-    model_key: mistral/mistral-medium-latest
-    provider: mistral
-    upstream_model: mistral-medium-latest
-    input_context_limit: 131072
-    output_context_limit: 8192
-    account_id: primary
-    rpm: 50
-    tpm: 25000
-    free: true
-
-  # Mistral Large 2512: 0.07 RPS (4.2 RPM -> 4 RPM), 250k TPM
-  - route_id: mistral_large_2512_primary
-    model: mistral/mistral-large-2512
-    provider: mistral
-    upstream_model: mistral-large-2512
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: primary
-    rpm: 4
-    tpm: 250000
-    free: true
-
-  # Mistral Large 3: 4 RPM, 250k TPM
-  - route_id: mistral_large_3_primary
-    model: mistral/mistral-large-3
-    provider: mistral
-    upstream_model: mistral-large-3
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: primary
-    rpm: 4
-    tpm: 250000
-    free: true
-
-  # Labs Leanstral: 0.63 RPS (37 RPM), 5,000,000 TPM
-  - route_id: mistral_labs_leanstral_1_5_1_primary
-    model: mistral/labs-leanstral-1-5-1
-    provider: mistral
-    upstream_model: labs-leanstral-1-5-1
-    input_context_limit: 262144
-    output_context_limit: 131072
-    account_id: primary
-    rpm: 37
-    tpm: 5000000
-    free: true
-
-  # Secondary account: original per-model limits, independent of the paused primary account.
-  - route_id: mistral_codestral_2508_secondary
-    model: mistral/codestral-2508
-    provider: mistral
-    upstream_model: codestral-2508
-    input_context_limit: 256000
-    output_context_limit: 256000
-    account_id: secondary
-    rpm: 124
-    tpm: 625000
-    free: true
-
-  - route_id: mistral_devstral_2512_secondary
-    model: mistral/devstral-2512
-    provider: mistral
-    upstream_model: devstral-2512
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: secondary
-    rpm: 49
-    tpm: 1000000
-    free: true
-
-  - route_id: mistral_small_2603_secondary
-    model: mistral/mistral-small-2603
-    provider: mistral
-    upstream_model: mistral-small-2603
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: secondary
-    rpm: 49
-    tpm: 50000
-    free: true
-
-  - route_id: mistral_medium_latest_secondary
-    model: mistral/mistral-medium-latest
-    provider: mistral
-    upstream_model: mistral-medium-latest
-    input_context_limit: 131072
-    output_context_limit: 8192
-    account_id: secondary
-    rpm: 50
-    tpm: 25000
-    free: true
-
-  - route_id: mistral_large_2512_secondary
-    model: mistral/mistral-large-2512
-    provider: mistral
-    upstream_model: mistral-large-2512
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: secondary
-    rpm: 4
-    tpm: 250000
-    free: true
-
-  - route_id: mistral_large_3_secondary
-    model: mistral/mistral-large-3
-    provider: mistral
-    upstream_model: mistral-large-3
-    input_context_limit: 262144
-    output_context_limit: 262144
-    account_id: secondary
-    rpm: 4
-    tpm: 250000
-    free: true
-
-  - route_id: mistral_labs_leanstral_1_5_1_secondary
-    model: mistral/labs-leanstral-1-5-1
-    provider: mistral
-    upstream_model: labs-leanstral-1-5-1
-    input_context_limit: 262144
-    output_context_limit: 131072
-    account_id: secondary
-    rpm: 37
-    tpm: 5000000
-    free: true
+    observed_on: "2026-09-12"
+    observed_burst: 30
+    observed_input_ceiling: 7000
 
   # ==========================================
   # Z.AI ROUTES (Zhipu AI Global GLM Series)
@@ -928,10 +714,13 @@ routes:
     input_context_limit: 200000
     output_context_limit: 131072
     account_id: primary
+    hard_input_ceiling: 199222
     rpm: 15
     rpd: 500
     concurrency: 2
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 199222
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -942,49 +731,15 @@ routes:
     input_context_limit: 200000
     output_context_limit: 98304
     account_id: primary
+    hard_input_ceiling: 147140
     rpm: 15
     rpd: 500
     concurrency: 2
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 147140
     input_per_token: 0.0
     output_per_token: 0.0
-
-  # Paid High-Speed / Frontier Routes
-  - route_id: zai_glm_4_7_flashx_primary
-    model: zai/glm-4.7-flashx
-    provider: zai
-    upstream_model: glm-4.7-flashx
-    input_context_limit: 200000
-    output_context_limit: 131072
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.00000007
-    output_per_token: 0.00000040
-
-  - route_id: zai_glm_4_7_primary
-    model: zai/glm-4.7
-    provider: zai
-    upstream_model: glm-4.7
-    input_context_limit: 200000
-    output_context_limit: 131072
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.00000060
-    output_per_token: 0.00000220
-
-  - route_id: zai_glm_5_primary
-    model: zai/glm-5
-    provider: zai
-    upstream_model: glm-5
-    input_context_limit: 200000
-    output_context_limit: 131072
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.00000100
-    output_per_token: 0.00000320
 
   # ==========================================
   # OPENROUTER CURATED ROUTES (Gemma 4 & Up)
@@ -996,9 +751,14 @@ routes:
     upstream_model: google/gemma-4-31b-it:free
     input_context_limit: 262144
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    input_token_ratio: 1.2
     account_id: primary
     rpm: 10
-    rpd: 200
+    # Paused 2026-09-23 (was 200): 148 of 149 AI Gateway attempts on 2026-09-22 were upstream
+    # 429s, so this leg spent attempts without adding capacity. rpd: 0 is the paused-route
+    # convention; re-enable only after a live probe shows the free pool serving again.
+    rpd: 0
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1010,9 +770,13 @@ routes:
     upstream_model: google/gemma-4-26b-a4b-it:free
     input_context_limit: 131072
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    input_token_ratio: 1.2
     account_id: primary
     rpm: 10
-    rpd: 200
+    # Paused 2026-09-23 (was 200): all 27 AI Gateway attempts on 2026-09-21 were upstream 429s.
+    # The two AI Studio routes carry this model's 14,400-RPD free quota.
+    rpd: 0
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1026,11 +790,16 @@ routes:
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
     input_context_limit: 1000000
     output_context_limit: 65536
+    # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
+    input_token_ratio: 1.75
     account_id: primary
+    hard_input_ceiling: 234437
     rpm: 10
     rpd: 200
     concurrency: 1
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 234437
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1041,49 +810,15 @@ routes:
     input_context_limit: 262144
     output_context_limit: 262144
     account_id: primary
+    hard_input_ceiling: 249027
     rpm: 10
     rpd: 200
     concurrency: 1
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 249027
     input_per_token: 0.0
     output_per_token: 0.0
-
-  # Paid Frontier / Elite Open-Weights
-  - route_id: openrouter_qwen_qwen3_235b_a22b_2507
-    model: openrouter/qwen/qwen3-235b-a22b-2507
-    provider: openrouter
-    upstream_model: qwen/qwen3-235b-a22b-2507
-    input_context_limit: 262144
-    output_context_limit: 16384
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.00000009
-    output_per_token: 0.00000036
-
-  - route_id: openrouter_mistralai_mistral_small_3_2_24b_instruct
-    model: openrouter/mistralai/mistral-small-3.2-24b-instruct
-    provider: openrouter
-    upstream_model: mistralai/mistral-small-3.2-24b-instruct
-    input_context_limit: 256000
-    output_context_limit: 16384
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.00000009
-    output_per_token: 0.00000027
-
-  - route_id: openrouter_openai_gpt_4o_mini
-    model: openrouter/openai/gpt-4o-mini
-    provider: openrouter
-    upstream_model: openai/gpt-4o-mini
-    input_context_limit: 128000
-    output_context_limit: 16384
-    account_id: primary
-    concurrency: 5
-    free: false
-    input_per_token: 0.00000015
-    output_per_token: 0.00000060
 
   # ==========================================
   # KILO CODE ROUTES (Kilo Gateway)
@@ -1099,7 +834,10 @@ routes:
     rpm: 20
     rpd: 200
     tpm: 100000
+    hard_input_ceiling: 249027
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 249027
     input_per_token: 0.0
     output_per_token: 0.0
 
@@ -1110,84 +848,21 @@ routes:
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b:free
     input_context_limit: 1000000
     output_context_limit: 65536
+    # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
+    input_token_ratio: 1.75
     account_id: primary
     concurrency: 1
     rpm: 20
     rpd: 200
     tpm: 100000
+    hard_input_ceiling: 234437
     free: true
+    observed_on: "2026-09-12"
+    observed_input_ceiling: 234437
     input_per_token: 0.0
     output_per_token: 0.0
 
-  # ==========================================
-  # OPENCODE ZEN ROUTES (OpenCode.ai)
-  # ==========================================
-  - route_id: opencode_deepseek_v4_flash_free
-    model: opencode/deepseek-v4-flash-free
-    # OpenCode Zen's current free model identifier. Keep the legacy alias route below for callers
-    # that still request the old 0731 logical name.
-    model_key: deepseek/deepseek-v4-flash
-    provider: opencode
-    upstream_model: deepseek-v4-flash-free
-    input_context_limit: 200000
-    output_context_limit: 128000
-    account_id: primary
-    concurrency: 1
-    rpm: 30
-    rpd: 500
-    tpm: 250000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
 
-  - route_id: opencode_deepseek_v4_flash_0731_free
-    model: opencode/deepseek-v4-flash-0731
-    model_key: deepseek/deepseek-v4-flash
-    provider: opencode
-    upstream_model: deepseek-v4-flash-free
-    input_context_limit: 200000
-    output_context_limit: 128000
-    account_id: primary
-    concurrency: 1
-    rpm: 30
-    rpd: 500
-    tpm: 250000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-
-  - route_id: opencode_mimo_v2_5_free
-    model: opencode/mimo-v2.5-free
-    provider: opencode
-    upstream_model: mimo-v2.5-free
-    input_context_limit: 200000
-    output_context_limit: 32000
-    account_id: primary
-    concurrency: 1
-    rpm: 30
-    rpd: 500
-    tpm: 100000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-
-  - route_id: opencode_nemotron_3_ultra_free
-    model: opencode/nemotron-3-ultra-free
-    # OpenCode's provider-local name for the same Nemotron 3 Ultra free family exposed by
-    # OpenRouter and Kilo under the explicit NVIDIA model identifier.
-    model_key: nvidia/nemotron-3-ultra-550b-a55b:free
-    provider: opencode
-    upstream_model: nemotron-3-ultra-free
-    input_context_limit: 1000000
-    output_context_limit: 128000
-    account_id: primary
-    concurrency: 1
-    rpm: 20
-    rpd: 200
-    tpm: 100000
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
 
   # ==========================================
   # NVIDIA BUILD ROUTES (build.nvidia.com / NIM hosted API catalog)
@@ -1199,19 +874,20 @@ routes:
   # caps us either way -- it just spends the quota evenly instead of burning it in half an hour and
   # then sitting locked out. Below 1 rpm is deliberate and supported; see _scale_rate_limit and
   # per-route 40k TPM self-imposed cap that is *not* summed across routes (no real provider-level
-  # TPM ledger exists yet). No `rpd` -- NVIDIA publishes no daily cap. `structured_output_profile`
-  # is left at the config default (`standard_json_schema`, via `instructor`) rather than guessing
-  # this gateway's native JSON-mode behavior, which is unverified.
+  # TPM ledger exists yet). No `rpd` -- NVIDIA publishes no daily cap. The provider-level
+  # `structured_output_method: json_schema` is inherited, not verified: NVIDIA serves each model
+  # through its own stack, and at least one (deepseek-v4.1-flash) answers json_schema with empty
+  # content, so a route that has been checked carries its own verified method.
   #
   # Each route ALSO declares its own `rpm: 12`, matching the provider-wide cap, even though
   # Python's LLMBudget already enforces that cap correctly at the shared-provider level
   # (`provider_rpm`/`ProviderLedger`) regardless of any route-level value. This is a defense-in-
-  # depth stopgap for `workers/llm-dispatch-v2`: unlike v1 (`llm-dispatch-proxy`, which ports
-  # `providerRpm`/`providerAvailable`/`reserveProviderCapacity`), v2's pacing engine
+  # depth stopgap for `workers/llm-dispatch-v2`: unlike the retired v1 Worker
+  # (`llm-dispatch-proxy`, which ported `providerRpm`/`providerAvailable`/
+  # `reserveProviderCapacity`), v2's pacing engine
   # (`workers/llm-dispatch-v2/src/pacing.js`) has no cross-route, provider-level concept at all --
   # `earliestSafeStart`/`routeHasCapacityFor` only see one route's own rpm/rpd/tpm. Without a
-  # route-level rpm, v2 would treat these routes as unbounded, and v1/v2 are actively coexisting
-  # right now (`split_cap_multiplier: 0.50` above), not a future migration. This does not restore
+  # route-level rpm, v2 would treat these routes as unbounded. This does not restore
   # true shared pooling in v2 -- in the worst case (many different NVIDIA models dispatched
   # concurrently) v2's aggregate could still exceed the provider-wide rpm in total -- but it bounds each
   # individual route rather than leaving it uncapped. A real fix ports provider-level pacing into
@@ -1236,7 +912,24 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
+    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
+    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
+    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
+    # formula, not measured or published. Input-ceiling (max size of one request, measured
+    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
+    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
+    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
+    # developer forums: "limits vary by model and are not published"). This tpm value remains
+    # exactly what it was before this session -- an unverified inherited placeholder, not a
+    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
+    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
+    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
+    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
+    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
+    # request this size, exactly the behavior this route's real ~6x ratio calls for.
     tpm: 40000
+    hard_input_ceiling: 234437
     # Raised back to 4 on 2026-08-30. The ceiling of 1 was set the day before on the
     # theory that NVIDIA rejects any overlapping request with a fast ~8.3s 429. Gateway
     # logs since the routing fix landed at 14Z say otherwise: nemotron-3-super ran 39
@@ -1246,74 +939,65 @@ routes:
     #
     # Concurrency, not rpm/tpm, was the binding constraint: with a ceiling of 1 the
     # dispatcher never came close to either limit, because nothing was allowed in
-    # flight to consume them. 4 here matches this route's rpm. It is per-Worker-ledger,
-    # so v1 and v2 each keep their own -- up to 8 in flight while both transports are
-    # live, the same coexistence caveat as split_cap_multiplier.
-    concurrency: 4
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
-
-  # Both DeepSeek routes below were disabled 2026-08-29 on a misdiagnosis: their 404s were blamed
-  # on a per-key NVIDIA "Public API Endpoints" entitlement gap. The real cause was this provider
-  # block's `ai_gateway_chat_path` (see above) -- Cloudflare AI Gateway dropped the `/v1` from the
-  # Custom Provider base URL, so every NVIDIA route, not just these two, was dispatching to
-  # `https://integrate.api.nvidia.com/chat/completions` and getting NVIDIA's empty-body ELB 404.
-  # With the path corrected, both models were re-verified through the gateway on 2026-08-29 and
-  # returned HTTP 200 with real completions. No entitlement request was needed or filed.
-  - route_id: nvidia_deepseek_v4_pro_0813_free
-    model: deepseek/deepseek-v4-pro
-    provider: nvidia
-    upstream_model: deepseek-ai/deepseek-v4-pro-0813
-    input_context_limit: 1000000
-    output_context_limit: 384000
-    account_id: primary
-    # 0.5 rpm = 30/hr, applied ONLY to this route. NVIDIA's limits are per MODEL (see the provider
-    # block), so this rate must not be generalised. Measured 2026-08-29: `deepseek-v4-pro` locks out
-    # for 22+ minutes once ~30 successful calls for THIS model land inside a rolling hour (onsets at
-    # 28 and 37), and a lockout beginning at 15:54 was still running 66 minutes later -- the penalty
-    # appears to lengthen while we keep probing. Pacing to 30/hr costs no throughput here, since the
-    # quota caps us either way. Sub-1 rpm is deliberate: `_scale_rate_limit` and `routeAvailable`'s
-    # minute bucket both used to clamp a fractional rate UP to 1.
-    rpm: 0.5
-    tpm: 40000
-    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
-    # queueing it. Successful calls on these models run 41s median / 77s p90 /
-    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
-    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
-    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
-    # one -- up to 2 in flight while both transports are live, the same
-    # coexistence caveat as split_cap_multiplier.
+    # flight to consume them.
+    #
+    # Lowered 4 -> 1 on 2026-09-23. This route carries only full-transcript overflow for the
+    # locator/moments lanes, and those calls ran ~590s. NVIDIA's provider-wide concurrency is
+    # shared with Nemotron 3 Ultra (the chapter-agenda lane's elastic route), so a few of these
+    # overflow calls could otherwise hold every NVIDIA slot for ten minutes at a time.
     concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-12"
+    observed_burst: 2
+    observed_input_ceiling: 234437
 
-  - route_id: nvidia_deepseek_v4_flash_0731_free
-    model: nvidia/deepseek-v4-flash-0731
-    model_key: deepseek/deepseek-v4-flash
+  # NVIDIA retired both `deepseek-ai/deepseek-v4-pro-0813` and `deepseek-ai/deepseek-v4-flash-0731`
+  # (HTTP 410 Gone; 22-28 locator/moments jobs a day failed terminally against the pro route on
+  # 2026-09-21/22) and now serves `deepseek-ai/deepseek-v4.1-flash` in their place -- confirmed
+  # in NVIDIA's /v1/models listing on 2026-09-23.
+  #
+  # One pool name per DeepSeek version (2026-09-24). Pooling v4 and v4.1 under one name hid
+  # OrcaRouter's v4 (no lane used the shared name) and meant a job could be answered by either
+  # version. Lanes now list the versions they want explicitly:
+  #   deepseek/deepseek-v4.1-flash -> this route (AA 39.5): r6-moments overflow, tournament:tag
+  #   deepseek/deepseek-v4-flash   -> OrcaRouter's v4 only (AA 34.3): chapter-locator overflow,
+  #                                   tagger spill, its own tournament:tag contestant
+  # The former `deepseek/deepseek-v4-pro` alias (which also pointed here) is retired.
+  #
+  # No `hard_input_ceiling` yet: NVIDIA was returning 503 "Service temporarily overloaded" for
+  # every model when this route was added, so run the route probe (llm-rate-probe.yml) and author
+  # a measured ceiling in a follow-up. Until then admission falls back to `input_context_limit`.
+  - route_id: nvidia_deepseek_v4_1_flash_free
+    model: nvidia/deepseek-v4.1-flash
+    model_key: deepseek/deepseek-v4.1-flash
     provider: nvidia
-    upstream_model: deepseek-ai/deepseek-v4-flash-0731
+    upstream_model: deepseek-ai/deepseek-v4.1-flash
     input_context_limit: 1000000
     output_context_limit: 384000
     account_id: primary
-    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
-    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
-    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
-    # showed up immediately as a drop in dispatched jobs.
+    # Carried over from the v4-flash-0731 route it replaces (never returned a 429 at 4 rpm).
     rpm: 4
     tpm: 40000
-    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
-    # queueing it. Successful calls on these models run 41s median / 77s p90 /
-    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
-    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
-    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
-    # one -- up to 2 in flight while both transports are live, the same
-    # coexistence caveat as split_cap_multiplier.
-    concurrency: 4
+    # 1, not the old routes' 4: this route carries full-transcript overflow (multi-minute calls)
+    # and must not crowd Nemotron 3 Ultra out of NVIDIA's shared provider concurrency.
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    upstream_429_default: upstream_capacity
+    # Verified 2026-09-24: json_schema and json_object both return a 200 with EMPTY content
+    # (reasoning only); with no response_format the model returns valid JSON.
+    structured_output_method: prompt_only
+    structured_output_verified_on: "2026-09-24"
+    # How this route turns thinking off when a lane asks for `reasoning: off` (verified
+    # 2026-09-24: no reasoning tokens, valid JSON). Not applied by default: the model keeps its
+    # default thinking unless a lane opts in for a job type (llm_lanes[...].reasoning).
+    reasoning_controls:
+      "off":  # quoted: bare `off` is YAML's boolean false
+        chat_template_kwargs:
+          enable_thinking: false
 
   - route_id: nvidia_gemma_4_31b_it_free
     model: google/gemma-4-31b-it
@@ -1323,12 +1007,20 @@ routes:
     upstream_model: google/gemma-4-31b-it
     input_context_limit: 262144
     output_context_limit: 32768
+    # Gemma tokenizer vs chars/4: p50 0.99 / p95 1.16 / max 1.48 over 675 paired jobs (2026-09-23).
+    input_token_ratio: 1.2
     account_id: primary
     # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
     # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
+    # Paused 2026-09-23 (temporary). Gemma calls here ran 172s median / 531s p90 and held
+    # NVIDIA's shared provider concurrency that Nemotron 3 Ultra -- the chapter-agenda lane's
+    # only elastic route -- needs. Gemma producers now size jobs to fit Google AI Studio's two
+    # 14,400-RPD Gemma routes instead (see tags.py's prelabeler batching), so this leg is no
+    # longer needed for capacity. rpd: 0 is the repository's paused-route convention.
+    rpd: 0
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1341,33 +1033,9 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-
-  - route_id: nvidia_gpt_oss_120b_free
-    model: openai/gpt-oss-120b
-    # Pools with Groq's `groq_gpt_oss_120b_primary` route -- a second, independent free pool for
-    # the same model rather than new capability.
-    provider: nvidia
-    upstream_model: openai/gpt-oss-120b
-    input_context_limit: 131072
-    output_context_limit: 65536
-    account_id: primary
-    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
-    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
-    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
-    # showed up immediately as a drop in dispatched jobs.
-    rpm: 4
-    tpm: 40000
-    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
-    # queueing it. Successful calls on these models run 41s median / 77s p90 /
-    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
-    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
-    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
-    # one -- up to 2 in flight while both transports are live, the same
-    # coexistence caveat as split_cap_multiplier.
-    concurrency: 4
-    free: true
-    input_per_token: 0.0
-    output_per_token: 0.0
+    observed_on: "2026-09-09"
+    observed_burst: 0
+    upstream_429_default: upstream_capacity
 
   - route_id: nvidia_nemotron_3_ultra_550b_a55b_free
     model: nvidia/nemotron-3-ultra-550b-a55b
@@ -1380,13 +1048,32 @@ routes:
     upstream_model: nvidia/nemotron-3-ultra-550b-a55b
     input_context_limit: 1000000
     output_context_limit: 65536
+    # Nemotron tokenizer vs chars/4: p50 1.10 / p95 1.73 / max 3.29 over 412 paired jobs (2026-09-23).
+    input_token_ratio: 1.75
     account_id: primary
     # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
     # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
+    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
+    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
+    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
+    # formula, not measured or published. Input-ceiling (max size of one request, measured
+    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
+    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
+    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
+    # developer forums: "limits vary by model and are not published"). This tpm value remains
+    # exactly what it was before this session -- an unverified inherited placeholder, not a
+    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
+    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
+    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
+    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
+    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
+    # request this size, exactly the behavior this route's real ~6x ratio calls for.
     tpm: 40000
+    hard_input_ceiling: 246109
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
@@ -1398,6 +1085,10 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-12"
+    observed_burst: 0
+    observed_input_ceiling: 246109
+    upstream_429_default: upstream_capacity
 
   - route_id: nvidia_nemotron_3_super_120b_a12b_free
     model: nvidia/nemotron-3-super-120b-a12b
@@ -1416,6 +1107,22 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
+    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
+    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
+    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
+    # formula, not measured or published. Input-ceiling (max size of one request, measured
+    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
+    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
+    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
+    # developer forums: "limits vary by model and are not published"). This tpm value remains
+    # exactly what it was before this session -- an unverified inherited placeholder, not a
+    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
+    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
+    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
+    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
+    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
+    # request this size, exactly the behavior this route's real ~6x ratio calls for.
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
@@ -1428,6 +1135,10 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-12"
+    observed_burst: 5
+    hard_input_ceiling: 249027
+    observed_input_ceiling: 249027
 
   - route_id: nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free
     model: nvidia/nemotron-3-nano-omni-30b-a3b-reasoning
@@ -1445,7 +1156,24 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
+    # NOT raised to "fix" a hard_input_ceiling-vs-tpm tension (2026-09-12 self-correction): an
+    # earlier version of this comment raised tpm to 60000 specifically to stop pacing.js's old
+    # tpm*FULL_TOKEN_BUDGET_WINDOWS(5) admissibility gate from rejecting the measured
+    # hard_input_ceiling on this route -- but that number was BACK-SOLVED from an unrelated
+    # formula, not measured or published. Input-ceiling (max size of one request, measured
+    # directly and reliably below) and TPM (sustained tokens/minute) are genuinely independent
+    # axes that vary per route/provider; NVIDIA does not expose a rate-limit header (confirmed
+    # live: a 200 OK response carries none) and does not publish a per-model TPM figure (its own
+    # developer forums: "limits vary by model and are not published"). This tpm value remains
+    # exactly what it was before this session -- an unverified inherited placeholder, not a
+    # measurement -- pending an actual sustained-rate probe (a real Phase-1-style test, separate
+    # from the ceiling search below). That old tpm*5 gate was retired outright (2026-09-13,
+    # workers/llm-dispatch-v2/src/pacing.js): hard_input_ceiling is now the ONLY size-admissibility
+    # check, and the TPM bucket refills with no upper cap, so a hard_input_ceiling well above tpm
+    # is no longer inert -- pacing simply waits longer for the bucket to accrue enough for a
+    # request this size, exactly the behavior this route's real ~6x ratio calls for.
     tpm: 40000
+    hard_input_ceiling: 234437
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
     # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
@@ -1457,37 +1185,101 @@ routes:
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
+    observed_on: "2026-09-12"
+    observed_burst: 0
+    observed_input_ceiling: 234437
+    upstream_429_default: upstream_capacity
 
-  - route_id: nvidia_riva_translate_4b_instruct_v2_free
-    model: nvidia/riva-translate-4b-instruct-v2
-    # Reserved for future translation work (bilingual/non-English meetings) -- not summarization,
-    # quote-finding, or tagging. Context window is UNVERIFIED: no public spec was found for this
-    # 4B translation model, so this uses a conservative placeholder pending a real model-card
-    # check before production use.
-    provider: nvidia
-    upstream_model: nvidia/riva-translate-4b-instruct-v2
-    input_context_limit: 32768
+  # ==========================================
+  # ORCAROUTER ROUTES (api.orcarouter.ai)
+  # ==========================================
+  - route_id: orcarouter_deepseek_v4_flash_free
+    model: orcarouter/deepseek-v4-flash
+    model_key: deepseek/deepseek-v4-flash
+    provider: orcarouter
+    upstream_model: deepseek/deepseek-v4-flash-free
+    input_context_limit: 1000000
+    output_context_limit: 128000
+    account_id: primary
+    concurrency: 2
+    rpm: 10
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-14"
+    retry_after_trustworthy: true
+    upstream_429_default: upstream_capacity
+    # Verified 2026-09-24: json_object and json_schema both return valid JSON (5-14 s).
+    structured_output_method: json_object
+    structured_output_verified_on: "2026-09-24"
+
+  - route_id: orcarouter_tencent_hy3_free
+    model: orcarouter/tencent-hy3
+    model_key: tencent/hy3
+    provider: orcarouter
+    upstream_model: tencent/hy3-free
+    input_context_limit: 256000
+    output_context_limit: 65536
+    account_id: primary
+    concurrency: 2
+    rpm: 10
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-14"
+    retry_after_trustworthy: true
+    upstream_429_default: upstream_capacity
+    # Verified 2026-09-24: json_object and json_schema both return valid JSON (~12 s).
+    structured_output_method: json_object
+    structured_output_verified_on: "2026-09-24"
+
+  - route_id: orcarouter_zai_glm_5_3_flash_free
+    model: orcarouter/glm-5.3-flash
+    model_key: zai/glm-5.3-flash
+    provider: orcarouter
+    upstream_model: z-ai/glm-5.3-flash-free
+    input_context_limit: 1000000
+    output_context_limit: 131072
+    account_id: primary
+    concurrency: 2
+    rpm: 10
+    rpd: 800
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-14"
+    retry_after_trustworthy: true
+    upstream_429_default: upstream_capacity
+    # Verified 2026-09-24: json_object returns exactly the schema's fields (~5 s); json_schema
+    # returned JSON with an unrequested field that the strict contract rejects.
+    structured_output_method: json_object
+    structured_output_verified_on: "2026-09-24"
+
+  # ==========================================
+  # AIRFORCE FREE ROUTES (api.airforce)
+  # OpenAI-compatible API gateway providing free tier endpoints.
+  # 1 RPM account-wide rate limit with guaranteed response windows.
+  # ==========================================
+  - route_id: mistral_codestral_airforce_primary
+    model: mistral/codestral-latest
+    model_key: mistral/codestral-2508
+    provider: airforce
+    upstream_model: codestral-latest
+    input_context_limit: 256000
     output_context_limit: 8192
     account_id: primary
-    # 4 rpm, NOT deepseek-v4-pro's 0.5: NVIDIA's quotas are per model, and this route has never
-    # returned a 429. Briefly inheriting deepseek's quota-derived rate on 2026-08-29 throttled the
-    # routes actually carrying overflow traffic to one request per four minutes per Worker, which
-    # showed up immediately as a drop in dispatched jobs.
-    rpm: 4
-    tpm: 40000
-    # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
-    # queueing it. Successful calls on these models run 41s median / 77s p90 /
-    # 399s max (measured 2026-08-29), so without a ceiling v1 (BATCH_CONCURRENCY=2)
-    # and v2 (MAX_JOBS_PER_ROUTE_PER_BUNDLE=4) stack up to 6 in flight on one model
-    # and most get rejected. 1 here is per-Worker-ledger, so v1 and v2 each keep
-    # one -- up to 2 in flight while both transports are live, the same
-    # coexistence caveat as split_cap_multiplier.
-    concurrency: 4
+    rpm: 1
+    rpd: 1000
+    tpm: 200000
+    request_start_margin_seconds: 2
+    concurrency: 1
     free: true
     input_per_token: 0.0
     output_per_token: 0.0
-
-
-
-
+    observed_on: "2026-09-16"
+    observed_recovery_seconds: 111
+    retry_after_trustworthy: true
+    upstream_429_default: upstream_capacity
 

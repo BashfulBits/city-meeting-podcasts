@@ -1,0 +1,15 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Urban Design Peer Review Board is a recurring body with 40 observed meetings spanning from 2015 to 2022, easily satisfying the three-meeting requirement.
+slug: dallas-tx-urban-design-peer-review-board
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Urban Design Peer Review Board
+lifecycle:
+  status: retired
+  reason: latest observed meeting was 2022-02-25 (1656 days ago)
+podcast_title: 'Dallas: Urban Design Peer Review Board'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Meetings of the Urban Design Peer Review Board.

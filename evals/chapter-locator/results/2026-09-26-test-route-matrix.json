@@ -1,0 +1,649 @@
+{
+  "cohort": {
+    "agenda_input_models": {
+      "gemini/gemini-3.1-flash-lite": 1,
+      "mistral/mistral-medium-2508": 13,
+      "nvidia/nemotron-3-ultra-550b-a55b:free": 2
+    },
+    "all_routes_received_same_packet_manifest_sha256": "30f0b8103916c80519884ea9df45489352d875a7b9656905366bd532862c805a",
+    "available_test_meetings": 96,
+    "calls": 96,
+    "candidate_models": 6,
+    "dataset": "chapter-locator dataset-v3",
+    "eligible_test_packets_with_generated_agenda": 16,
+    "packet_builder_estimate_units": {
+      "maximum": 188657,
+      "method": "characters / 4; route tokenizer ratios are applied where configured",
+      "minimum": 1154,
+      "p50_linear": 44259.0,
+      "p90_linear": 105845.5,
+      "p95_linear": 137783.8
+    },
+    "paired_route_meetings_per_model": 16,
+    "provider_chapter_starts": 100,
+    "provider_labels_sent_to_models": false,
+    "source_specific_automated_crosswalk": {
+      "agenda_item_source_models": {
+        "gemini/gemini-3.1-flash-lite": 1,
+        "mistral/mistral-medium-2508": 13,
+        "nvidia/nemotron-3-ultra-550b-a55b:free": 2
+      },
+      "generated_item_status": {
+        "conflicted": 6,
+        "mapped": 59,
+        "unmapped": 55
+      },
+      "human_adjudicated": false,
+      "note": "Crosswalk rebuilt per packet agenda model from existing frozen agenda items; no new model calls.",
+      "provider_chapter_status": {
+        "ambiguous": 3,
+        "possible": 6,
+        "strong": 54,
+        "unmatched": 37
+      },
+      "strong_item_boundary_targets": 54
+    },
+    "split": "test; unblinded exploratory after authorized model calls"
+  },
+  "models": [
+    {
+      "aa": 22,
+      "aa_url": "https://artificialanalysis.ai/models/gemini-3-5-flash-lite",
+      "aa_variant": "Artificial Analysis model score",
+      "capacity_after_agenda_subtraction": 1000,
+      "capacity_note": "Matrix used primary; RPD sums primary and secondary keys, 500 each.",
+      "concurrency": 1,
+      "config_fit_cap_estimate": 101802.32558139536,
+      "configured_model_slots": 2,
+      "configured_rpd_total": 1000,
+      "context": {
+        "actual_provider_responses": 16,
+        "configured_hard_input_ceiling": 218875,
+        "configured_input_context_limit": 1048576,
+        "context_rejections": 0,
+        "estimated_config_fit_rate": 0.875,
+        "estimated_packet_fit_cap": 101802,
+        "input_token_ratio": 2.15,
+        "largest_packet_estimate": 188657,
+        "largest_packet_returned_provider_response": true,
+        "successful_synthetic_probe_estimate": 244354,
+        "successful_synthetic_probe_provider_tokens": 217202,
+        "test_meeting_count": 16,
+        "test_meetings_under_estimated_configured_cap": 14,
+        "upstream_unavailable_context_unknown": 0
+      },
+      "hard_input_ceiling": 218875,
+      "input_context_limit": 1048576,
+      "input_token_ratio": 2.15,
+      "live_probe_estimate": 244354,
+      "live_probe_provider_tokens": 217202,
+      "matrix_file": "test-matrix-gemini-20260926.json",
+      "model_key": "gemini/gemini-3.5-flash-lite",
+      "operations": {
+        "capacity_after_agenda_subtraction": 1000,
+        "capacity_basis": "Full-job duration ceiling including any schema repair; excludes RPD request-count effects, TPM pacing, and provider queueing.",
+        "configured_rpd_remaining_after_agenda_subtraction": 1000,
+        "configured_slots": 2,
+        "estimated_daily_job_ceiling_at_configured_slots": 1034,
+        "latency_ceiling_at_configured_slots": 1034,
+        "median_request_seconds_excluding_provider_drain_wait": 14.518,
+        "note": "Duration ceiling is a serial-call estimate, not sustained throughput or a quota.",
+        "provider_responses_not_context_or_upstream_errors": 16,
+        "schema_valid_final_outputs": 13,
+        "single_slot_max_duration_daily_ceiling": 517,
+        "slowest_request_seconds_excluding_provider_drain_wait": 167.041
+      },
+      "provider": "Google AI Studio",
+      "quality": {
+        "anchors": 88,
+        "attempted_meetings": 16,
+        "broad_timing_hits_over_all_provider_starts": {
+          "hits": 68,
+          "provider_starts": 100,
+          "rate": 0.68
+        },
+        "context_rejections": 0,
+        "crosswalk_correct_anchor_lower_bound_proxy": {
+          "all_anchors": 88,
+          "hits": 45,
+          "rate": 0.5114
+        },
+        "failed_final_outputs": 3,
+        "failure_types": {
+          "ValueError": 3
+        },
+        "mean_boundary_error_seconds_on_timing_hits": 4.462,
+        "p95_boundary_error_seconds_on_timing_hits": 17.315,
+        "schema_valid_final_outputs": 13,
+        "schema_valid_rate": 0.8125,
+        "strong_crosswalk_item_and_boundary_hits": {
+          "hits": 45,
+          "rate": 0.8333,
+          "strong_targets": 54
+        },
+        "successful_schema_repairs": 2,
+        "suspected_wrong_item": {
+          "count": 12,
+          "rate_over_anchors": 0.1364
+        },
+        "timing_precision_on_emitted_anchors": {
+          "anchors": 88,
+          "hits": 68,
+          "rate": 0.7727
+        },
+        "timing_recall_on_completed_meetings": {
+          "completed_meeting_provider_starts": 85,
+          "hits": 68,
+          "rate": 0.8
+        },
+        "upstream_unavailable_unknown_context": 0
+      },
+      "route_id": "gemini_3_5_flash_lite_primary",
+      "rpd_per_route": 500,
+      "rpm": 15
+    },
+    {
+      "aa": 13,
+      "aa_url": "https://artificialanalysis.ai/models/nvidia-nemotron-3-super-120b-a12b",
+      "aa_variant": "Reasoning; current AA index",
+      "capacity_after_agenda_subtraction": 200,
+      "capacity_note": "No exact-model chapter-agenda use; shares OpenRouter provider capacity with Nemotron Ultra.",
+      "concurrency": 1,
+      "config_fit_cap_estimate": 249027,
+      "configured_model_slots": 1,
+      "configured_rpd_total": 200,
+      "context": {
+        "actual_provider_responses": 14,
+        "admission_ratio_applied": 1.0,
+        "configured_hard_input_ceiling": 249027,
+        "configured_input_context_limit": 262144,
+        "context_rejections": 0,
+        "estimated_config_fit_rate": 1.0,
+        "estimated_packet_fit_cap": 249027,
+        "input_token_ratio": null,
+        "largest_packet_estimate": 188657,
+        "largest_packet_returned_provider_response": true,
+        "successful_synthetic_probe_estimate": 261123,
+        "successful_synthetic_probe_provider_tokens": 232117,
+        "test_meeting_count": 16,
+        "test_meetings_under_estimated_configured_cap": 16,
+        "upstream_unavailable_context_unknown": 2
+      },
+      "hard_input_ceiling": 249027,
+      "input_context_limit": 262144,
+      "input_token_ratio": null,
+      "live_probe_estimate": 261123,
+      "live_probe_provider_tokens": 232117,
+      "matrix_file": "test-matrix-openrouter-20260926.json",
+      "model_key": "openrouter/nvidia/nemotron-3-super-120b-a12b:free",
+      "operations": {
+        "capacity_after_agenda_subtraction": 200,
+        "capacity_basis": "Full-job duration ceiling including any schema repair; excludes RPD request-count effects, TPM pacing, and provider queueing.",
+        "configured_rpd_remaining_after_agenda_subtraction": 200,
+        "configured_slots": 1,
+        "estimated_daily_job_ceiling_at_configured_slots": 177,
+        "latency_ceiling_at_configured_slots": 177,
+        "median_request_seconds_excluding_provider_drain_wait": 78.416,
+        "note": "Duration ceiling is a serial-call estimate, not sustained throughput or a quota.",
+        "provider_responses_not_context_or_upstream_errors": 14,
+        "schema_valid_final_outputs": 11,
+        "single_slot_max_duration_daily_ceiling": 177,
+        "slowest_request_seconds_excluding_provider_drain_wait": 485.844
+      },
+      "provider": "OpenRouter",
+      "quality": {
+        "anchors": 60,
+        "attempted_meetings": 16,
+        "broad_timing_hits_over_all_provider_starts": {
+          "hits": 44,
+          "provider_starts": 100,
+          "rate": 0.44
+        },
+        "context_rejections": 0,
+        "crosswalk_correct_anchor_lower_bound_proxy": {
+          "all_anchors": 60,
+          "hits": 36,
+          "rate": 0.6
+        },
+        "failed_final_outputs": 5,
+        "failure_types": {
+          "ValidationError": 1,
+          "ValueError": 2
+        },
+        "mean_boundary_error_seconds_on_timing_hits": 8.507,
+        "p95_boundary_error_seconds_on_timing_hits": 42.037,
+        "schema_valid_final_outputs": 11,
+        "schema_valid_rate": 0.6875,
+        "strong_crosswalk_item_and_boundary_hits": {
+          "hits": 36,
+          "rate": 0.6667,
+          "strong_targets": 54
+        },
+        "successful_schema_repairs": 11,
+        "suspected_wrong_item": {
+          "count": 8,
+          "rate_over_anchors": 0.1333
+        },
+        "timing_precision_on_emitted_anchors": {
+          "anchors": 60,
+          "hits": 44,
+          "rate": 0.7333
+        },
+        "timing_recall_on_completed_meetings": {
+          "completed_meeting_provider_starts": 65,
+          "hits": 44,
+          "rate": 0.6769
+        },
+        "upstream_unavailable_unknown_context": 2
+      },
+      "route_id": "openrouter_nvidia_nemotron_3_super_120b_a12b_free",
+      "rpd_per_route": 200,
+      "rpm": 10
+    },
+    {
+      "aa": 44,
+      "aa_url": "https://artificialanalysis.ai/models/kimi-k3",
+      "aa_variant": "Max effort",
+      "capacity_after_agenda_subtraction": null,
+      "capacity_note": "NVIDIA publishes no RPD; no exact-model chapter-agenda use; provider slots are shared.",
+      "concurrency": 1,
+      "config_fit_cap_estimate": 234437,
+      "configured_model_slots": 1,
+      "configured_rpd_total": null,
+      "context": {
+        "actual_provider_responses": 16,
+        "admission_ratio_applied": 1.0,
+        "configured_hard_input_ceiling": 234437,
+        "configured_input_context_limit": 1048576,
+        "context_rejections": 0,
+        "estimated_config_fit_rate": 1.0,
+        "estimated_packet_fit_cap": 234437,
+        "input_token_ratio": null,
+        "largest_packet_estimate": 188657,
+        "largest_packet_returned_provider_response": true,
+        "successful_synthetic_probe_estimate": 747074,
+        "successful_synthetic_probe_provider_tokens": 664147,
+        "test_meeting_count": 16,
+        "test_meetings_under_estimated_configured_cap": 16,
+        "upstream_unavailable_context_unknown": 0
+      },
+      "hard_input_ceiling": 234437,
+      "input_context_limit": 1048576,
+      "input_token_ratio": null,
+      "live_probe_estimate": 747074,
+      "live_probe_provider_tokens": 664147,
+      "matrix_file": "test-matrix-kimi-20260926.json",
+      "model_key": "moonshotai/kimi-k3",
+      "operations": {
+        "capacity_after_agenda_subtraction": null,
+        "capacity_basis": "Full-job duration ceiling including any schema repair; excludes RPD request-count effects, TPM pacing, and provider queueing.",
+        "configured_rpd_remaining_after_agenda_subtraction": null,
+        "configured_slots": 1,
+        "estimated_daily_job_ceiling_at_configured_slots": 582,
+        "latency_ceiling_at_configured_slots": 582,
+        "median_request_seconds_excluding_provider_drain_wait": 39.885,
+        "note": "Duration ceiling is a serial-call estimate, not sustained throughput or a quota.",
+        "provider_responses_not_context_or_upstream_errors": 16,
+        "schema_valid_final_outputs": 14,
+        "single_slot_max_duration_daily_ceiling": 582,
+        "slowest_request_seconds_excluding_provider_drain_wait": 148.202
+      },
+      "provider": "NVIDIA NIM",
+      "quality": {
+        "anchors": 80,
+        "attempted_meetings": 16,
+        "broad_timing_hits_over_all_provider_starts": {
+          "hits": 62,
+          "provider_starts": 100,
+          "rate": 0.62
+        },
+        "context_rejections": 0,
+        "crosswalk_correct_anchor_lower_bound_proxy": {
+          "all_anchors": 80,
+          "hits": 34,
+          "rate": 0.425
+        },
+        "failed_final_outputs": 2,
+        "failure_types": {
+          "LLMStructuredOutputError": 2
+        },
+        "mean_boundary_error_seconds_on_timing_hits": 5.291,
+        "p95_boundary_error_seconds_on_timing_hits": 22.145,
+        "schema_valid_final_outputs": 14,
+        "schema_valid_rate": 0.875,
+        "strong_crosswalk_item_and_boundary_hits": {
+          "hits": 34,
+          "rate": 0.6296,
+          "strong_targets": 54
+        },
+        "successful_schema_repairs": 3,
+        "suspected_wrong_item": {
+          "count": 8,
+          "rate_over_anchors": 0.1
+        },
+        "timing_precision_on_emitted_anchors": {
+          "anchors": 80,
+          "hits": 62,
+          "rate": 0.775
+        },
+        "timing_recall_on_completed_meetings": {
+          "completed_meeting_provider_starts": 84,
+          "hits": 62,
+          "rate": 0.7381
+        },
+        "upstream_unavailable_unknown_context": 0
+      },
+      "route_id": "nvidia_kimi_k3_free",
+      "rpd_per_route": null,
+      "rpm": 4
+    },
+    {
+      "aa": 39,
+      "aa_url": "https://artificialanalysis.ai/models/releases/deepseek-v4-1-flash",
+      "aa_variant": "Reasoning, max effort",
+      "capacity_after_agenda_subtraction": null,
+      "capacity_note": "NVIDIA publishes no RPD; no exact-model chapter-agenda use; provider slots are shared.",
+      "concurrency": 1,
+      "config_fit_cap_estimate": 1000000,
+      "configured_model_slots": 1,
+      "configured_rpd_total": null,
+      "context": {
+        "actual_provider_responses": 16,
+        "admission_ratio_applied": 1.0,
+        "configured_hard_input_ceiling": null,
+        "configured_input_context_limit": 1000000,
+        "context_rejections": 0,
+        "estimated_config_fit_rate": 1.0,
+        "estimated_packet_fit_cap": 1000000,
+        "input_token_ratio": null,
+        "largest_packet_estimate": 188657,
+        "largest_packet_returned_provider_response": true,
+        "successful_synthetic_probe_estimate": 562750,
+        "successful_synthetic_probe_provider_tokens": 500251,
+        "test_meeting_count": 16,
+        "test_meetings_under_estimated_configured_cap": 16,
+        "upstream_unavailable_context_unknown": 0
+      },
+      "hard_input_ceiling": null,
+      "input_context_limit": 1000000,
+      "input_token_ratio": null,
+      "live_probe_estimate": 562750,
+      "live_probe_provider_tokens": 500251,
+      "matrix_file": "test-matrix-deepseek-v41-20260926.json",
+      "model_key": "deepseek/deepseek-v4.1-flash",
+      "operations": {
+        "capacity_after_agenda_subtraction": null,
+        "capacity_basis": "Full-job duration ceiling including any schema repair; excludes RPD request-count effects, TPM pacing, and provider queueing.",
+        "configured_rpd_remaining_after_agenda_subtraction": null,
+        "configured_slots": 1,
+        "estimated_daily_job_ceiling_at_configured_slots": 44,
+        "latency_ceiling_at_configured_slots": 44,
+        "median_request_seconds_excluding_provider_drain_wait": 458.572,
+        "note": "Duration ceiling is a serial-call estimate, not sustained throughput or a quota.",
+        "provider_responses_not_context_or_upstream_errors": 16,
+        "schema_valid_final_outputs": 16,
+        "single_slot_max_duration_daily_ceiling": 44,
+        "slowest_request_seconds_excluding_provider_drain_wait": 1951.98
+      },
+      "provider": "NVIDIA NIM",
+      "quality": {
+        "anchors": 98,
+        "attempted_meetings": 16,
+        "broad_timing_hits_over_all_provider_starts": {
+          "hits": 79,
+          "provider_starts": 100,
+          "rate": 0.79
+        },
+        "context_rejections": 0,
+        "crosswalk_correct_anchor_lower_bound_proxy": {
+          "all_anchors": 98,
+          "hits": 47,
+          "rate": 0.4796
+        },
+        "failed_final_outputs": 0,
+        "failure_types": {},
+        "mean_boundary_error_seconds_on_timing_hits": 5.882,
+        "p95_boundary_error_seconds_on_timing_hits": 25.446,
+        "schema_valid_final_outputs": 16,
+        "schema_valid_rate": 1.0,
+        "strong_crosswalk_item_and_boundary_hits": {
+          "hits": 47,
+          "rate": 0.8704,
+          "strong_targets": 54
+        },
+        "successful_schema_repairs": 16,
+        "suspected_wrong_item": {
+          "count": 10,
+          "rate_over_anchors": 0.102
+        },
+        "timing_precision_on_emitted_anchors": {
+          "anchors": 98,
+          "hits": 79,
+          "rate": 0.8061
+        },
+        "timing_recall_on_completed_meetings": {
+          "completed_meeting_provider_starts": 100,
+          "hits": 79,
+          "rate": 0.79
+        },
+        "upstream_unavailable_unknown_context": 0
+      },
+      "route_id": "nvidia_deepseek_v4_1_flash_free",
+      "rpd_per_route": null,
+      "rpm": 4
+    },
+    {
+      "aa": 19,
+      "aa_url": "https://artificialanalysis.ai/models/step-3-7-flash",
+      "aa_variant": "Estimated AA score",
+      "capacity_after_agenda_subtraction": 200,
+      "capacity_note": "No exact-model chapter-agenda use; shares Kilo provider capacity with Nemotron Ultra.",
+      "concurrency": 1,
+      "config_fit_cap_estimate": 249027,
+      "configured_model_slots": 1,
+      "configured_rpd_total": 200,
+      "context": {
+        "actual_provider_responses": 15,
+        "admission_ratio_applied": 1.0,
+        "configured_hard_input_ceiling": 249027,
+        "configured_input_context_limit": 262144,
+        "context_rejections": 1,
+        "estimated_config_fit_rate": 1.0,
+        "estimated_packet_fit_cap": 249027,
+        "input_token_ratio": null,
+        "largest_packet_estimate": 188657,
+        "largest_packet_returned_provider_response": false,
+        "successful_synthetic_probe_estimate": 261123,
+        "successful_synthetic_probe_provider_tokens": 232113,
+        "test_meeting_count": 16,
+        "test_meetings_under_estimated_configured_cap": 16,
+        "upstream_unavailable_context_unknown": 0
+      },
+      "hard_input_ceiling": 249027,
+      "input_context_limit": 262144,
+      "input_token_ratio": null,
+      "live_probe_estimate": 261123,
+      "live_probe_provider_tokens": 232113,
+      "matrix_file": "test-matrix-kilo-20260926.json",
+      "model_key": "kilo/stepfun/step-3.7-flash:free",
+      "operations": {
+        "capacity_after_agenda_subtraction": 200,
+        "capacity_basis": "Full-job duration ceiling including any schema repair; excludes RPD request-count effects, TPM pacing, and provider queueing.",
+        "configured_rpd_remaining_after_agenda_subtraction": 200,
+        "configured_slots": 1,
+        "estimated_daily_job_ceiling_at_configured_slots": 553,
+        "latency_ceiling_at_configured_slots": 553,
+        "median_request_seconds_excluding_provider_drain_wait": 78.376,
+        "note": "Duration ceiling is a serial-call estimate, not sustained throughput or a quota.",
+        "provider_responses_not_context_or_upstream_errors": 15,
+        "schema_valid_final_outputs": 0,
+        "single_slot_max_duration_daily_ceiling": 553,
+        "slowest_request_seconds_excluding_provider_drain_wait": 156.191
+      },
+      "provider": "Kilo",
+      "quality": {
+        "anchors": 0,
+        "attempted_meetings": 16,
+        "broad_timing_hits_over_all_provider_starts": {
+          "hits": 0,
+          "provider_starts": 100,
+          "rate": 0.0
+        },
+        "context_rejections": 1,
+        "crosswalk_correct_anchor_lower_bound_proxy": {
+          "all_anchors": 0,
+          "hits": 0,
+          "rate": null
+        },
+        "failed_final_outputs": 16,
+        "failure_types": {
+          "LLMStructuredOutputError": 15
+        },
+        "mean_boundary_error_seconds_on_timing_hits": null,
+        "p95_boundary_error_seconds_on_timing_hits": null,
+        "schema_valid_final_outputs": 0,
+        "schema_valid_rate": 0.0,
+        "strong_crosswalk_item_and_boundary_hits": {
+          "hits": 0,
+          "rate": 0.0,
+          "strong_targets": 54
+        },
+        "successful_schema_repairs": 0,
+        "suspected_wrong_item": {
+          "count": 0,
+          "rate_over_anchors": null
+        },
+        "timing_precision_on_emitted_anchors": {
+          "anchors": 0,
+          "hits": 0,
+          "rate": null
+        },
+        "timing_recall_on_completed_meetings": {
+          "completed_meeting_provider_starts": 0,
+          "hits": 0,
+          "rate": null
+        },
+        "upstream_unavailable_unknown_context": 0
+      },
+      "route_id": "kilo_stepfun_step_3_7_flash_free",
+      "rpd_per_route": 200,
+      "rpm": 20
+    },
+    {
+      "aa": 15,
+      "aa_url": "https://artificialanalysis.ai/models/glm-4-7-flash",
+      "aa_variant": "Reasoning; non-reasoning variant is 11",
+      "capacity_after_agenda_subtraction": 500,
+      "capacity_note": "No exact-model chapter-agenda use; two route slots, but concurrency throughput was not load-tested.",
+      "concurrency": 2,
+      "config_fit_cap_estimate": 199222,
+      "configured_model_slots": 2,
+      "configured_rpd_total": 500,
+      "context": {
+        "actual_provider_responses": 15,
+        "admission_ratio_applied": 1.0,
+        "configured_hard_input_ceiling": 199222,
+        "configured_input_context_limit": 200000,
+        "context_rejections": 1,
+        "estimated_config_fit_rate": 1.0,
+        "estimated_packet_fit_cap": 199222,
+        "input_token_ratio": null,
+        "largest_packet_estimate": 188657,
+        "largest_packet_returned_provider_response": false,
+        "successful_synthetic_probe_estimate": null,
+        "successful_synthetic_probe_provider_tokens": null,
+        "test_meeting_count": 16,
+        "test_meetings_under_estimated_configured_cap": 16,
+        "upstream_unavailable_context_unknown": 0
+      },
+      "hard_input_ceiling": 199222,
+      "input_context_limit": 200000,
+      "input_token_ratio": null,
+      "live_probe_estimate": null,
+      "live_probe_provider_tokens": null,
+      "matrix_file": "test-matrix-all-routes-20260926.json",
+      "model_key": "zai/glm-4.7-flash",
+      "operations": {
+        "capacity_after_agenda_subtraction": 500,
+        "capacity_basis": "Full-job duration ceiling including any schema repair; excludes RPD request-count effects, TPM pacing, and provider queueing.",
+        "configured_rpd_remaining_after_agenda_subtraction": 500,
+        "configured_slots": 2,
+        "estimated_daily_job_ceiling_at_configured_slots": 212,
+        "latency_ceiling_at_configured_slots": 212,
+        "median_request_seconds_excluding_provider_drain_wait": 233.716,
+        "note": "Duration ceiling is a serial-call estimate, not sustained throughput or a quota. Two-slot scaling is theoretical and untested.",
+        "provider_responses_not_context_or_upstream_errors": 15,
+        "schema_valid_final_outputs": 11,
+        "single_slot_max_duration_daily_ceiling": 106,
+        "slowest_request_seconds_excluding_provider_drain_wait": 814.509
+      },
+      "provider": "Z.AI",
+      "quality": {
+        "anchors": 53,
+        "attempted_meetings": 16,
+        "broad_timing_hits_over_all_provider_starts": {
+          "hits": 47,
+          "provider_starts": 100,
+          "rate": 0.47
+        },
+        "context_rejections": 1,
+        "crosswalk_correct_anchor_lower_bound_proxy": {
+          "all_anchors": 53,
+          "hits": 24,
+          "rate": 0.4528
+        },
+        "failed_final_outputs": 5,
+        "failure_types": {
+          "ValueError": 4
+        },
+        "mean_boundary_error_seconds_on_timing_hits": 5.012,
+        "p95_boundary_error_seconds_on_timing_hits": 19.714,
+        "schema_valid_final_outputs": 11,
+        "schema_valid_rate": 0.6875,
+        "strong_crosswalk_item_and_boundary_hits": {
+          "hits": 24,
+          "rate": 0.4444,
+          "strong_targets": 54
+        },
+        "successful_schema_repairs": 11,
+        "suspected_wrong_item": {
+          "count": 6,
+          "rate_over_anchors": 0.1132
+        },
+        "timing_precision_on_emitted_anchors": {
+          "anchors": 53,
+          "hits": 47,
+          "rate": 0.8868
+        },
+        "timing_recall_on_completed_meetings": {
+          "completed_meeting_provider_starts": 73,
+          "hits": 47,
+          "rate": 0.6438
+        },
+        "upstream_unavailable_unknown_context": 0
+      },
+      "route_id": "zai_glm_4_7_flash_primary",
+      "rpd_per_route": 500,
+      "rpm": 15
+    }
+  ],
+  "private_raw_run_artifact_basenames": [
+    "test-matrix-gemini-20260926.json",
+    "test-matrix-openrouter-20260926.json",
+    "test-matrix-kimi-20260926.json",
+    "test-matrix-deepseek-v41-20260926.json",
+    "test-matrix-kilo-20260926.json",
+    "test-matrix-all-routes-20260926.json"
+  ],
+  "run_date": "2026-09-26",
+  "schema_version": 1,
+  "scoring": {
+    "absolute_admission_bar_frozen": false,
+    "crosswalk_definition": "Provider chapter to generated agenda item links; strong-only links score item-plus-boundary matches.",
+    "human_adjudication": false,
+    "interpretation": "Crosswalk hit recall is a diagnostic against algorithmic strong targets. Correct-anchor fraction is a lower-bound proxy, not confirmed precision. Timing-only matches do not validate item identity.",
+    "timing_tolerance_seconds": 60
+  },
+  "status": "exploratory; test split has been unblinded for model comparison",
+  "title": "Chapter locator paired route matrix"
+}

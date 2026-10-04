@@ -18,10 +18,23 @@ _spec.loader.exec_module(_mod)
 
 def test_issue_number_accepts_only_ascii_decimal_values():
     assert _mod.parse_args(["--evidence-file", "evidence.json", "--issue", "123"]).issue == "123"
+    assert _mod.parse_args(["--evidence-file", "evidence.json"]).max_batches == 12
     with pytest.raises(SystemExit):
         _mod.parse_args(["--evidence-file", "evidence.json", "--issue", "--repo"])
     with pytest.raises(SystemExit):
         _mod.parse_args(["--evidence-file", "evidence.json", "--issue", "١٢٣"])
+
+
+def test_max_batches_accepts_github_actions_decimal_formatted_number_input():
+    """A GitHub Actions `workflow_dispatch` input declared `type: number` renders as a decimal-
+    formatted string (e.g. "12.0") even for a plain integer value or default -- a bare `type=int`
+    on --max-batches rejected that shape outright and failed this workflow's manual dispatch
+    before it did anything."""
+    args = _mod.parse_args(["--evidence-file", "evidence.json", "--max-batches", "12.0"])
+    assert args.max_batches == 12
+    assert isinstance(args.max_batches, int)
+    with pytest.raises(SystemExit):
+        _mod.parse_args(["--evidence-file", "evidence.json", "--max-batches", "12.5"])
 
 
 def test_checkout_remedy_branch_reuses_a_remote_digest_branch(tmp_path, monkeypatch):

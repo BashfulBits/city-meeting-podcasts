@@ -9,10 +9,14 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import heapq
 import json
+import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from time import monotonic
 from typing import Any
 
 from citypods.compute.base import InferenceJob, JobHandle, JobResult
@@ -25,9 +29,11 @@ from citypods.compute.llm import (
 )
 from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import LLMRequestPolicy
-from citypods.compute.structured import register_response_model
+from citypods.compute.llm_submission_telemetry import record_stage_activity
+from citypods.compute.llm_work import LLMWorkTracker, tracked_producer, write_run_event
+from citypods.compute.structured import parse_structured_json, register_response_model
 from citypods.config import load_city_configs, load_site_config
-from citypods.records import load_records, record_to_episode, source_key
+from citypods.records import iter_records, record_to_episode, source_key
 from citypods.review_issues import render_decision_block
 from citypods.statesync import pull_state, push_state
 from citypods.storage import make_storage
@@ -56,6 +62,41 @@ STATE = "llm_tournament.json"
 TICKET_STATE = "llm_tournament_tickets.json"
 JUDGE_CONTRACT = "tournament-tag-judge"
 R5_FLASH_MODEL = "litellm:gemini/gemini-3.1-flash-lite"
+# Decision's fields are small (a pattern-constrained winner literal + rationale up to 500 chars,
+# ~150 tokens) -- nowhere near chapter-agenda/locator's multi-item scale -- but this job was
+# dispatched with no max_tokens at all, silently relying on LiteLLMBackend's generic 1024-token
+# default (see the chapter-agenda/chapter-locator/prelabeler incident that constant exists to
+# cushion, not to be relied on). Made explicit so this job is no longer the one remaining
+# structured-output call in the codebase leaning on that silent fallback.
+JUDGE_OUTPUT_TOKEN_BUDGET = 512
+
+
+@contextmanager
+def _progress_heartbeat(phase: str, *, interval_seconds: float = 60.0):
+    """Emit bounded liveness while a restartable tournament preparation phase is busy.
+
+    The hosted runner's cancellation log contains no Python stack.  Candidate preparation can
+    spend minutes reading archived records or evidence from object storage, so keep that work
+    observable rather than looking indistinguishable from a stuck or externally stopped runner.
+    """
+    started = monotonic()
+    stopped = threading.Event()
+
+    def _beat() -> None:
+        while not stopped.wait(interval_seconds):
+            elapsed = int(monotonic() - started)
+            print(f"llm-tournament: still {phase} ({elapsed}s elapsed)", flush=True)
+
+    print(f"llm-tournament: {phase}", flush=True)
+    worker = threading.Thread(target=_beat, daemon=True)
+    worker.start()
+    try:
+        yield
+    finally:
+        stopped.set()
+        worker.join()
+        elapsed = int(monotonic() - started)
+        print(f"llm-tournament: finished {phase} ({elapsed}s elapsed)", flush=True)
 
 
 def contest_plan() -> tuple[tuple[str, str, str], ...]:
@@ -226,6 +267,7 @@ def _build_pairwise_judge_job(
                 },
             ],
             "structured_output": spec.contract,
+            "max_tokens": JUDGE_OUTPUT_TOKEN_BUDGET,
             "llm_policy": LLMRequestPolicy(
                 allowed_models=(judge_model,),
                 allow_paid=allow_paid,
@@ -242,7 +284,9 @@ def _finalize_pairwise_judge(result: JobResult, spec: PairwiseEvaluatorSpec) -> 
     """Parse a resolved judge JobResult into a decision dict -- the other half of the old
     single-call `pairwise_judge`, split out so `run()`'s batched dispatch can build every
     comparison's job up front, submit them all in one call, and finalize each result separately."""
-    decision = _judge_model(spec.contract).model_validate_json(_content(result))
+    decision = _judge_model(spec.contract).model_validate(
+        parse_structured_json(_content(result), context="pairwise judge response")
+    )
     return {"winner": decision.winner, "rationale": decision.rationale}
 
 
@@ -285,13 +329,9 @@ def pairwise_judge(
 
 def _backend(model: str, storage) -> LiteLLMBackend:
     # Start from LLMBackendConfig.from_env() -- the complete, single source of truth for every
-    # dispatch-relevant environment variable -- and override only model/mode. This used to
-    # hand-roll dispatch_url/dispatch_auth_token alone: LLMBackendConfig has no env-reading
-    # __post_init__, so the omitted dispatch_v2_url/dispatch_v2_auth_token fields were always
-    # None, and pairwise_judge's queue_only=True policy always fell through to
-    # _enqueue_durable_policy_job's legacy v1 branch regardless of LLM_DISPATCH_V2_URL being set.
-    # Building from .from_env() means a future field added there can't silently miss this call
-    # site again. See the 2026-08-18 incident notes in review/44.
+    # dispatch-relevant environment variable -- and override only model/mode. LLMBackendConfig has
+    # no env-reading __post_init__, so a hand-copied config silently leaves any omitted field None
+    # (the 2026-08-18 incident in review/44); .from_env() means a future field can't miss this.
     from dataclasses import replace
 
     return LiteLLMBackend(
@@ -478,13 +518,31 @@ def ticket_estimates(state_dir: Path, models: set[str]) -> dict[str, dict[str, f
     return estimates
 
 
-def package_ticket(*, site_config_path: str, output_dir: str, out_dir: str) -> int:
+def _tournament_state_paths(cities: list[Any]) -> set[str]:
+    """Return the durable files the tournament and its ticket renderer actually read."""
+    return {
+        STATE,
+        *(f"sources/{source_key(city)}/episodes.json" for city in cities),
+    }
+
+
+def _restore_tournament_state(storage, state_dir: Path, cities: list[Any]) -> int:
+    """Restore the tournament's small working set with visible progress."""
+    paths = _tournament_state_paths(cities)
+    print(f"llm-tournament: restoring {len(paths)} state file(s)", flush=True)
+    restored = pull_state(storage, state_dir, only_paths=paths)
+    print(f"llm-tournament: restored {restored} state file(s)", flush=True)
+    return restored
+
+
+def package_ticket(*, site_config_path: str, config_dir: str, output_dir: str, out_dir: str) -> int:
     site = load_site_config(site_config_path)
+    cities = load_city_configs(config_dir, site["defaults"])
     storage = make_storage(site, "", Path(output_dir))
     if storage is None:
         raise RuntimeError("tournament ticket requires configured storage")
     state_dir = Path(".citypods-state")
-    pull_state(storage, state_dir)
+    _restore_tournament_state(storage, state_dir, cities)
     state = _state(state_dir / STATE)
     config = site.get("tournament") or {}
     required = float(config.get("challenger_win_rate", 0.60))
@@ -521,13 +579,44 @@ def package_ticket(*, site_config_path: str, output_dir: str, out_dir: str) -> i
     return 0
 
 
-def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int) -> int:
+@tracked_producer("tournament")
+def run(
+    *,
+    site_config_path: str,
+    config_dir: str,
+    output_dir: str,
+    samples: int,
+    tracker: LLMWorkTracker | None = None,
+) -> int:
+    from citypods.compute.llm import dispatch_v2_ingress_open
+
+    # This weekly producer owns two independent ingress lanes. Check both before restoring the
+    # catalog or building chapter prompts so a closed/unavailable budget endpoint cannot turn
+    # into a full run of rejected submissions.
+    for purpose in ("tournament:tag", "tournament:tag-judge"):
+        is_open, status = dispatch_v2_ingress_open(purpose)
+        if not is_open:
+            reasons = ", ".join((status or {}).get("reasons") or []) or "closed"
+            print(
+                f"llm-tournament: {purpose} ingress closed ({reasons}); skipping new samples",
+                flush=True,
+            )
+            return 0
+
+    # Unlike the enrichment stages in stages.py, this CLI never goes through
+    # citypods.run.Pipeline.accumulate_stats/record_stage_activity -- it has had no
+    # llm_submission_stage telemetry at all, a blind spot in the same CI dashboard used to
+    # diagnose exactly the kind of submission/validation issue this run() tracks.
+    run_started = monotonic()
+    reused_comparisons = 0
+    pending_comparisons = 0
     site = load_site_config(site_config_path)
+    cities = load_city_configs(config_dir, site["defaults"])
     storage = make_storage(site, "", Path(output_dir))
     if storage is None or not getattr(storage, "cas_capable", False):
         raise RuntimeError("tournament requires configured CAS-capable storage")
     state_dir = Path(".citypods-state")
-    pull_state(storage, state_dir)
+    _restore_tournament_state(storage, state_dir, cities)
     state_path = state_dir / STATE
     state = _state(state_path)
     # Old episode-level records are intentionally not considered complete: R5 now compares one
@@ -539,12 +628,46 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
     }
     taxonomy_path = (site.get("tagging") or {}).get("taxonomy_path", "config/taxonomy.yml")
     taxonomy = load_taxonomy(taxonomy_path)
+    # Keep enough newest records to survive a few recent recordings without usable chapters while
+    # never retaining every historical record just to dispatch one bounded tournament batch.
+    candidate_limit = max(samples * 10, 200)
+    newest_records: list[tuple[datetime, str, int, Any, dict[str, Any]]] = []
+    scanned_records = 0
+    with _progress_heartbeat("loading configured source records"):
+        for city in cities:
+            for rec in iter_records(state_dir, source_key(city)):
+                scanned_records += 1
+                ep = record_to_episode(rec)
+                if not ep.uid:
+                    continue
+                candidate = (ep.published, ep.uid, scanned_records, ep, rec)
+                if len(newest_records) < candidate_limit:
+                    heapq.heappush(newest_records, candidate)
+                elif candidate[:3] > newest_records[0][:3]:
+                    heapq.heapreplace(newest_records, candidate)
+                if scanned_records % 1000 == 0:
+                    print(
+                        f"llm-tournament: scanned {scanned_records} records; retaining "
+                        f"{len(newest_records)} recent candidates",
+                        flush=True,
+                    )
+    episode_records = [
+        (candidate[3], candidate[4])
+        for candidate in sorted(newest_records, key=lambda candidate: candidate[:3], reverse=True)
+    ]
+    print(
+        f"llm-tournament: scanned {scanned_records} record(s); retained "
+        f"{len(episode_records)} recent candidate(s)",
+        flush=True,
+    )
+
+    # Sort before loading chapter artifacts. `chapter_tag_inputs()` can read transcript and agenda
+    # artifacts from object storage, so scanning every historical record before taking the newest
+    # bounded sample made the weekly job spend its entire timeout on discarded candidates.
+    episode_records.sort(key=lambda item: (item[0].published, item[0].uid or ""), reverse=True)
     episodes: list[tuple[Any, dict[str, Any], dict[str, Any]]] = []
-    for city in load_city_configs(config_dir, site["defaults"]):
-        for rec in load_records(state_dir, source_key(city)).values():
-            ep = record_to_episode(rec)
-            if not ep.uid:
-                continue
+    with _progress_heartbeat("loading chapter evidence"):
+        for ep, rec in episode_records:
             chapters = chapter_tag_inputs(ep, storage)
             if not chapters:
                 print(f"llm-tournament: skipping {ep.uid!r} (no usable chapters)")
@@ -552,12 +675,17 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
             for chapter in chapters:
                 if chapter.get("chapter_id") and (ep.uid, chapter["chapter_id"]) not in done:
                     episodes.append((ep, rec, chapter))
-    episodes.sort(key=lambda item: (item[0].published, item[0].uid or ""), reverse=True)
+            if len(episodes) >= samples:
+                break
+    print(f"llm-tournament: selected {len(episodes)} chapter sample(s)", flush=True)
     deadline = datetime.now(UTC) + timedelta(minutes=20)
     completed = 0
     # Run-scoped, per-model backends. Every queue-only job this run creates -- candidate
     # generation for each contestant and each pairwise comparison -- is collected here and
     # submitted in one bounded batch per model at the end, instead of one Worker request per job.
+    tracker = tracker or LLMWorkTracker()
+    for purpose in ("tournament:tag", "tournament:tag-judge"):
+        tracker.activate(purpose, producer="tournament")
     backends = PerModelBatchingBackends(lambda model: _backend(model, storage))
     # Comparison submissions that failed outright. These come back from `dispatch_job_batch` as
     # per-item Exceptions and are recorded against their own comparison below, so they never reach
@@ -582,17 +710,21 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
         outputs: dict[str, Any] = {}
         contest_failed = False
         for model in MODELS:
+            work = tracker.item(
+                "tournament:tag", f"{ep.uid}:{chapter_id}:{model}", producer="tournament"
+            )
             if model == "gemini/gemini-3.1-flash-lite":
                 persisted = persisted_r5_flash_output(record, chapter_id)
                 if persisted is not None:
                     outputs[model] = persisted
+                    work.consumed(reused=True)
                     continue
             recipe = _digest(
                 {"v": 2, "uid": ep.uid, "chapter_id": chapter_id, "model": model, "source": source}
             )
             try:
                 _, chapter_tags, pending, _ = llm_tag_suggestions(
-                    backends.collecting(model),
+                    work.backend(backends.collecting(model)),
                     taxonomy=taxonomy,
                     agenda_item_titles="",
                     agenda_text="",
@@ -611,9 +743,12 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                 # reason to crash the whole tournament (see scripts/city_discovery.py for the
                 # same pattern). A genuine config bug still raises unhandled, failing loudly.
                 print(f"llm-tournament: skipping {ep.uid!r} ({model}): {exc}")
+                work.defer("errored")
+                tracker.partial("tournament")
                 contest_failed = True
                 break
             if pending:
+                work.defer("queued")
                 # Keep going rather than breaking. Every contestant's job is built against the
                 # run-scoped collector, which hands back a provisional handle for anything not yet
                 # resolved -- so the FIRST unresolved contestant makes every later one "pending"
@@ -623,9 +758,13 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                 # output.
                 continue
             outputs[model] = chapter_tags.get(chapter_id, [])
+            work.consumed()
         if contest_failed or len(outputs) != len(MODELS):
+            # Queued contestants remain queued. Coverage is partial because judge comparison
+            # identities below depend on outputs and have not yet been enumerated for this sample.
+            tracker.partial("tournament")
             continue
-        # Pass 1: for each of the 6 comparisons (3 CONTESTS x 2 order-swapped pairs), reuse a
+        # Pass 1: for each of the 12 comparisons (6 CONTESTS x 2 order-swapped pairs), reuse a
         # prior resolved decision from state if there is one, otherwise build its job without
         # dispatching yet -- so the whole sample's still-outstanding comparisons can be submitted
         # in one batch call below instead of up to 6 separate ones (see review/44's 2026-08-18
@@ -651,6 +790,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                     second_model=second,
                     judge_model=judge,
                 )
+                work = tracker.item("tournament:tag-judge", comparison_key, producer="tournament")
                 slot = len(decisions)
                 decisions.append(None)
                 prior_comparison = comparison_store.get(comparison_key)
@@ -661,6 +801,8 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                     prior_record = prior_comparison.get("decision_record")
                     if isinstance(prior_record, dict):
                         decisions[slot] = dict(prior_record)
+                        work.consumed(reused=True)
+                        reused_comparisons += 1
                         continue
                     # A hand-repaired or partially-written state entry must not make a sample
                     # permanently incomplete. Re-run only this missing comparison and replace the
@@ -674,6 +816,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                     recipe_hash=comparison_key,
                     candidate_models=(left, right),
                 )
+                job = work.bind(job)
                 to_dispatch.append(
                     _PendingComparison(slot, comparison_key, job, left, right, judge, first)
                 )
@@ -687,6 +830,10 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
             group = [item for item in to_dispatch if item.judge == judge]
             results = dispatch_job_batch(backends.collecting(judge), [item.job for item in group])
             for item, result in zip(group, results, strict=True):
+                work = tracker.item(
+                    "tournament:tag-judge", item.comparison_key, producer="tournament"
+                )
+                work.result(item.job, result)
                 if isinstance(result, JobHandle):
                     comparison_store[item.comparison_key] = {
                         "status": "pending",
@@ -695,6 +842,7 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                         "subject_id": f"{ep.uid}:{chapter_id}",
                     }
                     judge_pending = True
+                    pending_comparisons += 1
                 elif isinstance(result, JobResult):
                     decision = _finalize_pairwise_judge(result, judge_spec)
                     decision_record = {
@@ -714,7 +862,12 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
                         "subject_id": f"{ep.uid}:{chapter_id}",
                         "decision_record": decision_record,
                     }
+                    if decision is not None:
+                        work.consumed()
+                    else:
+                        work.defer("errored")
                 else:
+                    work.defer("errored")
                     # dispatch_job_batch's own contract: anything that isn't a JobResult/JobHandle
                     # is the Exception sentinel for this one comparison's own failed submission
                     # (e.g. LLMBackendError) -- same per-comparison isolation the old code's
@@ -770,10 +923,21 @@ def run(*, site_config_path: str, config_dir: str, output_dir: str, samples: int
         f"errors={len(flush_errors)} comparison_errors={len(comparison_submit_errors)}",
         flush=True,
     )
+    record_stage_activity(
+        lane="tournament",
+        stage="tournament",
+        ran=completed,
+        reused=reused_comparisons,
+        backlog=queued + pending_comparisons,
+        errors=len(submit_errors),
+        seconds=monotonic() - run_started,
+        defer_reasons={"llm-pending": pending_comparisons} if pending_comparisons else {},
+    )
 
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n")
-    push_state(storage, state_dir, only_paths=[STATE])
+    event = write_run_event(tracker, state_dir, "tournament")
+    push_state(storage, state_dir, only_paths=[STATE, event])
     print(f"llm-tournament: completed {completed} sample(s)")
     if submit_errors:
         # A failed submission is not a deferral: nothing is queued, so no later run picks it up
@@ -803,7 +967,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "ticket":
         return package_ticket(
-            site_config_path=args.site_config, output_dir=args.output_dir, out_dir=args.out_dir
+            site_config_path=args.site_config,
+            config_dir=args.config_dir,
+            output_dir=args.output_dir,
+            out_dir=args.out_dir,
         )
     # The per-run sample budget comes from the lane registry, not a magic constant. It used to be
     # hard-clamped to 2 regardless of --samples, which meant the lane could never dispatch more

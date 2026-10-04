@@ -4,6 +4,8 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Board of Adjustments"
+  body_any:
+    - "Board of Adjusments"
 podcast_title: "Dallas: Board of Adjustments"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

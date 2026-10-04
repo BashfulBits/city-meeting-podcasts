@@ -511,11 +511,26 @@ def _log(status: str, test: str, detail: str) -> None:
 # ── main ──────────────────────────────────────────────────────────────────────
 
 
+def _whole_int(value: str) -> int:
+    """Parse a CLI arg as an integer, tolerating a decimal-formatted whole number.
+
+    GitHub Actions renders a `workflow_dispatch` input declared `type: number` as a
+    decimal-formatted string (e.g. "20.0") even for a plain integer value or default -- a bare
+    `type=int` here rejects that shape outright (`int("20.0")` raises `ValueError`), failing
+    `--latency-iterations` (fed by this workflow's `latency_iterations` input) before it does
+    anything.
+    """
+    parsed = float(value)
+    if not parsed.is_integer():
+        raise argparse.ArgumentTypeError(f"{value!r} is not a whole number")
+    return int(parsed)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--latency-iterations",
-        type=int,
+        type=_whole_int,
         default=20,
         help="PUT/GET/HEAD iterations for latency measurement (default 20)",
     )

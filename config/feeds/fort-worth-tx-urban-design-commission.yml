@@ -4,6 +4,8 @@ provider: granicus
 source:
   feed_urls: ['https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast', 'https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast']
   body: "Urban Design Commission"
+  body_any:
+    - "November UDC November UDC"
 podcast_title: "Fort Worth: Urban Design Commission"
 podcast_author: "City of Fort Worth, TX"
 podcast_email: ""

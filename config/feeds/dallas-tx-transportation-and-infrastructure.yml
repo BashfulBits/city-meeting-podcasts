@@ -4,6 +4,19 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Transportation and Infrastructure"
+  body_any:
+    - "Transportation & Trinity River Project Committee/DART Joint Meeting"
+    - "Transportation"
+    - "Transportation-for-Hire Public Forum"
+  body_includes:
+    - provider_guid: "203141"
+      body: "Transportation-for-Hire Work Group"
+    - provider_guid: "205495"
+      body: "Transportation-for-Hire Work Group"
+    - provider_guid: "205504"
+      body: "Mill Creek Tunnel Project"
+    - provider_guid: "205502"
+      body: "Transportation for Hire"
 podcast_title: "Dallas: Transportation and Infrastructure"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

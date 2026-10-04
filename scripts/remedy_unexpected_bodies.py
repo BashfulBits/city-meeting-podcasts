@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from citypods.audit_remedy import (
+    MAX_BATCHES_PER_RUN,
     SourceContext,
     _markdown_table_cell,
     apply_remedy_plan,
@@ -54,6 +55,20 @@ def _issue_number(value: str) -> str:
     return value
 
 
+def _whole_int(value: str) -> int:
+    """Parse a CLI arg as an integer, tolerating a decimal-formatted whole number.
+
+    GitHub Actions renders a `workflow_dispatch` input declared `type: number` as a
+    decimal-formatted string (e.g. "12.0") even for a plain integer value or default -- a bare
+    `type=int` here rejects that shape outright (`int("12.0")` raises `ValueError`), failing
+    `--max-batches` (fed by this workflow's `max_batches` input) before it does anything.
+    """
+    parsed = float(value)
+    if not parsed.is_integer():
+        raise argparse.ArgumentTypeError(f"{value!r} is not a whole number")
+    return int(parsed)
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -74,6 +89,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--repo-root", default=".", help="Repository root directory")
     parser.add_argument(
         "--output", help="Also write the rendered markdown report to this path", default=""
+    )
+    parser.add_argument(
+        "--max-batches",
+        type=_whole_int,
+        default=MAX_BATCHES_PER_RUN,
+        help="Maximum number of bounded classification batches to process in one run",
     )
     return parser.parse_args(argv)
 
@@ -137,11 +158,19 @@ def main(argv: list[str] | None = None) -> int:
         )
     reports: list[str] = []
     modified: list[Path] = []
-    accepted_total = rejected_total = 0
+    accepted_total = rejected_total = deferred_total = 0
 
     failed_total = unresolved_total = 0
+    if args.max_batches < 1:
+        _log("Error: --max-batches must be at least 1")
+        return 1
+    processed_batches = deferred_batches = 0
     for source in bundles:
         for batch_number, bundle in enumerate(remedy_batches(source), 1):
+            if processed_batches >= args.max_batches:
+                deferred_batches += 1
+                continue
+            processed_batches += 1
             source_key = bundle.get("source_key", "")
             city = bundle.get("city", {}).get("slug", source_key)
             labels = [f["unexpected_body"] for f in bundle.get("unexpected_findings", [])]
@@ -164,7 +193,9 @@ def main(argv: list[str] | None = None) -> int:
 
             plan = validate_proposals(remedy, bundle, feed_paths)
             accepted_total += len(plan.accepted)
-            rejected_total += len(plan.rejected)
+            deferred_count = sum(item.reason.startswith("deferred:") for item in plan.rejected)
+            deferred_total += deferred_count
+            rejected_total += len(plan.rejected) - deferred_count
             unresolved_total += len(remedy.unresolved)
             reports.append(
                 f"Direct model: `{remedy.model}`; response cache disabled.\n\n"
@@ -203,14 +234,24 @@ def main(argv: list[str] | None = None) -> int:
                 # New slugs become reserved immediately, preventing collisions across batches.
                 feed_paths = feed_paths_by_slug(repo_root)
 
+    if deferred_batches:
+        reports.append(
+            f"Deferred {deferred_batches} classification batch(es) after the per-run limit of "
+            f"{args.max_batches}. Re-run `/remedy` after merging this pass to continue the "
+            "historical backlog."
+        )
+
     report_md = "\n\n".join(reports)
     print(report_md)
     if args.output:
         Path(args.output).write_text(report_md + "\n", encoding="utf-8")
-    _log(f"\n{accepted_total} proposal(s) accepted, {rejected_total} rejected.")
+    _log(
+        f"\n{accepted_total} proposal(s) accepted, {rejected_total} rejected, "
+        f"{deferred_total} deferred."
+    )
 
     report_md = (
-        f"{accepted_total} accepted; {rejected_total} rejected; "
+        f"{accepted_total} accepted; {rejected_total} rejected; {deferred_total} deferred; "
         f"{unresolved_total} need manual review; {failed_total} classification/apply failures.\n\n"
         + report_md
     )

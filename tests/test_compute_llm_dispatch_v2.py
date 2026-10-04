@@ -20,6 +20,7 @@ from citypods.compute.llm import (
     LLMBackendError,
     LLMDispatchTerminalError,
     LLMStructuredOutputError,
+    LLMUpstreamPassthroughError,
     dispatch_job_batch,
 )
 from citypods.compute.llm_policy import LLMRequestPolicy
@@ -634,6 +635,44 @@ def test_enqueue_batch_mixed_accepted_and_rejected():
     assert "idempotency conflict" in str(results[1])
 
 
+def test_an_in_flight_job_rejected_as_a_conflict_keeps_its_existing_pending_handle():
+    # Across a payload-shape change (e.g. the schema-only v2 payload), a job still leased under
+    # its old payload is refused with idempotency_conflict. The item must keep following the
+    # handle it already has -- the running attempt completes and is polled -- not fail the run.
+    from citypods.compute.llm_deferred import write_deferred
+
+    storage = MockStorage()
+    pending = JobHandle(
+        task="tag", recipe_hash="r-inflight", backend="llm-dispatch-v2", ref="old-id"
+    )
+    write_deferred(storage, "r-inflight", pending)
+    mock_session = MagicMock()
+
+    def mock_post(url, json=None, headers=None, timeout=None):
+        jobs = json.get("jobs", [])
+        rejected = [{"id": job["id"], "reason": "idempotency_conflict"} for job in jobs]
+        return _mock_response(status_code=200, json_data={"accepted": [], "rejected": rejected})
+
+    mock_session.post.side_effect = mock_post
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=mock_session,
+        storage=storage,
+    )
+    job = InferenceJob(
+        task="tag",
+        inputs={"messages": [{"role": "user", "content": "x"}]},
+        recipe_hash="r-inflight",
+    )
+
+    [result] = backend.enqueue_batch([job])
+    assert isinstance(result, JobHandle)
+    assert result.ref == "old-id"
+
+
 def test_enqueue_batch_idempotent_replay_uses_canonical_id_as_ref():
     # The coordinator returns the ORIGINAL row's id on a replay, distinct from the fresh id this
     # client always generates -- enqueue_batch must match on submitted_id and use the returned
@@ -927,6 +966,70 @@ def test_poll_batch_validates_structured_output_and_preserves_sibling_results():
     assert isinstance(results["j-bad"], LLMStructuredOutputError)
 
 
+def test_poll_batch_classifies_an_upstream_error_passthrough_distinctly():
+    """A stored "completed" v2 result that is actually a provider/gateway error object -- e.g.
+    Airforce's HTTP 200 body {"error": {"message": "the provider refused this request (HTTP
+    524)", ...}} when its own upstream times out (confirmed live 2026-09, 413 of 6,561 stored
+    results during an outage) -- must resolve to LLMUpstreamPassthroughError, not the generic
+    LLMStructuredOutputError. scripts/llm_deferred_sweep.py's recover_terminal keys off exactly
+    this distinction to skip a nonsensical "fix your JSON" corrective retry for a request the
+    model never even answered."""
+    storage = MockStorage()
+    mock_session = MagicMock()
+
+    storage.put_cas(
+        "results/j-airforce/lt1.json",
+        json.dumps(
+            {
+                "error": {
+                    "message": "the provider refused this request (HTTP 524)",
+                    "type": "upstream_error",
+                    "code": "524",
+                }
+            }
+        ).encode("utf-8"),
+        "application/json",
+    )
+
+    mock_session.post.return_value = _mock_response(
+        status_code=200,
+        json_data={
+            "statuses": [
+                {
+                    "id": "j-airforce",
+                    "state": "completed",
+                    "result_key": "results/j-airforce/lt1.json",
+                    "attempts": 1,
+                },
+            ]
+        },
+    )
+
+    config = LLMBackendConfig(
+        model="mistral/codestral-2508",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+    )
+    backend = LiteLLMBackend(config, http_session=mock_session, storage=storage)
+
+    h_airforce = JobHandle(
+        task="tag",
+        recipe_hash="r-airforce",
+        backend="llm-dispatch-v2",
+        ref="j-airforce",
+        structured_output="dispatch-v2-test-pong",
+    )
+
+    results = backend.poll_batch([h_airforce])
+    assert isinstance(results["j-airforce"], LLMUpstreamPassthroughError)
+    assert isinstance(results["j-airforce"], LLMDispatchTerminalError)
+    assert not isinstance(results["j-airforce"], LLMStructuredOutputError)
+
+    from citypods.compute.llm_deferred import look_up_deferred
+
+    # write_deferred must never have run for this recipe -- the error object is not a completion.
+    assert look_up_deferred(storage, "r-airforce") is None
+
+
 def _router(routes: dict):
     """Route a mocked session's POST calls by URL suffix -- lets a single mock_session simulate
     both the enqueue-batch and poll-batch endpoints dispatch_job_batch calls in sequence."""
@@ -940,7 +1043,16 @@ def _router(routes: dict):
             status_code=200, json_data={"acked": (json or {}).get("ids", []), "ignored": []}
         )
 
-    resolved = {":ack-batch": _ack_default, **routes}
+    def _retire_default(url, json=None, **_kw):
+        # Consumption-based retirement (tier 3). Default: the Worker retires nothing, which is
+        # exactly an older Worker's behaviour -- every consumed job falls back to the plain ack,
+        # so tests about acking keep their expectations. A retire test supplies its own handler.
+        items = (json or {}).get("items", [])
+        return _mock_response(
+            status_code=200, json_data={"retired": [], "ignored": [i["id"] for i in items]}
+        )
+
+    resolved = {":ack-batch": _ack_default, ":retire-batch": _retire_default, **routes}
 
     def _post(url, json=None, headers=None, timeout=None):
         for suffix, handler in resolved.items():
@@ -1706,3 +1818,341 @@ def test_poll_batch_one_malformed_result_does_not_lose_a_valid_sibling():
 
     stored = look_up_deferred(storage, "r-good")
     assert isinstance(stored, JobResult)
+
+
+def test_poll_batch_retires_consumed_jobs_after_deleting_their_b2_objects():
+    """Tier 3: a completed result that is durably persisted has its payload/result objects deleted
+    client-side and its row retired; retired jobs are not also acked, a job the Worker declines
+    (e.g. superseded after our poll) falls back to the plain ack, and nothing is deleted for a
+    result that failed validation or a job that is not completed."""
+    storage = MockStorage()
+    for ref in ("a", "b", "bad"):
+        content = '{"pong": true}' if ref != "bad" else "not json"
+        storage.put_cas(
+            f"results/{ref}.json",
+            json.dumps({"choices": [{"message": {"content": content}}]}).encode("utf-8"),
+            "application/json",
+        )
+        storage.put_cas(f"payloads/{ref}/request.json", b"{}", "application/json")
+    storage.put_cas("payloads/pending/request.json", b"{}", "application/json")
+
+    def _poll(_url, json=None, **_kw):
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "statuses": [
+                    {
+                        "id": ref,
+                        "state": "completed",
+                        "result_key": f"results/{ref}.json",
+                        "payload_key": f"payloads/{ref}/request.json",
+                    }
+                    for ref in ("a", "b", "bad")
+                ]
+                + [{"id": "pending", "state": "queued", "payload_key": None}]
+            },
+        )
+
+    retire_calls, ack_calls = [], []
+
+    def _retire(_url, json=None, **_kw):
+        retire_calls.append(json["items"])
+        # "b" was superseded after our poll: the Worker declines it.
+        return _mock_response(status_code=200, json_data={"retired": ["a"], "ignored": ["b"]})
+
+    def _ack(_url, json=None, **_kw):
+        ack_calls.append(json["ids"])
+        return _mock_response(status_code=200, json_data={"acked": json["ids"], "ignored": []})
+
+    session = MagicMock()
+    session.post.side_effect = _router(
+        {":poll-batch": _poll, ":retire-batch": _retire, ":ack-batch": _ack}
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    handles = [
+        JobHandle(task="tag", recipe_hash=f"r-{ref}", backend="llm-dispatch-v2", ref=ref)
+        for ref in ("a", "b")
+    ] + [
+        JobHandle(
+            task="tag",
+            recipe_hash="r-bad",
+            backend="llm-dispatch-v2",
+            ref="bad",
+            structured_output="dispatch-v2-test-pong",
+        ),
+        JobHandle(task="tag", recipe_hash="r-pending", backend="llm-dispatch-v2", ref="pending"),
+    ]
+
+    results = backend.poll_batch(handles)
+
+    assert isinstance(results["a"], JobResult) and isinstance(results["b"], JobResult)
+    assert sorted(item["id"] for item in retire_calls[0]) == ["a", "b"]
+    assert {item["id"]: item["result_key"] for item in retire_calls[0]}["a"] == "results/a.json"
+    assert ack_calls == [["b"]], "only the declined job falls back to the plain ack"
+    for ref in ("a", "b"):
+        assert storage.get_bytes(f"results/{ref}.json") is None
+        assert storage.get_bytes(f"payloads/{ref}/request.json") is None
+    # Never deleted: a result that failed validation (schema correction re-reads it) and a job
+    # that is not completed.
+    assert storage.get_bytes("results/bad.json") is not None
+    assert storage.get_bytes("payloads/bad/request.json") is not None
+    assert storage.get_bytes("payloads/pending/request.json") is not None
+
+
+def test_client_retire_can_be_disabled():
+    config = LLMBackendConfig(
+        model="gemini/gemini-3-flash-preview",
+        dispatch_v2_url="https://dispatch-v2.example.com",
+        dispatch_v2_client_retire=False,
+    )
+    backend = LiteLLMBackend(config, http_session=MagicMock(), storage=MockStorage())
+    assert backend._retire_consumed(MockStorage(), [("a", "results/a.json", None)]) == set()
+
+
+@pytest.mark.parametrize(
+    "body",
+    [["a"], "a", None, {"retired": "a"}, {"retired": ["a", "not-sent", 7]}],
+)
+def test_retire_tolerates_malformed_responses(body):
+    """A malformed retire-batch body never raises out of the poll, and only refs this call sent
+    can count as retired; anything else falls back to the plain ack."""
+    storage = MockStorage()
+    storage.put_cas("results/a.json", b"{}", "application/json")
+    session = MagicMock()
+    session.post.return_value = _mock_response(status_code=200, json_data=body)
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    retired = backend._retire_consumed(storage, [("a", "results/a.json", None)])
+    well_formed = isinstance(body, dict) and isinstance(body["retired"], list)
+    assert retired == ({"a"} if well_formed else set())
+
+
+@pytest.mark.parametrize("reason", ["daily_row_budget", "queue_full"])
+def test_enqueue_batch_defers_and_closes_ingress_on_row_budget_or_full_queue(reason):
+    """The Worker's daily row threshold and pending-queue cap defer work (retry after the reset)
+    and close ingress for the rest of the process, like the daily job cap."""
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.side_effect = lambda url, json=None, **_kw: _mock_response(
+        status_code=200,
+        json_data={
+            "accepted": [],
+            "rejected": [{"id": job["id"], "reason": reason} for job in json["jobs"]],
+        },
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    job = InferenceJob(
+        task="tag", inputs={"messages": [{"role": "user", "content": "later"}]}, recipe_hash="rb"
+    )
+    result = backend.enqueue_batch([job])
+    assert isinstance(result[0], JobHandle)
+    assert result[0].ref.startswith(f"deferred-{reason}-")
+    assert backend._daily_ingest_exhausted is True
+
+
+def test_dispatch_v2_ingress_status_encodes_purpose_and_validates_shape():
+    session = MagicMock()
+    session.get.return_value = _mock_response(
+        status_code=200, json_data={"open": False, "reasons": ["daily_row_budget"]}
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+            dispatch_v2_auth_token="tok",
+        ),
+        http_session=session,
+    )
+    status = backend.dispatch_v2_ingress_status("topic-tags:tagger")
+    assert status["open"] is False
+    url = session.get.call_args.args[0]
+    assert url == "https://dispatch-v2.example.com/v2/ingress-status?purpose=topic-tags%3Atagger"
+    assert session.get.call_args.kwargs["headers"]["authorization"] == "Bearer tok"
+
+    session.get.return_value = _mock_response(status_code=200, json_data={"reasons": []})
+    with pytest.raises(LLMBackendError):
+        backend.dispatch_v2_ingress_status("topic-tags:tagger")
+
+
+def test_dispatch_v2_calibration_encodes_route_and_validates_shape():
+    session = MagicMock()
+    session.get.return_value = _mock_response(
+        status_code=200,
+        json_data={"route_id": "gemma_4_31b_primary", "input_ratio_effective": 1.56},
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+            dispatch_v2_auth_token="tok",
+        ),
+        http_session=session,
+    )
+    assert backend.dispatch_v2_calibration("gemma_4_31b_primary", "tag")[
+        "input_ratio_effective"
+    ] == pytest.approx(1.56)
+    assert session.get.call_args.args[0] == (
+        "https://dispatch-v2.example.com/v2/calibration"
+        "?route_id=gemma_4_31b_primary&prompt_family=tag"
+    )
+    assert session.get.call_args.kwargs["headers"]["authorization"] == "Bearer tok"
+
+    session.get.return_value = _mock_response(status_code=200, json_data={"route_id": "x"})
+    with pytest.raises(LLMBackendError):
+        backend.dispatch_v2_calibration("gemma_4_31b_primary", "tag")
+
+
+def test_dispatch_v2_learned_input_ratio_caches_and_fails_open(monkeypatch):
+    from citypods.compute import llm
+
+    monkeypatch.setattr(llm, "_V2_LEARNED_INPUT_RATIOS", {})
+    session = MagicMock()
+    session.get.return_value = _mock_response(
+        status_code=200, json_data={"input_ratio_effective": 1.56}
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+    )
+    assert llm.dispatch_v2_learned_input_ratio("r1", "tag", backend=backend) == pytest.approx(1.56)
+    assert llm.dispatch_v2_learned_input_ratio("r1", "tag", backend=backend) == pytest.approx(1.56)
+    assert session.get.call_count == 1
+
+    # A broken Worker leaves sizing on the catalog prior, and is not retried within the run.
+    session.get.return_value = _mock_response(status_code=503, json_data={})
+    assert llm.dispatch_v2_learned_input_ratio("r2", "tag", backend=backend) is None
+    assert llm.dispatch_v2_learned_input_ratio("r2", "tag", backend=backend) is None
+    assert session.get.call_count == 2
+
+    no_v2 = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"), http_session=MagicMock()
+    )
+    assert llm.dispatch_v2_learned_input_ratio("r3", "tag", backend=no_v2) is None
+
+
+def test_dispatch_v2_ingress_open_reports_closed_and_fails_closed_if_unavailable():
+    from citypods.compute.llm import dispatch_v2_ingress_open
+
+    session = MagicMock()
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=session,
+    )
+    session.get.return_value = _mock_response(
+        status_code=200, json_data={"open": False, "reasons": ["queue_full"]}
+    )
+    is_open, status = dispatch_v2_ingress_open("chapter-agenda", backend=backend)
+    assert is_open is False and status["reasons"] == ["queue_full"]
+
+    # A configured but unreachable Worker closes only this lane until preflight recovers.
+    session.get.return_value = _mock_response(status_code=503, json_data={})
+    is_open, status = dispatch_v2_ingress_open("chapter-agenda", backend=backend)
+    assert is_open is False
+    assert status == {
+        "open": False,
+        "purpose": "chapter-agenda",
+        "reasons": ["preflight_unavailable"],
+    }
+
+    no_v2 = LiteLLMBackend(
+        LLMBackendConfig(model="gemini/gemini-3-flash-preview"), http_session=MagicMock()
+    )
+    assert dispatch_v2_ingress_open("chapter-agenda", backend=no_v2) == (True, None)
+
+
+def test_dispatch_mode_requires_the_v2_worker_url():
+    with pytest.raises(ValueError, match="dispatch mode requires LLM_DISPATCH_V2_URL"):
+        LiteLLMBackend(
+            LLMBackendConfig(model="gemini/gemini-3-flash-preview", mode="dispatch"),
+            http_session=MagicMock(),
+        )
+
+
+def _dispatch_mode_backend(monkeypatch):
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            mode="dispatch",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=MagicMock(),
+        storage=MockStorage(),
+        completion=lambda **_kwargs: pytest.fail("dispatch mode called a provider directly"),
+    )
+    enqueued = []
+
+    def fake_enqueue(jobs):
+        enqueued.extend(jobs)
+        return [
+            JobHandle(task=j.task, recipe_hash=j.recipe_hash, backend="llm-dispatch-v2", ref="j1")
+            for j in jobs
+        ]
+
+    monkeypatch.setattr(backend, "enqueue_batch", fake_enqueue)
+    return backend, enqueued
+
+
+def test_dispatch_mode_policy_job_goes_to_the_v2_worker(monkeypatch):
+    backend, enqueued = _dispatch_mode_backend(monkeypatch)
+    job = InferenceJob(
+        task="summarize",
+        recipe_hash="recipe-dispatch",
+        inputs={
+            "content": "hello",
+            "llm_policy": LLMRequestPolicy(allowed_models=("gemini/gemini-3-flash-preview",)),
+        },
+    )
+    result = backend.run_inference(job)
+    assert isinstance(result, JobHandle) and result.backend == "llm-dispatch-v2"
+    assert [j.recipe_hash for j in enqueued] == ["recipe-dispatch"]
+
+
+def test_dispatch_mode_job_without_a_policy_goes_to_the_v2_worker(monkeypatch):
+    backend, enqueued = _dispatch_mode_backend(monkeypatch)
+    job = InferenceJob(task="summarize", recipe_hash="recipe-plain", inputs={"content": "hello"})
+    result = backend.run_inference(job)
+    assert isinstance(result, JobHandle) and result.backend == "llm-dispatch-v2"
+    assert [j.recipe_hash for j in enqueued] == ["recipe-plain"]
+
+
+def test_a_retired_v1_worker_handle_is_terminal_and_not_schema_corrected():
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+        ),
+        http_session=MagicMock(),
+    )
+    legacy = JobHandle(
+        task="tag", recipe_hash="recipe-v1", backend=backend.name, ref="/v1/requests/chatcmpl-1"
+    )
+    with pytest.raises(LLMDispatchTerminalError, match="retired v1 dispatch Worker"):
+        backend.reconcile(legacy)
+    with pytest.raises(LLMBackendError, match="not supported"):
+        backend.retry_malformed_dispatched(legacy)

@@ -326,6 +326,175 @@ def test_diarize_raises_when_onnxruntime_logs_an_error_during_process(monkeypatc
         diarize(tmp_path / "audio.m4a")
 
 
+class _FakeEmbeddingStream:
+    def accept_waveform(self, sample_rate, data):
+        pass
+
+    def input_finished(self):
+        pass
+
+
+def test_diarize_raises_when_onnxruntime_logs_an_error_during_embedding_extraction(
+    monkeypatch, tmp_path
+):
+    """`process()`'s own onnxruntime check (above) never covers `_attach_embeddings`, which
+    runs afterward. Confirmed in production, 2026-09-07 (this exact gap, on real Denton
+    meetings, before this fix): five separate long recordings each logged the identical
+    "Where node" broadcast error mid-embedding-extraction and then reported a normal `diarize
+    done` completion moments later, with no exception at all -- this must not be silently
+    accepted as "no embedding, keep going" either."""
+
+    class _NoisyExtractor:
+        def create_stream(self):
+            return _FakeEmbeddingStream()
+
+        def is_ready(self, stream):
+            return True
+
+        def compute(self, stream):
+            os.write(
+                2,
+                b"[E:onnxruntime:, sequential_executor.cc:620 ExecuteKernel] Non-zero status "
+                b"code returned while running Where node.\n",
+            )
+            return [0.1, 0.2, 0.3]
+
+    segments = [_FakeSegment(0.0, 1.0, 0)]
+    fake = _install_fake_sherpa_onnx(monkeypatch, segments)
+    fake.SpeakerEmbeddingExtractor = MagicMock(return_value=_NoisyExtractor())
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_segmentation_model", lambda: Path("/fake/seg.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._ensure_embedding_model", lambda name: Path("/fake/emb.onnx")
+    )
+    monkeypatch.setattr(
+        "citypods.diarize._load_waveform", lambda path, sr: np.zeros(sr, dtype=np.float32)
+    )
+
+    with pytest.raises(RuntimeError, match="onnxruntime reported"):
+        diarize(tmp_path / "audio.m4a")
+
+
+def test_attach_embeddings_keeps_trying_other_turns_after_one_turn_fails(monkeypatch, tmp_path):
+    """One turn raising a plain (non-onnxruntime) exception during extraction must not sacrifice
+    every other turn's embedding -- a refinement made while restructuring this function for the
+    onnxruntime check above, not present in the prior implementation's single try/except around
+    the whole loop."""
+    from citypods.diarize import _attach_embeddings
+
+    calls = {"n": 0}
+
+    class _FlakyExtractor:
+        def create_stream(self):
+            return _FakeEmbeddingStream()
+
+        def is_ready(self, stream):
+            return True
+
+        def compute(self, stream):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("boom on the first turn only")
+            return [0.1, 0.2, 0.3]
+
+    fake = _install_fake_sherpa_onnx(monkeypatch, [])
+    fake.SpeakerEmbeddingExtractor = MagicMock(return_value=_FlakyExtractor())
+    turns = [
+        {"start": 0.0, "end": 1.0, "cluster": "0"},
+        {"start": 1.0, "end": 2.0, "cluster": "0"},
+    ]
+
+    _attach_embeddings(
+        np.zeros(32000, dtype=np.float32), 16000, turns, Path("/fake/emb.onnx"), num_threads=1
+    )
+
+    assert "embedding" not in turns[0]
+    assert turns[1]["embedding"] == [0.1, 0.2, 0.3]
+
+
+def test_attach_embeddings_truncates_a_turn_longer_than_the_max(monkeypatch, tmp_path):
+    """Root-caused, not just detected (review/31 §A.4 addendum, 2026-09-07): TitaNet-Small's
+    exported graph has a hard 122.88s (12288-frame) limit. A turn past
+    DIARIZE_MAX_EMBEDDING_TURN_SECONDS must be truncated to that length *before* extraction --
+    prevention, not just a clean failure after the fact -- and marked so the truncation is
+    visible in the stored artifact rather than silent."""
+    from citypods.diarize import DIARIZE_MAX_EMBEDDING_TURN_SECONDS, _attach_embeddings
+
+    sample_rate = 16000
+    seen_lengths: list[int] = []
+
+    class _RecordingStream:
+        def accept_waveform(self, sr, data):
+            seen_lengths.append(len(data))
+
+        def input_finished(self):
+            pass
+
+    class _RecordingExtractor:
+        def create_stream(self):
+            return _RecordingStream()
+
+        def is_ready(self, stream):
+            return True
+
+        def compute(self, stream):
+            return [0.1, 0.2, 0.3]
+
+    fake = _install_fake_sherpa_onnx(monkeypatch, [])
+    fake.SpeakerEmbeddingExtractor = MagicMock(return_value=_RecordingExtractor())
+
+    long_turn_seconds = DIARIZE_MAX_EMBEDDING_TURN_SECONDS + 30.0  # well past the max
+    turns = [{"start": 0.0, "end": long_turn_seconds, "cluster": "0"}]
+    samples = np.zeros(int(long_turn_seconds * sample_rate), dtype=np.float32)
+
+    _attach_embeddings(samples, sample_rate, turns, Path("/fake/emb.onnx"), num_threads=1)
+
+    assert seen_lengths == [int(DIARIZE_MAX_EMBEDDING_TURN_SECONDS * sample_rate)]
+    assert turns[0]["embedding_truncated"] is True
+    assert turns[0]["embedding"] == [0.1, 0.2, 0.3]
+    # Truncation only changes what audio is *sent for extraction* -- the turn's own recorded
+    # span is untouched.
+    assert turns[0]["start"] == 0.0
+    assert turns[0]["end"] == long_turn_seconds
+
+
+def test_attach_embeddings_does_not_truncate_a_turn_at_or_under_the_max(monkeypatch, tmp_path):
+    from citypods.diarize import DIARIZE_MAX_EMBEDDING_TURN_SECONDS, _attach_embeddings
+
+    sample_rate = 16000
+    seen_lengths: list[int] = []
+
+    class _RecordingStream:
+        def accept_waveform(self, sr, data):
+            seen_lengths.append(len(data))
+
+        def input_finished(self):
+            pass
+
+    class _RecordingExtractor:
+        def create_stream(self):
+            return _RecordingStream()
+
+        def is_ready(self, stream):
+            return True
+
+        def compute(self, stream):
+            return [0.1, 0.2, 0.3]
+
+    fake = _install_fake_sherpa_onnx(monkeypatch, [])
+    fake.SpeakerEmbeddingExtractor = MagicMock(return_value=_RecordingExtractor())
+
+    turns = [{"start": 0.0, "end": DIARIZE_MAX_EMBEDDING_TURN_SECONDS, "cluster": "0"}]
+    samples = np.zeros(int(DIARIZE_MAX_EMBEDDING_TURN_SECONDS * sample_rate), dtype=np.float32)
+
+    _attach_embeddings(samples, sample_rate, turns, Path("/fake/emb.onnx"), num_threads=1)
+
+    assert seen_lengths == [int(DIARIZE_MAX_EMBEDDING_TURN_SECONDS * sample_rate)]
+    assert "embedding_truncated" not in turns[0]
+    assert turns[0]["embedding"] == [0.1, 0.2, 0.3]
+
+
 def test_diarize_logs_but_does_not_raise_on_an_onnxruntime_warning(monkeypatch, tmp_path, capsys):
     """A warning-level onnxruntime line is surfaced (at minimum logged) but is not treated as a
     job failure -- only an error/fatal-level line is."""
@@ -436,3 +605,114 @@ def test_ffmpeg_error_detail_redacts_credentials_and_is_bounded():
     assert "hunter2" not in detail
     assert detail.count("<redacted>") == 2
     assert len(_ffmpeg_detail(b"x" * 5000)) == 500
+
+
+def test_diarize_rss_spike_margin_matches_the_documented_broadcast_evidence():
+    """Pins DIARIZE_RSS_SPIKE_MARGIN_BYTES so a change to it is deliberate. Cut back down to a
+    small, non-zero cushion (2026-09-07, review/31 §A.4 addendum): the 5GiB version it replaced
+    was sized against real incidents whose root cause (`_attach_embeddings` feeding a turn past
+    122.88s whole to the extractor) is now prevented at the source by
+    `DIARIZE_MAX_EMBEDDING_TURN_SECONDS`'s truncation, not just detected -- and, observed
+    directly in production the very next run after the 5GiB bump, the larger margin cost real
+    concurrency (clamped a single legitimate ~9.9GiB candidate's reservation, stranding three
+    waiting candidates for its entire runtime) without buying a matching safety win, since that
+    same batch would have serialized to one-at-a-time under any margin size including zero."""
+    from citypods.diarize import DIARIZE_RSS_SPIKE_MARGIN_BYTES
+
+    assert DIARIZE_RSS_SPIKE_MARGIN_BYTES == 1 * 1024 * 1024 * 1024
+
+
+def test_diarize_memory_ceiling_subtracts_the_spike_margin_once():
+    from citypods.diarize import DIARIZE_RSS_SPIKE_MARGIN_BYTES, diarize_memory_ceiling_bytes
+
+    margin_mb = DIARIZE_RSS_SPIKE_MARGIN_BYTES / (1024 * 1024)
+    # Production's actual configured value (config/site_config.yml `speakers.memory_budget_mb`).
+    assert diarize_memory_ceiling_bytes(14000) == int((14000 - margin_mb) * 1024 * 1024)
+
+
+def test_diarize_memory_ceiling_passes_through_the_disabled_sentinel_unchanged():
+    """`memory_budget_mb: 0` (or blank) means "admission disabled" -- not a budget to apply a
+    safety margin to. Must stay exactly 0, not go negative or become some other sentinel."""
+    from citypods.diarize import diarize_memory_ceiling_bytes
+
+    assert diarize_memory_ceiling_bytes(0) == 0
+    assert diarize_memory_ceiling_bytes(-5) == 0
+
+
+def test_diarize_memory_ceiling_clamps_a_budget_smaller_than_the_margin_to_zero():
+    """A configured budget smaller than the spike margin must clamp to 0 (disabled), never go
+    negative -- `MemoryReservation` isn't built for a negative budget."""
+    from citypods.diarize import diarize_memory_ceiling_bytes
+
+    assert diarize_memory_ceiling_bytes(1024) == 0
+
+
+def test_run_diarize_job_logs_peak_rss_and_the_log_label_on_success(monkeypatch, tmp_path, capsys):
+    from citypods.diarize import DiarizeArtifacts, run_diarize_job
+
+    fake_artifact = DiarizeArtifacts(turns=[], clusters=[], engine="sherpa-onnx", model="x")
+    monkeypatch.setattr("citypods.diarize.diarize", lambda *a, **k: fake_artifact)
+    monkeypatch.setattr("citypods.diarize._peak_rss_mb", lambda: 512.3)
+
+    result = run_diarize_job(str(tmp_path / "audio.m4a"), log_label="uid-123")
+
+    assert result is fake_artifact
+    out = capsys.readouterr().out
+    assert "peak_rss_mb=512.3" in out
+    assert "label='uid-123'" in out
+
+
+def test_run_diarize_job_reports_none_peak_rss_without_crashing(monkeypatch, tmp_path, capsys):
+    """`_peak_rss_mb` returning `None` (platform without `/proc` or `resource`) must not crash
+    the log line or the round() call on it."""
+    from citypods.diarize import DiarizeArtifacts, run_diarize_job
+
+    fake_artifact = DiarizeArtifacts(turns=[], clusters=[], engine="sherpa-onnx", model="x")
+    monkeypatch.setattr("citypods.diarize.diarize", lambda *a, **k: fake_artifact)
+    monkeypatch.setattr("citypods.diarize._peak_rss_mb", lambda: None)
+
+    run_diarize_job(str(tmp_path / "audio.m4a"))
+    assert "peak_rss_mb=None" in capsys.readouterr().out
+
+
+def test_run_diarize_job_wraps_memory_error_with_peak_rss_and_label(monkeypatch, tmp_path):
+    """A genuine `MemoryError` -- CPython failing to satisfy a malloc and recovering enough to
+    raise it -- is real evidence of memory exhaustion, not a guess. It must not be swallowed or
+    reported as a generic diarize error indistinguishable from any other failure."""
+    from citypods.diarize import run_diarize_job
+
+    def _boom(*a, **k):
+        raise MemoryError("could not allocate 2.5 GiB")
+
+    monkeypatch.setattr("citypods.diarize.diarize", _boom)
+    monkeypatch.setattr("citypods.diarize._peak_rss_mb", lambda: 13500.0)
+
+    with pytest.raises(RuntimeError, match=r"uid-999.*MemoryError.*peak_rss_mb=13500\.0") as exc:
+        run_diarize_job(str(tmp_path / "audio.m4a"), log_label="uid-999")
+    assert isinstance(exc.value.__cause__, MemoryError)
+
+
+def test_run_diarize_job_wraps_oserror_enomem_but_not_other_oserrors(monkeypatch, tmp_path):
+    """A native allocation failure (numpy/onnxruntime) can surface as `OSError(errno=ENOMEM)`
+    instead of a Python-level `MemoryError` -- same underlying cause, must get the same
+    enriched-and-re-raised treatment. Any *other* `OSError` (a real filesystem/IO problem) must
+    pass through unchanged rather than being misreported as a memory issue it has nothing to do
+    with."""
+    import errno
+
+    from citypods.diarize import run_diarize_job
+
+    def _enomem(*a, **k):
+        raise OSError(errno.ENOMEM, "Cannot allocate memory")
+
+    monkeypatch.setattr("citypods.diarize.diarize", _enomem)
+    monkeypatch.setattr("citypods.diarize._peak_rss_mb", lambda: 8000.0)
+    with pytest.raises(RuntimeError, match=r"OSError.*peak_rss_mb=8000\.0"):
+        run_diarize_job(str(tmp_path / "audio.m4a"))
+
+    def _enoent(*a, **k):
+        raise OSError(errno.ENOENT, "No such file or directory")
+
+    monkeypatch.setattr("citypods.diarize.diarize", _enoent)
+    with pytest.raises(OSError, match="No such file or directory"):
+        run_diarize_job(str(tmp_path / "audio.m4a"))

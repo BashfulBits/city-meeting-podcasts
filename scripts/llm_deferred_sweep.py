@@ -6,7 +6,9 @@ cleared, or a genuine Mistral dispatch handle that finished at the Worker. Each 
 complete, idempotent sweep of whatever is currently pending; there is no per-item state to track
 between runs beyond what the registry itself already holds. Also prunes registry records past
 their TTL, so a caller whose own identity changes run to run (e.g. city discovery's recipe_hash,
-which depends on that run's search results) doesn't leave orphaned records behind forever.
+which depends on that run's search results) doesn't leave orphaned records behind forever. The
+``--full-prune-only`` maintenance mode performs a less-frequent full-registry TTL pass so terminal
+records that no longer have pending index pointers are eventually collected too.
 
 Scheduled every six hours, with one run inside DeepSeek's off-peak discount window (see the workflow
 this script backs). A normal run is an observation and bounded-retry pass, not a multi-hour drain:
@@ -239,7 +241,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Rebuild the B2 pointer index from canonical records and finish dual-read migration.",
     )
+    parser.add_argument(
+        "--full-prune-only",
+        action="store_true",
+        help="List the full canonical registry and prune expired records without reconciling jobs.",
+    )
     args = parser.parse_args(argv)
+    if args.repair_index and args.full_prune_only:
+        parser.error("--repair-index and --full-prune-only are mutually exclusive")
 
     site_config = load_site_config(args.site_config)
     storage = make_storage(site_config, "", Path(args.output_dir))
@@ -250,14 +259,9 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
 
-    # A backend able to reach every transport a pending record might need: `dispatch_url` (from
-    # LLM_DISPATCH_URL/LLM_DISPATCH_AUTH_TOKEN) makes mistral-dispatch reachable alongside direct,
-    # regardless of LLM_MODE -- this is exactly the caller `_available_transports()` was built for
-    # (see citypods/compute/llm.py), since the sweep services a mixed bag of records regardless of
-    # which route originally claimed them.
-    # This workflow services a mix of direct and dispatch records.  Tag records are explicitly
-    # upgraded to queue_only above; that path posts to LLM_DISPATCH_URL itself, while every other
-    # deferred record preserves its original policy-selected behavior.
+    # This workflow services a mix of direct and v2 dispatch records. Tag records are explicitly
+    # upgraded to queue_only above and go to the v2 Worker; every other deferred record preserves
+    # its original policy-selected behavior.
     backend = LiteLLMBackend(LLMBackendConfig.from_env(), storage=storage)
     _register_known_contracts()
 
@@ -278,6 +282,47 @@ def main(argv: list[str] | None = None) -> int:
 
     stop_state = _install_signal_handlers()
     deadline_at = datetime.now(UTC) + timedelta(minutes=args.run_time_budget_minutes)
+    if args.full_prune_only:
+        snapshot_started_at = datetime.now(UTC)
+        print(
+            json.dumps(
+                {
+                    "event": "llm_deferred_full_prune_started",
+                    "deadline_at": deadline_at.isoformat(),
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        snapshot = load_deferred_snapshot(
+            storage,
+            deadline_at=deadline_at,
+            should_stop=lambda: stop_state.requested,
+            include_ineligible=True,
+        )
+        pruned = prune_expired_deferred_snapshot(storage, snapshot)
+        print(
+            json.dumps(
+                {
+                    "event": "llm_deferred_full_prune_end",
+                    "pruned": pruned,
+                    "snapshot": {
+                        "deadline_reached": snapshot.deadline_reached,
+                        "elapsed_seconds": round(
+                            (datetime.now(UTC) - snapshot_started_at).total_seconds(), 3
+                        ),
+                        "listed": snapshot.listed_count,
+                        "loaded": len(snapshot.entries),
+                        "omitted": snapshot.omitted_count,
+                    },
+                    "unavailable": len(snapshot.unavailable_reads),
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        return 0
+
     completed = 0
     still_pending = 0
     failed = 0
@@ -332,7 +377,9 @@ def main(argv: list[str] | None = None) -> int:
     has_v2_dispatch = getattr(getattr(backend, "config", None), "dispatch_v2_url", None)
     if callable(stats_method) and has_v2_dispatch:
         try:
-            start_summary["v2_scheduler"] = stats_method()
+            # This scheduled, six-hour pass is the deliberate low-rate owner of detailed queue
+            # diagnostics. Producer telemetry keeps dispatch_v2_stats()'s constant-cost default.
+            start_summary["v2_scheduler"] = stats_method(detail=True)
         except Exception as exc:  # noqa: BLE001 -- observability must not block reaping
             start_summary["v2_scheduler_error"] = type(exc).__name__
     print(json.dumps(start_summary, sort_keys=True), flush=True)
@@ -364,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(exc, LLMStructuredOutputError):
             if schema_correction_attempted(storage, handle.recipe_hash):
                 marker_count = discard_terminal_failure(
-                    storage, target_snapshot, handle, exc, backend=backend, exhausted=True
+                    storage, target_snapshot, handle, exc, exhausted=True
                 )
                 recovered_terminal_failures += 1
                 print(
@@ -381,7 +428,6 @@ def main(argv: list[str] | None = None) -> int:
                 # marker-write failure must leave the original intact, not permit a second retry.
                 record_schema_correction(storage, handle, exc)
                 backend.ack_dispatched_ref(handle)
-                backend.delete_dispatched_ref(handle.ref)
                 print(
                     f"llm-deferred-sweep: {handle.recipe_hash} submitted one schema correction",
                     file=sys.stderr,
@@ -395,9 +441,7 @@ def main(argv: list[str] | None = None) -> int:
             return
 
         assert isinstance(exc, LLMDispatchTerminalError)
-        marker_count = discard_terminal_failure(
-            storage, target_snapshot, handle, exc, backend=backend
-        )
+        marker_count = discard_terminal_failure(storage, target_snapshot, handle, exc)
         recovered_terminal_failures += 1
         print(
             f"llm-deferred-sweep: {handle.recipe_hash} terminal failure recovered "
@@ -627,7 +671,7 @@ def main(argv: list[str] | None = None) -> int:
     # immediate pass would only re-poll/re-log the same remaining handles; the next scheduled run
     # gets a fresh registry snapshot.
 
-    pruned = prune_expired_deferred_snapshot(storage, snapshot, backend=backend)
+    pruned = prune_expired_deferred_snapshot(storage, snapshot)
     remaining = sum(
         1
         for entry in snapshot.entries

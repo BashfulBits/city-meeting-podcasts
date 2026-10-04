@@ -1,0 +1,12 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Gas Well Task Force is a recurring distinct body with 14 episodes from 2011-12-20 to 2012-10-22.
+slug: denton-tx-gas-well-task-force
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body: Gas Well Task Force
+podcast_title: 'Denton: Gas Well Task Force'
+podcast_author: City of Denton, TX
+podcast_email: ''
+podcast_description: Recordings and meetings of the Gas Well Task Force.

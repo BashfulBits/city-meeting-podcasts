@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from functools import lru_cache
 from pathlib import Path
 
@@ -51,13 +51,15 @@ def pull_canonical_state(
     output_dir: str | Path,
     *,
     base_url: str = "",
+    only_paths: Iterable[str | Path] | None = None,
     log: Callable[[str], None] | None = None,
 ) -> Path:
     """Resolve ``state_dir`` and pull the durable snapshot from the bucket into it.
 
     Shares the "construct storage, then pull" idiom every read path needs (``run.py``'s
     builder and the feed-health audit) so a future change to that sequence (e.g. CAS-key
-    skip logic) only needs editing once. The bucket is canonical
+    skip logic) only needs editing once. ``only_paths`` is an optional exact relative-path scope for
+    read-only tools that need a small slice of the canonical state. The bucket is canonical
     (``citypods.statesync``'s documented contract) — ``actions/cache`` is a pure latency
     optimization elsewhere, never a correctness dependency, so a missing/unreachable bucket
     degrades to "whatever's already on disk" rather than failing the caller outright.
@@ -66,7 +68,7 @@ def pull_canonical_state(
     state_dir = resolve_state_dir(site_config, output_dir)
     try:
         storage = make_storage(site_config, base_url, output_dir)
-        restored = pull_state(storage, state_dir, log=emit)
+        restored = pull_state(storage, state_dir, only_paths=only_paths, log=emit)
     except Exception as exc:  # noqa: BLE001 — state unavailable must not abort the caller
         emit(f"state: could not pull canonical state from the bucket ({exc}); using local copy")
         return state_dir

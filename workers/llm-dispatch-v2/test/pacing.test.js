@@ -65,20 +65,56 @@ test("minInterRequestGapMs adds a request-start safety margin without using resp
   assert.equal(earliestSafeStart(exhausted, job(), NOW, NOW).notBeforeAt, NOW + 62_000);
 });
 
-test("availableTokenBudget refills linearly up to the FULL_TOKEN_BUDGET_WINDOWS cap", () => {
+test("availableTokenBudget refills linearly with no upper cap (2026-09-13 redesign)", () => {
+  // Size admissibility is answered once, separately, by hard_input_ceiling -- this bucket no
+  // longer caps itself at a hardcoded multiplier of tpm. A very long idle period accrues a very
+  // large budget, matching the Python direct-transport scheduler's own uncapped linear model.
   const route = freshRoute({ full_token_budget: 0, token_budget_updated_at: NOW, tpm: 6000 });
   assert.equal(availableTokenBudget(route, NOW), 0);
   assert.equal(availableTokenBudget(route, NOW + 30_000), 3000); // half a minute -> half of tpm
-  const cap = 6000 * FULL_TOKEN_BUDGET_WINDOWS;
-  assert.equal(availableTokenBudget(route, NOW + 999_000_000), cap); // long idle caps, doesn't grow unbounded
+  const farBeyondTheOldFiveWindowCap = 6000 * FULL_TOKEN_BUDGET_WINDOWS * 10;
+  assert.ok(availableTokenBudget(route, NOW + 999_000_000) > farBeyondTheOldFiveWindowCap);
 });
 
-test("reservationFor takes the max of client estimate, floor, and calibrated margin", () => {
-  const j = job({ input_token_estimate: 500, max_output_token_estimate: 200 }); // 700
+test("reservationFor scales input by the route ratio and reserves the output forecast", () => {
+  const j = { input_token_estimate: 500, max_output_token_estimate: 200 };
+  // No ratio, no forecast: the raw estimate plus the full max_tokens (the pre-calibration shape).
   assert.equal(reservationFor(j), 700);
   assert.equal(reservationFor(j, { estimateFloor: 1000 }), 1000);
-  assert.equal(reservationFor(j, { calibratedMargin: 1500 }), 1500);
-  assert.equal(reservationFor(j, { estimateFloor: 800, calibratedMargin: 600 }), 800);
+  // A route's static prior scales only the input side.
+  assert.equal(reservationFor(j, { route: { input_token_ratio: 2 } }), 1200);
+  // An explicit calibrated ratio wins over the route prior.
+  assert.equal(reservationFor(j, { route: { input_token_ratio: 2 }, inputRatio: 1.5 }), 950);
+  // A learned output forecast replaces max_tokens, but never exceeds it.
+  assert.equal(reservationFor(j, { outputForecast: 80 }), 580);
+  assert.equal(reservationFor(j, { outputForecast: 5000 }), 700);
+});
+
+test("earliestSafeStart compares hard_input_ceiling in the provider's token units", () => {
+  const now = Date.now();
+  const route = { rpm: 30, tpm: 14400, hard_input_ceiling: 10000, input_token_ratio: 1.2 };
+  // 8,000 raw chars/4 tokens is 9,600 Gemma tokens: admissible.
+  assert.notEqual(earliestSafeStart(route, { input_token_estimate: 8000 }, now, now), null);
+  // 9,000 raw is 10,800 Gemma tokens: over the measured ceiling, although the raw figure is not.
+  assert.equal(earliestSafeStart(route, { input_token_estimate: 9000 }, now, now), null);
+});
+
+test("earliestSafeStart allows the ceiling tolerance only when the caller asks for it", () => {
+  const now = Date.now();
+  const route = {
+    rpm: 30,
+    tpm: 14400,
+    hard_input_ceiling: 14400,
+    hard_input_ceiling_tolerance: 0.1,
+    input_token_ratio: 1.4,
+  };
+  const at = (raw, extra = {}) =>
+    earliestSafeStart(route, { input_token_estimate: raw }, now, now, { inputRatio: 1.56, ...extra });
+  // At a learned 1.56, 10,000 raw is 15,600 provider tokens: over 14,400 but inside 15,840.
+  assert.equal(at(10_000), null);
+  assert.notEqual(at(10_000, { ceilingTolerance: true }), null);
+  // 10,200 raw is 15,912: beyond the tolerance too.
+  assert.equal(at(10_200, { ceilingTolerance: true }), null);
 });
 
 test("earliestSafeStart admits immediately when a fresh route has full headroom", () => {
@@ -130,13 +166,10 @@ test("a stale day key means the provider already reset, so the route is ready no
   assert.equal(result.notBeforeAt, NOW, "a rolled-over daily quota must not hold the route");
 });
 
-test("rpd <= 0 keeps its pre-existing pacing meaning (unconstrained here)", () => {
-  // Pins the behaviour rather than endorsing it: fixedWindowReadyAt treated `limit <= 0` as
-  // unlimited while _capacityFraction reads `rpd: 0` as paused. That disagreement predates the
-  // timezone work and is left as-is; a paused route is dropped from the ranking before pacing
-  // is reached, so the inconsistency is not reachable in practice.
+test("rpd:0 is terminally unavailable to the pacing primitive", () => {
   const route = freshRoute({ rpd: 0, rpd_count: 0 });
-  assert.equal(earliestSafeStart(route, job(), NOW, NOW).notBeforeAt, NOW);
+  assert.equal(earliestSafeStart(route, job(), NOW, NOW), null);
+  assert.equal(routeHasCapacityFor(route, job(), NOW, 25), false);
 });
 
 test("earliestSafeStart waits for token budget to refill for an oversized job", () => {
@@ -151,11 +184,15 @@ test("earliestSafeStart waits for token budget to refill for an oversized job", 
   assert.equal(result.notBeforeAt, NOW + expectedWaitMs);
 });
 
-test("earliestSafeStart returns null when a reservation exceeds the route's burst ceiling outright", () => {
-  const route = freshRoute({ tpm: 1000 }); // ceiling = 1000 * FULL_TOKEN_BUDGET_WINDOWS = 5000
-  const hugeJob = job({ input_token_estimate: 4000, max_output_token_estimate: 2000 }); // 6000 > 5000
+test("earliestSafeStart waits (does not reject) an oversized reservation with no hard_input_ceiling set", () => {
+  // 2026-09-13 redesign: there is no second, tpm-derived admissibility gate any more. A route
+  // with no measured hard_input_ceiling gets no extra size restriction here at all -- the job
+  // simply waits, however long the bucket needs, exactly like the Python scheduler always has.
+  const route = freshRoute({ tpm: 1000, full_token_budget: 0, token_budget_updated_at: NOW });
+  const hugeJob = job({ input_token_estimate: 4000, max_output_token_estimate: 2000 }); // 6000
   const result = earliestSafeStart(route, hugeJob, NOW, NOW);
-  assert.equal(result, null);
+  assert.notEqual(result, null);
+  assert.ok(result.notBeforeAt > NOW);
 });
 
 test("earliestSafeStart returns null for a hard_input_ceiling route, well inside the normal burst window", () => {
@@ -245,10 +282,18 @@ test("routeHasCapacityFor is false when the safe start plus call duration exceed
   assert.equal(tooLate, false); // 20s block + 6s ceiling > 25s window
 });
 
-test("routeHasCapacityFor is false for a permanently-oversized reservation", () => {
-  const route = freshRoute({ tpm: 100 });
+test("routeHasCapacityFor is false for an oversized reservation within the probe window, true for a hard_input_ceiling rejection", () => {
+  // With no cap, a reservation far beyond tpm just needs a long wait -- so within an ordinary
+  // short probe window (25s) it correctly reads as "not now" (false), for a timing reason, not a
+  // permanent one. A route WITH a measured hard_input_ceiling below the job's input is the one
+  // case that is permanently false regardless of window size.
+  const route = freshRoute({ tpm: 100, full_token_budget: 0, token_budget_updated_at: NOW });
   const hugeJob = job({ input_token_estimate: 10_000, max_output_token_estimate: 10_000 });
   assert.equal(routeHasCapacityFor(route, hugeJob, NOW, 25), false);
+
+  const gatedRoute = freshRoute({ tpm: 250_000, hard_input_ceiling: 1000 });
+  const gatedJob = job({ input_token_estimate: 5000, max_output_token_estimate: 100 });
+  assert.equal(routeHasCapacityFor(gatedRoute, gatedJob, NOW, 999_999_999), false);
 });
 
 test("computeRouteLaneWait returns wait_ms relative to now, plus the inter-request gap", () => {
@@ -261,10 +306,16 @@ test("computeRouteLaneWait returns wait_ms relative to now, plus the inter-reque
   assert.equal(result.reservation, 700);
 });
 
-test("computeRouteLaneWait returns null for a permanently-oversized reservation", () => {
-  const route = freshRoute({ tpm: 100 });
+test("computeRouteLaneWait returns a (long) wait for an oversized reservation with no hard_input_ceiling, null when one is set", () => {
+  const route = freshRoute({ tpm: 100, full_token_budget: 0, token_budget_updated_at: NOW });
   const hugeJob = job({ input_token_estimate: 10_000, max_output_token_estimate: 10_000 });
-  assert.equal(computeRouteLaneWait(route, hugeJob, NOW, NOW), null);
+  const result = computeRouteLaneWait(route, hugeJob, NOW, NOW);
+  assert.notEqual(result, null);
+  assert.ok(result.wait_ms > 0);
+
+  const gatedRoute = freshRoute({ tpm: 250_000, hard_input_ceiling: 1000 });
+  const gatedJob = job({ input_token_estimate: 5000, max_output_token_estimate: 100 });
+  assert.equal(computeRouteLaneWait(gatedRoute, gatedJob, NOW, NOW), null);
 });
 
 test("paymentRequiredBackoffUntil blocks until the start of the next UTC day on the first 402", () => {

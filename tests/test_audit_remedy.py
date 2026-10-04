@@ -7,13 +7,15 @@ matter most are the ones proving a hostile or confused proposal cannot reach the
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+import subprocess
+from datetime import UTC, datetime, timedelta
+from unittest.mock import MagicMock
 
 import pytest
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from citypods.audit import collect_unexpected_bodies
+from citypods.audit import UnexpectedBodyEvidence, collect_unexpected_bodies
 from citypods.audit_remedy import (
     DECISION_CONTRACT,
     EVIDENCE_TOKEN_BUDGET,
@@ -25,6 +27,8 @@ from citypods.audit_remedy import (
     RemedyPlan,
     SourceContext,
     _compact_evidence,
+    _new_feed_lifecycle,
+    _resolve_decisions,
     apply_remedy_plan,
     classify_unexpected_bodies,
     ensure_remedy_contract,
@@ -34,7 +38,10 @@ from citypods.audit_remedy import (
     gather_unexpected_body_evidence,
     remedy_batches,
     safe_classification_error,
+    stable_body_selector,
     validate_proposals,
+    verify_remedy_mutations,
+    write_evidence_file,
 )
 from citypods.compute.base import JobResult
 from citypods.compute.llm_policy import estimate_tokens
@@ -119,9 +126,9 @@ def evidence(repo):
     council = make_city("test-city-council", "City Council", body_any=["Work Session"])
     library = make_city("test-city-library-board", "Library Board")
     episodes = [
-        make_episode("guid-101", "Special Meeting - Budget", "Special Meeting", 10),
-        make_episode("guid-102", "Special Meeting - Hearing", "Special Meeting", 15),
-        make_episode("guid-103", "TIRZ 4-1-26", "TIRZ", 20),
+        make_episode("guid-101", "Special Meeting - Budget", "Council Special Meeting", 10),
+        make_episode("guid-102", "Special Meeting - Hearing", "Council Special Meeting", 15),
+        make_episode("guid-103", "TIRZ 4-1-26", "Council TIRZ", 20),
     ]
     rows = collect_unexpected_bodies(episodes, {}, related_cities=[council, library])
     return gather_unexpected_body_evidence(
@@ -137,7 +144,7 @@ def evidence(repo):
 def proposal(**overrides):
     base = {
         "source_key": "test-source",
-        "unexpected_body": "Special Meeting",
+        "unexpected_body": "Council Special Meeting",
         "action": "union",
         "target_feeds": ["test-city-council"],
         "rationale": "Recurring council session",
@@ -156,11 +163,11 @@ def test_evidence_describes_the_audits_own_rows(evidence):
         "test-city-library-board",
     }
     labels = {f["unexpected_body"]: f for f in evidence["unexpected_findings"]}
-    assert set(labels) == {"Special Meeting", "TIRZ"}
-    assert labels["Special Meeting"]["count"] == 2
-    assert labels["Special Meeting"]["date_range"]["earliest"].startswith("2026-05-10")
-    assert labels["Special Meeting"]["date_range"]["latest"].startswith("2026-05-15")
-    assert {ep["provider_guid"] for ep in labels["Special Meeting"]["episodes"]} == {
+    assert set(labels) == {"Council Special Meeting", "Council TIRZ"}
+    assert labels["Council Special Meeting"]["count"] == 2
+    assert labels["Council Special Meeting"]["date_range"]["earliest"].startswith("2026-05-10")
+    assert labels["Council Special Meeting"]["date_range"]["latest"].startswith("2026-05-15")
+    assert {ep["provider_guid"] for ep in labels["Council Special Meeting"]["episodes"]} == {
         "guid-101",
         "guid-102",
     }
@@ -240,7 +247,7 @@ def test_well_formed_proposals_are_accepted(evidence, repo):
         proposals=[
             proposal(),
             proposal(
-                unexpected_body="TIRZ",
+                unexpected_body="Council TIRZ",
                 action="single_uid_inclusion",
                 provider_guids=["guid-103"],
             ),
@@ -258,6 +265,156 @@ def test_proposals_for_removed_feed_files_are_rejected(evidence, repo):
     plan = validate_proposals(RemedyOutput(proposals=[proposal()]), evidence, paths)
     assert plan.accepted == []
     assert "have no file under config/feeds" in plan.rejected[0].reason
+
+
+def test_new_feed_with_fewer_than_three_observed_meetings_is_deferred(evidence, repo):
+    plan = validate_proposals(
+        RemedyOutput(
+            proposals=[
+                proposal(
+                    unexpected_body="Council TIRZ",
+                    action="new_feed",
+                    target_feeds=[],
+                    new_feed_slug="test-city-tirz-board",
+                    new_feed_title="Test City: TIRZ Board",
+                    new_feed_description="TIRZ Board meetings.",
+                )
+            ]
+        ),
+        evidence,
+        feed_paths_by_slug(repo),
+    )
+    assert not plan.accepted
+    assert plan.rejected[0].reason.startswith("deferred:")
+    assert "at least 3" in plan.rejected[0].reason
+
+
+def test_recurring_family_cannot_be_pinned_as_single_uuid(evidence, repo):
+    finding = evidence["unexpected_findings"][0]
+    finding["count"] = 3
+    finding["episodes"].append(
+        {
+            "provider_guid": "guid-104",
+            "published": "2026-05-25T18:00:00+00:00",
+            "title": "Special Meeting - Follow-up",
+            "body": "Council Special Meeting",
+        }
+    )
+    plan = validate_proposals(
+        RemedyOutput(
+            proposals=[
+                proposal(
+                    action="single_uid_inclusion",
+                    provider_guids=["guid-101"],
+                )
+            ]
+        ),
+        evidence,
+        feed_paths_by_slug(repo),
+    )
+    assert not plan.accepted
+    assert "use a wildcard or new feed" in plan.rejected[0].reason
+
+
+def test_incompatible_target_feed_is_deferred(evidence, repo):
+    evidence["unexpected_findings"] = [
+        {
+            **evidence["unexpected_findings"][1],
+            "unexpected_body": "Sports Arena TIF District Board",
+        }
+    ]
+    plan = validate_proposals(
+        RemedyOutput(proposals=[proposal(unexpected_body="Sports Arena TIF District Board")]),
+        evidence,
+        feed_paths_by_slug(repo),
+    )
+    assert not plan.accepted
+    assert plan.rejected[0].reason.startswith("deferred:")
+    assert "taxonomy overlap" in plan.rejected[0].reason
+
+
+def test_unfiltered_target_feed_is_allowed_for_manual_taxonomy(evidence, repo):
+    path = repo / "config" / "feeds" / "test-city-all.yml"
+    path.write_text(
+        "slug: test-city-all\n"
+        "city: test-city-tx\n"
+        "provider: granicus\n"
+        "source:\n"
+        "  feed_url: https://test.example/feed\n"
+        'podcast_title: "Test City: All Meetings"\n'
+        'podcast_author: "City of Test, TX"\n'
+        'podcast_email: ""\n'
+        'podcast_description: "Meetings."\n',
+        encoding="utf-8",
+    )
+    evidence["existing_feeds"].append({"slug": "test-city-all"})
+    plan = validate_proposals(
+        RemedyOutput(proposals=[proposal(target_feeds=["test-city-all"])]),
+        evidence,
+        feed_paths_by_slug(repo),
+    )
+    assert len(plan.accepted) == 1
+
+
+def test_new_historical_feed_is_marked_retired(evidence, repo):
+    historical = {
+        **evidence,
+        "unexpected_findings": [
+            {
+                **evidence["unexpected_findings"][0],
+                "count": 3,
+                "episodes": [
+                    {
+                        "provider_guid": f"old-{index}",
+                        "published": f"2020-05-{10 + index:02d}T18:00:00+00:00",
+                        "title": "Historical meeting",
+                        "body": "Council Special Meeting",
+                    }
+                    for index in range(3)
+                ],
+            }
+        ],
+    }
+    decisions = BodyDecisions(
+        proposals=[
+            {
+                "finding_id": "f0",
+                "action": "new_feed",
+                "new_feed_slug": "test-city-special-meetings",
+                "new_feed_title": "Test City: Special Meetings",
+                "new_feed_description": "Special meetings.",
+                "rationale": "Three historical meetings.",
+            }
+        ]
+    )
+    resolved = _resolve_decisions(decisions, historical, _compact_evidence(historical))
+    assert resolved.proposals[0].lifecycle_status == "retired"
+    assert "latest observed meeting" in resolved.proposals[0].lifecycle_reason
+    apply_remedy_plan(
+        RemedyPlan(accepted=resolved.proposals),
+        feed_paths=feed_paths_by_slug(repo),
+        source_context=SourceContext.from_city(make_city("test-city-council", "City Council")),
+        repo_root=repo,
+    )
+    created = yaml.safe_load(
+        (repo / "config" / "feeds" / "test-city-special-meetings.yml").read_text(encoding="utf-8")
+    )
+    assert created["lifecycle"] == {
+        "status": "retired",
+        "reason": resolved.proposals[0].lifecycle_reason,
+    }
+
+
+def test_new_irregular_feed_is_marked_dormant():
+    today = datetime.now(UTC).date()
+    episodes = [
+        {"published": (today - timedelta(days=900)).isoformat()},
+        {"published": (today - timedelta(days=800)).isoformat()},
+        {"published": (today - timedelta(days=200)).isoformat()},
+    ]
+    status, reason = _new_feed_lifecycle({"episodes": episodes})
+    assert status == "dormant"
+    assert "600-day gap" in reason
 
 
 def test_model_cannot_supply_a_file_path():
@@ -288,7 +445,10 @@ def test_union_appends_to_the_resolved_feed_and_keeps_comments(evidence, repo):
     path = repo / "config" / "feeds" / "test-city-council.yml"
     assert modified == [path]
     text = path.read_text(encoding="utf-8")
-    assert yaml.safe_load(text)["source"]["body_any"] == ["Work Session", "Special Meeting"]
+    assert yaml.safe_load(text)["source"]["body_any"] == [
+        "Work Session",
+        "Council Special Meeting",
+    ]
     assert "# Council reads the main view." in text
 
 
@@ -296,7 +456,7 @@ def test_single_uid_inclusion_pins_only_the_observed_guids(evidence, repo):
     plan = RemedyPlan(
         accepted=[
             proposal(
-                unexpected_body="TIRZ",
+                unexpected_body="Council TIRZ",
                 action="single_uid_inclusion",
                 provider_guids=["guid-103"],
             )
@@ -311,7 +471,9 @@ def test_single_uid_inclusion_pins_only_the_observed_guids(evidence, repo):
     data = yaml.safe_load(
         (repo / "config" / "feeds" / "test-city-council.yml").read_text(encoding="utf-8")
     )
-    assert data["source"]["body_includes"] == [{"provider_guid": "guid-103", "body": "TIRZ"}]
+    assert data["source"]["body_includes"] == [
+        {"provider_guid": "guid-103", "body": "Council TIRZ"}
+    ]
 
 
 def test_apply_is_idempotent(evidence, repo):
@@ -324,14 +486,14 @@ def test_apply_is_idempotent(evidence, repo):
     data = yaml.safe_load(
         (repo / "config" / "feeds" / "test-city-council.yml").read_text(encoding="utf-8")
     )
-    assert data["source"]["body_any"].count("Special Meeting") == 1
+    assert data["source"]["body_any"].count("Council Special Meeting") == 1
 
 
 def test_new_feed_copies_the_sibling_transport_so_the_source_key_matches(evidence, repo):
     plan = RemedyPlan(
         accepted=[
             proposal(
-                unexpected_body="TIRZ",
+                unexpected_body="Council TIRZ",
                 action="new_feed",
                 target_feeds=[],
                 new_feed_slug="test-city-tirz-board",
@@ -352,7 +514,7 @@ def test_new_feed_copies_the_sibling_transport_so_the_source_key_matches(evidenc
     assert data["slug"] == "test-city-tirz-board"
     assert data["source"]["feed_url"] == "https://test.example/feed"
     # The sibling's selectors must not leak onto the new feed.
-    assert data["source"]["body"] == "TIRZ"
+    assert data["source"]["body"] == "Council TIRZ"
     assert "body_any" not in data["source"]
     assert "Rationale:" in created.read_text(encoding="utf-8")
 
@@ -445,7 +607,7 @@ def test_classify_rejects_invented_episode_ids_after_one_repair(evidence):
     payload["proposals"][0].update(action="single_uid_inclusion", episode_ids=["e99999"])
     backend = ReplyBackend([json.dumps(payload)] * 2)
     result = classify_unexpected_bodies(evidence, backend=backend)
-    assert "Special Meeting" in result.unresolved
+    assert "Council Special Meeting" in result.unresolved
     assert len(backend.jobs) == 1
 
 
@@ -514,7 +676,7 @@ def test_report_lists_accepted_and_rejected(evidence, repo):
     remedy = RemedyOutput(proposals=[proposal(), proposal(unexpected_body="Not Observed")])
     plan = validate_proposals(remedy, evidence, feed_paths_by_slug(repo))
     table = format_remedy_markdown(plan, evidence)
-    assert "Special Meeting" in table
+    assert "Council Special Meeting" in table
     assert "**union**" in table
     assert "Rejected proposals" in table
     assert "was not observed" in table
@@ -604,6 +766,18 @@ def test_batches_preserve_all_full_evidence_and_bound_model_input():
         assert all(len(f["episodes"]) == 5000 for f in batch["unexpected_findings"])
 
 
+def test_stable_body_selector_only_wildcards_recurring_dated_families():
+    labels = [
+        "Agenda Committee on 2018-10-24 2:30 PM",
+        "Agenda Committee on 2018-10-17 2:30 PM",
+    ]
+    assert stable_body_selector(labels[0], labels) == "Agenda Committee on *"
+    assert stable_body_selector(labels[0], labels[:1]) == labels[0]
+    assert stable_body_selector("One-off on 2018-10-24 2:30 PM", [labels[0]]) == (
+        "One-off on 2018-10-24 2:30 PM"
+    )
+
+
 def test_single_oversized_finding_is_reported_not_dropped(evidence):
     evidence["unexpected_findings"][0]["unexpected_body"] = "x" * 100000
     batches = list(remedy_batches(evidence))
@@ -642,3 +816,441 @@ def test_safe_diagnostics_mask_unknown_loc_parts():
     assert "leaked-value" not in diagnostic
     assert "<field>" in diagnostic
     assert "proposals" in diagnostic
+
+
+# --- write_evidence_file ------------------------------------------------------------------
+
+
+def test_write_evidence_file_writes_bundle_and_returns_count(repo):
+    council = make_city("test-city-council", "City Council", body_any=["Work Session"])
+    library = make_city("test-city-library-board", "Library Board")
+    episodes = [
+        make_episode("guid-101", "Special Meeting - Budget", "Council Special Meeting", 10),
+    ]
+    rows = collect_unexpected_bodies(episodes, {}, related_cities=[council, library])
+    item = UnexpectedBodyEvidence(
+        source_key="test-source",
+        city=council,
+        related_cities=[council, library],
+        rows=rows,
+        records={"guid-1": {"body": "City Council", "title": "Regular Meeting"}},
+    )
+    target_path = repo / "evidence" / "bundle.json"
+
+    count = write_evidence_file([item], target_path, repo_root=repo)
+
+    assert count == 1
+    assert target_path.exists()
+    payload = json.loads(target_path.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 1
+    assert len(payload["sources"]) == 1
+    assert payload["sources"][0]["source_key"] == "test-source"
+    assert len(payload["digest"]) == 64
+
+
+def test_write_evidence_file_creates_parent_directories(repo):
+    item = UnexpectedBodyEvidence(
+        source_key="test-source",
+        city=make_city("test-city-council", "City Council"),
+        related_cities=[],
+        rows={},
+        records={},
+    )
+    nested_path = repo / "deep" / "nested" / "dir" / "evidence.json"
+
+    count = write_evidence_file([item], nested_path, repo_root=repo)
+
+    assert count == 1
+    assert nested_path.exists()
+
+
+def test_write_evidence_file_empty_list(tmp_path):
+    target_path = tmp_path / "empty_evidence.json"
+
+    count = write_evidence_file([], target_path, repo_root=tmp_path)
+
+    assert count == 0
+    assert target_path.exists()
+    payload = json.loads(target_path.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 1
+    assert payload["sources"] == []
+    assert isinstance(payload["digest"], str)
+    assert len(payload["digest"]) == 64
+
+
+# --- verify remedy mutations --------------------------------------------------------------
+
+
+def test_verify_remedy_mutations_success(repo, monkeypatch):
+    monkeypatch.setattr("citypods.config.load_city_configs", lambda path, registry: None)
+    mock_run = MagicMock(
+        return_value=subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+    )
+    monkeypatch.setattr("subprocess.run", mock_run)
+
+    success, message = verify_remedy_mutations(repo)
+
+    assert success is True
+    assert "Config load, Ruff lint/format, and the full pytest suite all passed." in message
+    assert mock_run.call_count == 3
+
+
+def test_verify_remedy_mutations_config_load_failure(repo, monkeypatch):
+    def mock_load_city_configs(path, registry):
+        raise ValueError("Invalid YAML in city feed")
+
+    monkeypatch.setattr("citypods.config.load_city_configs", mock_load_city_configs)
+
+    success, message = verify_remedy_mutations(repo)
+
+    assert success is False
+    assert "Feed config failed to load:" in message
+    assert "Invalid YAML in city feed" in message
+
+
+def test_verify_remedy_mutations_check_failed(repo, monkeypatch):
+    monkeypatch.setattr("citypods.config.load_city_configs", lambda path, registry: None)
+    mock_run = MagicMock(
+        return_value=subprocess.CompletedProcess(
+            args=["ruff", "check", "."], returncode=1, stdout="ruff error", stderr=""
+        )
+    )
+    monkeypatch.setattr("subprocess.run", mock_run)
+
+    success, message = verify_remedy_mutations(repo)
+
+    assert success is False
+    assert "Ruff lint failed:" in message
+    assert "ruff error" in message
+
+
+def test_verify_remedy_mutations_timeout_or_oserror(repo, monkeypatch):
+    monkeypatch.setattr("citypods.config.load_city_configs", lambda path, registry: None)
+    monkeypatch.setattr(
+        "subprocess.run", MagicMock(side_effect=subprocess.TimeoutExpired(cmd="pytest", timeout=5))
+    )
+
+    success, message = verify_remedy_mutations(repo)
+
+    assert success is False
+    assert "Ruff lint could not finish (TimeoutExpired)" in message
+
+
+def test_tif_aggregate_policy_is_in_compact_evidence(repo):
+    city = make_city("test-city-council", "Council")
+    city.extra["remedy_policy"] = {"aggregate_family": "tif"}
+    evidence = gather_unexpected_body_evidence("source", "test-city-tx", {}, [city], {}, repo)
+    assert _compact_evidence(evidence)["existing_feeds"][0]["remedy_policy"] == {
+        "aggregate_family": "tif"
+    }
+
+
+@pytest.mark.parametrize(
+    "label,action,target,title,accepted,reason",
+    [
+        ("New District TIF Board", "new_feed", [], "New District", False, "forbids district"),
+        ("Downtown Connection Board", "new_feed", [], "Downtown", False, "forbids district"),
+        ("New District TIF Board", "union", ["council"], "", False, "requires the owning"),
+        ("New District TIF Board", "union", ["tif"], "", True, ""),
+        ("Multifamily Housing Board", "new_feed", [], "Housing", True, ""),
+        ("Public Improvement District", "union", ["tif"], "", False, "manual identity"),
+        ("Downtown Connection Board", "union", ["tif"], "", False, "manual identity"),
+        ("New District TIF Board", "union", ["tif", "council"], "", False, "requires"),
+        ("New District TIF Board", "single_uid_inclusion", ["council"], "", False, "requires"),
+        ("Unknown Board", "new_feed", [], "Dallas TIF District Board", False, "forbids"),
+    ],
+)
+def test_tif_policy_holds_wrong_owners_and_district_recreation(
+    tmp_path, label, action, target, title, accepted, reason
+):
+    aggregate = tmp_path / "tif.yml"
+    aggregate.write_text(
+        "source:\n  body: 'TIF *'\nremedy_policy:\n  aggregate_family: tif\n"
+        "  member_names: [Downtown Connection]\n"
+    )
+    council = tmp_path / "council.yml"
+    council.write_text("source:\n  body: Council\n")
+    count = 1 if action == "single_uid_inclusion" else 3
+    evidence = {
+        "source_key": "test-source",
+        "existing_feeds": [{"slug": "tif"}, {"slug": "council"}],
+        "unexpected_findings": [
+            {
+                "unexpected_body": label,
+                "count": count,
+                "episodes": [{"provider_guid": "observed"}],
+            }
+        ],
+    }
+    proposal = BodyProposal(
+        source_key="test-source",
+        unexpected_body=label,
+        action=action,
+        target_feeds=target,
+        provider_guids=["observed"],
+        new_feed_slug="new-board",
+        new_feed_title=title,
+        new_feed_description="Public board recordings",
+        rationale="Proposed from observed evidence",
+    )
+    plan = validate_proposals(
+        RemedyOutput(proposals=[proposal]), evidence, {"tif": aggregate, "council": council}
+    )
+    assert bool(plan.accepted) is accepted
+    if not accepted:
+        assert reason in plan.rejected[0].reason
+
+
+@pytest.mark.parametrize(
+    "family,label,identity,accepted",
+    [
+        ("pid", "PID 7 Board", "PID 7 Board", True),
+        ("pid", "PID 8 Board", "PID 7 Board", False),
+        ("pid", "Rapid Planning Board", "PID 7 Board", False),
+        ("bond", "2027 Bond Committee", "2024 Bond Committee", False),
+        ("bond", "Council Bond Briefing", "Bond Committee", False),
+        ("charter", "2024 Charter Review Committee", "2024 Charter Review Committee", True),
+        ("charter", "Charter School Promotion", "Charter Review Committee", False),
+        ("redistricting", "Redistricting Committee", "Redistricting Committee", True),
+        ("redistricting", "Council Redistricting Hearing", "Redistricting Committee", False),
+        ("public_input", "Neighborhood Public Meeting", "Neighborhood Public Meeting", True),
+        ("public_input", "Neighborhood Project", "Neighborhood Public Meeting", False),
+        ("public_input", "Town Hall Staff Training", "Town Hall", False),
+        ("public_briefings", "News Conference", "News Conference", True),
+        ("public_briefings", "Press Conference Announcement", "Press Conference", False),
+        ("public_briefings", "Municipal TV Show", "News Conference", False),
+        ("tif", "Council Briefing on TIF", "TIF Board", False),
+        ("tif", "TIF Staff Training", "TIF Board", False),
+        ("tif", "TIF Press Conference", "TIF Board", False),
+        ("tif", "Tax Incremental Housing Board", "TIF Board", False),
+        ("tif", "Reinvestment Zoneless Board", "TIF Board", False),
+        ("tif", "Joint City Center Board", "Joint City Center Board", True),
+        (None, "Housing Finance Corporation", "Housing Finance Corporation", True),
+        (
+            None,
+            "Housing Finance Corporation Housing Finance Corporation",
+            "Housing Finance Corporation",
+            True,
+        ),
+        (None, "Council Housing Finance Briefing", "Housing Finance Corporation", False),
+        (None, "Capital Improvements Transportation", "Capital Improvements Water", False),
+    ],
+)
+def test_policy_ownership_requires_reviewed_identity(tmp_path, family, label, identity, accepted):
+    from citypods.audit_remedy import _aggregate_policy_reason, _target_feed_is_compatible
+
+    policy = {"identity_names": [identity], "member_names": [identity]}
+    if family:
+        policy["aggregate_family"] = family
+    path = tmp_path / "owner.yml"
+    path.write_text(yaml.safe_dump({"remedy_policy": policy}))
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=label,
+        action="union",
+        target_feeds=["owner"],
+        rationale="Evidence-backed identity",
+    )
+    assert _target_feed_is_compatible(label, path) is accepted
+    assert bool(_aggregate_policy_reason(proposal, {"owner"}, {"owner": path})) is not accepted
+
+
+@pytest.mark.parametrize(
+    "family,label",
+    [
+        ("pid", "New PID 20 Board"),
+        ("bond", "2030 Bond Committee"),
+        ("charter", "2030 Charter Review Commission"),
+        ("redistricting", "2030 Redistricting Commission"),
+        ("public_input", "Bridge Project Town Hall"),
+        ("public_input", "Bridge Project Public Hearing"),
+        ("public_briefings", "Municipal News Conference"),
+        ("public_briefings", "Municipal Public Briefing"),
+        (None, "Housing Finance Corporation"),
+    ],
+)
+def test_family_and_named_body_policy_holds_recreation_and_wrong_owner(tmp_path, family, label):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    policy = {"identity_names": ["Housing Finance Corporation"]}
+    if family:
+        policy["aggregate_family"] = family
+    path = tmp_path / "owner.yml"
+    path.write_text(yaml.safe_dump({"remedy_policy": policy}))
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=label,
+        action="new_feed",
+        new_feed_slug="new-feed",
+        new_feed_title=label,
+        rationale="Evidence-backed identity",
+    )
+    paths = {"owner": path}
+    assert "forbids" in _aggregate_policy_reason(proposal, {"owner"}, paths)
+    proposal.action = "union"
+    proposal.target_feeds = ["council"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, {"owner"}, paths)
+    # A policy on another source cannot establish ownership or suppress a distinct feed.
+    assert not _aggregate_policy_reason(proposal, {"council"}, paths)
+
+
+def test_policy_topic_and_member_clues_cannot_approve_unknown_owner(tmp_path):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    path = tmp_path / "owner.yml"
+    path.write_text(
+        "remedy_policy:\n  aggregate_family: public_input\n"
+        "  identity_names: [Public Input Meeting]\n  member_names: [Bridge Project]\n"
+    )
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="Bridge Project",
+        action="union",
+        target_feeds=["owner"],
+        rationale="Topic is not identity evidence",
+    )
+    assert "manual identity" in _aggregate_policy_reason(proposal, {"owner"}, {"owner": path})
+
+
+def test_exact_identity_can_hold_extended_label_without_approving_it(tmp_path):
+    from citypods.audit_remedy import _aggregate_policy_reason, _target_feed_is_compatible
+
+    path = tmp_path / "owner.yml"
+    path.write_text("remedy_policy:\n  identity_names: [Housing Finance Corporation]\n")
+    label = "2026 Housing Finance Corporation Special Meeting"
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=label,
+        action="new_feed",
+        new_feed_slug="new-corporation",
+        new_feed_title=label,
+        rationale="An extended label needs identity evidence",
+    )
+    assert "forbids" in _aggregate_policy_reason(proposal, {"owner"}, {"owner": path})
+    assert not _target_feed_is_compatible(label, path)
+
+
+def test_exact_body_selectors_remain_in_remedy_evidence_without_transport_inheritance(repo):
+    city = make_city("test-city-council", None, body_exact=["UDC Advisory Committee"])
+    evidence = gather_unexpected_body_evidence("source", "test-city-tx", {}, [city], {}, repo)
+    assert evidence["existing_feeds"][0]["body_exact"] == ["UDC Advisory Committee"]
+    assert _compact_evidence(evidence)["existing_feeds"][0]["body_exact"] == [
+        "UDC Advisory Committee"
+    ]
+    # Typed selector objects never enter JSON model evidence.
+    json.dumps(_compact_evidence(evidence))
+    assert SourceContext.from_city(city).transport == {"feed_url": "https://test.example/feed"}
+
+
+def test_redundant_exact_label_union_does_not_broaden_the_feed(repo):
+    path = repo / "config/feeds/test-city-council.yml"
+    before = (
+        "slug: test-city-council\nsource:\n  feed_url: https://test.example/feed\n"
+        "  body_exact:\n    - UDC Advisory Committee\n"
+    )
+    path.write_text(before)
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="udc advisory committee",
+        action="union",
+        target_feeds=["test-city-council"],
+        rationale="Already covered exact identity",
+    )
+    plan = RemedyPlan(accepted=[proposal])
+    assert (
+        apply_remedy_plan(
+            plan,
+            feed_paths={"test-city-council": path},
+            source_context=SourceContext.from_city(make_city("test-city-council", None)),
+            repo_root=repo,
+        )
+        == []
+    )
+    assert path.read_text() == before
+
+
+def test_unexpected_body_audit_distinguishes_exact_committee_and_open_house():
+    city = make_city("test-city-udc", None, body_exact=["UDC Advisory Committee"])
+    committee = make_episode("committee", "UDC Advisory Committee", "UDC Advisory Committee", 1)
+    public_input = make_episode(
+        "open-house", "UDC Advisory Committee Open House", "UDC Advisory Committee Open House", 2
+    )
+    unexpected = collect_unexpected_bodies([committee, public_input], {}, related_cities=[city])
+    assert {ep.guid for row in unexpected.values() for ep in row["episodes"]} == {"open-house"}
+
+
+@pytest.fixture
+def overlapping_policy_paths(tmp_path):
+    policies = {
+        "udc": {"identity_names": ["UDC Advisory Committee"]},
+        "public-input": {
+            "aggregate_family": "public_input",
+            "identity_names": ["UDC Advisory Committee Open House"],
+        },
+    }
+    paths = {}
+    for slug, policy in policies.items():
+        path = tmp_path / f"{slug}.yml"
+        path.write_text(yaml.safe_dump({"remedy_policy": policy}))
+        paths[slug] = path
+    return paths
+
+
+@pytest.mark.parametrize("action", ["union", "single_uid_inclusion"])
+def test_exact_reviewed_owner_overrides_other_policy_holding_clue(overlapping_policy_paths, action):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    paths = overlapping_policy_paths
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="UDC Advisory Committee Open House",
+        action=action,
+        target_feeds=["public-input"],
+        provider_guids=["open-house"],
+        rationale="Reviewed public-input proceeding identity",
+    )
+    assert not _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.target_feeds = ["udc"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.target_feeds = ["udc", "public-input"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)
+
+
+def test_overlapping_holding_clues_still_hold_unknown_identity_and_duplicate_feed(
+    overlapping_policy_paths,
+):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    paths = overlapping_policy_paths
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body="UDC Advisory Committee Open House 2027",
+        action="union",
+        target_feeds=["public-input"],
+        rationale="Unreviewed suffix remains evidence-first",
+    )
+    assert _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.action = "new_feed"
+    proposal.unexpected_body = "UDC Advisory Committee Open House"
+    proposal.new_feed_slug = "duplicate-open-house"
+    proposal.new_feed_title = proposal.unexpected_body
+    assert "forbids" in _aggregate_policy_reason(proposal, set(paths), paths)
+
+
+def test_joint_exact_owners_require_all_reviewed_subscriptions(overlapping_policy_paths):
+    from citypods.audit_remedy import _aggregate_policy_reason
+
+    paths = overlapping_policy_paths
+    joint = "Joint Council and Planning Commission Meeting"
+    for path in paths.values():
+        path.write_text(yaml.safe_dump({"remedy_policy": {"identity_names": [joint]}}))
+    proposal = BodyProposal(
+        source_key="source",
+        unexpected_body=joint,
+        action="union",
+        target_feeds=list(paths),
+        rationale="Both subscriptions were explicitly reviewed for this joint label",
+    )
+    assert not _aggregate_policy_reason(proposal, set(paths), paths)
+    proposal.target_feeds = ["udc"]
+    assert "requires the owning" in _aggregate_policy_reason(proposal, set(paths), paths)

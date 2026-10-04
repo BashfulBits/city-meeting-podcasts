@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import tempfile
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ import yaml
 
 from citypods.agenda_text import agenda_chapter_eligible, resolve_chapter_spans
 from citypods.chapters import episode_served_chapters
+from citypods.compute.structured import parse_structured_json
 
 TAGGER_VERSION = "2"
 CHAPTER_PIPELINE_VERSION = "1"
@@ -34,7 +36,27 @@ PRELABELER_PROMPT_VERSION = "1"
 TAG_FEATURE = "topic-tags"
 TAGGER_PURPOSE = "topic-tags:tagger"
 PRELABELER_PURPOSE = "topic-tags:prelabeler"
+# Shadow evaluator lane: same prompt, second model, audit-only (see site_config.yml llm_lanes).
+PRELABELER_SHADOW_PURPOSE = "topic-tags:prelabeler-shadow"
 PRELABELER_DECISIONS = ("likely_correct", "needs_human_review", "likely_incorrect")
+# Assessment.reason alone allows up to 500 chars (~150 tokens); candidate_id/decision/confidence/
+# evidence_supported plus JSON punctuation add a modest fixed cost per item. A flat 1024-token
+# output budget was previously used for every batch regardless of size, even though a batch may
+# hold up to 100 assessments (Response.assessments' max_length) -- any batch past roughly six
+# items could no longer fit its own response and was silently cut off mid-JSON, which is exactly
+# the "not valid JSON"/multi-field Pydantic validation failures seen in production. Sized so a
+# full 100-item batch (100 * 200 + 200 = 20,200) comfortably fits under every prelabeler route's
+# configured output_context_limit.
+# The SCHEDULING RESERVATION for one tagger call (TPM admission and batch fitting), not a cap on
+# the answer: the job is sent with ``max_tokens_mode: "route_max"``, so the route's own output
+# limit (bounded by MAX_ROUTE_OUTPUT_TOKENS) reaches the provider. A fixed cap only truncates -- at
+# 1,024 Kilo step-3.7-flash spent every token reasoning and returned EMPTY content. 12,288 covers
+# the largest observed tagger output (Gemini 3.1 Flash Lite ~8.4k, AI Gateway 2026-09-25) with
+# about 45% headroom; the budget monitor flags a lane whose calls outgrow their reservation.
+TAG_OUTPUT_TOKEN_BUDGET = 12_288
+PRELABELER_OUTPUT_TOKENS_PER_ITEM = 200
+PRELABELER_OUTPUT_TOKEN_OVERHEAD = 200
+PRELABELER_LEARNED_RATIO_MARGIN = 1.05
 # Keep a full megabyte beneath the Worker's 8 MiB JSON-body ceiling for the structured-output
 # schema and future envelope fields. This is a transport guard, separate from model context.
 TAGGER_MAX_REQUEST_BYTES = 7 * 1024 * 1024
@@ -375,6 +397,81 @@ def tag_input_fingerprint(
     ).hexdigest()[:16]
 
 
+_PRELABELER_DECISION_SET = frozenset(PRELABELER_DECISIONS)
+
+
+def needs_shadow_prelabel(
+    candidate: dict[str, Any],
+    *,
+    model: str,
+    shadow_model: str,
+    prompt_version: str,
+    llm_schema_version: str,
+) -> bool:
+    """A projectable subject with a current production assessment but no current shadow one.
+
+    Shared by the tag lane's run-level pre-filter (``episode_needs_tagging``) and ``TagsStage``:
+    if the two disagreed, the pre-filter would drop an episode whose shadow job is still in flight
+    and its deferred result would never be read back.
+    """
+    if candidate.get("candidate_state") == "historical":
+        return False
+    if not (candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")):
+        return False
+    production_current = (
+        candidate.get("prelabeler_model") == model
+        and candidate.get("prelabeler_prompt_version") == prompt_version
+        and candidate.get("prelabeler_llm_schema_version") == llm_schema_version
+        and candidate.get("prelabeler_decision") in _PRELABELER_DECISION_SET
+    )
+    shadow_current = (
+        candidate.get("prelabeler_shadow_model") == shadow_model
+        and candidate.get("prelabeler_shadow_prompt_version") == prompt_version
+        and candidate.get("prelabeler_shadow_llm_schema_version") == llm_schema_version
+        and candidate.get("prelabeler_shadow_decision") in _PRELABELER_DECISION_SET
+    )
+    return production_current and not shadow_current
+
+
+def episode_evaluator_work_pending(ep: Any, prelabeler_config: dict[str, Any] | None) -> bool:
+    """Whether the production or shadow pre-labeler still owes this episode an assessment.
+
+    The tags stage's completion marker fingerprints tag INPUTS only, so without this an episode
+    marked complete before an evaluator change (a new prelabeler model/schema, or a shadow
+    evaluator being enabled) would be skipped by the completion cache forever.
+    """
+    config = prelabeler_config or {}
+    model = str(config.get("model") or "")
+    if not config.get("enabled", False) or not model:
+        return False
+    prompt_version = str(config.get("prompt_version") or "1")
+    schema_version = str(config.get("llm_schema_version") or "1")
+    shadow_model = str(config.get("shadow_model") or "")
+    if not config.get("shadow_enabled", False) or shadow_model == model:
+        shadow_model = ""
+    for candidate in ep.llm_tag_candidates or []:
+        if not isinstance(candidate, dict) or candidate.get("candidate_state") == "historical":
+            continue
+        if not (candidate.get("source_kind", "llm") == "rule" or candidate.get("chapter_id")):
+            continue
+        if (
+            candidate.get("prelabeler_model") != model
+            or candidate.get("prelabeler_prompt_version") != prompt_version
+            or candidate.get("prelabeler_llm_schema_version") != schema_version
+            or candidate.get("prelabeler_decision") not in _PRELABELER_DECISION_SET
+        ):
+            return True
+        if shadow_model and needs_shadow_prelabel(
+            candidate,
+            model=model,
+            shadow_model=shadow_model,
+            prompt_version=prompt_version,
+            llm_schema_version=schema_version,
+        ):
+            return True
+    return False
+
+
 def episode_needs_tagging(
     ep: Any,
     taxonomy: Taxonomy,
@@ -387,6 +484,7 @@ def episode_needs_tagging(
     prelabeler_model: str = "",
     prelabeler_prompt_version: str = "1",
     prelabeler_llm_schema_version: str = "1",
+    prelabeler_shadow_model: str = "",
 ) -> bool:
     """Return whether this episode requires rule-tag derivation, LLM suggestion dispatch,
     or chapter tagging.
@@ -394,7 +492,8 @@ def episode_needs_tagging(
     An episode is fully current (returns False) when its cached tags_input_fingerprint matches
     the current inputs, its tags_spec_hash is populated, chapter tags exist if chapters are present,
     and (if LLM is enabled) its tags_llm_recipe_hash is populated. When the pre-labeler is
-    enabled, active rule/chapter candidates must also carry the current pre-labeler metadata.
+    enabled, active rule/chapter candidates must also carry the current pre-labeler metadata,
+    and -- when ``prelabeler_shadow_model`` is passed -- the current shadow assessment too.
     """
     has_chapters = bool(episode_served_chapters(ep))
     cheap_fingerprint = tag_input_fingerprint(
@@ -425,7 +524,24 @@ def episode_needs_tagging(
         for candidate in (ep.llm_tag_candidates or [])
         if isinstance(candidate, dict)
     )
-    return not (inputs_unchanged and not llm_pending and not prelabeler_pending)
+    shadow_pending = (
+        prelabeler_enabled
+        and bool(prelabeler_shadow_model)
+        and any(
+            needs_shadow_prelabel(
+                candidate,
+                model=prelabeler_model,
+                shadow_model=prelabeler_shadow_model,
+                prompt_version=prelabeler_prompt_version,
+                llm_schema_version=prelabeler_llm_schema_version,
+            )
+            for candidate in (ep.llm_tag_candidates or [])
+            if isinstance(candidate, dict)
+        )
+    )
+    return not (
+        inputs_unchanged and not llm_pending and not prelabeler_pending and not shadow_pending
+    )
 
 
 def _read_storage_bytes(storage: Any, key: str | None) -> bytes | None:
@@ -1066,7 +1182,7 @@ def llm_tag_suggestions(
             {
                 "model": getattr(getattr(backend, "config", None), "model", ""),
                 "messages": messages,
-                "max_tokens": 1024,
+                "max_tokens": TAG_OUTPUT_TOKEN_BUDGET,
             },
             ensure_ascii=False,
             separators=(",", ":"),
@@ -1084,7 +1200,7 @@ def llm_tag_suggestions(
     call_metadata = {
         "job_recipe_hashes": [recipe_hash],
         "input_tokens_estimate": input_tokens_estimate,
-        "output_token_budget": 1024,
+        "output_token_budget": TAG_OUTPUT_TOKEN_BUDGET,
         "route_input_context_limit": None,
         "route_output_context_limit": None,
         "request_bytes_estimate": request_bytes,
@@ -1103,7 +1219,8 @@ def llm_tag_suggestions(
     inputs: dict[str, Any] = {
         "messages": messages,
         "structured_output": LLM_CONTRACT,
-        "max_tokens": 1024,
+        "max_tokens": TAG_OUTPUT_TOKEN_BUDGET,
+        "max_tokens_mode": "route_max",
     }
     backend_storage = getattr(backend, "storage", None)
     backend_config = getattr(backend, "config", None)
@@ -1136,10 +1253,10 @@ def llm_tag_suggestions(
                 if size > TAGGER_MAX_REQUEST_BYTES:
                     return False
                 input_tokens = estimate_tokens(candidate_messages)
-                total_tokens = input_tokens + 1024
+                total_tokens = input_tokens + TAG_OUTPUT_TOKEN_BUDGET
                 return any(
                     input_tokens <= route.input_context_limit
-                    and 1024 <= route.output_context_limit
+                    and TAG_OUTPUT_TOKEN_BUDGET <= route.output_context_limit
                     and (route.quota.tpm is None or total_tokens <= int(route.quota.tpm))
                     for route in candidate_routes
                 )
@@ -1151,7 +1268,11 @@ def llm_tag_suggestions(
                 proposed_messages = messages_for(proposed)
                 proposed_bytes = len(
                     json.dumps(
-                        {"model": backend_model, "messages": proposed_messages, "max_tokens": 1024},
+                        {
+                            "model": backend_model,
+                            "messages": proposed_messages,
+                            "max_tokens": TAG_OUTPUT_TOKEN_BUDGET,
+                        },
                         ensure_ascii=False,
                         separators=(",", ":"),
                     ).encode()
@@ -1164,7 +1285,11 @@ def llm_tag_suggestions(
                 single_messages = messages_for(current)
                 single_bytes = len(
                     json.dumps(
-                        {"model": backend_model, "messages": single_messages, "max_tokens": 1024},
+                        {
+                            "model": backend_model,
+                            "messages": single_messages,
+                            "max_tokens": TAG_OUTPUT_TOKEN_BUDGET,
+                        },
                         ensure_ascii=False,
                         separators=(",", ":"),
                     ).encode()
@@ -1227,7 +1352,8 @@ def llm_tag_suggestions(
         if request_bytes > TAGGER_MAX_REQUEST_BYTES:
             return [], {}, True, "payload-too-large"
         if candidate_routes and all(
-            input_tokens_estimate > route.input_context_limit or 1024 > route.output_context_limit
+            input_tokens_estimate > route.input_context_limit
+            or TAG_OUTPUT_TOKEN_BUDGET > route.output_context_limit
             for route in candidate_routes
         ):
             return [], {}, True, "payload-too-large"
@@ -1254,7 +1380,9 @@ def llm_tag_suggestions(
             for route in candidate_routes
             if route.quota.tpm is not None
         }
-        if capped_tpm and all(token_estimate + 1024 > tpm for tpm in capped_tpm.values()):
+        if capped_tpm and all(
+            token_estimate + TAG_OUTPUT_TOKEN_BUDGET > tpm for tpm in capped_tpm.values()
+        ):
             print(
                 f"llm tag budget: material estimate={token_estimate} tokens exceeds every "
                 f"tpm-capped allowed route's budget ({capped_tpm}) for recipe_hash="
@@ -1294,7 +1422,7 @@ def llm_tag_suggestions(
     )
     if not isinstance(content, str):
         raise ValueError("LLM tag backend returned no structured content")
-    response = model.model_validate_json(content)
+    response = model.model_validate(parse_structured_json(content, context="LLM tag response"))
     chapter_by_id = {item["chapter_id"]: item for item in (chapter_inputs or [])}
     source_text = {"agenda": agenda_item_titles + "\n" + agenda_text, "transcript": transcript_text}
     transcript_segments = [
@@ -1366,6 +1494,95 @@ def llm_tag_suggestions(
     return suggestions, chapter_suggestions, False, outcome.model
 
 
+PRELABELER_MAX_CANDIDATES_PER_BATCH = 100
+
+
+def prelabeler_sizing_route(model: str, *, allow_paid: bool = False) -> Any:
+    """The route prelabeler batches are sized to fit: the model's highest-daily-quota live route.
+
+    Batches used to be sized to ``tpm - 1024`` of the model's first catalog route, ignoring that
+    route's ``hard_input_ceiling``. For ``google/gemma-4-31b-it`` that produced 10-14k-token jobs
+    just over the 10,000-token ceiling of the two 14,400-RPD Google AI Studio routes, so ~85% of
+    prelabeler work could only reach small or slow legs (2026-09-23 review). Sizing to the largest
+    live pool instead keeps every batch admissible there. Paused (``rpd: 0``) and, unless
+    ``allow_paid``, paid routes are ignored.
+    """
+    from citypods.compute.llm_policy import ROUTE_CANDIDATES, canonical_model
+
+    live = [
+        route
+        for route in ROUTE_CANDIDATES.get(canonical_model(model), ())
+        if route.quota.rpd != 0 and (allow_paid or route.free)
+    ]
+    if not live:
+        return None
+    return max(live, key=lambda route: (route.quota.rpd or 0, route.route_id))
+
+
+@dataclass(frozen=True)
+class PrelabelerBatchLimits:
+    """Per-batch size limits for one sizing route.
+
+    ``max_raw_input_tokens`` is in ``estimate_tokens`` (chars/4) units: the route's real
+    ceiling divided by its measured ``input_token_ratio``. ``max_reserved_tokens`` bounds the
+    Worker's pessimistic claim-time reservation (scaled input + the batch's full output budget)
+    to one minute of the route's TPM, so a batch is always admissible without waiting on a
+    multi-minute token-bucket refill.
+    """
+
+    max_raw_input_tokens: int
+    max_reserved_tokens: int | None
+    input_token_ratio: float
+
+    def fits_reservation(self, raw_input_tokens: int, candidate_count: int) -> bool:
+        if self.max_reserved_tokens is None:
+            return True
+        scaled = math.ceil(raw_input_tokens * self.input_token_ratio)
+        output = (
+            PRELABELER_OUTPUT_TOKEN_OVERHEAD + PRELABELER_OUTPUT_TOKENS_PER_ITEM * candidate_count
+        )
+        return scaled + output <= self.max_reserved_tokens
+
+
+def prelabeler_batch_limits(
+    route: Any, learned_input_ratio: float | None = None
+) -> PrelabelerBatchLimits:
+    """Batch limits for ``route``, at the v2 Worker's learned input ratio when one is known.
+
+    The Worker checks the ceiling with its learned ratio, which can sit above the catalog prior;
+    sizing with the prior alone produced batches the Worker then refused on every ceilinged route
+    (2026-09-25). A learned ratio is taken with PRELABELER_LEARNED_RATIO_MARGIN of slack, since it
+    keeps moving between sizing and claim.
+    """
+    ratio = float(getattr(route, "input_token_ratio", 1.0) or 1.0)
+    if learned_input_ratio is not None and learned_input_ratio > 0:
+        ratio = max(ratio, float(learned_input_ratio)) * PRELABELER_LEARNED_RATIO_MARGIN
+    context = int(getattr(route, "input_context_limit", 32768))
+    ceiling = getattr(route, "hard_input_ceiling", None)
+    provider_cap = min(context, int(ceiling)) if ceiling else context
+    quota = getattr(route, "quota", None)
+    tpm = int(quota.tpm) if quota is not None and quota.tpm else None
+    if tpm is not None:
+        # The single-candidate output budget must still fit beside the input.
+        provider_cap = min(
+            provider_cap, tpm - PRELABELER_OUTPUT_TOKEN_OVERHEAD - PRELABELER_OUTPUT_TOKENS_PER_ITEM
+        )
+    max_raw_input_tokens = math.floor(provider_cap / ratio)
+    if max_raw_input_tokens < 1:
+        # A clamp to 1 would make every batch "payload-too-large" and read as ordinary backlog
+        # forever; a route this small is a catalog error and must surface as one.
+        raise ValueError(
+            f"pre-labeler route {getattr(route, 'route_id', '') or '<unknown>'!r} leaves no "
+            f"input budget (context/ceiling/tpm allow {provider_cap} provider tokens after the "
+            "output reserve); fix its limits in config/provider_limits.yml"
+        )
+    return PrelabelerBatchLimits(
+        max_raw_input_tokens=max_raw_input_tokens,
+        max_reserved_tokens=tpm,
+        input_token_ratio=ratio,
+    )
+
+
 def llm_prelabel_candidates(
     backend: Any,
     *,
@@ -1433,14 +1650,17 @@ def llm_prelabel_candidates(
             )
         )
     backend_storage = getattr(backend, "storage", None)
-    route = ROUTES.get(model)
-    input_context_limit = int(getattr(route, "input_context_limit", 32768))
+    route = prelabeler_sizing_route(model, allow_paid=allow_paid) or ROUTES.get(model)
+    from citypods.compute.llm import dispatch_v2_learned_input_ratio
+
+    learned_ratio = (
+        dispatch_v2_learned_input_ratio(route.route_id, "tag", backend=backend)
+        if getattr(route, "hard_input_ceiling", None)
+        else None
+    )
+    limits = prelabeler_batch_limits(route, learned_ratio)
+    input_context_limit = limits.max_raw_input_tokens
     output_context_limit = int(getattr(route, "output_context_limit", 1024))
-    if getattr(route, "quota", None) is not None and route.quota.tpm is not None:
-        input_context_limit = min(
-            input_context_limit,
-            max(0, int(route.quota.tpm) - 1024),
-        )
     # Keep a response/output reserve. The evaluator may receive many candidates, but it must
     # never silently drop the tail or rely on a provider-specific implicit truncation.
     max_input_tokens = max(1, input_context_limit)
@@ -1472,7 +1692,11 @@ def llm_prelabel_candidates(
     for pair in context:
         proposed = current + [pair]
         estimate = estimate_tokens(make_messages([item for _, item in proposed]))
-        if current and (estimate > max_input_tokens or len(current) >= 100):
+        if current and (
+            estimate > max_input_tokens
+            or len(current) >= PRELABELER_MAX_CANDIDATES_PER_BATCH
+            or not limits.fits_reservation(estimate, len(proposed))
+        ):
             batches.append(current)
             current = [pair]
         else:
@@ -1503,12 +1727,18 @@ def llm_prelabel_candidates(
         input_digest = hashlib.sha1(
             json.dumps(messages, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
         ).hexdigest()[:16]
+        required_output_tokens = (
+            PRELABELER_OUTPUT_TOKEN_OVERHEAD
+            + PRELABELER_OUTPUT_TOKENS_PER_ITEM * len(batch_context)
+        )
+        output_token_budget = min(required_output_tokens, output_context_limit)
         call_metadata = {
+            "prelabeler_sizing_route": getattr(route, "route_id", "") or "",
             "prelabeler_model": model,
             "prelabeler_prompt_version": prompt_version,
             "prelabeler_llm_schema_version": llm_schema_version,
             "prelabeler_input_tokens_estimate": input_tokens_estimate,
-            "prelabeler_output_token_budget": 1024,
+            "prelabeler_output_token_budget": output_token_budget,
             "prelabeler_route_input_context_limit": input_context_limit,
             "prelabeler_route_output_context_limit": output_context_limit,
             "prelabeler_truncation_occurred": batch_truncated,
@@ -1517,14 +1747,17 @@ def llm_prelabel_candidates(
             "prelabeler_batch_index": batch_index,
         }
         batch_metadata.append(dict(call_metadata))
-        if input_tokens_estimate > input_context_limit or 1024 > output_context_limit:
+        if (
+            input_tokens_estimate > input_context_limit
+            or output_token_budget < required_output_tokens
+        ):
             pending = True
             payload_too_large = True
             continue
         inputs: dict[str, Any] = {
             "messages": messages,
             "structured_output": PRELABELER_CONTRACT,
-            "max_tokens": 1024,
+            "max_tokens": output_token_budget,
         }
         if getattr(backend_storage, "cas_capable", False):
             inputs["llm_policy"] = LLMRequestPolicy(
@@ -1564,7 +1797,13 @@ def llm_prelabel_candidates(
         )
         if not isinstance(content, str):
             raise ValueError("LLM pre-labeler backend returned no structured content")
-        response = response_model_type.model_validate_json(content)
+        parsed = parse_structured_json(content, context="LLM pre-labeler response")
+        # A few JSON-capable routes honor the item schema but omit the enclosing object and return
+        # the assessment list directly. This adapter is intentionally contract-specific: other
+        # verbs must not start accepting arbitrary list/object shape changes.
+        if isinstance(parsed, list):
+            parsed = {"assessments": parsed}
+        response = response_model_type.model_validate(parsed)
         known = {str(candidate.get("candidate_id")): candidate for candidate, _ in batch}
         for assessment in response.assessments:
             candidate_id_value = str(assessment.candidate_id)
@@ -1782,6 +2021,9 @@ __all__ = [
     "TAG_FEATURE",
     "TAGGER_PURPOSE",
     "PRELABELER_PURPOSE",
+    "PRELABELER_SHADOW_PURPOSE",
+    "episode_evaluator_work_pending",
+    "needs_shadow_prelabel",
     "TAG_PROMPT_VERSION",
     "TAGGER_VERSION",
     "CHAPTER_PIPELINE_VERSION",

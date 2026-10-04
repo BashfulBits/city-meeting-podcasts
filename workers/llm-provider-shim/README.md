@@ -5,22 +5,23 @@ cannot express.
 
 ## Why this exists
 
-AI Gateway rewrites the **last path segment** of a Custom Provider's registered Base URL to a
-hardcoded `v1` before appending the caller's path. This is undocumented and contradicts the
+AI Gateway's Custom Provider URL join is undocumented and changed between the 2026-08-29 and
+2026-09-15 probes. It previously rewrote the **last path segment** of a registered Base URL to a
+hardcoded `v1`; it now honors the registered path, matching the
 [documented](https://developers.cloudflare.com/ai-gateway/configuration/custom-providers/)
-`{base_url}/{provider-path}` join. Verified 2026-08-29 with a throwaway custom provider pointed at
-an echo service:
+`{base_url}/{provider-path}` join. The shim accepts both forms so an edge-side behavior change
+does not turn its routes into opaque 404s:
 
-| registered `base_url` | actual upstream prefix |
-| --- | --- |
-| `https://host/anything/prefix` | `https://host/anything/**v1**` |
-| `https://host/anything/v1` | `https://host/anything/v1` |
-| `https://host/anything/a/b` | `https://host/anything/a/**v1**` |
+| registered `base_url` | former rewrite | current join |
+| --- | --- | --- |
+| `https://host/anything/prefix` | `https://host/anything/**v1**` | `https://host/anything/prefix` |
+| `https://host/anything/v1` | `https://host/anything/v1` | `https://host/anything/v1` |
+| `https://host/anything/a/b` | `https://host/anything/a/**v1**` | `https://host/anything/a/b` |
 
-A provider whose API prefix does not end in `v1` is therefore unreachable through the gateway.
-z.ai's `/api/paas/v4` becomes `/api/paas/v1`, which 404s; no `v1`-containing path serves its API,
-so no Base URL can express it. Registering this Worker instead — and letting it restore the real
-prefix — keeps such providers inside AI Gateway's logging rather than bypassing the gateway.
+A provider whose API prefix does not end in `v1` is therefore still unreachable through the gateway.
+z.ai's `/api/paas/v4` could become `/api/paas/v1`, which 404s; no Base URL can reliably express
+`/api/paas/v4`. Registering this Worker instead — and letting it restore the real prefix — keeps
+such providers inside AI Gateway's logging rather than bypassing the gateway.
 
 OpenCode is routed here too, for a cause never identified from outside: its own prefix (`/zen/v1`)
 survives the `v1` substitution unchanged, so its gateway URL was already correct, yet direct gateway
@@ -29,17 +30,21 @@ reproduce it. Going through the shim resolves it. That also disproved the leadin
 opencode.ai rejects Cloudflare-edge traffic, since this shim is itself a Worker.
 
 Providers that *can* be expressed directly should be, and are not routed here. NVIDIA and SambaNova
-only needed their `ai_gateway_chat_path` to carry the base path; Kilo only needs its Base URL
-registered as `https://api.kilo.ai/api/gateway/v1`, because Kilo genuinely serves that path.
+now use a root-relative `ai_gateway_chat_path` because the gateway honors their registered `/v1`
+base path; Kilo remains registered as `https://api.kilo.ai/api/gateway/v1`, because Kilo genuinely
+serves that path.
 
 ## Registering it
 
-The trailing segment of the Base URL is **deliberately sacrificial** — the gateway eats it and
-substitutes `v1`, which is what makes the rewrite predictable rather than accidental:
+New registrations should end in `/v1`. Existing registrations end in `/x`; the shim accepts both
+the literal segment from the current join and the `v1` segment from the former rewrite:
 
 ```
-https://<worker-host>/<SHIM_TOKEN>/<provider>/x
+https://<worker-host>/<SHIM_TOKEN>/<provider>/v1
   -> gateway calls: /<SHIM_TOKEN>/<provider>/v1/<caller path>
+
+https://<worker-host>/<SHIM_TOKEN>/<provider>/x
+  -> gateway calls: /<SHIM_TOKEN>/<provider>/(x|v1)/<caller path>
   -> shim calls:    <real upstream prefix>/<caller path>
 ```
 
@@ -67,9 +72,10 @@ only one token, so these independent updates cannot provide a zero-downtime rota
    token at the interactive prompt. This updates the deployed Worker; the normal deployment
    workflow does not rotate this secret. See the [Wrangler secret documentation](https://developers.cloudflare.com/workers/wrangler/commands/general/#secret-put).
 3. In AI Gateway, replace the token segment in **both** registered Base URLs:
-   `https://<worker-host>/<new-token>/zai/x` and
-   `https://<worker-host>/<new-token>/opencode/x`. Preserve the host, provider segment, and
-   sacrificial trailing `/x`; changing provider API keys is not part of this rotation.
+   `https://<worker-host>/<new-token>/zai/v1` and
+   `https://<worker-host>/<new-token>/opencode/v1`. Preserve the host and provider segment;
+   changing provider API keys is not part of this rotation. Existing `/x` registrations remain
+   compatible and do not need a simultaneous dashboard edit.
 4. Probe each route through AI Gateway with its existing provider credentials. The existing
    `tests/live/test_ai_gateway_contract.py::test_custom_provider_route_reaches_its_upstream`
    contract test is the reference for detecting routing failures. Verify both probes actually

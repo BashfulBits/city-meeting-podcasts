@@ -21,6 +21,8 @@ from citypods.compute.llm_deferred import (
     _write_json,
     deferred_failure_key,
     deferred_key,
+    discard_completed_result,
+    discard_deferred,
     discard_terminal_failure,
     iter_pending_deferred,
     list_pending_deferred,
@@ -74,6 +76,96 @@ def test_write_and_look_up_a_pending_handle_round_trips():
     assert found.deferred_request is not None
     assert found.deferred_request.messages == ({"role": "user", "content": "hi"},)
     assert found.deferred_request.policy == policy
+
+
+def test_discard_and_redefer_same_record_are_serialized_by_the_r2_lock():
+    class _BlockedCanonicalReadStorage(MemStorage):
+        read_started = Event()
+        allow_read = Event()
+        block_reads = False
+
+        def get_file(self, key, local_path):
+            if self.block_reads and key == deferred_key("recipe-1"):
+                self.read_started.set()
+                assert self.allow_read.wait(timeout=2)
+            return super().get_file(key, local_path)
+
+    storage = _BlockedCanonicalReadStorage()
+    write_deferred(storage, "recipe-1", _pending_handle("recipe-1"), now=NOW)
+    storage.block_reads = True
+    discard_result = []
+
+    def discard() -> None:
+        discard_result.append(
+            discard_deferred(storage, "recipe-1", expected_ref="deferred:recipe-1")
+        )
+
+    discard_thread = Thread(target=discard)
+    discard_thread.start()
+    assert storage.read_started.wait(timeout=2)
+
+    replacement = _pending_handle("recipe-1")
+    replacement = JobHandle(**{**replacement.__dict__, "ref": "deferred:replacement"})
+    write_thread = Thread(target=write_deferred, args=(storage, "recipe-1", replacement))
+    write_thread.start()
+
+    storage.allow_read.set()
+    discard_thread.join(timeout=2)
+    write_thread.join(timeout=2)
+    assert not discard_thread.is_alive()
+    assert not write_thread.is_alive()
+    assert discard_result == [True]
+    current = look_up_deferred(storage, "recipe-1")
+    assert isinstance(current, JobHandle)
+    assert current.ref == "deferred:replacement"
+
+
+def test_discard_completed_result_removes_a_matching_completed_record():
+    """write_deferred never downgrades a completed record, and enqueue_batch serves any
+    look_up_deferred hit that is a JobResult straight back out without ever calling the LLM
+    again -- so a caller whose own downstream validation rejects a completed result must be able
+    to delete it, or a retry under the same (content-addressed) recipe can never actually
+    happen."""
+    storage = MemStorage()
+    result = JobResult(task="tag", recipe_hash="recipe-1", output={"bad": "truncated"}, model="m")
+    write_deferred(storage, "recipe-1", result)
+    assert look_up_deferred(storage, "recipe-1") == result
+
+    assert discard_completed_result(storage, "recipe-1", result) is True
+    assert look_up_deferred(storage, "recipe-1") is None
+
+
+def test_discard_completed_result_is_a_noop_for_pending_or_missing_records():
+    storage = MemStorage()
+
+    # No record at all.
+    result = JobResult(task="tag", recipe_hash="recipe-1", output={}, model="m")
+    assert discard_completed_result(storage, "recipe-1", result) is False
+
+    # A pending (not yet completed) record must never be discarded by this path -- that is
+    # discard_deferred's job, and requires the job to actually be cancelled first.
+    write_deferred(storage, "recipe-2", _pending_handle("recipe-2"))
+    pending_result = JobResult(task="tag", recipe_hash="recipe-2", output={}, model="m")
+    assert discard_completed_result(storage, "recipe-2", pending_result) is False
+    assert isinstance(look_up_deferred(storage, "recipe-2"), JobHandle)
+
+
+def test_discard_completed_result_leaves_a_newer_or_different_record_untouched():
+    """A caller's validation of a stale read must never clobber a newer write for the same
+    recipe -- the compare-and-delete guard other discard helpers in this module already use
+    (discard_deferred's expected_ref, discard_terminal_failure's snapshot equality check)."""
+    storage = MemStorage()
+    original = JobResult(task="tag", recipe_hash="recipe-1", output={"bad": "truncated"}, model="m")
+    write_deferred(storage, "recipe-1", original)
+
+    # A different completed result was written for the same recipe in the meantime (e.g. a
+    # concurrent producer, or a later good retry) -- the caller's stale `original` must not
+    # discard it.
+    replacement = JobResult(task="tag", recipe_hash="recipe-1", output={"good": True}, model="m")
+    write_deferred(storage, "recipe-1", replacement)
+
+    assert discard_completed_result(storage, "recipe-1", original) is False
+    assert look_up_deferred(storage, "recipe-1") == replacement
 
 
 def test_pending_records_index_both_live_route_consumers_without_shared_bucket_writes():
@@ -151,13 +243,6 @@ def test_terminal_failure_removes_pending_handle_and_keeps_bounded_retry_audit()
     write_deferred(storage, handle.recipe_hash, handle, now=NOW)
     snapshot = load_deferred_snapshot(storage, now=NOW)
 
-    class Backend:
-        deleted = []
-
-        def delete_dispatched_ref(self, ref):
-            self.deleted.append(ref)
-
-    backend = Backend()
     from citypods.compute.llm import LLMDispatchTerminalError
 
     for attempt in range(1, 4):
@@ -170,7 +255,6 @@ def test_terminal_failure_removes_pending_handle_and_keeps_bounded_retry_audit()
                 snapshot,
                 handle,
                 LLMDispatchTerminalError("LLM dispatch poll returned HTTP 502 (upstream_error)"),
-                backend=backend,
                 now=NOW,
             )
             == attempt
@@ -178,7 +262,6 @@ def test_terminal_failure_removes_pending_handle_and_keeps_bounded_retry_audit()
         assert look_up_deferred(storage, handle.recipe_hash) is None
         assert list(snapshot.pending()) == []
 
-    assert backend.deleted == [handle.ref, handle.ref, handle.ref]
     assert terminal_failure_retry_allowed(storage, handle.recipe_hash) is False
     assert storage.keys(DEFERRED_FAILURE_PREFIX) == [deferred_failure_key(handle.recipe_hash)]
 
@@ -664,7 +747,7 @@ def test_list_pending_deferred_returns_only_pending_records():
         recipe_hash="pending-2",
         backend="litellm",
         ref="/v1/requests/chatcmpl-1",
-        model="mistral/mistral-large-2512",
+        model="mistral/codestral-2508",
         owner="pending-2",
         input_per_token=0.0,
         output_per_token=0.0,
@@ -677,7 +760,7 @@ def test_list_pending_deferred_returns_only_pending_records():
     # A genuine in-flight dispatch handle has no deferred_request -- reconcile() must route it
     # through the real URL-polling path, not re-run selection.
     assert pending["pending-2"].deferred_request is None
-    assert pending["pending-2"].model == "mistral/mistral-large-2512"
+    assert pending["pending-2"].model == "mistral/codestral-2508"
     assert pending["pending-2"].owner == "pending-2"
 
 
@@ -755,6 +838,30 @@ def test_prune_expired_deferred_also_cleans_up_completed_records():
     assert look_up_deferred(storage, "recipe-1") is None
 
 
+def test_full_snapshot_pruning_reaches_completed_records_after_index_migration():
+    storage = MemStorage()
+    write_deferred(
+        storage,
+        "recipe-1",
+        JobResult(task="tag", recipe_hash="recipe-1", output={}, model="m"),
+        now=NOW,
+    )
+    _write_json(storage, DEFERRED_INDEX_MIGRATION_KEY, b'{"version": 2}\n')
+
+    # Completed records have no pending/reconcile pointer, so the ordinary indexed snapshot does
+    # not see this record. The maintenance full snapshot does, and the TTL pass removes it.
+    assert list(load_deferred_snapshot(storage, reconcile_only=True).entries) == []
+    full_snapshot = load_deferred_snapshot(storage, include_ineligible=True)
+    assert len(full_snapshot.entries) == 1
+    assert (
+        prune_expired_deferred_snapshot(
+            storage, full_snapshot, now=NOW + timedelta(days=DEFAULT_TTL_DAYS + 1)
+        )
+        == 1
+    )
+    assert look_up_deferred(storage, "recipe-1") is None
+
+
 def test_prune_releases_the_ledger_reservation_of_an_abandoned_dispatch_handle():
     """A genuine Mistral dispatch handle (no `deferred_request`) that's still `pending` past its
     38-day TTL means the Worker never produced a terminal response -- its ledger reservation would
@@ -764,7 +871,7 @@ def test_prune_releases_the_ledger_reservation_of_an_abandoned_dispatch_handle()
     from citypods.compute.llm_policy import ROUTES
 
     storage = MemStorage()
-    route = ROUTES["mistral/mistral-large-2512"]
+    route = ROUTES["mistral/codestral-2508"]
     mutate_llm_budget(
         storage,
         lambda budget, attempt_now: budget.reserve(
@@ -887,3 +994,48 @@ def _write_raw(storage: MemStorage, recipe_hash: str, record: dict) -> None:
         path = Path(tmp) / "record.json"
         path.write_text(json.dumps(record))
         storage.put_file(deferred_key(recipe_hash), path, "application/json")
+
+
+def test_a_deferred_capsule_keeps_the_jobs_output_budget_and_timeout():
+    # Without these a rebuilt job fell back to the 1,024-token margin and the direct-call default
+    # timeout, silently dropping the job's own budget and deadline.
+    handle = JobHandle(
+        task="tag",
+        recipe_hash="r-capsule",
+        backend="litellm",
+        ref="deferred",
+        deferred_request=DeferredLLMRequest(
+            messages=({"role": "user", "content": "hi"},),
+            policy=LLMRequestPolicy(),
+            output_token_budget=16_384,
+            timeout=45.0,
+            max_tokens_mode="route_max",
+        ),
+    )
+    decoded = llm_deferred._decode_record(llm_deferred._record_for(handle))
+    assert decoded.deferred_request.output_token_budget == 16_384
+    assert decoded.deferred_request.timeout == 45.0
+    # A rebuilt route_max job must still send the route's limit, not truncate at its reservation.
+    assert decoded.deferred_request.max_tokens_mode == "route_max"
+
+
+def test_a_capsule_written_before_those_fields_existed_keeps_the_old_defaults():
+    record = llm_deferred._record_for(
+        JobHandle(
+            task="tag",
+            recipe_hash="r-old",
+            backend="litellm",
+            ref="deferred",
+            deferred_request=DeferredLLMRequest(
+                messages=({"role": "user", "content": "hi"},), policy=LLMRequestPolicy()
+            ),
+        )
+    )
+    record.pop("output_token_budget")
+    decoded = llm_deferred._decode_record(record)
+    assert (
+        decoded.deferred_request.output_token_budget
+        == DeferredLLMRequest(messages=(), policy=LLMRequestPolicy()).output_token_budget
+    )
+    assert decoded.deferred_request.timeout is None
+    assert decoded.deferred_request.max_tokens_mode is None

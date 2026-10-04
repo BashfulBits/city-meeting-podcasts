@@ -1,15 +1,18 @@
 /**
  * Provider credential resolution and AI Gateway request construction for LLM Dispatch v2's
- * executor. Adapted from workers/llm-dispatch-proxy/src/index.js's resolveProviderCredentials/
+ * executor. Adapted from the retired v1 Worker's (llm-dispatch-proxy) resolveProviderCredentials/
  * upstreamRequestForRoute (per review/44 Phase 1's "extract only pure route-catalog selection and
  * response-normalization helpers from v1; do not fork provider credential logic without tests")
  * -- the account/API-key/Gateway-URL resolution here is the SAME logic, not a rewrite, just
  * re-keyed off v2's own route/job shapes instead of v1's queue record.
  */
 
+import { routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
+import { shapeForRoute } from "./structured_output.js";
+
 // Every real, provider-facing chat-completions field this Worker forwards -- everything else on
-// the stored payload is dropped, not spread. Mirrors workers/llm-dispatch-proxy/src/index.js's
-// own COPY_FIELDS exactly (that Worker's normalizeChatRequest() rebuilds its request object this
+// the stored payload is dropped, not spread. Mirrors the retired v1 Worker's (llm-dispatch-proxy)
+// own COPY_FIELDS exactly (that Worker's normalizeChatRequest() rebuilt its request object this
 // same way, field-by-field, from the raw incoming HTTP body -- this module's own header comment
 // claimed to share that logic without actually including this step, which is how the 2026-08-26
 // incident below happened). `messages` is handled separately below since it's required, not
@@ -26,6 +29,15 @@ const COPY_FIELDS = [
   "presence_penalty",
   "frequency_penalty",
 ];
+
+// Provider error bodies are small in practice, but a malformed upstream response must not make
+// the executor retain an unbounded text body. This is only used for classification, not persisted.
+const MAX_PROVIDER_ERROR_BODY_CHARS = 4096;
+
+/** Gemini's OpenAI-compatible endpoint sometimes wraps one error object in a one-element array. */
+export function normalizeProviderBody(body) {
+  return Array.isArray(body) ? body[0] : body;
+}
 
 /** Builds the actual provider request from a stored payload: remaps the logical model (e.g.
  * "gemini/gemini-flash-lite") to the route's real upstream_model string, and forwards only
@@ -44,12 +56,66 @@ const COPY_FIELDS = [
  * inert extra key that gets silently dropped, not a live incident -- and it retroactively repairs
  * every payload already sitting in B2 from before the write-side fix, since this reads fresh at
  * dispatch time rather than a cached copy: nothing needs to be re-enqueued or backfilled. */
-export function upstreamRequestForRoute(payload, route) {
+/**
+ * The output budget actually sent. A payload marked `max_tokens_mode: "route_max"` sends the
+ * route's own output limit, bounded by the input room the route leaves, instead of the job's
+ * `max_tokens` -- which then serves only as the scheduling reservation. `max_tokens` truncates, it
+ * never shortens an answer, so a budget below what the model needs only produces an empty or cut
+ * reply; the lane's reservation still keeps small-TPM routes schedulable.
+ */
+// The most output a "route_max" job is ever sent, whatever the route allows: a runaway reasoning
+// loop should stop at a length limit and be reported, not run to MAX_RESPONSE_SECONDS. Twin of
+// citypods/compute/llm_policy.py MAX_ROUTE_OUTPUT_TOKENS.
+export const MAX_ROUTE_OUTPUT_TOKENS = 65536;
+
+export function outputTokensForRoute(payload, route, inputTokens) {
+  const requested = Number(payload?.max_tokens) || 0;
+  if (payload?.max_tokens_mode !== "route_max") return requested || undefined;
+  const outputLimit = Math.min(Number(route?.output_context_limit) || 0, MAX_ROUTE_OUTPUT_TOKENS);
+  if (!outputLimit) return requested || undefined;
+  const inputLimit = Number(route?.input_context_limit) || 0;
+  if (!inputLimit || !inputTokens) return outputLimit;
+  // `inputTokens` is a raw chars/4 estimate of the messages sent; the room is in the route's units.
+  const room = inputLimit - scaledInputTokens(inputTokens, routeInputTokenRatio(route));
+  // No room left: keep the job's own figure and let the provider reject the oversized request.
+  return room > 0 ? Math.min(outputLimit, room) : requested || undefined;
+}
+
+function contentChars(messages) {
+  return (messages || []).reduce((sum, message) => sum + String(message?.content ?? "").length, 0);
+}
+
+export function upstreamRequestForRoute(payload, route, { inputTokens = 0, reasoningLevel = null } = {}) {
   const request = { model: route.upstream_model, messages: payload?.messages, stream: false };
   for (const field of COPY_FIELDS) {
     if (payload && payload[field] !== undefined) {
       request[field] = payload[field];
     }
+  }
+  let sentInputTokens = Number(inputTokens) || 0;
+  if (payload?.structured_output) {
+    const shaped = shapeForRoute(payload.messages, payload.structured_output, route);
+    request.messages = shaped.messages;
+    delete request.response_format;
+    if (shaped.responseFormat) request.response_format = shaped.responseFormat;
+    // A route that takes the schema in its prompt receives more input than the job estimated.
+    const added = contentChars(shaped.messages) - contentChars(payload.messages);
+    if (sentInputTokens && added > 0) sentInputTokens += Math.ceil(added / 4);
+  }
+  const maxTokens = outputTokensForRoute(payload, route, sentInputTokens);
+  if (maxTokens) request.max_tokens = maxTokens;
+  // A lane can set a reasoning level per model (llm_lanes[...].reasoning); the route says how its
+  // provider expresses that level (reasoning_controls). No level, or a level the route does not
+  // declare, sends the provider's default.
+  const controls = reasoningLevel ? route?.reasoning_controls?.[reasoningLevel] : null;
+  if (controls && typeof controls === "object") Object.assign(request, controls);
+  // A schema-only job (review/48 R10) is shaped here for THIS route's method: the producer could
+  // not know which route in the pool would serve it. A legacy payload that already carries a
+  // response_format (jobs staged before this change) is forwarded as it always was.
+  // Provider controls this route always sends (compile-validated allowlist, e.g. disabling
+  // DeepSeek v4.1's thinking on NVIDIA). The route owns these, so they win over the payload.
+  if (route?.request_params && typeof route.request_params === "object") {
+    Object.assign(request, route.request_params);
   }
   return request;
 }
@@ -132,9 +198,9 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
  * level failures (abort, DNS, TLS) throw, which the caller maps to a retryable/terminal outcome
  * itself.
  */
-export async function callAiGateway({ env, route, payload, dispatchLimits, idempotencyKey, signal }) {
+export async function callAiGateway({ env, route, payload, dispatchLimits, idempotencyKey, signal, shaping }) {
   const creds = resolveProviderCredentials(env, route, dispatchLimits);
-  const upstreamPayload = upstreamRequestForRoute(payload, route);
+  const upstreamPayload = upstreamRequestForRoute(payload, route, shaping);
 
   const headers = { accept: "application/json", "content-type": "application/json" };
   if (creds.apiKey) headers.authorization = `Bearer ${creds.apiKey}`;
@@ -162,17 +228,20 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
   const correlationId = response.headers.get("cf-aig-log-id") || response.headers.get("cf-ray") || null;
   let body = null;
   let parseError = null;
+  const rawBody = await response.text();
   try {
-    body = await response.json();
+    body = rawBody ? JSON.parse(rawBody) : null;
   } catch (err) {
     parseError = err;
+    body = rawBody.slice(0, MAX_PROVIDER_ERROR_BODY_CHARS);
   }
-  const retryAfterSeconds = parseRetryAfterSeconds(response, body);
+  const retryAfterSeconds = parseRetryAfterSeconds(response, normalizeProviderBody(body));
 
   return {
     status: response.status,
     ok: response.ok && parseError === null,
     body,
+    headers: response.headers,
     parseError,
     correlationId,
     retryAfterSeconds,
@@ -185,29 +254,72 @@ export async function callAiGateway({ env, route, payload, dispatchLimits, idemp
  *
  * OpenCode Zen returns HTTP 400 with `{"error":{"type":"server_error","message":"Error from
  * provider (Console): Upstream request failed: Model is unavailable."}}` while still advertising
- * the model in its own /v1/models listing. Classified as terminal, every job that reached it was
- * destroyed rather than retried.
+ * the model in its own /v1/models listing. When free tier was restricted, it also started returning
+ * HTTP 400 with `{"error":{"type":"MissingSessionID","message":"Error from provider (Console):
+ * OpenCode's free tier can only be used in OpenCode"}}`. Classified as terminal, every job that
+ * reached it was destroyed rather than retried.
  *
- * Deliberately narrow. It applies only to 400 (other 4xx really are request defects: 401 bad
- * credentials, 404 unknown model, 422 schema), and only when the body self-identifies as a server
- * or upstream failure. A provider that returns a genuine 400 for a malformed request says nothing
- * of the sort, and still fails terminally as it should.
+ * Deliberately narrow. It applies to 400 only when the body self-identifies as a server or
+ * upstream failure, or to the specific 404 shape NVIDIA NIM uses for a missing serverless
+ * function. Other 4xx really are request defects: 401 bad credentials, ordinary 404 unknown
+ * model, and 422 schema. A provider that returns a genuine 400 for a malformed request says
+ * nothing of the sort, and still fails terminally as it should.
  *
- * Kept byte-identical in behaviour to v1's copy in workers/llm-dispatch-proxy: the two dispatchers
- * face the same providers, and a body that costs a job in one must not cost it in the other.
+ * Ported unchanged in behaviour from the retired v1 Worker (llm-dispatch-proxy).
  */
 export function upstreamCapacityFailure(status, body) {
+  if (status === 404) {
+    // NVIDIA's hosted functions have returned this for a retired/unavailable deployment:
+    // `Function id '...' version 'null' ... is not found`. Brokers such as Kilo wrap the same
+    // provider response under error.metadata.raw. Keep this exact signature narrow so an ordinary
+    // unknown-model 404 remains a terminal request defect.
+    let serialized = "";
+    try {
+      serialized = JSON.stringify(body).toLowerCase();
+    } catch {
+      // A non-serializable body cannot carry the known provider signature.
+    }
+    return serialized.includes("function id") && serialized.includes("is not found");
+  }
   if (status !== 400) return false;
   const providerError = body?.error;
   if (!providerError || typeof providerError !== "object") return false;
-  if (String(providerError.type || "").toLowerCase() === "server_error") return true;
+  const errType = String(providerError.type || "").toLowerCase();
+  if (errType === "server_error") return true;
   const message = String(providerError.message || "").toLowerCase();
   return (
     message.includes("upstream request failed") ||
     message.includes("model is unavailable") ||
     message.includes("no capacity") ||
-    message.includes("temporarily unavailable")
+    message.includes("temporarily unavailable") ||
+    message.includes("free tier can only be used in opencode")
   );
+}
+
+/**
+ * A 2xx response that is not actually an answer.
+ *
+ * Airforce returns HTTP **200** with no `choices` at all and an error object whose own `code`
+ * says 503 (confirmed live 2026-09-09):
+ *
+ *   200 {"error":{"message":"No content was returned for model 'mistral-medium-3.5' - every
+ *        upstream provider returned an empty completion...","type":"upstream_unavailable",
+ *        "code":"503"}}
+ *
+ * `response.ok` is true for this, so the executor stored the error object in B2 as the job's
+ * RESULT and settled the job `completed` -- a permanently wrong answer that no retry would ever
+ * revisit. Worse, the success path clears every backoff signal on the route, so a provider that
+ * was returning nothing but empty completions kept reading as healthy and kept being ranked.
+ *
+ * Treated as upstream capacity rather than a defect in the job: the request was fine, the
+ * provider had nothing to serve.
+ */
+export function upstreamEmptyCompletion(status, body) {
+  if (status < 200 || status >= 300) return false;
+  if (!body || typeof body !== "object") return true;
+  if (body.error) return true;
+  const choices = body.choices;
+  return !Array.isArray(choices) || choices.length === 0;
 }
 
 /**
@@ -311,6 +423,15 @@ export function parseRetryAfterSeconds(response, body = null) {
     );
     if (Number.isFinite(directRetrySec) && directRetrySec > 0) {
       return Math.ceil(directRetrySec);
+    }
+    const retryInfo = Array.isArray(body?.error?.details)
+      ? body.error.details.find((detail) =>
+          String(detail?.["@type"] || "").endsWith("RetryInfo")
+        )
+      : null;
+    const retryInfoSeconds = parseDurationSeconds(retryInfo?.retryDelay);
+    if (retryInfoSeconds !== null && retryInfoSeconds > 0) {
+      return retryInfoSeconds;
     }
     const message =
       body?.error?.message ||

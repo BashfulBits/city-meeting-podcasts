@@ -285,3 +285,211 @@ def test_search_assets_fail_before_copying_when_a_vendored_file_is_missing(tmp_p
         search_mod._write_search_asset(tmp_path / "docs")
 
     assert not (tmp_path / "docs" / "assets" / "minisearch-7.1.2.js").exists()
+
+
+@pytest.mark.parametrize("mixed", [False, True])
+def test_search_render_from_retained_records_routes_exact_body_without_topic_capture(
+    tmp_path, mixed
+):
+    owner = _city("udc")
+    owner.source["body_exact"] = ["UDC Advisory Committee"]
+    if mixed:
+        owner.source["body_any"] = ["City Council"]
+    combined = _city("all-meetings")
+    committee = _episode("committee")
+    committee.body = "UDC Advisory Committee"
+    committee.title = committee.body
+    open_house = _episode("open-house")
+    open_house.body = "UDC Advisory Committee Open House"
+    open_house.title = open_house.body
+    records = {ep.uid: episode_to_record(ep) for ep in [committee, open_house]}
+    assert search_mod._city_for_record([owner, combined], records[committee.uid]) is owner
+    assert search_mod._city_for_record([owner, combined], records[open_house.uid]) is combined
+    src = _save(tmp_path, combined, records)
+    build_search_index(
+        tmp_path / "state", [owner, combined], tmp_path / "docs", "https://site.test"
+    )
+    documents = {doc["uid"]: doc for doc in _shard(tmp_path, src)["documents"]}
+    assert documents[committee.uid]["page_url"].startswith("https://site.test/udc/")
+    assert documents[open_house.uid]["page_url"].startswith("https://site.test/all-meetings/")
+    assert documents[committee.uid]["body"] == committee.body
+    assert documents[open_house.uid]["body"] == open_house.body
+
+
+def test_exact_body_rule_changes_invalidate_cached_search_routes(tmp_path):
+    owner = _city("udc")
+    owner.source["body_exact"] = ["UDC Advisory Committee"]
+    combined = _city("all-meetings")
+    episode = _episode("committee")
+    episode.body = "UDC Advisory Committee"
+    records = {episode.uid: episode_to_record(episode)}
+    src = _save(tmp_path, combined, records)
+    cache = {}
+    build_search_index(
+        tmp_path / "state", [owner, combined], tmp_path / "docs", "https://site.test", cache=cache
+    )
+    original_hash = cache["shards"][src]["hash"]
+    assert _shard(tmp_path, src)["documents"][0]["page_url"].startswith("https://site.test/udc/")
+
+    owner.source["body_exact"] = ["Another Advisory Committee"]
+    build_search_index(
+        tmp_path / "state", [owner, combined], tmp_path / "docs", "https://site.test", cache=cache
+    )
+    assert cache["shards"][src]["hash"] != original_hash
+    assert _shard(tmp_path, src)["documents"][0]["page_url"].startswith(
+        "https://site.test/all-meetings/"
+    )
+
+
+def test_search_hash_preserves_legacy_views_without_exact_body_rules():
+    records = {"u1": episode_to_record(_episode())}
+    # Captured before body_exact was added to the fingerprint: existing city shards stay cached.
+    assert search_mod._shard_hash(records, [_city()], "https://site.test") == (
+        "3a14ea22a0c8d498b1365182e7e6f14a451a50417fbb37019e3e6384232f300b"
+    )
+
+
+def _selection_group(city, records, *, search=True):
+    from citypods.publication_selection import record_identity_fingerprint
+
+    snapshot = {
+        "url": "https://example.test/official-agenda",
+        "retrieved_at": "2026-07-01T00:00:00+00:00",
+        "content_hash": "a" * 64,
+    }
+    return {
+        "version": 1,
+        "groups": [
+            {
+                "id": "reviewed-meeting",
+                "source_key": source_key(city),
+                "identity_kind": "same_provider_guid",
+                "identity_key": "official-guid",
+                "members": [
+                    {
+                        "uid": uid,
+                        "provider_guid": "official-guid",
+                        "record_fingerprint": record_identity_fingerprint(source_key(city), record),
+                    }
+                    for uid, record in records.items()
+                ],
+                "preferred_uid": next(iter(records)),
+                "evidence_refs": [snapshot],
+                "approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/1997",
+                "exposure": {
+                    "status": "both-published",
+                    "artifacts": [snapshot],
+                    "rationale": "Reviewed both existing public pages.",
+                },
+                "search": search,
+                "date_resolution": None,
+            }
+        ],
+    }
+
+
+def _duplicate_records():
+    episodes = [_episode("1" * 16), _episode("2" * 16)]
+    for episode in episodes:
+        episode.guid = "official-guid"
+    return {ep.uid: episode_to_record(ep) for ep in episodes}
+
+
+def test_search_selection_projects_winner_and_explicit_owner(tmp_path):
+    owner = _city("reviewed-owner", body="City Council")
+    fallback = _city("legacy-owner", body="City Council")
+    records = _duplicate_records()
+    owner.extra["publication_selection"] = _selection_group(owner, records)
+    src = _save(tmp_path, owner, records)
+    cache = {}
+    build_search_index(
+        tmp_path / "state", [fallback, owner], tmp_path / "docs", "https://site.test", cache=cache
+    )
+    documents = _shard(tmp_path, src)["documents"]
+    assert [doc["uid"] for doc in documents] == ["1" * 16]
+    assert documents[0]["page_url"].startswith("https://site.test/reviewed-owner/")
+    assert records == _duplicate_records()
+
+
+def test_search_selection_hold_preserves_all_outputs_and_cache(tmp_path):
+    import copy
+
+    owner = _city(body="City Council")
+    records = _duplicate_records()
+    owner.extra["publication_selection"] = _selection_group(owner, records)
+    _save(tmp_path, owner, records)
+    cache = {}
+    build_search_index(
+        tmp_path / "state", [owner], tmp_path / "docs", "https://site.test", cache=cache
+    )
+    before = {
+        str(path.relative_to(tmp_path / "docs")): path.read_bytes()
+        for path in (tmp_path / "docs").rglob("*")
+        if path.is_file()
+    }
+    cached = copy.deepcopy(cache)
+    records["2" * 16]["title"] = "Changed official observation"
+    _save(tmp_path, owner, records)
+    assert (
+        build_search_index(
+            tmp_path / "state", [owner], tmp_path / "docs", "https://site.test", cache=cache
+        )
+        is None
+    )
+    after = {
+        str(path.relative_to(tmp_path / "docs")): path.read_bytes()
+        for path in (tmp_path / "docs").rglob("*")
+        if path.is_file()
+    }
+    assert after == before
+    assert cache == cached
+    first_output = tmp_path / "new-output"
+    empty_cache = {}
+    assert (
+        build_search_index(
+            tmp_path / "state", [owner], first_output, "https://site.test", cache=empty_cache
+        )
+        is None
+    )
+    assert not first_output.exists()
+    assert empty_cache == {}
+
+
+def test_search_selection_preflights_later_source_before_any_write(tmp_path):
+    first = _city("first")
+    later = _city("later", body="City Council")
+    later.source = {**later.source, "url": "https://other.test/archive"}
+    records = _duplicate_records()
+    later.extra["publication_selection"] = _selection_group(later, records)
+    _save(tmp_path, first, {"u1": episode_to_record(_episode())})
+    # The configured later source has no archive: a proof hold must precede first-source writes.
+    cache = {}
+    assert (
+        build_search_index(
+            tmp_path / "state", [first, later], tmp_path / "docs", "https://site.test", cache=cache
+        )
+        is None
+    )
+    assert not (tmp_path / "docs").exists()
+    assert cache == {}
+
+
+def test_search_selection_policy_invalidates_only_configured_hash(tmp_path):
+    from citypods.publication_selection import load_selection_index, select_search_publication
+
+    owner = _city(body="City Council")
+    records = _duplicate_records()
+    owner.extra["publication_selection"] = _selection_group(owner, records)
+    plan = select_search_publication(load_selection_index([owner]), source_key(owner), records)
+    original = search_mod._shard_hash(records, [owner], "https://site.test", selection=plan)
+    owner.extra["publication_selection"]["groups"][0]["preferred_uid"] = "2" * 16
+    changed = select_search_publication(load_selection_index([owner]), source_key(owner), records)
+    assert (
+        search_mod._shard_hash(records, [owner], "https://site.test", selection=changed) != original
+    )
+    owner.extra["publication_selection"] = _selection_group(owner, records, search=False)
+    feed_only = select_search_publication(load_selection_index([owner]), source_key(owner), records)
+    assert feed_only.policy_hash is None
+    assert search_mod._shard_hash(records, [owner], "https://site.test", selection=feed_only) == (
+        search_mod._shard_hash(records, [owner], "https://site.test")
+    )

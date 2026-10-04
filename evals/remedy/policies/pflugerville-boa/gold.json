@@ -1,0 +1,230 @@
+{
+  "version": 2,
+  "cases": {
+    "pflugerville-boa-owner-120": {
+      "supported": true,
+      "rationale": "Official meeting name/date and Video target independently match the retained BOA recording identity.",
+      "evidence_refs": [
+        "meeting-120"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-owner-128": {
+      "supported": true,
+      "rationale": "Official meeting name/date and Video target independently match the retained BOA recording identity.",
+      "evidence_refs": [
+        "meeting-128"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-owner-185": {
+      "supported": true,
+      "rationale": "Official meeting name/date and Video target independently match the retained BOA recording identity.",
+      "evidence_refs": [
+        "meeting-185"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-owner-205": {
+      "supported": true,
+      "rationale": "Official meeting name/date and Video target independently match the retained BOA recording identity.",
+      "evidence_refs": [
+        "meeting-205"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-owner-234": {
+      "supported": true,
+      "rationale": "Official meeting name/date and Video target independently match the retained BOA recording identity.",
+      "evidence_refs": [
+        "meeting-234"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-owner-268": {
+      "supported": true,
+      "rationale": "Official meeting name/date and Video target independently match the retained BOA recording identity.",
+      "evidence_refs": [
+        "meeting-268"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-owner-379": {
+      "supported": true,
+      "rationale": "Official meeting name/date and Video target independently match the retained BOA recording identity.",
+      "evidence_refs": [
+        "meeting-379"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-owner-446": {
+      "supported": true,
+      "rationale": "Official meeting name/date and Video target independently match the retained BOA recording identity.",
+      "evidence_refs": [
+        "meeting-446"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-owner-706": {
+      "supported": true,
+      "rationale": "Official meeting name/date and Video target independently match the retained BOA recording identity.",
+      "evidence_refs": [
+        "meeting-706"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-owner-933": {
+      "supported": true,
+      "rationale": "Official meeting name/date and Video target independently match the retained BOA recording identity.",
+      "evidence_refs": [
+        "meeting-933"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-not-council": {
+      "supported": false,
+      "rationale": "The official meeting name is Board of Adjustment, not Council.",
+      "evidence_refs": [
+        "meeting-933"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-not-pz": {
+      "supported": false,
+      "rationale": "A zoning topic does not change the explicitly named Board of Adjustment meeting body.",
+      "evidence_refs": [
+        "meeting-933"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-not-duplicate": {
+      "supported": false,
+      "rationale": "The reviewed city feed already owns this complete body label.",
+      "evidence_refs": [
+        "meeting-933"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": "pflugerville-tx-board-of-adjustment"
+    },
+    "pflugerville-boa-topic-suffix": {
+      "supported": false,
+      "rationale": "Official BOA meeting evidence does not authorize ownership of an unseen staff-training proceeding. This is an adapted label, not an observed recording.",
+      "evidence_refs": [
+        "meeting-933"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": "identity-or-inclusion",
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    },
+    "pflugerville-boa-unseen-extended": {
+      "supported": null,
+      "rationale": "The extended title is unobserved; the conservative guard holds it pending official identity evidence.",
+      "evidence_refs": [
+        "meeting-933"
+      ],
+      "adjudicator": "agent reviewed official Legistar meeting identity and video bindings",
+      "provenance": "seed",
+      "policy_approval_ref": "review/pflugerville-boa-coverage-2026-10.md",
+      "critical_error_class": null,
+      "revision": 1,
+      "superseded_revision": null,
+      "correction_reason": null,
+      "expected_owner": null
+    }
+  }
+}

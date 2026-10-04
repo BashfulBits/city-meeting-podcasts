@@ -15,6 +15,7 @@ import faulthandler
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import threading
@@ -32,6 +33,7 @@ from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body, source_body_filter, source_body_inclusions
 from citypods.compute import DispatchCoordinator, make_compute
 from citypods.compute.llm_lanes import lane_for
+from citypods.compute.llm_submission_telemetry import record_stage_activity
 from citypods.config import (
     RESERVED_PUBLIC_DIRS as _RESERVED_DOC_NAMES,
 )
@@ -94,7 +96,13 @@ from citypods.progress import PROGRESS, format_snapshot
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError, is_transient_provider_error
+from citypods.publication_selection import (
+    SelectionIndex,
+    load_selection_index,
+    select_feed_publication,
+)
 from citypods.records import (
+    RESET_GUARDED_AGENDA_LINK_KEYS,
     assign_uids,
     attach_auxiliary_agenda_links,
     episode_to_record,
@@ -199,6 +207,24 @@ _RECORD_BACKED_LANES = frozenset(
     }
 )
 
+# Masks variable substrings (episode uids, hex ids, unit numbers, item counts) in a StageStats
+# error message so repeated failures of the same *kind* collapse into one bucket instead of
+# hundreds of visually-distinct strings -- mirrors how StageStats.defer_reasons already buckets
+# deferrals by a stable reason token. Errors previously had no equivalent breakdown: a stage
+# reporting hundreds of errors showed only a raw count and (until the cap below was raised) 3 raw
+# samples, which is how a real bug (chapter-agenda/chapter-locator dispatching with no usable
+# max_tokens) went unnoticed for a long time -- nothing surfaced *which* failure mode dominated.
+_ERROR_REASON_VARIABLE_RE = re.compile(r"[0-9a-fA-F]{6,}|\d+")
+# Stdout-only (this run's own build log), never fed into the JSONL telemetry artifact --
+# llm_submission_telemetry.py's own module docstring says that file must never carry "prompts,
+# results, ... or credentials", and a normalized error reason is still derived from model output.
+_ERROR_SAMPLE_CAP = 10
+
+
+def _error_reason(message: str) -> str:
+    """Collapse one error message to a stable, coarse-grained bucket key."""
+    return _ERROR_REASON_VARIABLE_RE.sub("#", message).strip()
+
 
 class SourcePipeline:
     """Fetch + enrich each distinct source once per build and share the result across all of
@@ -253,6 +279,13 @@ class SourcePipeline:
         self._aggregate_persist: dict[str, list[Episode]] = {}
         self._notes: dict[str, str] = {}
         self._dirty_uids: dict[str, dict[str, str]] = {}
+        # Each source's RESET_GUARDED_AGENDA_LINK_KEYS values as pulled at the START of this run
+        # (fetch_merge's ``persisted``, before any stage touches them this run) — the audio lane's
+        # push uses it to tell a stale carried-over links value apart from one this run actually
+        # (re)derived, so a concurrent agenda/chapter maintenance reset's tombstone is never
+        # resurrected. See ARCHITECTURE.md's maintenance-lease section and
+        # records.merge_preserving_foreign's ``agenda_link_baseline``.
+        self.agenda_link_baseline: dict[str, dict[str, dict[str, object]]] = {}
         self._locks: dict[str, threading.Lock] = collections.defaultdict(threading.Lock)
         self._guard = threading.Lock()
         # Per-stage cost totals across all sources this run (for run history / projection).
@@ -269,6 +302,7 @@ class SourcePipeline:
                 "bytes": 0,
                 "errors": 0,
                 "error_samples": [],
+                "error_reasons": {},
                 "rate_limited": 0,
                 "asr_migration_copied": 0,
                 "asr_migration_already_present": 0,
@@ -379,7 +413,15 @@ class SourcePipeline:
             if ep.integrity:
                 result.append((uid, "repair_requested"))
             for stage in stages:
-                if stage_is_dirty(stage, ep, city, speaker_config=self.ctx.speaker_config):
+                if stage_is_dirty(
+                    stage,
+                    ep,
+                    city,
+                    speaker_config=self.ctx.speaker_config,
+                    evaluation_config=(
+                        self.ctx.llm_evaluation_config if self.ctx.tag_backend is not None else None
+                    ),
+                ):
                     result.append((uid, f"{stage.name}_incomplete"))
         return result
 
@@ -389,6 +431,13 @@ class SourcePipeline:
         Returns ``(provider, episodes, persisted, seeded)``. ``ProviderError`` propagates."""
         provider = get_provider(city.provider)
         persisted = load_records(self.state_dir, key)
+        # Snapshot BEFORE any stage below can touch it — see ``agenda_link_baseline``'s docstring
+        # at __init__. `enrich()` calls `fetch_merge` at most once per source per run (cache-guarded
+        # by `self._cache`), so this always reflects the state this run actually started from.
+        self.agenda_link_baseline[key] = {
+            uid: {k: (rec.get("links") or {}).get(k) for k in RESET_GUARDED_AGENDA_LINK_KEYS}
+            for uid, rec in persisted.items()
+        }
         metadata = self.refresh_state.get(key) or {}
         due = refresh_due(
             metadata,
@@ -614,8 +663,12 @@ class SourcePipeline:
                 t["seconds"] += s.seconds
                 t["bytes"] += s.bytes_written
                 t["errors"] += len(s.errors)
-                if s.errors and len(t["error_samples"]) < 3:
-                    t["error_samples"].extend(s.errors[: 3 - len(t["error_samples"])])
+                if s.errors and len(t["error_samples"]) < _ERROR_SAMPLE_CAP:
+                    remaining = _ERROR_SAMPLE_CAP - len(t["error_samples"])
+                    t["error_samples"].extend(s.errors[:remaining])
+                for message in s.errors:
+                    reason = _error_reason(message)
+                    t["error_reasons"][reason] = t["error_reasons"].get(reason, 0) + 1
                 t["rate_limited"] += s.rate_limited
                 t["asr_migration_copied"] += s.asr_migration_copied
                 t["asr_migration_already_present"] += s.asr_migration_already_present
@@ -1036,6 +1089,8 @@ def _process_city(
     fingerprint: str,
     render: bool = True,
     no_refresh: bool = False,
+    *,
+    selection_index: SelectionIndex | None = None,
 ) -> tuple[CityResult, dict | None]:
     """Enrich the city (runs the pipeline's stages) and, when ``render`` is set, write its feeds/
     pages. In the enrich phase ``render`` is False: the expensive stages still run and persist via
@@ -1076,6 +1131,38 @@ def _process_city(
         key=lambda e: e.published,
         reverse=True,
     )
+    raw_retained_eps = retained_eps
+    selection_hash = None
+    if render:
+        selection_index = selection_index or load_selection_index([city])
+        if any(group.feed_slug == city.slug for group in selection_index.groups):
+            plan = select_feed_publication(
+                selection_index,
+                city,
+                retained_eps,
+                load_records(pipeline.state_dir, source_key(city)),
+            )
+            if plan.held:
+                detail = "; ".join(str(diagnostic) for diagnostic in plan.diagnostics)
+                print(f"publication selection held {city.slug}: {detail}", flush=True)
+                previous_dir = output_dir / city.slug
+                return (
+                    CityResult(
+                        city.slug,
+                        "held",
+                        detail=detail,
+                        has_audio=(previous_dir / "audio_feed.xml").is_file(),
+                        has_video=(previous_dir / "video_feed.xml").is_file(),
+                    ),
+                    None,
+                )
+            retained_eps = list(plan.public_items)
+            selection_hash = plan.policy_hash
+            fingerprint = hashlib.sha256(
+                json.dumps(
+                    [fingerprint, selection_hash, plan.selected_uids], separators=(",", ":")
+                ).encode()
+            ).hexdigest()
     calendar_records = sorted(
         filter_by_body(pipeline.calendar_records(city), body_filter, body_inclusions),
         key=lambda record: record.published,
@@ -1138,7 +1225,7 @@ def _process_city(
             rendered_page_cache = _write_meeting_pages(
                 city_dir,
                 city,
-                retained_eps,
+                raw_retained_eps,
                 base_url,
                 site_config,
                 page_cache,
@@ -1163,7 +1250,9 @@ def _process_city(
                         import shutil
 
                         shutil.rmtree(child)
-            archive_hash = _city_archive_hash(city, retained_eps, calendar_records, base_url)
+            archive_hash = _city_archive_hash(
+                city, retained_eps, calendar_records, base_url, selection_hash=selection_hash
+            )
             new_entry["archive_hash"] = archive_hash
             if cache_entry is None or cache_entry.get("archive_hash") != archive_hash:
                 meeting_outputs_changed = True
@@ -1194,11 +1283,12 @@ def _process_city(
         _write_chapter_sidecars(
             city_dir,
             city,
-            feed_eps,
+            raw_retained_eps if selection_hash is not None else feed_eps,
             base_url,
             include_generated_chapters=include_generated_chapters,
         )
-        if has_audio:
+        # A valid selection must replace stale alternate items even without playable audio.
+        if has_audio or selection_hash is not None:
             (city_dir / "audio_feed.xml").write_text(
                 build_rss(
                     city,
@@ -1701,7 +1791,7 @@ def _run_enrich_global_queue(
     ]
     # Diarization consumes the minutes-derived roster as candidate vocabulary and the active
     # transcript, so it must run after the document stages *and* TranscriptStage's second pass.
-    post_transcript = {"transcript", "diarize", "native_diarize", "speaker_identity", "tags"}
+    post_transcript = {"transcript", "native_diarize", "speaker_identity", "tags"}
     audio_stages = [
         s
         for s in pipeline.stages
@@ -1857,6 +1947,16 @@ def _run_enrich_global_queue(
             prelabeler_model = str(prelabeler_config.get("model") or "")
             prelabeler_prompt_version = str(prelabeler_config.get("prompt_version") or "1")
             prelabeler_llm_schema_version = str(prelabeler_config.get("llm_schema_version") or "1")
+            # Keep episodes whose only outstanding work is the shadow evaluator, or its deferred
+            # results would never be read back (TagsStage shares `needs_shadow_prelabel`). Once
+            # the run's shadow allowance is spent, shadow-only episodes are not worth queueing.
+            shadow_model = str(prelabeler_config.get("shadow_model") or "")
+            if (
+                not prelabeler_config.get("shadow_enabled", False)
+                or shadow_model == prelabeler_model
+                or ctx.tag_prelabeler_shadow_exhausted()
+            ):
+                shadow_model = ""
             for state in prepared.values():
                 state["candidate_episodes"] = [
                     ep
@@ -1872,6 +1972,7 @@ def _run_enrich_global_queue(
                         prelabeler_model=prelabeler_model,
                         prelabeler_prompt_version=prelabeler_prompt_version,
                         prelabeler_llm_schema_version=prelabeler_llm_schema_version,
+                        prelabeler_shadow_model=shadow_model,
                     )
                 ]
     elif ctx.lane == "chapter-agenda":
@@ -1900,10 +2001,18 @@ def _run_enrich_global_queue(
                 for ep in state["candidate_episodes"]
                 if episode_needs_chapter_agenda(ep) or episode_needs_chapter_locator(ep)
             ]
+    # Census retained work before queue filters, admission caps or stop gates can hide it.
+    for stage in pipeline.stages:
+        if (allowed is None or stage.name in allowed) and ctx.llm_work.is_producer(stage.name):
+            if not callable(getattr(stage, "census", None)):
+                raise ValueError(
+                    f"Registered LLM stage {stage.name} requires an eligibility census"
+                )
+            for state in prepared.values():
+                stage.census(state["city"], state["retained_episodes"], ctx)
     # Only TranscriptStage (the ASR stage) actually consumes served duration -- for ASR timeout
-    # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). Neither
-    # ProviderTranscriptDiarizeStage (works purely off an already-aligned transcript's text) nor
-    # TagsStage (works purely off agenda/transcript text) reads it. Gating this on
+    # budgeting and local-vs-external dispatch eligibility (_episode_duration_hours). TagsStage
+    # (works purely off agenda/transcript text) does not read it. Gating this on
     # `transcript_stages` rather than on membership of "transcript" specifically meant every
     # `tag`-lane run paid the full per-episode ffprobe/heal pass (a storage round trip via
     # probe_hosted_audio_duration_seconds) across the *entire* backlog before it could even build
@@ -1932,7 +2041,11 @@ def _run_enrich_global_queue(
     if ctx.lane == "tag" and ctx.tag_backend is not None:
         tag_caps = [
             cap
-            for cap in (ctx.tag_max_dispatches, ctx.tag_prelabeler_max_dispatches)
+            for cap in (
+                ctx.tag_max_dispatches,
+                ctx.tag_prelabeler_max_dispatches,
+                ctx.tag_prelabeler_shadow_max_dispatches,
+            )
             if cap is not None
         ]
         if tag_caps and max(tag_caps) > 0:
@@ -2265,8 +2378,8 @@ def _run_enrich_global_queue(
 
             # Tagging has no audio dependency (it only reads agenda/transcript text), so an
             # episode that never gets hosted audio still needs its own, narrower pass — running
-            # the full transcript_stages list on it would wrongly let TranscriptStage/
-            # ProviderTranscriptDiarizeStage (which DO require hosted audio) execute too.
+            # the full transcript_stages list on it would wrongly let TranscriptStage (which DOES
+            # require hosted audio) execute too.
             tags_only_stages = [s for s in transcript_stages if s.name == "tags"]
             if tags_only_stages:
                 tx_tags_only = [
@@ -2588,6 +2701,7 @@ def _build_impl(
     # sharded burst that triggered the Granicus 403 / truncated-fetch storm.
     HOST_LIMITER.configure(site_config.get("provider_rate_limits", {}))
     cities = load_city_configs(config_dir, site_config.get("defaults", {}))
+    selection_index = load_selection_index(cities)
     if only_slug:
         cities = filter_city_configs(cities, only_slug)
         if not cities:
@@ -2595,12 +2709,20 @@ def _build_impl(
     # H6b source/shard selection (by source_key, so a city's combined + per-board feeds stay
     # together in one shard and one record store). ``scoped`` marks a partial run for statesync.
     # Scoped lanes only own specific artifact blocks, so they must always route through merged
-    # persistence even when running without --source or --shard.
+    # persistence even when running without --source or --shard. ``audio`` is included for the
+    # same reason as the others below (CodeRabbit review on #1716): production always shards it
+    # (`audio.yml`), but a valid unsharded `--lane audio` invocation must still route through
+    # `push_records_merged` — the plain whole-snapshot `push_state()` the *unscoped* branch uses
+    # has no `agenda_link_baseline` (or any other foreign-block preservation) and would silently
+    # resurrect a concurrent agenda/chapter maintenance reset's tombstone, defeating this lane's
+    # own TOCTOU protection (`merge_preserving_foreign`'s docstring; ARCHITECTURE.md's
+    # maintenance-lease section).
     scoped = bool(
         source
         or shard
         or lane
         in {
+            "audio",
             "tag",
             "moments",
             "diarize",
@@ -2697,8 +2819,49 @@ def _build_impl(
     # files that can disagree.
     tag_max_dispatches = lane_for("topic-tags:tagger").max_dispatches_per_run
     tag_prelabeler_max_dispatches = lane_for("topic-tags:prelabeler").max_dispatches_per_run
+    tag_prelabeler_shadow_max_dispatches = lane_for(
+        "topic-tags:prelabeler-shadow"
+    ).max_dispatches_per_run
     chapter_agenda_max_dispatches = lane_for("chapter-agenda").max_dispatches_per_run
     chapter_locator_max_dispatches = lane_for("chapter-locator").max_dispatches_per_run
+    # Extraction and candidate/panel judging share the stage counter. Both lane allowances
+    # must contribute: using only extraction slots starves the larger judge fan-out.
+    moment_max_dispatches = (
+        lane_for("r6-moments").max_dispatches_per_run + lane_for("r6-judge").max_dispatches_per_run
+    )
+    # Ingress preflight: a lane the dispatch Worker would refuse today (daily DO row budget,
+    # pending-queue cap, daily job cap, or its own budget) gets a zero per-run cap, so the stages
+    # skip building its prompts instead of doing the work only to have every job rejected. The
+    # run itself still goes ahead: the same stages apply already-completed deferred results to
+    # episodes, and a closed lane (a full queue can stay closed for days) must not stall that.
+    # A failed preflight closes only the affected dispatch lanes; render, enrichment, and polling
+    # of already-completed results continue. Same URL precedence as
+    # LLMBackendConfig.from_env().
+    v2_url = os.environ.get("CITYPODS_LLM_DISPATCH_V2_URL") or os.environ.get("LLM_DISPATCH_V2_URL")
+    if not dry_run and phase != "render" and v2_url:
+        closed = _closed_llm_lanes(
+            {
+                "topic-tags:tagger": tagging_config.get("enabled"),
+                "topic-tags:prelabeler": tagging_config.get("enabled"),
+                "topic-tags:prelabeler-shadow": tagging_config.get("enabled"),
+                "chapter-agenda": True,
+                "chapter-locator": True,
+                "r6-moments": moments_config.get("enabled"),
+                "r6-judge": moments_config.get("enabled"),
+            }
+        )
+        if "topic-tags:tagger" in closed:
+            tag_max_dispatches = 0
+        if "topic-tags:prelabeler" in closed:
+            tag_prelabeler_max_dispatches = 0
+        if "topic-tags:prelabeler-shadow" in closed:
+            tag_prelabeler_shadow_max_dispatches = 0
+        if "chapter-agenda" in closed:
+            chapter_agenda_max_dispatches = 0
+        if "chapter-locator" in closed:
+            chapter_locator_max_dispatches = 0
+        if {"r6-moments", "r6-judge"} & closed:
+            moment_max_dispatches = 0
     # Rendering is deliberately a no-LLM phase.  It restores already-persisted records and
     # projects them into feeds; it must not construct a dispatch backend (or require LLM secrets)
     # merely because tagging is enabled in site_config.yml.
@@ -2718,17 +2881,11 @@ def _build_impl(
             primary_model = tagger_lane.primary_model
             additional_models = tagger_lane.additional_models
             # Start from LLMBackendConfig.from_env() -- the complete, single source of truth for
-            # every dispatch-relevant environment variable (dispatch_url/dispatch_auth_token,
-            # dispatch_v2_url/dispatch_v2_auth_token, daily_ingest_cap) -- and override only the
-            # fields site_config.yml's tagging block actually owns. This construction used to
-            # hand-roll only dispatch_url/dispatch_auth_token, which meant tags.py's
-            # queue_only=True calls (tagger and prelabeler) always fell through to
-            # _enqueue_durable_policy_job's legacy v1 branch, regardless of LLM_DISPATCH_V2_URL
-            # being set: LLMBackendConfig has no env-reading __post_init__, so an omitted field
-            # is None, not auto-filled. That's why the tag lane kept dispatching straight to
-            # citypods-llm-dispatch-proxy after v2 activation -- see the 2026-08-18 incident
-            # notes in review/44. Building from .from_env() instead of copying its fields by hand
-            # means a future field added there can't silently miss this call site again.
+            # every dispatch-relevant environment variable (dispatch_v2_url/dispatch_v2_auth_token,
+            # daily_ingest_cap) -- and override only the fields site_config.yml's tagging block
+            # actually owns. LLMBackendConfig has no env-reading __post_init__, so a hand-copied
+            # config silently leaves any omitted field None (the 2026-08-18 incident in
+            # review/44); building from .from_env() means a future field can't miss this site.
             tag_backend = LiteLLMBackend(
                 _dc_replace(
                     LLMBackendConfig.from_env(),
@@ -2745,7 +2902,7 @@ def _build_impl(
                 storage=storage,
             )
         except ValueError as exc:
-            # A misconfigured LLM route (e.g. dispatch mode with no LLM_DISPATCH_URL) must not
+            # A misconfigured LLM route (e.g. dispatch mode with no LLM_DISPATCH_V2_URL) must not
             # take down the whole build: fall back to rule-based tags only, same as any other
             # "LLM unavailable" outcome.
             print(
@@ -3056,13 +3213,24 @@ def _build_impl(
     # measured), and the runner is OOM-killed as a whole, so concurrency has to be bounded by
     # predicted memory as well as by vCPU count. 0/blank disables it (a one-worker run has
     # nothing to contend with).
+    #
+    # `diarize_memory_ceiling_bytes` reduces the configured budget once by
+    # `DIARIZE_RSS_SPIKE_MARGIN_BYTES` before it ever reaches `MemoryReservation` -- a fixed
+    # amount of headroom the steady-state linear model can't see coming (a transient allocation
+    # spike from an onnxruntime kernel failure, sized from real production evidence; see that
+    # constant's own comment), kept spare regardless of how full the steady-state accounting
+    # says the budget already is. Subtracted once from the *ceiling*, not once per worker: the
+    # trigger is data-dependent and rare, not a certainty every concurrent worker hits at once.
+    from citypods.diarize import diarize_memory_ceiling_bytes
+
     _diarize_memory_budget_mb = float((speakers_config or {}).get("memory_budget_mb", 0) or 0)
+    _diarize_ceiling_bytes = diarize_memory_ceiling_bytes(_diarize_memory_budget_mb)
     _diarize_memory_reservation: MemoryReservation | None = (
         MemoryReservation(
-            budget_bytes=int(_diarize_memory_budget_mb * 1024 * 1024),
+            budget_bytes=_diarize_ceiling_bytes,
             log=lambda msg: print(msg, flush=True),
         )
-        if not dry_run and _diarize_memory_budget_mb > 0
+        if not dry_run and _diarize_ceiling_bytes > 0
         else None
     )
     transcript_quality_routes = load_quality_routes(
@@ -3088,6 +3256,7 @@ def _build_impl(
             "prelabeler": {
                 **(tagging_config.get("prelabeler") or {}),
                 "model": lane_for("topic-tags:prelabeler").primary_model,
+                "shadow_model": lane_for("topic-tags:prelabeler-shadow").primary_model,
             },
         },
         moment_evaluation_state_path=state_dir
@@ -3098,7 +3267,7 @@ def _build_impl(
             **moments_config,
             **(moments_config.get("evaluation") or {}),
         },
-        moment_max_dispatches=lane_for("r6-moments").max_dispatches_per_run,
+        moment_max_dispatches=moment_max_dispatches,
         speaker_registry_path=state_dir
         / str(speakers_config.get("registry_path", "r7_speaker_registry.json")),
         speaker_evaluation_state_path=state_dir
@@ -3181,6 +3350,7 @@ def _build_impl(
         tag_llm_deadline=tag_llm_deadline,
         tag_max_dispatches=tag_max_dispatches,
         tag_prelabeler_max_dispatches=tag_prelabeler_max_dispatches,
+        tag_prelabeler_shadow_max_dispatches=tag_prelabeler_shadow_max_dispatches,
         chapter_agenda_max_dispatches=chapter_agenda_max_dispatches,
         chapter_locator_max_dispatches=chapter_locator_max_dispatches,
     )
@@ -3391,6 +3561,7 @@ def _build_impl(
                                     fingerprint,
                                     do_render,
                                     no_refresh,
+                                    selection_index=selection_index,
                                 )
                                 for c in city_group
                             ]
@@ -3430,6 +3601,7 @@ def _build_impl(
                                     fingerprint,
                                     True,
                                     True,
+                                    selection_index=selection_index,
                                 )
                                 for c in canonical_cities
                             ]
@@ -3477,6 +3649,17 @@ def _build_impl(
     for name, t in sorted(pipeline.stage_totals.items()):
         if not (t["ran"] or t["reused"] or t["backlog"] or t["errors"]):
             continue
+        if name in {"tags", "chapter_agenda", "chapter_locator", "moments", "moment-judge"}:
+            record_stage_activity(
+                lane=ctx.lane,
+                stage=name,
+                ran=t["ran"],
+                reused=t["reused"],
+                backlog=t["backlog"],
+                errors=t["errors"],
+                seconds=t["seconds"],
+                defer_reasons=t.get("defer_reasons") or {},
+            )
         # Break ``ran`` into expensive encodes vs near-free storage re-credits when the stage
         # reports it (audio), so the per-episode time estimate's blend is visible at a glance.
         ran = f"{t['ran']} ran"
@@ -3502,6 +3685,14 @@ def _build_impl(
                 f"{t['asr_migration_regenerated']} regenerated",
                 flush=True,
             )
+        if t.get("error_reasons"):
+            reasons = ", ".join(
+                f"{reason}={count}"
+                for reason, count in sorted(
+                    t["error_reasons"].items(), key=lambda item: (-item[1], item[0])
+                )
+            )
+            print(f"    errors: {reasons}", flush=True)
         for msg in t["error_samples"]:
             print(f"    ! {msg}", flush=True)
         if t.get("defer_reasons"):
@@ -3574,9 +3765,10 @@ def _build_impl(
                 r.slug: {"has_audio": r.has_audio, "has_video": r.has_video} for r in results
             }
             search_enabled = bool(site_config.get("defaults", {}).get("search", True))
-            _write_aliases(output_dir, base_url, all_cities, feed_info)
+            held_slugs = {result.slug for result in results if result.status == "held"}
+            _write_aliases(output_dir, base_url, all_cities, feed_info, held_slugs=held_slugs)
             _write_cname(output_dir, site_config)
-            _prune_stale_dirs(output_dir, all_cities)
+            _prune_stale_dirs(output_dir, all_cities, held_slugs=held_slugs)
             request_config = site_config.get("city_request_form") or {}
             request_form_enabled = bool(
                 request_config.get("formspark_action") and request_config.get("turnstile_site_key")
@@ -3673,6 +3865,11 @@ def _build_impl(
                 _history_window_min = float(defaults.get("chapter_run_time_budget_minutes", 240))
             _window = _history_window_min * 60 * _history_safety
             print("finalize: recording run history", flush=True)
+            if not interrupt_requested():
+                pipeline.ctx.llm_work.finish()
+            if provider_errors or any(result.status == "error" for result in results):
+                for registered in pipeline.ctx.llm_work.lanes.values():
+                    pipeline.ctx.llm_work.partial(registered.telemetry_producer)
             run_event_path = _record_run_history(
                 state_dir,
                 results,
@@ -3698,9 +3895,11 @@ def _build_impl(
                     "lane": lane,
                     "shard": f"{shard[0]}/{shard[1]}" if shard is not None else None,
                     "source": source,
+                    "city": only_slug,
                     "scoped": scoped,
                 },
                 interrupted=interrupt_requested(),
+                llm_work=pipeline.ctx.llm_work.snapshot(),
             )
             # Persist the derived work manifest (H5) for the status surface + as the H6b lease
             # substrate. Derived fresh from the just-updated records (hybrid model); ordered by
@@ -3750,6 +3949,13 @@ def _build_impl(
                     "owned_uids": shard_owned_uids,
                     "log": lambda msg: print(msg, flush=True),
                 }
+                if lane == "audio":
+                    # Closes the audio-lane vs agenda/chapter-reset TOCTOU: without it, a scoped
+                    # audio push always trusts its own (possibly stale) `links` snapshot for the
+                    # keys it owns, silently resurrecting a reset tool's just-written tombstone.
+                    # See ARCHITECTURE.md's maintenance-lease section and
+                    # merge_preserving_foreign's docstring.
+                    push_kwargs["agenda_link_baseline"] = pipeline.agenda_link_baseline
                 if maintenance_lease is not None:
                     push_kwargs["maintenance_lease"] = maintenance_lease
                 # The per-lane leases let extraction and locator work overlap, but their source
@@ -3844,6 +4050,25 @@ def _build_impl(
     return results
 
 
+def _closed_llm_lanes(purposes: dict[str, object]) -> set[str]:
+    """The enabled lanes whose ingress the dispatch Worker reports closed right now."""
+    from citypods.compute.llm import dispatch_v2_ingress_open
+
+    closed: set[str] = set()
+    for purpose, enabled in purposes.items():
+        if not enabled:
+            continue
+        is_open, status = dispatch_v2_ingress_open(purpose)
+        if not is_open:
+            closed.add(purpose)
+            reasons = ", ".join((status or {}).get("reasons") or []) or "closed"
+            print(
+                f"llm ingress: {purpose} closed today ({reasons}); skipping its dispatch",
+                flush=True,
+            )
+    return closed
+
+
 def build(
     *,
     site_config_path: str | Path = "config/site_config.yml",
@@ -3917,7 +4142,9 @@ def build(
                 close_compute()
 
 
-def _prune_stale_dirs(output_dir: Path, cities: list[City]) -> None:
+def _prune_stale_dirs(
+    output_dir: Path, cities: list[City], *, held_slugs: set[str] | None = None
+) -> None:
     """Remove ``docs/<slug>`` directories left over from a deleted city or a renamed slug.
     ``docs/`` is restored from actions/cache between runs, so without this a removed feed (or
     the old slug after a rename) would keep serving forever. Only directories that look like a
@@ -3925,7 +4152,7 @@ def _prune_stale_dirs(output_dir: Path, cities: list[City]) -> None:
     files are left alone."""
     import shutil
 
-    live = {c.slug for c in cities}
+    live = {c.slug for c in cities} | (held_slugs or set())
     for c in cities:
         live.update(c.aliases)
     for child in output_dir.iterdir():
@@ -3936,7 +4163,14 @@ def _prune_stale_dirs(output_dir: Path, cities: list[City]) -> None:
             shutil.rmtree(child)
 
 
-def _write_aliases(output_dir: Path, base_url: str, cities: list[City], feed_info: dict) -> None:
+def _write_aliases(
+    output_dir: Path,
+    base_url: str,
+    cities: list[City],
+    feed_info: dict,
+    *,
+    held_slugs: set[str] | None = None,
+) -> None:
     """For every former slug (``aliases``), emit a permanent redirect: an itunes:new-feed-url
     stub feed (so podcast clients migrate the subscription) and an HTML redirect page. Also
     write ``redirects.json`` — a from->to map a CDN (Cloudflare) can turn into real 301s,
@@ -3944,8 +4178,25 @@ def _write_aliases(output_dir: Path, base_url: str, cities: list[City], feed_inf
     net so subscribers never have to manually re-subscribe when they do."""
     site = base_url.rstrip("/")
     redirects: list[dict] = []
+    held_aliases = {
+        alias for city in cities if city.slug in (held_slugs or set()) for alias in city.aliases
+    }
+    prior_redirects = output_dir / "redirects.json"
+    if held_aliases and prior_redirects.exists():
+        try:
+            prior = json.loads(prior_redirects.read_text())
+        except ValueError:
+            prior = []
+        redirects.extend(
+            row
+            for row in (prior if isinstance(prior, list) else [])
+            if isinstance(row, dict)
+            and isinstance(row.get("from"), str)
+            and row["from"].startswith("/")
+            and row["from"].split("/")[1] in held_aliases
+        )
     for city in cities:
-        if not city.aliases:
+        if not city.aliases or city.slug in (held_slugs or set()):
             continue
         info = feed_info.get(city.slug, {})
         new_page = f"{site}/{city.slug}/"
@@ -3994,7 +4245,12 @@ def _write_chapter_sidecars(
 
 
 def _city_archive_hash(
-    city: City, episodes: list[Episode], calendar_records: list[AgendaRecord], base_url: str
+    city: City,
+    episodes: list[Episode],
+    calendar_records: list[AgendaRecord],
+    base_url: str,
+    *,
+    selection_hash: str | None = None,
 ) -> str:
     """Hash the city archive page's render inputs for incremental publication."""
     payload = [
@@ -4029,6 +4285,8 @@ def _city_archive_hash(
         ],
         base_url.rstrip("/"),
     ]
+    if selection_hash is not None:
+        payload.append([selection_hash, [ep.uid for ep in episodes]])
     blob = json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()
 
@@ -4180,6 +4438,7 @@ def _record_run_history(
     h16_availability: dict | None = None,
     scope: dict | None = None,
     interrupted: bool = False,
+    llm_work: dict | None = None,
 ) -> str | None:
     """Append one line to ``run_history.jsonl`` (rolling, capped) and write ``run_summary.json``
     (latest only). This is the data spine for the resource projection: it lets the model use a
@@ -4240,6 +4499,7 @@ def _record_run_history(
         "lane": scope.get("lane"),
         "shard": scope.get("shard"),
         "source": scope.get("source"),
+        "city": scope.get("city"),
         "scoped": bool(scope.get("scoped", False)),
         # GH#377: was this run cut short by a termination signal (SIGTERM/cancel)? Lets the
         # projection/audit tell a deliberately-completed run from one that was killed mid-queue
@@ -4257,6 +4517,7 @@ def _record_run_history(
         "materialize_encoded": audio.get("encoded", 0),
         "materialize_seconds": audio.get("seconds", 0.0),
         "stages": stages,
+        "llm_work": llm_work or {"schema_version": 1, "purposes": {}},
         "github_run_id": github_run_id,
         "github_run_url": github_run_url,
         "logical_run_id": logical_run_id,

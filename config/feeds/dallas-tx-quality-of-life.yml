@@ -1,0 +1,12 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Quality of Life is a distinct recurring committee from 2015 to 2017 (superseded later by Quality of Life, Arts and Culture Committee).
+slug: dallas-tx-quality-of-life
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Quality of Life
+podcast_title: 'Dallas: Quality of Life'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Quality of Life Committee meetings from 2015 to 2017.

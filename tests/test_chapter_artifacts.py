@@ -88,6 +88,43 @@ def test_agenda_artifact_round_trip_preserves_source_evidence_and_cues():
     assert restored == artifact
 
 
+def test_agenda_candidate_source_round_trips_and_defaults_to_strict():
+    recovered = AgendaCandidate(
+        index=0,
+        title="Approve the budget",
+        kind="substantive_action",
+        line_start=1,
+        line_end=1,
+        evidence_text="Approve the budget",
+        source="recovery",
+    )
+    assert AgendaCandidate.from_dict(recovered.to_dict()) == recovered
+    # A pre-existing serialized item (before this field existed) has no "source" key at all.
+    legacy_dict = recovered.to_dict()
+    del legacy_dict["source"]
+    assert AgendaCandidate.from_dict(legacy_dict).source == "strict"
+
+
+def test_agenda_artifact_pipeline_version_round_trips_and_defaults_to_empty():
+    artifact = AgendaCandidatesArtifact(
+        episode_uid="episode-1",
+        source_hash="agenda-sha",
+        model="nvidia/nemotron-3-ultra-550b-a55b:free",
+        prompt_version="agenda-flow",
+        recipe="recipe-1",
+        pipeline_version="2",
+    )
+    assert AgendaCandidatesArtifact.from_dict(artifact.to_dict()) == artifact
+    # An artifact stored before this field existed has no "pipeline_version" key at all -- it must
+    # round-trip to the empty default, not fail, and an empty default compares unequal to any real
+    # current pipeline version (i.e. it is automatically treated as stale).
+    legacy_dict = artifact.to_dict()
+    del legacy_dict["pipeline_version"]
+    restored = AgendaCandidatesArtifact.from_dict(legacy_dict)
+    assert restored.pipeline_version == ""
+    assert restored.pipeline_version != "2"
+
+
 def test_artifact_key_is_content_addressed_and_safe():
     assert artifact_key("agenda/candidates", "episode/1", "abc") == (
         "state/generated_chapters/agenda-candidates/episode-1-abc.json"

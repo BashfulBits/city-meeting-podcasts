@@ -67,6 +67,7 @@ function makeEnv(overrides = {}) {
   const { storage } = createMockSqlStorage();
   const coordinatorEnv = {
     MAX_JOBS_PER_UTC_DAY: "5000",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "18000",
     MAX_BUNDLE_JOBS: "4",
     MAX_JOBS_PER_ROUTE_PER_BUNDLE: "4",
     MAX_CONCURRENT_ROUTE_LANES: "5",
@@ -92,8 +93,11 @@ function makeEnv(overrides = {}) {
     CRON_EXECUTION_LIMIT_SECONDS: "900",
     CRON_TICK_SECONDS: "60",
     MAX_BUNDLES_PER_UTC_DAY: "1000",
+    MAX_BUNDLE_JOBS: "4",
+    MAX_LEASES_PER_UTC_DAY: "4000",
     MAX_CONCURRENT_ROUTE_LANES: "5",
     MAX_JOBS_PER_UTC_DAY: "5000",
+    MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "18000",
     ENQUEUE_BATCH_MAX: "1000",
     POLL_BATCH_MAX: "1000",
     B2_ENDPOINT: `https://${B2_HOST}`,
@@ -295,7 +299,7 @@ test("scheduled() purges aged-out terminal jobs and deletes their B2 objects on 
   try {
     // makeEnv builds the coordinator's env separately from the Worker's, so age the row past
     // the coordinator's own default COMPLETED_RETENTION_DAYS (38) rather than overriding it.
-    const env = makeEnv({ CLEANUP_INTERVAL_MINUTES: "60" });
+    const env = makeEnv({ CLEANUP_INTERVAL_MINUTES: "60", MAX_LEASES_PER_UTC_DAY: "300" });
     const resultKey = await completeOneJob(env, store, "j1");
     assert.ok(store.has("payloads/j1/request.json"));
     assert.ok(store.has(resultKey));
@@ -332,7 +336,7 @@ test("cleanup leaves a terminal job that is still inside its retention window un
   const originalFetch = globalThis.fetch;
   globalThis.fetch = fakeFetch(store);
   try {
-    const env = makeEnv({ CLEANUP_INTERVAL_MINUTES: "60" });
+    const env = makeEnv({ CLEANUP_INTERVAL_MINUTES: "60", MAX_LEASES_PER_UTC_DAY: "300" });
     const resultKey = await completeOneJob(env, store, "j1");
 
     const waits = [];

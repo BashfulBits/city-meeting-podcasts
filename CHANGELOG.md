@@ -12,10 +12,1434 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **GitHub Actions major updates (PR #1497).** Refresh full-SHA action pins across current
+  workflows, preserve retired LLM workflows and the dispatch-tuning drift gate, and cover
+  workflows added since the original Renovate branch. Validate upstream action inputs and
+  hosted-runner compatibility. No Python/Worker dependency, image, model, pipeline-version or
+  artifact changes; stored artifacts stay valid and no backfill is triggered.
+
+- **Purpose-bound LLM telemetry (GH#2001, review/52).** Require producer, accounting unit,
+  completion and coverage contracts in every LLM lane registration. Shared work handles count
+  eligibility before caps, deduplicate episode/batch replay, record submission outcomes, and count
+  validated producer consumption separately from backend responses or cached reuse. Production
+  stages and research traversals emit aggregate purpose snapshots through existing append-only run
+  events. Reports automatically discover new/retired purposes, retain legacy events, and require
+  complete catalog/shard coverage for capacity recommendations. Research sample units stay explicit.
+  Blocked research pairs retain both order-swapped assessment identities when retried.
+  Cached tag census initializes taxonomy/evaluation inputs before classifying retained work;
+  malformed shard scopes and episodes without identities are skipped safely.
+  No model, recipe, pipeline-version, quota, Worker, dependency or artifact changes; stored artifacts
+  remain valid and no backfill is triggered. Telemetry begins with new runs.
+
+- Prepare Foundation's approved existing-UID publication selection: three historical recordings
+  appear once in dedicated/combined public views, with raw records and pages retained. Correct
+  retirement inferred from old clips using current official board activity. Configured proof changes
+  rebuild render/search outputs only; no audio/stage version bump or artifact backfill.
+
+- Add inactive publication-selection v1 machinery for #1997: strict reviewed proof declarations,
+  existing UID projection and pre-write feed/search holds preserve raw records and meeting pages.
+  Valid selections also rewrite an empty audio channel when the preferred record is unavailable,
+  removing stale alternate RSS items without promoting another UID.
+  No city groups are activated. Configured selection enters render/search cache fingerprints;
+  unconfigured views retain existing hashes. No pipeline-version bump or audio backfill occurs.
+
+- **Daily per-verb LLM backlog report (GH#1969, review/50 PR2).**
+  Add the read-only 00:20 UTC/manual workflow over durable `run_events/`, using only the nine
+  storage secrets. Publish the six-verb Markdown summary and retain the JSON report for 30 days;
+  report unknown tokens without failing the schedule; preserve reports after report-step failures.
+  No producer, queue, model-call, quota, pipeline-version, or durable-state changes.
+  Read append-only event keys directly: the snapshot manifest excludes them and previously
+  caused every selected file to be skipped. Bound concurrent downloads and count missing or
+  transiently unreadable files; propagate access-denied errors. PR #1983 merged and its first manual
+  Actions acceptance passed on 2026-10-04 (run 37179726987, zero skipped files/unknown tokens). Discover registry purposes and LLM
+  stage snapshots automatically, identify retired/unregistered/unmeasured rows, and suppress
+  recommendations when attribution is incomplete. Shared-stage purposes without distinct telemetry
+  are listed with null backlog. Strict unknown-token checking remains an opt-in CLI diagnostic.
+
+- Remedy evaluations report only applied reasoning controls and reject physical-route allowlists
+  on deferred inference paths; immediate evaluation routing remains supported.
+
+- Move the 800-meeting LLM capacity analysis into dated supporting evidence under
+  `review/evidence/`, update its references, and identify review/49 as the development-plan owner.
+  Clarify the documentation map so supporting calculations cannot be mistaken for a rollout plan.
+
+- Capacity calculator review fixes: use committed Worker row-budget defaults and the same
+  idle-cron/operational allowances in both current and proposed scenarios. The current stress
+  projection now includes the previously omitted 1,000 operational rows (513,160 total/day).
+  Show per-episode lifecycle rows and reproduction commands alongside packed consensus totals.
+
+- Chapter locator review fixes: scope repair exhaustion to saved policy and input fingerprints;
+  changed inputs/policy (including legacy exhaustion without fingerprints) receive a fresh repair
+  budget on their next eligible pass. Existing valid artifacts retain their current reuse policy.
+  Fresh locator recipes consume producer slots even when an older pending recipe has completed.
+  Evaluation cohort preparation now follows the active checkout, and duplicate-start retries
+  recognize the typed validation error.
+
 _Work in progress toward 1.0 — see [ROADMAP.md](ROADMAP.md) Phase H (Hardening & Efficiency) and
 Phase R (Research-Tool Surface)._
 
+### Changed
+
+- **Pflugerville Board of Adjustment coverage.** Adds a named-body feed with exact reviewed
+  ownership and fifteen traceable regression cases. Full current/persisted replay selects ten
+  independently identified historical recordings while preserving their UIDs and source namespace.
+  Identity coverage is separate from media availability: older unavailable provider links remain
+  documented, with no media recovery promise or archived-record deletion. No pipeline bump,
+  artifact invalidation or forced backfill. Evidence: `review/pflugerville-boa-coverage-2026-10.md`.
+
+- **Unexpected-body evaluation harness.** Adds schema-v2 freeze/run/report/rescore,
+  direct physical-route allowlists, validated effort controls and synchronous result provenance.
+  Production remedy models and Worker routes are unchanged; shadow config admits no models.
+  Seeds are regression evidence, not admission results. Missing CAS coordination is a visible
+  preflight hold; explicit live runs use shared quota bookkeeping but cannot write feeds/audio.
+  Hidden reviewed owner truth, opaque-ID blind-owner comparisons and claim-support comparisons
+  have separate scores and prompt hashes. Frozen candidate input hashes are mandatory. Safe
+  provider failures retain the exception class without potentially sensitive exception text.
+  Explicit effort is rejected before deferred/dispatch side effects. Bounded evaluation calls
+  interleave configurations under one total logical-case cap; timeouts hold their configuration.
+  Evaluation cases permit two client provider invocations across all retries, with SDK retries
+  disabled and attempt counts reported separately. Production retry defaults remain unchanged.
+  AA effort checks reject partial words and explicitly non-reasoning variants.
+  Git and frozen-version metadata are collected before live attempts.
+  Publication selection is specified at L2; the duplicate-identity feeds remain held.
+  Clarifies future shared policy templates and cross-city evaluations for the same onboarding/
+  maintenance resolver; local identities stay scoped and runtime template activation is still gated.
+  No pipeline-version change, stored-artifact invalidation or historical backfill is introduced.
+
+- **Addison UDC historical committee coverage.** Adds one Unified Development Code Advisory
+  Committee subscription using exact reviewed labels, covering three official committee recordings
+  without selecting its Open House. All provider/stored observations replayed and the three stored
+  UIDs preserved. CPC duplicate identities and public-input migration remain separate holds.
+  No source, record, author, UID algorithm or audio change; no pipeline bump, invalidation or forced
+  backfill. Evidence: `review/addison-udc-coverage-2026-10.md`.
+
+- **Exact feed-body selector rules.** Optional `source.body_exact` matches complete normalized
+  labels and provider-duplicated copies, separating bare committee names from Open House/topic
+  suffixes. It unions with existing selectors/inclusions; remedy retains exact-selector evidence
+  and does not append a broad alias for an already covered exact label. Search accepts individual
+  exact selectors and refreshes cached destinations when an exact rule changes; unconfigured
+  views retain their previous cache hashes. Source transport/hash,
+  author, episode UIDs, records and audio are unchanged. No pipeline bump, artifact invalidation
+  or backfill; no existing feed configuration changes in this prerequisite.
+
+- **Arlington historical named-body coverage.** Adds Housing Finance Corporation and Zoning Board
+  of Adjustment subscriptions with reviewed identity policies. Full provider and persisted-state
+  replay selects one retained recording per feed and preserves its UID. Existing source URL,
+  author, records and audio keys remain unchanged; normal publication requires no forced backfill
+  or artifact invalidation. Foundation duplicate UID aliases and the unidentified Empty clip remain
+  held, as documented in `review/arlington-coverage-2026-10.md`.
+
+- **Approved historical feed policy guards.** Remedy policies now protect city PID, bond, charter,
+  redistricting, public-input and public-briefings aggregates, and exact reviewed named bodies.
+  Unverified identities defer; district/program feed recreation and wrong-owner assignments are
+  blocked locally. Exact reviewed owners override another policy's ambiguous holding clues; joint
+  exact owners remain required. Known topic-bearing TIF labels need reviewed identity rather than marker inference.
+  The remedy recipe changes to `direct-v6-approved-family-policy`; remedy bypasses result caches,
+  so there is no stored-artifact invalidation, audio change or forced historical backfill.
+
+- **Chapter locator baseline routing and evaluation.** Production now uses the baseline prompt, routes
+  packets up to 76,000 internal estimated input tokens to DeepSeek V4 Flash, and sends larger packets
+  to Kimi K3. GLM 5.3 Flash and DeepSeek V4.1 Flash are documented optional capacity and are not
+  wired into the lane. The locator ingress budget is 800 jobs/day. Schema corrections now require
+  answer JSON in assistant content; exact duplicate-start validation gets one persisted, focused
+  locator repair, with no invented timestamp offsets. Bumping the locator prompt/routing recipe
+  invalidates old generated locator outputs for gradual reprocessing; provider chapters and audio
+  bytes remain unchanged. The 39-meeting two-prompt evaluation packet, answer key, scorer, golden
+  labels, and matched-cohort results are in `evals/chapter-locator/`.
+
+- **LLM capacity accounting corrected.** Lane ceilings now size an explicit 800-eligible-meeting
+  planning scenario: two tagger batches, three production and shadow prelabel batches, and five
+  quotes evaluated by three judges per meeting. Judges are correctly charged as pinned jobs;
+  the shared R6 producer cap includes extraction and panel fan-out. A reproducible offline
+  calculator and capacity analysis separate demand from the unchanged 4,000-job shared cap,
+  25,600 enqueue units, full lifecycle DO rows and provider quotas. The full scenario needs
+  20,800 jobs before retries and exceeds Workers Free and the forty-call Gemini judge pool;
+  these ceilings do not promise 800 completed meetings/day. No model/prompt recipes, platform
+  billing tier, route pauses or stored-artifact invalidation changed.
+
+- **Locator CI reuse fixtures.** Current artifacts now include the routing policy version in
+  tests, with coverage for both production models and stale or missing routing metadata. The
+  subprocess kill/restart test uses the production spawn path instead of forking from a thread.
+  No production behavior or stored-artifact invalidation changed.
+
+- **Unexpected-body remedy specification (review/51).** Approved phase contracts make P1
+  evaluation/physical-route admission development-ready; P2–P5 are predecessor-gated. Narrow
+  alias-type qualification replaces the statistical gate; incomplete archives require reviewed
+  coverage exceptions, and city TIF aggregates are the future-city default. Remedy/onboarding
+  stay outside route leagues. Complete-archive city onboarding,
+  traceable evaluation seeds, independent reasoning review and persistent rejection/exclusion
+  decisions are specified before implementation. Routine review targets 5–8 small PRs weekly
+  and about twelve active directional issues. No model admission or auto-merge is enabled.
+
+- **Dallas and Fort Worth TIF aggregates (proposed).** Nine district feeds migrate through
+  aliases to one TIF subscription per city; boundary selectors cover historical variants without
+  matching multifamily/Beautiful. Archive records, episode UIDs and pipeline versions are unchanged.
+  Broader eligibility may schedule historical work under existing budgets; no forced backfill.
+  
+- **CI Renovate validator pinned to 44.125.1.** The unversioned npm install began resolving
+  Renovate 44.132.1, whose `@yarnpkg/core@4.9.2` dependency publishes an npm-incompatible Yarn
+  `patch:` URL. The verified pin restores configuration validation on Node 24; Renovate tracks
+  reviewed hygiene upgrades, and failed installs print npm debug logs from a dedicated cache.
+  Dependency guards remain enabled. No pipeline version changes or stored-artifact invalidation.
+
+- **Per-verb LLM backlog trends (GH#1968, review/50 PR1).**
+  `python -m citypods.ops.backlog_trend` reads scoped `run_events` locally or restores selected
+  recent event keys from storage. Six verbs report working backlog, daily trend, throughput,
+  drain time, cause classes and capacity/ingress recommendations in JSON and Markdown.
+  Upstream blocks, policy holds and errors are reported separately; unknown reasons remain
+  visible and can fail the report with `--fail-on-unclassified`. Interrupted runs are ignored.
+  A growing historical trend with zero latest backlog retains its trend classification but
+  emits no action, so cleared unreliable verbs cannot crash recommendation calculations.
+  Optional `llm_backlog` settings control the window and thresholds. This is a read-only
+  consumer: no producer, Worker, durable schema, pipeline recipe or stored artifact changes.
+  The scheduled workflow remains review/50 PR2 (GH#1969).
+
+- **A judge evaluation lane (`evals/judge/`, `scripts/eval_judge.py`).** The pilot harness for the review/49
+  judge stack, in the `evals/chapter-agenda` layout: a frozen `manifest.json` (inputs) and `gold.json` (truth),
+  dated `results/`, and one script with `freeze`, `run` and `report`. Four experiments: `bundling` (evidence in each
+  question versus in the shared state), `question-types` (validate, grade and choose on real pull quotes, JEV and
+  Qwen), `context-ladder` (matched span, window, whole chapter on real rule-matched tag candidates with planted
+  wrong-tag controls, including the projected backfill cost of each tier) and `adjudicator`. The harness enforces
+  the limits found while building it: JEV's 64k total and 32k state-plus-largest-question ceilings, its
+  one-call-a-minute pacing, never retrying the misleading `503 processing_failed` near a ceiling, Groq Qwen's
+  6k input and 1,000-output-tokens-a-minute limits, whitespace-stripped keys, and inconclusive runs above 10%
+  unanswered. `tests/test_eval_judge.py` covers it with no network.
+
+- **The v2 Worker's numeric tunables moved out of Cloudflare variables, and native Mistral was
+  removed.** The 36 non-secret tunables (window sizes, retry budgets, retention, daily caps, the ingress
+  budget) now live in `config/dispatch_tuning.yml`, compiled to `workers/llm-dispatch-v2/src/dispatch_tuning.json`
+  by `scripts/compile_dispatch_tuning.py` (drift-checked in `llm-dispatch-v2-worker-deploy.yml`) and applied
+  by `src/tuning.js` at the `fetch`/`scheduled` entry points and in the Durable Object constructor. A
+  Cloudflare variable or secret of the same name still overrides a compiled value, so an incident override
+  is unchanged. The Worker's only declared variable is now `AI_GATEWAY_ID`; the dead
+  `UNKNOWN_ATTEMPT_POLICY` and the empty `AI_GATEWAY_BASE_URL` were dropped, taking the deployed Worker
+  from 39 variables to 1 (Workers Free caps variables plus secrets at 64). `scripts/compile_llm_lanes.py`
+  now reads the ingress budget from the tuning YAML. The native Mistral provider and its two Codestral
+  routes (account-tier restricted, monthly metered, used by no lane) were removed from
+  `config/provider_limits.yml` and the compiled catalogs, and the `MISTRAL_*` secrets were dropped from the
+  workflows that passed them. The `mistral/codestral-latest` route served by Airforce is unchanged.
+  Deploy removes the old dashboard variables automatically; the Mistral, `DISPATCH_AUTH_TOKEN` and other
+  orphan Worker *secrets* must be deleted by hand (`wrangler secret delete`). See review/49.
+
+- **The v2 Durable Object skips startup schema writes once its schema is current**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). A read-only catalog check now verifies the
+  required tables, compatibility columns, one-time model migration, clustered tables, and active
+  indexes/triggers before running initialization. A current DO avoids replaying startup DDL and
+  data migration work on cold starts; incomplete schemas still take the existing initializer,
+  which now logs the failing initialization phase.
+- **The v2 row-write brake reserves account and in-flight drain headroom**
+  (`workers/llm-dispatch-v2/src/coordinator.js`, `workers/llm-dispatch-v2/src/write_budget.js`,
+  `citypods/compute/llm.py`). Production logs show Cloudflare's free-tier row-limit exception
+  during Durable Object initialization, preventing all RPC methods for about 70 minutes before
+  service recovered. Enqueue still reserves billed-row headroom per job and supersede inside each
+  transaction. The coordinator now preserves 10,000 account rows and dynamically reserves
+  worst-case completion/retry rows for active leases and the next bundle before admitting another
+  claim. Out-of-band route probes stop writing their optional reservation ledger at the same safe
+  stop. Per-RPC Worker logs report row-write deltas and the running counter for attribution. A
+  rate-limited `do_row_budget_stop` event identifies which soft gate deferred work and reports
+  tracked headroom plus the claim projection. A configured status preflight error closes only that
+  producer lane; builds and completed-result
+  reconciliation continue. The weekly tournament and manual R5 benchmark preflight their
+  registered lanes. No pipeline recipe or stored artifact changes.
+
+- **The v2 Worker self-heals its own `__unroutable__` jobs instead of leaving them stuck forever**
+  (`workers/llm-dispatch-v2/src/coordinator.js`, `scripts/llm_budget_monitor.py`). Like a job
+  pinned to a retired model (see the reconciler entry below), a job too large for every route
+  configured for its model, even at the catalog's loose static ratio, is indexed under the
+  `__unroutable__` sentinel at enqueue time and never revisited — not a key in `model_routes_map`,
+  so the claim loop's per-model scan never reads it, however long it waits (found live: 60 such
+  jobs alongside the retired-model ones during the 2026-09-25/26 stall).
+  - `_reconcileUnroutableJobs` now re-checks a small bounded batch of these every claim tick
+    against the *current* catalog, reusing the exact same check enqueue used. One that now fits (a
+    route was added or widened since enqueue) is reindexed under its real model and dispatches
+    normally; one that still doesn't is failed, so it stops holding the sweep's row budget, and
+    recorded per candidate route as `job_unroutable` for the budget monitor.
+  - `MAX_UNROUTABLE_RECONCILE_PER_TICK` (default 20) bounds the per-tick cost; 0 pauses it.
+
+- **The stuck-job reconciler can classify every lane, not just chapter-agenda/prelabeler**
+  (`scripts/reconcile_stuck_chapter_agenda.py`, `.github/workflows/reconcile-stuck-chapter-agenda.yml`).
+  On 2026-09-26, 10 r6-judge handles pinned to `meta-llama/llama-4-maverick` (retired from that
+  panel for `qwen3.8-27b`) were found permanently invisible to every v2 claim — `claimDispatchWindow`
+  only ever iterates models present in the compiled catalog's `model_routes_map`, so a model with
+  zero configured routes is never even read, no matter how long its jobs wait. The existing
+  reconciler couldn't reach them: its two lanes are hardcoded to `agenda-item-extract`/prelabeler
+  task shapes and never look at r6-judge (`moment-judge`) or any other lane.
+  - `--lane any` drops all task/purpose scoping and classifies every handle in the registry by one
+    signal: its model has no route in the current compiled catalog (`current_catalog_models()`,
+    aliases resolved on both sides). It deliberately never applies the age threshold — unlike the
+    two scoped lanes, "any" has no narrow, validated population to apply that heuristic to, and
+    applying it unscoped would just as readily flag a lane's legitimate backlog (the very kind of
+    jobs #1864 fixed) as something actually dead.
+  - Does not reach the Worker's own `__unroutable__` bucket (a model *with* routes, but oversized
+    for all of them even at the catalog's loose static ratio) — that needs Worker-side sizing
+    state the client registry doesn't carry, so a Worker-side maintenance pass would be the fix
+    there, not this script.
+
+- **Oversized queued jobs fail instead of blocking the v2 claim lookahead**
+  (`workers/llm-dispatch-v2/src/coordinator.js`, `scripts/llm_budget_monitor.py`). On 2026-09-26
+  the drain pass sent the 12 near-miss Gemma batches and then stopped: the oldest 32 batches, sized
+  at the catalog's 1.4 ratio before producers used the learned one, were over the 14,400 ceiling
+  even with the 10% tolerance, and they filled the claim's 32-row lookahead on every tick, so the
+  fitting batches queued behind them were never read.
+  - A claim now fails a queued job that is over every ceilinged route's `hard_input_ceiling` plus
+    tolerance at the learned ratio, when each uncapped route that could take it has spent its daily
+    quota. A cooling or blocked uncapped route still counts as able to take it.
+  - The failure is counted per route as `input_over_route_ceiling` and reported by the budget
+    monitor. The producer sees a terminal failure and re-plans the work into batches that fit.
+
+- **The v1 LLM dispatch Worker is removed; v2 is the only dispatch transport**
+  (`workers/llm-dispatch-proxy/` deleted, `citypods/compute/{llm,llm_policy,llm_scheduler,llm_deferred}.py`,
+  `scripts/compile_llm_limits.py`, `.github/workflows/`). Nothing had reached v1 since the lanes
+  moved to `queue_only` v2 admission, and the deferred sweep reported no v1 handles left.
+  - Deleted the Worker and its deploy, queue-report, reindex, orphan-reconcile and recovery-import
+    workflows, and the R2-queue scripts they ran (`reconcile_v1_llm_jobs`,
+    `recover_v1_llm_dispatch_results`, `reindex_llm_dispatch_queue`, `requeue_failed_llm_dispatch`,
+    `report_pending_dispatch_queue`, `retire_legacy_prelabeler_dispatch`) with their tests.
+    `reclaim-transcript.yml` keeps only `reclaim-transcript` and `requeue-failed-work-leases`.
+  - `LLM_DISPATCH_URL`/`LLM_DISPATCH_AUTH_TOKEN` are gone from `LLMBackendConfig` and every
+    workflow; `LLM_MODE=dispatch` now requires `LLM_DISPATCH_V2_URL`, and dispatch-mode calls
+    without `require_direct` enqueue to v2 instead of posting to v1. Routes compile with the
+    `direct` transport only, and the compiler no longer writes the v1 catalog.
+  - A leftover v1 handle reconciles as a terminal failure, so any stale snapshot fails and re-plans
+    rather than polling a Worker that no longer exists.
+
+- **Gemma prelabeler batches no longer strand in the v2 queue**
+  (`workers/llm-dispatch-v2/src/{calibration,pacing,routes,coordinator,index}.js`,
+  `citypods/{tags,compute/llm}.py`, `config/provider_limits.yml`, `scripts/compile_llm_limits.py`).
+  On 2026-09-25 the Worker claimed nothing for hours with 340 jobs queued: producers sized prelabeler
+  batches at the catalog's 1.4 ratio, the Worker checked the 14,400 ceiling at its learned ratio
+  (up to 1.2 × p95), and once SambaNova's 20/day were spent the 32 oldest Gemma 31B batches were
+  refused on both AI Studio routes every minute, filling the claim lookahead.
+  - A route may declare `hard_input_ceiling_tolerance` (0 to 0.5). The claim stays strict, but a
+    job refused only for being within `ceiling × (1 + tolerance)` is set aside, and tried when the
+    claim finds nothing else to dispatch, one per route per claim (`drained_jobs` in the claim
+    diagnostics). The four Gemma AI Studio routes set 0.1 (15,840, under Google's 16,000/minute).
+    Other routes are unchanged: a provider input-limit rejection stands the whole route down.
+  - New read-only `GET /v2/calibration?route_id=&prompt_family=` returns the ratio the claim
+    applies (one estimates row read). Prelabeler sizing uses it with a 5% margin, cached once per
+    process, and falls back to the catalog prior when no v2 Worker answers.
+
+- **Output budgets sent per route; per-lane reasoning levels; token-budget monitor**
+  (`workers/llm-dispatch-v2/src/{gateway,index,coordinator}.js`, `citypods/compute/{llm,llm_policy,
+  llm_lanes}.py`, `scripts/compile_llm_{limits,lanes}.py`, `scripts/llm_budget_monitor.py`,
+  `.github/workflows/llm-budget-monitor.yml`).
+  - `max_tokens` only truncates, so agenda, locator, moments and tagger jobs are sent the chosen
+    route's own output limit (bounded by its input room, capped at 65,536). Their `max_tokens`
+    becomes the scheduling reservation, lowered to observed needs (agenda and moments 16,384, tagger
+    12,288, locator 16,384), which keeps small-TPM routes schedulable. The input room is measured
+    on the messages actually sent (a schema added to the prompt, a corrective retry) in the
+    route's own tokenizer units, so input plus output always fits the window.
+    Deferred-dispatch capsules keep `max_tokens_mode`, so a rebuilt job still sends the route's
+    limit.
+  - Lanes can set a reasoning level per model (`llm_lanes[...].reasoning: {model: off|low}`); routes
+    say how their provider expresses it (`reasoning_controls`). NVIDIA DeepSeek v4.1's thinking
+    switch moves from a route-wide `request_params` override to `reasoning_controls.off`, so it
+    thinks by default again and a lane can turn thinking off for one job type only.
+  - A reply that stops at its output limit (`finish_reason: length`) is `output_budget_exhausted`:
+    never stored, retried on the upstream budget without cooling the route (the budget, not the
+    route, is at fault), and counted in `route_failures`. Because it was served, the route's token
+    bucket is settled to the measured usage, as a success is.
+  - A daily workflow reads those counts and keeps one rolling issue listing output-budget
+    cut-offs, empty/invalid structured replies, own-rate 429s and oversized inputs, each with the
+    lanes involved and the config key that would correct it. It never edits config.
+  - `/v2/stats?detail=1` adds `usage_today` per lane and route (calls, output p50/p90/max, mean
+    reservation, calls over their reservation, calls >= 600 s), computed at read time from the
+    `attempts` and `jobs` rows the executor already writes -- no added row writes. Attempts now
+    carry their lane and reservation (two columns on the row already written), so usage survives
+    the job row being retired; calls that returned no usage are counted but kept out of the
+    percentiles. The monitor flags reservations that are too small or far too large and calls near
+    the 720 s ceiling, and asks `/v2/stats` only for the failure classes it acts on
+    (`failure_class=`), so unrelated high-count rows cannot push them past the row limit.
+
+- **Moments and tagger output budgets raised to 32,768 tokens** (moments from 4,096,
+  `citypods/moments.py` `MOMENTS_OUTPUT_TOKEN_BUDGET`; tagger from 1,024, `citypods/tags.py`
+  `TAG_OUTPUT_TOKEN_BUDGET`, used for the request, batch fitting and the context/TPM gates). The
+  tagger case is the same failure: Kilo step-3.7-flash spent all 1,024 tokens reasoning over a
+  35k-token transcript and returned empty content (`finish_reason: length`). Reasoning models spent the whole 4,096 on
+  thinking and returned empty content: every GLM 5.3 Flash moments call on 2026-09-25 ended with
+  `finish_reason: length`, 4,096 reasoning tokens and no answer (AI Gateway logs), and kimi-k3 hit
+  the same limit on 3 of 8 calls. 32,768 matches the agenda lane; reasoning models wrote 12-22k
+  output tokens on these transcripts, so 16k would still truncate. The v2 Worker's new structured-output check caught these as
+  `structured_output_empty` and retried them elsewhere, so no bad result was stored. Every
+  r6-moments route allows at least 65,536 output tokens; the budget is not in the moments recipe
+  hash, so nothing re-extracts. `config/provider_limits.yml` also records OrcaRouter's published
+  free-tier limits and that `rpm: 10` / `concurrency: 2` are deliberate choices below them.
+
+- **Agenda extraction keeps grounded agendas instead of discarding them over one item**
+  (`citypods/chapter_titles.py`, `citypods/chapter_jobs.py`; evidence in `evals/chapter-agenda`).
+  A composed outline reference the agenda confirms (`3.a` under `3.`) is kept, and a contradicted
+  one falls back to the source's own label; quote marks no longer decide whether a quote is
+  grounded; a repeated item is dropped; other unverifiable items are dropped while they are at most
+  10% of a response (above that it still fails and is retried). Diagnostics record the counts. On
+  identical replies no previously valid episode changed, and chapters found per answered agenda
+  rose for every model on both the main set and a new holdout (e.g. Nemotron 0.52 -> 0.66 main,
+  0.55 -> 0.69 holdout). No pipeline version change: responses that failed before succeed on retry.
+- **Chapter-agenda eval: holdout split, stored replies, offline `--rescore`, and reference
+  matching** (`evals/chapter-agenda/holdout/`, `scripts/eval_chapter_agenda.py`). 24 more episodes
+  disjoint by meeting; position-only provider chapters ("Item 3A", 11% of all provider chapters,
+  all Swagit) are now matched by the item's reference instead of never matching.
+
+- **Structured output is shaped per route by the v2 Worker** (review/48 PR C;
+  `config/provider_limits.yml`, `scripts/compile_llm_limits.py`, `citypods/compute/structured_shaping.py`,
+  `citypods/compute/llm.py`, `workers/llm-dispatch-v2/src/structured_output.js`, `gateway.js`,
+  `index.js`, `coordinator.js`). Producers no longer choose how to ask for JSON: a queued job stores
+  only its response schema, and the Worker shapes the request for the route it actually dispatches
+  to. Before, the format was chosen at enqueue time for the pool's first model and forwarded
+  unchanged, so a pooled job could reach a route with the wrong shape -- NVIDIA's
+  `deepseek-v4.1-flash` answered every `response_format` with empty content, and Gemini backups of
+  Nemotron-primary lanes received the full, unsimplified schema.
+  - Four methods (`json_schema`, `json_schema_relaxed`, `json_object`, `prompt_only`) replace the
+    three profiles. A route's own verified method (`structured_output_verified_on`) wins, then one
+    verified for the same model elsewhere, then the provider's. Every provider now declares its
+    method explicitly (unchanged from before); NVIDIA v4.1 is `prompt_only`, OrcaRouter v4 and hy3
+    `json_object`, all verified live 2026-09-24.
+  - An empty or non-JSON 200 on a structured request is a retryable `structured_output_empty` /
+    `structured_output_invalid` failure: the job retries, the route cools down, and the class shows
+    in `route_failures`. It is never settled as a result.
+  - The Python direct path uses the same shaping and one local parse/validate/retry path; the
+    Instructor code path is retired. One shared fixture pins the Python and Worker shapes.
+  - Jobs already staged in B2 keep their pre-shaped `response_format` and are forwarded as before.
+    No pipeline version or recipe change.
+  - Routes may declare provider controls they always send (`request_params`, allowlisted:
+    `chat_template_kwargs`, `reasoning_effort`); NVIDIA v4.1 runs with thinking off.
+
+- **Moments: explicit pull-quote criteria and word-accurate quote timing** (`citypods/moments.py`,
+  `citypods/moment_judging.py`, `citypods/stages.py`; review/36). The extraction prompt now says
+  what a pull quote is for and what to avoid, derived from VISION, and the judge scores against the
+  same criteria (moments prompt 1 -> 2, judge prompt 1 -> 2: new calibration cells). Candidates
+  keep the exact spoken span (`quote_start`/`quote_end`) from the served-time words sidecar beside
+  the padded clip window, decisions carry word-accurate `start`/`end`, and a short quote is widened
+  to the 8 s clip minimum instead of dropped. Summary points record the real prompt version. Moments
+  re-extract through the recipe hash (folded into the council-moments backfill above).
+
+- **LLM lane capacity and route cleanup** (`config/provider_limits.yml`, `config/site_config.yml`,
+  `citypods/moments.py`, regenerated catalogs; 2026-09-24 capacity review under review/48).
+  - *DeepSeek:* one pool name per version. `deepseek/deepseek-v4-flash` is now OrcaRouter's v4
+    only and `deepseek/deepseek-v4.1-flash` NVIDIA's v4.1 only; the `deepseek-v4-pro` alias is
+    retired. The tournament scores v4 and v4.1 as separate contestants.
+  - *GLM 5.3 Flash (OrcaRouter; AA 41.8, 800/day, 1M context, ~5 s; `json_object` verified live)*
+    added to chapter-locator overflow (ahead of DeepSeek v4 and kimi-k3) and to r6-moments,
+    including the council list. It adds a responsive, strong general-purpose pool where the
+    Gemini Flash moments pools (20/day each) run out and locator overflow was latency-bound.
+    Lane write budgets are raised to keep the same daily job counts.
+  - *NVIDIA DeepSeek v4.1 kept out of production pools:* it returns empty content to any
+    `response_format` (json_schema or json_object; verified live) and the v2 Worker forwards the
+    job's format unchanged, so r6-moments and council-moments overflow go to OrcaRouter v4 instead.
+    The tournament keeps its v4.1 contestant as a documented gap. The fix -- the Worker shaping
+    structured output per route from verified methods -- is review/48 PR C.
+  - *Tagger:* Kilo `step-3.7-flash` and OrcaRouter v4 added as throughput models after the
+    pinned Gemini 3.1 Flash Lite (recipe/calibration key unchanged); they also take transcripts
+    above Gemini's input ceiling. Daily write budget raised to keep 930 jobs/day.
+  - *r6-moments:* Gemini 3.8/3.7 Flash and GLM 5.3 Flash added (independent pools; 3.6/3.5 ran
+    out by midday). The council model list is part of the moments recipe hash, so **council moments are
+    re-generated** (approved backfill).
+  - *r6-judge:* glm-4.7-flash and gpt-oss-120b removed; gemma-4-26b-a4b-it joins the panel as its
+    own calibrated judge. gemma-4-26b removed from `tournament:tag` and `r5-benchmark:tag` (its
+    10k-token ceiling cannot take tagging inputs).
+  - *Dead routes removed:* 22 Mistral routes -- the 21 routes of the seven plan-blocked models
+    (Medium latest/2508/2505, Large 2512, Small 2603, Devstral 2512, Labs Leanstral) on all three
+    accounts, plus the tertiary account's Codestral route, retiring that unused account (its key was
+    never set on the Workers) -- and the paused SambaNova Llama 3.3 route. The v1 Worker's advertised
+    default moves from Mistral Large to Codestral 2508.
+  - *chapter-agenda is a same-priority pool:* Nemotron 3 Ultra, tencent/hy3 (OrcaRouter) and
+    Gemini 3.1 Flash Lite are all in `models`, so the Worker sends each job to whichever route has
+    capacity (the ~3,700-job Nemotron backlog had left the former backups idle). On
+    `evals/chapter-agenda` (main + holdout, repaired validator) they are about equal (F1
+    0.750/0.840, 0.760/0.867, 0.750/0.830). Nemotron stays `models[0]`, the only model in the
+    agenda recipe hash, so nothing re-queues. hy3 and 3.1 Flash Lite are repeated in
+    `backup_models` solely to keep the Worker's extended retry budget, which applies only when
+    backups are declared; the lane parser now allows that overlap (the Worker de-duplicates
+    routes). Gemini 3.5 Flash Lite leaves the lane, so agenda artifacts it produced are
+    re-dispatched (deliberate backfill). 3.1 Flash Lite shares its daily quota with the tagger's
+    primary; tagging routes will be added if it congests.
+  - No pipeline version change; council moments re-run through their recipe hash.
+
+- **First committed per-task evaluation set: `evals/chapter-agenda/`** (GH#1852;
+  `scripts/eval_chapter_agenda.py`, `tests/test_eval_chapter_agenda.py`). 29 episodes whose meeting
+  providers (Granicus, Swagit, CivicClerk) publish their own chapters, used as model-independent
+  ground truth (376 chapters). Each model gets production's exact request and post-processing, runs
+  with its providers paused on the v2 Worker, and is scored with the original crosswalk matcher.
+  Provider errors are "unanswered" (retried, never counted as bad output); an empty or unparseable
+  reply is invalid output. Rejected responses keep per-item validation outcomes and the raw reply.
+  Results: `evals/chapter-agenda/results/2026-09-24.json`.
+
+- **Removed the Airforce `kimi-k2.7-code` route** (`config/provider_limits.yml`, regenerated
+  catalogs). It stopped being free: a canary under the v2 dispatch pause on 2026-09-24 returned 402
+  "requires an active subscription or a positive Pay-as-you-Go balance". No lane referenced it. No
+  pipeline version, recipe, or stored-artifact change.
+
+- **Unblocked the LLM Dispatch v2 deploy: back under Workers Free's 64-variable limit**
+  (`workers/llm-dispatch-v2/wrangler.jsonc`, `tests/test_llm_dispatch_worker_limits.py`). #1846
+  declared `DO_ROWS_ENQUEUE_STOP`/`_CLAIM_STOP`/`_OPTIONAL_STOP` and `MAX_QUEUED_JOBS` at exactly the
+  coordinator's code defaults, taking the Worker to 66 variables (43 vars + 23 secrets); Cloudflare
+  rejected every deploy from then on, so #1846, #1847 and #1848 never reached production. Those four
+  vars are removed (same effective values; the JS config test now checks the effective thresholds),
+  and a new test derives the Worker's secrets from its fixed set plus every provider account's
+  `api_key_env` and fails CI when vars + secrets + 2 headroom would exceed 64. No pipeline version,
+  recipe, or stored-artifact change.
+
+- **Removed the retired NVIDIA gpt-oss-120b route; lanes now fail CI if a model loses every live
+  route** (`config/provider_limits.yml`, regenerated catalogs, `tests/test_llm_lanes.py`).
+  `nvidia_gpt_oss_120b_free` had been paused (`rpd: 0`) since 2026-09-23 after NVIDIA started
+  returning 410 Gone (end of life 2026-09-03, re-confirmed 2026-09-24); Groq's route still serves
+  `openai/gpt-oss-120b`. The new registry-driven test checks that every `llm_lanes` model and backup
+  resolves through the compiled v2 `model_routes_map` to at least one route that is not paused: a
+  lane model with no live route is otherwise silent until its queued jobs never dispatch. It covers
+  new lanes with no edit. No pipeline version, recipe, or stored-artifact change.
+
+- **LLM Dispatch v2 can pause new claims without a redeploy**
+  (`workers/llm-dispatch-v2/src/coordinator.js`, `index.js`, `protocol.js`,
+  `citypods/compute/llm_dispatch_pause.py`, review/48 PR A). `POST /v2/dispatch:pause` stops new
+  claims for `global`, `provider:<name>` or `route:<route_id>` for 1-3,600 seconds, after which the
+  pause ends by itself; `POST /v2/dispatch:resume` ends it early. Provider/route pauses route
+  claims around the paused routes (their models' other routes keep serving); a global pause returns
+  before any SQL runs, so a paused tick writes zero DO rows. In-flight bundles and their 429
+  retries are left alone (refusing a retry would fail the job); `GET /v2/dispatch:pause-status`
+  instead reports the selection's live (unexpired) leased-job count as the drain signal, plus each
+  selected route's
+  `rpd_remaining` and `rpd_resets_at` on the provider's reset timezone. `POST /v2/dispatch:reserve`
+  charges up to five out-of-band calls to a route's rpm/rpd ledger so production pacing counts
+  canary and probe traffic. `/v2/stats` now includes `in_flight` by route/provider and active
+  `dispatch_pauses`. The Python `paused(...)` context manager pauses, waits for drain, keeps the
+  pause armed through the drain and the probe (marking the run `contended` if the drain times out
+  or the pause could have lapsed), and always resumes; it refuses to send its token over plain
+  HTTP. No pipeline version, recipe, or stored-artifact change.
+
+- **Removed the unused NVIDIA Riva Translate route**
+  (`config/provider_limits.yml`, regenerated `llm_routes.json` and both Workers'
+  `dispatch_limits.json`). `nvidia_riva_translate_4b_instruct_v2_free` was reserved for future
+  translation work, but no lane referenced it and its real context is only 8,192 tokens. Split
+  out of #1841 so it doesn't wait on the catalog-reconciliation redesign. No pipeline version,
+  recipe, or stored-artifact change.
+
+- **DO rows read: id lookups no longer walk a whole terminal state**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). `confirmPurge`, `ackResults` and
+  `retireConsumed` filter `WHERE id IN (...) AND state = '...'`, and SQLite's planner chose the
+  `(state, updated_at, id)` index over the primary key, reading every row in that state. Live on
+  2026-09-24 each cleanup run read ~18.8k rows (the whole 18k `purge_pending` backlog) -- 120 runs/day
+  at the 12-minute cadence is ~2.3M of the Free plan's 5M daily rows read -- and a sweep's retire
+  calls read the whole `completed` set per chunk (79.5k in one minute). The state filter is now
+  written `+state` so the lookup seeks by id and the state is only checked per row. The rows-read
+  guard now seeds an acked backlog and exercises ack/retire, and its estimator credits an in-order
+  seek that stops at a bound `LIMIT`.
+
+- **LLM dispatch runs to the real daily DO row budget instead of worst-case caps**
+  (`workers/llm-dispatch-v2/src/`, `wrangler.jsonc`, `config/site_config.yml`, `citypods/`,
+  producer workflows). The coordinator now sums the billed rows it actually writes (each SQL
+  cursor's `rowsWritten`, persisted on scheduler writes it already makes) and gates on that total:
+  - *90,000* (`DO_ROWS_ENQUEUE_STOP`): new enqueues, schema retries, scheduled cleanup and
+    retention pruning stop; the rest of the day funds dispatch.
+  - *97,000* (`DO_ROWS_CLAIM_STOP`): no new leases. Starts below the requested 98,000 because the
+    DO's count can trail Cloudflare's by ~1.3% and cannot see Data Studio edits; raise it once the
+    counter has been compared against Cloudflare's analytics.
+  - *99,000* (`DO_ROWS_OPTIONAL_STOP`): acks, retires and cancels are refused too (all safe to
+    skip). In-flight completions, attempt fencing and polls are never refused.
+
+  The fixed daily lease cap (1,750) is gone as a working limit (`MAX_LEASES_PER_UTC_DAY` 7,000
+  backstop): a typical lease costs ~13 rows, not the ~24 a worst-case cap had to assume, so dispatch
+  no longer idles at half the budget. Ingress is bounded by a quota near real drain
+  (`MAX_JOBS_PER_UTC_DAY` 1,450 -> 4,000, `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 5,800 -> 18,000,
+  every `llm_lanes` reserved/daily budget x ~3.1, per-run caps unchanged) and a new pending cap,
+  `MAX_QUEUED_JOBS` 20,000 (`queue_full`). New read-only `GET /v2/ingress-status?purpose=` and
+  `python -m citypods.cli llm-ingress-status` report whether a lane is open; `build()` checks each
+  enabled lane at start and zeroes a closed lane's per-run cap, so no prompts are built for work the
+  Worker would refuse, while the run still applies already-completed results. Fails open. `daily_row_budget`/`queue_full` rejections defer like the
+  daily cap. Cleanup runs every 10 minutes (was 12). `/v2/stats` reports `row_budget`.
+
+- **Weekly provider-catalog reconciliation (observe and propose)** (`citypods/provider_catalog/`,
+  `scripts/reconcile_provider_routes.py`, `provider-catalog-reconcile.yml`,
+  `config/provider_catalog_decisions.yml`, review/48 Slice 1). Lists every provider's catalog
+  (paginated), health-checks one live route per configured upstream model, and canaries up to three
+  free-marked candidates per provider, each provider inside a drained v2 dispatch pause; scarce
+  daily-quota routes are checked every four weeks, only with quota left, and charged to the Worker's
+  ledger. Each provider is a plugin whose response signals are pinned against responses recorded
+  under the pause on 2026-09-24. Findings go to one rolling issue: proven candidates with Artificial
+  Analysis scores (informational; the GPT-OSS-120B / Nemotron-3 Super floor is a flag) and
+  lane-backup checkboxes from the lane registry, unacknowledged anomalies on configured routes, and
+  collapsed observations; it closes when nothing is actionable and reopens when something is. Lanes
+  gain an optional `catalog_backup_candidates: false` opt-out. It changes no config and needs only
+  `issues: write`. Every weekly run also reports a discovery self-check (`--backtest`): replaying the
+  candidate gates against the configured routes re-finds 34/39 (the misses are three retired models
+  and z.ai's free models, which its catalog omits). #1841's Gemini rate-probe header change is reverted (the OpenAI-compatible
+  endpoint rejects `x-goog-api-key` and accepts Bearer). No pipeline version, recipe, or
+  stored-artifact change.
+
+- **Terminal-job cleanup drains as fast as dispatch can finish jobs**
+  (`workers/llm-dispatch-v2/wrangler.jsonc`, `src/index.js`, `src/write_budget.js`).
+  `CLEANUP_INTERVAL_MINUTES` 60 -> 12: 5 runs/hour x `PURGE_BATCH_LIMIT` 15 = 1,800 jobs/day, just
+  above `MAX_LEASES_PER_UTC_DAY` (1,750), the most the Worker can finish. At 15/hour, 18,500 acked
+  jobs were waiting for their rows and B2 objects to be released. The per-run limit is bounded by
+  the 50-subrequest Free ceiling (2 B2 deletes per job), so the cadence rises instead.
+  `validateConfig` now refuses a cleanup capacity below the lease cap, and the DO row-write
+  projection counts retirement at the larger of the lease cap and the cleanup capacity
+  (3 x 5,800 + 34 x 1,750 + 6 x 1,800 + 1,440 = 89,140 <= 90,000), so a faster cadence cannot
+  quietly turn a terminal backlog into a row-write burst.
+
+- **DO row writes per LLM job cut further (tier 4): per-route ledger batching and a leaner
+  bundle table** (`workers/llm-dispatch-v2/src/coordinator.js`). Measured under workerd: 21.3 ->
+  20.05 billed rows per completed job with the benchmark's 3-routes-per-bundle spread, plus ~0.25
+  more from the retention prune no longer needed; bundles that put several jobs on one route save
+  up to ~1.5 per job.
+  - *Route/provider ledger writes batched per claim and per completion (P1).* A claim now
+    advances each route's and provider's pacing ledger in memory and writes it once, rather than
+    once per admitted job. `completeBatch` folds same-route success settlements (release,
+    settle-to-actual, backoff reset) into one routes UPDATE per route; any non-success write to a
+    route first flushes that route's pending successes, so statement order -- and the final
+    backoff state -- is exactly what per-job writes produced. The TPM-window adjustment is summed
+    per claim-time window and applied only for the window still current.
+  - *Leaner bundle table (P3).* `bundles` is `WITHOUT ROWID` (no separate primary-key autoindex:
+    insert 3 -> 2 rows), and a bundle is deleted when its last job settles instead of being marked
+    `completed` and pruned seven days later (2 + 1 rows -> 1). The one-time rebuild copies only
+    active/expired bundles; retained completed rows, which nothing reads, drop with the old table.
+    Expired bundles keep the existing retention prune.
+  - *Bundle size (P2) deliberately unchanged:* `MAX_BUNDLE_JOBS` is bounded by the 50-subrequest
+    per-invocation ceiling it shares with cleanup (2 B2 calls + 1 gateway call per job), not by
+    rows; with P3 each bundle now costs ~4 rows, so larger bundles would save at most ~0.3 per job.
+
+- **DO row writes per LLM job cut a further ~16% (tier 3): consumption-based retirement and
+  trigger-free queue counter** (`workers/llm-dispatch-v2/src/`, `citypods/compute/llm.py`).
+  Measured under workerd: 25.3 -> 21.3 billed rows per completed job (44.3 -> 21.3 across tiers
+  1-3, ~2.1x the jobs per day under the same row budget).
+  - *Consumption-based retirement, never age-based.* After `poll_batch` durably persists a
+    completed result (`write_deferred`), the client deletes that job's B2 payload and result
+    objects -- using the keys the coordinator reports for that row -- and calls the new
+    `/v2/jobs:retire-batch`, which deletes the row only if it is still `completed` with the same
+    `result_key` (1 billed row, versus ack 2 + cleanup 1 plus two Worker-side B2 deletes). Nothing
+    is ever deleted by upload age, so a long-queued job's payload is never at risk; queued,
+    leased, failed, superseded and validation-failed jobs are untouched and keep the ack/cleanup
+    path, which is also the fallback for any delete or retire failure. A concurrent consumer that
+    polled before the delete sees the missing result as pending and finds the persisted record on
+    its next lookup. Opt out with `CITYPODS_LLM_DISPATCH_V2_CLIENT_RETIRE=0`.
+  - *Queued-job counter without per-row triggers.* The three `trg_jobs_queued_count_*` triggers
+    (a billed row per insert, lease and requeue) are dropped; the count is maintained by explicit
+    deltas folded into scheduler UPDATEs the hot paths already make, and recounted exactly once an
+    hour by the scheduled cleanup (`recountQueuedJobs`), which also heals direct Data Studio edits.
+    The count is diagnostic only (stats, empty-claim reason), never an admission input.
+
+- **DO row writes per LLM job cut a further ~17% (tier 2): batched and folded bookkeeping writes**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). Measured under workerd: 30.3 -> 25.3 billed rows
+  per completed job (~24.6 once calibration windows are full); a retried attempt 32 -> 29.
+  - The per-purpose ingress ledger is upserted once per purpose per `enqueueBatch`, not per job.
+  - A successful completion releases its reservation, settles to actual usage, and clears route
+    backoff in ONE `routes` UPDATE instead of three.
+  - `job_models` is rebuilt (once, bounded by the queued backlog) as a `WITHOUT ROWID` table
+    clustered on the admission scan order, with a `UNIQUE (job_id, model)` index: 2 billed rows per
+    indexed model instead of 3, same uniqueness, no sort in the claim scan.
+  - `attempts` drops its `created_at` index; retention pruning reads oldest-first by rowid.
+  - Token calibration persists every completion until a key's 32-sample window is full, then a
+    deterministic 1-in-4 sample by job id (the learned p95 refreshes ~4x slower).
+  - A claimed tick writes the scheduler row once (bundle counter folded into the claim snapshot).
+  No data loss or behavior change beyond calibration refresh rate. The one-time `job_models`
+  rebuild writes ~2 billed rows per queued job-model row on first start after deploy.
+
+- **DO row writes per LLM job cut 32% (tier 1): three redundant `jobs` indexes dropped**
+  (`workers/llm-dispatch-v2/src/coordinator.js`). Cloudflare bills every index entry a write
+  touches, and a job is inserted once and changes state ~4 times, so each index on `jobs` cost ~4-5
+  billed rows per job. `idx_jobs_state_updated` (an exact prefix of `idx_jobs_state_updated_id`),
+  `idx_jobs_state_priority_created` (obsolete since `job_models` took over admission ordering), and
+  `idx_jobs_purpose_state_created` (no query used it) are dropped on startup; every state-filtered
+  query still seeks on `idx_jobs_state_updated_id` (planner-verified, rows-read guards pass).
+  `attemptStarted` no longer bumps the indexed `updated_at`, which nothing reads for a
+  non-terminal job. Measured under workerd: 44.3 -> 30.3 billed rows per completed job (enqueue
+  12 -> 9, claim 9.9 -> 6.9, attempt start 6 -> 4, complete 10.3 -> 7.3, ack 5 -> 2); a retried
+  attempt 40 -> 32. No data or behavior change; dropping an index writes no rows.
+
+- **LLM dispatch budgets re-derived from measured billed DO rows**
+  (`workers/llm-dispatch-v2/src/write_budget.js`, `wrangler.jsonc`, `config/site_config.yml`).
+  The Free plan's 100,000 DO rows written per day is account-wide, and Cloudflare bills every index
+  entry and trigger write. The old arithmetic ("~7 lifecycle writes per job", 24,000 ingress units)
+  understated the real cost ~5x and never bounded dispatch; 2026-09-23 reached 97,877 rows by
+  15:00 UTC. `bench/rows-written/` now measures each lifecycle phase under workerd (ingress 3 rows per
+  write unit, claim 9.4/bundle + 7.6/job, attemptStarted 6, completeBatch 10.3, ack 5, purge 1,
+  idle tick 1); for 2026-09-22's counts it predicts 70.2k rows against 71.1k billed.
+  - New `MAX_LEASES_PER_UTC_DAY` (1,750) caps provider attempts per day; claims stop with
+    `daily_lease_limit` and the counter (`lease_count_today`, exposed in `/v2/stats`) resets at
+    00:00 UTC. `MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY` 24,000 -> 5,800 and `MAX_JOBS_PER_UTC_DAY`
+    8,000 -> 1,450. Worst case: 17,400 + 70,000 + 1,440 = 88,840 rows, under the new
+    `DO_ROWS_WRITTEN_DAILY_BUDGET` (90,000), which `validateConfig` now enforces at deploy.
+  - Lane budgets rescaled to fit (reservations 13,000 -> 3,780 of 5,800): chapter-agenda 500
+    jobs/day, prelabeler 300, tagger 300, locator 150, shadow evaluator 60, and smaller research
+    lanes. Sustained end-to-end throughput is ~1,300 LLM jobs/day on the Free plan; raising it
+    means fewer billed rows per job (e.g. dropping the redundant `idx_jobs_state_updated` index)
+    or Workers Paid.
+  No recipe or pipeline-version change; nothing is re-queued. Producers that exceed their smaller
+  lane budgets are deferred at ingress (0 rows written) and retried on later runs.
+
+- **Pre-labeler batches sized to Google AI Studio's Gemma ceiling; gemma-4-26b shadow evaluator**
+  (`citypods/tags.py`, `citypods/stages.py`, `citypods/llm_evaluation.py`, `config/site_config.yml`,
+  `scripts/reconcile_stuck_chapter_agenda.py`).
+  - *Sizing*: batches were sized to `tpm - 1024` of the model's first route and ignored its
+    `hard_input_ceiling`, so ~85% of `google/gemma-4-31b-it` jobs (10-14k tokens) could not use the
+    two 14,400-RPD AI Studio routes. Batches are now sized to the model's highest-daily-quota live
+    route: raw input <= ceiling / `input_token_ratio` (8,333 for Gemma), and scaled input plus the
+    batch's output budget within one minute of that route's TPM. The `topic-tags:prelabeler` lane's
+    daily budget rises 5,000 -> 8,000 write units (2,000 jobs/day); its reservation is unchanged.
+  - *Shadow evaluator*: a new audit-only `topic-tags:prelabeler-shadow` lane runs the identical
+    prompt with `google/gemma-4-26b-a4b-it` (its own free Gemini quota) on subjects whose
+    production assessment is current, storing `prelabeler_shadow_*` fields that never affect
+    admission or display (`tagging.prelabeler.shadow_enabled`). Human reviews of those subjects are
+    mirrored into the shadow's own calibration row, translated through the tag's truth (a shadow
+    `needs_human_review` is not scored), and the weekly digest gains an "Evaluator comparison"
+    section with per-evaluator precision and decision agreement. No reviewer load is added.
+  - *Superseding old oversized batches*: `reconcile-stuck-chapter-agenda.yml` /
+    `reconcile_stuck_chapter_agenda.py` accept `--lane topic-tags:prelabeler`, which cancels and
+    discards aged Gemma pre-labeler batch handles (`<16hex>-<16hex>` recipes only) so the next tag
+    run re-batches the still-pending candidates.
+  Backfill: no recipe or schema version changes. Candidates with a current production assessment
+  are never re-evaluated; only still-pending candidates are re-batched (new batch keys, new jobs).
+  The shadow evaluator backfills gradually under its per-run cap (1,000 episodes): the tag lane's
+  run-level pre-filter (`episode_needs_tagging`) and `TagsStage` share one shadow-pending
+  predicate (`tags.needs_shadow_prelabel`), and the candidate window counts the shadow cap.
+  - *Fixed with it*: the tags stage's completion marker fingerprints tag inputs only, so an
+    episode marked complete was skipped by the completion cache even when evaluator work was
+    owed -- which would have blocked the shadow backfill, and equally any production
+    re-evaluation after a pre-labeler model or `llm_schema_version` change. `stage_is_dirty` now
+    treats such episodes as dirty (`tags.episode_evaluator_work_pending`) whenever a tag backend
+    is configured.
+  - A route whose limits leave no pre-labeler input budget now raises instead of silently
+    producing `payload-too-large` forever, and the reconcile `--lane topic-tags:prelabeler`
+    resolves the production model from the `--site-config` it was given.
+
+- **LLM dispatch throughput: route cleanup, a usable dispatch window, token calibration, and
+  head-of-line admission** (`config/provider_limits.yml`, `workers/llm-dispatch-v2/`,
+  `scripts/compile_llm_limits.py`, `citypods/compute/llm_policy.py`, `citypods/compute/llm_scheduler.py`,
+  `config/site_config.yml`). A 2026-09-23 throughput review found the Worker dispatching ~1,000-2,000
+  calls/day against a ~5,600/day write-bounded ceiling while Gemma, Flash Lite, and Nemotron capacity
+  sat idle.
+  - *NVIDIA prioritizes Nemotron 3 Ultra*: NVIDIA's Gemma route (172s median) and OpenRouter's two
+    Gemma legs (~99% upstream 429s) are paused with `rpd: 0`; kimi-k3 and the DeepSeek route drop to
+    concurrency 1; NVIDIA provider concurrency rises 2 → 3.
+  - *DeepSeek v4.1*: NVIDIA retired `deepseek-v4-pro-0813`, `deepseek-v4-flash-0731`, and
+    `gpt-oss-120b` (410 Gone). The new `nvidia_deepseek_v4_1_flash_free` route serves three pools
+    through the new `also_serves` route field (one ledger): exact `deepseek/deepseek-v4.1-flash`,
+    pooled `deepseek/deepseek-v4-flash` (with OrcaRouter), and `deepseek/deepseek-v4-pro`.
+    `gpt-oss-120b`'s NVIDIA leg is paused. The `tournament:tag` contestant becomes the exact
+    `deepseek/deepseek-v4.1-flash` pool so one contestant is always one model; its tournament
+    win-rate history restarts under the new name.
+  - *Dispatch window*: `ESTIMATED_CALL_DURATION_CEILING_SECONDS` 20 → 2 and `DISPATCH_WINDOW_SECONDS`
+    25 → 30. The old pair admitted only jobs startable in the first 5s of each window although the
+    window only bounds call *starts* (a started call is bounded by `MAX_RESPONSE_SECONDS`).
+  - *404/410 → `route_unavailable`*: requeues the job and stands the route down
+    (`ROUTE_UNAVAILABLE_BLOCK_SECONDS`, 6h) instead of failing the job terminally while the route
+    kept full capacity (22-28 locator/moments jobs a day).
+  - *Token calibration*: new route field `input_token_ratio` (measured from 1,727 paired B2
+    payload/result samples) scales the chars/4 estimate before ceiling/context/TPM checks in both
+    Python and the Worker. The Worker's never-decreasing `margin_tokens` reservation floor (one 15k
+    Gemma batch made every later Gemma job reserve >14.4k/min) is replaced by a bounded window of
+    recent input ratios and output sizes, and successful completions settle the token bucket to
+    actual usage.
+  - *Head-of-line*: when every route of a model that has capacity carries a size ceiling, the claim
+    looks up to `MAX_CANDIDATE_LOOKAHEAD` (32) queue entries deep for jobs that fit, instead of
+    stalling behind oversized queue-head jobs.
+  No recipe, lane-string, or pipeline-version change, so deploying this does not re-queue any
+  existing job or artifact (at runtime, a job that hits a 404/410 route is requeued as described
+  above). Stored artifacts are unaffected. The Worker's existing `estimates` rows start a fresh calibration window (the old
+  single-total summaries carry no input/output split).
+
+- **Raised the validated LLM dispatcher and chapter-agenda intake limits**
+  (`workers/llm-dispatch-v2/wrangler.jsonc`, `config/site_config.yml`).
+  `MAX_IN_FLIGHT_LLM_CALLS` rises from 8 to 12 after production telemetry repeatedly exhausted
+  that gate while a bundle slot remained free. The chapter-agenda lane now funds 1,500 daily jobs
+  (6,000 daily write units) rather than 1,000 (4,000 units), with its per-run cap kept equal to
+  its daily budget. The global 24,000-unit ingress budget, chapter-agenda's 2,000-unit reservation,
+  per-provider and per-route limits, recipe schema, and backfill behavior are unchanged.
+
+### Fixed
+
+- **Unexpected-body TIF policy enforcement (proposed).** Remedy prompts receive each source
+  aggregate policy, and local validation blocks district recreation and wrong feed ownership.
+  Unmarked district-name clues require manual identity confirmation. The remedy recipe changes
+  to `direct-v5-aggregate-policy`; remedy already bypasses result caches, so no stored catalog
+  artifacts are invalidated and no audio/enrichment backfill is triggered.
+
+- **Direct LiteLLM calls now have a bounded 720 s default timeout** (`citypods/compute/llm.py`,
+  `tests/test_compute_llm.py`, `LLM_SETUP.md`). `LLMBackendConfig.timeout_seconds` (30 s,
+  `LLM_TIMEOUT_SECONDS`) only covered HTTP calls to the dispatch Worker; direct provider calls
+  (Instructor and native structured paths, and the unstructured direct path, with or without a
+  policy) got a `timeout` only when the job's `inputs` carried one, and only `audit_remedy` sets
+  one. Every other direct call fell back to LiteLLM's 6000 s `request_timeout`, and on 2026-09-24 a
+  chapter-agenda benchmark hung for about 40 minutes on NVIDIA `deepseek-v4.1-flash`. A new
+  `direct_timeout_seconds` (default 720 s, matching the v2 Worker's `MAX_RESPONSE_SECONDS`;
+  env `LLM_DIRECT_TIMEOUT_SECONDS`) is now applied by `_provider_options(direct=True)` via
+  `setdefault`, so a job-level `timeout` still wins. A blank env value keeps the default; zero,
+  negative or non-finite values fail at startup. Deferred-dispatch capsules (`llm_deferred.py`) now
+  persist the job's `timeout` and its `output_token_budget`, which were previously dropped, so a
+  rebuilt job fell back to 1,024 output tokens. Older capsules keep the old defaults. The dispatch
+  payload is unchanged. No pipeline version, recipe, or stored-artifact change.
+
+- **Gemini daily request-quota 429s now use the provider reset window** (`citypods/compute/
+  llm_failure_class.py`, `workers/llm-dispatch-v2/src/classify.js`). Google AI Studio's
+  array-wrapped error identifies this condition in `QuotaFailure.violations[].quotaId` as
+  `GenerateRequestsPerDayPerProjectPerModel-FreeTier` (and in the quota metric), while its
+  `RetryInfo` may still advertise a short delay such as 30 seconds. Both classifiers now inspect
+  those structured identifiers, classify the response as `own_rpd`, and let the existing daily
+  reset handling ignore the short retry hint. No pipeline, recipe, or stored-artifact backfill is
+  required.
+
+- **A 404 no longer blocks a route for six hours** (`workers/llm-dispatch-v2/src/classify.js`).
+  #1831's `route_unavailable` rule treated every 404/410 as "model retired" and stood the route
+  down for `ROUTE_UNAVAILABLE_BLOCK_SECONDS` (6h). At ~06:00 UTC on 2026-09-23 NVIDIA's Nemotron 3
+  Ultra backend went down and answered 404 -- directly and through OpenRouter and Kilo, which both
+  front the same NVIDIA backend -- so all three chapter-agenda routes were blocked until ~12:00 UTC
+  and dispatch stopped, although the model was serving again within the hour. Only 410 Gone now
+  means retired; a 404 takes the upstream-capacity path (job requeued on the upstream budget,
+  escalating 15s-5min route cooldown). Routes already blocked by the old rule stay blocked until
+  their stored `blocked_until` passes or it is cleared by hand.
+
+- **Restore detailed Durable Object scheduler diagnostics to the deferred sweep**
+  (`citypods/compute/llm.py`, `scripts/llm_deferred_sweep.py`). The four-times-daily sweep now
+  explicitly requests authenticated `GET /v2/stats?detail=1` once at startup, preserving route,
+  queue-history, and failure diagnostics in its summary. Routine producer telemetry retains the
+  constant-cost `/v2/stats` request, so this does not restore the former per-worker read load.
+  No LLM throughput guard, model route, recipe, stored artifact, pipeline version, or catalog
+  backfill changes.
+
+- **Bound automatic v2 Durable Object scheduler snapshots by queue history**
+  (`workers/llm-dispatch-v2`, `scripts/llm_submission_telemetry.py`). Producer workflows now use
+  a constant-cost scheduler summary instead of the historical queue diagnostic; the exact queued
+  count is maintained by SQLite triggers in the singleton scheduler row, with one legacy-count
+  migration on first access. Empty claims use that counter rather than probing queued jobs, so the
+  result remains exact beyond the previous 1,000-row cap. Historical diagnosis remains an explicit
+  authenticated `GET /v2/stats?detail=1` action. No LLM throughput guard, model route, recipe,
+  stored artifact, pipeline version, or catalog backfill changes.
+
+- **Defer only the affected R7 episode when its timed-word sidecar is temporarily unreadable**
+  (`citypods/stages.py`). The diarization lane now catches an exhausted transient object-storage
+  read both while collecting candidates and immediately before running a claimed candidate. It
+  records the stable `timed-words-unavailable` deferral and continues the remaining pilot queue,
+  rather than failing the whole workflow. The worker-time path also avoids persisting a
+  `speakers_error` for a transient prerequisite outage, so the next scheduled run retries it
+  cleanly. This is error handling only: it does not change the diarization recipe or invalidate
+  existing speaker artifacts.
+
+- **Parallelize `reconcile_stuck_chapter_agenda.py`'s discard pass and give it a self-bounded
+  wall-clock budget** (`scripts/reconcile_stuck_chapter_agenda.py`,
+  `.github/workflows/reconcile-stuck-chapter-agenda.yml`). A production `--apply` run classified
+  34,477 registry records in ~11 minutes but then ran for another 1.5+ hours and still didn't
+  finish before the workflow's 110-minute step timeout killed it -- with nothing captured in the
+  uploaded report, despite real B2/R2 mutations having already happened. Root cause: `_apply()`'s
+  discard loop called `discard_deferred()` (a CAS lease-acquire + read + delete + index-cleanup)
+  once per candidate, fully sequentially, even though each candidate's operations target an
+  entirely independent `recipe_hash`-keyed object with no shared lock (confirmed safe to
+  parallelize). With `--older-than-hours` set aggressively low, thousands of chapter-agenda
+  candidates each cost several sequential network round trips. The discard loop now runs on a
+  bounded thread pool (`DISCARD_WORKERS = 16`, mirroring `SNAPSHOT_READ_WORKERS`/
+  `_STATE_SYNC_MAX_WORKERS`'s existing convention for this exact class of independent B2/R2
+  operation). The script also now self-bounds to a wall-clock deadline
+  (`--run-time-budget-minutes`, default 100, mirroring `scripts/llm_deferred_sweep.py`'s own
+  `_StopState`/`--run-time-budget-minutes` convention and installing the same SIGINT/SIGTERM
+  handlers) across both the registry load and the apply/discard phase, so an unexpectedly large
+  registry now stops the run cleanly with a complete, honest report -- what happened, and
+  `deadline_reached`/`omitted` counts for what's left -- instead of being killed by the external
+  step timeout with an empty report. `run_time_budget_minutes` is also now a configurable
+  `workflow_dispatch` input, mirroring `older_than_hours`/`max_row_writes`. The discard loop also
+  now prints periodic progress to stderr (`DISCARD_PROGRESS_INTERVAL`, mirroring
+  `repair_deferred_index`'s own `progress_interval` convention) -- the timed-out run's own
+  workflow log had zero output for its entire ~1h39m apply phase, so there was no way to tell
+  afterward how much of it actually happened; a live run is now observable as it goes, not only
+  from a final report a killed process might never reach.
+
+  A structurally identical unparallelized-discard-loop pattern exists in
+  `citypods/compute/llm_deferred.py`'s `prune_expired_deferred_snapshot` (used by the
+  `--full-prune-only` sweep mode) -- not yet observed timing out in production at the same scale,
+  left as a known follow-up rather than fixed here.
+
+- **Accept GitHub Actions' decimal-formatted `workflow_dispatch` number inputs in maintenance
+  scripts** (`scripts/reconcile_stuck_chapter_agenda.py`, `scripts/probe_granicus_sustained.py`,
+  `scripts/probe_granicus_chunked.py`, `scripts/remedy_unexpected_bodies.py`,
+  `scripts/spike_r2_cas.py`). A `workflow_dispatch` input declared `type: number` renders as a
+  decimal-formatted string (e.g. `"25000.0"`) even for a plain integer value or default, but each
+  of these scripts fed that value straight into an `argparse` argument declared `type=int` --
+  `int("25000.0")` raises `ValueError`, so any manual dispatch of `reconcile-stuck-chapter-agenda`
+  failed immediately with `argument --max-row-writes: invalid int value: '25000.0'` (and the same
+  shape for the other four). Each now uses a small `_whole_int` parser (`float(value)` then
+  validate `.is_integer()`) instead, mirroring the pattern `probe_granicus_transport.py`'s own
+  `_nonnegative_integer`/`_mib_to_bytes` already used successfully for this exact GitHub Actions
+  quirk. Found via an audit for the same shape after `reconcile-stuck-chapter-agenda` was reported
+  broken; no other instance exists in the workflow set (checked every `type: number`
+  `workflow_dispatch` input's downstream consumer, including bash integer comparisons and
+  `github-script` steps).
+
+- **Give chapter-agenda/chapter-locator/prelabeler/discovery/tournament LLM calls a real
+  output-token budget** (`citypods/chapter_jobs.py`, `citypods/chapter_titles.py`,
+  `citypods/tags.py`, `citypods/discovery/classify.py`, `citypods/tournament.py`). These jobs
+  never set `max_tokens`, so every dispatch silently fell back to `LiteLLMBackend`'s generic
+  1024-token default -- far below what `config/site_config.yml`'s own benchmark documented
+  (max_tokens=32768 for chapter-agenda's Nemotron route) or what `chapter_locator.py`'s
+  `LOCATOR_OUTPUT_TOKEN_RESERVE` (16384) already assumed when fitting a request into a route's
+  context window. Multi-item agenda extractions and locator anchor lists were routinely cut off
+  mid-JSON, producing "not valid JSON" and unrecoverable grounding failures on the large majority
+  of completions (observed: 1803/1813 chapter-agenda attempts and 72/72 chapter-locator attempts
+  erroring in one CI run). The topic-tags prelabeler had the same problem at the opposite end -- a
+  flat 1024-token budget regardless of batch size, when a batch can hold up to 100 assessments;
+  its budget now scales with the candidate count. City-discovery classification
+  (`classify-civic-platforms`) had no budget at all despite an unbounded response schema. The LLM
+  tag tournament's pairwise judge also had none, though its small schema meant 1024 was in
+  practice enough; it now states its budget explicitly instead of relying on the silent fallback.
+  A new static audit (`tests/test_llm_job_token_budgets.py`) scans every `citypods/*.py`
+  `structured_output` job-payload literal and fails if `max_tokens` is missing, so a future lane
+  can't reintroduce this class of bug silently.
+
+- **Stop a chapter-agenda/chapter-locator episode from retrying the same dead job forever**
+  (`citypods/stages.py`, `citypods/compute/llm_deferred.py`). When a completed LLM response
+  failed local validation (exactly the truncated-JSON failure mode above), the episode's own
+  `status: "pending"` pointer was never cleared, so every subsequent run re-fetched the identical
+  already-resolved response and failed identically -- permanently, since nothing ever gave it a
+  fresh recipe. Both stages now retire that pointer on a finalize failure (locator retiring only
+  its own `locator_status`/`locator_recipe`/`locator_job_ref` fields, leaving chapter-agenda's
+  fields on the same dict untouched) so the next run dispatches a genuinely new job. Clearing the
+  episode's own pointer is necessary but not sufficient, though: `write_deferred` never downgrades
+  an already-completed registry record, and `enqueue_batch` serves any `look_up_deferred` hit that
+  is a `JobResult` straight back out (`cached_completed`) with no new LLM call at all -- so a
+  *second* validation failure under an otherwise-unchanged (content-addressed) recipe would have
+  gone right back to being permanently stuck, just one bump-cycle later, since nothing deleted the
+  bad completed record itself. A new `discard_completed_result` (compare-and-delete, mirroring
+  `discard_deferred`'s/`discard_terminal_failure`'s existing safety pattern so a stale reader can
+  never clobber a newer write) now removes that record on a genuine finalize failure -- but not on
+  an artifact-storage write failure after a *good* response, which is a different, transient
+  failure mode that must not discard an otherwise-valid completed result.
+
+  **Backfill:** `CHAPTER_AGENDA_PIPELINE_VERSION` (2 -> 3) and `chapter_jobs.py`'s
+  `LOCATOR_PROMPT_VERSION` (locator-v1 -> locator-v2) both bumped -- these feed their job's own
+  recipe hash, which is what actually lets a fresh dispatch bypass a pre-fix job's dead-end
+  terminal record at the Worker rather than being handed the identical broken content again. For
+  both lanes this also forces every previously-*completed* artifact to be re-extracted (not just
+  the ones that errored outright): a "successful" 1024-token-budget response may just have closed
+  valid-but-incomplete JSON before the cap, silently under-counting agenda items/locator anchors
+  rather than failing loudly. `ChapterBoundaryLocatorStage` previously had no
+  `is_current_artifact`-style check of its own on `locator_status == "completed"` reuse (a real
+  gap: a `LOCATOR_PROMPT_VERSION` bump alone would only have dirtied the outer `stage_is_dirty`
+  marker, which the stage would then have silently re-stamped as current without recomputing); it
+  now has one (`is_current_locator_artifact`, comparing each completed episode's stored
+  `locator_model`/`locator_prompt_version` against the current constants), mirroring
+  chapter-agenda's own check. The same gap existed one level higher: `episode_needs_chapter_agenda`
+  /`episode_needs_chapter_locator` -- the pre-filter `run.py` applies to candidate episodes
+  *before* either stage ever runs, for every `--lane chapter-agenda`/`chapter-locator`/`chapter`
+  workflow invocation -- had no staleness awareness at all, so a completed-but-stale episode would
+  never have reached either stage's own reuse check in the first place; both now apply the same
+  model/version check. Both re-queues are gradual,
+  bounded by each lane's own `max_dispatches_per_run`/daily budget, not instant.
+
+- **Break StageStats.errors' 3-sample cap and add a reason breakdown** (`citypods/run.py`). A
+  stage reporting hundreds of errors showed only a raw count and 3 raw sample strings in the build
+  log -- exactly how the max_tokens bug above stayed invisible for so long: nothing surfaced
+  *which* failure mode dominated. The sample cap is now 10, and a new `_error_reason()` masks
+  variable substrings (episode uids, hex ids, item counts) so repeated failures of the same kind
+  collapse into one bucket with a count, mirroring how `StageStats.defer_reasons` already buckets
+  deferrals. Printed to the build log only, never added to the JSONL telemetry artifact (which
+  `llm_submission_telemetry.py`'s own module docstring says must never carry "results").
+
+- **Emit `llm_submission_stage` telemetry from the LLM tag tournament** (`citypods/tournament.py`).
+  Every other LLM-producing lane's per-run activity (ran/reused/backlog/errors) shows up in the
+  same CI telemetry dashboard used to diagnose the issues above; the tournament's `run()` never
+  called `record_stage_activity`, leaving it invisible in that dashboard even though its own
+  producer/ingress telemetry was already wired up.
+
+- **Stop pending R6 handles from consuming fresh-dispatch budget** (`citypods/stages.py`). The shared
+  moment extraction/judge cap now counts only new queue admissions; already-pending and cached
+  deferred jobs can be reconciled without starving the other R6 verb. No model or route change and
+  no pipeline-version/backfill change.
+
+- **Normalize common structured-output wrappers once at the LLM boundary**
+  (`citypods/compute/structured.py`). Fenced JSON, reasoning blocks, and the pre-labeler's
+  provider-specific bare assessment list are now parsed before the existing per-verb Pydantic
+  contracts validate them. Semantic grounding and locator unit checks remain strict.
+
+- **Decode v2 Worker scheduler stats from their actual schema** (`scripts/llm_submission_telemetry.py`).
+  Workflow summaries now expose active bundles/calls, claim reasons, and queued-by-model data
+  instead of silently reporting nulls. No pipeline-version/backfill change.
+
+- **Bound v2 Durable Objects cleanup row reads** (`workers/llm-dispatch-v2`). Terminal job cleanup
+  and bundle pruning now query each terminal state separately and merge bounded per-state results
+  in memory, avoiding SQLite temp-B-tree global sorts that read terminal history before applying
+  `LIMIT`. The row-read regression guard now rejects those plans on growable tables; no schema,
+  pipeline, or backfill change is required.
+
+- **Bound stuck chapter-agenda reconciliation's v2 cancellation writes**
+  (`reconcile-stuck-chapter-agenda.yml`, `scripts/reconcile_stuck_chapter_agenda.py`). Apply runs
+  now default to a conservative 25,000 billed row-write budget, retain candidates beyond the budget
+  for a later run, and report the estimated cancellation usage instead of exhausting the Durable
+  Objects Free allowance in one pass.
+
+- **Classify actionable AI Gateway failures before generic retries** (`workers/llm-dispatch-v2`).
+  Gemini's structured `RetryInfo` delay and array-wrapped errors are now read from the single
+  response body. Provider overload 503s and 504 timeouts use the existing route-only upstream
+  capacity retry budget, while explicit provider input/context-limit errors get one bounded
+  requeue after a short route quarantine so a longer-context sibling can serve the job. Malformed
+  response text is retained only as a 4 KiB in-memory classification hint; no new diagnostic rows
+  or per-request writes are added.
+
+- **Continue stuck chapter-agenda reconciliation past transient record-read failures**
+  (`scripts/reconcile_stuck_chapter_agenda.py`). An unavailable canonical deferred record is now
+  retained and reported while the apply pass continues with other candidates; the run remains
+  non-successful so the retained record can be retried on the next run.
+
+- **Give stuck chapter-agenda reconciliation enough wall-clock budget** (`reconcile-stuck-chapter-agenda.yml`).
+  The full deferred-registry maintenance pass now has a 120-minute job budget and a 110-minute
+  classify-step limit, leaving time for its report artifact and making a future overrun fail
+  visibly instead of being reported as a grey job cancellation.
+
+- **Bounded endpoint-contract listing confirmation retry** (`citypods/contracts.py`). A provider
+  listing that fails with a transient transport error now receives one separate confirmation
+  attempt before the monitor files a contract issue. Persistent transport failures and semantic
+  endpoint/parse failures remain failing results.
+
+- **Retry provider-side NVIDIA missing-function 404s** (`citypods/compute/llm_failure_class.py`,
+  `citypods/compute/llm.py`, and both dispatch Workers). NVIDIA NIM can return HTTP 404 with a
+  `Function id ... is not found` body when a hosted deployment disappears; that response is now
+  classified as `upstream_capacity` so the route is cooled down and configured backup models can
+  take over. Ordinary unknown-model 404s remain terminal request defects.
+
+- **Enforce paused `rpd: 0` routes in v2 admission** (`workers/llm-dispatch-v2/src/routes.js`,
+  `workers/llm-dispatch-v2/src/pacing.js`). A paused free route could remain in a logical model's
+  eligible list and pass the pacing check as immediately ready, causing free-only jobs to call a
+  disabled provider instead of deferring. Paused routes are now filtered before admission and fail
+  closed in the pacing primitive as well.
+
 ### Added
+
+- **Historical feed coverage assessment (2026-10-02).** A source/label inventory and seven
+  separately reviewable policy directions cover the residual #1747 backlog after the proposed
+  TIF migration. Recommendations await category approval; no residual feed or exclusion changes
+  have been applied.
+
+- **Per-workflow LLM submission throughput telemetry** (`citypods/compute/llm_submission_telemetry.py`,
+  `scripts/llm_submission_telemetry.py`, and the LLM producer workflows). Each run now records
+  payload-free candidate disposition, fresh v2 admissions versus idempotent replays, ingress
+  rejection reasons, batch staging/request/persistence timing, final LLM-stage defer reasons, and
+  start/end Worker scheduler snapshots. The workflow step summary renders these dimensions together
+  so producer, ingress, and Worker-execution bottlenecks can be distinguished without prompt or
+  result logging. No pipeline version or backfill change.
+
+- **Weekly full-registry cleanup for deferred LLM records** (`llm-deferred-full-prune.yml`,
+  `scripts/llm_deferred_sweep.py`). The normal six-hour sweep uses pending indexes and therefore
+  cannot rediscover completed records after they leave those indexes. A weekly, main-only
+  maintenance run now lists the canonical registry and applies the existing 38-day TTL/deadline
+  policy with compare-before-delete checks, including dispatch-object and reservation cleanup.
+
+- **Stuck chapter-agenda reconciliation** (`scripts/reconcile_stuck_chapter_agenda.py` and
+  `reconcile-stuck-chapter-agenda.yml`). A dry-run-first maintenance pass now reads the full
+  deferred registry, classifies legacy-model or age-stuck agenda handles, batch-cancels queued v2
+  refs, and supersedes safe client-side deferred records. Leased/in-flight jobs remain fenced to
+  normal completion; the next chapter-agenda run recreates superseded work under the current
+  Nemotron/Gemini policy.
+
+- **Serialize deferred-record replacement and discard** (`citypods/compute/llm_deferred.py`).
+  Producer writes and explicit supersession now share a short-lived R2 coordination lease because
+  B2 has no conditional-delete primitive. Unsupported persisted remote handles are retained by
+  the stuck-agenda reconciler instead of being mistaken for synthetic client-side work.
+
+- **V2 dispatcher admission diagnostics** (`workers/llm-dispatch-v2/src/coordinator.js` and
+  `src/index.js`). Every scheduled claim now records its outcome in the bounded `scheduler` row
+  and exposes the last reason, daily reason counts, candidate rejection counters, route/provider
+  concurrency rejections, and current leased counts through the authenticated `/v2/stats` probe.
+  Empty cron ticks also emit a structured `scheduled_claim_empty` log, distinguishing global
+  bundle/in-flight ceilings from route capacity and route/provider concurrency without requiring a
+  live provider probe.
+
+- **Airforce `codestral-latest` and `kimi-k2.7-code` free routes (`config/provider_limits.yml`,
+  `workers/llm-dispatch-proxy/src/dispatch_limits.json`,
+  `workers/llm-dispatch-v2/src/dispatch_limits.json`, `citypods/compute/llm_routes.json`).**
+  Retains the `airforce` provider with two operational models passing the Gemma-4 quality floor:
+  `mistral_codestral_airforce_primary` pooling with `mistral/codestral-2508` (providing an
+  additional free capacity leg alongside native Mistral accounts), and
+  `airforce_kimi_k2_7_code_primary` for `moonshotai/kimi-k2.7-code`.
+
+- **Generic "preferred + backup model after N failed attempts" dispatch infrastructure**
+  (`citypods/compute/llm_lanes.py`'s `LaneConfig.backup_models`/`backup_after_attempts`,
+  `citypods/compute/llm_policy.py`'s matching `LLMRequestPolicy` fields,
+  `workers/llm-dispatch-v2/src/routes.js`'s `backupModelsActive`/`modelsForJob`). Any
+  `queue_only` lane may now declare backup models that become eligible once a queued job's
+  Worker-durable `jobs.attempts` counter crosses a configured threshold without a successful
+  response, or the job has already needed a JSON-schema-validation correction
+  (`jobs.schema_retry_count >= 1`, carried forward — not reset — across `schemaRetry` clones so a
+  chain of corrections crosses the same threshold as plain dispatch retries; the ingress write-unit
+  charge for a correction clone is computed from that same incremented count, not the source job's
+  pre-correction one, so a clone that activates backup-model indexing is charged for those extra
+  index rows rather than undercounted). Enforced through the
+  same ingress lane allowlist as `models` (`_modelsOutsideLane`), and never counted in a job's
+  per-job write-unit cost at enqueue time. Direct-mode (non-`queue_only`) dispatch has no
+  persistent cross-run attempt counter today and does not honor these fields — a Worker-only
+  scope, deliberately, since it's what every current consumer (`chapter-agenda`) uses.
+  - `completeBatch` raises its own class-specific retry ceilings (`MAX_5XX_RETRIES`,
+    `MAX_UPSTREAM_CAPACITY_RETRIES`) to `backup_after_attempts + <that class's own budget>` for a
+    job with backups configured (`_retryCeiling`, `coordinator.js`) — without this, a raw 5xx (the
+    realistic dominant failure mode for a best-effort free route) would terminally fail the job on
+    its second attempt, long before `attempts` could reach a double-digit threshold, making
+    backups unreachable in practice (caught in review).
+  - `_backupThresholdBelowLaneMinimum` (`coordinator.js`) rejects a job whose own
+    `policy_json.backup_after_attempts` undercuts its lane's compiled minimum
+    (`backup_after_attempts_below_lane_minimum`), the same way `_modelsOutsideLane` already
+    constrains *which* models a job may name — `scripts/compile_llm_lanes.py` now compiles
+    `backup_after_attempts` into the reservation map alongside `backup_models`.
+  - `pollBatch` now resolves a completed job's actual route (`lease_route_id`) back to its
+    canonical model (`routes.js::modelForRouteId`, a cached reverse of `model_routes_map`) and
+    returns it; `citypods/compute/llm.py`'s poll path now prefers that over the stale
+    enqueue-time-guessed `JobHandle.model` when building the final `JobResult`. Without this, a
+    job that completed on a backup route would still be recorded under its primary model.
+
+- **OrcaRouter free model catalog & endpoint routing (`config/provider_limits.yml`,
+  `LLM_SETUP.md`, `ARCHITECTURE.md`, `workers/llm-dispatch-v2/src/classify.js`,
+  `citypods/compute/llm_failure_class.py`).**
+  - Added OrcaRouter (`api.orcarouter.ai`) as the 13th LLM provider in
+    `config/provider_limits.yml`, exposing OpenAI-compatible endpoints with `ORCAROUTER_API_KEY`.
+  - Added 3 free routes with exact upstream `-free` model names: `deepseek-v4-flash-free`
+    (1M context, 10 RPM / 800 RPD), `tencent/hy3-free` (295B MoE, 256k context, 10 RPM / 800 RPD),
+    and `z-ai/glm-5.3-flash-free` (320B MoE, 1M context, 10 RPM / 800 RPD), expanding physical
+    routes to 76 across 40 deduplicated logical models.
+  - Configured `retry_after_trustworthy: true` across OrcaRouter routes to respect exact rate
+    window refill delays without exponential backoff, per provider documentation.
+  - Added OrcaRouter 429 failure signature classification in `classify.js` and
+    `llm_failure_class.py`: an HTTP 429 without `Retry-After` maps to `request_defect`
+    (`orcarouter-prompt-cap`) to halt futile in-batch retries when the free tier prompt cap is
+    exceeded; 429 with `Retry-After` maps to `own_rpd` (> 120s) or `own_rpm` (<= 120s). Handled
+    `request_defect` in `coordinator.authorizeRetry` to refuse immediate in-flight retries.
+  - Registered `custom-orcarouter` in Cloudflare AI Gateway routing
+    (`CUSTOM_PROVIDER_GATEWAY_PATHS` in `tests/test_compute_llm.py`) with root-relative
+    `/chat/completions` path mapping.
+  - Wired `ORCAROUTER_API_KEY` into `.github/workflows/contracts.yml` for weekly custom-provider
+    gateway live contract checks and `.github/workflows/llm-rate-probe.yml`.
+
+### Changed
+
+- **The Granicus Endpoint Contracts media probe now streams a three-second Worker-authenticated
+  sample rather than locally remuxing an 8 MB prefix.** Arlington's archive origin ignores ranges,
+  so its 8 MB truncated MP4 lacked the metadata required for a local remux even though the Worker
+  and production-style stream were healthy. The new path stops FFmpeg at three seconds (about 83
+  KB in the isolated Arlington diagnostic), preserving the bounded check while exercising the real
+  Worker route. No production route, pipeline version, or stored artifact changes.
+
+- **OpenCode's Gateway endpoint contract now checks its live model catalog instead of queuing a
+  free inference request.** Both MiMo and the smaller Nemotron Lightning route can spend two full
+  60-second attempts waiting at OpenCode even while `/models` returns the selected model immediately
+  through the same Custom Provider and shim. The check still detects a URL-join/shim regression and
+  now also fails if the catalog's named OpenCode route disappears; it no longer mistakes volatile
+  free-model capacity for an endpoint-contract failure. No production dispatch behavior, pipeline
+  version, or stored artifact changes.
+
+- **Endpoint Contracts now runs its Granicus media-fetch check with the production-pinned
+  FFmpeg 7.1.5 binary** rather than Ubuntu's independently-versioned package. The proxy had
+  delivered an exact, byte-verified Arlington source, but the distro build failed its local
+  three-second remux and falsely reported an upstream CDN throttle. This restores a meaningful
+  upstream/proxy contract check; it changes no production route, pipeline version, or stored
+  artifact.
+
+- **LLM tag tournament incrementally decodes its archival source records.** It retains only a
+  bounded recent-candidate window while scanning each source, so one large JSON archive cannot
+  monopolize Python or force the tournament to materialize every historical record before it can
+  choose current samples. Progress now includes the scanned and retained record counts. No
+  pipeline version or stored artifact format changes.
+
+- **LLM tag tournament now reports liveness during candidate preparation.** The runner emits its
+  current phase immediately and once per minute while it loads source records or transcript/agenda
+  evidence, then records its selected sample count. This keeps long restartable reads observable
+  in hosted-runner logs and identifies the exact phase if the runner is interrupted. No pipeline
+  version or stored artifact format changes.
+
+- **AI Gateway custom-provider probes now retry a one-off timeout or 5xx once,** while preserving
+  immediate failures for 404s and other semantic 4xx responses. z.ai's specific Alibaba WAF 405
+  page is recorded as an upstream-availability warning rather than misclassified as a Custom
+  Provider URL-join failure: direct and shim-local probes both reach its API, whereas the GitHub
+  runner's gateway egress is intermittently blocked at the upstream edge. This changes no
+  production route, pipeline version, or stored artifact.
+
+- **LLM tag tournament restores only its working state before sampling.** It now fetches the
+  tournament record and configured sources' episode records rather than the entire
+  multi-thousand-file durable snapshot, and prints restore progress before any network work.
+  Scoped restores also skip a full state listing when a legacy deployment has no remote manifest.
+  This is an operational reliability fix only; no pipeline version or stored artifact format
+  changes.
+
+- **OpenCode's catalog now includes NVIDIA Nemotron 3.5 Lightning as a free, text-only route,**
+  and the live custom-provider contract probe uses it instead of Mimo V2.5, which repeatedly
+  reached the probe's 60-second read timeout. Lightning's 30B-total/3B-active MoE is a candidate
+  for future bounded text-only evaluations; it does not change any production lane, pipeline
+  version, or stored artifact.
+
+- **NVIDIA's live AI Gateway contract probe now uses Nemotron 3 Super rather than Kimi K3.** The
+  generic custom-provider sweep previously selected its first free NVIDIA route, Kimi K3, which
+  twice exceeded the test's 60-second read timeout even as the existing Nemotron Super URL canary
+  passed. Pinning the sweep to the responsive free route keeps its routing coverage while avoiding
+  a slow model's availability from turning the endpoint contract flaky. This changes neither
+  production dispatch selection nor pipeline versions or stored artifacts.
+
+- **Removed the retired OpenCode DeepSeek V4 Flash free definitions.** OpenCode's current catalog
+  no longer advertises `deepseek-v4-flash-free`; the live contract probe now uses the listed
+  `mimo-v2.5-free` route, and the stale DeepSeek aliases are removed from the provider registry and
+  generated catalogs. The shared `deepseek/deepseek-v4-flash` pool remains available through
+  SiliconFlow, DeepSeek Direct, and NVIDIA's free build route. No pipeline-version bump or stored
+  artifact backfill is required.
+
+- **City discovery now pins classification to Gemini 3.7 Flash** with Gemini 3.6 Flash, 3.8 Flash,
+  and 3.5 Flash as vetted structured-output fallbacks. This prevents the scheduler from selecting
+  unrelated free routes whose provider credentials are not present in the discovery workflow; no
+  stored records or pipeline versions are invalidated.
+
+- **Auxiliary city discovery now bounds its rolling Issue body** and uploads the complete digest as a
+  workflow artifact when it exceeds GitHub's 64KB body limit. The visible Issue retains the
+  eligibility state marker and links to the run artifact; no candidate evidence is discarded.
+
+- **LLM tag tournament workflow timeout aligned with its configured sample budget**
+  (`.github/workflows/llm-tournament.yml`). The lane had been expanded from two samples to its
+  configured ~46-sample budget while retaining a 22-minute step timeout, so GitHub cancelled the
+  sampling step before it could publish the champion ticket. The job now has a 180-minute
+  backstop and the sampling step has a 165-minute limit, matching the other asynchronous LLM
+  lanes while preserving time for state persistence and ticket publication.
+
+- **Recovered AI Gateway custom-provider routing after Cloudflare changed its URL join.** The
+  latest Endpoint contracts run on 2026-09-15 showed that the gateway now honors registered Base
+  URL paths, so the old compensating `/v1` caller paths double-prefixed Airforce, SiliconFlow,
+  SambaNova, and NVIDIA. Their paths are now root-relative. The provider shim accepts both the
+  current literal `/x` path used by existing z.ai/OpenCode registrations and the former `/v1`
+  rewrite, so the fix does not require a synchronized dashboard edit. The live contract canary now
+  asserts the current join instead of asserting the old behavior. The deprecated v1 Worker suite is
+  retained because the documented retirement gate is not complete, with its custom-provider URL
+  assertion updated to the same generated path. No pipeline-version changes or stored-artifact
+  backfill are required.
+
+- **Chapter agenda and locator workflows now pass the GitHub Actions token to their bounded
+  enrich steps** and grant the minimal `actions: read` permission. This re-enables graceful yield
+  when a newer run is queued; without it, the jobs only stopped at their wall-clock budget and
+  emitted `GITHUB_TOKEN unset — graceful yield disabled`.
+
+- **City discovery auxiliary eligibility now restores only configured source records**
+  (`scripts/city_discovery.py`, `citypods/state.py`). The weekly scan previously downloaded the
+  entire durable state snapshot, including thousands of unrelated sidecars, before measuring recent
+  agenda coverage. It now scopes the pull to each configured source's `episodes.json`, preserving the
+  same eligibility calculation while keeping the scheduled job within its runner budget. This is a
+  read-path optimization only; no stored records or pipeline versions are invalidated.
+
+- **Auxiliary city discovery now deduplicates shared source records** (`scripts/city_discovery.py`,
+  `citypods/discovery/eligibility.py`). Multiple feed views can reference one canonical source;
+  discovery now parses each source once and counts its episodes once per city entity. This prevents
+  repeated large `episodes.json` expansions from exhausting the hosted runner. It is a read-path
+  optimization only; no records or pipeline versions are invalidated.
+
+- **`chapter-agenda` lane repinned from `mistral/mistral-medium-latest` to
+  `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite` +
+  `gemini/gemini-3.5-flash-lite` as backup models (`config/site_config.yml`,
+  `backup_after_attempts: 12`).** Mistral Medium is blocked by an account-tier issue
+  (primary/secondary/tertiary keys all report an identical zero rate limit for every flagship
+  model). A 30-episode benchmark scored with the project's own `_pair_features`/`_chapter_status`
+  matcher (`scripts/research/agenda_chapters/audit_locator_crosswalk.py`) found Nemotron Ultra at
+  `max_tokens=32768` the best replacement (29/30 valid JSON, 77.9% recall, 87.4% precision — best
+  of any model tested — after fixing the same reasoning-token-budget-exhaustion bug already found
+  in DeepSeek); Gemini 3.1/3.5 Flash Lite were the next-most-reliable candidates. Bumped
+  `CHAPTER_AGENDA_PIPELINE_VERSION` `"1"` → `"2"` (`citypods/stages.py`) so the back catalog
+  reprocesses under the new model — **backfill is gradual and automatic**: every episode whose
+  stored artifact no longer matches the current production model/pipeline version is picked up by
+  the ordinary chapter-agenda cron (every 2 hours), bounded by `max_dispatches_per_run: 1000`/day,
+  draining over however many days the backlog takes.
+  - Fixed a real, independent bug found while wiring the version-bump check:
+    `AgendaChapterCandidatesStage.process()` had its own status-only early exit
+    (`raw_agenda.get("status") in {"completed", "accepted", "not_applicable"}`) with no comparison
+    to the current model or pipeline version, so on any run where nothing else in the batch also
+    deferred, an already-completed episode would be "reused" and then re-stamped complete under
+    the fresh fingerprint by `_mark_stage_complete` -- permanently laundering stale output as
+    current. Fixed by adding `pipeline_version` to `AgendaCandidatesArtifact`
+    (`citypods/chapter_artifacts.py`, empty default so pre-existing artifacts compare unequal to
+    any real version) and gating the reuse check on both `model` and `pipeline_version` matching
+    production. The currency check accepts both `AGENDA_PRODUCTION_MODELS` and
+    `AGENDA_BACKUP_MODELS`, not just the primary — otherwise a completed backup-model artifact
+    would look permanently stale and be needlessly re-dispatched (caught in review).
+  - A `"pending"` episode whose in-flight job named a model no longer in production rotation (e.g.
+    a stuck Mistral job) would defer to that dead/blocked job forever, since its recorded recipe
+    hash could never match a fresh dispatch under the new model. Fixed: such jobs are now
+    cancelled (reusing the existing `_cancel_chapter_fallbacks` primitive) and the episode falls
+    through to a fresh dispatch in the same pass, checked against the union of primary + backup
+    models so a job that already legitimately escalated to a backup is left alone.
+- **`recover_agenda_item_extractor_response` (the GH#1078 recovery-shadow layer) is now wired into
+  production** (`citypods/chapter_jobs.py::finalize_agenda_job`) instead of only the strict
+  `validate_agenda_item_extractor_response`, which raised on the first rejected item and aborted
+  the whole episode's extraction. A borderline item whose `display_ref` doesn't literally validate
+  but whose evidence a source-only search confirms is now rescued and included, tagged with a new
+  `AgendaCandidate.source` provenance field (`"strict"` | `"recovery"`,
+  `citypods/chapter_artifacts.py`, backward-compatible default); `finalize_agenda_job` still raises
+  on genuinely `unrecovered` items.
+- **`config/provider_limits.yml` audit**: the `nvidia` provider block's `rpm` (and its comment's
+  arithmetic) was stale -- 8 of its 9 routes are actually `rpm: 4` and one is `rpm: 0.5` (real sum
+  32.5), while the field itself was `rpm: 6`, making the provider-wide cap the accidental binding
+  constraint instead of per-route pacing (the block's own stated design). Raised to `rpm: 35` and
+  corrected the comment. Added matching `secondary`/`tertiary` routes for the
+  `mistral/mistral-medium-2505`/`2508` legacy aliases, whose account coverage previously lagged
+  `mistral/mistral-medium-latest`'s.
+
+### Removed
+
+- **All paid LLM routes from the production catalog** (`config/provider_limits.yml` and the three
+  generated catalogs). The catalog is now free-only; this removes the OpenRouter, SiliconFlow,
+  DeepSeek Direct, and paid Z.ai fallback legs while retaining their provider definitions for
+  future re-probing. No pipeline version or stored artifact format changes.
+
+- **Discontinued Airforce `mistral-medium-3.5` route (`config/provider_limits.yml`,
+  `workers/llm-dispatch-proxy/src/dispatch_limits.json`,
+  `workers/llm-dispatch-v2/src/dispatch_limits.json`, `citypods/compute/llm_routes.json`).**
+  Upstream `api.airforce` decommissioned `mistral-medium-3.5` across all channels (returning HTTP
+  503 `model_unavailable`), removing it from their catalog. Mistral Medium tasks
+  (such as `chapter-agenda`) now route strictly to native Mistral accounts
+  (`mistral/mistral-medium-latest`) across primary, secondary, and tertiary credentials.
+
+- **`ProviderTranscriptDiarizeStage` retired (`citypods/stages.py`, `citypods/records.py`,
+  `citypods/report.py`, `citypods/assets/status.html`, `citypods/ops/workqueue.py`; review/31
+  §A.5).** A citywide survey — every city/source group with a provider-aligned transcript on
+  record: Addison, 18 separate Austin boards, Dallas, Denton, Travis County — found **zero**
+  episodes anywhere with `speakers.source == "provider"`. The stage's `_SPEAKER_PREFIX_RE`
+  required a `NAME: text` colon-delimited caption label; no caption vendor in this project's
+  provider mix ever emits that shape. Real captions are either fully unmarked (Austin, Dallas,
+  Addison) or use a bare `>>` speaker-change chevron carrying no identity (Denton, Travis
+  County) — confirmed by reading the raw provider-aligned VTT text directly. `no-speaker-labels`
+  (13-for-13 in Denton, the only city ever evaluated) was the correct output every time, not a
+  bug. The stage, its pipeline-version constant, and its spec-hash/object-key/regex/extraction
+  helpers are removed outright; `default_stages()`/`enrich_stages()` no longer run it; the
+  `"diarize"` lane's owned blocks/stage-status now cover only `native_diarize`; the
+  `/admin/status` provider-transcript panel drops its now-defunct diarize sub-section (align
+  status, an unrelated sibling feature, is unaffected); the `"provider-transcript-diarize"` work
+  class stays recognized for reaping pre-retirement manifest entries but is no longer emitted.
+  `NativeDiarizeStage._collect_candidates`'s permanent `speakers_source == "provider"` skip is
+  replaced with a migration: any episode still carrying that stale, unvalidated artifact has its
+  speaker fields cleared and falls through into a real native diarization pass, instead of being
+  treated as done forever. That clearing runs **before** the `pilot_selected` gate, not after —
+  as first written it sat after that gate and so never ran for any body outside the R7 pilot
+  (today, everything except Denton City Council: `1453` of `2164` Denton episodes), which would
+  have left a stale artifact exposed indefinitely for every one of them, since native diarization
+  never touches a non-pilot body either. How many live episodes actually need this migration is
+  unresolved, not zero: a direct census found none today, but two real production runs each
+  logged `~2000 reused` for the retired stage shortly before this shipped, a figure its own code
+  cannot produce against that same live data no matter how it is replayed — see review/31 §A.5.
+
+
+### Changed
+
+- **Free LLM route optimization & failure classification hardening (`config/provider_limits.yml`,
+  `workers/llm-dispatch-v2`, `citypods/compute/llm_failure_class.py`).**
+  - **OpenCode route retirement:** Fully retired the remaining OpenCode free routes
+    (`mimo-v2.5-free`, `nemotron-3-ultra-free`, `nemotron-3.5-lightning-free`) and removed the
+    `opencode` provider block after verifying OpenCode permanently gates its free tier behind
+    proprietary IDE sessions (`HTTP 400 MissingSessionID: OpenCode's free tier can only be used in
+    OpenCode`). Hardened failure classifiers in `classify.js` and
+    `citypods/compute/llm_failure_class.py` to treat any such upstream errors as capacity rather
+    than request defects.
+  - **Mistral zero-allowance exponential backoff:** Threaded response headers through
+    `callAiGateway` in v2 dispatch and reordered `zero-provisioned-limit` before
+    `openai-shaped-rate-limit`. When Mistral returns HTTP 429 with
+    `x-ratelimit-limit-req-minute: 0`, the failure is classified as `payment_required`,
+    escalating up the day -> week -> month cooldown ladder to naturally resume probing when
+    monthly allowances rollover without setting `rpd: 0`.
+  - **Gemma hard token ceiling admission:** Enforced `hard_input_ceiling` directly inside
+    `routeFitsContext` (`workers/llm-dispatch-v2/src/routes.js`) and lowered Google Gemma 26B/31B
+    ceilings to 10,000 tokens (`config/provider_limits.yml`), preventing jobs from exceeding
+    Google's provider input token limit.
+  - **OrcaRouter structured output:** Added `structured_output_profile: json_object` to
+    `orcarouter_deepseek_v4_flash_free` in `config/provider_limits.yml`.
+  - **Z.ai AI Gateway path alignment:** Configured `custom-zai` AI Gateway chat path to
+    `/v4/chat/completions` matching Cloudflare AI Gateway's Base URL configuration.
+
+### Added
+
+- **LLM dispatcher active-bundle concurrency increased from 2 to 3** (`workers/llm-dispatch-v2`;
+  review/44). This is a bounded throughput experiment for slow bundles: daily bundle, job, and
+  ingress-write caps are unchanged, so projected DO row-write usage does not increase unless the
+  additional slot actually drains more work. The nominal cost of one extra full bundle is about
+  32 writes at the four-job design baseline, or 39 with the current five-job bundle setting.
+  Roll back to 2 if provider failures, lease expiry, or measured DO row writes rise materially.
+
+- **SambaNova route health cleanup.** Removed the stale SambaNova Qwen2.5-72B route, paused the
+  SambaNova Llama 3.3 70B route after 820 retained AI Gateway attempts produced zero successes,
+  and added the live-probed SambaNova Gemma 4 31B route to the existing Gemma model pool. The
+  working OpenRouter Llama route remains available; no stored artifacts are invalidated and no
+  provider backfill is triggered by this routing-only change.
+
+- **Direct-transport failure classification parity & sibling-route capacity retry (PR-6 /
+  Initiative 20; review/45 §20.9).**
+  - Added failure classification parity to the direct LLM transport in `citypods/compute/llm.py`
+    using `citypods/compute/llm_failure_class.py`.
+  - When an HTTP 429 occurs on the direct path, it is classified across the 9-class taxonomy. On
+    `upstream_capacity` (e.g., OpenRouter shared upstream pool saturation, Airforce guaranteed
+    response failures, OpenCode server errors, or transient capacity messages), the exhausted
+    route enters a 15-second cooldown without deferring the job, and the scheduler retries an
+    available sibling route (or eligible fallback model) up to 10 times.
+  - On `own_rpd`, the direct path blocks the route until the provider's next zoned midnight
+    (`_next_local_midnight`) before deferring.
+  - On `own_rpm`/`own_tpm`/`unknown_429`, the direct path blocks the route for 60 seconds (or
+    advertised `Retry-After`) and defers.
+  - Handled non-dict JSON error payloads gracefully in `citypods/compute/llm_failure_class.py`.
+  - Concluded Initiative 20 (PR-1 through PR-6): bringing end-to-end empirical characterization,
+    9-class failure taxonomy, sibling route failover, and dual-transport parity to LLM dispatch
+    and direct invocation.
+
+- **LLM rate-limit characterization & config feedback (PR-5 / Initiative 20; review/45 §20.8).**
+  - Extended route schema in `config/provider_limits.yml` and `LLMRoute` dataclass
+    (`citypods/compute/llm_policy.py`) with empirical rate characterization fields: `observed_on`,
+    `observed_rpm`, `observed_burst`, `observed_input_ceiling`, `observed_recovery_seconds`,
+    `retry_after_trustworthy`, and `upstream_429_default`.
+  - Added compiler support in `scripts/compile_llm_limits.py` to validate and thread
+    characterization fields into all three compiled catalogs: `dispatch_limits.json` (v1 and v2)
+    and `citypods/compute/llm_routes.json`. If `hard_input_ceiling` is unset,
+    `observed_input_ceiling` automatically feeds `hard_input_ceiling`.
+  - In `workers/llm-dispatch-v2/src/coordinator.js` (`authorizeRetry`), when a route declares
+    `retry_after_trustworthy: false`, the Worker overrides the advertised retry delay with
+    `max(retryAfter, observed_recovery_seconds)`, preventing premature retry loops on providers
+    with inaccurate or missing `Retry-After` headers.
+  - In `workers/llm-dispatch-v2/src/pacing.js` and `citypods/compute/llm_scheduler.py`, route
+    context checking honors `observed_input_ceiling` alongside `hard_input_ceiling`.
+  - Recorded live probe measurements (`observed_on: 2026-09-09`) across Gemini, Groq, Mistral,
+    SambaNova, Airforce, and OpenCode routes.
+
+- **review/45 reconciled against `main` and extended with Initiative 20 — endpoint rate-limit
+  characterization & failure-class-aware LLM backoff (planning only; no code changes).** 123
+  commits landed between review/45's L3 detailing pass (`b91a3bc`, 2026-09-04) and this
+  reconciliation. Four of them moved code the document cites directly, and every stale figure is
+  corrected in place with an itemized audit in the new **§1.1 Reconciliation Log**: Initiative 4 is
+  now **half shipped** (PR #1465 parallelized `push_records_merged`; the dirty-skip did not land,
+  and both `DIAGNOSTIC` blocks now run inside worker threads); `stages.py` has **17** stage classes,
+  not 19, after `ProviderTranscriptDiarizeStage`'s retirement, and the `EnrichmentStage` Protocol
+  moved to `stages.py:694-703`; the `ctx.stop` idiom count dropped 31 → 21; monolith LOC grew
+  ~18,800 → **~20,506** in four days; `enqueue_batch`'s per-job `put_cas` became a batched,
+  thread-pooled staging step, which gives Initiative 19's admission pre-check a single clean
+  insertion point instead of a per-job branch. §2 (state partitioning), §3 (v1 retirement, still
+  exactly 15 workflows), and Initiative 6's timeout table were re-verified and stand unchanged.
+
+  **Initiative 20** is the new pivotal throughput item, promoted to the head of §5's dependency
+  order. The dispatch Worker currently collapses every provider HTTP 429 into one "we went too
+  fast" response — `throttle_streak` + `buffer_seconds` + `MAX_429_RETRIES=1`, after which the job
+  is **failed outright**, making 429 the only transient-looking status that destroys work (402,
+  5xx, and upstream-400 all requeue). Across a 65-route catalog that is mostly free tiers and
+  free-router aggregators, a large share of 429s are the provider's own pooled upstream saturating,
+  unrelated to our request rate — so a healthy route is penalized and the job is thrown away.
+  Daily-quota and token-quota 429s are conflated into the same 60-second buffer, leaving
+  `dailyQuotaReadyAt`/`nextZonedMidnightMs` unreachable because nothing in the 429 path writes
+  `rpd_count`. Nothing persists a failure *reason* anywhere, so there is no evidence base to tune
+  against. The initiative specifies, as six independently mergeable PRs with two mandatory live
+  measurement steps between them (§20.11): a nine-value failure taxonomy and an ordered signature
+  table duplicated across `workers/llm-dispatch-v2/src/classify.js` and
+  `citypods/compute/llm_failure_class.py` with a drift-guard test; a probe harness
+  (`citypods/llm_rate_probe.py` + `llm-rate-probe.yml`, dry-run by default per house `--apply`
+  convention, free-routes-only, hard request/wall-clock caps, never edits config) that measures
+  enforced RPM, burst capacity, real input ceilings, and actual recovery timing against advertised
+  `Retry-After`; per-class route penalties replacing the single unconditional `UPDATE routes`; a
+  terminal 429 that **requeues under the existing transient budget instead of failing**; and a
+  bounded `(utc_day, route_id, failure_class)` counter surfaced through the existing `/v2/stats`
+  and guarded by `test/rows-read.test.js`. It generalizes PR #1476's hand-run live Gemini test —
+  which found the enforced per-request ceiling (~125,000) sat far below the configured `tpm`
+  (250,000), and that NVIDIA did not behave the same way — from one field on 14 routes into a
+  repeatable loop across all 65. No production behavior changed in this entry; review/11's
+  §"Rate-limited LLM dispatch Worker" row is updated to point at it.
+
+- **Unexpected-body remediation now handles historical selector families safely.**
+  Recurring Granicus/Swagit labels with the same dated body prefix are locally collapsed to a
+  wildcard such as `Agenda Committee on *`; the classifier cannot invent that selector, and
+  isolated dated labels remain exact UUID inclusions or manual review. `/remedy` also limits each
+  pass to a bounded number of classification batches and reports the deferred remainder so a
+  large historical issue can be resumed after each accepted PR. The #1590 feed cleanup adds the
+  validated recurring feeds, simplifies duplicated Fort Worth labels, and routes the confirmed
+  Addison, Fort Worth, Pflugerville, and Waco historical exceptions without changing provider
+  transport or episode identities. The local validation boundary now defers new feeds with fewer
+  than three observed meetings, recurring families proposed as individual UUIDs, generic aggregate
+  labels, and target feeds with no meaningful taxonomy overlap; unfiltered feeds remain a safe
+  explicit escape hatch. New feed selectors are additive config only; no stored artifacts are
+  invalidated or backfilled automatically. Remedy-created feeds with historical-only evidence are
+  marked `dormant` after one year, `retired` after two years, and `dormant` for an irregular series
+  with a long recent gap, so old one-off discoveries do not appear active by default.
 
 - **`NativeDiarizeStage` registers with `PROGRESS` and logs per-attempt start/done/error lines
   (`citypods/stages.py`).** Investigating a live run (denton-tx, 2026-09-05) that appeared to sit
@@ -34,8 +1458,202 @@ Phase R (Research-Tool Surface)._
   heartbeat's `active work:` line names the stuck uid and its elapsed time directly, instead of
   requiring a `thread activity:` stack-sample read to infer that the run was busy at all.
 
+- **OOM proof instrumentation and a fixed memory-spike margin for diarize workers
+  (`.github/workflows/r7-diarization.yml`, `citypods/diarize.py`, `citypods/stages.py`,
+  `citypods/resources.py`).** The recurring diarize SIGTERM (runs #59, #61-63) has always been
+  "OOM most likely, not proven" — this closes the proof gap and adds a defense-in-depth
+  mitigation, both asked for directly, rather than continuing to reason from indirect evidence.
+  `r7-diarization.yml` now captures `dmesg`/`free -h`/`/proc/meminfo` in an `if: always()` step
+  right after the diarize step, so a genuine kernel OOM-kill leaves its own unambiguous log line
+  even through an external cancellation (GH Actions runs `always()` steps during its own
+  cancellation sequence, before the runner is torn down) — the one signal this project's own
+  app-level logging structurally cannot produce, since a hard kernel kill reaps the process
+  before any of that code runs. `run_diarize_job` now logs each candidate's own `peak_rss_mb`
+  (Linux's `VmHWM` high-water-mark counter, via the new `citypods.resources.
+  process_peak_rss_bytes`, deliberately *peak* rather than the existing `process_rss_bytes()`'s
+  *current* reading, which a since-freed spike would never show), and `_diarize_executor` now
+  sets `max_tasks_per_child=1` so that reading means "this candidate's own peak," not "the
+  highest peak any candidate this reused worker process has ever seen" (`VmHWM`/`ru_maxrss` are
+  both monotonic for a process's whole lifetime). A genuine `MemoryError` or
+  `OSError(errno=ENOMEM)` is now caught and re-raised with that same peak-RSS reading attached,
+  rather than reported as an unremarkable generic diarize error. Separately, asked directly
+  whether reserving more memory could simply avert this: the recurring onnxruntime `Where node`
+  broadcast error's own logged dimensions (`12288 by 50599`) imply an attempted allocation up to
+  `12288 * 50599 * 4` bytes (float32) ≈ 2.49GiB for that one intermediate tensor alone, on top of
+  whatever steady-state RSS a job already holds — and run #63's own heartbeat showed only
+  `~3.0GiB` genuinely free at the exact moment its error fired, close enough to that figure to be
+  a plausible tipping point. `DIARIZE_RSS_SPIKE_MARGIN_BYTES = 3GiB` is now subtracted once from
+  the diarize memory ceiling (`diarize_memory_ceiling_bytes()`) — once from the ceiling, not once
+  per concurrent worker, since the trigger is data-dependent and rare rather than a certainty
+  every worker hits simultaneously. Stated as plainly as the gap that motivated this: none of it
+  proves OOM was run #63's actual cause after the fact — only that the next occurrence will
+  produce evidence tight enough to actually settle the question. See review/31 §A.4's
+  2026-09-07 addendum (the entry immediately after the RSS re-validation one) for the full
+  reasoning.
+
+- **`_attach_embeddings` had zero onnxruntime error detection, and it was actively corrupting
+  episodes marked successful in production (`citypods/diarize.py`, `citypods/stages.py`).**
+  Caught live via #1592's new peak-RSS logging: a running production `enrich --lane diarize`
+  job's own log showed the recurring `Where node` broadcast error firing five separate times,
+  every time immediately followed by that same candidate's `peak_rss_mb` print, then a normal
+  `diarize done` — never `diarize error`. That's proof, not inference: `process()`'s own
+  onnxruntime check (already live on `main`) would have raised and marked the episode
+  `speakers_error` had the error occurred there — since all five instead reported success, the
+  error was firing somewhere that check doesn't cover. `_attach_embeddings`'s per-turn embedding
+  loop had only a bare `try/except Exception: return` around itself, which catches genuine
+  Python exceptions but not onnxruntime's own C++-logged, non-raising kernel failures — the
+  identical failure mode already fixed for `process()`, just at a second, uncovered call site.
+  Segmentation/clustering for those five (and any other silently-affected) episodes are
+  unaffected (proven by the same logic: a `process()`-level failure would have raised) — only
+  the corrupted turn's embedding, feeding the separate R7 identity layer, is at risk.
+  `_attach_embeddings` now runs its per-turn loop inside the same fd-redirect capture
+  `process()` uses and raises on any captured error-level line, no longer best-effort for that
+  case specifically (a corrupted embedding merging into the wrong cluster is worse than none);
+  also restructured to try each turn independently, so one Python-level turn failure no longer
+  sacrifices every other turn's embedding. `DIARIZE_PIPELINE_VERSION` bumped "2"→"3": the
+  failure is silent by definition, so a version bump (not a targeted reprocess of the five uids
+  caught live here) is the only way to guarantee every historically-affected episode, not just
+  these five, gets a chance to either succeed cleanly or now correctly fail loud. Separately,
+  the peak-RSS numbers at each of the five incidents mattered: three of five ran meaningfully
+  hotter than the conservative RSS formula predicts (+24%, +31%, worst +45% on a 15.09h
+  recording — a ~4.5GiB gap, already bigger than the 3GiB spike margin #1592 shipped), scaling
+  with recording length/turn count rather than looking like one fixed-size spike — consistent
+  with onnxruntime's memory arena growing (and never shrinking) further on each degenerate
+  kernel execution within one process. `DIARIZE_RSS_SPIKE_MARGIN_BYTES` raised 3GiB→5GiB past
+  the worst *observed* gap, not just the worst *modeled* one. See review/31 §A.4's 2026-09-07
+  addendum (the entry after the OOM-proof one) for the full incident evidence and reasoning.
+
+- **Root-caused the recurring "Where node" embedding-extraction error and fixed it at the
+  source, not just detected it (`citypods/diarize.py`).** Built a real corpus — 13 individually
+  isolated failing turns from 5 real production recordings, saved durably outside `/tmp` — and
+  found the exact cause: every one of the 13 satisfies `broadcast_dimension = duration_seconds
+  × 100`, which pins the fixed side of the mismatch (`12288`) to exactly `122.88 seconds`.
+  NeMo TitaNet-Small's exported ONNX graph has a hard internal buffer sized for at most 12288
+  frames, never generalized to longer inputs — confirmed experimentally (not just by
+  regression): the real turn closest to the boundary succeeds truncated to 122.88s and fails at
+  123.00s, every time, a hard cliff. Checked whether truncating a long turn risks attaching the
+  wrong voice-print (a >120s turn could plausibly be a segmentation failure merging two
+  different speakers, not one continuous monologue): split all 13 into 15s sub-windows and
+  compared pairwise cosine similarity end to end — every window stayed consistently similar
+  (0.75-0.95, no case showing the sharp drop a real speaker change would produce) — genuine
+  monologues, safe to truncate. `_attach_embeddings` now truncates any turn past
+  `DIARIZE_MAX_EMBEDDING_TURN_SECONDS` (120s) *before* extraction rather than only detecting the
+  failure after the fact; re-ran the real corpus against the fix and all 13 previously-failing
+  turns now succeed. Turn boundaries and every other turn are untouched — only the audio window
+  sent for *that turn's own* embedding is capped; `embedding_truncated: true` records which
+  turns were affected. The detect-and-raise safety net (above) stays underneath for any other,
+  not-yet-characterized trigger of this error. See review/31 §A.4's 2026-09-07 addendum (the
+  entry after the peak-RSS one) for the full corpus methodology and evidence.
+
+- **Memory margin cut back down, and a memory-dominant diarize candidate given adaptive threads
+  (`citypods/diarize.py`, `citypods/stages.py`, `citypods/resources.py`).** A live production
+  run surfaced a real, self-inflicted throughput cost from the previous entry's 5GiB spike
+  margin: a 15.09h candidate's own reservation got clamped to the whole (now-smaller) ceiling,
+  and three other candidates sat blocked for its entire runtime. Checked directly, not assumed:
+  the margin wasn't the primary cause — that exact batch (four very long recordings whose
+  combined needs exceed even the raw, margin-free budget) would have serialized to one
+  candidate at a time regardless of margin size, including zero. The margin only decided whether
+  the giant candidate's own reservation got needlessly clamped. `DIARIZE_RSS_SPIKE_MARGIN_BYTES`
+  cut 5GiB→1GiB: the mechanism it was sized against (RSS overshoot from the embedding-extraction
+  bug firing repeatedly within one process) is now mostly prevented at the source by the
+  truncation fix above, so the margin's remaining job is ordinary platform/model variance, which
+  the RSS formula's own proven conservatism already covers most of. Separately, asked directly
+  to add: `_DiarizeAdmission.claim()` now grants a candidate whose own need exceeds 65% of the
+  memory ceiling 2 threads instead of the pool's default 1 (the same single-job latency optimum
+  already measured), since a candidate that memory-dominant leaves the other configured
+  workers' CPU capacity otherwise sitting idle behind it. Deliberately not #1496's per-worker
+  adaptive scheme (reverted in #1507 after it raced two workers into both bumping at once and
+  oversubscribed the runner): this is decided once, centrally, under `claim()`'s own lock, and a
+  new `_committed_threads` counter enforces a hard, real-time ceiling checked at the moment of
+  granting — never assumed safe from a static worst case. `MemoryReservation.budget_bytes` is a
+  new read-only property the dominance check needed and nothing previously exposed. See
+  review/31 §A.4's 2026-09-07 addendum (the entry after the corpus one) for the full run-log
+  evidence and reasoning.
+
 ### Fixed
 
+- **Relaxed `litellm` floor to stable `>=1.101.0` and refreshed constraint locks (`pyproject.toml`,
+  `constraints/prod.txt`, `constraints/dev.txt`, `review/45`).** An ephemeral development release pin
+  (`litellm==1.95.0.dev1`) in `constraints/prod.txt` broke CI runs (`chapter-agenda` run 471) after
+  upstream LiteLLM pruned `1.95.0.dev1` from PyPI upon releasing `1.103.0.dev1`. Relaxed the
+  pre-release lower bound (`>=1.94.0rc3`) in `pyproject.toml` to the current stable release
+  `>=1.101.0`, updated `constraints/prod.txt` and `dev.txt` to `litellm==1.101.0` and
+  `aiohttp==3.14.3`, and added `pydantic-settings==2.15.0`.
+
+- **Raw, undecoded PDF bytes could be persisted as a real `agenda_text_artifact`
+  (`citypods/agenda_text.py`, `tests/test_agenda_text.py`, GH#1092 follow-up).** `_extract_pdf`'s
+  fallback for a non-importable `pypdf` (a required dependency, `pypdf>=5.0` — should never fire
+  in a correctly provisioned run) decoded the PDF's own raw bytes as UTF-8 and returned that as
+  if it were extracted text. Real PDF container syntax and garbled compressed-stream bytes decode
+  into plausible, keyword-bearing noise rather than raising, so the corruption cleared
+  `assess_agenda_document`'s alpha-char/agenda-content-score thresholds by chance and slipped
+  past the placeholder/quality gate GH#1092 built for exactly this class of bad extraction —
+  confirmed against a real production episode (Austin Integrated Water Resource Planning
+  Community Task Force) whose durable artifact was 53k characters of PDF structural syntax and
+  binary noise. Fixed on both sides: the `ImportError` fallback (in both `_extract_pdf` and the
+  parallel `extract_pdf_layout_text`) now returns no text instead of raw bytes, so a genuinely
+  unreadable native PDF falls through to the existing suspicious-native/OCR path like any other
+  bad extraction; `_is_placeholder_text` gained a structural `%PDF-` file-signature guard as a
+  second, independent layer; and `_extract_pdf`'s inner exception handling now also catches
+  `pypdf.errors.PyPdfError` (previously uncaught, so a genuinely malformed PDF skipped the
+  OCR-repair path entirely instead of degrading gracefully like every other bad-PDF case) and, on
+  any of these now-caught exceptions, discards whatever partial text/links a multi-page PDF had
+  already accumulated before the failure rather than returning that truncated prefix — a
+  CodeRabbit catch: a partial prefix that happened to pass the native quality checks on its own
+  would otherwise let a truncated agenda through and skip OCR recovery entirely.
+  `scripts/audit_raw_pdf_agenda_artifacts.py` surveys durably stored artifacts for the same
+  raw-bytes signature so any pre-fix episodes can be found and reset for re-derivation — reading
+  directly from the B2 origin and deduplicated by content-addressed key (never the public,
+  worker-proxied `audio.citymeetings.fyi` domain, which a naive per-episode survey saturates: a
+  full-catalog run resolved 312,821 episode references down to 17,312 unique artifacts). Run
+  against production, it found 67 corrupted objects across 70 episodes, all in Austin, TX
+  (committed as `scripts/fixtures/raw_pdf_agenda_hits_2026-09-13.json`).
+  A storage read failure is tracked separately from a clean "not corrupted" result (the survey's
+  `--json` output is `{"hits": [...], "failed_keys": [...]}`, all progress/diagnostics on stderr
+  so stdout stays valid JSON, and the process exits 3 — distinct from 0/1 — whenever any key
+  couldn't be read, so an incomplete run is never mistaken for a confirmed-clean one).
+  `scripts/reset_raw_pdf_agenda_state.py` + the `Reset raw-PDF-bytes agenda state` workflow clear
+  those 70 records' derived agenda/chapter state from that manifest, re-verifying each against
+  current state first (a record already reprocessed since the survey is left alone) and pushing
+  one source at a time (`--sequential`) since the cohort mixes normal-sized and very large,
+  80-120MB, `episodes.json` files under what would otherwise be one 16-way-concurrent push. The
+  reset acquires its maintenance lease before syncing/re-verifying state (narrowing, though not
+  eliminating — `AgendaTextStage`'s own push does not check this lease, the same limitation
+  `reset_agenda_chapter_state.py` already has for the same fields — the window for a concurrent
+  write to be clobbered) and refuses to plan or apply against an incompletely-synced source.
+
+- **Audio-lane push now actually closes the agenda/chapter maintenance-reset TOCTOU noted just
+  above (`citypods/records.py`, `citypods/statesync.py`, `citypods/run.py`; CodeRabbit review on
+  #1627).** Both `scripts/reset_agenda_chapter_state.py` and `scripts/reset_raw_pdf_agenda_state.py`
+  (which reuses the former's `reset_record`/`reset_agenda_chapter_state` mechanics unchanged)
+  acquire a maintenance lease and write explicit `null` tombstones for
+  `links["agenda_text_artifact_key"]`/`agenda_backup_artifact_key` (and their non-`_key` URL
+  companions) before pushing, so a scoped merge can't resurrect the stale pointer — but the
+  regular Audio workflow's own `lane=audio` push never checked or waited on that lease at all, so
+  a concurrent audio run that had already decided (from an earlier read) to reuse the existing
+  artifact could push its stale, unchanged value straight over either reset tool's fresh
+  tombstone, silently undoing the reset for that episode. Rather than making the continuous,
+  wall-clock-bounded audio pipeline acquire the chapter leases for its whole run (which
+  chapter-agenda/chapter-locator can afford as short, infrequent cron jobs but audio can't,
+  without risking an in-flight run being aborted or a reset starving behind it), the fix works at
+  the data level: `SourcePipeline.fetch_merge` snapshots each uid's own
+  `RESET_GUARDED_AGENDA_LINK_KEYS` (new shared constant, `citypods/records.py`) values as pulled
+  at the *start* of the run, before any stage can touch them, and `merge_preserving_foreign` gains
+  an `agenda_link_baseline` parameter: a push whose local value for one of these keys still equals
+  that snapshot (this run never actually recomputed it) defers to `remote`'s current value when it
+  has since diverged — the reset's tombstone landing mid-run — instead of resurrecting the stale
+  pointer merely because the audio lane "owns" `links`; a run that genuinely (re)derived the key
+  always wins, so un-tombstoning on the very next normal run still works correctly.
+  `scripts/reset_agenda_chapter_state.py` now imports the shared constant instead of a private
+  duplicate, so both reset tools' target field list and this protection can never drift apart. See
+  ARCHITECTURE.md's maintenance-lease section for the full mechanism.
+- **Bounded research/review workflows now survive oversized and stale work (`tournament.py`, shared
+  review resolver).** The tag tournament previously loaded chapter artifacts for the entire
+  append-only catalog before taking its newest bounded sample, so the 46-sample weekly run hit its
+  22-minute step timeout. It now sorts episode metadata first and materializes only enough newest
+  candidates. The shared weekly resolver isolates unreadable, stale, or already-closed children so
+  one H16 durable-state mismatch cannot abort the sweep or prevent batch finalization; ambiguous
+  LLM tag decisions are treated as non-storing outcomes as well.
 - **Diarize RSS memory model re-validated at 5min-8h (`citypods/diarize.py`, `tests/test_diarize.py`).**
   Run #59's `BrokenProcessPool` crash on a 15h outlier raised the question of whether the shipped
   350MB + 650MB/hr formula (only ever measured up to 60min) dangerously underestimates real usage
@@ -504,7 +2122,7 @@ Phase R (Research-Tool Surface)._
   from erasing settled spend and sibling reservations. Existing incorrect balances require an
   operator correction; the fix does not infer historical charges. No pipeline version changes or
   artifact backfill. The configured provider caps and reserves are unchanged.
-  
+
 - **Reproducible Worker deployments and documented shim-token rotation (GH#1328).** All five
   Wrangler action inputs now pin `4.129.0`, with a Renovate npm regex tracker on the weekly
   hygiene cadence and reviewed upgrades. Wrangler is excluded from the output-affecting custom
@@ -636,7 +2254,7 @@ Phase R (Research-Tool Surface)._
   provisional `llm-pending` counts for replayed `JobResult` items or submission errors to eliminate
   double-counting while preserving accurate stage totals. No recipe, artifact, or pipeline
   version changes.
-  
+
 - **Granicus Worker fallback respects slice download caps on truncated probes.**
   `download_verified` in `citypods/granicus_chunked.py` previously treated `max_bytes` solely as a
   remote media cap (`total > max_bytes`), causing truncated media-fetch probes with an 8 MB cap
@@ -1168,7 +2786,7 @@ Phase R (Research-Tool Surface)._
   repair, leave migration incomplete until every canonical read succeeds, and continue reconciling
   independent records; downloads use unique per-call staging files; strict reads still surface
   authentication, configuration, and other non-transient errors.
-  
+
 - **LLM dispatch V2 deferred schema corrections and moments reconciliation.** The standalone
   deferred sweep now registers the `moment-extraction` response contract. It also stages one
   corrected v2 payload and submits it through a durable schema-retry endpoint that clones the
@@ -1531,7 +3149,7 @@ Phase R (Research-Tool Surface)._
   global lock, eliminating race conditions in multi-threaded worker pools where concurrent initial
   invocations caused `ValueError: duplicate or empty structured-output contract`. Incompatible
   schemas still fail closed, rather than silently reusing the wrong response contract.
-  
+
 - **ASR Quality Eval MMS_FA model caching and dependency cascade.** Added
   `scripts/prepare_mms_fa.py` to provide a robust local cache → B2 mirror → upstream Meta CDN
   download cascade for the L2 CTC aligner checkpoint (`model.pt`), eliminating CI failures on
@@ -1543,7 +3161,7 @@ Phase R (Research-Tool Surface)._
   dependency, and preserve its selected model matrix. Added aligner model caching to the `align`
   matrix lane in `.github/workflows/asr.yml`, and updated
   `review/22-dependency-and-reproducibility-policy.md`.
-  
+
 - **Separate per-lane chapter maintenance leases and key-by-key candidate merge.** Separated the
   shared chapter maintenance mutex into independent per-lane R2 CAS objects
   (`maintenance-leases/chapter-agenda.json` for `chapter-agenda.yml` and
@@ -1671,7 +3289,7 @@ Phase R (Research-Tool Surface)._
   `AgendaTextStage` now requires the artifact key for its accepted-document reuse fast path, so a
   missing pointer cannot permanently prevent chapter dispatch. This is a metadata repair only:
   it does not bump the agenda pipeline version or invalidate completed agenda documents globally.
-  
+
 - **`/remedy` command to re-run remediation on an issue that grew new rows.** `audit.yml`
   dispatches `remedy-unexpected-bodies.yml` automatically, but only on the run that *creates* a
   consolidated `unexpected-body` issue — not on a later run that adds or changes rows on one
@@ -1926,7 +3544,7 @@ Phase R (Research-Tool Surface)._
   while scheduled logs expose only request/route/status identifiers and never prompts, API keys, or
   raw provider bodies. This makes future Google/Gemma failures diagnosable without changing the
   asynchronous response contract.
-  
+
 - **LLM pricing is now effective-dated and YAML-driven.** `config/provider_limits.yml` can define
   input/output rates and UTC peak windows per physical route; the compiler carries those periods to
   both the Python scheduler and the dispatch Worker. DeepSeek V4 Flash and Pro include the August 16,
@@ -2115,7 +3733,7 @@ Phase R (Research-Tool Surface)._
   persisted even when selection finds no route, so quota state does not remain on an old day key.
   This changes only ephemeral coordination state (`state/llm_budget.json` and the dispatch Worker
   budget); no durable catalog artifact is invalidated or backfilled.
-  
+
 - **External GPU-worker memory and billing telemetry now match the deployed resource model.** Modal
   settlement uses `Workspace.from_context().billing.report()` instead of the deprecated billing
   helper, with an explicit fallback when the report cannot be queried or has no matching function
@@ -3151,7 +4769,7 @@ Phase R (Research-Tool Surface)._
   feed now composes with its official CivicEngage City Council agenda and minutes archives. The
   auxiliary adapter joins dated archive rows without creating document-only podcast episodes; links
   remain additive and existing CivicMedia media/audio identities are unchanged.
-  
+
 - **Swagit archive pagination and Austin aggregate coverage (R11).** Swagit view fetches now follow
   every advertised archive page instead of only the first 20 rows. Austin retains its dedicated body
   feeds and adds a city-wide all-boards-and-commissions projection; overlapping recordings reconcile

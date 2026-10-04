@@ -13,19 +13,25 @@ from citypods.chapter_artifacts import (
     recipe_hash,
 )
 from citypods.chapter_locator import (
+    LOCATOR_OUTPUT_TOKEN_RESERVE,
+    LOCATOR_ROUTING_VERSION,
     PRODUCTION_LOCATOR_MODEL,
+    PRODUCTION_LOCATOR_MODELS,
     LocatorAgendaItem,
     LocatorUnit,
     build_production_locator_request,
     validate_locator_response,
 )
 from citypods.chapter_titles import (
+    AGENDA_BACKUP_AFTER_ATTEMPTS,
+    AGENDA_BACKUP_MODELS,
     AGENDA_ITEM_EXTRACTOR_CONTRACT,
+    AGENDA_OUTPUT_TOKEN_BUDGET,
     AGENDA_PRODUCTION_MODEL,
     AGENDA_PRODUCTION_MODELS,
     build_production_agenda_item_extraction_request,
     ensure_agenda_item_extractor_contract,
-    validate_agenda_item_extractor_response,
+    recover_agenda_item_extractor_response,
 )
 from citypods.compute.base import InferenceJob, JobResult
 from citypods.compute.llm import TASK_VERSIONS
@@ -33,9 +39,25 @@ from citypods.compute.llm_policy import LLMRequestPolicy
 
 # chapter_locator.py is the single source of truth for the production locator model name.
 LOCATOR_MODEL = PRODUCTION_LOCATOR_MODEL
+LOCATOR_MODELS = PRODUCTION_LOCATOR_MODELS
 # Prompt variant used for all production agenda extraction jobs.
 AGENDA_PROMPT_VERSION = "agenda-flow"
-LOCATOR_PROMPT_VERSION = "locator-v1"
+# THIS STRING FEEDS build_locator_job()'s recipe_hash directly (unlike
+# stages.CHAPTER_LOCATOR_PIPELINE_VERSION, which does not -- see that constant's own comment).
+# Bumped v1 -> v2: every dispatched locator job was missing an explicit max_tokens, silently
+# falling back to LiteLLMBackend's generic 1024-token default instead of the 16384 tokens
+# select_locator_models() already assumes as LOCATOR_OUTPUT_TOKEN_RESERVE when fitting a request
+# into a route's context window (see build_locator_job's own comment). Responses were routinely
+# truncated mid-JSON. Bumping this is what changes the recipe hash so a fresh dispatch cannot be
+# served the same dead-end terminal result a pre-fix job left behind at the Worker -- combined
+# with ChapterBoundaryLocatorStage's finalize-failure state reset (which stops an episode wedged
+# in "pending" on that dead recipe from retrying it forever) and its is_current_locator_artifact
+# reuse check (which compares this value against each completed episode's stored
+# locator_prompt_version before reusing it, so this bump also forces re-extraction of every
+# already-completed locator result, not just currently-stuck work -- mirroring
+# stages.CHAPTER_AGENDA_PIPELINE_VERSION's own backfill story), this is what lets the backlog
+# that accumulated from the max_tokens bug actually drain with the fix applied.
+LOCATOR_PROMPT_VERSION = "locator-baseline-v3"
 
 
 def _locator_cues(display_ref: str | None, evidence_text: str) -> tuple[str, ...]:
@@ -49,6 +71,12 @@ def _locator_cues(display_ref: str | None, evidence_text: str) -> tuple[str, ...
         if normalized:
             values.append(normalized)
     return tuple(dict.fromkeys(values))
+
+
+# The share of a response's items that may be dropped as unverifiable before the whole response
+# is treated as bad output and retried (2026-09-24 eval: 2-7% per affected response).
+MAX_DROPPED_AGENDA_ITEM_SHARE = 0.10
+_DUPLICATE_EVIDENCE_REASON = "duplicate agenda item source evidence"
 
 
 def _response_content(output: Any) -> str:
@@ -71,7 +99,12 @@ def build_agenda_job(
     agenda_text: str,
     agenda_source_hash: str,
     candidate_hints: Sequence[Mapping[str, object]] = (),
+    pipeline_version: str = "",
 ) -> InferenceJob:
+    """``pipeline_version`` should be ``stages.CHAPTER_AGENDA_PIPELINE_VERSION`` in production --
+    folded into the recipe hash so a pipeline-version bump (a validation/post-processing behavior
+    change independent of ``model``) re-queues the catalog exactly like a model change does.
+    """
     request = build_production_agenda_item_extraction_request(
         agenda_text, candidate_hints=candidate_hints
     )
@@ -82,6 +115,7 @@ def build_agenda_job(
         "source_hash": agenda_source_hash,
         "model": AGENDA_PRODUCTION_MODEL,
         "prompt_version": AGENDA_PROMPT_VERSION,
+        "pipeline_version": pipeline_version,
     }
     if candidate_hints:
         recipe_parts["candidate_hints"] = [dict(h) for h in candidate_hints]
@@ -93,8 +127,12 @@ def build_agenda_job(
         inputs={
             "messages": list(request.messages),
             "structured_output": AGENDA_ITEM_EXTRACTOR_CONTRACT,
+            "max_tokens": AGENDA_OUTPUT_TOKEN_BUDGET,
+            "max_tokens_mode": "route_max",
             "llm_policy": LLMRequestPolicy(
                 allowed_models=AGENDA_PRODUCTION_MODELS,
+                backup_models=AGENDA_BACKUP_MODELS,
+                backup_after_attempts=AGENDA_BACKUP_AFTER_ATTEMPTS,
                 purpose="chapter-agenda",
                 # This stage persists its pending recipe and finalizes on a later chapter-lane
                 # pass, so Worker-owned queueing is safer than a runner-side deadline.
@@ -111,25 +149,52 @@ def finalize_agenda_job(
     agenda_text: str,
     agenda_source_hash: str,
     model: str | None = None,
+    pipeline_version: str = "",
 ) -> AgendaCandidatesArtifact:
     """Validate a completed agenda response and build its durable source-backed artifact.
 
     ``model`` defaults to ``result.model`` -- the model the scheduler actually dispatched to, now
     that ``AGENDA_PRODUCTION_MODELS`` (R13) offers more than one same-priority candidate.  Falls
     back to ``AGENDA_PRODUCTION_MODEL`` only for a caller/backend that never set ``result.model``.
+
+    Runs the GH#1078 recovery-shadow layer (``recover_agenda_item_extractor_response``) rather than
+    the strict-only validator: an item whose ``display_ref`` doesn't literally validate but whose
+    evidence is confirmed present in the source text by a source-only search is still a real,
+    grounded agenda item, and one borderline item must not abort the whole episode's extraction.
+    Raises only on ``unrecovered`` items -- genuinely bad output the recovery search could not
+    rescue, preserving today's fail-and-retry-later behavior for those.
     """
     resolved_model = model or result.model or AGENDA_PRODUCTION_MODEL
 
     content = _response_content(result.output)
-    items = validate_agenda_item_extractor_response(content, agenda_text=agenda_text)
+    assessment = recover_agenda_item_extractor_response(content, agenda_text=agenda_text)
+    # A repeated item adds nothing, so it is dropped rather than failing the response. Any other
+    # unrecoverable item is dropped only while such items stay a small share of the response: one
+    # bad quote no longer discards (and re-spends a scarce call on) an otherwise grounded agenda,
+    # but a response that is mostly ungrounded still fails and is retried. Nothing unverified is
+    # ever kept -- every surviving item passed the same evidence checks as before.
+    duplicates = [
+        item for item in assessment.unrecovered if item.reason == _DUPLICATE_EVIDENCE_REASON
+    ]
+    dropped = [item for item in assessment.unrecovered if item.reason != _DUPLICATE_EVIDENCE_REASON]
+    # Repeats are excluded from the denominator: padding a reply with copies of one good item must
+    # not let an ungrounded item slip under the share.
+    total_items = (
+        len(assessment.items)
+        + len(assessment.recovered)
+        + len(assessment.unrecovered)
+        - len(duplicates)
+    )
+    if dropped and len(dropped) > MAX_DROPPED_AGENDA_ITEM_SHARE * total_items:
+        raise ValueError(dropped[0].reason)
     lines = agenda_text.splitlines()
     candidates: list[AgendaCandidate] = []
-    for index, item in enumerate(items):
+    for item in assessment.items:
         evidence_text = "\n".join(lines[item.line_start - 1 : item.line_end]).strip()
         cues = _locator_cues(item.display_ref, evidence_text)
         candidates.append(
             AgendaCandidate(
-                index=index,
+                index=len(candidates),
                 title=item.title,
                 kind="substantive_action",
                 line_start=item.line_start,
@@ -138,6 +203,26 @@ def finalize_agenda_job(
                 locator_cues=cues,
                 display_ref=item.display_ref,
                 evidence_quote=item.evidence_quote,
+                source="strict",
+            )
+        )
+    for recovered in assessment.recovered:
+        # source_evidence is the verbatim joined source window -- safe to use as evidence_text
+        # unlike evidence_quote, which may be a discontinuous token-subsequence match.
+        evidence_text = recovered.source_evidence.strip()
+        cues = _locator_cues(recovered.display_ref, evidence_text)
+        candidates.append(
+            AgendaCandidate(
+                index=len(candidates),
+                title=recovered.title,
+                kind="substantive_action",
+                line_start=recovered.line_start,
+                line_end=recovered.line_end,
+                evidence_text=evidence_text,
+                locator_cues=cues,
+                display_ref=recovered.display_ref,
+                evidence_quote=recovered.evidence_quote,
+                source="recovery",
             )
         )
     return AgendaCandidatesArtifact(
@@ -147,7 +232,14 @@ def finalize_agenda_job(
         prompt_version=AGENDA_PROMPT_VERSION,
         recipe=result.recipe_hash,
         items=tuple(candidates),
-        diagnostics={"source_line_count": len(lines)},
+        diagnostics={
+            "source_line_count": len(lines),
+            "recovered_item_count": len(assessment.recovered),
+            "duplicate_item_count": len(duplicates),
+            "dropped_item_count": len(dropped),
+            "dropped_item_reasons": sorted({item.reason for item in dropped}),
+        },
+        pipeline_version=pipeline_version,
     )
 
 
@@ -158,6 +250,7 @@ def build_locator_job(
     transcript_hash: str,
     units: Sequence[LocatorUnit],
     unit_annotations: Mapping[str, Mapping[str, Any]] | None = None,
+    retry_hint: str | None = None,
 ) -> InferenceJob:
     locator_items = [
         LocatorAgendaItem(
@@ -171,8 +264,9 @@ def build_locator_job(
         if item.status == "accepted"
     ]
     request = build_production_locator_request(
-        locator_items, units, unit_annotations=unit_annotations
+        locator_items, units, unit_annotations=unit_annotations, retry_hint=retry_hint
     )
+    messages = list(request.messages)
     hint_mode = "none" if not unit_annotations else "research"
     recipe_parts: dict[str, Any] = {
         "task": "agenda-chapter-locate",
@@ -180,9 +274,11 @@ def build_locator_job(
         "episode_uid": episode_uid,
         "agenda_recipe": agenda.recipe,
         "transcript_hash": transcript_hash,
-        "model": LOCATOR_MODEL,
+        "model": request.model,
         "prompt_version": LOCATOR_PROMPT_VERSION,
+        "routing_version": LOCATOR_ROUTING_VERSION,
         "hint_mode": hint_mode,
+        "retry_hint": retry_hint,
     }
     if unit_annotations:
         recipe_parts["unit_annotations"] = {k: dict(v) for k, v in unit_annotations.items()}
@@ -194,10 +290,15 @@ def build_locator_job(
         task="agenda-chapter-locate",
         recipe_hash=recipe,
         inputs={
-            "messages": list(request.messages),
+            "messages": messages,
             "structured_output": LOCATOR_CONTRACT,
+            # Match the output reserve select_locator_models() already assumes when it fits a
+            # request into a route's context window; the bare LiteLLMBackend default (1024) starved
+            # multi-anchor responses mid-JSON well before that reserve was ever exercised.
+            "max_tokens": LOCATOR_OUTPUT_TOKEN_RESERVE,
+            "max_tokens_mode": "route_max",
             "llm_policy": LLMRequestPolicy(
-                allowed_models=(LOCATOR_MODEL,),
+                allowed_models=request.models,
                 purpose="chapter-locator",
                 queue_only=True,
             ),
@@ -241,7 +342,7 @@ def finalize_locator_job(
         episode_uid=episode_uid,
         agenda_recipe=agenda.recipe,
         transcript_hash=transcript_hash,
-        model=LOCATOR_MODEL,
+        model=result.model or LOCATOR_MODEL,
         prompt_version=LOCATOR_PROMPT_VERSION,
         recipe=result.recipe_hash,
         anchors=tuple(normalized),
@@ -252,6 +353,7 @@ def finalize_locator_job(
 __all__ = [
     "AGENDA_PROMPT_VERSION",
     "LOCATOR_MODEL",
+    "LOCATOR_MODELS",
     "LOCATOR_PROMPT_VERSION",
     "build_agenda_job",
     "build_locator_job",

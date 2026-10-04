@@ -1,0 +1,16 @@
+# Added by automated unexpected-body remediation.
+# Rationale: Term Limits Advisory Committee is a clearly recurring, distinct advisory body with 4 observed meetings across July 2020, meeting the threshold of at least three observed meetings.
+slug: arlington-tx-term-limits-advisory-committee
+city: arlington-tx
+provider: granicus
+source:
+  feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+  body: Term Limits Advisory Committee
+lifecycle:
+  status: retired
+  reason: latest observed meeting was 2020-07-30 (2231 days ago)
+podcast_title: 'Arlington: Term Limits Advisory Committee'
+podcast_author: City of Arlington, TX
+podcast_email: ''
+podcast_description: Meetings of the Term Limits Advisory Committee in Arlington,
+  TX.

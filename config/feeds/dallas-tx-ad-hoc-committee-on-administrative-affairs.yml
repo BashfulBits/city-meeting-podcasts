@@ -4,6 +4,13 @@ provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body: "Ad Hoc Committee on Administrative Affairs"
+  body_any:
+    - "Ad Hoc Administrative Affairs Committee"
+    - "Ad Hoc Judicial Nomination Committee"
+    - "Ad Hoc Committee on COVID-19 Human and Social Recovery and Assistance: Dr. Perl"
+  body_includes:
+    - provider_guid: "202324"
+      body: "Administrative Ad Hoc Committee"
 podcast_title: "Dallas: Ad Hoc Committee on Administrative Affairs"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile config/provider_limits.yml into workers/llm-dispatch-proxy/src/dispatch_limits.json.
+"""Compile config/provider_limits.yml into the v2 Worker and Python route catalogs.
 
 Statically parses provider accounts, models, and rate limits into pre-indexed lookup maps for
 sub-10ms Cloudflare Worker execution. The default invocation (no flags) touches only the local
@@ -29,16 +29,18 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INPUT_YAML = REPO_ROOT / "config" / "provider_limits.yml"
-OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-proxy" / "src" / "dispatch_limits.json"
-# Same catalog shape as OUTPUT_JSON, for review/44's v2 executor Worker (Unit 4's
-# routeHasCapacityFor/routesEligibleFor need the same physical route/provider data v1 has). Kept
-# as a second write of the same compiled catalog, not a cross-Worker-directory import, so v2 has
-# no build/deploy dependency on v1's directory continuing to exist past its Phase 3 retirement.
 V2_OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "dispatch_limits.json"
 PYTHON_OUTPUT_JSON = REPO_ROOT / "citypods" / "compute" / "llm_routes.json"
 
-_STRUCTURED_OUTPUT_FORMATS = frozenset({"json_schema", "json_object"})
-_STRUCTURED_OUTPUT_HANDLERS = frozenset({"instructor", "native"})
+# review/48 R10: the closed set of structured-output methods. Python's direct path and the v2
+# Worker each implement exactly these four shapes (asserted against one shared fixture), so a name
+# outside this set is a compile error rather than a request shape nobody implements.
+_STRUCTURED_OUTPUT_METHODS = frozenset(
+    {"json_schema", "json_schema_relaxed", "json_object", "prompt_only"}
+)
+_STRUCTURED_OUTPUT_FORMATS = frozenset({"json_schema", "json_object", "none"})
+# The shape every chat endpoint accepts: no response_format, schema in the prompt.
+_FALLBACK_STRUCTURED_OUTPUT_METHOD = "prompt_only"
 
 
 def _json_default(value: object) -> str:
@@ -181,52 +183,158 @@ def _direct_model(provider: str, upstream_model: str) -> str:
     compiled ``api_base`` keeps those routes usable directly without teaching the scheduler
     provider-specific URL logic.
     """
-    if provider in {"airforce", "kilo", "opencode", "siliconflow", "nvidia"}:
+    if provider in {"airforce", "kilo", "opencode", "siliconflow", "nvidia", "orcarouter"}:
         return f"openai/{upstream_model}"
     return f"{provider}/{upstream_model}"
 
 
-def _normalize_structured_output_profiles(raw_profiles: Any) -> dict[str, dict[str, Any]]:
-    """Validate and normalize the named structured-output capability profiles."""
-    if not isinstance(raw_profiles, dict) or not raw_profiles:
-        raise ValueError("structured_output_profiles must be a non-empty mapping")
-    profiles: dict[str, dict[str, Any]] = {}
-    for name, raw_profile in raw_profiles.items():
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError(f"structured output profile has an invalid name: {name!r}")
-        if not isinstance(raw_profile, dict):
-            raise ValueError(f"structured output profile {name!r} must be a mapping")
-        response_format = raw_profile.get("response_format", "json_schema")
+def _normalize_structured_output_methods(raw_methods: Any) -> dict[str, dict[str, Any]]:
+    """Validate the structured-output method table against the closed set of methods."""
+    if not isinstance(raw_methods, dict) or set(raw_methods) != _STRUCTURED_OUTPUT_METHODS:
+        raise ValueError(
+            "structured_output_methods must define exactly "
+            f"{sorted(_STRUCTURED_OUTPUT_METHODS)} (review/48 R10)"
+        )
+    methods: dict[str, dict[str, Any]] = {}
+    for name, raw_method in raw_methods.items():
+        if not isinstance(raw_method, dict):
+            raise ValueError(f"structured output method {name!r} must be a mapping")
+        response_format = raw_method.get("response_format")
         if response_format not in _STRUCTURED_OUTPUT_FORMATS:
             raise ValueError(
-                f"structured output profile {name!r} has unsupported response_format "
+                f"structured output method {name!r} has unsupported response_format "
                 f"{response_format!r}"
             )
-        direct_handler = raw_profile.get("direct_handler", "instructor")
-        if direct_handler not in _STRUCTURED_OUTPUT_HANDLERS:
-            raise ValueError(
-                f"structured output profile {name!r} has unsupported direct_handler "
-                f"{direct_handler!r}"
-            )
-        strip_schema_keys = raw_profile.get("strip_schema_keys", [])
+        strip_schema_keys = raw_method.get("strip_schema_keys", [])
         if not isinstance(strip_schema_keys, list) or any(
             not isinstance(key, str) or not key for key in strip_schema_keys
         ):
             raise ValueError(
-                f"structured output profile {name!r} strip_schema_keys must be a list of strings"
+                f"structured output method {name!r} strip_schema_keys must be a list of strings"
             )
-        include_schema_in_prompt = raw_profile.get("include_schema_in_prompt", False)
+        include_schema_in_prompt = raw_method.get("include_schema_in_prompt", False)
         if not isinstance(include_schema_in_prompt, bool):
             raise ValueError(
-                f"structured output profile {name!r} include_schema_in_prompt must be boolean"
+                f"structured output method {name!r} include_schema_in_prompt must be boolean"
             )
-        profiles[name] = {
+        if response_format != "json_schema" and not include_schema_in_prompt:
+            # Without a json_schema response_format the prompt is the only place the schema can
+            # reach the model.
+            raise ValueError(
+                f"structured output method {name!r} must include the schema in the prompt"
+            )
+        methods[name] = {
             "response_format": response_format,
-            "direct_handler": direct_handler,
             "include_schema_in_prompt": include_schema_in_prompt,
             "strip_schema_keys": list(dict.fromkeys(strip_schema_keys)),
         }
-    return profiles
+    return methods
+
+
+# Provider-specific request parameters a route may always send. Deliberately small: each key is
+# a documented provider control (thinking/reasoning), never a way to override what the pipeline
+# sends (model, messages, response_format, max_tokens ...), which the Worker owns.
+_ALLOWED_REQUEST_PARAMS = frozenset({"chat_template_kwargs", "reasoning_effort"})
+
+
+# Reasoning levels a lane may request (llm_lanes[...].reasoning); a route maps each level it
+# supports to provider-specific request parameters in `reasoning_controls`.
+_REASONING_LEVELS = frozenset({"off", "low"})
+
+
+def _validate_reasoning_controls(route: dict[str, Any]) -> None:
+    controls = route.get("reasoning_controls")
+    if controls is None:
+        return
+    if not isinstance(controls, dict) or not controls:
+        raise ValueError(
+            f"route {route['route_id']!r} reasoning_controls must be a non-empty mapping"
+        )
+    for level, params in controls.items():
+        if level not in _REASONING_LEVELS:
+            raise ValueError(
+                f"route {route['route_id']!r} reasoning_controls has unknown level {level!r}; "
+                f'allowed: {sorted(_REASONING_LEVELS)} (quote "off": bare off is YAML false)'
+            )
+        # A null or empty level would compile to "send nothing", silently ignoring the lane.
+        if not isinstance(params, dict) or not params:
+            raise ValueError(
+                f"route {route['route_id']!r} reasoning_controls[{level!r}] must be a non-empty "
+                "mapping of provider parameters"
+            )
+        _validate_request_params(
+            {"route_id": f"{route['route_id']}.{level}", "request_params": params}
+        )
+
+
+def _validate_request_params(route: dict[str, Any]) -> None:
+    params = route.get("request_params")
+    if params is None:
+        return
+    if not isinstance(params, dict) or not params:
+        raise ValueError(f"route {route['route_id']!r} request_params must be a non-empty mapping")
+    unknown = set(params) - _ALLOWED_REQUEST_PARAMS
+    if unknown:
+        raise ValueError(
+            f"route {route['route_id']!r} request_params has unsupported keys {sorted(unknown)}; "
+            f"allowed: {sorted(_ALLOWED_REQUEST_PARAMS)}"
+        )
+    json.dumps(params)  # must be plain JSON
+
+
+def _resolve_structured_output_methods(
+    routes: list[dict[str, Any]], providers: dict[str, Any]
+) -> dict[str, tuple[str, str, str | None]]:
+    """Resolve every route's method as ``route_id -> (method, source, verified_on)``.
+
+    Support is a property of the provider *serving* a model, so a route's own verified method is
+    authoritative. An unverified route falls back to a method verified for the same model on
+    another route, then its provider's method, then ``prompt_only`` (review/48 R10).
+    """
+    for scope, cfg in [("route", r) for r in routes] + [
+        ("provider", c) for c in providers.values()
+    ]:
+        if "structured_output_profile" in cfg:
+            raise ValueError(
+                f"{scope} uses retired key structured_output_profile; use structured_output_method"
+            )
+    verified_by_model: dict[str, set[str]] = {}
+    for route in routes:
+        method = route.get("structured_output_method")
+        verified_on = route.get("structured_output_verified_on")
+        if method is not None and method not in _STRUCTURED_OUTPUT_METHODS:
+            raise ValueError(
+                f"route {route['route_id']!r} has unknown structured_output_method {method!r}"
+            )
+        if verified_on is not None and method is None:
+            raise ValueError(
+                f"route {route['route_id']!r} has structured_output_verified_on without a method"
+            )
+        if method is not None and verified_on is not None:
+            verified_by_model.setdefault(route["model"], set()).add(method)
+    resolved: dict[str, tuple[str, str, str | None]] = {}
+    for route in routes:
+        route_id = route["route_id"]
+        own = route.get("structured_output_method")
+        verified_on = route.get("structured_output_verified_on")
+        provider_method = (providers.get(route.get("provider")) or {}).get(
+            "structured_output_method"
+        )
+        if provider_method is not None and provider_method not in _STRUCTURED_OUTPUT_METHODS:
+            raise ValueError(
+                f"provider {route.get('provider')!r} has unknown structured_output_method "
+                f"{provider_method!r}"
+            )
+        model_methods = verified_by_model.get(route["model"], set())
+        if own is not None:
+            resolved[route_id] = (own, "route", str(verified_on) if verified_on else None)
+        elif len(model_methods) == 1:
+            resolved[route_id] = (next(iter(model_methods)), "model", None)
+        elif provider_method is not None:
+            resolved[route_id] = (provider_method, "provider", None)
+        else:
+            resolved[route_id] = (_FALLBACK_STRUCTURED_OUTPUT_METHOD, "default", None)
+    return resolved
 
 
 def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
@@ -259,7 +367,7 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
         route = dict(source)
         route.update(
             {
-                "transports": ["direct", "llm-dispatch"],
+                "transports": ["direct"],
                 "direct_model": _direct_model(
                     str(source.get("provider", "")), str(source.get("upstream_model", ""))
                 ),
@@ -297,11 +405,17 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
 
 _WORKER_ROUTE_FIELDS = (
     "route_id",
+    # The route's PRIMARY logical model. A route listed in several pools via `also_serves`
+    # appears in several model_routes_map entries, so the Worker must not infer its identity from
+    # whichever pool it happens to find first (routes.js modelForRouteId).
+    "model",
     "provider",
     "upstream_model",
     "input_context_limit",
     "output_context_limit",
     "hard_input_ceiling",
+    "hard_input_ceiling_tolerance",
+    "input_token_ratio",
     "account_id",
     "rpm",
     "rpd",
@@ -313,12 +427,25 @@ _WORKER_ROUTE_FIELDS = (
     "output_per_token",
     "pricing",
     "reset_timezone",
-    # Read by the Worker's upstreamRequestForRoute to relax a route's outbound structured-output
-    # schema. Every other structured_output_* field is Python-direct-dispatch-only and stays out
-    # of this list, which whitelists what the Worker receives per route -- but each entry lands
-    # under its own field name in the compiled catalog, so order here does not matter and this list
-    # does not need to match anything on the JS side positionally.
+    # Rate probe characterization measurements (PR-5 / Initiative 20).
+    "observed_on",
+    "observed_rpm",
+    "observed_burst",
+    "observed_input_ceiling",
+    "observed_recovery_seconds",
+    "retry_after_trustworthy",
+    "upstream_429_default",
+    # Read by the Worker's upstreamRequestForRoute (gateway.js) to shape a schema-only structured
+    # job for this route (review/48 R10). Each entry lands under its own field name in the
+    # compiled catalog, so order here does not matter.
+    "structured_output_method",
+    "structured_output_response_format",
+    "structured_output_include_schema_in_prompt",
     "structured_output_schema_strip_keys",
+    # Merged into the provider request by gateway.js's upstreamRequestForRoute.
+    "request_params",
+    # How this route expresses a reasoning level a lane asks for (gateway.js applies it).
+    "reasoning_controls",
 )
 
 _WORKER_PROVIDER_FIELDS = (
@@ -615,6 +742,38 @@ def _validated_routes(
         model_routes_map.setdefault(c_model, []).append(r_id)
         register_alias(source_model, c_model, index)
 
+    # `also_serves`: one physical route may belong to more than one logical model pool. The route
+    # keeps a single route_id -- so a single set of rpm/rpd/tpm counters, matching the single
+    # upstream quota -- and is appended to each listed pool after its primary `model` pool. Used
+    # when a provider serves one upstream model under several logical names (NVIDIA's
+    # deepseek-v4.1-flash replacing both retired v4-flash-0731 and v4-pro-0813) without making
+    # those names aliases of each other, which would also pull every other route of the primary
+    # pool into them.
+    for route in normalized_routes:
+        extra = route.get("also_serves")
+        if extra is None:
+            continue
+        if not isinstance(extra, list) or not all(
+            isinstance(model, str) and model.strip() for model in extra
+        ):
+            raise ValueError(
+                f"route {route['route_id']!r} has an invalid also_serves: {extra!r} "
+                "(expected a list of model names)"
+            )
+        if len(set(extra)) != len(extra) or route["model"] in extra:
+            raise ValueError(
+                f"route {route['route_id']!r} also_serves must list distinct models other than "
+                f"its own model {route['model']!r}"
+            )
+        for model in extra:
+            if model in model_aliases:
+                raise ValueError(
+                    f"route {route['route_id']!r} also_serves {model!r}, which is an alias of "
+                    f"{model_aliases[model]!r}; name the canonical pool instead"
+                )
+            model_routes_map.setdefault(model, []).append(route["route_id"])
+        route["also_serves"] = list(extra)
+
     canonical_models = set(model_routes_map)
     conflicts = sorted(alias for alias in model_aliases if alias in canonical_models)
     if conflicts:
@@ -767,8 +926,8 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     )
 
     routes = raw.get("routes", [])
-    structured_output_profiles = _normalize_structured_output_profiles(
-        raw.get("structured_output_profiles")
+    structured_output_methods = _normalize_structured_output_methods(
+        raw.get("structured_output_methods")
     )
     normalized_routes, routes_by_id, model_routes_map, model_aliases = _validated_routes(routes)
     model_routing = _validated_model_routing(
@@ -776,6 +935,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
         model_aliases=model_aliases,
         canonical_models=set(model_routes_map),
     )
+    resolved_methods = _resolve_structured_output_methods(normalized_routes, providers)
     for route in normalized_routes:
         _validate_pricing_windows(route)
         if split_cap_multiplier != 1.0:
@@ -820,23 +980,164 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"({route['input_context_limit']}); it can never bind and should be removed"
                 )
             route["hard_input_ceiling"] = int(hard_ceiling)
-        profile_name = route.get(
-            "structured_output_profile",
-            provider_cfg.get("structured_output_profile", "standard_json_schema"),
-        )
-        profile = structured_output_profiles.get(profile_name)
-        if profile is None:
-            raise ValueError(
-                f"route {route.get('route_id', route.get('model'))!r} references unknown "
-                f"structured_output_profile {profile_name!r}"
-            )
+        # Optional fraction over `hard_input_ceiling` the Worker may still try when a claim finds
+        # nothing else to dispatch. Only for a ceiling authored with known slack below the
+        # provider's real limit: a provider input-limit rejection stands the whole route down.
+        tolerance = route.get("hard_input_ceiling_tolerance")
+        if tolerance is not None:
+            if (
+                isinstance(tolerance, bool)
+                or not isinstance(tolerance, (int, float))
+                or not math.isfinite(tolerance)
+                or not 0 <= tolerance <= 0.5
+            ):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"hard_input_ceiling_tolerance: {tolerance!r} (expected 0 to 0.5)"
+                )
+            if hard_ceiling is None:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} sets "
+                    "hard_input_ceiling_tolerance without a hard_input_ceiling"
+                )
+            route["hard_input_ceiling_tolerance"] = float(tolerance)
+        # Provider tokens per estimate unit (`estimate_tokens`' chars/4). Our estimate is one
+        # tokenizer-agnostic heuristic; each model family's real tokenizer diverges from it by a
+        # measured, model-specific ratio (2026-09-23, 1,727 paired B2 payload/result samples:
+        # Gemma p95 1.16, Gemini 3.5 Flash Lite p95 2.15). Every size and pacing comparison
+        # against this route's real limits multiplies the raw estimate by this ratio first, in
+        # both the Python producers and the Worker. Absent means 1.0, today's behavior.
+        ratio = route.get("input_token_ratio")
+        if ratio is not None:
+            if (
+                isinstance(ratio, bool)
+                or not isinstance(ratio, (int, float))
+                or not math.isfinite(ratio)
+                or not 0.25 <= ratio <= 8.0
+            ):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"input_token_ratio: {ratio!r} (expected a number from 0.25 to 8.0)"
+                )
+            route["input_token_ratio"] = float(ratio)
+        # Rate probe characterization measurements (PR-5 / Initiative 20).
+        obs_ceil = route.get("observed_input_ceiling")
+        if obs_ceil is not None:
+            if (
+                isinstance(obs_ceil, bool)
+                or not isinstance(obs_ceil, (int, float))
+                or (obs_ceil < 1)
+            ):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"observed_input_ceiling: {obs_ceil!r}"
+                )
+            if obs_ceil > route["input_context_limit"]:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has "
+                    f"observed_input_ceiling ({obs_ceil}) above its own input_context_limit "
+                    f"({route['input_context_limit']})"
+                )
+            route["observed_input_ceiling"] = int(obs_ceil)
+            # Deliberately NOT promoted to `hard_input_ceiling`. An observation is evidence; a
+            # hard ceiling is enforcement that makes a route permanently unserviceable for any
+            # larger job (pacing.js's earliestSafeStart returns null, not "not yet"). Auto-promoting
+            # the two meant a single bad probe run silently blocked five routes on 2026-09-09 --
+            # including moonshotai/kimi-k3, the overflow route added specifically for jobs too
+            # large for Gemini, which live-tested fine at 17,864 tokens against a recorded ceiling
+            # of 1,000. review/45 §20.8 is explicit that observed values reach enforcement only
+            # through a human-reviewed PR; promote by authoring `hard_input_ceiling` yourself.
+
+        obs_rpm = route.get("observed_rpm")
+        if obs_rpm is not None:
+            if isinstance(obs_rpm, bool) or not isinstance(obs_rpm, (int, float)) or obs_rpm <= 0:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"observed_rpm: {obs_rpm!r}"
+                )
+            route["observed_rpm"] = float(obs_rpm)
+            # Consumed in ONE direction only: it may lower the effective `rpm`, never raise it.
+            #
+            # This is deliberately asymmetric, and the asymmetry is the whole safety argument.
+            # Clamping DOWN means "the provider throttles us harder than we configured" -- acting
+            # on it prevents 429s, and its worst case is a route that runs slower than it could.
+            # Raising would mean betting a route can absorb more than its authored limit on the
+            # strength of one probe run, whose worst case is a sustained overdrive into throttling
+            # or a ban. Given a bad probe run had already turned `observed_input_ceiling` into a
+            # total route block on 2026-09-09, an observation gets to make things safer on its own
+            # and must go through a human to make them faster.
+            #
+            # No `max(1.0, ...)` floor (CodeRabbit, 2026-09-13; an earlier version of this
+            # comment justified one as "no measurement may ever drive a limit to 0, because 0 is
+            # this repository's paused convention"): the validation above already rejects
+            # `obs_rpm <= 0` outright, so `route["observed_rpm"]` here is always strictly
+            # positive -- there is no path through which this assignment could produce a 0. A
+            # floor of 1.0 instead silently RAISED a genuinely fractional observation below 1.0
+            # (e.g. declared 0.5, observed 0.2 -- both legitimate; both schedulers pace
+            # fractional rpm correctly) back up by 5x, which is exactly the direction this
+            # one-way clamp exists to forbid.
+            declared_rpm = route.get("rpm")
+            if declared_rpm is not None and route["observed_rpm"] < declared_rpm:
+                route["rpm"] = route["observed_rpm"]
+
+        obs_burst = route.get("observed_burst")
+        if obs_burst is not None:
+            if isinstance(obs_burst, bool) or not isinstance(obs_burst, int) or obs_burst < 0:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"observed_burst: {obs_burst!r}"
+                )
+            route["observed_burst"] = int(obs_burst)
+
+        obs_rec = route.get("observed_recovery_seconds")
+        if obs_rec is not None:
+            if isinstance(obs_rec, bool) or not isinstance(obs_rec, (int, float)) or obs_rec <= 0:
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"observed_recovery_seconds: {obs_rec!r}"
+                )
+            route["observed_recovery_seconds"] = float(obs_rec)
+
+        ra_trust = route.get("retry_after_trustworthy")
+        if ra_trust is not None:
+            if not isinstance(ra_trust, bool):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has an invalid "
+                    f"retry_after_trustworthy: {ra_trust!r}"
+                )
+            route["retry_after_trustworthy"] = bool(ra_trust)
+
+        up_default = route.get("upstream_429_default")
+        if up_default is not None:
+            if up_default not in (
+                "upstream_capacity",
+                "gateway_limit",
+                "own_rpm",
+                "own_tpm",
+                "own_rpd",
+                "unknown_429",
+            ):
+                raise ValueError(
+                    f"route {route.get('route_id', route.get('model'))!r} has unknown "
+                    f"upstream_429_default: {up_default!r}"
+                )
+            route["upstream_429_default"] = str(up_default)
+
+        obs_on = route.get("observed_on")
+        if obs_on is not None:
+            route["observed_on"] = str(obs_on)
+        _validate_request_params(route)
+        _validate_reasoning_controls(route)
+        method_name, method_source, verified_on = resolved_methods[route["route_id"]]
+        method = structured_output_methods[method_name]
         route.update(
             {
-                "structured_output_profile": profile_name,
-                "structured_output_response_format": profile["response_format"],
-                "structured_output_direct_handler": profile["direct_handler"],
-                "structured_output_include_schema_in_prompt": profile["include_schema_in_prompt"],
-                "structured_output_schema_strip_keys": profile["strip_schema_keys"],
+                "structured_output_method": method_name,
+                "structured_output_method_source": method_source,
+                "structured_output_verified_on": verified_on,
+                "structured_output_response_format": method["response_format"],
+                "structured_output_include_schema_in_prompt": method["include_schema_in_prompt"],
+                "structured_output_schema_strip_keys": method["strip_schema_keys"],
             }
         )
         if provider_cfg.get("ai_gateway_max_attempts") is not None:
@@ -853,7 +1154,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
             "split_cap_multiplier": split_cap_multiplier,
         },
         "providers": providers,
-        "structured_output_profiles": structured_output_profiles,
+        "structured_output_methods": structured_output_methods,
         "routes": normalized_routes,
         "routes_by_id": routes_by_id,
         "model_routes_map": model_routes_map,
@@ -884,20 +1185,16 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     compiled = compile_limits(discover=args.discover)
     worker_catalog = _worker_catalog(compiled)
-    OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
-    with OUTPUT_JSON.open("w", encoding="utf-8") as f:
-        json.dump(worker_catalog, f, indent=2, default=_json_default)
     V2_OUTPUT_JSON.parent.mkdir(parents=True, exist_ok=True)
     with V2_OUTPUT_JSON.open("w", encoding="utf-8") as f:
         json.dump(worker_catalog, f, indent=2, default=_json_default)
     with PYTHON_OUTPUT_JSON.open("w", encoding="utf-8") as f:
         json.dump(_python_routes(compiled), f, indent=2, default=_json_default)
-    rel_out = OUTPUT_JSON.relative_to(REPO_ROOT)
     rel_v2_out = V2_OUTPUT_JSON.relative_to(REPO_ROOT)
     print(
         f"Successfully compiled {compiled['_metadata']['routes_count']} routes "
-        f"across {compiled['_metadata']['providers_count']} providers to {rel_out}, "
-        f"{rel_v2_out}, and {PYTHON_OUTPUT_JSON.relative_to(REPO_ROOT)}"
+        f"across {compiled['_metadata']['providers_count']} providers to {rel_v2_out} and "
+        f"{PYTHON_OUTPUT_JSON.relative_to(REPO_ROOT)}"
     )
 
 

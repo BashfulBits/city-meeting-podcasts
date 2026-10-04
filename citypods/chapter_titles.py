@@ -18,22 +18,50 @@ from citypods.agenda_text import AgendaTitleCandidate, agenda_title_similarity
 from citypods.chapter_locator import select_locator_models
 from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import estimate_tokens
+from citypods.compute.structured import (
+    parse_structured_json,
+    register_response_model,
+    response_model,
+)
 
 AGENDA_ITEM_EXTRACTOR_CONTRACT = "agenda-chapter-item-extract"
 TITLE_EQUIVALENCE_CONTRACT = "agenda-chapter-title-equivalence"
 
 # Resolved from config/site_config.yml's `llm_lanes["chapter-agenda"]` rather than hard-coded, so
-# every dispatching lane's route choice is visible in one place (review/44 Phase 4). Pinned
-# strictly to Mistral Medium for high-fidelity agenda chapter extraction.
+# every dispatching lane's route choice is visible in one place (review/44 Phase 4). Preferred
+# model: NVIDIA Nemotron 3 Ultra (free); see the lane's own comment in site_config.yml for the
+# benchmark this is based on and why Mistral Medium was retired.
 #
-# THESE STRINGS ARE PART OF THE RECIPE HASH (see `stages.py`'s `chapter_agenda` recipe). Changing
-# the configured model therefore re-queues every agenda artifact in the catalog. That is a
-# deliberate backfill, not a config tweak: per AGENTS.md, a change here must state its backfill
-# story in the PR and CHANGELOG. `tests/test_llm_lanes.py` pins the current values so an
-# accidental edit fails there rather than quietly rebuilding weeks of work.
+# THESE STRINGS ARE PART OF THE RECIPE HASH (see `stages.py`'s `chapter_agenda` recipe), and
+# `AgendaChapterCandidatesStage.process()` also compares `AGENDA_PRODUCTION_MODEL` and
+# `CHAPTER_AGENDA_PIPELINE_VERSION` against each completed episode's stored artifact before
+# reusing it -- so changing either re-queues every agenda artifact in the catalog, gradually,
+# bounded by the lane's own `max_dispatches_per_run`/daily budget (not instantly). A `"pending"`
+# episode whose in-flight job names a model no longer in {`AGENDA_PRODUCTION_MODELS`,
+# `AGENDA_BACKUP_MODELS`} is separately retired and re-dispatched fresh (see `_cancel_chapter_
+# fallbacks`'s use in `AgendaChapterCandidatesStage.process()`), rather than left deferring to a
+# dead/blocked job forever. This is a deliberate backfill, not a config tweak: per AGENTS.md, a
+# change here must state its backfill story in the PR and CHANGELOG. `tests/test_llm_lanes.py`
+# pins the current values so an accidental edit fails there rather than quietly rebuilding weeks
+# of work.
 _AGENDA_LANE = lane_for("chapter-agenda")
 AGENDA_PRODUCTION_MODEL = _AGENDA_LANE.primary_model
 AGENDA_PRODUCTION_MODELS = _AGENDA_LANE.models
+AGENDA_BACKUP_MODELS = _AGENDA_LANE.backup_models
+AGENDA_BACKUP_AFTER_ATTEMPTS = _AGENDA_LANE.backup_after_attempts
+
+# The 30-episode benchmark that qualified Nemotron as AGENDA_PRODUCTION_MODEL (see the lane's own
+# comment in site_config.yml) ran at max_tokens=32768 to get 97% valid JSON; every primary/backup
+# route in AGENDA_PRODUCTION_MODELS/AGENDA_BACKUP_MODELS has an output_context_limit well above
+# this. Without an explicit budget here, build_agenda_job() fell through to LiteLLMBackend's
+# generic DEFAULT_OUTPUT_TOKEN_MARGIN (1024) -- fine for a short classification call, but nowhere
+# near enough for a multi-item agenda extraction, so most responses were cut off mid-JSON and
+# failed structured-output parsing (see the recovery-shadow layer this feeds in chapter_jobs.py).
+# The SCHEDULING RESERVATION for one agenda job, not a cap on the answer: the job is sent with
+# ``max_tokens_mode: "route_max"``, so the route's own output limit (bounded by
+# MAX_ROUTE_OUTPUT_TOKENS) is what reaches the provider. 16,384 covers the observed p90
+# (Nemotron ~12-13.5k output tokens, AI Gateway 2026-09-25) without over-reserving TPM.
+AGENDA_OUTPUT_TOKEN_BUDGET = 16_384
 
 _PROMPT_VARIANT_INSTRUCTIONS = {
     "standard": "",
@@ -220,6 +248,14 @@ def _normalized_source_text(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()
 
 
+# Quote and prime marks carry no grounding information, but models routinely normalize them (a
+# straight `today's` quoting a curly `today’s`, `'MU-1'` quoting `"MU-1"`) or drop them (`8 round`
+# for `8" round`). Both sides of every evidence comparison turn them into spaces -- not deletions,
+# which would glue a closing quote's neighbours (`'MU-1' Low` -> `mu-1low`) differently from the
+# source's -- and the stored evidence keeps the source text.
+_QUOTE_MARKS = str.maketrans({mark: " " for mark in "'\"`‘’‚‛“”„‟′″‴"})
+
+
 def _evidence_comparison_text(value: str) -> str:
     """Remove layout-extraction spacing artifacts without accepting paraphrased source text."""
     value = _normalized_source_text(value)
@@ -233,11 +269,16 @@ def _evidence_comparison_text(value: str) -> str:
     )
     value = re.sub(r"\s*([,.;:!?])\s*", r"\1 ", value)
     value = re.sub(r"(?<=\d)\.\s+(?=[A-Za-z]\b)", ".", value)
-    value = re.sub(r"(?<=\w)\s*([’'])\s*(?=\w)", r"\1", value)
+    # Re-join a PDF-split apostrophe (`City  ’s`) only before a contraction ending, so a closing
+    # single quote before the next word (`'MU-1' Low`) is not glued onto it.
+    value = re.sub(r"(?<=\w)\s*([’'])\s*(?=(?:s|t|d|m|ll|re|ve)\b)", r"\1", value)
     value = re.sub(r"(?<=\w)\s*-\s*(?=\w)", "-", value)
     value = re.sub(r"\(\s*", "(", value)
     value = re.sub(r"\s*\)", ")", value)
-    return _normalized_source_text(value)
+    # Last, after the rules above have re-joined PDF-split apostrophes: an apostrophe inside a word
+    # is dropped (`Today’s` == `Todays` == `Today's`), every other quote mark becomes a space.
+    value = re.sub(r"(?<=\w)[’'‘‛`](?=\w)", "", value)
+    return _normalized_source_text(value.translate(_QUOTE_MARKS))
 
 
 def _evidence_span(
@@ -245,6 +286,10 @@ def _evidence_span(
 ) -> tuple[int, int, bool]:
     """Return the declared span or a uniquely exact nearby correction for LLM line-number drift."""
     quote = _evidence_comparison_text(evidence_quote).casefold()
+    if not quote:
+        # A quote made only of quote marks/punctuation normalizes to "", which is "in" any line;
+        # untrusted model output must never ground an item that way.
+        raise ValueError("agenda item evidence quote is empty after normalization")
     declared = _evidence_comparison_text(" ".join(lines[line_start - 1 : line_end])).casefold()
     if quote in declared:
         return line_start, line_end, False
@@ -417,7 +462,7 @@ def build_production_agenda_item_extraction_request(
     """Build the pinned production agenda-flow request.
 
     Research callers retain the historical model selector and prompt variants; production uses
-    the approved Mistral Medium route and the recall-oriented agenda-flow instructions.
+    the configured Nemotron route and the recall-oriented agenda-flow instructions.
     """
 
     return build_agenda_item_extraction_request(
@@ -468,8 +513,6 @@ def build_title_equivalence_request(
 
 def ensure_agenda_item_extractor_contract():
     """Register the structured direct-extraction response contract."""
-    from citypods.compute.structured import register_response_model, response_model
-
     cached = getattr(ensure_agenda_item_extractor_contract, "model", None)
     if cached is not None:
         return cached
@@ -537,7 +580,9 @@ def assess_agenda_item_extractor_response(
 ) -> AgendaItemEvidenceAssessment:
     """Validate each structured item independently for shadow-only evidence coverage reporting."""
     model = ensure_agenda_item_extractor_contract()
-    response = model.model_validate_json(content)
+    response = model.model_validate(
+        parse_structured_json(content, context="agenda extractor response")
+    )
     lines = tuple(agenda_text.splitlines())
     seen_evidence: set[tuple[int, int, str]] = set()
     items: list[ExtractedAgendaItem] = []
@@ -762,6 +807,81 @@ def _recovery_expand_trailing_reference(
     return line_end, False
 
 
+_OUTLINE_SEGMENT = r"(?:[ivxlcdm]+|\d{1,3}|[a-z])"
+_OUTLINE_REFERENCE_RE = re.compile(
+    rf"^\(?{_OUTLINE_SEGMENT}(?:\s*[.)]\s*\(?{_OUTLINE_SEGMENT})*\s*[.)]?$", re.IGNORECASE
+)
+
+
+def _is_outline_reference(reference: object) -> bool:
+    """True for an agenda-outline position such as `4.A`, `II.D.1`, `1.d.3` or `III.`."""
+    return isinstance(reference, str) and bool(_OUTLINE_REFERENCE_RE.match(reference.strip()))
+
+
+def _outline_marker_at(line: str, segment: str) -> bool:
+    """True when *line* starts with the outline marker *segment* (`3.`, `a)`, `(iv)`, `II.`)."""
+    return bool(re.match(rf"^\s*\(?{re.escape(segment)}\s*[.):]", line, flags=re.IGNORECASE))
+
+
+_OUTLINE_MARKER_RE = re.compile(r"^\s*\(?([0-9]{1,3}|[ivxlcdm]{1,6}|[a-z])\s*[.):]", re.IGNORECASE)
+
+
+def _outline_marker(line: str) -> str | None:
+    match = _OUTLINE_MARKER_RE.match(line)
+    return match.group(1) if match else None
+
+
+def _outline_kind(marker: str) -> str:
+    """`number`, `roman` (II, xiv) or `letter` (a, B); a lone roman letter counts as a letter."""
+    if marker.isdigit():
+        return "number"
+    if len(marker) > 1 and all(ch in "ivxlcdm" for ch in marker.casefold()):
+        return "roman"
+    return "letter"
+
+
+def _outline_reference_in_source(
+    reference: object, lines: Sequence[str], *, line_start: int, line_end: int
+) -> bool:
+    """Whether a composed outline reference matches the agenda's own outline.
+
+    The last segment must mark a line of the item's span (or the marker line just above it); each
+    earlier segment must mark the nearest preceding line with that marker, in order. `3.a` is thus
+    confirmed for `a. Approve minutes` under `3. Consent items`, and refused when no `3.` precedes.
+    """
+    if not _is_outline_reference(reference):
+        return False
+    assert isinstance(reference, str)
+    segments = [s for s in re.split(r"[.()\s]+", reference.strip()) if s]
+    if not segments:
+        return False
+    first = max(1, line_start - 1)
+    position = next(
+        (n for n in range(first, line_end + 1) if _outline_marker_at(lines[n - 1], segments[-1])),
+        None,
+    )
+    if position is None:
+        return False
+    for segment in reversed(segments[:-1]):
+        kind = _outline_kind(segment)
+        found = None
+        for n in range(position - 1, 0, -1):
+            marker = _outline_marker(lines[n - 1])
+            if marker is None:
+                continue
+            if marker.casefold() == segment.casefold():
+                found = n
+                break
+            if _outline_kind(marker) == kind:
+                # A different marker at the ancestor's level (`4.` while looking for `3.`) closes
+                # the section: the item is not under the named ancestor.
+                return False
+        if found is None:
+            return False
+        position = found
+    return True
+
+
 def _recovery_resolve_reference(
     reference: object,
     lines: Sequence[str],
@@ -813,7 +933,9 @@ def recover_agenda_item_extractor_response(
     rejected for a later retry/OCR decision.
     """
     model = ensure_agenda_item_extractor_contract()
-    response = model.model_validate_json(content)
+    response = model.model_validate(
+        parse_structured_json(content, context="agenda extractor response")
+    )
     strict = assess_agenda_item_extractor_response(content, agenda_text=agenda_text)
     lines = tuple(agenda_text.splitlines())
     rejected_by_index = {item.index: item for item in strict.rejected}
@@ -836,6 +958,8 @@ def recover_agenda_item_extractor_response(
         declared_end = min(len(lines), int(raw_item.line_end))
         if declared_start > declared_end or not lines:
             continue
+        if not _evidence_comparison_text(raw_item.evidence_quote):
+            continue  # an empty normalized quote grounds nothing (see _evidence_span)
         exact = _recovery_tightest_spans(_recovery_exact_spans(lines, raw_item.evidence_quote))
         spans = exact
         method = ""
@@ -865,8 +989,32 @@ def recover_agenda_item_extractor_response(
             line_start=line_start,
             line_end=line_end,
         )
+        if (
+            resolved
+            and matched_prefix_lines
+            and not (line_start - 1 <= matched_prefix_lines[-1] <= line_end)
+        ):
+            # The hierarchical match must end on THIS item's own marker; `3.` then the first `A.`
+            # of section 3 does not confirm `3.A` for an `A.` under `4.` further down.
+            resolved, matched_prefix_lines = False, []
         if not resolved:
-            continue
+            # The evidence is uniquely grounded but the model's reference is not in the source.
+            # For an OUTLINE position (`4.A`, `II.D.1`, `III.`) that is a label the model composed
+            # from the agenda's structure -- the item is real, so the label comes from the source
+            # instead (or none). An identifier-style reference (`DCA26-0002B`, `ID 26-2000`) is
+            # left unresolved as before: it names a specific record and is not re-derived.
+            if not _is_outline_reference(raw_item.display_ref):
+                continue
+            if _outline_reference_in_source(
+                raw_item.display_ref, lines, line_start=line_start, line_end=line_end
+            ):
+                # `3.a` for a line marked `a.` under the nearest `3.` above: the model composed
+                # the item's real outline position, which is exactly how providers name chapters
+                # ("Item 3A"), so the label is kept.
+                method += "+outline-reference"
+            else:
+                kind = "derived"
+                method += "+derived-reference"
         if matched_prefix_lines:
             line_start = min(line_start, *matched_prefix_lines)
             method += "+hierarchical-prefix"
@@ -875,9 +1023,12 @@ def recover_agenda_item_extractor_response(
             if prefix_start < line_start:
                 line_start = prefix_start
                 method += "+identifier-prefix"
-        display_ref = (
-            _normalized_source_text(raw_item.display_ref or "") if kind == "formal" else None
-        )
+        if kind == "formal":
+            display_ref = _normalized_source_text(raw_item.display_ref or "")
+        elif kind == "derived":
+            display_ref = _derive_display_ref(lines, line_start=line_start, line_end=line_end)
+        else:
+            display_ref = None
         source_evidence = "\n".join(lines[line_start - 1 : line_end])
         key = (
             line_start,
@@ -927,7 +1078,9 @@ def validate_title_equivalence_response(
     if canonical_count <= 0 or generated_count <= 0:
         raise ValueError("title equivalence counts must be positive")
     model = ensure_title_equivalence_contract()
-    response = model.model_validate_json(content)
+    response = model.model_validate(
+        parse_structured_json(content, context="title equivalence response")
+    )
     raw_action_indices = tuple(response.canonical_action_indices)
     raw_matches = tuple(response.matches)
     raw_indices = [*raw_action_indices]
@@ -1005,6 +1158,9 @@ def match_title_candidates(
 __all__ = [
     "AGENDA_PRODUCTION_MODEL",
     "AGENDA_PRODUCTION_MODELS",
+    "AGENDA_BACKUP_MODELS",
+    "AGENDA_BACKUP_AFTER_ATTEMPTS",
+    "AGENDA_OUTPUT_TOKEN_BUDGET",
     "AGENDA_ITEM_EXTRACTOR_CONTRACT",
     "AGENDA_EXTRACTION_PROMPT_VARIANTS",
     "TITLE_EQUIVALENCE_CONTRACT",

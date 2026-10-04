@@ -10,6 +10,16 @@ cancelled in one batch when it has not started. An already leased job may settle
 over provider markers. This is a behavioral correction, not a pipeline-version bump: completed
 fallback artifacts for episodes still lacking provider chapters are retained and are not backfilled.
 
+**Superseded · 2026-09-13.** Mistral Medium ("the production choice" throughout this document) is
+retired from `chapter-agenda` -- its account became permanently blocked (an account-tier zero rate
+limit, not a billing state, confirmed live across all three configured keys). The lane is now
+pinned to `nvidia/nemotron-3-ultra-550b-a55b:free`, with `gemini/gemini-3.1-flash-lite` and
+`gemini/gemini-3.5-flash-lite` as backup models. The benchmarking methodology and historical
+findings below remain an accurate record of the decision as made at the time; they are not
+retroactively edited. See `review/46` for the replacement model's benchmark, the generic
+backup-model mechanism this migration introduced, and two bugs in the reuse/backfill path fixed
+alongside it.
+
 ## Evidence and scope
 
 The chapter-prevalence audit over the supplied production snapshot found 239 broad candidates with
@@ -2607,3 +2617,38 @@ generated-record hydration/overlay; then shadow tooling, monitoring, and rollout
 research branch remains an archive for benchmark runners, adjudication UIs, scorer variants, and
 prompt/model comparisons. It is not a production dependency. Only stable, tested contracts and
 production behavior are promoted to `main`.
+
+
+### Production routing and retry decision (2026-10-02)
+
+The production locator uses the baseline prompt. It estimates the complete serialized request and
+sends packets at or below 76,000 internal estimated input tokens to DeepSeek V4 Flash; larger
+packets go only to Kimi K3. This conservative fit threshold is below the largest accepted V4 Flash
+packet (76,546) and above the smallest packet with repeated explicit context-limit rejections
+(81,301). These are internal request estimates, not provider token counts or universal context
+limits. Kimi K3 handled all 39 meetings, including the 12 long meetings; packets beyond its own
+configured context budget remain unprocessed rather than silently truncated.
+
+GLM 5.3 Flash is documented as optional small-context capacity and DeepSeek V4.1 Flash as optional
+large-context capacity. Neither is admitted in the production lane. On the measured cohort, V4 Flash
+was the strongest fit-band model (93.0% joint item-and-timing recall on the paired 27 meetings),
+while Kimi K3 scored 90.7% on the 12 long meetings at about 90 seconds median latency. V4.1 Flash
+scored 89.8% on that long slice with about 502 seconds median latency. The evidence and complete
+reproduction workflow are in `evals/chapter-locator/manual-review-v2/README.md`.
+
+The lane's schema-correction retry now explicitly requires JSON in assistant `content`; reasoning
+text alone is not an answer. For a locator result rejected because two agenda items share an exact
+start, the next invocation retries once with instructions focused on those conflicting items: use
+a different supplied unit only when its transcript supports a real later start, otherwise retain
+the most specific chapter and omit the general duplicate heading. Never add an arbitrary offset.
+The retry hint and count are persisted with the agenda record so an asynchronous repair is not lost;
+a second invalid repair is marked for operator review instead of looping on the same response.
+Temperature/seed changes are not part of the production retry because the two affected Kimi cases
+only establish a narrow prompt-reminder result, not a general sampling fix.
+
+Changing `LOCATOR_PROMPT_VERSION` to `locator-baseline-v3` and adding a routing-version component
+to the recipe deliberately invalidates old locator outputs. The scheduled locator lane is bounded
+to 800 logical jobs/day (4 ingress write units per pinned job; 3,200 daily units), with 67 jobs per
+each of 12 scheduled runs and the Worker's daily budget as the hard cap. Existing rendered content
+is regenerated gradually under that cap. This changes generated chapter boundaries only; provider
+chapter records remain canonical and the audio stage ordering is unchanged.

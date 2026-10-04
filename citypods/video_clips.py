@@ -53,12 +53,55 @@ def video_clip_key(
     return f"clips/{episode_uid}/r6-{digest}.mp4"
 
 
-def caption_text(segments: list[Mapping[str, Any]], start: float, end: float) -> str:
-    """Return only transcript text overlapping a quote range, safely joined for a caption file."""
-    return " ".join(
-        str(row.get("text") or "").replace("\n", " ").strip()
+def caption_cues(
+    segments: list[Mapping[str, Any]],
+    start: float,
+    end: float,
+    words: list[Mapping[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Caption cues for a clip, containing only words spoken inside ``[start, end]``.
+
+    With word timing, each overlapping transcript cue is cut down to its words that fall inside
+    the clip, so a clip narrower than a cue never shows speech it does not play. Without word
+    timing, whole overlapping cues are used, as before.
+    """
+    overlapping = [
+        row
         for row in segments
         if float(row.get("end") or 0) > start and float(row.get("start") or 0) < end
+    ]
+    if not words:
+        return [dict(row) for row in overlapping]
+    inside = [
+        word
+        for word in words
+        if float(word.get("start") or 0) >= start and float(word.get("end") or 0) <= end
+    ]
+    cues: list[dict[str, Any]] = []
+    for row in overlapping:
+        cue_start, cue_end = float(row.get("start") or 0), float(row.get("end") or 0)
+        spoken = [w for w in inside if cue_start <= float(w.get("start") or 0) < cue_end]
+        if spoken:
+            cues.append(
+                {
+                    "start": float(spoken[0]["start"]),
+                    "end": float(spoken[-1]["end"]),
+                    "text": " ".join(str(w.get("text") or "").strip() for w in spoken).strip(),
+                }
+            )
+    return cues
+
+
+def caption_text(
+    segments: list[Mapping[str, Any]],
+    start: float,
+    end: float,
+    words: list[Mapping[str, Any]] | None = None,
+) -> str:
+    """Return only transcript text spoken inside a clip range, safely joined for a caption file."""
+    return " ".join(
+        str(row.get("text") or "").replace("\n", " ").strip()
+        for row in caption_cues(segments, start, end, words)
     ).strip()
 
 
@@ -73,12 +116,16 @@ def _write_ass(
     path: Path,
     *,
     caption_override: str | None = None,
+    words: list[Mapping[str, Any]] | None = None,
 ) -> None:
     """Write transcript-grounded captions, allowing only an exact maintainer wording override."""
     if caption_override:
-        if _caption_norm(caption_override) != _caption_norm(caption_text(segments, start, end)):
+        grounded = caption_text(segments, start, end, words)
+        if _caption_norm(caption_override) != _caption_norm(grounded):
             raise ValueError("caption override must match grounded transcript wording")
         segments = [{"start": start, "end": end, "text": caption_override}]
+    else:
+        segments = caption_cues(segments, start, end, words)
     rows = [
         "[Script Info]",
         "ScriptType: v4.00+",
@@ -208,6 +255,7 @@ def render_video_clip(
     crop_anchor: Mapping[str, float] | None = None,
     caption_override: str | None = None,
     profile: str = "vertical-9x16-square-pane-v1",
+    words: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Render an admitted quote, or return a stable failure status without uploading anything."""
     start = float(candidate.get("start") or 0)
@@ -251,7 +299,9 @@ def render_video_clip(
         ass_path = temporary_path / "captions.ass"
         output_path = temporary_path / "clip.mp4"
         try:
-            _write_ass(segments, start, end, ass_path, caption_override=caption_override)
+            _write_ass(
+                segments, start, end, ass_path, caption_override=caption_override, words=words
+            )
         except ValueError:
             return {"status": "video-unavailable", "reason": "caption-override-gate"}
         square_output = profile.startswith("square")

@@ -378,6 +378,177 @@ def visible_candidates(
     ]
 
 
+SHADOW_PRELABELER_PREFIX = "prelabeler_shadow_"
+
+
+def shadow_prelabel_fields(assessment: dict[str, Any]) -> dict[str, Any]:
+    """Store a shadow evaluator's assessment beside, never over, the production one.
+
+    ``llm_prelabel_candidates`` returns ``prelabeler_*`` keys plus ``evaluator_model``; a shadow
+    run's copies are renamed to ``prelabeler_shadow_*`` so admission, display, and the production
+    evaluator's calibration keep reading only the production fields.
+    """
+    result: dict[str, Any] = {}
+    for key, value in assessment.items():
+        if key.startswith("prelabeler_") and not key.startswith(SHADOW_PRELABELER_PREFIX):
+            result[SHADOW_PRELABELER_PREFIX + key.removeprefix("prelabeler_")] = value
+    return result
+
+
+def shadow_prelabel_view(candidate: dict[str, Any]) -> dict[str, Any] | None:
+    """The candidate as the shadow evaluator saw it, or ``None`` without a usable shadow decision.
+
+    Replaces the production ``prelabeler_*`` fields with the shadow's, so the ordinary
+    ``prelabeler_review_candidate`` projection yields an audit subject keyed to the shadow model.
+    """
+    if candidate.get(SHADOW_PRELABELER_PREFIX + "decision") not in PRELABELER_DECISIONS:
+        return None
+    view = {
+        key: value
+        for key, value in candidate.items()
+        if not (key.startswith("prelabeler_") or key == "evaluator_model")
+    }
+    for key, value in candidate.items():
+        if key.startswith(SHADOW_PRELABELER_PREFIX):
+            view["prelabeler_" + key.removeprefix(SHADOW_PRELABELER_PREFIX)] = value
+    view["evaluator_model"] = view.get("prelabeler_model")
+    # An audit subject carries the production evaluator's confidence in `confidence`; restore the
+    # tagger's so the shadow audit projection starts from the same subject shape.
+    is_audit = candidate.get("assessment_kind") == "prelabeler-overlay"
+    if is_audit and "tagger_confidence" in candidate:
+        view["confidence"] = candidate["tagger_confidence"]
+    view.pop("assessment_kind", None)
+    view.pop("candidate_id", None)
+    view["candidate_id"] = str(
+        candidate.get("subject_candidate_id") or candidate.get("candidate_id") or ""
+    )
+    return view
+
+
+def _subject_truth(candidate: dict[str, Any], decision: str) -> str | None:
+    """Whether the reviewed SUBJECT's tag is correct, from either kind of review.
+
+    A tagger/rule subject review answers "is this tag correct?" directly. A pre-labeler audit
+    review answers "is the evaluator's decision correct?", so the tag's truth follows only from a
+    decisive evaluator call; an audited ``needs_human_review`` says nothing about the tag.
+    Returns ``"correct"``, ``"incorrect"``, ``"ambiguous"``, or ``None`` when unknowable.
+    """
+    if decision == "ambiguous":
+        return "ambiguous"
+    if candidate.get("assessment_kind") != "prelabeler-overlay":
+        return decision
+    predicted = candidate.get("prelabeler_decision")
+    if predicted == "likely_correct":
+        return decision
+    if predicted == "likely_incorrect":
+        return "incorrect" if decision == "correct" else "correct"
+    return None
+
+
+def mirror_shadow_prelabeler_review(
+    state: dict[str, Any],
+    candidate: dict[str, Any],
+    *,
+    decision: str,
+    actor: str = "",
+    issue_number: int | None = None,
+    issue_url: str = "",
+) -> dict[str, Any] | None:
+    """Score a shadow evaluator that assessed the same subject, from an existing human review.
+
+    Pre-labeler audit reviews record whether the EVALUATOR's decision was correct. The human
+    verdict is first reduced to the subject tag's truth (``_subject_truth``), then re-expressed as
+    whether the shadow's own decisive call was right, and recorded against the shadow's audit
+    identity -- a separate calibration row, at no extra reviewer cost. A shadow
+    ``needs_human_review`` cannot be scored from the tag's truth alone and is skipped. Idempotent:
+    the audit identity is per subject and evaluator.
+    """
+    view = shadow_prelabel_view(candidate)
+    if view is None:
+        return None
+    truth = _subject_truth(candidate, decision)
+    shadow_decision = view.get("prelabeler_decision")
+    if truth is None or shadow_decision == "needs_human_review":
+        return None
+    if truth == "ambiguous":
+        shadow_verdict = "ambiguous"
+    elif shadow_decision == "likely_correct":
+        shadow_verdict = truth
+    else:  # likely_incorrect is right exactly when the tag is incorrect
+        shadow_verdict = "correct" if truth == "incorrect" else "incorrect"
+    return record_review(
+        state,
+        prelabeler_review_candidate(view),
+        decision=shadow_verdict,
+        actor=actor,
+        issue_number=issue_number,
+        issue_url=issue_url,
+    )
+
+
+def evaluator_comparison_lines(state: dict[str, Any], subjects: list[dict[str, Any]]) -> list[str]:
+    """Digest section comparing every evaluator model over the same human reviews.
+
+    Aggregates the pre-labeler-overlay review rows per ``evaluator_model`` (production and any
+    shadow evaluator, whose reviews are mirrored from the same human decisions), plus how often the
+    shadow agrees with production on subjects both assessed. Empty when no shadow is running.
+    """
+    per_model: dict[str, dict[str, list[int]]] = {}
+    for review in _reviewed_candidates(state):
+        if str((review.get("matrix_key") or {}).get("assessment_kind")) != "prelabeler-overlay":
+            continue
+        model = str(review.get("evaluator_model") or "")
+        predicted = review.get("prelabeler_decision")
+        if not model or predicted not in PRELABELER_DECISIONS:
+            continue
+        cell = per_model.setdefault(model, {}).setdefault(predicted, [0, 0])
+        cell[0] += 1
+        # Audit reviews record whether the evaluator's decision was right.
+        cell[1] += review.get("decision") == "correct"
+    paired = [
+        subject
+        for subject in subjects
+        if subject.get("prelabeler_decision") in PRELABELER_DECISIONS
+        and subject.get(SHADOW_PRELABELER_PREFIX + "decision") in PRELABELER_DECISIONS
+    ]
+    if not paired and len(per_model) < 2:
+        return []
+
+    def rate(cell: list[int] | None) -> str:
+        return f"{cell[1] / cell[0]:.1%} ({cell[0]})" if cell and cell[0] else "—"
+
+    lines = [
+        "",
+        "## Evaluator comparison (production vs shadow)",
+        "",
+        "Shadow evaluators never affect display. Their rows are scored against the same human "
+        "decisions as production (a shadow `needs_human_review` is not scored).",
+        "",
+        "| Evaluator | Reviewed | Likely-correct precision | Likely-incorrect precision |",
+        "|---|---:|---:|---:|",
+    ]
+    for model in sorted(per_model):
+        cells = per_model[model]
+        reviewed = sum(cell[0] for cell in cells.values())
+        lines.append(
+            f"| `{model}` | {reviewed} | {rate(cells.get('likely_correct'))} | "
+            f"{rate(cells.get('likely_incorrect'))} |"
+        )
+    if paired:
+        agree = sum(
+            subject.get("prelabeler_decision") == subject.get(SHADOW_PRELABELER_PREFIX + "decision")
+            for subject in paired
+        )
+        lines.extend(
+            [
+                "",
+                f"Decision agreement with production on {len(paired)} jointly assessed subjects: "
+                f"{agree / len(paired):.1%}.",
+            ]
+        )
+    return lines
+
+
 def _reviewed_candidates(state: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         item
@@ -797,7 +968,17 @@ def render_review_body(
                 "prelabeler_reason",
                 "prelabeler_evidence_supported",
                 "subject_candidate_id",
+                "tagger_confidence",
+                # Carried (not rendered) so the human decision on this subject can also score
+                # the shadow evaluator -- see mirror_shadow_prelabeler_review.
+                "prelabeler_shadow_model",
+                "prelabeler_shadow_prompt_version",
+                "prelabeler_shadow_decision",
+                "prelabeler_shadow_confidence",
+                "prelabeler_shadow_evidence_supported",
             )
+            if applied.get(key) is not None
+            or not (key == "tagger_confidence" or key.startswith("prelabeler_shadow_"))
         },
     }
     assessment = str(applied.get("assessment_kind") or "tagger-admission")
@@ -938,6 +1119,14 @@ def ingest_review_body(
         raise ValueError("LLM review candidate metadata missing")
     decision = {"correct": "correct", "incorrect": "incorrect", "ambiguous": "ambiguous"}[decision]
     review = record_review(
+        state,
+        candidate,
+        decision=decision,
+        actor=actor,
+        issue_number=issue_number,
+        issue_url=issue_url,
+    )
+    mirror_shadow_prelabeler_review(
         state,
         candidate,
         decision=decision,
@@ -1143,6 +1332,7 @@ def render_digest(
             f"{counts.get('likely_correct', 0)} / {counts.get('needs_human_review', 0)} / "
             f"{counts.get('likely_incorrect', 0)} | {overlay_subjects} | {monitoring} | {status} |"
         )
+    lines.extend(evaluator_comparison_lines(state, tagger_candidates))
     deterministic = [
         candidate for candidate in tagger_candidates if candidate.get("source_kind") == "rule"
     ]

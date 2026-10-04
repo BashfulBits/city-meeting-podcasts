@@ -4,6 +4,9 @@ provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "Public Utilities Board"
+  body_includes:
+    - provider_guid: "271879"
+      body: "I-35 US380 Utility Relocation"
 podcast_title: "Denton: Public Utilities Board"
 podcast_author: "City of Denton, TX"
 podcast_email: ""

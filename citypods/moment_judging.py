@@ -7,14 +7,28 @@ from collections.abc import Mapping
 from citypods.compute.llm_lanes import lane_for
 from citypods.compute.llm_policy import LLMRequestPolicy
 from citypods.compute.structured import register_response_model, response_model
+from citypods.moments import PULL_QUOTE_CRITERIA
 
 # Routes come from `llm_lanes["r6-judge"]` (review/44 Phase 4), the same block the ingress
 # Worker's reservation map is compiled from. `judge_models()` below still intersects this with a
 # caller-supplied allowlist, so a deployment can narrow the panel without widening it.
 JUDGE_MODELS = lane_for("r6-judge").models
-JUDGE_PROMPT_VERSION = "1"
+# 2 (2026-09-24): the judge scores against the extraction prompt's pull-quote criteria; a new
+# version resets each judge's calibration cell (review/36).
+JUDGE_PROMPT_VERSION = "2"
 JUDGE_SCHEMA_VERSION = "1"
 JUDGE_CONTRACT = "moment-judge"
+
+
+JUDGE_SYSTEM_PROMPT = (
+    "You are an independent civic-publication judge. Score only the candidate and evidence. Never "
+    "rewrite or create one. Judge a pull quote against the criteria it was selected under: "
+    + PULL_QUOTE_CRITERIA
+    + " Score quote_usefulness by how well the quote meets those criteria for a resident who sees "
+    "only the clip; publication_readiness also falls when the quote is procedural, depends on "
+    "surrounding context, mocks or embarrasses someone, or exposes a member of the public's "
+    "personal details."
+)
 
 
 def ensure_judge_contract():

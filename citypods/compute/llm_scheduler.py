@@ -7,7 +7,7 @@ import random
 import time
 import uuid
 from collections.abc import Mapping, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -26,6 +26,7 @@ from citypods.compute.llm_policy import (
     LLMRequestPolicy,
     LLMRoute,
     canonical_model,
+    route_input_tokens,
 )
 
 
@@ -296,11 +297,10 @@ def _utilization(route: LLMRoute, ledger_entry) -> float:
     return max(fractions, default=0.0)
 
 
-# Transports that dedupe server-side on `idempotency-key: recipe_hash`. "llm-dispatch-v2" fits
-# this criterion too (coordinator.js derives its idempotency_key from job.recipe_hash), even
-# though no compiled route currently selects it via this scheduler's normal path -- see the
-# matching note on citypods/compute/llm.py's is_dispatch.
-_DISPATCH_TRANSPORTS = frozenset({"mistral-dispatch", "llm-dispatch", "llm-dispatch-v2"})
+# Transports that dedupe server-side on `idempotency-key: recipe_hash` (coordinator.js derives its
+# idempotency_key from job.recipe_hash). No compiled route currently selects it through this
+# scheduler -- see the matching note on citypods/compute/llm.py's is_dispatch.
+_DISPATCH_TRANSPORTS = frozenset({"llm-dispatch-v2"})
 
 
 def _selected_transport(
@@ -335,7 +335,7 @@ def _selected_transport(
 def _owner_for(recipe_hash: str, transport: str | None) -> str:
     """Owner uniqueness depends on the *selected* transport for this call, not a route's
     capabilities:
-    - dispatch (`mistral-dispatch`/`llm-dispatch`): the Worker dedupes on
+    - dispatch (`llm-dispatch-v2`): the Worker dedupes on
       `idempotency-key: recipe_hash`, so a retry before this reservation settles is the *same*
       underlying provider request -- owner must be that same deterministic recipe_hash, or it would
       double-reserve quota for a call the Worker holds.
@@ -363,10 +363,7 @@ def select_route(
     """Select one eligible route from a read-only ledger snapshot.
 
     ``available_transports`` is the set of transports *this backend instance* can physically
-    reach right now (e.g. ``{"direct"}``, or ``{"direct", "mistral-dispatch"}`` when a dispatch
-    Worker is configured) -- not a single fixed mode. A caller able to reach both transports (the
-    deferred-request sweep, in particular) needs the scheduler to pick freely among every eligible
-    route regardless of which transport backs it.
+    reach right now (e.g. ``{"direct"}``) -- not a single fixed mode.
 
     ``requests``/``estimated_tokens`` should already reflect the *worst-case* number of provider
     attempts a single logical dispatch can make -- e.g. 2 for a structured call, since Instructor's
@@ -399,18 +396,39 @@ def select_route(
     # block, or waiting for its cheapest price window -- is predicted to become eligible again. A
     # pacing caller sleeps until this rather than deferring the whole request to a future run.
     retry_ats: list[datetime] = []
+    input_split_known = input_tokens is not None
     input_tokens = estimated_tokens if input_tokens is None else input_tokens
     output_tokens = 0 if output_tokens is None else output_tokens
 
     for route_key, route in sorted(routes.items()):
         model = route.model
+        if policy.allowed_route_ids is not None and route.route_id not in policy.allowed_route_ids:
+            rejected.append((model, "physical route allowlist gate"))
+            continue
         if not any(t in available_transports for t in route.transports):
             rejected.append((model, "transport gate"))
             continue
         if allowed is not None and model not in allowed:
-            rejected.append((model, "allowlist gate"))
-            continue
-        if input_tokens > route.input_context_limit:
+            # One physical route may serve several logical pools (`also_serves`). Admit it through
+            # the pool the caller named, and evaluate it as that pool's candidate so the result
+            # reports the requested model. The ledger stays keyed by route_id: one set of counters.
+            pool = next(
+                (
+                    extra
+                    for extra in route.also_serves
+                    if extra in (requested or set()) or extra in allowed
+                ),
+                None,
+            )
+            if pool is None:
+                rejected.append((model, "allowlist gate"))
+                continue
+            route = replace(route, model=pool)
+            model = pool
+        # Every limit below is in this route's own tokenizer units; the caller's estimate is the
+        # shared chars/4 heuristic (`input_token_ratio`, measured per model family).
+        route_input = route_input_tokens(input_tokens, route)
+        if route_input > route.input_context_limit:
             rejected.append((model, "input context limit"))
             continue
         # A SEPARATE, tighter, opt-in ceiling from `input_context_limit` above. Some providers'
@@ -421,7 +439,8 @@ def select_route(
         # has actually been verified -- see its docstring in `llm_policy.py`. Without this gate, an
         # oversized request for such a route would pass the check above (it's under the model's
         # real context window) and only fail once it reaches the provider as a genuine 429.
-        if route.hard_input_ceiling is not None and input_tokens > route.hard_input_ceiling:
+        hard_ceiling = route.hard_input_ceiling
+        if hard_ceiling is not None and route_input > hard_ceiling:
             rejected.append((model, "hard input ceiling"))
             continue
         if output_tokens > route.output_context_limit:
@@ -436,8 +455,16 @@ def select_route(
         transport = _selected_transport(
             route, available_transports, allow_dispatch_overflow=policy.allow_dispatch_overflow
         )
+        # Scale the input share of the TPM reservation the same way. Each worst-case attempt
+        # re-sends the input; without a known input/output split the whole estimate is input.
+        if input_split_known:
+            route_estimated_tokens = estimated_tokens + max(0, route_input - input_tokens) * max(
+                1, requests
+            )
+        else:
+            route_estimated_tokens = route_input_tokens(estimated_tokens, route)
         route_requests, route_tokens = _reservation_size(
-            route, requests=requests, tokens=estimated_tokens, transport=transport
+            route, requests=requests, tokens=route_estimated_tokens, transport=transport
         )
         # Flexible work waits for the cheaper price before capacity admission. In particular,
         # applying a peak-rate estimate to a daily cost cap must not reject work that can fit at

@@ -1,0 +1,767 @@
+{
+  "version": 1,
+  "purpose": "human-adjudicated provider-chapter to frozen source-agenda crosswalk",
+  "source_packet_sha256": "47850319e6d367208fb7980f12ba8adce21d6af2dc26f784b8dc30866441d4b0",
+  "source_decisions_sha256": "64c912390d61cf2d89d8c749f0972af0b464bd98bea9cd05d8935c6b400a5367",
+  "episodes": [
+    {
+      "uid": "0004794481ddee5e",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            0
+          ]
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            1
+          ]
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            2
+          ]
+        },
+        {
+          "provider_chapter_index": 3,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            3
+          ]
+        },
+        {
+          "provider_chapter_index": 4,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            4
+          ]
+        },
+        {
+          "provider_chapter_index": 5,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            5
+          ]
+        },
+        {
+          "provider_chapter_index": 6,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            6
+          ]
+        },
+        {
+          "provider_chapter_index": 7,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            7
+          ]
+        },
+        {
+          "provider_chapter_index": 8,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            8
+          ]
+        },
+        {
+          "provider_chapter_index": 9,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            9
+          ]
+        },
+        {
+          "provider_chapter_index": 10,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            10
+          ]
+        },
+        {
+          "provider_chapter_index": 11,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            11
+          ]
+        },
+        {
+          "provider_chapter_index": 12,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            12
+          ]
+        },
+        {
+          "provider_chapter_index": 13,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            13
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "13a7ccd6cec16a73",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            0
+          ]
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            1
+          ]
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "missing_generated_candidate",
+          "candidate_indices": []
+        },
+        {
+          "provider_chapter_index": 3,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            2
+          ]
+        },
+        {
+          "provider_chapter_index": 4,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            3
+          ]
+        },
+        {
+          "provider_chapter_index": 5,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            5
+          ]
+        },
+        {
+          "provider_chapter_index": 6,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            4
+          ]
+        },
+        {
+          "provider_chapter_index": 7,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            6
+          ]
+        },
+        {
+          "provider_chapter_index": 8,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            7
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "1e33fee06ae9d526",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            1
+          ]
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            2
+          ]
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "36415bafff30348d",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "section_or_procedural",
+          "candidate_indices": []
+        }
+      ]
+    },
+    {
+      "uid": "4bdafbfb40214fff",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            0
+          ]
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "5661e9f07650d353",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            1
+          ]
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            0
+          ]
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "section_or_procedural",
+          "candidate_indices": []
+        },
+        {
+          "provider_chapter_index": 3,
+          "label": "consent_composite",
+          "candidate_indices": [
+            3,
+            4,
+            5,
+            6,
+            7
+          ]
+        },
+        {
+          "provider_chapter_index": 4,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            5
+          ]
+        },
+        {
+          "provider_chapter_index": 5,
+          "label": "consent_composite",
+          "candidate_indices": [
+            6,
+            7
+          ]
+        },
+        {
+          "provider_chapter_index": 6,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            8
+          ]
+        },
+        {
+          "provider_chapter_index": 7,
+          "label": "section_or_procedural",
+          "candidate_indices": []
+        },
+        {
+          "provider_chapter_index": 8,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "68e93c804b716ddc",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            0
+          ]
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            1
+          ]
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            2
+          ]
+        },
+        {
+          "provider_chapter_index": 3,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            3
+          ]
+        },
+        {
+          "provider_chapter_index": 4,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            3
+          ]
+        },
+        {
+          "provider_chapter_index": 5,
+          "label": "consent_composite",
+          "candidate_indices": [
+            4,
+            5,
+            6
+          ]
+        },
+        {
+          "provider_chapter_index": 6,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            4
+          ]
+        },
+        {
+          "provider_chapter_index": 7,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            5
+          ]
+        },
+        {
+          "provider_chapter_index": 8,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            6
+          ]
+        },
+        {
+          "provider_chapter_index": 9,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            10
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "72250b5020c1c375",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            0
+          ]
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            2
+          ]
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            3
+          ]
+        },
+        {
+          "provider_chapter_index": 3,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "77558a2ffde222ff",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "a6bfcf669eb1ef77",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            2
+          ]
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            3
+          ]
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            4
+          ]
+        },
+        {
+          "provider_chapter_index": 3,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            5
+          ]
+        },
+        {
+          "provider_chapter_index": 4,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "a7cafa96abee9fd4",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            0
+          ]
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            1
+          ]
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "b5bd376feea8e8ef",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "section_or_procedural",
+          "candidate_indices": []
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            0
+          ]
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "missing_generated_candidate",
+          "candidate_indices": []
+        },
+        {
+          "provider_chapter_index": 3,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            1
+          ]
+        },
+        {
+          "provider_chapter_index": 4,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            2
+          ]
+        },
+        {
+          "provider_chapter_index": 5,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            3
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "c6ed635dfa5776fd",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            0
+          ]
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            1
+          ]
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            9
+          ]
+        },
+        {
+          "provider_chapter_index": 3,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            10
+          ]
+        },
+        {
+          "provider_chapter_index": 4,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            11
+          ]
+        },
+        {
+          "provider_chapter_index": 5,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            6
+          ]
+        },
+        {
+          "provider_chapter_index": 6,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            7
+          ]
+        },
+        {
+          "provider_chapter_index": 7,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            12
+          ]
+        },
+        {
+          "provider_chapter_index": 8,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            13
+          ]
+        },
+        {
+          "provider_chapter_index": 9,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            14
+          ]
+        },
+        {
+          "provider_chapter_index": 10,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "e01edf2cbaf994c5",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            0
+          ]
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            1
+          ]
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            2
+          ]
+        },
+        {
+          "provider_chapter_index": 3,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            3
+          ]
+        },
+        {
+          "provider_chapter_index": 4,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            4
+          ]
+        },
+        {
+          "provider_chapter_index": 5,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "uid": "e65b938bd028c6b5",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "section_or_procedural",
+          "candidate_indices": []
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "source_or_extraction_problem",
+          "candidate_indices": []
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "source_or_extraction_problem",
+          "candidate_indices": []
+        },
+        {
+          "provider_chapter_index": 3,
+          "label": "source_or_extraction_problem",
+          "candidate_indices": []
+        },
+        {
+          "provider_chapter_index": 4,
+          "label": "source_or_extraction_problem",
+          "candidate_indices": []
+        },
+        {
+          "provider_chapter_index": 5,
+          "label": "source_or_extraction_problem",
+          "candidate_indices": []
+        },
+        {
+          "provider_chapter_index": 6,
+          "label": "source_or_extraction_problem",
+          "candidate_indices": []
+        }
+      ]
+    },
+    {
+      "uid": "f64bd49647621bd0",
+      "provider_chapters": [
+        {
+          "provider_chapter_index": 0,
+          "label": "missing_generated_candidate",
+          "candidate_indices": []
+        },
+        {
+          "provider_chapter_index": 1,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            3
+          ]
+        },
+        {
+          "provider_chapter_index": 2,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            4
+          ]
+        },
+        {
+          "provider_chapter_index": 3,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            5
+          ]
+        },
+        {
+          "provider_chapter_index": 4,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            6
+          ]
+        },
+        {
+          "provider_chapter_index": 5,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            9
+          ]
+        },
+        {
+          "provider_chapter_index": 6,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            7
+          ]
+        },
+        {
+          "provider_chapter_index": 7,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            8
+          ]
+        },
+        {
+          "provider_chapter_index": 8,
+          "label": "matched_candidate",
+          "candidate_indices": [
+            10
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,6 +1,10 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import pytest
+
+from citypods.compute.base import JobHandle, JobResult
+from citypods.compute.llm_deferred import write_deferred
 from citypods.models import Episode
 from citypods.moment_evaluation import (
     append_judge_observation,
@@ -12,7 +16,9 @@ from citypods.moment_evaluation import (
 )
 from citypods.moment_judging import judge_policy
 from citypods.moments import normalize_quote_candidate, parse_transcript_segments, transcript_region
+from citypods.stages import StageContext, StageStats, _admit_r6_dispatch
 from citypods.video_clips import caption_text, render_video_clip, video_clip_key
+from tests._cas_fake import MemStorage
 
 
 def _candidate(**overrides):
@@ -30,6 +36,35 @@ def _candidate(**overrides):
     }
     value.update(overrides)
     return value
+
+
+def test_r6_admission_budget_ignores_pending_and_cached_jobs():
+    storage = MemStorage()
+    ctx = StageContext(
+        storage=storage,
+        ffmpeg=None,
+        max_kbps=96,
+        dry_run=False,
+        moment_max_dispatches=1,
+    )
+    stats = StageStats("moments")
+    write_deferred(
+        storage,
+        "pending",
+        JobHandle(task="moment-judge", recipe_hash="pending", backend="v2", ref="remote"),
+    )
+    write_deferred(
+        storage,
+        "cached",
+        JobResult(task="moment-extraction", recipe_hash="cached", output={}),
+    )
+
+    assert _admit_r6_dispatch(ctx, stats, "pending", "episode") == "pending"
+    assert _admit_r6_dispatch(ctx, stats, "cached", "episode") == "cached"
+    assert _admit_r6_dispatch(ctx, stats, "fresh", "episode") == "admitted"
+    assert _admit_r6_dispatch(ctx, stats, "another", "episode") == "cap"
+    assert ctx.moment_dispatches == 1
+    assert stats.defer_reasons == {"llm-pending": 1, "rollout-dispatch-cap": 1}
 
 
 def test_grounding_uses_contiguous_timed_transcript_text():
@@ -165,9 +200,9 @@ def test_vtt_parser_accepts_cue_settings_and_quote_padding():
 
 
 def test_judges_are_free_only_and_clips_are_recipe_addressed():
-    policy = judge_policy(["zai/glm-4.7"])
+    policy = judge_policy(["qwen/qwen3.8-27b"])
     assert policy.allow_paid is False
-    assert policy.allowed_models == ("zai/glm-4.7",)
+    assert policy.allowed_models == ("qwen/qwen3.8-27b",)
     source_a = video_clip_key("episode", 10, 20, "timeline", source_identity="source-a")
     assert source_a != video_clip_key(
         "episode", 10, 20, "changed-timeline", source_identity="source-a"
@@ -200,7 +235,7 @@ def test_late_independent_judge_can_qualify_from_the_human_gate(tmp_path: Path):
             path,
             _candidate(candidate_id=f"r6-{index}"),
             {
-                "provider_model": "zai/glm-4.7",
+                "provider_model": "zai/glm-4.7-flash",
                 "prompt_version": "1",
                 "schema_version": "1",
                 "admission_score": 0.95 if index < 26 else 0.05,
@@ -213,7 +248,7 @@ def test_late_independent_judge_can_qualify_from_the_human_gate(tmp_path: Path):
             quality_score=0.2,
             judge_assessments=[
                 {
-                    "provider_model": "zai/glm-4.7",
+                    "provider_model": "zai/glm-4.7-flash",
                     "prompt_version": "1",
                     "schema_version": "1",
                     "admission_score": 0.95,
@@ -225,7 +260,7 @@ def test_late_independent_judge_can_qualify_from_the_human_gate(tmp_path: Path):
         global_mode="auto",
     )
     assert judged["admission"] == "admitted"
-    assert judged["admission_reason"] == "judge-calibrated:zai/glm-4.7"
+    assert judged["admission_reason"] == "judge-calibrated:zai/glm-4.7-flash"
 
 
 def test_video_renderer_keeps_audio_and_uses_the_ffprobe_binary(monkeypatch):
@@ -272,3 +307,169 @@ def test_video_renderer_keeps_audio_and_uses_the_ffprobe_binary(monkeypatch):
     assert commands[0][0] == "ffmpeg-custom"
     assert "-an" not in commands[0]
     assert commands[0][commands[0].index("-c:a") + 1] == "aac"
+
+
+# --- pull-quote criteria and word-accurate timing (2026-09-24) ---------------------------------
+
+from citypods import moment_judging as _judging  # noqa: E402
+from citypods import moments as _moments  # noqa: E402
+
+_SEGMENTS = [
+    {
+        "start": 100.0,
+        "end": 115.0,
+        "text": "Thank you. Parking minimums blocked my bakery expansion.",
+    },
+    {"start": 115.0, "end": 130.0, "text": "We need a vote tonight."},
+]
+_WORDS = [
+    {"text": w, "start": s, "end": s + 0.4}
+    for w, s in [
+        ("Thank", 100.0),
+        ("you.", 100.5),
+        ("Parking", 106.0),
+        ("minimums", 106.5),
+        ("blocked", 107.0),
+        ("my", 107.5),
+        ("bakery", 108.0),
+        ("expansion.", 108.5),
+        ("We", 115.0),
+        ("need", 115.5),
+        ("a", 116.0),
+        ("vote", 116.5),
+        ("tonight.", 117.0),
+    ]
+]
+
+
+def test_a_quote_keeps_its_exact_spoken_span_from_word_timing():
+    quote = "Parking minimums blocked my bakery expansion."
+    assert _moments.quote_timing(quote, _SEGMENTS, _WORDS) == (106.0, 108.9, "words")
+    # Without a words sidecar the cue-level span is the fallback, and says so.
+    assert _moments.quote_timing(quote, _SEGMENTS, None) == (100.0, 115.0, "cues")
+
+
+def test_a_short_quote_is_widened_to_the_minimum_clip_not_dropped():
+    candidate = _moments.normalize_quote_candidate(
+        {"quote": "Parking minimums blocked my bakery expansion.", "quality_score": 0.8},
+        episode_uid="ep",
+        provider_model="m",
+        recipe="r",
+        meeting_family="council",
+        transcript_segments=_SEGMENTS,
+        transcript_words=_WORDS,
+    )
+    assert candidate is not None
+    assert (candidate["quote_start"], candidate["quote_end"], candidate["timing_source"]) == (
+        106.0,
+        108.9,
+        "words",
+    )
+    assert candidate["end"] - candidate["start"] == _moments.MOMENTS_MIN_SECONDS
+    assert (
+        candidate["start"] <= candidate["quote_start"] < candidate["quote_end"] <= candidate["end"]
+    )
+
+
+def test_a_repeated_phrase_resolves_to_the_occurrence_inside_the_matched_cue():
+    words = _WORDS + [{"text": "vote", "start": 300.0, "end": 300.4}]
+    assert _moments.word_region("vote", words, near=(115.0, 130.0)) == (116.5, 116.9)
+    assert _moments.word_region("vote", words) is None  # ambiguous without the cue
+
+
+def test_decisions_carry_word_accurate_timing():
+    decision = _moments.normalize_decision_candidate(
+        {"quote": "We need a vote tonight.", "decision_type": "deferred"},
+        provider_model="m",
+        transcript_segments=_SEGMENTS,
+        transcript_words=_WORDS,
+    )
+    assert (decision["start"], decision["end"], decision["timing_source"]) == (
+        115.0,
+        117.4,
+        "words",
+    )
+
+
+def test_extraction_and_judge_share_the_pull_quote_criteria():
+    for prompt in (_moments.MOMENTS_SYSTEM_PROMPT, _judging.JUDGE_SYSTEM_PROMPT):
+        assert _moments.PULL_QUOTE_CRITERIA in prompt
+    criteria = _moments.PULL_QUOTE_CRITERIA
+    assert "Any civic topic qualifies" in criteria  # emphasis, not a restriction
+    assert "never name a member of the public" in criteria
+    assert (_moments.MOMENTS_PROMPT_VERSION, _judging.JUDGE_PROMPT_VERSION) == ("2", "2")
+
+
+def test_a_word_match_outside_the_matched_cue_falls_back_to_the_cue():
+    # The only word-level occurrence is far from the cue the quote matched: keep the cue span.
+    words = [{"text": "vote", "start": 300.0, "end": 300.4}]
+    assert _moments.word_region("vote", words, near=(115.0, 130.0)) is None
+    timing = _moments.quote_timing("We need a vote tonight.", _SEGMENTS, words)
+    assert timing == (115.0, 130.0, "cues")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        b'{"segments": null}',
+        b'{"segments": [null, {"words": null},'
+        b' {"words": [null, "w", {"w": "ok", "s": 1, "e": 2}]}]}',
+        b"not json",
+        b'["segments"]',
+    ],
+)
+def test_a_malformed_words_sidecar_never_raises(payload):
+    words = _moments.parse_words_sidecar(payload)
+    assert all(word["text"] == "ok" for word in words)
+
+
+def test_captions_show_only_words_spoken_inside_the_clip():
+    from citypods.video_clips import caption_cues
+
+    # The clip (105-111 s) is narrower than the cue (100-115 s): only the words it plays appear.
+    cues = caption_cues(_SEGMENTS, 105.0, 111.0, _WORDS)
+    assert [cue["text"] for cue in cues] == ["Parking minimums blocked my bakery expansion."]
+    assert caption_text(_SEGMENTS, 105.0, 111.0, _WORDS) == cues[0]["text"]
+    # Without word timing, whole overlapping cues are kept (previous behavior).
+    assert caption_text(_SEGMENTS, 105.0, 111.0) == _SEGMENTS[0]["text"]
+
+
+def test_the_moments_output_budget_leaves_room_for_reasoning_on_every_route():
+    # At 4,096 a reasoning model spent the whole budget thinking and returned empty content.
+    import json as _json
+    from pathlib import Path as _Path
+
+    from citypods.compute.llm_lanes import lane_for
+
+    assert _moments.MOMENTS_OUTPUT_TOKEN_BUDGET >= 16_384
+    catalog = _json.loads(
+        (
+            _Path(__file__).resolve().parents[1]
+            / "workers/llm-dispatch-v2/src/dispatch_limits.json"
+        ).read_text()
+    )
+    for model in lane_for("r6-moments").models:
+        for route_id in catalog["model_routes_map"][model]:
+            route = catalog["routes_by_id"][route_id]
+            assert route["output_context_limit"] >= _moments.MOMENTS_OUTPUT_TOKEN_BUDGET, route_id
+
+
+def test_the_tagger_output_budget_leaves_room_for_reasoning_on_every_route():
+    # At 1,024 Kilo step-3.7-flash spent the whole budget reasoning and returned empty content.
+    import json as _json
+    from pathlib import Path as _Path
+
+    from citypods.compute.llm_lanes import lane_for
+    from citypods.tags import TAG_OUTPUT_TOKEN_BUDGET
+
+    assert TAG_OUTPUT_TOKEN_BUDGET >= 8_192
+    catalog = _json.loads(
+        (
+            _Path(__file__).resolve().parents[1]
+            / "workers/llm-dispatch-v2/src/dispatch_limits.json"
+        ).read_text()
+    )
+    for model in lane_for("topic-tags:tagger").models:
+        for route_id in catalog["model_routes_map"][model]:
+            route = catalog["routes_by_id"][route_id]
+            assert route["output_context_limit"] >= TAG_OUTPUT_TOKEN_BUDGET, route_id

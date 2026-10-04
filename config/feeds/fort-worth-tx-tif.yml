@@ -1,0 +1,37 @@
+# City-wide TIF subscription policy; see review/tif-coverage-2026-10.md.
+# Boundary globs avoid matching multifamily or Beautiful.
+slug: fort-worth-tx-tif
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body: TIF *
+  body_any:
+    - '* TIF'
+    - '* TIF *'
+    - tax increment
+    - reinvestment zone
+    - TIRZ *
+    - '* TIRZ'
+    - '* TIRZ *'
+aliases:
+  - fort-worth-tx-trinity-lakes-tif-board-of-directors
+  - fort-worth-tx-woodhaven-tif-board-of-directors
+remedy_policy:
+  aggregate_family: tif
+  member_names:
+    - Woodhaven
+    - Trinity Lakes
+    - Trinity River Vision
+    - Lancaster Corridor
+    - Stockyards Northside
+podcast_title: 'Fort Worth: TIF Meetings'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: Public recordings of tax increment financing (TIF) district boards, joint TIF
+  meetings, and TIF oversight bodies. District names remain in official episode titles.

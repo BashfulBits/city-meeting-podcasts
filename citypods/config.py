@@ -8,7 +8,7 @@ from pathlib import Path
 
 import yaml
 
-from citypods.bodies import source_body_filter, source_body_inclusions
+from citypods.bodies import body_key, source_body_filter, source_body_inclusions
 from citypods.models import (
     DEFAULT_FULL_ARTIFACT_EPISODES,
     DEFAULT_MAX_EPISODES,
@@ -18,6 +18,8 @@ from citypods.models import (
 )
 from citypods.ops.workqueue import BacklogPolicy
 from citypods.providers import get_provider
+from citypods.publication_selection import parse_publication_selection
+from citypods.records import source_key
 from citypods.security import validate_city_sources, validate_source_url
 
 # Keys that must be present AND non-empty.
@@ -250,6 +252,42 @@ def _build_city(
     if missing:
         raise ValueError(f"{source_file.name}: missing required keys: {', '.join(missing)}")
 
+    if "remedy_policy" in raw:
+        policy = raw["remedy_policy"]
+        if (
+            not isinstance(policy, dict)
+            or set(policy) - {"aggregate_family", "member_names", "identity_names"}
+            or (
+                "aggregate_family" in policy
+                and (
+                    not isinstance(policy["aggregate_family"], str)
+                    or policy["aggregate_family"]
+                    not in {
+                        "tif",
+                        "pid",
+                        "bond",
+                        "charter",
+                        "redistricting",
+                        "public_input",
+                        "public_briefings",
+                    }
+                )
+            )
+            or not policy.get("aggregate_family")
+            and not policy.get("identity_names")
+            or any(
+                not isinstance(policy.get(key, []), list)
+                or any(
+                    not isinstance(name, str)
+                    or not body_key(name)
+                    or (key == "identity_names" and any(char in name for char in "*?"))
+                    for name in policy.get(key, [])
+                )
+                for key in ("member_names", "identity_names")
+            )
+        ):
+            raise ValueError(f"{source_file.name}: invalid remedy_policy")
+
     _validate_slug_format(raw["slug"], source_file=source_file, kind="slug")
     for alias in raw.get("aliases") or []:
         _validate_slug_format(str(alias), source_file=source_file, kind="alias")
@@ -359,7 +397,7 @@ def _build_city(
             "<= metadata_retention_episodes"
         )
 
-    return City(
+    city = City(
         slug=raw["slug"],
         provider=raw["provider"],
         source=raw["source"],
@@ -409,6 +447,15 @@ def _build_city(
         ),
     )
 
+    if "publication_selection" in raw:
+        try:
+            parse_publication_selection(
+                raw["publication_selection"], source_key=source_key(city), feed_slug=city.slug
+            )
+        except ValueError as exc:
+            raise ValueError(f"{source_file.name}: {exc}") from exc
+    return city
+
 
 # Top-level files/dirs the build owns directly; a feed slug/alias landing on one of these
 # would write into (or be pruned alongside) the build's own reserved tree. Shared with
@@ -448,7 +495,7 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
             identity_source = {
                 k: v
                 for k, v in city.source.items()
-                if k not in {"body", "body_any", "body_includes"}
+                if k not in {"body", "body_any", "body_exact", "body_includes"}
             }
             identity = (city.city_entity, city.provider, identity_source, path.name)
             prior = seen_source_ids.get(city.source_id)

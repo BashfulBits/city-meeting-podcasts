@@ -13,7 +13,7 @@ ruff format --check .
 
 echo "==> Compiling & checking LLM limits..."
 python scripts/compile_llm_limits.py
-git diff --exit-code workers/llm-dispatch-v2/src/dispatch_limits.json workers/llm-dispatch-proxy/src/dispatch_limits.json citypods/compute/llm_routes.json
+git diff --exit-code workers/llm-dispatch-v2/src/dispatch_limits.json citypods/compute/llm_routes.json
 
 echo "==> Running offline test suite..."
 pytest -q

@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "title": "GLM 5.3 Flash locator mode comparison against human crosswalk",
+  "date": "2026-09-27",
+  "dataset": "dataset-v3, same frozen 16 packets and 86 eligible human crosswalk targets",
+  "arms": {
+    "prompt_only": {
+      "result": "2026-09-27-glm-53-flash-prompt-only-human-crosswalk.json",
+      "valid_packets": 9,
+      "human_item_boundary_hits": 47,
+      "human_item_boundary_recall": 0.5465116279069767,
+      "cluster_bootstrap_95": [
+        0.27058823529411763,
+        0.8115984654731454
+      ],
+      "provider_starts_hit": 48,
+      "requests": 29,
+      "total_prompt_tokens": 1239550,
+      "total_completion_tokens": 107950,
+      "sum_attempt_latency_seconds": 2289.7
+    },
+    "configured_json_object": {
+      "result": "2026-09-27-glm-53-flash-json-object-human-crosswalk.json",
+      "valid_packets": 10,
+      "human_item_boundary_hits": 46,
+      "human_item_boundary_recall": 0.5348837209302325,
+      "cluster_bootstrap_95": [
+        0.2727272727272727,
+        0.8307692307692308
+      ],
+      "provider_starts_hit": 48,
+      "requests": 20,
+      "total_prompt_tokens": 838506,
+      "total_completion_tokens": 96816,
+      "sum_attempt_latency_seconds": 2104.3
+    }
+  },
+  "interpretation": "JSON-object mode increased schema-valid packets by one and reduced provider attempts, but human item-and-boundary hits decreased by one and timing recall was unchanged. Both arms had three explicit single-request free-tier size rejections. The bootstrap intervals are wide and overlap; this sample does not establish a quality improvement.",
+  "retry_comparability_note": "The JSON-object arm used the route-aware direct LiteLLM path, which can make one provider-side Pydantic correction attempt, plus the locator runner’s one repair. Request counts are observed provider calls, not a sustained v2 Worker retry/capacity benchmark."
+}
