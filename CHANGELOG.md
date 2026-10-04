@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Add inactive publication-selection v1 machinery for #1997: strict reviewed proof declarations,
+  existing UID projection and pre-write feed/search holds preserve raw records and meeting pages.
+  No city groups are activated. Configured selection enters render/search cache fingerprints;
+  unconfigured views retain existing hashes. No pipeline-version bump or audio backfill occurs.
+
 - Remedy evaluations report only applied reasoning controls and reject physical-route allowlists
   on deferred inference paths; immediate evaluation routing remains supported.
 

@@ -18,6 +18,8 @@ from citypods.models import (
 )
 from citypods.ops.workqueue import BacklogPolicy
 from citypods.providers import get_provider
+from citypods.publication_selection import parse_publication_selection
+from citypods.records import source_key
 from citypods.security import validate_city_sources, validate_source_url
 
 # Keys that must be present AND non-empty.
@@ -395,7 +397,7 @@ def _build_city(
             "<= metadata_retention_episodes"
         )
 
-    return City(
+    city = City(
         slug=raw["slug"],
         provider=raw["provider"],
         source=raw["source"],
@@ -444,6 +446,15 @@ def _build_city(
             source_file=source_file,
         ),
     )
+
+    if "publication_selection" in raw:
+        try:
+            parse_publication_selection(
+                raw["publication_selection"], source_key=source_key(city), feed_slug=city.slug
+            )
+        except ValueError as exc:
+            raise ValueError(f"{source_file.name}: {exc}") from exc
+    return city
 
 
 # Top-level files/dirs the build owns directly; a feed slug/alias landing on one of these

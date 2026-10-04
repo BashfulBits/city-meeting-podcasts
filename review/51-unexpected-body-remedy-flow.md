@@ -575,6 +575,10 @@ The future extension must specify its persistent sticky-winner ledger before it 
 [#1997](https://github.com/BashfulBits/city-meeting-podcasts/issues/1997), followed by separate
 activation work on #1986/#1989/#1991. Only the previously
 listed files, these named dataclasses/helpers and existing writer helpers may change; add no deps.
+
+Implementation for #1997 is under validation: parser/index/proof checks, feed/search projection,
+raw meeting-page retention and pre-write holds are implemented without active city declarations.
+This does not promote activation, future-member admission, or P2–P5 predecessor gates.
 Tests use `tests/test_publication_selection.py`, `tests/test_config.py`, `tests/test_run.py`,
 `tests/test_search.py`, `tests/test_feeds.py`, `tests/test_records.py`, sanitized fixtures and
 `evals/remedy/` cases. Include:

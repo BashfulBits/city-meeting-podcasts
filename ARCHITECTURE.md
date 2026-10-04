@@ -715,8 +715,12 @@ in gold, never requests. Every candidate supplies matching manifest/prompt/schem
 No route is qualified by the seed corpus or this implementation alone.
 
 [review/51](review/51-unexpected-body-remedy-flow.md) separately specifies publication selection
-at L2 for verified duplicate observations. Runtime selection and affected feeds remain gated;
-this evaluation harness does not delete records, merge UIDs or deduplicate published episodes.
+for verified duplicate observations. Inactive v1 machinery validates frozen proof declarations
+and full source archives before feed or search writes, projecting reviewed existing UIDs without
+changing records, audio or source identity. Failed proof preserves prior output and caches.
+Meeting pages retain raw observations; public feed/archive/search views use reviewed winners.
+No groups are activated. City activation and automatic future-member admission remain L2;
+the evaluation harness does not delete records or merge UIDs.
 
 #### Exact feed-body labels
 
