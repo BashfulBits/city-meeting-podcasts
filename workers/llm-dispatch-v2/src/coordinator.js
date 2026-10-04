@@ -1172,7 +1172,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ROWS_PER_BUNDLE * (Number(sched.bundle_count_today) || 0) +
       ROWS_PER_LEASE_WORST * (Number(sched.lease_count_today) || 0) +
       ROWS_PER_CLEANUP_JOB * cleanupRuns * this._envInt("PURGE_BATCH_LIMIT", 15) +
-      minutes;
+      2 * minutes; // Each ordinary idle tick writes its outcome and accounting row.
     sql.exec("UPDATE scheduler SET rows_written_today = ? WHERE id = 1", estimate);
   }
 
@@ -3878,10 +3878,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       };
       // The daily brake. Past the claim threshold no new lease is claimed, and the empty result
       // is not recorded -- every row left belongs to completing what is already in flight. The
-      // row counter is still persisted when rows are pending (completions, acks and retires keep
-      // writing), since nothing else flushes it past the enqueue threshold and an eviction would
-      // otherwise drop them and reopen the optional-write gate. One row, only when more than one
-      // is pending, so an idle braked tick writes nothing.
+      // transaction wrapper persists any pending writes atomically. An idle braked tick has
+      // no pending writes and remains write-free.
       if (
         rowsToday >= this._claimRowStop() ||
         projectedRowsWithClaim >= accountSafeStop
@@ -3891,12 +3889,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
           claim_row_stop: this._claimRowStop(),
           claim_stop_reached: rowsToday >= this._claimRowStop(),
         });
-        if ((this._rowsUnflushed || 0) > 1) {
-          sql.exec(
-            "UPDATE scheduler SET rows_written_today = rows_written_today + ? WHERE id = 1",
-            this._takeUnflushedRows()
-          );
-        }
         return {
           ...EMPTY,
           claim_result: "empty",

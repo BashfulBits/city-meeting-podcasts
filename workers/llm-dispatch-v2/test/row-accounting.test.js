@@ -110,3 +110,19 @@ test("operator observations only raise the current-day floor, survive recreation
   }
   assert.equal(f.read(), before);
 });
+
+test("legacy counter seeding includes both idle-tick writes", (t) => {
+  const now = Date.parse(`${new Date().toISOString().slice(0, 10)}T12:00:00Z`);
+  t.mock.method(Date, "now", () => now);
+  const { storage, sql } = createMockSqlStorage();
+  const env = withTestReservations({ PURGE_BATCH_LIMIT: "0" });
+  new LLMSchedulerDO({ storage }, env);
+  sql.exec("ALTER TABLE scheduler DROP COLUMN rows_written_today");
+  sql.exec(
+    `UPDATE scheduler SET ingress_write_units_today = 0, lease_count_today = 0,
+       bundle_count_today = 0 WHERE id = 1`
+  );
+  new LLMSchedulerDO({ storage }, env);
+  const [row] = [...sql.exec("SELECT rows_written_today FROM scheduler")];
+  assert.ok(row.rows_written_today >= 2 * 12 * 60, `seeded ${row.rows_written_today}`);
+});
