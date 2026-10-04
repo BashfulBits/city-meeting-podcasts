@@ -671,3 +671,49 @@ feed exposure and canonical ownership. Remaining joint aliases still need their 
 
 These slices require documented L3 file/function/test plans before runtime/config edits.
 CodeRabbit remains held until the wider Addison and onboarding settlement is complete.
+
+## CPAC membership clarification and selector plan refinement
+
+CPAC is a separate community advisory body, not the combined full Council and P&Z. The
+[September 19, 2023 P&Z packet](https://agendas.addisontx.gov/docs/2023/PZ/20230919_7146/AGENDApacket__09-19-23_0336_7141.pdf)
+specifies up to 25 members: one P&Z representative, 21 resident/business representatives and
+three legacy residents. The
+[July 11, 2024 joint packet](https://agendas.addisontx.gov/docs/2024/CPAC/20240711_7339/AGENDApacket__07-11-24_1236_7334.pdf)
+reports the September 26 appointments using that composition. It also provides direct dated
+three-body joint evidence for GUID310072, beyond the later minutes reference.
+
+Therefore preserve `addison-tx-comprehensive-plan-advisory-committee.yml` and its existing feed
+URL/history. Standalone CPAC meetings belong there; officially joint CPAC/P&Z/Council recordings
+belong in all three participating feeds. The temporary comprehensive-plan remit and current
+`dormant` configuration do not erase its historical subscription. Membership is not a rule that
+turns a CPAC-only meeting into Council or P&Z.
+
+### Existing-field proposal for the work-session correction (not implemented)
+
+Council currently uses substring `Work Session` in `source.body_any`. The full retained census
+shows six labels containing those words. Replace that broad term with existing `source.body_exact`
+entries for the five Council candidates below, subject to their official body verification:
+
+| Complete retained label | Raw observations | Proposed disposition |
+|---|---:|---|
+| Work Session | 23 | Council exact alias, verify official convening |
+| Work Session and Regular Meeting | 234 | Council exact alias, verify official convening |
+| Special Meeting and Work Session | 15 | Council exact alias, verify official convening |
+| Special Work Session | 3 | Council exact alias, verify official convening |
+| Work Session - Economic Development Strategic Plan | 1 | Council exact alias, verify convening |
+| Planning & Zoning Commission Work Session | 47 | P&Z only; remove false Council match |
+
+The existing broad `Special Meeting` and `City Council` terms require the same full-label review:
+removing only `Work Session` does not stabilize onboarding or remove ceremony inclusion. The
+Council `Fiscal Year * Budget Workshop` glob also needs an anchored-label negative replay.
+Do not invent a regex/exclusion config schema to solve this; existing exact selectors and
+source-bound `body_includes` are sufficient for individually proved aliases. The final small
+L3 slice must enumerate the complete Council alias set, not implement this provisional subset.
+
+For the two established three-body joints, the minimal proposed addition is existing
+`source.body_includes` entries binding GUID295839 and GUID310072 to their exact retained labels
+in both existing P&Z and CPAC configs. Council remains selected, and its search ownership is
+preserved. This intentionally avoids a general `CPAC` substring that could absorb unrelated
+committee-only or public-input recordings. Tests must assert three subscription matches for
+each joint UID, one canonical search entry, unchanged standalone CPAC ownership, and no
+P&Z-only work-session eligibility in Council. No runtime/config edits or review request occurred.
