@@ -2621,7 +2621,7 @@ function setRowsWrittenToday(sql, rows) {
   sql.exec("UPDATE scheduler SET rows_written_today = ? WHERE id = 1", rows);
 }
 
-test("the coordinator tallies the rows its RPCs write and persists them on the claim write", async () => {
+test("the coordinator persists every writing transaction before the next claim", async () => {
   const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1"), makeJob("j2")]);
   const afterEnqueue = [...sql.exec("SELECT rows_written_today FROM scheduler WHERE id = 1")][0];

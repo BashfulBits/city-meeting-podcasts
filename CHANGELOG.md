@@ -12,6 +12,15 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Durable Object write accounting survives hibernation.** Persist billed row counts in the
+  same synchronous transaction as each mutation, including the accounting row; roll back both
+  on failure. Read-only calls and replays remain write-free. Add a bounded authenticated,
+  monotone current-day repair endpoint with audit logs. Increase projection constants for the
+  measured accounting overhead; quotas and safe stops stay unchanged. Correct the workerd
+  benchmark and cover recreation, rollback, midnight, and operator repair. Existing undercounts
+  need an explicit platform-derived repair; future days start cleanly. No pipeline-version bump,
+  artifact invalidation, schema migration, model/recipe change, or catalog backfill.
+
 - **GitHub Actions major updates (PR #1497).** Refresh full-SHA action pins across current
   workflows, preserve retired LLM workflows and the dispatch-tuning drift gate, and cover
   workflows added since the original Renovate branch. Validate upstream action inputs and
