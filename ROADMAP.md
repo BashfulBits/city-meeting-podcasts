@@ -31,6 +31,12 @@ Alias qualification is narrow and reviewed; incomplete archives require document
 TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues.
 
 ## Recently shipped (summary)
+
+- **P0 LLM backlog trend:** daily/manual read-only reporting shipped in
+  [PR #1983](https://github.com/BashfulBits/city-meeting-podcasts/pull/1983), accepted against live
+  storage on 2026-10-04. Registry additions and retirements are discovered automatically; missing
+  purpose telemetry remains visibly unmeasured. Design and evidence: [review/50](review/50-p0-llm-verb-backlog-trend.md).
+
 Timeline/EDL foundation; **#52** append-only content permanence; audio-cleanup band (**#22** silence
 trim, **#21** loudness, **#23** host-all, **#122** concat, clips); **#1/#110** ASR transcripts (reuse
 provider transcripts first, self-host the rest); **#11** `<podcast:transcript>`; **#124** status

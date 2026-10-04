@@ -1,7 +1,9 @@
 # review/50 — P0: per-verb LLM backlog trend (read-only)
 
-**Maturity: L3 dev-ready · authored 2026-09-30 · parent: [review/49](49-judge-consensus-admission.md) phase P0 ·
-GitHub issues: PR1 [#1968](https://github.com/BashfulBits/city-meeting-podcasts/issues/1968), PR2 [#1969](https://github.com/BashfulBits/city-meeting-podcasts/issues/1969)**
+**Implemented in PR #1983 · frozen 2026-10-04.**
+
+Implementation and maintainer-directed lifecycle adaptation are accepted; see the live acceptance
+record below. The original design is retained as a point-in-time record.
 
 ## Goal
 
@@ -336,3 +338,32 @@ Run events do not include per-purpose ownership. A new purpose sharing another v
 automatically listed but cannot have its backlog attributed until its producer emits distinct
 telemetry. The reader does not guess from model names or aggregate stage counts. Producer telemetry
 changes remain a separate design task; no producer, Worker, schema, quota, or recipe changes here.
+
+
+## Live Actions acceptance (2026-10-04)
+
+[PR #1983](https://github.com/BashfulBits/city-meeting-podcasts/pull/1983) merged after CI,
+dependency checks, preview and CodeQL passed. The first manual
+[workflow run](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37179726987) completed successfully, including summary publication and JSON artifact
+upload (30-day retention). Its downloaded JSON has zero skipped files, no unclassified tokens,
+and seven event days for each established verb:
+
+| Verb | Working backlog | Trend |
+|---|---:|---|
+| chapter-agenda | 699 | shrinking |
+| chapter-locator | 2,638 | growing |
+| tagger | 23 | growing |
+| prelabeler | 68 | shrinking |
+| prelabeler-shadow | 102 | flat |
+| moments | 699 | growing |
+
+Five additional registry purposes appear automatically with null backlog and `no_telemetry`:
+`r5-benchmark:judge`, `r5-benchmark:tag`, `r6-judge`, `tournament:tag`, and
+`tournament:tag-judge`. The additional `moments:moment-judge` stage snapshot is discovered with
+2,083 working backlog and a growing trend, but is `unregistered` because the event cannot establish
+its purpose identity. It receives no capacity recommendation. This is an ownership/telemetry gap,
+not evidence that the canonical `r6-judge` purpose is missing from the registry.
+
+No producer telemetry, queues, quotas, schemas, recipes or remote state were changed. New purposes
+are discovered without report-code edits; precise attribution for new shared-stage purposes still
+requires distinct producer telemetry. P0 delivery and live acceptance are complete.
