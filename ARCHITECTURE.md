@@ -497,9 +497,10 @@ task is a deliberate config edit; a sub-purpose (`topic-tags:prelabeler`) does n
 prefix's (`topic-tags:tagger`) budget. **The binding daily limit is the account's Durable Object
 row-write budget** (Free plan: 100,000 billed rows/day; every index entry and trigger write is a
 billed row), enforced at **runtime against the rows the coordinator actually writes**: every SQL
-cursor's `rowsWritten` is summed per RPC and persisted on scheduler writes. A 10,000-row account
-reserve caps enqueue and optional-write admission at 90,000. Before each claim, the coordinator
-reserves 24 rows per active leased job, 6 per active bundle, and worst-case headroom for the next
+cursor's `rowsWritten` is persisted atomically inside each writing transaction, including
+the singleton accounting write itself. Object hibernation cannot discard the tally.
+A 10,000-row account reserve caps enqueue and optional-write admission at 90,000. Before each claim, the coordinator
+reserves 28 rows per active leased job, 8 per active bundle, and worst-case headroom for the next
 bundle; it refuses the claim if that projection reaches the 90,000 safe stop. Dispatch can
 therefore stop below the configured `DO_ROWS_CLAIM_STOP` maximum (97,000) when outstanding work
 needs more drain capacity. In-flight completions and retries remain allowed, and their worst-case
@@ -507,7 +508,13 @@ writes are included in the reserve. Structured `do_row_write_budget` Worker logs
 per-RPC billed-row delta, running total, and effective stops. A separate, rate-limited
 `do_row_budget_stop` log records the gate that deferred work, remaining headroom, and claim
 projection; it is emitted at most once per gate per five minutes per DO instance. External account
-writers can spend the 10,000-row reserve. There is no working daily lease cap
+writers can spend the 10,000-row reserve. An authenticated operator can raise the current-day
+counter with `POST /v2/row-budget:reconcile` using `utc_day`, `minimum_rows_written`,
+`observed_through_at` (UTC epoch milliseconds), and `reason`. The floor never decreases the
+counter; stale/future observations are rejected and repairs emit `do_row_budget_reconciled`.
+Cloudflare's lagged UTC-day aggregate is the source for historical repair; add explicit
+headroom for the reporting gap, since short live-tail samples cannot reconstruct a full day.
+There is no working daily lease cap
 (`MAX_LEASES_PER_UTC_DAY` is a 7,000
 backstop), so a cheap day dispatches until the safe projection closes admission. Ingress is bounded
 by a shared daily quota (`MAX_JOBS_PER_UTC_DAY` 4,000,
