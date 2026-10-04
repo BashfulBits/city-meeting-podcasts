@@ -6,7 +6,7 @@ Source: `ecc3710ac47f`. Evidence collection was read-only. Maintainer approved t
 
 Use currently delivered dedicated-feed UIDs as preferred existing winners; retain all six archive rows and pages. Exposure status must be `both-published`: the all-meetings public archive currently links all six UIDs. The dedicated Foundation audio/video RSS and dedicated archive link only the three current-label UIDs. These observations prove current publication, not complete historical subscriber delivery. Do not claim suppressed UIDs were never published.
 
-Lifecycle retirement-by-age is contradicted by current official evidence. Latest official PDF is October 6, 2026 Board meeting, posted September 29, and approves August 11 Board minutes and September 28 subcommittee minutes. Recommend active Foundation board lifecycle rather than retired; missing recordings after 2020 are a provider/source coverage question, not evidence that the board ended. Calendar lists current 2026 meetings. The older v16 agenda URL redirected to v21; retain FINAL v21 URL in committed evidence.
+Lifecycle retirement-by-age is contradicted by current official evidence. Latest official PDF is October 6, 2026 Board meeting, posted September 29, and lists approval of August 11 Board minutes and September 28 subcommittee minutes. Recommend active Foundation board lifecycle rather than retired; missing recordings after 2020 are a provider/source coverage question, not evidence that the board ended. Calendar lists current 2026 meetings. The older v16 agenda URL redirected to v21; retain FINAL v21 URL in committed evidence.
 
 ## Exact retained pair observations
 
