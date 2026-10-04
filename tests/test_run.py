@@ -3789,3 +3789,270 @@ def test_closed_llm_lanes_checks_only_enabled_lanes(monkeypatch):
     )
     assert closed == {"chapter-agenda"}
     assert asked == ["chapter-agenda", "chapter-locator"]
+
+
+def _publication_render_fixture(tmp_path):
+    from types import SimpleNamespace
+
+    from citypods.publication_selection import record_identity_fingerprint
+    from citypods.records import episode_to_record, save_records, source_key
+
+    city = _retention_city(max_episodes=1)
+    eps = [_ep("same", hosted="https://cdn.example/audio.m4a") for _ in range(2)]
+    for uid, ep in zip(("1" * 16, "2" * 16), eps, strict=True):
+        ep.uid = uid
+    records = {ep.uid: episode_to_record(ep) for ep in eps}
+    state_dir = tmp_path / "state"
+    save_records(state_dir, source_key(city), records)
+    ref = {
+        "url": "https://example.gov/evidence",
+        "retrieved_at": "2026-10-03T12:00:00Z",
+        "content_hash": "a" * 64,
+    }
+    city.extra["publication_selection"] = {
+        "version": 1,
+        "groups": [
+            {
+                "id": "same-recording",
+                "source_key": source_key(city),
+                "identity_kind": "same_provider_guid",
+                "identity_key": "same",
+                "members": [
+                    {
+                        "uid": uid,
+                        "provider_guid": "same",
+                        "record_fingerprint": record_identity_fingerprint(source_key(city), record),
+                    }
+                    for uid, record in records.items()
+                ],
+                "preferred_uid": "1" * 16,
+                "evidence_refs": [ref],
+                "approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/1997",
+                "exposure": {"status": "never-published", "artifacts": [], "rationale": "New feed"},
+                "search": True,
+                "date_resolution": None,
+            }
+        ],
+    }
+    pipeline = SimpleNamespace(
+        state_dir=state_dir,
+        render_from_records=lambda city: eps,
+        calendar_records=lambda city: [],
+        note=lambda city: None,
+    )
+    return city, pipeline
+
+
+def test_publication_render_preserves_raw_pages_records_and_sticky_uid(tmp_path):
+    from citypods.records import records_path, source_key
+
+    city, pipeline = _publication_render_fixture(tmp_path)
+    archive = records_path(pipeline.state_dir, source_key(city))
+    original_records = archive.read_bytes()
+    out = tmp_path / "docs"
+    cache = {}
+    result, entry = run._process_city(
+        city,
+        "https://example.gov",
+        out,
+        cache,
+        0,
+        False,
+        pipeline,
+        {},
+        "original",
+        no_refresh=True,
+    )
+    assert result.status == "built"
+    assert result.episode_count == 1
+    rss = (out / city.slug / "audio_feed.xml").read_text()
+    assert rss.count("<item>") == 1
+    assert "1" * 16 in rss and "2" * 16 not in rss
+    for uid in ("1" * 16, "2" * 16):
+        assert (out / city.slug / uid / "index.html").exists()
+    assert archive.read_bytes() == original_records
+    cache[city.slug] = entry
+    second, _ = run._process_city(
+        city,
+        "https://example.gov",
+        out,
+        cache,
+        0,
+        False,
+        pipeline,
+        {},
+        "original",
+        no_refresh=True,
+    )
+    assert second.status == "skipped"
+
+
+@pytest.mark.parametrize("previous", [False, True])
+def test_publication_hold_preserves_prior_files_and_cache(tmp_path, previous):
+    city, pipeline = _publication_render_fixture(tmp_path)
+    out = tmp_path / "docs"
+    city_dir = out / city.slug
+    cache = {city.slug: {"content_hash": "old", "meeting_pages": {"old": "hash"}}}
+    if previous:
+        city_dir.mkdir(parents=True)
+        (city_dir / "audio_feed.xml").write_bytes(b"prior feed")
+        (city_dir / "index.html").write_bytes(b"prior index")
+        chapter = city_dir / "chapters" / ("2" * 16 + ".json")
+        chapter.parent.mkdir()
+        chapter.write_bytes(b"prior chapters")
+    before = {p.relative_to(out): p.read_bytes() for p in out.rglob("*") if p.is_file()}
+    old_cache = json.loads(json.dumps(cache))
+    city.extra["publication_selection"]["groups"][0]["members"][0]["record_fingerprint"] = "0" * 64
+    result, entry = run._process_city(
+        city,
+        "https://example.gov",
+        out,
+        cache,
+        0,
+        False,
+        pipeline,
+        {},
+        "original",
+        no_refresh=True,
+    )
+    assert result.status == "held" and "fingerprint-changed" in result.detail
+    assert entry is None and cache == old_cache
+    assert result.has_audio is previous
+    assert before == {p.relative_to(out): p.read_bytes() for p in out.rglob("*") if p.is_file()}
+    if not previous:
+        assert not city_dir.exists()
+
+
+@pytest.mark.parametrize("pair_count,expected_count", [(3, 3), (1, 5)])
+def test_publication_record_backed_six_row_projection(tmp_path, pair_count, expected_count):
+    import copy
+
+    from citypods.models import AgendaRecord
+    from citypods.publication_selection import record_identity_fingerprint
+    from citypods.records import episode_to_record, records_path, save_records, source_key
+
+    city, pipeline = _publication_render_fixture(tmp_path)
+    city.max_episodes = 10
+    episodes = []
+    for number in range(6):
+        guid = f"recording-{number // 2}" if number < pair_count * 2 else f"single-{number}"
+        episode = _ep(guid, hosted="https://cdn.example/audio.m4a")
+        episode.uid = f"{number + 1:016x}"
+        episodes.append(episode)
+    records = {ep.uid: episode_to_record(ep) for ep in episodes}
+    groups = []
+    template = city.extra["publication_selection"]["groups"][0]
+    for number in range(pair_count):
+        group = copy.deepcopy(template)
+        group["id"] = f"recording-{number}"
+        group["identity_key"] = f"recording-{number}"
+        pair = episodes[number * 2 : number * 2 + 2]
+        group["preferred_uid"] = pair[0].uid
+        group["members"] = [
+            {
+                "uid": ep.uid,
+                "provider_guid": ep.guid,
+                "record_fingerprint": record_identity_fingerprint(
+                    source_key(city), records[ep.uid]
+                ),
+            }
+            for ep in pair
+        ]
+        groups.append(group)
+    city.extra["publication_selection"]["groups"] = groups
+    save_records(pipeline.state_dir, source_key(city), records)
+    archive = records_path(pipeline.state_dir, source_key(city))
+    archive_before = archive.read_bytes()
+    pipeline.render_from_records = lambda city: episodes
+    calendar = AgendaRecord(
+        body="City Council",
+        title="Future no-video public meeting",
+        published=datetime(2026, 12, 1, tzinfo=UTC),
+        links={"agenda": "https://example.gov/future-agenda.pdf"},
+    )
+    pipeline.calendar_records = lambda city: [calendar]
+    output = tmp_path / "docs"
+    result, _ = run._process_city(
+        city,
+        "https://example.gov",
+        output,
+        {},
+        0,
+        False,
+        pipeline,
+        {},
+        "original",
+        no_refresh=True,
+    )
+    assert result.status == "built"
+    rss = (output / city.slug / "audio_feed.xml").read_text()
+    assert rss.count("<item>") == expected_count
+    assert "Future no-video public meeting" not in rss
+    assert (
+        "Future no-video public meeting"
+        in (output / city.slug / "archive" / "index.html").read_text()
+    )
+    for episode in episodes:
+        assert (output / city.slug / episode.uid / "index.html").is_file()
+    for group in groups:
+        assert group["preferred_uid"] in rss
+        assert group["members"][1]["uid"] not in rss
+    assert archive.read_bytes() == archive_before
+
+
+def test_publication_unavailable_preferred_never_promotes_alternate(tmp_path):
+    from citypods.availability import MISSING, MediaAvailability
+
+    city, pipeline = _publication_render_fixture(tmp_path)
+    episodes = pipeline.render_from_records(city)
+    preferred, alternate = episodes
+    preferred.media_availability = MediaAvailability(state=MISSING, reason="official unavailable")
+    preferred.hosted_audio_url = None
+    output = tmp_path / "docs"
+    city_dir = output / city.slug
+    city_dir.mkdir(parents=True)
+    (city_dir / "audio_feed.xml").write_text(
+        f"<rss><channel><item><guid>{alternate.uid}</guid></item></channel></rss>"
+    )
+    result, _ = run._process_city(
+        city,
+        "https://example.gov",
+        output,
+        {},
+        0,
+        False,
+        pipeline,
+        {},
+        "original",
+        no_refresh=True,
+    )
+    assert result.status == "built"
+    feed = output / city.slug / "audio_feed.xml"
+    rss = feed.read_text()
+    assert "<channel>" in rss
+    assert "<item>" not in rss
+    assert alternate.uid not in rss
+    for episode in episodes:
+        assert (output / city.slug / episode.uid / "index.html").is_file()
+
+
+def test_held_selection_preserves_alias_redirect_entries(tmp_path):
+    city = _retention_city(max_episodes=1)
+    city.aliases = ["former-slug"]
+    rows = [{"from": "/former-slug/", "to": "https://example.gov/old/"}]
+    (tmp_path / "redirects.json").write_text(json.dumps(rows))
+    alias = tmp_path / "former-slug"
+    alias.mkdir()
+    (alias / "index.html").write_bytes(b"prior alias")
+    run._write_aliases(tmp_path, "https://example.gov", [city], {}, held_slugs={city.slug})
+    assert json.loads((tmp_path / "redirects.json").read_text()) == rows
+    assert (alias / "index.html").read_bytes() == b"prior alias"
+
+
+@pytest.mark.parametrize("payload", ["{broken", "{}", '[null, {}, {"from": null}, {"from": "x"}]'])
+def test_held_alias_redirects_ignore_malformed_cached_rows(tmp_path, payload):
+    city = _retention_city(max_episodes=1)
+    city.aliases = ["former-slug"]
+    (tmp_path / "redirects.json").write_text(payload)
+    run._write_aliases(tmp_path, "https://example.gov", [city], {}, held_slugs={city.slug})
+    assert json.loads((tmp_path / "redirects.json").read_text()) == []

@@ -7,8 +7,10 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+import yaml
 
 from citypods.config import filter_city_configs, load_city_configs, load_site_config
+from citypods.records import source_key
 
 DEFAULTS = {
     "podcast_language": "en-us",
@@ -616,3 +618,87 @@ def test_invalid_exact_body_selectors_fail_config_validation(tmp_path, invalid):
     )
     with pytest.raises(ValueError, match="body_exact"):
         load_city_configs(tmp_path, DEFAULTS)
+
+
+def _publication_group(source_namespace):
+    return {
+        "id": "reviewed-meeting",
+        "source_key": source_namespace,
+        "identity_kind": "same_provider_guid",
+        "identity_key": "official-provider-guid",
+        "members": [
+            {
+                "uid": "a" * 16,
+                "provider_guid": "official-provider-guid",
+                "record_fingerprint": "1" * 64,
+            },
+            {
+                "uid": "b" * 16,
+                "provider_guid": "official-provider-guid",
+                "record_fingerprint": "2" * 64,
+            },
+        ],
+        "preferred_uid": "a" * 16,
+        "evidence_refs": [
+            {
+                "url": "https://foo.gov/agenda",
+                "retrieved_at": "2026-10-01T00:00:00Z",
+                "content_hash": "3" * 64,
+            }
+        ],
+        "approval_ref": "https://github.com/BashfulBits/city-meeting-podcasts/issues/1997",
+        "exposure": {
+            "status": "historical-unknown",
+            "artifacts": [],
+            "rationale": "Historical public exposure is incomplete.",
+        },
+        "search": False,
+        "date_resolution": None,
+    }
+
+
+def test_publication_selection_is_feed_local_and_preserves_source_identity(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID)
+    baseline = load_city_configs(tmp_path, DEFAULTS)[0]
+    policy = {"version": 1, "groups": [_publication_group(source_key(baseline))]}
+    _write(tmp_path, "foo-tx.yml", VALID + yaml.safe_dump({"publication_selection": policy}))
+    selected = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert selected.extra["publication_selection"] == policy
+    assert selected.source == baseline.source
+    assert source_key(selected) == source_key(baseline)
+    assert selected.uid_overrides == baseline.uid_overrides
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        None,
+        [],
+        {"version": True, "groups": []},
+        {"version": 1, "groups": [], "extra": True},
+        {"version": 1},
+    ],
+)
+def test_invalid_publication_selection_fails_during_config_load(tmp_path, policy):
+    _write(tmp_path, "foo-tx.yml", VALID + yaml.safe_dump({"publication_selection": policy}))
+    with pytest.raises(ValueError, match="foo-tx.yml.*publication_selection"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_publication_selection_rejects_foreign_source_namespace(tmp_path):
+    policy = {"version": 1, "groups": [_publication_group("0" * 12)]}
+    _write(tmp_path, "foo-tx.yml", VALID + yaml.safe_dump({"publication_selection": policy}))
+    with pytest.raises(ValueError, match="source key"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_empty_publication_selection_keeps_pinned_namespace(tmp_path):
+    policy = {"version": 1, "groups": []}
+    _write(
+        tmp_path,
+        "foo-tx.yml",
+        VALID + "source_id: shared-source\n" + yaml.safe_dump({"publication_selection": policy}),
+    )
+    city = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert city.extra["publication_selection"] == policy
+    assert source_key(city) == "shared-source"

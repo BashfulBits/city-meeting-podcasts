@@ -96,6 +96,11 @@ from citypods.progress import PROGRESS, format_snapshot
 from citypods.provider_leases import DISTRIBUTED_PROVIDER_LEASES
 from citypods.providers import get_provider
 from citypods.providers.base import ProviderError, is_transient_provider_error
+from citypods.publication_selection import (
+    SelectionIndex,
+    load_selection_index,
+    select_feed_publication,
+)
 from citypods.records import (
     RESET_GUARDED_AGENDA_LINK_KEYS,
     assign_uids,
@@ -1084,6 +1089,8 @@ def _process_city(
     fingerprint: str,
     render: bool = True,
     no_refresh: bool = False,
+    *,
+    selection_index: SelectionIndex | None = None,
 ) -> tuple[CityResult, dict | None]:
     """Enrich the city (runs the pipeline's stages) and, when ``render`` is set, write its feeds/
     pages. In the enrich phase ``render`` is False: the expensive stages still run and persist via
@@ -1124,6 +1131,38 @@ def _process_city(
         key=lambda e: e.published,
         reverse=True,
     )
+    raw_retained_eps = retained_eps
+    selection_hash = None
+    if render:
+        selection_index = selection_index or load_selection_index([city])
+        if any(group.feed_slug == city.slug for group in selection_index.groups):
+            plan = select_feed_publication(
+                selection_index,
+                city,
+                retained_eps,
+                load_records(pipeline.state_dir, source_key(city)),
+            )
+            if plan.held:
+                detail = "; ".join(str(diagnostic) for diagnostic in plan.diagnostics)
+                print(f"publication selection held {city.slug}: {detail}", flush=True)
+                previous_dir = output_dir / city.slug
+                return (
+                    CityResult(
+                        city.slug,
+                        "held",
+                        detail=detail,
+                        has_audio=(previous_dir / "audio_feed.xml").is_file(),
+                        has_video=(previous_dir / "video_feed.xml").is_file(),
+                    ),
+                    None,
+                )
+            retained_eps = list(plan.public_items)
+            selection_hash = plan.policy_hash
+            fingerprint = hashlib.sha256(
+                json.dumps(
+                    [fingerprint, selection_hash, plan.selected_uids], separators=(",", ":")
+                ).encode()
+            ).hexdigest()
     calendar_records = sorted(
         filter_by_body(pipeline.calendar_records(city), body_filter, body_inclusions),
         key=lambda record: record.published,
@@ -1186,7 +1225,7 @@ def _process_city(
             rendered_page_cache = _write_meeting_pages(
                 city_dir,
                 city,
-                retained_eps,
+                raw_retained_eps,
                 base_url,
                 site_config,
                 page_cache,
@@ -1211,7 +1250,9 @@ def _process_city(
                         import shutil
 
                         shutil.rmtree(child)
-            archive_hash = _city_archive_hash(city, retained_eps, calendar_records, base_url)
+            archive_hash = _city_archive_hash(
+                city, retained_eps, calendar_records, base_url, selection_hash=selection_hash
+            )
             new_entry["archive_hash"] = archive_hash
             if cache_entry is None or cache_entry.get("archive_hash") != archive_hash:
                 meeting_outputs_changed = True
@@ -1242,11 +1283,12 @@ def _process_city(
         _write_chapter_sidecars(
             city_dir,
             city,
-            feed_eps,
+            raw_retained_eps if selection_hash is not None else feed_eps,
             base_url,
             include_generated_chapters=include_generated_chapters,
         )
-        if has_audio:
+        # A valid selection must replace stale alternate items even without playable audio.
+        if has_audio or selection_hash is not None:
             (city_dir / "audio_feed.xml").write_text(
                 build_rss(
                     city,
@@ -2650,6 +2692,7 @@ def _build_impl(
     # sharded burst that triggered the Granicus 403 / truncated-fetch storm.
     HOST_LIMITER.configure(site_config.get("provider_rate_limits", {}))
     cities = load_city_configs(config_dir, site_config.get("defaults", {}))
+    selection_index = load_selection_index(cities)
     if only_slug:
         cities = filter_city_configs(cities, only_slug)
         if not cities:
@@ -3509,6 +3552,7 @@ def _build_impl(
                                     fingerprint,
                                     do_render,
                                     no_refresh,
+                                    selection_index=selection_index,
                                 )
                                 for c in city_group
                             ]
@@ -3548,6 +3592,7 @@ def _build_impl(
                                     fingerprint,
                                     True,
                                     True,
+                                    selection_index=selection_index,
                                 )
                                 for c in canonical_cities
                             ]
@@ -3711,9 +3756,10 @@ def _build_impl(
                 r.slug: {"has_audio": r.has_audio, "has_video": r.has_video} for r in results
             }
             search_enabled = bool(site_config.get("defaults", {}).get("search", True))
-            _write_aliases(output_dir, base_url, all_cities, feed_info)
+            held_slugs = {result.slug for result in results if result.status == "held"}
+            _write_aliases(output_dir, base_url, all_cities, feed_info, held_slugs=held_slugs)
             _write_cname(output_dir, site_config)
-            _prune_stale_dirs(output_dir, all_cities)
+            _prune_stale_dirs(output_dir, all_cities, held_slugs=held_slugs)
             request_config = site_config.get("city_request_form") or {}
             request_form_enabled = bool(
                 request_config.get("formspark_action") and request_config.get("turnstile_site_key")
@@ -4080,7 +4126,9 @@ def build(
                 close_compute()
 
 
-def _prune_stale_dirs(output_dir: Path, cities: list[City]) -> None:
+def _prune_stale_dirs(
+    output_dir: Path, cities: list[City], *, held_slugs: set[str] | None = None
+) -> None:
     """Remove ``docs/<slug>`` directories left over from a deleted city or a renamed slug.
     ``docs/`` is restored from actions/cache between runs, so without this a removed feed (or
     the old slug after a rename) would keep serving forever. Only directories that look like a
@@ -4088,7 +4136,7 @@ def _prune_stale_dirs(output_dir: Path, cities: list[City]) -> None:
     files are left alone."""
     import shutil
 
-    live = {c.slug for c in cities}
+    live = {c.slug for c in cities} | (held_slugs or set())
     for c in cities:
         live.update(c.aliases)
     for child in output_dir.iterdir():
@@ -4099,7 +4147,14 @@ def _prune_stale_dirs(output_dir: Path, cities: list[City]) -> None:
             shutil.rmtree(child)
 
 
-def _write_aliases(output_dir: Path, base_url: str, cities: list[City], feed_info: dict) -> None:
+def _write_aliases(
+    output_dir: Path,
+    base_url: str,
+    cities: list[City],
+    feed_info: dict,
+    *,
+    held_slugs: set[str] | None = None,
+) -> None:
     """For every former slug (``aliases``), emit a permanent redirect: an itunes:new-feed-url
     stub feed (so podcast clients migrate the subscription) and an HTML redirect page. Also
     write ``redirects.json`` — a from->to map a CDN (Cloudflare) can turn into real 301s,
@@ -4107,8 +4162,25 @@ def _write_aliases(output_dir: Path, base_url: str, cities: list[City], feed_inf
     net so subscribers never have to manually re-subscribe when they do."""
     site = base_url.rstrip("/")
     redirects: list[dict] = []
+    held_aliases = {
+        alias for city in cities if city.slug in (held_slugs or set()) for alias in city.aliases
+    }
+    prior_redirects = output_dir / "redirects.json"
+    if held_aliases and prior_redirects.exists():
+        try:
+            prior = json.loads(prior_redirects.read_text())
+        except ValueError:
+            prior = []
+        redirects.extend(
+            row
+            for row in (prior if isinstance(prior, list) else [])
+            if isinstance(row, dict)
+            and isinstance(row.get("from"), str)
+            and row["from"].startswith("/")
+            and row["from"].split("/")[1] in held_aliases
+        )
     for city in cities:
-        if not city.aliases:
+        if not city.aliases or city.slug in (held_slugs or set()):
             continue
         info = feed_info.get(city.slug, {})
         new_page = f"{site}/{city.slug}/"
@@ -4157,7 +4229,12 @@ def _write_chapter_sidecars(
 
 
 def _city_archive_hash(
-    city: City, episodes: list[Episode], calendar_records: list[AgendaRecord], base_url: str
+    city: City,
+    episodes: list[Episode],
+    calendar_records: list[AgendaRecord],
+    base_url: str,
+    *,
+    selection_hash: str | None = None,
 ) -> str:
     """Hash the city archive page's render inputs for incremental publication."""
     payload = [
@@ -4192,6 +4269,8 @@ def _city_archive_hash(
         ],
         base_url.rstrip("/"),
     ]
+    if selection_hash is not None:
+        payload.append([selection_hash, [ep.uid for ep in episodes]])
     blob = json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()
 

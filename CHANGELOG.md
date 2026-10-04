@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Add inactive publication-selection v1 machinery for #1997: strict reviewed proof declarations,
+  existing UID projection and pre-write feed/search holds preserve raw records and meeting pages.
+  Valid selections also rewrite an empty audio channel when the preferred record is unavailable,
+  removing stale alternate RSS items without promoting another UID.
+  No city groups are activated. Configured selection enters render/search cache fingerprints;
+  unconfigured views retain existing hashes. No pipeline-version bump or audio backfill occurs.
+
 - **Daily per-verb LLM backlog report (GH#1969, review/50 PR2).**
   Add the read-only 00:20 UTC/manual workflow over durable `run_events/`, using only the nine
   storage secrets. Publish the six-verb Markdown summary and retain the JSON report for 30 days;
