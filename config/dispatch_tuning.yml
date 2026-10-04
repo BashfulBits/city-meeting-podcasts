@@ -69,13 +69,16 @@ MAX_BUNDLES_PER_UTC_DAY: 1400
 # checks the deployed variable count.
 # A blast-radius backstop, not the working limit: MAX_BUNDLES_PER_UTC_DAY x MAX_BUNDLE_JOBS.
 MAX_LEASES_PER_UTC_DAY: 7000
-# Ingress quota, sized near what dispatch can finish in a day (~20-29 billed rows per job, so
-# ~3,500-5,000 jobs/day fit the row budget).
+# Shared free-tier ceilings, NOT an 800-meeting capacity commitment. The full planning scenario
+# requires 20,800 new jobs/day (including enabled shadow and a three-judge/five-quote panel),
+# before retries. Capacity evidence: review/evidence/2026-10-02-llm-800-meeting-capacity.md
+# Reproduce with scripts/llm_capacity_plan.py.
+# Keep the shared cap bounded near measured drain; raising it alone only grows the queue.
 MAX_JOBS_PER_UTC_DAY: 4000
-# In the Worker's write units (3 + models per job; at most 2 billed rows each, so a full day
-# of ingress is at most 36,000 rows). ~4,000 jobs at the lanes' ~4.5 units/job. Lane
-# reservations compiled from `llm_lanes` must fit inside this.
-MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: 18000
+# Admission units cover enqueue indexes only, not completion/retry/retirement billed rows.
+# This ceiling remains below the static enqueue-row bound and live row headroom gates ingress.
+# Per-lane ceilings can exceed this envelope; their sum is demand, not guaranteed funding.
+MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: 25600
 # Global cap on queued jobs (MAX_QUEUED_JOBS): past it new work waits in the producer, not in
 # the DO. Left at the coordinator's default of 20,000 (`_maxQueuedJobs`), so not declared --
 # see the variable-limit note above.
