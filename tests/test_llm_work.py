@@ -94,9 +94,13 @@ def test_unbound_and_mismatched_jobs_fail_before_backend_io():
             backend.run_inference(job())
         with pytest.raises(ValueError, match="purpose-bound"):
             backend.enqueue_batch([job()])
+        with pytest.raises(ValueError, match="purpose-bound"):
+            backend.run_inference(InferenceJob("tag", {"messages": []}, "no-policy"))
     item = work.item("new-purpose", "unit", producer="new-stage")
     with pytest.raises(ValueError, match="does not match"):
         item.bind(job("wrong"))
+    with pytest.raises(ValueError, match="does not match"):
+        item.bind(InferenceJob("tag", {"messages": []}, "no-policy"))
     with work.producer("wrong"):
         with pytest.raises(ValueError, match="different producer"):
             validate_work_binding(item.bind(job()))

@@ -171,7 +171,7 @@ class WorkItem:
 
     def bind(self, job):
         policy = job.inputs.get("llm_policy")
-        purpose = getattr(policy, "purpose", self.purpose)
+        purpose = getattr(policy, "purpose", None)
         if purpose != self.purpose:
             raise ValueError(
                 f"Job purpose {purpose!r} does not match work purpose {self.purpose!r}"
@@ -238,9 +238,8 @@ def validate_work_binding(job) -> WorkItem | None:
     """Reject unbound job submission inside registered producer scopes, before network I/O."""
     binding = job.inputs.get(_BINDING)
     active = _ACTIVE.get()
-    policy = job.inputs.get("llm_policy")
     if binding is None:
-        if active is not None and getattr(policy, "purpose", ""):
+        if active is not None:
             raise ValueError("LLM producer jobs must use a purpose-bound work backend")
         return None
     if not isinstance(binding, WorkItem):

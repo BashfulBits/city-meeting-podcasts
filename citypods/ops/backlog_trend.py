@@ -563,7 +563,7 @@ def main(argv: list[str] | None = None) -> int:
         "verb_lifecycle": lifecycle,
     }
     for verb, status in lifecycle.items():
-        if status == "no_telemetry":
+        if status == "no_telemetry" or reports[verb].days == 0:
             output["verbs"][verb]["backlog"] = None
     for verb, spec in specs.items():
         purpose = spec.purpose or _PURPOSES.get(verb, verb)
