@@ -1300,3 +1300,19 @@ DO, from 00:00–17:30 UTC, measured **66,861 billed rows**. The operator raised
 own two writes produced 67,863, and resume's two writes produced **67,865**. The prior live
 counter was 4,681. Both admission gates remained open at the unchanged 90,000-row safe stop.
 This is a conservative repaired estimate, not a claim that sparse logs recover every event.
+
+
+### Addison implementation and remaining gates (2026-10-04)
+
+Public Input/BZA display (#2010), verified joint subscriptions (#2012), read-only unresolved
+sweep (#2014), Council exact ownership (#2019), Bond family (#2020), and TIRZ ownership (#2021)
+are **Shipped** through human merge commits. Build & Deploy succeeded on main `1a90c62e`.
+Their bounded contracts in review/51 are frozen; remaining historical cases remain active.
+
+CodeRabbit reviewed #2010 before its prose corrections. #2012/#2014/#2019/#2020/#2021 were
+human-merged before their queued substantive reviews; skipped bot checks are not reviews.
+This review gap remains explicit, rather than being represented as completed bot coverage.
+Joint participant discovery in website search/browse is tracked by #2018 for the R8 redesign,
+with canonical page ownership separate from proven participating-body membership.
+The 2016 joint subscription, historical excerpts/media, missing official meeting recordings,
+PID winner approval, and P2a proof/binding schemas retain their specific evidence/approval gates.
