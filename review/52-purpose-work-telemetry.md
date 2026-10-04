@@ -1,6 +1,9 @@
 # Purpose-bound LLM work telemetry
 
-**L3 · Implementation PR #2004 · 2026-10-04 · maintainer-directed follow-on to PR #1983**
+**Implemented in PR #2004 · 2026-10-04 · FROZEN**
+
+Maintainer-directed follow-on to PR #1983. Implementation merged on 2026-10-04; this document
+is a point-in-time record. Future changes belong in review/11 and a new design when needed.
 
 ## Decision and scope
 
