@@ -417,6 +417,25 @@ export async function handleRequest(request, env) {
     }
   }
 
+  // Authenticated operator repair; the coordinator enforces same-day, monotone bounds.
+  if (request.method === "POST" && path === "/v2/row-budget:reconcile") {
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return errorResponse(400, "invalid_json", "Request body must be valid JSON");
+    }
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return errorResponse(400, "bad_request", "An observation object is required");
+    }
+    try {
+      const result = await coordinator.reconcileRowBudget(body, Date.now());
+      return result.ok ? jsonResponse(result) : errorResponse(400, result.error, result.detail);
+    } catch (err) {
+      return errorResponse(500, "coordinator_error", describeError(err));
+    }
+  }
+
   // Producer preflight: is ingress open for this purpose right now? Read-only; enqueue-batch
   // re-checks every condition.
   if (request.method === "GET" && path === "/v2/ingress-status") {

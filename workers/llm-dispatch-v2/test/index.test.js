@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { LLMSchedulerDO, validateConfig } from "../src/index.js";
+import worker, { LLMSchedulerDO, validateConfig, handleRequest } from "../src/index.js";
 import { createMockSqlStorage, withTestReservations } from "./helpers.js";
 
 function createMockEnv(overrides = {}) {
@@ -577,4 +577,24 @@ test("dispatch pause endpoints: auth, validation, pause, status and resume", asy
   assert.equal((await resumed.json()).resumed, true);
   const statsBody = await (await call("GET", "/v2/stats")).json();
   assert.deepEqual(statsBody.dispatch_pauses, []);
+});
+
+test("row-budget repair requires authentication and a valid same-day observation", async () => {
+  const env = createMockEnv();
+  const now = Date.now();
+  const body = {
+    utc_day: new Date(now).toISOString().slice(0, 10), minimum_rows_written: 65000,
+    observed_through_at: now, reason: "Platform aggregate",
+  };
+  const request = (value, auth = true) => new Request("https://worker/v2/row-budget:reconcile", {
+    method: "POST", headers: auth ? { Authorization: "Bearer secret-token" } : {},
+    body: JSON.stringify(value),
+  });
+  assert.equal((await handleRequest(request(body, false), env)).status, 401);
+  for (const bad of [null, [], { ...body, utc_day: "2000-01-01" }]) {
+    assert.equal((await handleRequest(request(bad), env)).status, 400);
+  }
+  const response = await handleRequest(request(body), env);
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).rows_written_today, 65002);
 });
