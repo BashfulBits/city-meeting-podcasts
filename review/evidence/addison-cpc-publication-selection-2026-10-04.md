@@ -44,3 +44,36 @@ Owner subscription direction Council subcommittee is supported by official agend
 | https://addisontx.new.swagit.com/videos/393215/agenda | 2026-10-04T04:03:31.718446+00:00 | 403 | 58bf2215b395dcac74c009aa98701854e43cbe54a1cd3a95fee6a647ca9910d4 | /tmp/addison-evidence-1.html |
 | https://addisontx.new.swagit.com/videos/393859 | 2026-10-04T04:03:31.936509+00:00 | 403 | 58bf2215b395dcac74c009aa98701854e43cbe54a1cd3a95fee6a647ca9910d4 | /tmp/addison-evidence-2.html |
 | https://addisontx.new.swagit.com/videos/393859/agenda | 2026-10-04T04:03:32.155718+00:00 | 403 | 58bf2215b395dcac74c009aa98701854e43cbe54a1cd3a95fee6a647ca9910d4 | /tmp/addison-evidence-3.html |
+
+
+## Continuing-committee research and maintainer taxonomy preference (2026-10-04)
+
+The maintainer prefers a dedicated feed for specific continuing standing committees, including
+Council subcommittees, unless evidence establishes a temporary/non-continuing body. This supersedes
+the previous CPC-within-Council placement; the approved July 9 UID/date choice remains separate.
+
+Official March 25, 2025 Council packet states Council formed CPC on December 10, 2024 by
+resolution, with an ongoing role reviewing applications and recommending funding in the annual
+budget process. Its initial members were Nancy Craig, Chris DeFrancisco and Marlin Willesen.
+Source: https://agendas.addisontx.gov/docs/2025/CM/20250325_7396/AGENDApacket__03-25-25_0329_7391.pdf
+
+The July 17, 2025 committee packet describes three Council members appointed annually and
+contains June 26/July 10 minutes showing Chris DeFrancisco, Marlin Willesen and Bruce Arfsten.
+It schedules June 26, July 10 and July 17 meetings around nonprofit funding review, with additional
+meetings possible as needed. This is an annual seasonal workload, not a demonstrated monthly cadence.
+Source: https://agendas.addisontx.gov/docs/2025/CPAC/20250717_7467/AGENDApacket__07-17-25_1155_7462.pdf
+
+The Town's May 29, 2026 newsletter reports May 26 appointments of Bruce Arfsten, Marlin Willesen
+and Randy Smith for the year ahead. The full Council is Mayor plus six members; CPC is a subset.
+Source: https://myemail.constantcontact.com/Here-s-your-Weekly-Update-from-the-Town-of-Addison-5-29-2026.html?aid=ZlmA7pqZE2A&soid=1142292997489
+Council composition: https://www.addisontx.gov/Government/City-Council
+
+Official 2026 committee minutes/recording establish meetings June 29, July 9 and July 16.
+Source: https://addisontx.new.swagit.com/videos/393859
+
+Conclusion: recurring Council subcommittee with annually appointed membership and continuing
+annual responsibility, warranting its own feed under the maintainer's preference. PR #2003's
+Council inclusion is no longer the recommended implementation and must be revised before merging.
+Retain every stored record/UID/audio and the reviewed date/winner proof. Before a dedicated-feed
+L3 activation, reconcile the additional July 17, 2025 agenda with provider recordings and the
+retained inventory; the previous five recordings were not a complete official meeting census.

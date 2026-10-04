@@ -449,7 +449,7 @@ provider-wide canonicalization and cross-source joining remain outside this cont
 #### Development-ready split and implementation specification
 
 **Inactive machinery: L3. Foundation historical activation: L3 (approved below).**
-**Addison CPC historical activation: L3 (approved below). PID and future-member admission: L2.**
+**Addison CPC: placement revision required (see below). PID and future-member admission: L2.**
 This split preserves the maintainer-approved specification-first sequence. Machinery ships with
 no configured groups. No implicit date repair, identity inference or new publication is enabled.
 The approved directions for the three cities remain subject to evidence, not another taxonomy vote.
@@ -621,7 +621,14 @@ selects Foundation 6→3 and combined/search 1,515→1,512; source namespace rem
 Rollback reverts both selector and group activation together. No audio/stage version bump or
 backfill. This approves these three historical groups, not automatic future-member admission.
 
-### Addison CPC historical activation — L3, implementation under validation
+### Addison CPC historical activation — placement revision required
+
+Maintainer clarification (2026-10-04): specific continuing standing committees should have their
+own feeds, including Council subcommittees. Official formation/annual appointments and recurring
+budget responsibilities establish CPC as continuing. This supersedes the earlier Council-feed
+placement contract below; retain its reviewed July 9 winner/date proof, but do not merge #2003
+without a revised dedicated-feed contract and complete available coverage reconciliation. See
+[the research addendum](evidence/addison-cpc-publication-selection-2026-10-04.md).
 
 Maintainer approval: [#1991 comment 5976979654](https://github.com/BashfulBits/city-meeting-podcasts/issues/1991#issuecomment-5976979654).
 The [dated proof packet](evidence/addison-cpc-publication-selection-2026-10-04.md) establishes
