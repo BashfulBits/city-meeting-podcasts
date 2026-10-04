@@ -110,9 +110,13 @@ inventory or implement P2's persistent ledger.
 P1–P5 structure and exact phase build contracts. **P1: L3** (evaluation harness and strict physical-
 route admission, [#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979));
 P1 implements the approved hidden-owner truth, independent blind-owner mode and frozen candidate
-input hashes in PR #1987 (ready for review; pending merge). No model is admitted and no
-live evaluation has run. The publication-selection extension is L2: reviewed existing UIDs only,
-archive preservation and a separate runtime gate for #1986/#1989/#1991. Shared approved templates and cross-city cases are specified for one resolver/replay path in
+input hashes shipped in [PR #1987](https://github.com/BashfulBits/city-meeting-podcasts/pull/1987). No model is admitted and no
+live evaluation has run. Publication-selection inactive machinery is L3
+([#1997](https://github.com/BashfulBits/city-meeting-podcasts/issues/1997)): strict proof schemas,
+existing UID projection,
+pre-write holds and raw-page preservation. City activations and future-member admission stay L2
+until exact winner/exposure/date proof and evaluated sticky-winner policies are ready.
+#1986/#1989/#1991 remain held. Shared approved templates and cross-city cases are specified for one resolver/replay path in
 onboarding and maintenance; verified identities and feedback remain city/source-scoped.
 P2–P5 stay predecessor-gated until their
 evidence and issues exist. The 27 seed

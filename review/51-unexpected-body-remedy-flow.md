@@ -1,6 +1,6 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: approved structure; P1 is L3, P2–P5 have predecessor-gated build contracts.**
+**Status: P1 tooling shipped; inactive publication selection L3; activations and P2–P5 gated.**
 **Revised:** 2026-10-03 after maintainer approval of the remaining evaluation design choices.
 This specification does not itself change production routing or enable auto-merge.
 
@@ -335,7 +335,7 @@ issue, or a documented unavailable-source exception. An unresolved legitimate re
 “covered.” The current 680-row inventory is a starting snapshot, not a permanently complete census.
 P1 can supply evaluation tooling while P0 is being completed; P5 requires an approved city baseline.
 
-### P0 publication selection — specification first (L2)
+### P0 publication selection — inactive machinery L3; activations L2
 
 The maintainer authorized writing this specification; runtime projection changes and affected feed
 publication remain gated. Proceed independently with historical batches whose rendered output has
@@ -431,7 +431,7 @@ city groups separately, with at most five decisions per PR. Required acceptance:
 5. Proof failures preserve prior complete outputs/cache; aliases that would expose duplicates stay
    held until an approved group exists. Whole Ruff/format, offline tests and real CI preview pass.
 
-Before L3, mature the exact typed schema/diagnostics, select each group's preferred UID with exposure
+Before activation L3, select each group's preferred UID with exposure
 and official-date evidence, and prove output-preservation/cache failure behavior against current
 writer/pruning paths. These are implementation gates, not permission to publish the held feeds now.
 Rollback must freeze the last good public outputs or revert selector activation and group activation
@@ -441,10 +441,159 @@ old UID URLs remain. Winner changes explicitly disclose possible subscriber redo
 Risks remain explicit: finite mappings need review on identity changes; a chosen record can have less
 complete artifacts than an alternate; past public UID exposure may be unknowable; raw historical UID
 pages can show duplicate observations while canonical lists show one recording. Finite groups are a bounded historical safety step, not the steady-state maintenance design.
-Before L3, also define a frozen, evaluated provider/view identity policy for future observations
+Before future-member admission L3, define a frozen, evaluated provider/view identity policy
 with a sticky published winner. An approved proof type should cover routine repeats without a
 new human decision; conflicting evidence or a proposed winner change still escalates. General
 provider-wide canonicalization and cross-source joining remain outside this contract.
+
+#### Development-ready split and implementation specification
+
+**Inactive machinery: L3. Historical activation and automatic future-member admission: L2.**
+This split preserves the maintainer-approved specification-first sequence. Machinery ships with
+no configured groups. No implicit date repair, identity inference or new publication is enabled.
+The approved directions for the three cities remain subject to evidence, not another taxonomy vote.
+
+**Exact v1 data schema.** `publication_selection` is an optional mapping with exactly
+`version: 1` and `groups: list[PublicationGroup]`. Empty groups are valid. Each group has exactly
+these required fields; unknown keys and missing keys are errors at every nesting level:
+
+| Field | Type and constraints |
+|---|---|
+| `id` | Nonempty source-local slug, `[a-z0-9][a-z0-9-]{0,63}` |
+| `source_key` | Twelve lowercase hexadecimal characters; equals the declaring feed's source key |
+| `identity_kind` | `same_provider_guid` or `verified_granicus_clip` |
+| `identity_key` | Same-GUID: exact nonempty full GUID. Granicus: `https://host/clip/decimal-id` |
+| `members` | At least two mappings, each exactly `uid`, `provider_guid`, `record_fingerprint` |
+| `preferred_uid` | One explicitly listed member UID; never computed from sorting or availability |
+| `evidence_refs` | Nonempty list of `{url, retrieved_at, content_hash}` |
+| `approval_ref` | HTTPS GitHub issue/comment/PR link recording the reviewed decision |
+| `exposure` | Exactly `{status, artifacts, rationale}`; nonempty rationale |
+| `search` | Boolean; no truthy integer/string coercion |
+| `date_resolution` | `null` or exactly `{official_date, evidence_url}` for a verified discrepancy |
+
+Member UIDs are sixteen lowercase hexadecimal characters; fingerprints/content hashes are
+64 lowercase hexadecimal SHA-256 strings. Provider GUIDs remain opaque exact strings.
+`retrieved_at` is a timezone-aware ISO-8601 timestamp. Evidence URLs must be absolute HTTPS URLs;
+configuration parsing performs no network fetch. Evidence retrieval uses `validate_source_url`.
+Exposure `status` is one of `known-current`, `both-published`, `never-published`,
+`historical-unknown`. `artifacts` lists `{url, retrieved_at, content_hash}` snapshots (may be
+empty only for never-published or historical-unknown). A current absence cannot prove never-published;
+the rationale must distinguish first activation from incomplete historical observation.
+
+The configured feed is the owning feed; no separately editable owner slug is needed. Repeated
+groups are allowed only when their complete canonical declarations agree and `search` is false.
+A source group with `search: true` has exactly one owning feed. No member may occur in two groups;
+nonidentical declarations of the same source-local group ID or identity key are errors. Sort groups
+by `(source_key, id)` and members by UID for hashing; ordering is never precedence.
+
+**Record fingerprint v1.** Hash UTF-8 canonical JSON (`sort_keys=True`, compact separators) of
+exactly `{source_key, uid, provider_guid, body, title, published, recording_url}`.
+Use the stored official values, including the stored timestamp string; missing values are `null`.
+`provider_guid` uses the existing records/body helper's GUID precedence, not the public UID.
+`recording_url` is the exact HTTPS provider_guid URL when present, otherwise stored video_url;
+current retained records have provider_guid and video_url, not meeting_url. Do not rewrite
+URLs or timestamps in records. A normalized URL identity used for proof is separate from this
+exact observation fingerprint. Fixtures pin these verified record field names.
+
+For same-GUID proof, compare the entire GUID and require one source namespace. For Granicus proof,
+parse each official recording URL with `urllib.parse`: exact approved lowercased hostname, HTTPS,
+`MediaPlayer.php`, one decimal `clip_id`, one decimal `view_id`, and no ambiguous duplicate query
+keys. The evidence packet lists permitted views by showing the member URLs and official equivalence.
+The identity_key excludes view only after that equivalence is reviewed. Same numeric clip on another
+host/source is independent. Redirects, alternate provider URL forms or ambiguous GUID conventions
+are not silently normalized into this proof type. Evidence must establish body ownership separately.
+
+**Pure API and diagnostics.** In `citypods/publication_selection.py`, frozen dataclasses
+`PublicationMember`, `PublicationGroup`, `SelectionIndex`, `SelectionDiagnostic` and
+`PublicationPlan` hold parsed values. `PublicationPlan` exposes `held`, `diagnostics`,
+`selected_uids`, `suppressed_uids`, `policy_hash`, `raw_items`, `public_items` and, for search,
+`owner_by_uid`. Collections are immutable tuples/mappings; episode/record objects are returned
+unchanged, never combined or mutated. No network/storage/write operations occur in this module.
+
+`parse_publication_selection(raw, *, source_key, feed_slug)` parses the schema.
+`load_selection_index(cities)` checks global declarations. `record_identity_fingerprint`
+accepts `(source_key, record)`. `select_feed_publication(index, city, items, records)` validates
+against the **full** source records, then suppresses nonpreferred members in body-selected items.
+`select_search_publication(index, source_key, records)` projects only search-opted-in groups.
+Ungrouped records preserve their ordering and ownership behavior. Feed groups do not invent a
+body match: all members must pass that feed's current selector before group activation is accepted.
+
+Syntax errors raise `ValueError` with feed/group context, before a build writes outputs.
+Runtime proof failures return held plans with stable diagnostic codes:
+`missing-source`, `missing-member`, `missing-preferred`, `fingerprint-changed`,
+`guid-mismatch`, `identity-mismatch`, `unexpected-member`, `unresolved-date-conflict`,
+`owner-selector-mismatch`, `group-overlap`, `winner-conflict`.
+Diagnostics identify source/group/UID, never credential values or unrestricted provider payloads.
+Unknown same-GUID or reviewed Granicus-identity members hold the group; do not publish duplicates
+or choose a new winner. Different stored dates require non-null `date_resolution`: official_date is ISO YYYY-MM-DD,
+evidence_url must occur in evidence_refs, and the preferred observation must match that date.
+An approval packet establishes the official date; runtime validates the frozen declaration and
+fingerprints, not the authority of remote content. Equal-date groups use null. Records stay unchanged.
+No runtime fetch of approval/evidence links and no model-derived acceptance are permitted.
+
+**Writer/cache integration verified against current code.** `_process_city` currently body-filters,
+caps, hashes and writes meeting pages, speaker lists, archives, chapter sidecars and RSS. The new
+projection runs after body filtering but before capping and **before every write/cache-hit decision**.
+Keep `raw_retained_eps` for meeting pages and their sidecars; use `public_retained_eps` for
+archive/speakers and its capped subset for RSS/feed lists. Sidecars use the uncapped raw retained
+set so suppression or cap changes cannot prune a still-retained UID's chapter URL. Neither page
+nor sidecar retention extends to invented/nonretained records.
+
+An invalid feed plan returns `CityResult(status="held")`, `new_entry=None`, and visible diagnostics;
+existing city files and that feed's cache entry remain byte-for-byte intact. Existing feed presence
+flags derive from its previous output files so the global index does not falsely hide it. A held
+new feed creates no directory or RSS. `_prune_stale_dirs` must retain configured held slugs and
+aliases; `_write_aliases` must not overwrite held aliases. Add an optional held-slug set to these
+existing helpers and their callers. Successful feeds may continue; cheap proof checks ignore stop().
+
+`build_search_index` must validate all configured search groups against full loaded records before
+`mkdir`, shard/cache mutation, asset writes or pruning. On any selection hold return `None`, emit
+diagnostics, and leave prior complete manifest, shards and passed cache unchanged. Preflight is
+performed even when cached hashes match. This guarantees preservation on **selection proof** failure,
+not a new filesystem-wide transaction guarantee for unrelated crashes or storage errors. Existing
+interrupt-related shard behavior is a separate hardening concern; do not widen this implementation.
+
+`_city_for_record` accepts an optional explicit reviewed owner for projected winners. `_shard_hash`
+and `_city_archive_hash` include canonical policy hash and selected UID list when configured.
+Extend the existing feed render fingerprint per city with the same values before feed_content_hash.
+Unconfigured feeds/shards retain their current cache hashes exactly; no global cache version bump.
+A group/proof/winner change invalidates only affected RSS/pages/lists/search rendering. Audio,
+ASR, stage versions, archived state and content-addressed keys are not invalidated or backfilled.
+
+**Sticky winner and future policy.** v1's fixed existing preferred UID is the sticky winner.
+Absence/unavailable audio holds or suppresses according to normal availability, never promotes an
+alternate. A previously public UID cannot change without explicit review and redownload disclosure.
+Automatic future-member admission is a separate L2 identity-policy extension, exercised through
+P2's shared evidence ledger and frozen evaluations before activation: source/host/view proof,
+unchanged official dates/body ownership, initial winner registration and prior exposure evidence
+are required. Exact repeat of an existing validated observation needs no human decision. A new
+member currently holds; it does not become a new feed proposal. No provider-wide rule, hidden
+registry, extra persistent schema, or cross-source join is introduced by inactive v1 machinery.
+The future extension must specify its persistent sticky-winner ledger before it becomes L3.
+
+**Implementation slices and acceptance.** Implement inactive v1 machinery through
+[#1997](https://github.com/BashfulBits/city-meeting-podcasts/issues/1997), followed by separate
+activation work on #1986/#1989/#1991. Only the previously
+listed files, these named dataclasses/helpers and existing writer helpers may change; add no deps.
+Tests use `tests/test_publication_selection.py`, `tests/test_config.py`, `tests/test_run.py`,
+`tests/test_search.py`, `tests/test_feeds.py`, `tests/test_records.py`, sanitized fixtures and
+`evals/remedy/` cases. Include:
+
+- exact parser/fingerprint vectors; reordered declarations; extra keys/bool-as-version rejection;
+  both proof types; wrong host/view/source; full-source extra member not body-selected;
+- six-to-three/six-to-five record-backed RSS projections with playable stored audio, uncapped page
+  retention, calendar rows, speakers/archive/search counts, no artifact mixing and unavailable winner;
+- nonempty prior feed, page, chapter, manifest, shard and cache snapshots remaining identical on
+  each proof failure; a matching cache must not bypass validation; first-build hold writes nothing;
+- no-config byte-identical feeds/search/cache golden fixtures, unchanged source hashes/UIDs,
+  byte-identical archive snapshots, no stage/audio backfill and repeated-run idempotence;
+- whole Ruff/format, offline pytest and current-head CI/preview. No credentials/live model quota
+  are required for machinery tests. Each activation requires refreshed official proof and current
+  public exposure snapshots, actual retained UID selection and its own replay before publication.
+
+Inactive machinery may be implemented from this L3 contract. Do not promote city activation or
+future-member auto-admission merely because machinery tests pass. L3 requires the exact reviewed
+winner/proof packet; unresolved Foundation exposure and Addison agenda date remain held.
 
 ### P1 — evaluation harness and physical-route admission (L3)
 
