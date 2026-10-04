@@ -910,3 +910,60 @@ Council-only ownership for that date; it is not a joint Council/P&Z merely becau
 are discussed. The remaining29 recordings still need dated corroboration. The official provider
 Council archive lists the dated recording separately. Do not extrapolate one packet into proof
 of every historical Combined Meeting or erase the remaining evidence obligations.
+
+
+## Cached official agenda reconciliation — 2026-10-04
+
+Read-only retrieval of the existing hosted agenda-backup artifacts establishes the convened
+institution for all30 Combined Meeting recordings, not merely a sample. Each dated official
+agenda opens with the City Council regular meeting, with most also naming its work session.
+These30 remain Council recordings; Combined does not imply an inter-body joint meeting.
+The earlier remaining29 evidence obligation is superseded by this individual-row reconciliation.
+No new provider scrape, credential use, state writes or audio work occurred.
+
+| GUID | Stored date | Official agenda bound through cached backup |
+|---|---|---|
+| 55599 | 2013-10-08 | [Official agenda](https://addisontx.new.swagit.com/videos/55599/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/e59549e833479e1d/backup-2a684b64e68a2c3f) |
+| 55600 | 2013-10-22 | [Official agenda](https://addisontx.new.swagit.com/videos/55600/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/1e85dcff232fcba8/backup-36744e542f51dc8e) |
+| 55601 | 2013-11-12 | [Official agenda](https://addisontx.new.swagit.com/videos/55601/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/78880dfd58cacebd/backup-25b2d61d6ba1f7ed) |
+| 55602 | 2013-11-26 | [Official agenda](https://addisontx.new.swagit.com/videos/55602/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/08f6e5fe62fe9730/backup-5d45f764d020a7d3) |
+| 55603 | 2013-12-10 | [Official agenda](https://addisontx.new.swagit.com/videos/55603/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/078e31754cb52b70/backup-05e365aa5c08584e) |
+| 55604 | 2014-01-14 | [Official agenda](https://addisontx.new.swagit.com/videos/55604/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/133a684fc4fdf68e/backup-cd4514bb07330501) |
+| 55605 | 2014-01-28 | [Official agenda](https://addisontx.new.swagit.com/videos/55605/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/2929e7152647c257/backup-49c9a25ff2207584) |
+| 55606 | 2014-02-11 | [Official agenda](https://addisontx.new.swagit.com/videos/55606/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/de282deb731a7361/backup-a7616d4ba66e92f8) |
+| 55607 | 2014-02-25 | [Official agenda](https://addisontx.new.swagit.com/videos/55607/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/3c114cb1e02ce2c4/backup-dd762db3095f1e1d) |
+| 55608 | 2014-03-11 | [Official agenda](https://addisontx.new.swagit.com/videos/55608/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/5c3910b54cff845e/backup-b5f94634144137ab) |
+| 55609 | 2014-03-25 | [Official agenda](https://addisontx.new.swagit.com/videos/55609/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/a306e5a33a9245c7/backup-7def730dbae6be88) |
+| 55610 | 2014-04-08 | [Official agenda](https://addisontx.new.swagit.com/videos/55610/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/14f89773e59f2fd8/backup-93a35e186390f84e) |
+| 55611 | 2014-04-22 | [Official agenda](https://addisontx.new.swagit.com/videos/55611/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/c18e4590c589606f/backup-0cc6e3aa036f866b) |
+| 55612 | 2014-05-27 | [Official agenda](https://addisontx.new.swagit.com/videos/55612/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/6d954cb309211df9/backup-3e80a2f8aef4c911) |
+| 55613 | 2014-06-10 | [Official agenda](https://addisontx.new.swagit.com/videos/55613/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/3ba7b24d44e9da7f/backup-33c2fe5ac5a95592) |
+| 55614 | 2014-06-24 | [Official agenda](https://addisontx.new.swagit.com/videos/55614/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/4b0c1ed69fcbcdda/backup-77ef556929b4ac2f) |
+| 55615 | 2014-07-08 | [Official agenda](https://addisontx.new.swagit.com/videos/55615/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/3cfc07ccaaa89fef/backup-5c2a5573e587f7fc) |
+| 55616 | 2014-08-12 | [Official agenda](https://addisontx.new.swagit.com/videos/55616/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/6232efb99cd6894d/backup-f392751d1e0415f7) |
+| 55617 | 2014-08-26 | [Official agenda](https://addisontx.new.swagit.com/videos/55617/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/f86aabec5e474882/backup-21993169dcb306bc) |
+| 55618 | 2014-09-23 | [Official agenda](https://addisontx.new.swagit.com/videos/55618/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/2f9b5fd70b5514c5/backup-6392544474ffa0bf) |
+| 55619 | 2014-10-14 | [Official agenda](https://addisontx.new.swagit.com/videos/55619/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/49a790f6c4d1277d/backup-045e5c9c37e568de) |
+| 55620 | 2014-10-28 | [Official agenda](https://addisontx.new.swagit.com/videos/55620/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/5885503f6962565a/backup-03b85caf3d872f64) |
+| 55621 | 2014-11-11 | [Official agenda](https://addisontx.new.swagit.com/videos/55621/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/1269a0f7dc0f5806/backup-a44206471ed4fc64) |
+| 55622 | 2014-11-25 | [Official agenda](https://addisontx.new.swagit.com/videos/55622/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/47fc5fa46cd0d106/backup-f8c1f206dd444653) |
+| 55623 | 2014-12-09 | [Official agenda](https://addisontx.new.swagit.com/videos/55623/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/0d0f97d0a5e4234f/backup-6d67251dff7782d3) |
+| 55624 | 2015-01-13 | [Official agenda](https://addisontx.new.swagit.com/videos/55624/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/dcd12e177bb2d738/backup-f9c1395f0d6bfe6e) |
+| 55625 | 2015-01-27 | [Official agenda](https://addisontx.new.swagit.com/videos/55625/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/9cabf11f0dab1ad5/backup-3b018cb7dc517e55) |
+| 55626 | 2015-02-10 | [Official agenda](https://addisontx.new.swagit.com/videos/55626/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/f93e036b3ab247d2/backup-bca7b466d91da380) |
+| 55627 | 2015-02-24 | [Official agenda](https://addisontx.new.swagit.com/videos/55627/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/87a3548cd62f20d6/backup-8cdc5b105a1a69de) |
+| 55628 | 2015-03-10 | [Official agenda](https://addisontx.new.swagit.com/videos/55628/agenda); [cached artifact](https://audio.citymeetings.fyi/documents/abbf5e25e078/e3725c3d1f32d8c5/backup-81d8704d4397f94e) |
+
+Additional individually confirmed cases:
+
+- GUID55634, UID383dfdfed6140400: the September19,2016 official agenda explicitly
+  convenes Council and P&Z jointly. Current P&Z-only subscription is incomplete. Adding Council
+  must preserve the current P&Z canonical search owner; this needs a bounded ownership contract
+  before implementation. [Cached official agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/383dfdfed6140400/backup-15647c606d86cda5).
+- GUID394474, UID757ab2a4aaf9bbca: dated July28,2026 official agenda convenes the
+  TIRZ#1 Board of Directors separately. Council-only assignment is incorrect; use the approved
+  city TIF aggregate after a bounded activation contract. [Cached official agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/757ab2a4aaf9bbca/backup-9f68250e87dd4b6e).
+- GUID394156, UID01960ed1399198df: dated July21,2026 official agenda explicitly
+  convenes the P&Z work session. It corroborates the commission-only class behind the47
+  false Council matches; Council selector narrowing still requires its full positive replay.
+  [Cached official agenda](https://audio.citymeetings.fyi/documents/abbf5e25e078/01960ed1399198df/backup-dfed4ed93765ef45).
