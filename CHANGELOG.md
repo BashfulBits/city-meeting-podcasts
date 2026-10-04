@@ -7195,3 +7195,10 @@ Phase R (Research-Tool Surface)._
 - **OpenCode model routing is corrected.** OpenCode's free DeepSeek aliases now send
   `deepseek-v4-flash-free`. The proposed LongCat route was removed because the official API
   requires authentication/billing and OpenCode Zen does not advertise a free LongCat model.
+
+
+Addison verified joint subscriptions (#2011, prepared/unmerged): GUID295839 and310072
+now join the existing P&Z and CPAC subscriptions; GUID276855 joins P&Z only. Council
+canonical search ownership, recording UIDs and audio are preserved. Complete822-record replay
+adds exactly three P&Z and two CPAC memberships, with no removals or other feed changes.
+Other historical assignments remain active evidence tasks; CodeRabbit requests remain held.

@@ -1264,3 +1264,10 @@ inclusions leave these podcast projections, with stored records and raw pages pr
 Zoning Adjustment & Appeals remains one formally combined subscription at its existing URL.
 Historical ambiguous recordings retain active census obligations; this does not implement the
 separately gated P2 unresolved-episode sweep or claim complete Addison ownership correction.
+
+
+Addison verified joint subscriptions (#2011, prepared/unmerged): GUID295839 and310072
+now join the existing P&Z and CPAC subscriptions; GUID276855 joins P&Z only. Council
+canonical search ownership, recording UIDs and audio are preserved. Complete822-record replay
+adds exactly three P&Z and two CPAC memberships, with no removals or other feed changes.
+Other historical assignments remain active evidence tasks; CodeRabbit requests remain held.

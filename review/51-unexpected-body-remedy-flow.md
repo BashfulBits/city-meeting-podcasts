@@ -1397,3 +1397,59 @@ Acceptance: meaningful targeted tests, complete retained822-record ownership com
 Ruff/format and offline suite. Explicitly report unresolved old records; no coverage-complete
 claim, no legacy remedy, no new CodeRabbit request while the classification settlement hold applies.
 The separately proposed P2 sweep contracts remain gated; #2009 does not claim to implement them.
+
+## Verified Addison joint subscriptions — L3 bounded slice (#2011)
+
+The global joint rule is approved. Recording-bound official packets are cited in the Addison
+body-policy audit. Use existing `source.body_includes` in the P&Z feed for GUID295839,
+310072 and276855, with their complete retained body labels. Add only295839 and310072 to
+CPAC: October17,2023 convened Council/P&Z, not CPAC. Preserve all Council selectors in this
+slice. Do not infer participation from agenda topics or generic joint substrings.
+
+Files: the two existing P&Z/CPAC feed YAML files; a minimal retained-record fixture
+`tests/fixtures/addison-joint-retained.json`; actual-config RSS, negative participant and
+canonical-search ownership tests in `tests/test_publication_selection.py`; this specification,
+the body-policy audit, review/11, ROADMAP, CHANGELOG and ARCHITECTURE status descriptions.
+No runtime/provider/storage/stage/record-schema changes or dependencies. Preserve existing
+feed URLs, records, UIDs, dates, audio objects and current Council canonical search owner.
+Replay all822 retained records: the only selector changes are three added P&Z memberships
+and two added CPAC memberships. Whole Ruff/format and offline tests plus current CI must pass.
+Prepared PRs remain unmerged and all CodeRabbit requests remain held. Other historical cases
+remain active; this bounded correction is not complete-city coverage.
+
+## Historical unresolved sweep — proposed bounded read-only contract
+
+Maintainer schema approval requested in chat; this section is not yet L3. Existing unexpected-body
+remedy collection and dispatch remain unchanged. Do not expose expanded historical coverage to
+legacy automation or infer that the unresolved register grants P2a model-policy approval.
+
+Proposed files: `review/evidence/unresolved-recording-cases.json` (committed case register),
+`scripts/sweep_unresolved_recordings.py` (offline-only CLI),
+`tests/test_unresolved_recordings_sweep.py` (offline regressions), and lifecycle/evidence docs.
+Use existing config loading, source-key and body-matching helpers; no dependencies or network.
+Read cached source episodes.json and the register; write only an explicitly requested local report.
+No credentials, workflow dispatch, GitHub mutation, audio work or canonical state writes.
+
+Register envelope: `schema_version: 1`, `cases: [...]`. Each case has string `case_id`,
+`city`, `source_key`, `uid`, `provider_guid`, `question`, `missing_evidence`, `next_action`,
+`last_researched` (ISO date); string-list `current_feed_assignments`; `status` is `open` or
+`resolved`; `disposition` is null for open cases or a string citing evidence/human approval.
+Unique case_id and source_key/uid pairs; reject malformed fields, absent IDs or resolved entries
+without disposition. A registered UID missing from cache is an explicit evidence failure, never
+silently dropped. The snapshot of assignments is for change detection; report actual assignments.
+
+CLI contract: required `--state-root`, `--config-root`, `--case-register`, `--output` paths.
+Output JSON envelope has schema_version1, `uncovered_recordings`, `open_cases`,
+`assignment_changes`, `missing_registered_records`. Each recording row has city/source/UID/GUID,
+body/title/date and actual feed slugs. Open cases additionally retain the evidence/next-action
+fields and historical/new case distinction is informational, not a suppression gate. Deterministic
+sorting by source_key/uid/case_id. Process each cached source once and every archived recording,
+including absent-body and currently matched records. Uncovered records cannot be suppressed by
+archived labels or age. Known false inclusions remain in open_cases until evidenced disposition.
+Resolved cases leave open_cases but remain in the committed register with their closure evidence.
+Unchanged reruns produce identical reports; notification/issue lifecycle is a separate gated slice.
+
+Tests: historical uncovered record, matched false-inclusion case, absent body, approved exclusion
+resolved with evidence, missing cached UID, changed assignment, duplicate register validation,
+multi-feed genuine joint, deterministic rerun and unchanged input bytes. Before implementation,
+create the scoped issue, seed every open Addison case, and record the explicit schema approval.
