@@ -885,8 +885,8 @@
       "uid": "757ab2a4aaf9bbca",
       "provider_guid": "394474",
       "question": "TIRZ board is assigned to Council instead of city TIF family",
-      "missing_evidence": "Bounded TIF activation contract and exposure replay",
-      "next_action": "Route independently convened board to city TIF feed using cached official agenda proof",
+      "missing_evidence": "Human merge and deployed TIF subscription/search verification for #2017",
+      "next_action": "Review/merge verified TIRZ Council->TIF move; verify original UID/audio and canonical attribution",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
         "addison-tx-city-council"

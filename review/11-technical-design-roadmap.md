@@ -1264,3 +1264,10 @@ Addison: Bond Committees subscriptions with original UIDs/audio. Existing other 
 are unchanged; canonical search attribution corrects the erroneous unmatched BZA fallback to
 Bond. Council recommendations remain Council-only. No audio backfill or stage invalidation.
 Cases remain open for human merge and deployed projection verification.
+
+
+TIRZ ownership correction (#2017) prepared/unmerged: official dated board agenda moves only
+GUID394474/UID757ab2a4aaf9bbca from Council to Addison: TIF Meetings. Canonical search
+attribution changes accordingly; original raw record, UID and hosted audio remain. After the
+Council narrowing,500 original Council selections remain. No audio invalidation or backfill.
+The case remains open pending human merge and deployed subscription verification.

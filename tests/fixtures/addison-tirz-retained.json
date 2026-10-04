@@ -1,0 +1,26 @@
+{
+  "records": {
+    "757ab2a4aaf9bbca": {
+      "uid": "757ab2a4aaf9bbca",
+      "provider_guid": "394474",
+      "body": "TIRZ #1 Board Meeting",
+      "title": "TIRZ #1 Board Meeting \u2013 Jul 28, 2026",
+      "published": "2026-07-28T00:00:00+00:00",
+      "video_url": "https://addisontx.new.swagit.com/videos/394474/download",
+      "audio": {
+        "attempts": 0,
+        "bytes": 9997163,
+        "duration_served": 799.64,
+        "encode_time": "2026-07-29T04:01:26.171548+00:00",
+        "error": null,
+        "error_spec_hash": null,
+        "key": "swagit/abbf5e25e078/757ab2a4aaf9bbca-9c2972f466d5.m4a",
+        "last_attempt": null,
+        "rebuild": null,
+        "spec_hash": "9c2972f466d5",
+        "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/757ab2a4aaf9bbca-9c2972f466d5.m4a",
+        "verification": null
+      }
+    }
+  }
+}
