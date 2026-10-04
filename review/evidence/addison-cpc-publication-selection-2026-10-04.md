@@ -1,5 +1,7 @@
 # Addison CPC activation evidence (#1991)
 
+Owning acceptance plan: [review/51](../51-unexpected-body-remedy-flow.md#addison-cpc-dedicated-feed--l3-implementation-under-validation).
+
 Evidence collection was read-only. Maintainer approved the July 9 winner and historical-unknown exposure in issue #1991 comment 5976979654; implementation is prepared separately. Source abb f namespace: `abbf5e25e078`.
 Current local restored archive SHA-256: `dda21f5dbd7152d045b1efdad8dc90420aebb1ffb4a5c764ac05716798d2d7dc`.
 
