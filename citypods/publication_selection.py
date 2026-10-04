@@ -96,9 +96,11 @@ def _refs(value, context, *, empty=False):
     for ref in value:
         ref = _mapping(ref, ("url", "retrieved_at", "content_hash"), context)
         _url(ref["url"], context)
-        timestamp = datetime.fromisoformat(
-            _text(ref["retrieved_at"], context).replace("Z", "+00:00")
-        )
+        raw_timestamp = _text(ref["retrieved_at"], context)
+        try:
+            timestamp = datetime.fromisoformat(raw_timestamp.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError(f"{context}: retrieved_at must be an ISO timestamp") from exc
         if timestamp.tzinfo is None or timestamp.utcoffset() is None:
             raise ValueError(f"{context}: timestamp must have timezone")
         _text(ref["content_hash"], context, "[0-9a-f]{64}")
@@ -193,7 +195,10 @@ def parse_publication_selection(raw, *, source_key, feed_slug):
         if resolution is not None:
             resolution = _mapping(resolution, ("official_date", "evidence_url"), ctx)
             _text(resolution["official_date"], ctx, r"\d{4}-\d{2}-\d{2}")
-            date.fromisoformat(resolution["official_date"])
+            try:
+                date.fromisoformat(resolution["official_date"])
+            except ValueError as exc:
+                raise ValueError(f"{ctx}: official_date must be a valid ISO date") from exc
             if resolution["evidence_url"] not in {r["url"] for r in refs}:
                 raise ValueError(f"{ctx}: date evidence must occur in evidence_refs")
             resolution = MappingProxyType(dict(resolution))
@@ -235,18 +240,22 @@ def load_selection_index(cities):
             )
     seen_id, seen_identity, seen_member = {}, {}, {}
     for group in groups:
+        proof = {**json.loads(group.declaration), "search": False}
         for table, key in (
             (seen_id, (group.source_key, group.id)),
             (seen_identity, (group.source_key, group.identity_key)),
         ):
             prior = table.get(key)
-            if prior and (prior.declaration != group.declaration or group.search):
+            if prior and (
+                {**json.loads(prior.declaration), "search": False} != proof
+                or (prior.search and group.search)
+            ):
                 raise ValueError(f"{group.feed_slug}/{group.id}: conflicting group declaration")
-            table[key] = group
+            table[key] = prior if prior and prior.search else group
         for member in group.members:
             key = (group.source_key, member.uid)
             prior = seen_member.get(key)
-            if prior and prior.declaration != group.declaration:
+            if prior and {**json.loads(prior.declaration), "search": False} != proof:
                 raise ValueError(f"{group.feed_slug}/{group.id}: member overlaps another group")
             seen_member[key] = group
     return SelectionIndex(

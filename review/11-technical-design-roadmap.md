@@ -1,6 +1,7 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-09-22 (Initiative 20 shipped in PRs #1617–#1622 — LLM
+**Status: LIVING · last updated 2026-10-04 (publication-selection machinery under review;
+Initiative 20 shipped in PRs #1617–#1622 — LLM
 endpoint rate-limit characterization & failure-class-aware backoff; review/45 reconciled against
 `main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling +
 `/remedy` deferral fix, §Rate-limited LLM dispatch Worker)**

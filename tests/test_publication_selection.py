@@ -304,3 +304,39 @@ def test_yaml_native_dates_request_quoted_strings(field):
         parse_publication_selection(
             city.extra["publication_selection"], source_key=source_key(city), feed_slug=city.slug
         )
+
+
+@pytest.mark.parametrize(
+    "field,value", [("retrieved_at", "not-a-timestamp"), ("official_date", "2026-02-30")]
+)
+def test_invalid_iso_values_retain_group_context(field, value):
+    city, _, group = packet()
+    if field == "retrieved_at":
+        group["evidence_refs"][0][field] = value
+    else:
+        group["date_resolution"] = {field: value, "evidence_url": group["evidence_refs"][0]["url"]}
+    with pytest.raises(ValueError, match=f"test: publication_selection.*{field}") as exc:
+        parse_publication_selection(
+            city.extra["publication_selection"], source_key=source_key(city), feed_slug=city.slug
+        )
+    assert isinstance(exc.value.__cause__, ValueError)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_identical_feed_groups_allow_one_search_owner_in_any_order(reverse):
+    owner, records, _ = packet()
+    aggregate = replace(owner, slug="aggregate", extra=copy.deepcopy(owner.extra))
+    aggregate.extra["publication_selection"]["groups"][0]["search"] = False
+    cities = [aggregate, owner]
+    if reverse:
+        cities.reverse()
+    index = load_selection_index(cities)
+    for city in cities:
+        assert select_feed_publication(index, city, records.values(), records).selected_uids == (
+            "a" * 16,
+        )
+    plan = select_search_publication(index, source_key(owner), records)
+    assert not plan.held and plan.owner_by_uid["a" * 16] is owner
+    competing = replace(owner, slug="competing")
+    with pytest.raises(ValueError, match="conflicting"):
+        load_selection_index([owner, aggregate, competing])
