@@ -1901,3 +1901,7 @@ stages, records, audio, publication groups or other selectors. No invalidation/b
 
 Census also finds17 other CBTF/subcommittee/town-hall rows; their proof and coverage require
 separate reconciliation. The exact single-record correction does not claim full family coverage.
+
+Dallas #2062 implementation prepared under the exact contract. Replay changes only
+Council358→357 and CBTF0→1; original raw records unchanged. Offline4,929 pass14 deselected,
+wholeRuff463/format pass. Current CI/review and deployed proof remain pending.

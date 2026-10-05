@@ -564,3 +564,5 @@ contract: dedicated feed, only Council ETF term removed, All Meetings/raw UID/au
 preserved. Deployed verification pending; no standing or dissolution inference.
 
 Recently shipped: Arlington Environmental Task Force exact six-record feed correction #2058.
+
+Dallas #2062 exact November2023 CBTF feed correction prepared; deployment verification and remaining task-force/subcommittee census still pending.

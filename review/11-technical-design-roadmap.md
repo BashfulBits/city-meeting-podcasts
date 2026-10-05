@@ -1445,3 +1445,6 @@ explicit coverage gap, not substantive review completion.
 
 Dallas exact November2023 CBTF ownership correction is L3 in review/51, issue #2062.
 One verified recording only; broader CBTF/subcommittee census remains evidence work.
+
+Dallas #2062 exact CBTF correction prepared: full5,353 replay Council358→357/newtaskforce1,
+4,929 offline tests passed14 deselected, wholeRuff463/format pass. Deployment closure pending.

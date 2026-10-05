@@ -7312,3 +7312,5 @@ Retain these visibility/access checks and all independent historical content evi
 
 - Shipped exact six-record Arlington ETF ownership correction in #2058. Original raw UID/audio
   and All Meetings preserved; no invalidation/backfill. Deployment verification pending.
+
+Dallas exact November2023 Community Bond Task Force recording280220 leaves Council for its own feed. Original UID/audio/raw records preserved; no stage invalidation or backfill.

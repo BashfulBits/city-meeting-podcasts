@@ -1481,3 +1481,9 @@ program handbook previously found was institutional context, not dated meeting p
 Exact contract now recorded in review/51 #2062. Full5,353-record source census finds18
 CBTF/bond-task-force rows including five subcommittee rows and three2017town halls;
 remaining17 need individual proof and current ownership reconciliation.
+
+Dallas #2062 full-source replay:5,353 records/1,095 labels, only UIDbaa19208405acb22
+leaves Council358→357 and enters new CBTF0→1. Raw mapping unchanged. Offline4,929 pass.
+Seventeen additional candidates:15 have no current holder; Streets/Transportation269613
+and EconomicDevelopment269610 match standing Council committee feeds, requiring separate
+institutional identity proof. No additional ownership change is inferred from titles alone.

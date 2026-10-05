@@ -1754,8 +1754,8 @@
       "uid": "baa19208405acb22",
       "provider_guid": "280220",
       "question": "Council selector admits apparent separate body; official ownership proof required",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "missing_evidence": "Deployed dedicated feed UID/audio and Council exclusion",
+      "next_action": "Exact GUID/body ownership correction prepared under #2062; verify deployment before closure",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-city-council"
