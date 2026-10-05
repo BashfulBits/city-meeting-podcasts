@@ -1,0 +1,18 @@
+slug: denton-tx-health-building-standards-commission
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body_includes:
+    - provider_guid: '122398'
+      body: Health & Building Standards Commission on 2021-06-03 3:00 PM
+    - provider_guid: '120835'
+      body: Health & Building Standards Commission on 2021-05-13 12:00 PM
+    - provider_guid: '120506'
+      body: Health & Building Standards Commission on 2021-05-06 3:00 PM
+    - provider_guid: '119886'
+      body: Health & Building Standards Commission on 2021-04-22 3:00 PM
+podcast_title: 'Denton: Health & Building Standards Commission'
+podcast_author: City of Denton, TX
+podcast_email: ''
+podcast_description: Meetings of the Denton Health and Building Standards Commission.

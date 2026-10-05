@@ -1698,3 +1698,31 @@ negative and untouched raw record. Full cached Dallas replay must remove only th
 membership and change no other feed. No runtime/schema/provider/stage/dependency changes.
 Update register prepared evidence without closing until deployed proof; review11/CHANGELOG/audit.
 Create tracking issue before implementation, whole offline/Ruff/format, CodeRabbit and human merge.
+
+### Denton Health & Building Standards ownership — L3 bounded contract
+
+Authorized catalog correction: four dated official agendas independently convene the commission,
+not Council. Council Work Session Room is their venue. Institutional continuity is corroborated
+by official 2026 commission agendas and current municipal appointments.
+
+Create config/feeds/denton-tx-health-building-standards-commission.yml, slug matching filename,
+city denton-tx, provider swagit, source.list_url https://dentontx.new.swagit.com/views/5.
+Use source.body_includes only the existing four exact GUID/body pairs 122398,120835,120506,119886
+copied from Council. Remove only those four Council overrides. Title Denton: Health & Building
+Standards Commission, author City of Denton, TX, empty email and descriptive commission text.
+Omit optional meeting_family and lifecycle; no broad substring rule or invented family.
+This bounded migration does not claim complete commission recording coverage.
+
+New tests/fixtures/denton-health-standards-retained.json captures four minimal original records
+and hosted audio. tests/test_denton_health_standards_ownership.py loads actual config, verifies
+four Council departures/four commission additions, near-GUID negatives, RSS UID/audio and
+unchanged raw records. Full retained Denton source replay must change only these four memberships;
+retain the proved Council/Library joint. Update four case preparation evidence, keep cases open.
+Lifecycle files: review11, audit, CHANGELOG, ARCHITECTURE and ROADMAP. Whole offline/Ruff/format,
+current CI and CodeRabbit before human merge commits. No runtime/schema/provider/dependency/stage
+changes, invalidation, backfill or production writes. Remaining Denton bodies are separate slices.
+
+Denton Health & Building Standards implementation #2044 was human-merged on 2026-10-05
+at10:00:30Z, before substantive CodeRabbit review and before PR CI completed. Record this review
+gap explicitly; skipped automatic review is not coverage. Full4918 offline tests passed locally.
+Deployed membership verification remains pending; four cases stay open.

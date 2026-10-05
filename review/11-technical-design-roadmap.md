@@ -1372,3 +1372,14 @@ agenda verifies one wrong Council override; preserve existing Commission subscri
 
 Dallas Commission correction #2034 prepared: remove only GUID203320 Council inclusion;
 retain dedicated Commission feed and original UID/audio. Human merge/deployment verification gated.
+
+Denton Health & Building Standards: L3 bounded review/51 contract for four exact verified
+commission records, dedicated feed and Council correction; preserve Council/Library joint.
+
+Denton Health & Building Standards implementation #2044 was human-merged on 2026-10-05
+at10:00:30Z, before substantive CodeRabbit review and before PR CI completed. Record this review
+gap explicitly; skipped automatic review is not coverage. Full4918 offline tests passed locally.
+Deployed membership verification remains pending; four cases stay open.
+Denton #2042 prepared: four verified Health & Building Standards Commission records move
+out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
+joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.
