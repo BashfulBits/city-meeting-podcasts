@@ -1448,3 +1448,6 @@ One verified recording only; broader CBTF/subcommittee census remains evidence w
 
 Dallas #2062 exact CBTF correction prepared: full5,353 replay Council358→357/newtaskforce1,
 4,929 offline tests passed14 deselected, wholeRuff463/format pass. Deployment closure pending.
+
+Dallas #2065 four additional verified CBTF recordings are L3 in review/51. Exact inclusion
+only; remaining task-force/subcommittee/town-hall proof remains active.

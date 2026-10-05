@@ -1905,3 +1905,30 @@ separate reconciliation. The exact single-record correction does not claim full 
 Dallas #2062 implementation prepared under the exact contract. Replay changes only
 Council358→357 and CBTF0→1; original raw records unchanged. Offline4,929 pass14 deselected,
 wholeRuff463/format pass. Current CI/review and deployed proof remain pending.
+
+### Dallas four additional CBTF recordings — bounded L3 (#2065)
+
+Dated city summaries establish CBTF convening/adjournment on June20, August15 and August22,
+2023. Original provider chapters identify those same dates; official city archive also links
+August22 GUID269916 directly. Add only these exact GUID/body inclusions to existing
+`config/feeds/dallas-tx-2024-community-bond-task-force.yml`:
+
+| UID | GUID | Exact original body |
+|---|---|---|
+| 96c10f4f75706719 | 246971 | 2024 Capital Bond CBTF Meeting |
+| aaf0ad8eaabe68a5 | 269278 | 2024 Capital Bond CBTF Meeting |
+| 130a7ebded8e0e1d | 269608 | 2024 Bond Task Force Community Bond Task Force Meeting |
+| cba1e023051d7c94 | 269916 | 2024 Capital Bond CBTF Meeting |
+
+All four currently match no feed. Preserve both August15 original UIDs and all audio/raw
+source identities; no duplicate-winner claim or publication-group change. Add original minimal
+`tests/fixtures/dallas-cbtf-additional-retained.json` and extend
+`tests/test_dallas_cbtf_ownership.py` with parametrized actual-config original RSS/audio,
+no Council holder, same-body/different-GUID negative and raw-preservation checks for each.
+Existing exact GUID runtime semantics stay unchanged. Full5,353 replay must add only these
+four UIDs to CBTF1→5, every other feed unchanged. Wholeoffline/Ruff/format required.
+Update review/11, CHANGELOG, ARCHITECTURE, ROADMAP, audit and four register next actions.
+Keep cases open until deployed verification; freeze/stamp after main merge. Do not modify
+other selectors, runtime, schemas, dependencies, providers, stages, records, audio or
+publication groups. No invalidation/backfill. May25 GUID233037 excluded pending stronger
+exact binding (current provider403 and no original chapter); other candidates remain open.
