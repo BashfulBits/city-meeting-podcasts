@@ -577,3 +577,6 @@ Dallas #2065 exact four-record CBTF coverage prepared; deployment proof and rema
 
 - Prepared #2081 reusable Dallas Streets institution rules: eleven source records separated;
   original audio/raw identity, named joints and GUID exceptions preserved. Deployment pending.
+
+- Designed (L3): Dallas2017 formal bond taskforce versus public town halls (#2083), exact
+  independent notices/source hashes; three cases remain open until deployed ownership proof.

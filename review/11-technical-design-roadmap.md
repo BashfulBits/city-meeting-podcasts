@@ -1471,3 +1471,7 @@ Status: Prepared; deployment proof remains required for case closure.
 Dallas reusable Streets bond ownership rules: **L3**, issue #2081. Complete standing aliases,
 four stable bond labels, preserved GUID exceptions, eleven original fixtures and full-source
 positive/negative replay are specified in review/51. Recording/deployment proof gates remain.
+
+Dallas2017 bond proceeding ownership: **L3**, issue #2083. Exact provider agenda hashes bind
+one formal taskforce meeting and two public town halls despite their shared misleading label.
+Separate exact subscriptions and unchanged original records/audio per review/51; deployment pending.

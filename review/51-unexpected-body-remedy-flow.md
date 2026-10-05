@@ -2037,3 +2037,28 @@ Search scheduling choice approved: run search in a separate bounded job, keep th
 search time ceiling. Prepare exact workflow/CLI/artifact ownership and failure/preservation
 contract before implementation. This is authorization for the chosen approach, not permission
 to introduce an unspecified schema, raise a budget or touch credentials interactively.
+
+### Dallas2017 bond taskforce versus town halls — L3, #2083
+
+Exact agenda binding supersedes misleading shared provider label: May27 GUID202453
+UID5e9fdb6ff9e8ef68 provider agenda SHA256eb8a902b8b7b6d309acd807bb940cea1d4fa08ad041ec4ee609107223125dc8f
+matches official revised formal2017CitizensBondTaskForce notice. May22/May25 GUID202451/202452
+UIDfc9ad3b1d9def142/eb1c279cc51a9b04 agendas share official two-public-town-hall notice,
+SHA256bf95a89fcf271b90183ab2b94f8c686a9dac614485326cb938e0d0beeefe0be7.
+Both notices visually verified; Council Chambers is venue, not Council participation.
+
+Add `config/feeds/dallas-tx-2017-citizens-bond-task-force.yml` with exact GUID202453 inclusion,
+and `config/feeds/dallas-tx-2017-bond-public-town-halls.yml` with exact GUID202451/202452.
+Both reuse city/provider/source Swagit113 and expected original body
+`Citizens Bond Task Force: Town Hall Meeting`; runtime GUID semantics remain unchanged.
+Three source records are all cached occurrences of this shared label. Distinct subscriptions
+are necessary because the same label denotes two different proceeding types; do not generalize
+by label here. No Council/source/other-feed edits or raw title replacement.
+
+Add `tests/fixtures/dallas-2017-bond-retained.json` original three records and
+`tests/test_dallas_2017_bond_ownership.py`: actual configs exact owners, same-body different-GUID
+negative, each other owner's GUID negative, RSS original UID/audio, raw identity unchanged.
+Full5353-record/all-feed replay: formal0→1, publictownhalls0→2, all other feeds unchanged.
+Whole Ruff/format/offline required; no stage invalidation/backfill. Update ARCHITECTURE,
+CHANGELOG, ROADMAP, review11 and audit/register prepared actions. No case closure before live
+RSS original audio/ownership proof. Freeze/stamp only after human merge.
