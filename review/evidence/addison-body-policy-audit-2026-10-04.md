@@ -1674,3 +1674,42 @@ silently turn Mill Creek Tunnel Project or Transportation-for-Hire exception bod
 future-record admission. The mechanical replay is not official proof for the three dates missing
 from the archive or authorization to close any recording-binding case. Existing runtime/config
 remain unchanged. Report: /tmp/dallas-transportation-proposed-rule-replay.json (local scratch).
+
+### Remaining-recording proof reconciliation — maintainer resolve37 request
+
+Fort Worth3814 live official player cuepoints and retained `source_chapters` independently
+bind both UIDs0c66fc968402fabd/99152cb9e61fa091 to consecutive proceedings: CCPD heading470s,
+call475s, adjourn589s; Council heading616s, call620s, adjourn724s. These are separate convened
+meetings in one recording, not a joint. Both raw recordings/audio remain intact. Publication
+of an unsplit bundle requires the pending maintainer disposition; no duplicate winner inferred.
+Official player: https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3814
+
+Fort Worth2491 UID497b3aa05255bfb9 exact original player/source chapters identify EMSISD
+Board President call8s, Mayor welcome71s, joint overview449s, announcements for both bodies
+7788s/7884s and one adjourn8092s. This corroborates the retained official April25,2016 joint
+packet. Council subscription remains; a source-scoped participant-feed L3 contract is needed.
+Official player: https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491
+
+Citizen56029 provenance correction: earliest research describes eleven items in the Community
+Events archive listing, not eleven Citizen recording parts. Its ten consecutive source files
+05192009-16 through -25, ten chapters and31724.448s do not prove a missing eleventh part. Exact
+program-to-recording binding remains required, but the archive-wide count must not be treated
+as an established compilation gap. Live archive/player returned403 during this proof pass.
+The official FY2007–08 budget corroborates advisory education/culinary/theatre recommendations:
+https://www.addisontx.gov/files/sharedassets/main/v/1/finance/documents/fy-2007-2008-addison-annual-budget.pdf
+
+Dallas2017 May27 binding resolved independently: official revised notice identifies the
+2017 Capital Bond Program Citizens Bond Task Force, May27,2017 at9am, Council Chambers6EN
+(venue does not establish Council participation). Provider GUID202453 `/agenda` bytes are
+identical to the official city notice, SHA256
+`eb8a902b8b7b6d309acd807bb940cea1d4fa08ad041ec4ee609107223125dc8f`, also matching retained
+UID5e9fdb6ff9e8ef68 agenda quality document hash. Provider TownHall body is misleading here;
+a bounded formal-taskforce subscription exception is required, not a blanket TownHall rule.
+Official notice: https://dallascityhall.com/departments/public-works/dallasbondprogram/Documents/CBTF%20-%20May%2027th%20Meeting%20notice.pdf
+Exact provider binding: https://dallastx.new.swagit.com/videos/202453/agenda
+
+#2081 implementation verification: all5353 source records/1095 labels replayed, standing
+Transportation140→129 and new bond Streets0→11 only; every unrelated feed unchanged. All11
+original identities/audio preserved, four standing GUID exceptions retained.183 targeted and
+4954 full offline tests passed (15 deselected); whole Ruff/format467 clean. No case closure
+from these counts: independent recording proof and deployment gates remain explicit.

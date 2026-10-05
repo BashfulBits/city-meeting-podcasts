@@ -1467,3 +1467,7 @@ Existing prepared PR #2066 remains unchanged in production config/tests; this au
 Dallas reusable Economic Development ownership rules are now **L3**, issue #2068, with the
 11 standing aliases, separate stable bond label, named tests and full-source replay in review/51.
 Status: Prepared; deployment proof remains required for case closure.
+
+Dallas reusable Streets bond ownership rules: **L3**, issue #2081. Complete standing aliases,
+four stable bond labels, preserved GUID exceptions, eleven original fixtures and full-source
+positive/negative replay are specified in review/51. Recording/deployment proof gates remain.

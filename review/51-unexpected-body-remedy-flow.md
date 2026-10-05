@@ -1992,3 +1992,48 @@ No invalidation/backfill; no inference of other bond subcommittees' recording pr
 #2068 prepared: 193 targeted tests pass; final full offline4,935 pass14 deselected.
 WholeRuff464/format/diff clean. Initial serializer indentation failure corrected without
 runtime changes. Full replay preserves all other holders; deployed closure remains pending.
+
+### Dallas reusable Streets bond ownership rules — L3, #2081
+
+Approved scope: resolve remaining registered recordings with reusable institution rules under
+maintainer direction. Independent city bond archive and May25/June13 minutes establish Streets
+and Transportation as a separately convened 2024 Bond Task Force subcommittee, chaired by Linda
+Koop. Original chapter dates corroborate May11/June13/June28/July17/Aug15 records. Institution
+routing does not assert that every recording's date/content evidence is complete.
+
+Files: replace `body`/`body_any` in
+`config/feeds/dallas-tx-transportation-and-infrastructure.yml` with existing `body_exact`:
+all current matched full labels except the four 2024 bond labels and the three exception-only
+labels Mill Creek Tunnel Project, Transportation for Hire, Transportation-for-Hire Work Group.
+Preserve existing four `body_includes` entries unchanged. Add
+`config/feeds/dallas-tx-2024-bond-streets-and-transportation-subcommittee.yml`, same Dallas/source
+Swagit113, exact four labels from the committed census. No new selector/schema/runtime path.
+Existing named DART/legislative/Economic/Government Performance joints remain standing aliases.
+
+Add original eleven-record fixture `tests/fixtures/dallas-bond-streets-retained.json` and test
+`tests/test_dallas_bond_streets_ownership.py`: all originals move standing→bond; each same-label
+new GUID auto-admits bond; all standing aliases retain standing and reject bond; four GUID
+exceptions preserve existing identities and reject same-body different-GUID exception rows;
+other bond bodies/unrelated labels reject; RSS preserves each UID/audio and raw records unchanged.
+Use standard indented YAML lists compatible with existing feed editor.
+
+Full cached-source/all-feed replay acceptance: 5353 rows, standing140→129, bond0→11, no other
+holder additions/removals. Whole Ruff/format and full offline suite required. No provider/stage,
+audio/source UID, storage, dependency, workflow, publication-selection, search or record changes.
+No invalidation/backfill. Update audit/register prepared actions, ARCHITECTURE/CHANGELOG/ROADMAP
+and review11. Close no case solely from selectors; keep independent missing-date/content evidence
+and deployment verification explicit. Freeze/stamp this section only after human merge.
+
+### Remaining37 maintainer decisions — October5 follow-up
+
+Maintainer explicitly requests resolution of all37 registered open recordings. Independent
+proof work may proceed in parallel; closures still require verified evidence and deployed proof.
+Fort Worth3814 disposition approved: keep whole consecutive CCPD/Council bundle in both proven
+participant feeds, explicitly label it as consecutive proceedings. Preserve both source-view
+UIDs and whole audio; no duplicate winner or audio split. Design the bounded presentation-only
+label contract before changing code; no broader bundled-recording inference.
+
+Search scheduling choice approved: run search in a separate bounded job, keep the existing
+search time ceiling. Prepare exact workflow/CLI/artifact ownership and failure/preservation
+contract before implementation. This is authorization for the chosen approach, not permission
+to introduce an unspecified schema, raise a budget or touch credentials interactively.

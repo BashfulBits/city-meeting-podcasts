@@ -1,0 +1,4706 @@
+[
+  {
+    "agenda_backup": null,
+    "agenda_text": null,
+    "audio": {
+      "attempts": 0,
+      "bytes": 106200850,
+      "duration_served": 8538.099,
+      "encode_time": "2026-07-27T19:51:32.656866+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/16300c982b358fe9-8010f20ae3d6.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "8010f20ae3d6",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/16300c982b358fe9-8010f20ae3d6.m4a",
+      "verification": null
+    },
+    "body": "2024 Capital Bond Streets & Transportation Subcommittee Meeting",
+    "chapter_tags": null,
+    "chapters": [],
+    "chapters_basis": "source:s0",
+    "duration": null,
+    "generated_agenda_candidates": null,
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": null,
+    "integrity": null,
+    "links": {
+      "canonical_video": "https://dallastx.new.swagit.com/videos/270975"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-27T19:51:32.652385+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "8c4c73e83a518500",
+      "state": "available"
+    },
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "270975",
+    "provider_transcript": null,
+    "published": "2023-08-22T00:00:00+00:00",
+    "served_duration_seconds": 8538.099,
+    "source_chapters": null,
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 8552.42,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "hls",
+        "provider": "swagit",
+        "ref": "https://dallastx.new.swagit.com/videos/270975/download",
+        "watch_url": "https://dallastx.new.swagit.com/videos/270975"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": {
+        "input_fingerprint": "0a33ca6d3eeb6ce9a2a9b9a01ce5218e20e4dec2fb0422d66acd33278298f4c4",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "audio": {
+        "completed_at": "2026-07-27T19:57:37.575266+00:00",
+        "input_fingerprint": "f6f5fdea024093f8cb0b33fd10375a0b3cad73664e0e49b889bb5704a2572ada",
+        "output": "swagit/76869ed1994f/16300c982b358fe9-8010f20ae3d6.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-27T19:46:01.615367+00:00",
+        "input_fingerprint": "64488f6d871b9ef8842f0fc2ffd1db67e56e52cad2488d136e01286f65c30b6b",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "6330df886d8441cb778de3c6209b09bc31c992313149e829081bde3838065004",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "262f3db2ab11fc14874903fec99f715801e5b6bb1181b8bda53672ca4d8a5ac9",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:57:36.937621+00:00",
+        "input_fingerprint": "0343505941e20e550201fe317ef3f4d393205c98d33d804712ee30254b183969",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:57:36.937549+00:00",
+        "input_fingerprint": "ddef86da3357406baa0f70c14f81cf2c2ada0805fbfac3b21fe3e4c7ca373d2a",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:32.043609+00:00",
+        "input_fingerprint": "104f03f7885ae388b9715f858b5ad7682a408d27d50ed9fb3722ce8496d1e75d",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:37.966933+00:00",
+        "input_fingerprint": "10c2b8b8fe0df0306f22e05b1fff539185243fa92433cc329004e094bac2ed5e",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "completed_at": "2026-09-04T07:14:39.235811+00:00",
+        "input_fingerprint": "6296af7a0209bbc6b3c3c76d80cc2de51470189404f0c032daf92259f5ecd4c4",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "timeline": {
+        "completed_at": "2026-07-27T19:51:32.656470+00:00",
+        "input_fingerprint": "cd63c059a9435d0ea125f13800ce914bd0249e755d98ff6894001fd582b036ec",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:40.435006+00:00",
+        "input_fingerprint": "531854ceff6bf513f804f7b541bb8359bcdf8fc5947f5f68796484b46f1e4053",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "4c425f0a4983ff89",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": "69aebed620fb55d9",
+    "tags_spec_hash": "36d75abdbcfc4883",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 4664.648753,
+          "served_start": 0.0,
+          "source_end": 4664.648753,
+          "source_id": "s0",
+          "source_start": 0.0
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 8538.098889,
+          "served_start": 4664.648753,
+          "source_end": 8552.42,
+          "source_id": "s0",
+          "source_start": 4678.969864
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "2024 Capital Bond Streets & Transportation Subcommittee Meeting \u2013 Aug 22, 2023",
+    "transcript": null,
+    "uid": "16300c982b358fe9",
+    "video_url": "https://dallastx.new.swagit.com/videos/270975/download"
+  },
+  {
+    "agenda_backup": null,
+    "agenda_text": null,
+    "audio": {
+      "attempts": 0,
+      "bytes": 65543265,
+      "duration_served": 5575.336,
+      "encode_time": "2026-07-27T20:25:54.128569+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/2b172a76868ad86c-5a72aa9a1670.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "5a72aa9a1670",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/2b172a76868ad86c-5a72aa9a1670.m4a",
+      "verification": null
+    },
+    "body": "2024 Capital Bond Streets and Transportation Meeting",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-5219f5687da3",
+        "tags": []
+      }
+    ],
+    "chapters": [
+      {
+        "end": 5574.806311,
+        "start": 1.147146,
+        "title": "2024 Capital Bond Streets and Transportation Meeting on June 13, 2023"
+      }
+    ],
+    "chapters_basis": "served:silence:3+swagit-concat:1",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "locator_status": "not_applicable",
+      "provider_chapter_count": 1,
+      "reason": "provider_chapters",
+      "status": "not_applicable"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": "",
+    "integrity": null,
+    "links": {
+      "canonical_video": "https://dallastx.new.swagit.com/videos/259821"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-27T20:25:54.126968+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "445f1350a0c61631",
+      "state": "available"
+    },
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "259821",
+    "provider_transcript": null,
+    "published": "2023-06-13T00:00:00+00:00",
+    "served_duration_seconds": 5575.336,
+    "source_chapters": [
+      {
+        "end": 5722,
+        "start": 3,
+        "title": "2024 Capital Bond Streets and Transportation Meeting on June 13, 2023"
+      }
+    ],
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 5722.53,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "hls",
+        "provider": "swagit",
+        "ref": "https://dallastx.new.swagit.com/videos/259821/download",
+        "watch_url": "https://dallastx.new.swagit.com/videos/259821"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": {
+        "input_fingerprint": "1d2c4b94c84e892d5772ea195a92fa8dc85107c5de3168e646e80f3b69b8fd55",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "audio": {
+        "completed_at": "2026-07-27T20:30:56.103700+00:00",
+        "input_fingerprint": "acae302d94b34ee37e279a24054edf626e2a8c867db6a5e5690bb720aa7081b4",
+        "output": "swagit/76869ed1994f/2b172a76868ad86c-5a72aa9a1670.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-02T19:17:20.241079+00:00",
+        "input_fingerprint": "a99e4ef09d3d4f9d36df03f1d90af6eefbf0a59b7bfef78f058e31e7f67fccea",
+        "output": "not_applicable",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapter_locator": {
+        "completed_at": "2026-09-02T19:42:42.982608+00:00",
+        "input_fingerprint": "f6e39903d9d31abc50c77cdf1fd8709b39f64022e0fb910770b80e3025ae3fe8",
+        "output": "",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-27T20:24:35.964069+00:00",
+        "input_fingerprint": "56a50c31eaea3d1f208fd2585eea5749dfe4745b6cf6560f8ed000dfbb601572",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "0981606b49ba9fd5670038a07a2441fa775cecc4d4f51cfec2277af77d075e07",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "a5180c6a51ec61c5e278cfdc040ed68d86cc4c7af59c11097dc7488e03860cbd",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:57:46.528790+00:00",
+        "input_fingerprint": "bb4a9dc10a83e72f0cb03612fb84621fe3e9464fafe7bea18c6b4f1a6835650b",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:57:46.528731+00:00",
+        "input_fingerprint": "bb65e1bedf1bc68952ea97bbabe5c61f13284af19dec7985944a93c4e78954f2",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:40.848488+00:00",
+        "input_fingerprint": "afe0dab972585c891b198158adbb963574d1546fcdde0565b675d513fda511d7",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:37.974775+00:00",
+        "input_fingerprint": "fc63e3e86327fd0b363d94b9286e2eec64996b49cfa76c1c08aac6d62e571167",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "input_fingerprint": "c0a209ae0fddb2547aa1de2b066807c213da6b0d24b6296b205f806a51e4e915",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "completed_at": "2026-07-27T20:25:54.127543+00:00",
+        "input_fingerprint": "6c45be53aa31a87da4bfbba434b3807480d1c949978e0c0371b326ccd0be91c6",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:40.661542+00:00",
+        "input_fingerprint": "d6931914b3c29230afb0a3b4a2dbcf1c381efd884f9871c8a34fb66c2ea9a3fb",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "ce88a278308daf49",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "e8d7963ade5fe65f",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 50.367458,
+          "served_start": 0.0,
+          "source_end": 52.220312,
+          "source_id": "s0",
+          "source_start": 1.852854
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 58.245521,
+          "served_start": 50.367458,
+          "source_end": 89.518292,
+          "source_id": "s0",
+          "source_start": 81.640229
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 59.26418699999999,
+          "served_start": 58.245521,
+          "source_end": 115.496687,
+          "source_id": "s0",
+          "source_start": 114.478021
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 59.414165999999994,
+          "served_start": 59.26418699999999,
+          "source_end": 142.711208,
+          "source_id": "s0",
+          "source_start": 142.561229
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 138.547915,
+          "served_start": 59.414165999999994,
+          "source_end": 236.502062,
+          "source_id": "s0",
+          "source_start": 157.368313
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 5395.942519,
+          "served_start": 138.547915,
+          "source_end": 5506.564271,
+          "source_id": "s0",
+          "source_start": 249.169667
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 5443.475123,
+          "served_start": 5395.942519,
+          "source_end": 5568.223917,
+          "source_id": "s0",
+          "source_start": 5520.691313
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 5454.775061,
+          "served_start": 5443.475123,
+          "source_end": 5591.211292,
+          "source_id": "s0",
+          "source_start": 5579.911354
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 5575.336311,
+          "served_start": 5454.775061,
+          "source_end": 5722.53,
+          "source_id": "s0",
+          "source_start": 5601.96875
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "2024 Capital Bond Streets and Transportation Meeting \u2013 Jun 13, 2023",
+    "transcript": null,
+    "uid": "2b172a76868ad86c",
+    "video_url": "https://dallastx.new.swagit.com/videos/259821/download"
+  },
+  {
+    "agenda_backup": null,
+    "agenda_text": null,
+    "audio": {
+      "attempts": 0,
+      "bytes": 36252526,
+      "duration_served": 3069.886,
+      "encode_time": "2026-07-27T20:27:33.333276+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/2bc4c440c974dba8-9785d0dc5d82.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "9785d0dc5d82",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/2bc4c440c974dba8-9785d0dc5d82.m4a",
+      "verification": null
+    },
+    "body": "2024 Capital Bond Streets and Transportation Meeting",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-823e7e545c20",
+        "tags": [
+          {
+            "admission": "admitted",
+            "admission_basis": "fallback",
+            "admission_threshold": 1.0,
+            "assessment_kind": "tagger-admission",
+            "candidate_id": "llm-884cebee88be955c",
+            "chapter_id": "ch-823e7e545c20",
+            "chapter_pipeline_version": "1",
+            "confidence": 1.0,
+            "display": true,
+            "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 25, 2023",
+            "episode_uid": "2bc4c440c974dba8",
+            "evidence": [
+              {
+                "chapter_id": "ch-823e7e545c20",
+                "span": "pedestrian",
+                "t": 127.62,
+                "where": "transcript"
+              },
+              {
+                "chapter_id": "ch-823e7e545c20",
+                "span": "bicycle",
+                "t": 127.62,
+                "where": "transcript"
+              },
+              {
+                "chapter_id": "ch-823e7e545c20",
+                "span": "sidewalk",
+                "t": 723.5,
+                "where": "transcript"
+              }
+            ],
+            "feature": "topic-tags",
+            "id": "walk-bike-transit-access",
+            "prelabeler_basis": "unqualified",
+            "prelabeler_qualified": false,
+            "prompt_version": "rule-2",
+            "provider_model": "rule:2",
+            "recipe_hash": "4b4dd0b2311e08a7",
+            "rule_audit": [
+              {
+                "kind": "include",
+                "match_count": 1,
+                "match_texts": [
+                  "pedestrian"
+                ],
+                "pattern": "pedestrian",
+                "tag_id": "walk-bike-transit-access",
+                "where": "transcript"
+              },
+              {
+                "kind": "include",
+                "match_count": 1,
+                "match_texts": [
+                  "bicycle"
+                ],
+                "pattern": "bicycle",
+                "tag_id": "walk-bike-transit-access",
+                "where": "transcript"
+              },
+              {
+                "kind": "include",
+                "match_count": 1,
+                "match_texts": [
+                  "sidewalk"
+                ],
+                "pattern": "sidewalk",
+                "tag_id": "walk-bike-transit-access",
+                "where": "transcript"
+              }
+            ],
+            "rule_match_texts": [
+              "pedestrian",
+              "bicycle",
+              "sidewalk"
+            ],
+            "rule_pattern": "pedestrian",
+            "rule_patterns": [
+              "pedestrian",
+              "bicycle",
+              "sidewalk"
+            ],
+            "rule_version": "2",
+            "scope": "chapter",
+            "source": "rule",
+            "source_kind": "rule",
+            "tagger_admission": "not_applicable",
+            "tagger_display": true,
+            "taxonomy_version": 2
+          }
+        ]
+      }
+    ],
+    "chapters": [],
+    "chapters_basis": "served:silence:3+swagit-concat:1",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "locator_status": "not_applicable",
+      "provider_chapter_count": 1,
+      "reason": "provider_chapters",
+      "status": "not_applicable"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": "",
+    "integrity": null,
+    "links": {
+      "canonical_video": "https://dallastx.new.swagit.com/videos/233032"
+    },
+    "llm_tag_candidates": [
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-d8396e0d9b378dfd",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 25, 2023",
+        "episode_uid": "2bc4c440c974dba8",
+        "evidence": [
+          {
+            "span": "pedestrian",
+            "where": "transcript"
+          },
+          {
+            "span": "bicycle",
+            "where": "transcript"
+          },
+          {
+            "span": "sidewalk",
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "walk-bike-transit-access",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "4b4dd0b2311e08a7",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "pedestrian"
+            ],
+            "pattern": "pedestrian",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "bicycle"
+            ],
+            "pattern": "bicycle",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "sidewalk"
+            ],
+            "pattern": "sidewalk",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "pedestrian",
+          "bicycle",
+          "sidewalk"
+        ],
+        "rule_pattern": "pedestrian",
+        "rule_patterns": [
+          "pedestrian",
+          "bicycle",
+          "sidewalk"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-884cebee88be955c",
+        "chapter_id": "ch-823e7e545c20",
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 25, 2023",
+        "episode_uid": "2bc4c440c974dba8",
+        "evidence": [
+          {
+            "chapter_id": "ch-823e7e545c20",
+            "span": "pedestrian",
+            "t": 127.62,
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-823e7e545c20",
+            "span": "bicycle",
+            "t": 127.62,
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-823e7e545c20",
+            "span": "sidewalk",
+            "t": 723.5,
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "walk-bike-transit-access",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "4b4dd0b2311e08a7",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "pedestrian"
+            ],
+            "pattern": "pedestrian",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "bicycle"
+            ],
+            "pattern": "bicycle",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "sidewalk"
+            ],
+            "pattern": "sidewalk",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "pedestrian",
+          "bicycle",
+          "sidewalk"
+        ],
+        "rule_pattern": "pedestrian",
+        "rule_patterns": [
+          "pedestrian",
+          "bicycle",
+          "sidewalk"
+        ],
+        "rule_version": "2",
+        "scope": "chapter",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      }
+    ],
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-27T20:27:33.331770+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "5d74d5f7ff09b95f",
+      "state": "available"
+    },
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "233032",
+    "provider_transcript": null,
+    "published": "2023-05-25T00:00:00+00:00",
+    "served_duration_seconds": 3069.886,
+    "source_chapters": [
+      {
+        "end": 3117,
+        "start": 2,
+        "title": "2024 Bond Streets & Transportation Meeting on May 25, 2023."
+      }
+    ],
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 3117.01,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "hls",
+        "provider": "swagit",
+        "ref": "https://dallastx.new.swagit.com/videos/233032/download",
+        "watch_url": "https://dallastx.new.swagit.com/videos/233032"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": {
+        "input_fingerprint": "c6d6cdb6df30dde249578b2a40fe55c02634864c234a31cbe5c0f108c25c345f",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "audio": {
+        "completed_at": "2026-07-27T20:34:18.661382+00:00",
+        "input_fingerprint": "d6dab8fc515e32cb37e1218591df0ed170d52286dc377a86f7dfb799ea15a264",
+        "output": "swagit/76869ed1994f/2bc4c440c974dba8-9785d0dc5d82.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-02T19:17:20.241174+00:00",
+        "input_fingerprint": "f148462e2df7cc26c01a078565460417234e2d6e0386d534d5f10eb2ae04c95d",
+        "output": "not_applicable",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapter_locator": {
+        "completed_at": "2026-09-02T19:42:42.982651+00:00",
+        "input_fingerprint": "d2fd4dbc25579f27d99dbd51ef828ae1a43d4227f3efccfc051f55974dcebe36",
+        "output": "",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-27T20:26:38.073483+00:00",
+        "input_fingerprint": "2856a2545bbc7a7b06dedc19cb6f4881c1564e61bd9ed565dc67e22bd962fbd6",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "273752c3e83b91b8e766d642e48ad87fe2942103792c2e06025c27e61ffdb95a",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "ef1fd9819203ab7f05209b6f44459435f8fdfc3ecc35f3571861914cef361d10",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:57:47.329738+00:00",
+        "input_fingerprint": "ef750a635070fa35690887bed943c7823e91f7c637b8c8eafbb5a25e11fe1227",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:57:46.938324+00:00",
+        "input_fingerprint": "d53c8b642301a77ef531e3f0f0c8bdd4cc2fc336f81ec053b4d8ecb6dc18d5bb",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:40.851627+00:00",
+        "input_fingerprint": "3c9ee291ecf2d566204835c94234e1be6bebd7af4f7381ea773fb0b26b4200ac",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:37.975018+00:00",
+        "input_fingerprint": "274316206b141d102e80365cb21ffda2b9f0027e6d82fe015a2c5b001db7f9f7",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "completed_at": "2026-07-28T21:19:55.964970+00:00",
+        "input_fingerprint": "23f14ad230d2a6c442a554592fab582bc1143aae9f1d02ee485cf27a17284db1",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "completed_at": "2026-07-27T20:27:33.332791+00:00",
+        "input_fingerprint": "6095434500cbf075ac8d88a17118b29a19e642c280bef3ad8ef6250ddf3472aa",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:41.239484+00:00",
+        "input_fingerprint": "a264daa07f443402bc16fb72c593790113abfbaa8e832db56bef0549171ae202",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": [
+      {
+        "admission": "admitted",
+        "admission_basis": "fallback",
+        "admission_threshold": 1.0,
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-d8396e0d9b378dfd",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 25, 2023",
+        "episode_uid": "2bc4c440c974dba8",
+        "evidence": [
+          {
+            "span": "pedestrian",
+            "where": "transcript"
+          },
+          {
+            "span": "bicycle",
+            "where": "transcript"
+          },
+          {
+            "span": "sidewalk",
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-823e7e545c20",
+            "span": "pedestrian",
+            "t": 127.62,
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-823e7e545c20",
+            "span": "bicycle",
+            "t": 127.62,
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-823e7e545c20",
+            "span": "sidewalk",
+            "t": 723.5,
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "walk-bike-transit-access",
+        "prelabeler_basis": "unqualified",
+        "prelabeler_qualified": false,
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "4b4dd0b2311e08a7",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "pedestrian"
+            ],
+            "pattern": "pedestrian",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "bicycle"
+            ],
+            "pattern": "bicycle",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "sidewalk"
+            ],
+            "pattern": "sidewalk",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "pedestrian",
+          "bicycle",
+          "sidewalk"
+        ],
+        "rule_pattern": "pedestrian",
+        "rule_patterns": [
+          "pedestrian",
+          "bicycle",
+          "sidewalk"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "tagger_display": true,
+        "taxonomy_version": 2
+      }
+    ],
+    "tags_input_fingerprint": "92c48859a4aa35fe",
+    "tags_llm_call_attempts": [
+      {
+        "attempt_id": "tag-attempt-22095d02852768b275df",
+        "attempted_at": "2026-09-04T07:15:21.394460+00:00",
+        "model": "rule:2",
+        "purpose": "topic-tags:rules",
+        "reason": "",
+        "recipe_hash": "4b4dd0b2311e08a7",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "pedestrian"
+            ],
+            "pattern": "pedestrian",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "bicycle"
+            ],
+            "pattern": "bicycle",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "sidewalk"
+            ],
+            "pattern": "sidewalk",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          }
+        ],
+        "scope": "episode",
+        "status": "resolved"
+      },
+      {
+        "attempt_id": "tag-attempt-99895edb1a1c14b30c3c",
+        "attempted_at": "2026-09-04T07:15:21.631201+00:00",
+        "chapter_id": "ch-823e7e545c20",
+        "model": "rule:2",
+        "purpose": "topic-tags:rules",
+        "reason": "",
+        "recipe_hash": "4b4dd0b2311e08a7",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "pedestrian"
+            ],
+            "pattern": "pedestrian",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "bicycle"
+            ],
+            "pattern": "bicycle",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "sidewalk"
+            ],
+            "pattern": "sidewalk",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          }
+        ],
+        "scope": "chapter",
+        "status": "resolved"
+      },
+      {
+        "attempt_id": "tag-attempt-b76c2d25de779d6a52be",
+        "attempted_at": "2026-09-04T07:15:21.784143+00:00",
+        "model": "google/gemma-4-31b-it",
+        "prelabeler_batches": 1,
+        "prelabeler_batches_metadata": [
+          {
+            "prelabeler_batch_index": 0,
+            "prelabeler_input_digest": "5d8c37fc7e79eec5",
+            "prelabeler_input_tokens_estimate": 5805,
+            "prelabeler_llm_schema_version": "2",
+            "prelabeler_model": "google/gemma-4-31b-it",
+            "prelabeler_output_token_budget": 1024,
+            "prelabeler_prompt_version": "1",
+            "prelabeler_route_input_context_limit": 13376,
+            "prelabeler_route_output_context_limit": 32768,
+            "prelabeler_truncation_occurred": false,
+            "prelabeler_truncation_policy": "candidate-evidence-v2-batched"
+          }
+        ],
+        "prelabeler_input_digests": [
+          "5d8c37fc7e79eec5"
+        ],
+        "prelabeler_input_tokens_estimate": 5805,
+        "prelabeler_llm_schema_version": "2",
+        "prelabeler_max_batch_input_tokens": 5805,
+        "prelabeler_model": "google/gemma-4-31b-it",
+        "prelabeler_prompt_version": "1",
+        "prelabeler_route_input_context_limit": 13376,
+        "prelabeler_route_output_context_limit": 32768,
+        "prelabeler_truncation_occurred": false,
+        "prelabeler_truncation_policy": "candidate-evidence-v2-batched",
+        "purpose": "topic-tags:prelabeler",
+        "reason": "",
+        "recipe_hash": "0ce569ac201c922c",
+        "status": "deferred"
+      }
+    ],
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "4b4dd0b2311e08a7",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 1755.6780829999998,
+          "served_start": 0.0,
+          "source_end": 1763.779854,
+          "source_id": "s0",
+          "source_start": 8.101771
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 1836.6468959999997,
+          "served_start": 1755.6780829999998,
+          "source_end": 1857.077188,
+          "source_id": "s0",
+          "source_start": 1776.108375
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 3069.8865209999994,
+          "served_start": 1836.6468959999997,
+          "source_end": 3102.324979,
+          "source_id": "s0",
+          "source_start": 1869.085354
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 25, 2023",
+    "transcript": {
+      "asr_comparison": null,
+      "basis": "served",
+      "format": "vtt",
+      "key": "transcripts/76869ed1994f/2bc4c440c974dba8-asr-238d7e1368c0.vtt",
+      "media_error": null,
+      "media_error_audio_identity": null,
+      "media_error_last_attempt": null,
+      "pipeline_version": "3",
+      "selection": "asr",
+      "spec_hash": "238d7e1368c0",
+      "synced": true,
+      "text_source": "asr",
+      "timeout_attempts": 0,
+      "timeout_last_attempt": null,
+      "timing_source": "computed",
+      "url": "https://audio.citymeetings.fyi/transcripts/76869ed1994f/2bc4c440c974dba8-asr-238d7e1368c0.vtt",
+      "words_key": "transcripts/76869ed1994f/2bc4c440c974dba8-asr-238d7e1368c0.words.json",
+      "words_url": "https://audio.citymeetings.fyi/transcripts/76869ed1994f/2bc4c440c974dba8-asr-238d7e1368c0.words.json"
+    },
+    "uid": "2bc4c440c974dba8",
+    "video_url": "https://dallastx.new.swagit.com/videos/233032/download"
+  },
+  {
+    "agenda_backup": null,
+    "agenda_text": null,
+    "audio": {
+      "attempts": 0,
+      "bytes": 79957729,
+      "duration_served": 6421.309,
+      "encode_time": "2026-07-27T19:51:11.897689+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/2d2bc233efd9bf97-e00cae8deae8.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "e00cae8deae8",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/2d2bc233efd9bf97-e00cae8deae8.m4a",
+      "verification": null
+    },
+    "body": "2024 Capital Bond Streets and Transportation Subcommittee Meeting",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-9e72ff4a640e",
+        "tags": []
+      }
+    ],
+    "chapters": [],
+    "chapters_basis": "served:silence:3+swagit-concat:1",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "locator_status": "not_applicable",
+      "provider_chapter_count": 1,
+      "reason": "provider_chapters",
+      "status": "not_applicable"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": "",
+    "integrity": null,
+    "links": {
+      "canonical_video": "https://dallastx.new.swagit.com/videos/269407"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-27T19:51:11.895034+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "965eaa545703c438",
+      "state": "available"
+    },
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "269407",
+    "provider_transcript": null,
+    "published": "2023-08-10T00:00:00+00:00",
+    "served_duration_seconds": 6421.309,
+    "source_chapters": [
+      {
+        "end": 6499,
+        "start": 2,
+        "title": "2024 Capital Bond Streets and Transportation Subcommittee Meeting on August 10, 2023."
+      }
+    ],
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 6499.66,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "hls",
+        "provider": "swagit",
+        "ref": "https://dallastx.new.swagit.com/videos/269407/download",
+        "watch_url": "https://dallastx.new.swagit.com/videos/269407"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": {
+        "input_fingerprint": "b72ccf19cb3c884e7a8fd4595ce3dc3be097b76825ddfd26296df744ca96be43",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "audio": {
+        "completed_at": "2026-07-27T19:57:44.190898+00:00",
+        "input_fingerprint": "2ef2a82cafe1b3acc39ee6ae2422cb50d9bb3a9c2c16173b288b1d54085f5645",
+        "output": "swagit/76869ed1994f/2d2bc233efd9bf97-e00cae8deae8.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-02T19:17:20.231500+00:00",
+        "input_fingerprint": "4df61fd0f8f8c9ac2b9dac741481a4cfe2b32282c69e89a30d89854a1b889293",
+        "output": "not_applicable",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapter_locator": {
+        "completed_at": "2026-09-02T19:42:42.980274+00:00",
+        "input_fingerprint": "8db962cd773d4a48e9dd80116ff6d1ae587826c668ff977666889bdf20f18c7f",
+        "output": "",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-27T19:48:55.492820+00:00",
+        "input_fingerprint": "3d829148a161e7e3b8d30342847861d45126c348258f4078f9d441cb1147b880",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "fdce65191aa9f20c944eb365b9d689268b224fb411dadb7159fd536f0b5b3f9a",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "30eae3a888479f1e96a5b8d7e3336bce724cee97caed752c2f949063a198bc2d",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:57:36.938079+00:00",
+        "input_fingerprint": "b2ab5f5ddcdfd232adefcc60525fc94205d6f1b596a83ed7fc728b60a25e111d",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:57:36.938018+00:00",
+        "input_fingerprint": "605e1886f09317f1e956c1741e8fd9be967bf51715ec55321495867284718eb4",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:32.044214+00:00",
+        "input_fingerprint": "732ce2a206bb99b80c11ceacc796835e6ed8bce274c9885c256050e7d10606ef",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:37.967497+00:00",
+        "input_fingerprint": "2f5d28b4af9f4e85f6e6c63a673a284fe0ee966f3df0d29395700072746933c9",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "completed_at": "2026-07-28T21:19:49.566624+00:00",
+        "input_fingerprint": "e6783413f314860e3f956efa36285bb19b69595dcab4bcac1878d3a7e512c429",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "completed_at": "2026-07-27T19:51:11.897010+00:00",
+        "input_fingerprint": "b5e64e94b6b10606d203445c9944c985c77eb81fc275bc58f630b726eb7c44d2",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:40.439980+00:00",
+        "input_fingerprint": "91f1b1e4cf51acfaabab4c3b1824c2091984027d80d461345aecadef118e4aa4",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "00986d564e9050b7",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "7eb3a3cdebf91c15",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 619.1822,
+          "served_start": 0.0,
+          "source_end": 621.229388,
+          "source_id": "s0",
+          "source_start": 2.047188
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 1982.3189800000002,
+          "served_start": 619.1822,
+          "source_end": 2003.048095,
+          "source_id": "s0",
+          "source_start": 639.911315
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 3966.1541050000005,
+          "served_start": 1982.3189800000002,
+          "source_end": 3997.905896,
+          "source_id": "s0",
+          "source_start": 2014.070771
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 4755.228277000001,
+          "served_start": 3966.1541050000005,
+          "source_end": 4799.791519,
+          "source_id": "s0",
+          "source_start": 4010.717347
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 5349.034400000001,
+          "served_start": 4755.228277000001,
+          "source_end": 5406.861973,
+          "source_id": "s0",
+          "source_start": 4813.05585
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 6421.309026000002,
+          "served_start": 5349.034400000001,
+          "source_end": 6493.638798,
+          "source_id": "s0",
+          "source_start": 5421.364172
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "2024 Capital Bond Streets and Transportation Subcommittee Meeting \u2013 Aug 10, 2023",
+    "transcript": null,
+    "uid": "2d2bc233efd9bf97",
+    "video_url": "https://dallastx.new.swagit.com/videos/269407/download"
+  },
+  {
+    "agenda_backup": null,
+    "agenda_text": null,
+    "audio": {
+      "attempts": 0,
+      "bytes": 107767469,
+      "duration_served": 8673.353,
+      "encode_time": "2026-07-27T19:55:50.889491+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/427b4f7de9ec3a32-b422b7b7b73d.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "b422b7b7b73d",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/427b4f7de9ec3a32-b422b7b7b73d.m4a",
+      "verification": null
+    },
+    "body": "2024 Capital Bond Streets & Transportation Subcommittee Meeting",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-2356056c9adf",
+        "tags": []
+      }
+    ],
+    "chapters": [
+      {
+        "end": null,
+        "start": 27.585126000000002,
+        "title": "2024 Capital Bond Streets & Transportation Subcommittee Meeting on August 15, 2023."
+      }
+    ],
+    "chapters_basis": "served:silence:3+swagit-concat:1",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "locator_status": "not_applicable",
+      "provider_chapter_count": 1,
+      "reason": "provider_chapters",
+      "status": "not_applicable"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": "",
+    "integrity": null,
+    "links": {
+      "canonical_video": "https://dallastx.new.swagit.com/videos/269609"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-27T19:55:50.886413+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "9086297e76d2daef",
+      "state": "available"
+    },
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "269609",
+    "provider_transcript": null,
+    "published": "2023-08-15T00:00:00+00:00",
+    "served_duration_seconds": 8673.353,
+    "source_chapters": [
+      {
+        "end": 9301,
+        "start": 613,
+        "title": "2024 Capital Bond Streets & Transportation Subcommittee Meeting on August 15, 2023."
+      }
+    ],
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 9301.7,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "hls",
+        "provider": "swagit",
+        "ref": "https://dallastx.new.swagit.com/videos/269609/download",
+        "watch_url": "https://dallastx.new.swagit.com/videos/269609"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": {
+        "input_fingerprint": "b6a60c5c39f9d104f370382e2472184d99c601ba3602227a97975711afb460f1",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "audio": {
+        "completed_at": "2026-07-27T20:01:38.337077+00:00",
+        "input_fingerprint": "a8a0478a4757dd9cc552d8be4e7876b9d8e8391fb2fa2d775eca35a71755ed0a",
+        "output": "swagit/76869ed1994f/427b4f7de9ec3a32-b422b7b7b73d.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-02T19:17:20.231351+00:00",
+        "input_fingerprint": "1755e103073972b456e06e78fbb3796803dbd958eff4f745d8a638b8354fce4d",
+        "output": "not_applicable",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapter_locator": {
+        "completed_at": "2026-09-02T19:42:42.980188+00:00",
+        "input_fingerprint": "25c4dc257e1a47443ddd47866247dcf55b50e46d19d32cc417292f9300fb67b3",
+        "output": "",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-27T19:47:05.210793+00:00",
+        "input_fingerprint": "2e01c2ba6778b610b18d98448a2e5c41bcebc38833f5129ede660e03432d3bb3",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "e2a1207552ef6359195d5e7a2b78a908574e2d8aa48b5e38f3b6f9017dd76bc6",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "ed256589a715d19ae288dc242d51483847287db26f7e956e99c4665cac010861",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:57:36.937815+00:00",
+        "input_fingerprint": "a2bd486be409a86947d3640add31e3bce3d5f8fd395fab8907b3568cbc41222c",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:57:36.937755+00:00",
+        "input_fingerprint": "3c47e51b320c83e6d0b03a26955715fe0da56fa2435975dc8b6a708fadd8e7e2",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:32.043885+00:00",
+        "input_fingerprint": "df09018c9ee93cda317b065d3fbcdd5dbbdec73ac143cdc283b8f8babb79305a",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:37.967230+00:00",
+        "input_fingerprint": "af7b38ce6590f30c28c39c8def7f6e88c87de3fe7df8417c36a6d6e566f28f74",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "input_fingerprint": "dd3d36bfcfb3ee32c4b098d8c8db1cecb5310498230d4475e71b3ea238e9a7ef",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "completed_at": "2026-07-27T19:55:50.888496+00:00",
+        "input_fingerprint": "5b759be43ded940613aa6dd50cee4649f10ba46aa0db98d1da840bcf1222b15c",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:40.437085+00:00",
+        "input_fingerprint": "9e3aa2ad7581ec40ca12b8b80274faac3124c95910bb6863d8d4a31a51d81a47",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "aa90319ebc2f9019",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "8e4510dd87fd0b81",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 0.09149700000000394,
+          "served_start": 0.0,
+          "source_end": 154.929796,
+          "source_id": "s0",
+          "source_start": 154.838299
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 0.11693900000000212,
+          "served_start": 0.09149700000000394,
+          "source_end": 240.001406,
+          "source_id": "s0",
+          "source_start": 239.975964
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 0.2534469999999942,
+          "served_start": 0.11693900000000212,
+          "source_end": 252.838526,
+          "source_id": "s0",
+          "source_start": 252.702018
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 0.8229249999999979,
+          "served_start": 0.2534469999999942,
+          "source_end": 323.195578,
+          "source_id": "s0",
+          "source_start": 322.6261
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 5.7577550000000315,
+          "served_start": 0.8229249999999979,
+          "source_end": 382.637914,
+          "source_id": "s0",
+          "source_start": 377.703084
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 25.503379000000052,
+          "served_start": 5.7577550000000315,
+          "source_end": 413.427166,
+          "source_id": "s0",
+          "source_start": 393.681542
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 25.522654000000045,
+          "served_start": 25.503379000000052,
+          "source_end": 597.571202,
+          "source_id": "s0",
+          "source_start": 597.551927
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 403.00489899999997,
+          "served_start": 25.522654000000045,
+          "source_end": 988.419773,
+          "source_id": "s0",
+          "source_start": 610.937528
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 6395.91533,
+          "served_start": 403.00489899999997,
+          "source_end": 6993.129365,
+          "source_id": "s0",
+          "source_start": 1000.218934
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 8596.813788,
+          "served_start": 6395.91533,
+          "source_end": 9207.78,
+          "source_id": "s0",
+          "source_start": 7006.881542
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 8673.352677,
+          "served_start": 8596.813788,
+          "source_end": 9298.557891,
+          "source_id": "s0",
+          "source_start": 9222.019002
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "2024 Capital Bond Streets & Transportation Subcommittee Meeting \u2013 Aug 15, 2023",
+    "transcript": null,
+    "uid": "427b4f7de9ec3a32",
+    "video_url": "https://dallastx.new.swagit.com/videos/269609/download"
+  },
+  {
+    "agenda_backup": null,
+    "agenda_text": null,
+    "audio": {
+      "attempts": 0,
+      "bytes": 78988602,
+      "duration_served": 6332.148,
+      "encode_time": "2026-07-27T20:24:11.448253+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/78173acda7f7efea-9783de27f3d3.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "9783de27f3d3",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/78173acda7f7efea-9783de27f3d3.m4a",
+      "verification": null
+    },
+    "body": "2024 Bond Task Force Streets and Transportation Subcommittee",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-e5b7fb336e64",
+        "tags": []
+      }
+    ],
+    "chapters": [
+      {
+        "end": null,
+        "start": 3.0,
+        "title": "2024 Bond Task Force Streets and Transportation Subcommittee on July 17, 2023."
+      }
+    ],
+    "chapters_basis": "served:silence:3+swagit-concat:1",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "locator_status": "not_applicable",
+      "provider_chapter_count": 1,
+      "reason": "provider_chapters",
+      "status": "not_applicable"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": "",
+    "integrity": null,
+    "links": {
+      "canonical_video": "https://dallastx.new.swagit.com/videos/269613"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-27T20:24:11.444291+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "762b75acb1a27267",
+      "state": "available"
+    },
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "269613",
+    "provider_transcript": null,
+    "published": "2023-07-17T00:00:00+00:00",
+    "served_duration_seconds": 6332.148,
+    "source_chapters": [
+      {
+        "end": 6404,
+        "start": 3,
+        "title": "2024 Bond Task Force Streets and Transportation Subcommittee on July 17, 2023."
+      }
+    ],
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 6404.85,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "hls",
+        "provider": "swagit",
+        "ref": "https://dallastx.new.swagit.com/videos/269613/download",
+        "watch_url": "https://dallastx.new.swagit.com/videos/269613"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": {
+        "input_fingerprint": "bc3b65409b5d9e92854957855a06c25a28641db52ce1f99c8ad478effad6100a",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "audio": {
+        "completed_at": "2026-07-27T20:32:57.769342+00:00",
+        "input_fingerprint": "ef73e054cf22560a6a25d1150c1d17378103d13b05616cb846b4c0a44fec4700",
+        "output": "swagit/76869ed1994f/78173acda7f7efea-9783de27f3d3.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-02T19:17:20.240253+00:00",
+        "input_fingerprint": "2eddb1b1de6ab6d46baf1733b184f81e985880053e956b876d098be39124735c",
+        "output": "not_applicable",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapter_locator": {
+        "completed_at": "2026-09-02T19:42:42.982393+00:00",
+        "input_fingerprint": "7b6e1d64364d0015d9ae392aef1901c79a9a93be5e1e1e80aa8620256705a0e5",
+        "output": "",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-27T20:21:02.097895+00:00",
+        "input_fingerprint": "ea6fb84d53ec159550b5160a554bd8cee937ffce5bf9b22a1778aa9ceedf721d",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "c0e777449551c16c2a63ce9fecc44ec04151e3a41429d1b24ae8cfe08e657513",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "a8b802db3fdb282d295efef146b54a7732b00f5faa5bb995e556468900ff13ee",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:58:10.987060+00:00",
+        "input_fingerprint": "3901d060d209ccfec09f2c64dc35e090dee7a416816b579215194dbcd0b2efed",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:58:10.987001+00:00",
+        "input_fingerprint": "d3924df475d8639826809308cdc3bac3f9676c3714e9fb396f85471e6f4bec15",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:43:05.722061+00:00",
+        "input_fingerprint": "f9334100183ada487813b9ecc1250b1fa76f91388b9c6f2e616c0722932eba02",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:37.973890+00:00",
+        "input_fingerprint": "3a1dd26ac2d163cde4517e1bc69a33f157772b6a683de8e983dff37566974009",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "input_fingerprint": "de6392ae5faae337a4b71035a36b03628d5810ce5069ca516465a1cb568064ed",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "completed_at": "2026-07-27T20:24:11.447540+00:00",
+        "input_fingerprint": "3403b993f9358b9ec85eeaaf855f1107f5fd213ea4ebd3518cb43b0d2e8b505f",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:40.654871+00:00",
+        "input_fingerprint": "cfbee25856a76fcb42b79abd83079fb6ee83b6828793926be056fc3b4cf2896d",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "4d345fed61a68725",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "26406b5c6eab0b16",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 530.021406,
+          "served_start": 0.0,
+          "source_end": 530.021406,
+          "source_id": "s0",
+          "source_start": 0.0
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 1893.1581859999997,
+          "served_start": 530.021406,
+          "source_end": 1911.840113,
+          "source_id": "s0",
+          "source_start": 548.703333
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 3876.9933109999993,
+          "served_start": 1893.1581859999997,
+          "source_end": 3906.697914,
+          "source_id": "s0",
+          "source_start": 1922.862789
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 4666.067483,
+          "served_start": 3876.9933109999993,
+          "source_end": 4708.583537,
+          "source_id": "s0",
+          "source_start": 3919.509365
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 5259.873583,
+          "served_start": 4666.067483,
+          "source_end": 5315.653968,
+          "source_id": "s0",
+          "source_start": 4721.847868
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 6332.148209,
+          "served_start": 5259.873583,
+          "source_end": 6402.430816,
+          "source_id": "s0",
+          "source_start": 5330.15619
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "2024 Bond Task Force Streets and Transportation Subcommittee \u2013 Jul 17, 2023",
+    "transcript": null,
+    "uid": "78173acda7f7efea",
+    "video_url": "https://dallastx.new.swagit.com/videos/269613/download"
+  },
+  {
+    "agenda_backup": null,
+    "agenda_text": null,
+    "audio": {
+      "attempts": 0,
+      "bytes": 70907187,
+      "duration_served": 6067.755,
+      "encode_time": "2026-07-27T19:44:30.869555+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/8578348e702caf35-5a7b25ff3471.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "5a7b25ff3471",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/8578348e702caf35-5a7b25ff3471.m4a",
+      "verification": null
+    },
+    "body": "2024 Capital Bond Streets and Transportation Subcommittee Meeting",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-4c0e86e94e43",
+        "tags": []
+      }
+    ],
+    "chapters": [
+      {
+        "end": null,
+        "start": 2.992177,
+        "title": "2024 Capital Bond Streets and Transportation Subcommittee Meeting on October 27, 2023."
+      }
+    ],
+    "chapters_basis": "served:silence:3+swagit-concat:1",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "locator_status": "not_applicable",
+      "provider_chapter_count": 1,
+      "reason": "provider_chapters",
+      "status": "not_applicable"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": "",
+    "integrity": null,
+    "links": {
+      "canonical_video": "https://dallastx.new.swagit.com/videos/277830"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-27T19:44:30.868767+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "cf40fc1a53b1dc21",
+      "state": "available"
+    },
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "277830",
+    "provider_transcript": null,
+    "published": "2023-10-27T00:00:00+00:00",
+    "served_duration_seconds": 6067.755,
+    "source_chapters": [
+      {
+        "end": 6174,
+        "start": 4,
+        "title": "2024 Capital Bond Streets and Transportation Subcommittee Meeting on October 27, 2023."
+      }
+    ],
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 6174.0,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "hls",
+        "provider": "swagit",
+        "ref": "https://dallastx.new.swagit.com/videos/277830/download",
+        "watch_url": "https://dallastx.new.swagit.com/videos/277830"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": {
+        "input_fingerprint": "c512448b07799bc19193945e7e027c2dabc5d20ef4ba03e392abdd19d0f8d0ff",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "audio": {
+        "completed_at": "2026-07-27T19:50:59.925856+00:00",
+        "input_fingerprint": "d3f09dc1bdbb76827c41c36ea03b6d5d5aae62ecb41032463c0e0b14129148c2",
+        "output": "swagit/76869ed1994f/8578348e702caf35-5a7b25ff3471.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-02T19:17:20.230828+00:00",
+        "input_fingerprint": "adcca02512dffa27bcb2a88c48d8ec6da0567d365767b082b7561556fd25b662",
+        "output": "not_applicable",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapter_locator": {
+        "completed_at": "2026-09-02T19:42:42.979838+00:00",
+        "input_fingerprint": "c1f153a3346c06b584cf37536fab39498ff6da3f4cd445c38be940e2f96938e5",
+        "output": "",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-27T19:43:52.510125+00:00",
+        "input_fingerprint": "c3d3d9ec7580e9e9016b0b02051d3809fdf93d69acfa6beec8e60bb4b78166da",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "b58e088526625a15c54f8c5d83bc4e1bbd13e7c08eb1fe04023a9e8742777ad8",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "b5a7261de53507c2701ae35a79e61ff7e6f3632750781682514a871775c922dc",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:57:36.919489+00:00",
+        "input_fingerprint": "411ddd8e54a26a819f7aa996fde3b4e4434b5f0ce9dca116d86b4429f78a071a",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:57:36.919426+00:00",
+        "input_fingerprint": "ee7b81ad15f6605678322a23281c503fb7e2ab759e47f3ed7815dccafbe803cf",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:31.954069+00:00",
+        "input_fingerprint": "a6228161dc07d819b4dc932a5c23cb145a07b952b831e45648fe6d0a34cc0c82",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:37.966496+00:00",
+        "input_fingerprint": "b176724b0a4f0539461f8ebb03ab68294d0664d37a7b856c2388f814d33cd3ce",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "input_fingerprint": "8cb0cfb9aea91213c982b04054fe5c4bcda3296fbf3b4a42e68da89c7a1a2935",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "completed_at": "2026-07-27T19:44:30.869140+00:00",
+        "input_fingerprint": "4aefc50369b891719d673c53a5207b5e22ab9b60c6b251a776cb886c2fba828e",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:40.429115+00:00",
+        "input_fingerprint": "ed600c918b5c4d642397c02c3cc6df80d79e7395b2f069a6f2d89621d6b8b749",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "1904ca1793f97e0f",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "c9f7855b3ac5eab5",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 6067.755352,
+          "served_start": 0.0,
+          "source_end": 6068.763175,
+          "source_id": "s0",
+          "source_start": 1.007823
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "2024 Capital Bond Streets and Transportation Subcommittee Meeting \u2013 Oct 27, 2023",
+    "transcript": null,
+    "uid": "8578348e702caf35",
+    "video_url": "https://dallastx.new.swagit.com/videos/277830/download"
+  },
+  {
+    "agenda_backup": null,
+    "agenda_text": null,
+    "audio": {
+      "attempts": 0,
+      "bytes": 80654639,
+      "duration_served": 6479.588,
+      "encode_time": "2026-07-27T20:24:47.061962+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/ae8f0826293006f0-28ecf352023b.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "28ecf352023b",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/ae8f0826293006f0-28ecf352023b.m4a",
+      "verification": null
+    },
+    "body": "2024 Capital Bond Streets and Transportation Meeting",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-5cc5f7e312f9",
+        "tags": []
+      }
+    ],
+    "chapters": [],
+    "chapters_basis": "served:silence:3+swagit-concat:1",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "locator_status": "not_applicable",
+      "provider_chapter_count": 1,
+      "reason": "provider_chapters",
+      "status": "not_applicable"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": "",
+    "integrity": null,
+    "links": {
+      "canonical_video": "https://dallastx.new.swagit.com/videos/259823"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-27T20:24:47.058158+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "b932b64bd6648dfb",
+      "state": "available"
+    },
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "259823",
+    "provider_transcript": null,
+    "published": "2023-06-20T00:00:00+00:00",
+    "served_duration_seconds": 6479.588,
+    "source_chapters": [
+      {
+        "end": 6550,
+        "start": 2,
+        "title": "2024 Capital Bond Streets and Transportation Meeting on June 20, 2023."
+      }
+    ],
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 6550.54,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "hls",
+        "provider": "swagit",
+        "ref": "https://dallastx.new.swagit.com/videos/259823/download",
+        "watch_url": "https://dallastx.new.swagit.com/videos/259823"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": {
+        "input_fingerprint": "3e5ee219a261779e2c9370657f5bcea9461e48e1d525e256244be8fe91dbc4a0",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "audio": {
+        "completed_at": "2026-07-27T20:29:39.430947+00:00",
+        "input_fingerprint": "f437f7082ad0263419c3f7bb32f5422a259c348b9db5a914ed8a411b95d3be60",
+        "output": "swagit/76869ed1994f/ae8f0826293006f0-28ecf352023b.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-02T19:17:20.240747+00:00",
+        "input_fingerprint": "00e9a33d71d7a21322d4599aad4e57e1d364d52ad55b452872a78178287c24fb",
+        "output": "not_applicable",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapter_locator": {
+        "completed_at": "2026-09-02T19:42:42.982565+00:00",
+        "input_fingerprint": "d4727c47cd3647fa3aae7521e0b06665497d88bb85fdfefd08f649c4f4c50d3c",
+        "output": "",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-27T20:24:00.779728+00:00",
+        "input_fingerprint": "d0cbe2a477672a98a0e155e2996547ee8313f319fbefecb03a31aa76b46d6c92",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "51fd9336d87b7f3b3b2fec1285dfc9d0e23023528907a96bf3bab751df0907e8",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "e4c47536565c17d26fd7c409f472b510bddfb5be89b604b0647784f9c4083c23",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:57:46.528591+00:00",
+        "input_fingerprint": "2528b438e2785ba9ebd5c6373fc83273b08ada4ce74ec06d782fd9f4bf62f2f7",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:57:46.528527+00:00",
+        "input_fingerprint": "221cf92bae3e2125f9997f59eade4f22cba9e0cd62891c561a539bbcdd8c67d4",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:40.848267+00:00",
+        "input_fingerprint": "20d16ac95ed117991a0ea06d2d20d19ed91db85922ff1b31cb8752ddff80d1ce",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:37.974488+00:00",
+        "input_fingerprint": "a4e21b9e72ae21d5f8046ac6f0c7694ec68fde607676bc57d4b5028483fe40a4",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "completed_at": "2026-07-28T21:19:55.498837+00:00",
+        "input_fingerprint": "f9e598dd4e2fbabc61f5de99c46e8445059445392f33f9bf482cba552c9b7a78",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "completed_at": "2026-07-27T20:24:47.061418+00:00",
+        "input_fingerprint": "ebe767ce9e0fd641ef8750bfdda313cc980f0d8fa19b26df4878dac57b03cd3d",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:40.659939+00:00",
+        "input_fingerprint": "83af9f08966a3b88b9fd05f25b523b3eb1b8f518d8f0d71b07e12183ec7831f0",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "41a14656252613ff",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "a5bd2523cd6a97e9",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 356.95179099999996,
+          "served_start": 0.0,
+          "source_end": 363.709187,
+          "source_id": "s0",
+          "source_start": 6.757396
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 390.86924899999997,
+          "served_start": 356.95179099999996,
+          "source_end": 414.750896,
+          "source_id": "s0",
+          "source_start": 380.833438
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 6479.588582,
+          "served_start": 390.86924899999997,
+          "source_end": 6524.488854,
+          "source_id": "s0",
+          "source_start": 435.769521
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "2024 Capital Bond Streets and Transportation Meeting \u2013 Jun 20, 2023",
+    "transcript": null,
+    "uid": "ae8f0826293006f0",
+    "video_url": "https://dallastx.new.swagit.com/videos/259823/download"
+  },
+  {
+    "agenda_backup": null,
+    "agenda_text": null,
+    "audio": {
+      "attempts": 0,
+      "bytes": 86241195,
+      "duration_served": 7238.01,
+      "encode_time": "2026-07-27T19:45:07.408192+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/b0471f29622b8165-6c3dcf6ffb87.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "6c3dcf6ffb87",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/b0471f29622b8165-6c3dcf6ffb87.m4a",
+      "verification": null
+    },
+    "body": "2024 Capital Bond Streets and Transportation Subcommittee Meeting",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-c01288a6b79e",
+        "tags": []
+      }
+    ],
+    "chapters": [
+      {
+        "end": null,
+        "start": 2.0,
+        "title": "2024 Capital Bond Streets and Transportation Subcommittee Meeting on October 26, 2023."
+      }
+    ],
+    "chapters_basis": "served:silence:3+swagit-concat:1",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "locator_status": "not_applicable",
+      "provider_chapter_count": 1,
+      "reason": "provider_chapters",
+      "status": "not_applicable"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": "",
+    "integrity": null,
+    "links": {
+      "canonical_video": "https://dallastx.new.swagit.com/videos/277827"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-27T19:45:07.406706+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "d8a1beb86867ecb4",
+      "state": "available"
+    },
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "277827",
+    "provider_transcript": null,
+    "published": "2023-10-26T00:00:00+00:00",
+    "served_duration_seconds": 7238.01,
+    "source_chapters": [
+      {
+        "end": 7268,
+        "start": 2,
+        "title": "2024 Capital Bond Streets and Transportation Subcommittee Meeting on October 26, 2023."
+      }
+    ],
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 7268.79,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "hls",
+        "provider": "swagit",
+        "ref": "https://dallastx.new.swagit.com/videos/277827/download",
+        "watch_url": "https://dallastx.new.swagit.com/videos/277827"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": {
+        "input_fingerprint": "cb141ca956aeb322aeb481cdbb0b6779eb1abf9761ab8144ab410176b9da59ab",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "audio": {
+        "completed_at": "2026-07-27T19:54:59.780520+00:00",
+        "input_fingerprint": "a2a6a6ba9037b6018fc8456cc38f6600fa476ea67f9248b5d4b20634705db059",
+        "output": "swagit/76869ed1994f/b0471f29622b8165-6c3dcf6ffb87.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-02T19:17:20.231033+00:00",
+        "input_fingerprint": "f9057abb81751fad90ee4b67faac4a581d63c01e65ac68187c3bdcb9a4a5955f",
+        "output": "not_applicable",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapter_locator": {
+        "completed_at": "2026-09-02T19:42:42.979912+00:00",
+        "input_fingerprint": "79bf3f2a8076450b00b7b86969d2f26c1b972338e083a7d4f12283174330734e",
+        "output": "",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-27T19:44:14.207664+00:00",
+        "input_fingerprint": "c2a64c7b0f119b3d05c0104711cec2357e4ecaedc7fa05b0868ec2a9077ccab6",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "e6e80838e26110be9edf65110e5145cdf2c6fd9589707cff8fea159f5f6e05e2",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "78334d464e3ada75086a9f8fd6636e43c5cdaaae4121d758f3f3fc322fd29811",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:57:38.079292+00:00",
+        "input_fingerprint": "769c639272b880f99777caec5bf950ebc6bff68e54cc5ffda0ff1443a3e1cb46",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:57:37.799527+00:00",
+        "input_fingerprint": "72d4fa490158ddccc042d89f06acf1edcc9571086e1f00a37ff62697da25f567",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:31.954463+00:00",
+        "input_fingerprint": "32e584357217198747c7e3aacb0cec01f2a5d561298cb23d7c254fd4f86f2cc1",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:37.966660+00:00",
+        "input_fingerprint": "951019df921083779db0884519e7a0ffb20df9a86b0937e479415b3e6a6eec0e",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "input_fingerprint": "762852ac6323005f637cb2283a3b014977033e9b4f82710d9110190129d6bbdd",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "completed_at": "2026-07-27T19:45:07.407653+00:00",
+        "input_fingerprint": "51152a0ca78eac27078cf927b76689f8fcc057857d88192c805e3ec502b579b2",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:40.430815+00:00",
+        "input_fingerprint": "e3ab6a1e249772e27b3194e1482a9888fb57b743cc02a6f9742afa172121004c",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "e0c809f2bd23e1d3",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "0a119987ea42f5ff",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 241.557052,
+          "served_start": 0.0,
+          "source_end": 241.557052,
+          "source_id": "s0",
+          "source_start": 0.0
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 7054.336144999999,
+          "served_start": 241.557052,
+          "source_end": 7068.398095,
+          "source_id": "s0",
+          "source_start": 255.619002
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 7238.010158999999,
+          "served_start": 7054.336144999999,
+          "source_end": 7263.736327,
+          "source_id": "s0",
+          "source_start": 7080.062313
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "2024 Capital Bond Streets and Transportation Subcommittee Meeting \u2013 Oct 26, 2023",
+    "transcript": {
+      "asr_comparison": null,
+      "basis": "served",
+      "format": "vtt",
+      "invalid_words_attempts": 0,
+      "invalid_words_last_attempt": null,
+      "key": "transcripts/76869ed1994f/b0471f29622b8165-asr-967090a95fd4.vtt",
+      "media_error": null,
+      "media_error_audio_identity": null,
+      "media_error_last_attempt": null,
+      "pipeline_version": "3",
+      "selection": "asr",
+      "spec_hash": "967090a95fd4",
+      "synced": true,
+      "text_source": "asr",
+      "timeout_attempts": 0,
+      "timeout_last_attempt": null,
+      "timing_source": "computed",
+      "url": "https://audio.citymeetings.fyi/transcripts/76869ed1994f/b0471f29622b8165-asr-967090a95fd4.vtt",
+      "words_key": "transcripts/76869ed1994f/b0471f29622b8165-asr-967090a95fd4.words.json",
+      "words_url": "https://audio.citymeetings.fyi/transcripts/76869ed1994f/b0471f29622b8165-asr-967090a95fd4.words.json"
+    },
+    "uid": "b0471f29622b8165",
+    "video_url": "https://dallastx.new.swagit.com/videos/277827/download"
+  },
+  {
+    "agenda_backup": null,
+    "agenda_text": null,
+    "audio": {
+      "attempts": 0,
+      "bytes": 108338963,
+      "duration_served": 8684.527,
+      "encode_time": "2026-07-27T19:57:25.587441+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/fe0b7e556c694307-66bc0d6eb83a.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "66bc0d6eb83a",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/fe0b7e556c694307-66bc0d6eb83a.m4a",
+      "verification": null
+    },
+    "body": "2024 Capital Bond Streets and Transportation Subcommittee Meeting",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-61b8f1c2d823",
+        "tags": []
+      }
+    ],
+    "chapters": [
+      {
+        "end": 8683.737646,
+        "start": 0.962,
+        "title": "2024 Capital Bond Streets and Transportation Subcommittee Meeting on June 28, 2023."
+      }
+    ],
+    "chapters_basis": "served:silence:3+swagit-concat:1",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "locator_status": "not_applicable",
+      "provider_chapter_count": 1,
+      "reason": "provider_chapters",
+      "status": "not_applicable"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": "",
+    "integrity": null,
+    "links": {
+      "canonical_video": "https://dallastx.new.swagit.com/videos/259827"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-27T19:57:25.586479+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "be099dc2c55b59a0",
+      "state": "available"
+    },
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "259827",
+    "provider_transcript": null,
+    "published": "2023-06-28T00:00:00+00:00",
+    "served_duration_seconds": 8684.527,
+    "source_chapters": [
+      {
+        "end": 8713,
+        "start": 2,
+        "title": "2024 Capital Bond Streets and Transportation Subcommittee Meeting on June 28, 2023."
+      }
+    ],
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 8713.79,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "hls",
+        "provider": "swagit",
+        "ref": "https://dallastx.new.swagit.com/videos/259827/download",
+        "watch_url": "https://dallastx.new.swagit.com/videos/259827"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": {
+        "input_fingerprint": "e389dc8ebfe210e7b30f83d7e9645a625ef20c215aada873008ed0d97a7ac0ad",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "audio": {
+        "completed_at": "2026-07-27T20:02:27.378432+00:00",
+        "input_fingerprint": "3908af119364e66ba4b690c40804ee406cdcc3fe07288010d3acd7b6aa9ec200",
+        "output": "swagit/76869ed1994f/fe0b7e556c694307-66bc0d6eb83a.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-02T19:17:20.231640+00:00",
+        "input_fingerprint": "58d2ad908cc520170bc83330955d5dad5159bdd43b76dd540c9f42519cb777d3",
+        "output": "not_applicable",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapter_locator": {
+        "completed_at": "2026-09-02T19:42:42.980326+00:00",
+        "input_fingerprint": "6c9d949f2b5e104923c5ba34291594933b32c64cc45001e19bf435c86f3ff527",
+        "output": "",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-27T19:49:17.911837+00:00",
+        "input_fingerprint": "5011d5c5be22414a837021170b01f85d96be735c8ba7daa6d21a2cc3b7a4190f",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "6231640e0fd17770891a8f3dcecda25c59a123de7baf8667c64950a6b487db46",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "475e874d509bbcdedb99d129ca8d11c36fbfb1df13993d8912e1e7f0b8fc61af",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:57:36.938443+00:00",
+        "input_fingerprint": "3aaa3cd149fb92895627ed3fbd7fb3ea90d37407a966e148157758416d081e77",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:57:36.938236+00:00",
+        "input_fingerprint": "13f40f9bbc040903e53fca2c0008c25b659c9c5cbd24593860c3064a32bca2bd",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:32.044485+00:00",
+        "input_fingerprint": "9309848dd1a8ef514b4d0d0f92f98eb7841b14c8f8ad6831abb00f1f37baa54c",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:37.967707+00:00",
+        "input_fingerprint": "01381d6ddfd454c48bf721d34403fc00080841eff886ab258fd6d3cd73056696",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "input_fingerprint": "75f06754fc5e843639172614166bb6276531c116ada01369c6ad051fcc7871e5",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "completed_at": "2026-07-27T19:57:25.586994+00:00",
+        "input_fingerprint": "a3b8012e8d43f23194d42d44e712922a3c83446447daa34466c0260929949a55",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:40.441635+00:00",
+        "input_fingerprint": "b9fd3a9f56e1a6be7954dca44ea9538a62c726999e2ee0180cc42ba55a48bfd2",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "e6c886313bd278c8",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "a126e7af44bf8d4c",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 1791.132771,
+          "served_start": 0.0,
+          "source_end": 1792.170771,
+          "source_id": "s0",
+          "source_start": 1.038
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 6678.31575,
+          "served_start": 1791.132771,
+          "source_end": 6695.55675,
+          "source_id": "s0",
+          "source_start": 1808.373771
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 8684.527646,
+          "served_start": 6678.31575,
+          "source_end": 8713.79,
+          "source_id": "s0",
+          "source_start": 6707.578104
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "2024 Capital Bond Streets and Transportation Subcommittee Meeting \u2013 Jun 28, 2023",
+    "transcript": null,
+    "uid": "fe0b7e556c694307",
+    "video_url": "https://dallastx.new.swagit.com/videos/259827/download"
+  },
+  {
+    "agenda_backup": null,
+    "agenda_text": null,
+    "audio": {
+      "attempts": 0,
+      "bytes": 38413006,
+      "duration_served": 3077.985,
+      "encode_time": "2026-07-27T20:32:34.404467+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/ffd212474f9b51ad-807a27408e4a.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "807a27408e4a",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/ffd212474f9b51ad-807a27408e4a.m4a",
+      "verification": null
+    },
+    "body": "2024 Capital Bond Streets and Transportation Meeting",
+    "chapter_tags": [
+      {
+        "chapter_id": "ch-ecf21d45e8a9",
+        "tags": [
+          {
+            "admission": "admitted",
+            "admission_basis": "fallback",
+            "admission_threshold": 1.0,
+            "assessment_kind": "tagger-admission",
+            "candidate_id": "llm-f73e8e707ec714af",
+            "chapter_id": "ch-ecf21d45e8a9",
+            "chapter_pipeline_version": "1",
+            "confidence": 1.0,
+            "display": true,
+            "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+            "episode_uid": "ffd212474f9b51ad",
+            "evidence": [
+              {
+                "chapter_id": "ch-ecf21d45e8a9",
+                "span": "Vision Zero",
+                "t": 2004.52,
+                "where": "transcript"
+              }
+            ],
+            "feature": "topic-tags",
+            "id": "street-safety-vision-zero",
+            "prelabeler_basis": "unqualified",
+            "prelabeler_qualified": false,
+            "prompt_version": "rule-2",
+            "provider_model": "rule:2",
+            "recipe_hash": "7cf5a53faf0ab8ca",
+            "rule_audit": [
+              {
+                "kind": "include",
+                "match_count": 4,
+                "match_texts": [
+                  "Vision Zero"
+                ],
+                "pattern": "vision zero",
+                "tag_id": "street-safety-vision-zero",
+                "where": "transcript"
+              }
+            ],
+            "rule_match_texts": [
+              "Vision Zero"
+            ],
+            "rule_pattern": "vision zero",
+            "rule_patterns": [
+              "vision zero"
+            ],
+            "rule_version": "2",
+            "scope": "chapter",
+            "source": "rule",
+            "source_kind": "rule",
+            "tagger_admission": "not_applicable",
+            "tagger_display": true,
+            "taxonomy_version": 2
+          },
+          {
+            "admission": "admitted",
+            "admission_basis": "fallback",
+            "admission_threshold": 1.0,
+            "assessment_kind": "tagger-admission",
+            "candidate_id": "llm-5f9b5700950e80e6",
+            "chapter_id": "ch-ecf21d45e8a9",
+            "chapter_pipeline_version": "1",
+            "confidence": 1.0,
+            "display": true,
+            "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+            "episode_uid": "ffd212474f9b51ad",
+            "evidence": [
+              {
+                "chapter_id": "ch-ecf21d45e8a9",
+                "span": "active transportation",
+                "t": 2004.52,
+                "where": "transcript"
+              },
+              {
+                "chapter_id": "ch-ecf21d45e8a9",
+                "span": "sidewalk",
+                "t": 475.56,
+                "where": "transcript"
+              }
+            ],
+            "feature": "topic-tags",
+            "id": "walk-bike-transit-access",
+            "prelabeler_basis": "unqualified",
+            "prelabeler_qualified": false,
+            "prompt_version": "rule-2",
+            "provider_model": "rule:2",
+            "recipe_hash": "7cf5a53faf0ab8ca",
+            "rule_audit": [
+              {
+                "kind": "include",
+                "match_count": 1,
+                "match_texts": [
+                  "active transportation"
+                ],
+                "pattern": "active transportation",
+                "tag_id": "walk-bike-transit-access",
+                "where": "transcript"
+              },
+              {
+                "kind": "include",
+                "match_count": 1,
+                "match_texts": [
+                  "sidewalk"
+                ],
+                "pattern": "sidewalk",
+                "tag_id": "walk-bike-transit-access",
+                "where": "transcript"
+              }
+            ],
+            "rule_match_texts": [
+              "active transportation",
+              "sidewalk"
+            ],
+            "rule_pattern": "active transportation",
+            "rule_patterns": [
+              "active transportation",
+              "sidewalk"
+            ],
+            "rule_version": "2",
+            "scope": "chapter",
+            "source": "rule",
+            "source_kind": "rule",
+            "tagger_admission": "not_applicable",
+            "tagger_display": true,
+            "taxonomy_version": 2
+          },
+          {
+            "admission": "admitted",
+            "admission_basis": "fallback",
+            "admission_threshold": 1.0,
+            "assessment_kind": "tagger-admission",
+            "candidate_id": "llm-02280ec32bef2419",
+            "chapter_id": "ch-ecf21d45e8a9",
+            "chapter_pipeline_version": "1",
+            "confidence": 1.0,
+            "display": true,
+            "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+            "episode_uid": "ffd212474f9b51ad",
+            "evidence": [
+              {
+                "chapter_id": "ch-ecf21d45e8a9",
+                "span": "traffic calming",
+                "t": 2717.19,
+                "where": "transcript"
+              },
+              {
+                "chapter_id": "ch-ecf21d45e8a9",
+                "span": "lane reduction",
+                "t": 1972.78,
+                "where": "transcript"
+              }
+            ],
+            "feature": "topic-tags",
+            "id": "traffic-calming-road-diets",
+            "prelabeler_basis": "unqualified",
+            "prelabeler_qualified": false,
+            "prompt_version": "rule-2",
+            "provider_model": "rule:2",
+            "recipe_hash": "7cf5a53faf0ab8ca",
+            "rule_audit": [
+              {
+                "kind": "include",
+                "match_count": 3,
+                "match_texts": [
+                  "traffic calming"
+                ],
+                "pattern": "traffic calming",
+                "tag_id": "traffic-calming-road-diets",
+                "where": "transcript"
+              },
+              {
+                "kind": "include",
+                "match_count": 1,
+                "match_texts": [
+                  "lane reduction"
+                ],
+                "pattern": "lane reduction",
+                "tag_id": "traffic-calming-road-diets",
+                "where": "transcript"
+              }
+            ],
+            "rule_match_texts": [
+              "traffic calming",
+              "lane reduction"
+            ],
+            "rule_pattern": "traffic calming",
+            "rule_patterns": [
+              "traffic calming",
+              "lane reduction"
+            ],
+            "rule_version": "2",
+            "scope": "chapter",
+            "source": "rule",
+            "source_kind": "rule",
+            "tagger_admission": "not_applicable",
+            "tagger_display": true,
+            "taxonomy_version": 2
+          },
+          {
+            "admission": "admitted",
+            "admission_basis": "fallback",
+            "admission_threshold": 1.0,
+            "assessment_kind": "tagger-admission",
+            "candidate_id": "llm-7cceafba0991b24e",
+            "chapter_id": "ch-ecf21d45e8a9",
+            "chapter_pipeline_version": "1",
+            "confidence": 1.0,
+            "display": true,
+            "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+            "episode_uid": "ffd212474f9b51ad",
+            "evidence": [
+              {
+                "chapter_id": "ch-ecf21d45e8a9",
+                "span": "drainage system",
+                "t": 599.74,
+                "where": "transcript"
+              }
+            ],
+            "feature": "topic-tags",
+            "id": "stormwater-utility-maintenance",
+            "prelabeler_basis": "unqualified",
+            "prelabeler_qualified": false,
+            "prompt_version": "rule-2",
+            "provider_model": "rule:2",
+            "recipe_hash": "7cf5a53faf0ab8ca",
+            "rule_audit": [
+              {
+                "kind": "include",
+                "match_count": 1,
+                "match_texts": [
+                  "drainage system"
+                ],
+                "pattern": "drainage system",
+                "tag_id": "stormwater-utility-maintenance",
+                "where": "transcript"
+              }
+            ],
+            "rule_match_texts": [
+              "drainage system"
+            ],
+            "rule_pattern": "drainage system",
+            "rule_patterns": [
+              "drainage system"
+            ],
+            "rule_version": "2",
+            "scope": "chapter",
+            "source": "rule",
+            "source_kind": "rule",
+            "tagger_admission": "not_applicable",
+            "tagger_display": true,
+            "taxonomy_version": 2
+          },
+          {
+            "admission": "admitted",
+            "admission_basis": "fallback",
+            "admission_threshold": 1.0,
+            "assessment_kind": "tagger-admission",
+            "candidate_id": "llm-2a9327e89302bb68",
+            "chapter_id": "ch-ecf21d45e8a9",
+            "chapter_pipeline_version": "1",
+            "confidence": 1.0,
+            "display": true,
+            "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+            "episode_uid": "ffd212474f9b51ad",
+            "evidence": [
+              {
+                "chapter_id": "ch-ecf21d45e8a9",
+                "span": "community engagement",
+                "t": 167.56,
+                "where": "transcript"
+              }
+            ],
+            "feature": "topic-tags",
+            "id": "neighborhood-engagement",
+            "prelabeler_basis": "unqualified",
+            "prelabeler_qualified": false,
+            "prompt_version": "rule-2",
+            "provider_model": "rule:2",
+            "recipe_hash": "7cf5a53faf0ab8ca",
+            "rule_audit": [
+              {
+                "kind": "include",
+                "match_count": 1,
+                "match_texts": [
+                  "community engagement"
+                ],
+                "pattern": "community engagement",
+                "tag_id": "neighborhood-engagement",
+                "where": "transcript"
+              }
+            ],
+            "rule_match_texts": [
+              "community engagement"
+            ],
+            "rule_pattern": "community engagement",
+            "rule_patterns": [
+              "community engagement"
+            ],
+            "rule_version": "2",
+            "scope": "chapter",
+            "source": "rule",
+            "source_kind": "rule",
+            "tagger_admission": "not_applicable",
+            "tagger_display": true,
+            "taxonomy_version": 2
+          }
+        ]
+      }
+    ],
+    "chapters": [
+      {
+        "end": 3077.065465,
+        "start": 2.0,
+        "title": "2024 Bond Streets and Transportation Meeting on May 11, 2023."
+      }
+    ],
+    "chapters_basis": "served:silence:3+swagit-concat:1",
+    "duration": null,
+    "generated_agenda_candidates": {
+      "locator_status": "not_applicable",
+      "provider_chapter_count": 1,
+      "reason": "provider_chapters",
+      "status": "not_applicable"
+    },
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": "",
+    "integrity": null,
+    "links": {
+      "canonical_video": "https://dallastx.new.swagit.com/videos/232343"
+    },
+    "llm_tag_candidates": [
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-9791c2ca309a81c6",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "span": "Vision Zero",
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "street-safety-vision-zero",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 4,
+            "match_texts": [
+              "Vision Zero"
+            ],
+            "pattern": "vision zero",
+            "tag_id": "street-safety-vision-zero",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "Vision Zero"
+        ],
+        "rule_pattern": "vision zero",
+        "rule_patterns": [
+          "vision zero"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-d9d46969132f5f57",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "span": "active transportation",
+            "where": "transcript"
+          },
+          {
+            "span": "sidewalk",
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "walk-bike-transit-access",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "active transportation"
+            ],
+            "pattern": "active transportation",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "sidewalk"
+            ],
+            "pattern": "sidewalk",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "active transportation",
+          "sidewalk"
+        ],
+        "rule_pattern": "active transportation",
+        "rule_patterns": [
+          "active transportation",
+          "sidewalk"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-c3d0ba428a751212",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "span": "traffic calming",
+            "where": "transcript"
+          },
+          {
+            "span": "lane reduction",
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "traffic-calming-road-diets",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 3,
+            "match_texts": [
+              "traffic calming"
+            ],
+            "pattern": "traffic calming",
+            "tag_id": "traffic-calming-road-diets",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "lane reduction"
+            ],
+            "pattern": "lane reduction",
+            "tag_id": "traffic-calming-road-diets",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "traffic calming",
+          "lane reduction"
+        ],
+        "rule_pattern": "traffic calming",
+        "rule_patterns": [
+          "traffic calming",
+          "lane reduction"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-c2bfeaa59c3972c2",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "span": "drainage system",
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "stormwater-utility-maintenance",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "drainage system"
+            ],
+            "pattern": "drainage system",
+            "tag_id": "stormwater-utility-maintenance",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "drainage system"
+        ],
+        "rule_pattern": "drainage system",
+        "rule_patterns": [
+          "drainage system"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-a6929455ccaa6dcb",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "span": "community engagement",
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "neighborhood-engagement",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "community engagement"
+            ],
+            "pattern": "community engagement",
+            "tag_id": "neighborhood-engagement",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "community engagement"
+        ],
+        "rule_pattern": "community engagement",
+        "rule_patterns": [
+          "community engagement"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-f73e8e707ec714af",
+        "chapter_id": "ch-ecf21d45e8a9",
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "Vision Zero",
+            "t": 2004.52,
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "street-safety-vision-zero",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 4,
+            "match_texts": [
+              "Vision Zero"
+            ],
+            "pattern": "vision zero",
+            "tag_id": "street-safety-vision-zero",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "Vision Zero"
+        ],
+        "rule_pattern": "vision zero",
+        "rule_patterns": [
+          "vision zero"
+        ],
+        "rule_version": "2",
+        "scope": "chapter",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-5f9b5700950e80e6",
+        "chapter_id": "ch-ecf21d45e8a9",
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "active transportation",
+            "t": 2004.52,
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "sidewalk",
+            "t": 475.56,
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "walk-bike-transit-access",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "active transportation"
+            ],
+            "pattern": "active transportation",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "sidewalk"
+            ],
+            "pattern": "sidewalk",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "active transportation",
+          "sidewalk"
+        ],
+        "rule_pattern": "active transportation",
+        "rule_patterns": [
+          "active transportation",
+          "sidewalk"
+        ],
+        "rule_version": "2",
+        "scope": "chapter",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-02280ec32bef2419",
+        "chapter_id": "ch-ecf21d45e8a9",
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "traffic calming",
+            "t": 2717.19,
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "lane reduction",
+            "t": 1972.78,
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "traffic-calming-road-diets",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 3,
+            "match_texts": [
+              "traffic calming"
+            ],
+            "pattern": "traffic calming",
+            "tag_id": "traffic-calming-road-diets",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "lane reduction"
+            ],
+            "pattern": "lane reduction",
+            "tag_id": "traffic-calming-road-diets",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "traffic calming",
+          "lane reduction"
+        ],
+        "rule_pattern": "traffic calming",
+        "rule_patterns": [
+          "traffic calming",
+          "lane reduction"
+        ],
+        "rule_version": "2",
+        "scope": "chapter",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-7cceafba0991b24e",
+        "chapter_id": "ch-ecf21d45e8a9",
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "drainage system",
+            "t": 599.74,
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "stormwater-utility-maintenance",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "drainage system"
+            ],
+            "pattern": "drainage system",
+            "tag_id": "stormwater-utility-maintenance",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "drainage system"
+        ],
+        "rule_pattern": "drainage system",
+        "rule_patterns": [
+          "drainage system"
+        ],
+        "rule_version": "2",
+        "scope": "chapter",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-2a9327e89302bb68",
+        "chapter_id": "ch-ecf21d45e8a9",
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "community engagement",
+            "t": 167.56,
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "neighborhood-engagement",
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "community engagement"
+            ],
+            "pattern": "community engagement",
+            "tag_id": "neighborhood-engagement",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "community engagement"
+        ],
+        "rule_pattern": "community engagement",
+        "rule_patterns": [
+          "community engagement"
+        ],
+        "rule_version": "2",
+        "scope": "chapter",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "taxonomy_version": 2
+      }
+    ],
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-27T20:32:34.402768+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "a58057c4db867ce7",
+      "state": "available"
+    },
+    "media_kind": "hls",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "232343",
+    "provider_transcript": null,
+    "published": "2023-05-11T00:00:00+00:00",
+    "served_duration_seconds": 3077.985,
+    "source_chapters": [
+      {
+        "end": 3177,
+        "start": 2,
+        "title": "2024 Bond Streets and Transportation Meeting on May 11, 2023."
+      }
+    ],
+    "source_duration_seconds": null,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 3177.92,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "hls",
+        "provider": "swagit",
+        "ref": "https://dallastx.new.swagit.com/videos/232343/download",
+        "watch_url": "https://dallastx.new.swagit.com/videos/232343"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": {
+        "input_fingerprint": "11005f9d6f47d1eb26e6ad51ae0d00e093b9dbca1b43c21dbe6fa25982fa8b40",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "audio": {
+        "completed_at": "2026-07-27T20:35:21.673769+00:00",
+        "input_fingerprint": "c69b0ba6b27f4e2accab7d1d1dacee3e79911169d5be0b2b467430e8a874aab1",
+        "output": "swagit/76869ed1994f/ffd212474f9b51ad-807a27408e4a.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapter_agenda": {
+        "completed_at": "2026-09-02T19:17:20.241431+00:00",
+        "input_fingerprint": "2a5552ac8551a82ddad1a7070cd6f2492e8c4f58ec88ce317616a2b9e3a11073",
+        "output": "not_applicable",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapter_locator": {
+        "completed_at": "2026-09-02T19:42:42.982692+00:00",
+        "input_fingerprint": "57a66ac0cf9639c6b2bc640deb99512dabf05298e00edaac6d95e5282db279c1",
+        "output": "",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-27T20:27:28.210800+00:00",
+        "input_fingerprint": "3ba9c9f75e31cd4e3c171391e0284f31c8760d05a5cb2a0b17a976d36d043032",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "440795e8499816088f4c10a2eef27116834c52b232238fa2e996c472e3c41ffd",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "7df8b4c48f875fc37a59e972855542423134a97fec3d57a83fc67c5979084108",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T00:57:47.469499+00:00",
+        "input_fingerprint": "4dd0e9b117038c95cf42a30e220446053b163e4d3082f5ed5bc60dd303cf2733",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T00:57:47.088604+00:00",
+        "input_fingerprint": "aad09fccd9bee76c047336498fb67b726e05cf6cbec4791ab262d6d6b1364ba4",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:42:40.877903+00:00",
+        "input_fingerprint": "f37b03ab63842e08e68d9232ecb87c13d771804a98de33894890c0755f67b337",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:40:37.975193+00:00",
+        "input_fingerprint": "ecab878e4e758abf35a9589e5b0d0ba5b45cf6fd9887f4e63dd7c1cf222c18ff",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "input_fingerprint": "e76bbd5529481173600be6d9f61e1048cef7f02e88ab033db188882f6c0c5ca2",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "timeline": {
+        "completed_at": "2026-07-27T20:32:34.403926+00:00",
+        "input_fingerprint": "04c58583ce5c46ac5d25312d3a4cacdb0028a300b0a81d3056ca006a1b5e696d",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-23T20:09:41.416827+00:00",
+        "input_fingerprint": "447a4237fb19d4b8f3d7b685c1955443d5f2fe3ea9d95cf2044445c3f15d4df4",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": [
+      {
+        "admission": "admitted",
+        "admission_basis": "fallback",
+        "admission_threshold": 1.0,
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-9791c2ca309a81c6",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "span": "Vision Zero",
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "Vision Zero",
+            "t": 2004.52,
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "street-safety-vision-zero",
+        "prelabeler_basis": "unqualified",
+        "prelabeler_qualified": false,
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 4,
+            "match_texts": [
+              "Vision Zero"
+            ],
+            "pattern": "vision zero",
+            "tag_id": "street-safety-vision-zero",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "Vision Zero"
+        ],
+        "rule_pattern": "vision zero",
+        "rule_patterns": [
+          "vision zero"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "tagger_display": true,
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "admission_basis": "fallback",
+        "admission_threshold": 1.0,
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-d9d46969132f5f57",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "span": "active transportation",
+            "where": "transcript"
+          },
+          {
+            "span": "sidewalk",
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "active transportation",
+            "t": 2004.52,
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "sidewalk",
+            "t": 475.56,
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "walk-bike-transit-access",
+        "prelabeler_basis": "unqualified",
+        "prelabeler_qualified": false,
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "active transportation"
+            ],
+            "pattern": "active transportation",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "sidewalk"
+            ],
+            "pattern": "sidewalk",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "active transportation",
+          "sidewalk"
+        ],
+        "rule_pattern": "active transportation",
+        "rule_patterns": [
+          "active transportation",
+          "sidewalk"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "tagger_display": true,
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "admission_basis": "fallback",
+        "admission_threshold": 1.0,
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-c3d0ba428a751212",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "span": "traffic calming",
+            "where": "transcript"
+          },
+          {
+            "span": "lane reduction",
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "traffic calming",
+            "t": 2717.19,
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "lane reduction",
+            "t": 1972.78,
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "traffic-calming-road-diets",
+        "prelabeler_basis": "unqualified",
+        "prelabeler_qualified": false,
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 3,
+            "match_texts": [
+              "traffic calming"
+            ],
+            "pattern": "traffic calming",
+            "tag_id": "traffic-calming-road-diets",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "lane reduction"
+            ],
+            "pattern": "lane reduction",
+            "tag_id": "traffic-calming-road-diets",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "traffic calming",
+          "lane reduction"
+        ],
+        "rule_pattern": "traffic calming",
+        "rule_patterns": [
+          "traffic calming",
+          "lane reduction"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "tagger_display": true,
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "admission_basis": "fallback",
+        "admission_threshold": 1.0,
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-c2bfeaa59c3972c2",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "span": "drainage system",
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "drainage system",
+            "t": 599.74,
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "stormwater-utility-maintenance",
+        "prelabeler_basis": "unqualified",
+        "prelabeler_qualified": false,
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "drainage system"
+            ],
+            "pattern": "drainage system",
+            "tag_id": "stormwater-utility-maintenance",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "drainage system"
+        ],
+        "rule_pattern": "drainage system",
+        "rule_patterns": [
+          "drainage system"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "tagger_display": true,
+        "taxonomy_version": 2
+      },
+      {
+        "admission": "admitted",
+        "admission_basis": "fallback",
+        "admission_threshold": 1.0,
+        "assessment_kind": "tagger-admission",
+        "candidate_id": "llm-a6929455ccaa6dcb",
+        "chapter_id": null,
+        "chapter_pipeline_version": "1",
+        "confidence": 1.0,
+        "display": true,
+        "episode_title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+        "episode_uid": "ffd212474f9b51ad",
+        "evidence": [
+          {
+            "span": "community engagement",
+            "where": "transcript"
+          },
+          {
+            "chapter_id": "ch-ecf21d45e8a9",
+            "span": "community engagement",
+            "t": 167.56,
+            "where": "transcript"
+          }
+        ],
+        "feature": "topic-tags",
+        "id": "neighborhood-engagement",
+        "prelabeler_basis": "unqualified",
+        "prelabeler_qualified": false,
+        "prompt_version": "rule-2",
+        "provider_model": "rule:2",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "community engagement"
+            ],
+            "pattern": "community engagement",
+            "tag_id": "neighborhood-engagement",
+            "where": "transcript"
+          }
+        ],
+        "rule_match_texts": [
+          "community engagement"
+        ],
+        "rule_pattern": "community engagement",
+        "rule_patterns": [
+          "community engagement"
+        ],
+        "rule_version": "2",
+        "scope": "episode",
+        "source": "rule",
+        "source_kind": "rule",
+        "tagger_admission": "not_applicable",
+        "tagger_display": true,
+        "taxonomy_version": 2
+      }
+    ],
+    "tags_input_fingerprint": "5540d4be74517d15",
+    "tags_llm_call_attempts": [
+      {
+        "attempt_id": "tag-attempt-25f990735e46940e985d",
+        "attempted_at": "2026-09-04T07:15:21.065650+00:00",
+        "model": "rule:2",
+        "purpose": "topic-tags:rules",
+        "reason": "",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 4,
+            "match_texts": [
+              "Vision Zero"
+            ],
+            "pattern": "vision zero",
+            "tag_id": "street-safety-vision-zero",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "active transportation"
+            ],
+            "pattern": "active transportation",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "sidewalk"
+            ],
+            "pattern": "sidewalk",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 3,
+            "match_texts": [
+              "traffic calming"
+            ],
+            "pattern": "traffic calming",
+            "tag_id": "traffic-calming-road-diets",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "lane reduction"
+            ],
+            "pattern": "lane reduction",
+            "tag_id": "traffic-calming-road-diets",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "drainage system"
+            ],
+            "pattern": "drainage system",
+            "tag_id": "stormwater-utility-maintenance",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "community engagement"
+            ],
+            "pattern": "community engagement",
+            "tag_id": "neighborhood-engagement",
+            "where": "transcript"
+          }
+        ],
+        "scope": "episode",
+        "status": "resolved"
+      },
+      {
+        "attempt_id": "tag-attempt-3846c91f424e515ab593",
+        "attempted_at": "2026-09-04T07:15:21.589729+00:00",
+        "chapter_id": "ch-ecf21d45e8a9",
+        "model": "rule:2",
+        "purpose": "topic-tags:rules",
+        "reason": "",
+        "recipe_hash": "7cf5a53faf0ab8ca",
+        "rule_audit": [
+          {
+            "kind": "include",
+            "match_count": 4,
+            "match_texts": [
+              "Vision Zero"
+            ],
+            "pattern": "vision zero",
+            "tag_id": "street-safety-vision-zero",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "active transportation"
+            ],
+            "pattern": "active transportation",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "sidewalk"
+            ],
+            "pattern": "sidewalk",
+            "tag_id": "walk-bike-transit-access",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 3,
+            "match_texts": [
+              "traffic calming"
+            ],
+            "pattern": "traffic calming",
+            "tag_id": "traffic-calming-road-diets",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "lane reduction"
+            ],
+            "pattern": "lane reduction",
+            "tag_id": "traffic-calming-road-diets",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "drainage system"
+            ],
+            "pattern": "drainage system",
+            "tag_id": "stormwater-utility-maintenance",
+            "where": "transcript"
+          },
+          {
+            "kind": "include",
+            "match_count": 1,
+            "match_texts": [
+              "community engagement"
+            ],
+            "pattern": "community engagement",
+            "tag_id": "neighborhood-engagement",
+            "where": "transcript"
+          }
+        ],
+        "scope": "chapter",
+        "status": "resolved"
+      },
+      {
+        "attempt_id": "tag-attempt-dff9ac6cfe8e4a16d609",
+        "attempted_at": "2026-09-04T07:15:21.996674+00:00",
+        "model": "google/gemma-4-31b-it",
+        "prelabeler_batches": 2,
+        "prelabeler_batches_metadata": [
+          {
+            "prelabeler_batch_index": 0,
+            "prelabeler_input_digest": "612155fff9645130",
+            "prelabeler_input_tokens_estimate": 13359,
+            "prelabeler_llm_schema_version": "2",
+            "prelabeler_model": "google/gemma-4-31b-it",
+            "prelabeler_output_token_budget": 1024,
+            "prelabeler_prompt_version": "1",
+            "prelabeler_route_input_context_limit": 13376,
+            "prelabeler_route_output_context_limit": 32768,
+            "prelabeler_truncation_occurred": false,
+            "prelabeler_truncation_policy": "candidate-evidence-v2-batched"
+          },
+          {
+            "prelabeler_batch_index": 1,
+            "prelabeler_input_digest": "62027749f5dc326f",
+            "prelabeler_input_tokens_estimate": 9765,
+            "prelabeler_llm_schema_version": "2",
+            "prelabeler_model": "google/gemma-4-31b-it",
+            "prelabeler_output_token_budget": 1024,
+            "prelabeler_prompt_version": "1",
+            "prelabeler_route_input_context_limit": 13376,
+            "prelabeler_route_output_context_limit": 32768,
+            "prelabeler_truncation_occurred": false,
+            "prelabeler_truncation_policy": "candidate-evidence-v2-batched"
+          }
+        ],
+        "prelabeler_input_digests": [
+          "612155fff9645130",
+          "62027749f5dc326f"
+        ],
+        "prelabeler_input_tokens_estimate": 23124,
+        "prelabeler_llm_schema_version": "2",
+        "prelabeler_max_batch_input_tokens": 13359,
+        "prelabeler_model": "google/gemma-4-31b-it",
+        "prelabeler_prompt_version": "1",
+        "prelabeler_route_input_context_limit": 13376,
+        "prelabeler_route_output_context_limit": 32768,
+        "prelabeler_truncation_occurred": false,
+        "prelabeler_truncation_policy": "candidate-evidence-v2-batched",
+        "purpose": "topic-tags:prelabeler",
+        "reason": "",
+        "recipe_hash": "8b709d79ccfee0cd",
+        "status": "deferred"
+      }
+    ],
+    "tags_llm_recipe_hash": null,
+    "tags_spec_hash": "7cf5a53faf0ab8ca",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 85.947891,
+          "served_start": 0.0,
+          "source_end": 85.947891,
+          "source_id": "s0",
+          "source_start": 0.0
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 85.95539699999998,
+          "served_start": 85.947891,
+          "source_end": 137.6161,
+          "source_id": "s0",
+          "source_start": 137.608594
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 1846.6426079999999,
+          "served_start": 85.95539699999998,
+          "source_end": 1911.130839,
+          "source_id": "s0",
+          "source_start": 150.443628
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 3064.136327,
+          "served_start": 1846.6426079999999,
+          "source_end": 3151.710136,
+          "source_id": "s0",
+          "source_start": 1934.216417
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 3077.985465,
+          "served_start": 3064.136327,
+          "source_end": 3177.92,
+          "source_id": "s0",
+          "source_start": 3164.070862
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "2024 Capital Bond Streets and Transportation Meeting \u2013 May 11, 2023",
+    "transcript": {
+      "asr_comparison": null,
+      "basis": "served",
+      "format": "vtt",
+      "key": "transcripts/76869ed1994f/ffd212474f9b51ad-asr-d1e0abf59631.vtt",
+      "media_error": null,
+      "media_error_audio_identity": null,
+      "media_error_last_attempt": null,
+      "pipeline_version": "3",
+      "selection": "asr",
+      "spec_hash": "d1e0abf59631",
+      "synced": true,
+      "text_source": "asr",
+      "timeout_attempts": 0,
+      "timeout_last_attempt": null,
+      "timing_source": "computed",
+      "url": "https://audio.citymeetings.fyi/transcripts/76869ed1994f/ffd212474f9b51ad-asr-d1e0abf59631.vtt",
+      "words_key": "transcripts/76869ed1994f/ffd212474f9b51ad-asr-d1e0abf59631.words.json",
+      "words_url": "https://audio.citymeetings.fyi/transcripts/76869ed1994f/ffd212474f9b51ad-asr-d1e0abf59631.words.json"
+    },
+    "uid": "ffd212474f9b51ad",
+    "video_url": "https://dallastx.new.swagit.com/videos/232343/download"
+  }
+]

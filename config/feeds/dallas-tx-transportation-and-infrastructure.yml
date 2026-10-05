@@ -3,21 +3,33 @@ city: dallas-tx
 provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
-  body: "Transportation and Infrastructure"
-  body_any:
-    - "Transportation & Trinity River Project Committee/DART Joint Meeting"
-    - "Transportation"
-    - "Transportation-for-Hire Public Forum"
   body_includes:
-    - provider_guid: "203141"
-      body: "Transportation-for-Hire Work Group"
-    - provider_guid: "205495"
-      body: "Transportation-for-Hire Work Group"
-    - provider_guid: "205504"
-      body: "Mill Creek Tunnel Project"
-    - provider_guid: "205502"
-      body: "Transportation for Hire"
-podcast_title: "Dallas: Transportation and Infrastructure"
-podcast_author: "City of Dallas, TX"
-podcast_email: ""
-podcast_description: "Transportation and Infrastructure meetings for Dallas."
+    - provider_guid: '203141'
+      body: Transportation-for-Hire Work Group
+    - provider_guid: '205495'
+      body: Transportation-for-Hire Work Group
+    - provider_guid: '205504'
+      body: Mill Creek Tunnel Project
+    - provider_guid: '205502'
+      body: Transportation for Hire
+  body_exact:
+    - Joint AD Hoc Legislative/Transportation & Infrastructure Committee
+    - Joint Meeting Legislative Ad Hoc & Transportation & Infrastructure Committee
+    - Joint Meeting of Government Performance & Financial Management Committee and Transportation
+      and Infrastructure Committee
+    - Joint Meeting of Transportation and Economic Development Meeting
+    - Special Called Joint Meeting of the Ad Hoc Committee on Legislative Affairs and the Transportation
+      & Infrastructure Committee
+    - Special Called Transportation and Infrastructure
+    - Special Transportation and Infrastructure
+    - Transportation
+    - Transportation & Trinity River Project Committee
+    - Transportation & Trinity River Project Committee/DART Joint Meeting
+    - Transportation and Infrastructural Committee
+    - Transportation and Infrastructure
+    - Transportation and Infrastructure Committee/ DART Board Special Called Joint Meeting
+    - Transportation-for-Hire Public Forum
+podcast_title: 'Dallas: Transportation and Infrastructure'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Transportation and Infrastructure meetings for Dallas.
