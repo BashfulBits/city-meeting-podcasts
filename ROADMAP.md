@@ -571,3 +571,6 @@ Dallas #2065 exact four-record CBTF coverage prepared; deployment proof and rema
 
 - Prepared: reusable Dallas Economic Development institutional aliases and separate 2024 bond
   subcommittee subscription (#2068); deployment proof remains required for case closure.
+
+- Designed (L3): Dallas reusable Streets bond institution rules (#2081), preserving existing
+  joints/GUID exceptions; independent recording gaps and deployment proof remain required.
