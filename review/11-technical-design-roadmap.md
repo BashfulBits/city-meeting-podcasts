@@ -1397,3 +1397,7 @@ feeds, Council departures with original UID/audio retained.
 Denton TIRZ #2048 prepared: eight standalone board recordings leave Council, six for Zone1
 and two for Zone2 dedicated feeds; preserve raw UID/audio. No stage invalidation/backfill.
 Cases remain open until deployed verification.
+
+Denton Special Citizens Bond Advisory Committee bounded ownership is L3 in review/51
+(#2051): exact June 6, 2019 GUID/body only; preserve identity and all other feeds. Deployment
+verification remains a separate gate; no standing or dissolution inference is authorized.

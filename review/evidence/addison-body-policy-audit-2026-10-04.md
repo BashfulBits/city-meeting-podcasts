@@ -1270,3 +1270,15 @@ four cases open until deployment after the parent merge. Library #2047 current `
 has green test/deps/preview checks; its sole review finding was fixed and resolved. TIRZ
 #2050 `a9fd3784` has green CI and full review requested at 12:30:52 UTC, comment 5994485501,
 after repository-wide reconstruction found latest prior request #2047 at 11:00:40 UTC.
+
+### Denton Bond contract and TIRZ review status — 2026-10-05 13:00 UTC
+
+Issue #2051 binds the June 6, 2019 committee proceeding to retained official agenda
+`https://audio.citymeetings.fyi/documents/3b7588310856/04689e3929ac104e/agenda-b5f13d2a4b3df899`.
+The agenda explicitly convenes the committee; proposed 2019 Bond Program is its stated
+purpose, not evidence of Council participation. Review/51 records the exact bounded L3.
+
+TIRZ #2050 review request 5994485501 at 12:30:52 UTC was aborted by CodeRabbit reply
+5994487454: "Head commit changed." Documentation push `5faac1c6` left reviewed test code
+unchanged, but no substantive review completed. Current CI is green. Do not mark review
+complete or duplicate the request before 13:35:52 UTC and repository-wide reconstruction.
