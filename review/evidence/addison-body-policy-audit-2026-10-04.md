@@ -1241,3 +1241,17 @@ Maintainer override: CodeRabbit reviews actual code changes only, not docs or co
 Denton Library #2045 prepared: two standalone recordings leave Council for Library; the
 Council/Library joint joins Library while retaining Council. Original UID/audio/raw records
 retained, no stage invalidation/backfill. Deployment verification required before case closure.
+
+### Denton TIRZ board dated proof
+
+Official institutional census: https://www.cityofdenton.com/1145/Development-Districts
+and https://denton-tx.legistar.com/Departments.aspx; eight retained agendas convene their
+named board independently. No Council joint inferred from room name.
+- denton-tx-1c91182b70afefb3-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/1c91182b70afefb3/agenda-9c76e89344ec579b
+- denton-tx-2493e59c0844a4b4-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/2493e59c0844a4b4/agenda-f00ea12cc9662b4f
+- denton-tx-2b458f3c556df459-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/2b458f3c556df459/agenda-1fc469c352fec9dc
+- denton-tx-5a2ce8afb18c6a82-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/5a2ce8afb18c6a82/agenda-f0d0a8cd24db6a71
+- denton-tx-69d3fee77a42058c-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/69d3fee77a42058c/agenda-2e5a44f16a8ca995
+- denton-tx-70a6450a1deda017-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/70a6450a1deda017/agenda-6c9f1683eafa17ab
+- denton-tx-a9089a57a1557991-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/a9089a57a1557991/agenda-e4fb61bfcfd1cae7
+- denton-tx-c26f2f99a4bdaf8f-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/c26f2f99a4bdaf8f/agenda-09fac2977c403dab
