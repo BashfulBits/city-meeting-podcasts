@@ -1075,6 +1075,14 @@ exactly one Council membership (500 to 501), with no other feed changes. Existin
 page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
 Keep the evidence case open until human merge and deployed subscription verification.
 
+Arlington CND standing-body evidence: current Council-member assignments list the committee
+(https://www.arlingtontx.gov/Government/City-Government/City-Council/City-Council-Members/Council-Member-Bowie-Hogg-District-7),
+and the2026 Neighborhood Matching Grant guide distinguishes committee recommendations from
+subsequent Council approval. All four cached committee GUID agendas convene that body alone.
+Exactly four retained records have its exact label. All Meetings intentionally remains an aggregate.
+
+Dallas #2035 was human-merged before its substantive CodeRabbit request; record that review gap.
+The Council override correction is shipped, with deployed membership proof still pending.
 
 ### Archive-only and 2016 joint shipped (2026-10-05)
 
