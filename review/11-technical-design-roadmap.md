@@ -1343,3 +1343,8 @@ Keep the evidence case open until human merge and deployed subscription verifica
 Arlington Community and Neighborhood Development ownership: L3 bounded review/51 contract.
 Four official standalone committee recordings move out of Council into a dedicated exact-label
 feed; preserve the intentional All Meetings aggregate. Environmental Task Force assessed separately.
+
+
+Arlington CND #2038 prepared/unmerged: four verified committee recordings receive a dedicated
+exact-label feed and leave Council, retaining the All Meetings aggregate and original UID/audio.
+No stage invalidation or backfill. Cases remain open until deployed membership verification.
