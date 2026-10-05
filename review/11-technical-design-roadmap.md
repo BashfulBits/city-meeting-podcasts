@@ -1316,3 +1316,7 @@ Joint participant discovery in website search/browse is tracked by #2018 for the
 with canonical page ownership separate from proven participating-body membership.
 The 2016 joint subscription, historical excerpts/media, missing official meeting recordings,
 PID winner approval, and P2a proof/binding schemas retain their specific evidence/approval gates.
+
+
+Archive-only visibility: **L3**, maintainer approved all six Addison dispositions and the exact
+serialized implementation contract in review/51. Retention and direct archive access remain separate from public discovery.
