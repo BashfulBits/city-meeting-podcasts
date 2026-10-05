@@ -1221,3 +1221,7 @@ Four retained dated agendas explicitly convene the commission alone:
 - denton-tx-e7c1990b7a8e539e-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/e7c1990b7a8e539e/agenda-4497295b281ff426
 
 No case closure or runtime correction yet; exact L3 contract above precedes implementation.
+
+Denton #2042 prepared: four verified Health & Building Standards Commission records move
+out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
+joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.
