@@ -1752,3 +1752,27 @@ Library integration acceptance: tests/test_feed_body_routing.py must remove GUID
 the obsolete single-owner list and explicitly require exactly Council and Library holders.
 This updates the earlier #1231 regression to the approved proven-participant joint policy;
 retain all unrelated single-owner pins. No runtime change.
+
+### Denton TIRZ boards ownership — L3 bounded contract
+
+Eight retained dated agendas explicitly convene their named TIRZ board, not Council. Zone1
+has six records (122084,116732,112601,87440,78064,73923); Zone2 has two (111521,14400).
+The official Development Districts page and Legistar departments corroborate distinct boards.
+Council Work Session Room is a venue, not joint participation proof.
+
+Create config/feeds/denton-tx-tirz-1-board.yml and denton-tx-tirz-2-board.yml, slugs matching
+filenames, city denton-tx, provider swagit, existing source.list_url
+https://dentontx.new.swagit.com/views/5. Each source.body_includes copies only its listed exact
+GUID/body pairs unchanged from Council; remove only these eight Council overrides. Titles
+Denton: TIRZ No. 1 Board and Denton: TIRZ No. 2 Board, author City of Denton, TX, empty email,
+descriptions naming each board. Omit optional meeting_family/lifecycle, no broad selectors.
+Do not infer complete board coverage or retirement from these old cached records.
+
+New tests/fixtures/denton-tirz-retained.json captures eight original metadata/audio records.
+tests/test_denton_tirz_ownership.py loads actual config, verifies eight Council departures,
+six Zone1/two Zone2 additions, no wrong-zone matches, exact-GUID negatives, original RSS
+UID/audio and raw records. Retain the Council/Library joint. Full2176-source replay changes only
+these memberships. Update eight register next actions, do not close until deployed verification.
+Lifecycle review11/CHANGELOG/ARCHITECTURE/ROADMAP/audit. Whole offline/Ruff/format/currentCI;
+CodeRabbit actual code only under maintainer override. Human merge commits only. No runtime,
+schema/provider/stage/dependency changes, invalidation, backfill or production writes.

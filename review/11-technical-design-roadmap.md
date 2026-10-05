@@ -1390,3 +1390,6 @@ Council/Library joint membership addition, preserving the Council subscription.
 Denton Library #2045 prepared: two standalone recordings leave Council for Library; the
 Council/Library joint joins Library while retaining Council. Original UID/audio/raw records
 retained, no stage invalidation/backfill. Deployment verification required before case closure.
+
+Denton TIRZ board ownership: L3 review/51 exact-eight-record contract, separate Zone1/Zone2
+feeds, Council departures with original UID/audio retained.
