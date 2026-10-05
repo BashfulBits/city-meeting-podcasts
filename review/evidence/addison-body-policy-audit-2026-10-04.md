@@ -1282,3 +1282,24 @@ TIRZ #2050 review request 5994485501 at 12:30:52 UTC was aborted by CodeRabbit r
 5994487454: "Head commit changed." Documentation push `5faac1c6` left reviewed test code
 unchanged, but no substantive review completed. Current CI is green. Do not mark review
 complete or duplicate the request before 13:35:52 UTC and repository-wide reconstruction.
+
+Denton Bond committee #2051 is prepared under the committed review/51 contract: exact GUID
+28865 moves from Council to its dedicated feed; raw UID/audio remain unchanged. Deployment
+verification is pending; no lifecycle or broader committee-family claim is made.
+
+### Fort Worth convening distinctions — 2026-10-05 13:30 UTC
+
+Retained official agendas for UIDs `1cbf75c664b7c63e` (August 16, 2011) and
+`b7a9ee9eae6fafc6` (November 4, 2008) explicitly name City Council Gas Drilling Workshops,
+with mayor opening/call to order. Task Force recommendations are agenda subject matter;
+these are not evidence of false Council ownership. Preserve their Council eligibility.
+
+UIDs `1d3f5b988918cba0`, `c57e1210d9282ab1`, `e0736bdd5835b1d4` and
+`f28ae055829705ec` have official joint Council/Crime Control and Prevention District board
+agendas with a joint call to order. Council must remain eligible; participant-board feed
+coverage is the outstanding question. Similar titles alone must not infer duplicate winners.
+UID `0c66fc968402fabd` July 24, 2020 instead has distinct special-called Board and special
+Council proceedings in one packet. Do not label that bundle a genuine joint or split its raw
+identity/audio without the separately approved publication contract. Four registered records
+without retained agenda artifacts remain unproven. Cases remain open pending full-source
+census, exact selectors/identity checks and deployed verification where needed.

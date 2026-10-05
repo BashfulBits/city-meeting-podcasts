@@ -1805,3 +1805,8 @@ ROADMAP and the committed ownership audit. Set only this register case's next ac
 prepared verification; keep it open until deployed RSS identity/ownership proof. Freeze/stamp
 only after the change reaches main. Do not modify runtime, schemas, providers, dependencies,
 stages, records, audio or publication groups; no invalidation/backfill or production writes.
+
+Bond #2051 implementation is prepared on `feat/2051-denton-bond-feed` under this contract.
+Full 2,176-record replay changes Council 756→755 and the new committee feed 0→1 only;
+targeted identity/negative checks and whole-repository Ruff pass. The case remains open for
+post-main deployment verification; the contract is not frozen before the parent stack merges.
