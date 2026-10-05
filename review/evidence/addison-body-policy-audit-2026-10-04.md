@@ -1406,3 +1406,64 @@ by the full1,515-record replay; bounded live aggregate RSS is not historical cov
 | 4357f0c39d1ae58f | arlington-tx-community-and-neighborhood-development-committee | 4357f0c39d1ae58f-354e7dead089.m4a |
 | d8f3b672b482369b | arlington-tx-community-and-neighborhood-development-committee | d8f3b672b482369b-5427e9c557a1.m4a |
 | bd172b762dd20b63 | dallas-tx-redistricting-commission | bd172b762dd20b63-7cd53a44abef.m4a |
+
+### Fort Worth eight ownership dispositions — 2026-10-05
+
+Three official Council Gas Drilling Workshop agendas name Council and mayor call/opening.
+Five official Council/CCPD joint agendas have a joint call to order. Existing source selectors
+already give the correct holders; no routing changes are needed. Read-only live Council
+owner pages return HTTP200 for all eight and retain original audio URLs; CCPD RSS200
+(178 items) includes all five joints with exact original UID/audio. Council RSS200 has500
+items and omits these older entries. Do not claim unlimited RSS history. Eight body ownership
+cases resolve; source duplication/publication-winner decisions remain separate.
+
+| UID | Proven proceeding | Retained official agenda |
+|---|---|---|
+| 1cbf75c664b7c63e | Council workshop | https://audio.citymeetings.fyi/documents/6540eef2dc2e/1cbf75c664b7c63e/agenda-dc304ac57a1bef1e |
+| 1d3f5b988918cba0 | Council/CCPD joint | https://audio.citymeetings.fyi/documents/6540eef2dc2e/1d3f5b988918cba0/agenda-0de271fd089eee9f |
+| 6a1dd0e9e8088440 | Council workshop | https://audio.citymeetings.fyi/documents/6540eef2dc2e/6a1dd0e9e8088440/agenda-538bf69c30bf1d42 |
+| 83d6abdb749bc76f | Council/CCPD joint | https://audio.citymeetings.fyi/documents/6540eef2dc2e/83d6abdb749bc76f/agenda-f77d64b9f1d0bf88 |
+| b7a9ee9eae6fafc6 | Council workshop | https://audio.citymeetings.fyi/documents/6540eef2dc2e/b7a9ee9eae6fafc6/agenda-c9785e507c29505b |
+| c57e1210d9282ab1 | Council/CCPD joint | https://audio.citymeetings.fyi/documents/6540eef2dc2e/c57e1210d9282ab1/agenda-2effb0b0240c0426 |
+| e0736bdd5835b1d4 | Council/CCPD joint | https://audio.citymeetings.fyi/documents/6540eef2dc2e/e0736bdd5835b1d4/agenda-f77d64b9f1d0bf88 |
+| f28ae055829705ec | Council/CCPD joint | https://audio.citymeetings.fyi/documents/6540eef2dc2e/f28ae055829705ec/agenda-0de271fd089eee9f |
+
+Live owner paths are `https://www.citymeetings.fyi/fort-worth-tx-city-council/<UID>/`.
+Original audio keys are unchanged under Swagit/Granicus source namespaces. Separate
+Board/Council packets, ISD participation and four missing-agenda cases remain open.
+
+### Fort Worth October 14 joint corroboration — 2026-10-05
+
+[Official October 7, 2008 Council minutes](https://fortworthgov.granicus.com/MinutesViewer.php?clip_id=94&view_id=2)
+record the mayor announcing an October 14 joint Council/Gas Well Task Force meeting at
+1:30 p.m. in the Will Rogers Memorial Center Stagecoach Room. This is independent evidence
+that the joint event was planned. It does not yet bind the event to recording UID
+`0d5832dbd08e6dd8` (clip127) or `27254aa1a700569f` (clip125). The latter listing says
+Workshop of October14 despite its October21 publication date. Both cases remain open.
+
+The two exact provider player URLs were unavailable through the web reader during this
+check; unavailable reader output is not evidence that the official recordings are gone.
+Do not resolve either case or add Task Force participation from this announcement alone.
+
+### Fort Worth clip6334 recovered official packet — 2026-10-05
+
+The live view9 clip6334 player exposes an AgendaViewer redirect to this
+[official eight-page packet](https://fortworthgov.granicus.com/DocumentViewer.php?file=fortworthgov_c04c7ebca76ffa89ac6586743c0d1baa.pdf&view=1).
+All eight rendered pages were visually inspected because the PDF character map makes text
+extraction unreliable. Pages1–2 give the August11,2026 Council Budget Work Session at1PM,
+with mayor call to order and adjournment. Pages3–5 give Property Management and Environmental
+Services Committee immediately following the budget session, with its own call to order and
+adjournment. Pages6–8 give Community Development Committee immediately following that
+committee meeting, with chair call to order and adjournment. This is a packet of three
+consecutive proceedings, not a joint convening. Shared Council members and room do not change
+that conclusion.
+
+Exact source clip6334 has registered UIDs `081d2695d7d0136a` (view9) and
+`ead427dae0bbb284` (view5). The recovered link directly binds the packet to view9. A subsequent read-only view5
+player check exposes its own AgendaViewer redirect to the identical document filename,
+binding that packet to both registered views. The recording's actual proceeding boundaries
+remain to verify. Both cases
+stay open. Do not split audio, choose a duplicate winner or remove holders from packet
+structure alone. Historical clips125/127 currently expose only a generic CableSchedule
+default document; their player pages return HTTP200 even though the web reader could not
+open them. This supplies no missing agenda proof for those two historical cases.
