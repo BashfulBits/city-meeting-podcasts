@@ -1393,3 +1393,7 @@ retained, no stage invalidation/backfill. Deployment verification required befor
 
 Denton TIRZ board ownership: L3 review/51 exact-eight-record contract, separate Zone1/Zone2
 feeds, Council departures with original UID/audio retained.
+
+Denton TIRZ #2048 prepared: eight standalone board recordings leave Council, six for Zone1
+and two for Zone2 dedicated feeds; preserve raw UID/audio. No stage invalidation/backfill.
+Cases remain open until deployed verification.

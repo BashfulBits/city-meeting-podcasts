@@ -1255,3 +1255,18 @@ named board independently. No Council joint inferred from room name.
 - denton-tx-70a6450a1deda017-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/70a6450a1deda017/agenda-6c9f1683eafa17ab
 - denton-tx-a9089a57a1557991-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/a9089a57a1557991/agenda-e4fb61bfcfd1cae7
 - denton-tx-c26f2f99a4bdaf8f-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/c26f2f99a4bdaf8f/agenda-09fac2977c403dab
+
+Denton TIRZ #2048 prepared: eight standalone board recordings leave Council, six for Zone1
+and two for Zone2 dedicated feeds; preserve raw UID/audio. No stage invalidation/backfill.
+Cases remain open until deployed verification.
+
+### Denton deployment ancestry clarification — 2026-10-05 12:30 UTC
+
+PR #2044 merged into `docs/denton-health-standards-ownership`, not main. Its parent #2043
+remains open against main. Successful deployment 37293889023 used main `77e4f31a`, which
+has no Health Commission config file. Live Commission RSS 404 and four UIDs still in Council
+are therefore expected before #2043 merges, not evidence of a render regression. Keep the
+four cases open until deployment after the parent merge. Library #2047 current `1690b8e0`
+has green test/deps/preview checks; its sole review finding was fixed and resolved. TIRZ
+#2050 `a9fd3784` has green CI and full review requested at 12:30:52 UTC, comment 5994485501,
+after repository-wide reconstruction found latest prior request #2047 at 11:00:40 UTC.

@@ -1361,3 +1361,7 @@ joint are retained. Cases remain open until deployed verification; no stage inva
 Denton Library #2045 prepared: two standalone recordings leave Council for Library; the
 Council/Library joint joins Library while retaining Council. Original UID/audio/raw records
 retained, no stage invalidation/backfill. Deployment verification required before case closure.
+
+Denton TIRZ #2048 prepared: eight standalone board recordings leave Council, six for Zone1
+and two for Zone2 dedicated feeds; preserve raw UID/audio. No stage invalidation/backfill.
+Cases remain open until deployed verification.

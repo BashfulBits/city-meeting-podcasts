@@ -1,0 +1,22 @@
+slug: denton-tx-tirz-1-board
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body_includes:
+    - provider_guid: "122084"
+      body: "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM"
+    - provider_guid: "116732"
+      body: "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM"
+    - provider_guid: "112601"
+      body: "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM"
+    - provider_guid: "87440"
+      body: "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)"
+    - provider_guid: "78064"
+      body: "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM"
+    - provider_guid: "73923"
+      body: "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM"
+podcast_title: "Denton: TIRZ No. 1 Board"
+podcast_author: "City of Denton, TX"
+podcast_email: ""
+podcast_description: "Meetings of Denton TIRZ No. 1 Board."

@@ -1,0 +1,178 @@
+[
+  {
+    "uid": "1c91182b70afefb3",
+    "provider_guid": "111521",
+    "body": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)",
+    "title": "Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting) \u2013 Jan 13, 2021",
+    "published": "2021-01-13T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/111521/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 27150816,
+      "duration_served": 2171.325,
+      "encode_time": "2026-07-12T08:43:23.099426+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/1c91182b70afefb3-f46afc15e128.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "f46afc15e128",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/1c91182b70afefb3-f46afc15e128.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "2493e59c0844a4b4",
+    "provider_guid": "116732",
+    "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM",
+    "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-03-24 12:00 PM \u2013 Mar 24, 2021",
+    "published": "2021-03-24T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/116732/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 88415430,
+      "duration_served": 7074.917,
+      "encode_time": "2026-07-12T08:40:15.198196+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/2493e59c0844a4b4-84c8677d0c8e.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "84c8677d0c8e",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/2493e59c0844a4b4-84c8677d0c8e.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "2b458f3c556df459",
+    "provider_guid": "73923",
+    "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM",
+    "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-07-22 12:00 PM \u2013 Jul 22, 2020",
+    "published": "2020-07-22T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/73923/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 34488454,
+      "duration_served": 2754.395,
+      "encode_time": "2026-07-12T08:43:19.432879+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/2b458f3c556df459-48f486dbd375.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "48f486dbd375",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/2b458f3c556df459-48f486dbd375.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "5a2ce8afb18c6a82",
+    "provider_guid": "87440",
+    "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called)",
+    "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-10-21 9:00 AM (Special Called) \u2013 Oct 21, 2020",
+    "published": "2020-10-21T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/87440/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 53656403,
+      "duration_served": 4298.172,
+      "encode_time": "2026-07-02T20:56:16.432425+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/5a2ce8afb18c6a82-6f850a083849.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "6f850a083849",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/5a2ce8afb18c6a82-6f850a083849.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "69d3fee77a42058c",
+    "provider_guid": "78064",
+    "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM",
+    "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2020-09-23 12:00 PM \u2013 Sep 23, 2020",
+    "published": "2020-09-23T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/78064/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 46164877,
+      "duration_served": 3703.956,
+      "encode_time": "2026-07-12T08:42:52.764467+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/69d3fee77a42058c-d8ce5d81fc3b.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "d8ce5d81fc3b",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/69d3fee77a42058c-d8ce5d81fc3b.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "70a6450a1deda017",
+    "provider_guid": "112601",
+    "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM",
+    "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-02-05 12:00 PM \u2013 Feb 05, 2021",
+    "published": "2021-02-05T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/112601/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 21833458,
+      "duration_served": 1759.514,
+      "encode_time": "2026-07-12T08:42:27.138182+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/70a6450a1deda017-f1734abbc3e9.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "f1734abbc3e9",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/70a6450a1deda017-f1734abbc3e9.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "a9089a57a1557991",
+    "provider_guid": "122084",
+    "body": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM",
+    "title": "Downtown Denton Tax Increment Financing Zone No. 1 Board on 2021-05-26 12:00 PM \u2013 May 26, 2021",
+    "published": "2021-05-26T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/122084/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 49036587,
+      "duration_served": 3938.016,
+      "encode_time": "2026-07-12T08:40:14.096156+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/a9089a57a1557991-f8195642ee38.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "f8195642ee38",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/a9089a57a1557991-f8195642ee38.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "c26f2f99a4bdaf8f",
+    "provider_guid": "14400",
+    "body": "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM",
+    "title": "Tax Increment Reinvestment Zone No. 2 Board on 2017-07-12 12:00 PM \u2013 Jul 12, 2017",
+    "published": "2017-07-12T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/14400/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 17986,
+      "duration_served": 39.91510204081633,
+      "encode_time": null,
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/c26f2f99a4bdaf8f-2f9f6f93d7bb.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "2f9f6f93d7bb",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/c26f2f99a4bdaf8f-2f9f6f93d7bb.m4a",
+      "verification": null
+    }
+  }
+]
