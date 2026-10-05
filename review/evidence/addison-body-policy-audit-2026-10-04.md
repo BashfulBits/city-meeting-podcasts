@@ -1479,7 +1479,7 @@ body8:24PM disagree; preserve that official inconsistency. Original stored chapt
 GUID280220 UIDbaa19208405acb22 explicitly identifies November4,2023. The retained
 program handbook previously found was institutional context, not dated meeting proof.
 Exact contract now recorded in review/51 #2062. Full5,353-record source census finds18
-CBTF/bond-task-force rows including five subcommittee rows and three2017town halls;
+CBTF/bond-task-force rows including four subcommittee rows and three2017town halls;
 remaining17 need individual proof and current ownership reconciliation.
 
 Dallas #2062 full-source replay:5,353 records/1,095 labels, only UIDbaa19208405acb22
@@ -1487,3 +1487,68 @@ leaves Council358→357 and enters new CBTF0→1. Raw mapping unchanged. Offline
 Seventeen additional candidates:15 have no current holder; Streets/Transportation269613
 and EconomicDevelopment269610 match standing Council committee feeds, requiring separate
 institutional identity proof. No additional ownership change is inferred from titles alone.
+
+### Dallas additional bond source register — 2026-10-05
+
+Seventeen candidates are now registered with original UID/provider GUID/source namespace.
+Counts are159 cases,121 resolved and38 open; expansion reveals coverage work rather than
+newly introduced regressions. No ownership proof is inferred from the candidate title.
+
+| UID | Original GUID | Source body | Current holder |
+|---|---|---|---|
+| 130a7ebded8e0e1d | 269608 | 2024 Bond Task Force Community Bond Task Force Meeting | none |
+| 5e9fdb6ff9e8ef68 | 202453 | Citizens Bond Task Force: Town Hall Meeting | none |
+| 6135249a278494c5 | 273327 | 2024 Capital Bond Program CBTF Meetings | none |
+| 6a3caf1854bdd2cd | 277589 | 2024 Capital Bond CBTF and Subcommittee Chairs Meeting | none |
+| 78173acda7f7efea | 269613 | 2024 Bond Task Force Streets and Transportation Subcommittee | Transportation and Infrastructure |
+| 8280ec97799c999e | 269612 | 2024 Bond Task Force Flood | none |
+| 84fcc0492e66906d | 233037 | 2024 Capital Bond CBTF Meeting | none |
+| 8969ad6d91ed23d2 | 269610 | 2024 Bond Task Force Economic Development | Economic Development |
+| 96c10f4f75706719 | 246971 | 2024 Capital Bond CBTF Meeting | none |
+| 977d943cea00258e | 269611 | 2024 Bond Task Force Critical Facilities Subcommittee Meeting | none |
+| aa65e2aafc90711b | 272574 | 2024 Capital Bond Program CBTF Meeting | none |
+| aaf0ad8eaabe68a5 | 269278 | 2024 Capital Bond CBTF Meeting | none |
+| cba1e023051d7c94 | 269916 | 2024 Capital Bond CBTF Meeting | none |
+| deb5a67aa9b6e8d1 | 259822 | 2024 Capital Bond CBTF Meeting | none |
+| eb1c279cc51a9b04 | 202452 | Citizens Bond Task Force: Town Hall Meeting | none |
+| eeca5aeceda62d39 | 272005 | 2024 Capital Bond Program CBTF Meeting | none |
+| fc9ad3b1d9def142 | 202451 | Citizens Bond Task Force: Town Hall Meeting | none |
+
+### Arlington ETF deployed ownership closure — 2026-10-05
+
+Deploy37333553141 on5479ff68 succeeded. Read-only dedicated ETF audio RSS returns200
+with6 items; actual Council slug arlington-tx-council audio RSS returns200 with495 items.
+All six original UIDs occur in ETF with exact persisted audio URLs and are absent from
+Council. Six ownership cases resolve; source raw records, namespaces and audio unchanged.
+The deliberately unfiltered All Meetings aggregate remains unchanged by full1,515 replay;
+bounded live history is not a completeness claim. Register159 cases:127 resolved32 open.
+
+| UID | Original verified audio URL |
+|---|---|
+| 1792515fdd51c6c2 | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/1792515fdd51c6c2-6ce74547f120.m4a |
+| 25e9b8510b0a7a66 | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/25e9b8510b0a7a66-52d20ccf2d77.m4a |
+| 2d5dc451df2da130 | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/2d5dc451df2da130-257b989183aa.m4a |
+| 35b22fcc8d07967b | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/35b22fcc8d07967b-bedc78824c46.m4a |
+| 9b66e98b682a47f2 | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/9b66e98b682a47f2-5965cabd9a0a.m4a |
+| a683af6e13e2bd7a | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/a683af6e13e2bd7a-3a59dddd57ab.m4a |
+
+### Dallas CBTF additional dated institutional proof — 2026-10-05
+
+The official CBTF archive lists dated May25, June13, June20, August15 and August22 meetings.
+Four linked summaries were retrieved read-only: each names Community Bond Task Force and
+records its own convening/adjournment and chair. These are task-force proceedings, not
+standing Council committee meetings. Archive directly links Swagit259822 for June13 and
+269916 for August22. Original provider chapters also date June20 GUID246971, August15
+GUIDs269278/269608 and August22 GUID269916. Two August15 source recordings remain separate
+raw UIDs; no duplicate winner is selected from common date/body or agenda.
+
+| Official date | City summary | Candidate GUIDs needing bounded inclusion |
+|---|---|---|
+| August22,2023 | https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/181/CBTF%20Meeting_082223_Meeting%20Minutes.pdf | 269916 |
+| August15,2023 | https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/163/CBTF%20Meeting_081523_Meeting%20Minutes.pdf | 269278/269608 |
+| June20,2023 | https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/122/CBTF%20Meeting_062023_Meeting%20Minutes.pdf | 246971 |
+| May25,2023 | https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/79/CBTF%20Meeting_052523_Meeting%20Minutes.pdf | 233037 |
+
+All additional cases remain open for exact source binding/contract and deployed coverage.
+No new selector expansion follows automatically from these dated summaries. September26
+and October3 are absent from this archive list and still need dated official proof.
