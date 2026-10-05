@@ -2070,7 +2070,8 @@ already uses render phase, whose search creates a fresh deadline; the older exha
 stop diagnosis is not current deploy behavior. Separate scheduling is still the chosen approach.
 
 Named files: `citypods/cli.py`, `citypods/run.py`, `citypods/search.py`,
-`.github/workflows/deploy.yml`, `tests/test_static_search_job.py`, existing search/run/CLI tests,
+`.github/workflows/deploy.yml`, `tests/test_static_search_job.py`, `tests/test_workflows.py`,
+existing search/run/CLI tests,
 ARCHITECTURE/CHANGELOG/ROADMAP/review11 and this section. No dependency/provider/stage/state
 record/storage-write/Worker changes or public search schema changes.
 
@@ -2134,3 +2135,8 @@ selector changes, title/audio/record mutations, stage invalidation, publication 
 Update ARCHITECTURE/CHANGELOG/ROADMAP/review11, audit and case prepared action. Keep case open
 until human merge and deployed exact same UID/audio in both participant RSS feeds. Freeze/stamp
 only after human merge; no inference for other unresolved Fort Worth bundles.
+
+#2084 test compatibility: existing tests/test_workflows.py pins the superseded single
+build-deploy job. Update only deploy workflow job/artifact/order assertions for approved
+render→search→deploy, retaining credential scope, pinned action, permissions, refresh/render
+and deploy gates. This is required validation of the already approved three-job contract.
