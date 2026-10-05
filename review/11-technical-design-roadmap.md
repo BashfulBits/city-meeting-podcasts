@@ -1327,3 +1327,8 @@ public discovery across the shared source while direct raw archives/audio remain
 policy hashes rebuild feed/search/browse projections on changes and reversal. Read-only deployed
 RSS verification closed 56 assignment cases; eight historical cases remain visible. Human merge
 and current-head CodeRabbit/CI validation remain required; no audio backfill or stage bump.
+
+
+September2016 Council/P&Z joint correction: L3 bounded review/51 contract; restore only the
+missing Council subscription, retain P&Z and stable recording identity, use existing canonical
+Council page choice with participant discovery deferred to #2018. Human merge/deployment gated.

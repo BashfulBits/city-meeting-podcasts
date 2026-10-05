@@ -1617,3 +1617,22 @@ Tests: exact identity/source scoping, invalid/duplicate declarations, feed/searc
 raw-page retention, unchanged bytes/UIDs, and cached-output removal/restoration. Lifecycle docs:
 review/11, ARCHITECTURE, CHANGELOG and ROADMAP. No dependency/provider/storage/stage changes,
 no audio backfill, no production writes in local verification.
+
+
+## September 2016 Addison joint subscription — L3 bounded correction
+
+The maintainer approved proceeding with the remaining verified joint correction, with canonical
+page-link choice separate from redesigned participant discovery (#2018). The earlier proposed
+P&Z-owner preservation is superseded by use of the existing Council canonical page choice;
+this avoids adding an ownership schema for one UID. Both direct archive pages remain retained.
+
+Files: `config/feeds/addison-tx-city-council.yml` adds only exact body_includes GUID55634,
+body `Joint Council & Planning & Zoning Commission Meeting`; new minimal retained fixture
+`tests/fixtures/addison-2016-joint.json` and `tests/test_addison_2016_joint.py` exercise actual
+config and RSS/search ownership. Existing P&Z rules and runtime modules are unchanged.
+Preserve UID383dfdfed6140400, September19 stored date, hosted audio and raw records.
+Official cached joint agenda proof is in the Addison audit. Full822 replay must add exactly one
+Council membership and change no other feed memberships; negative unrelated-GUID near label.
+Case register updates preparation evidence only; keep open until deployed verification.
+Lifecycle docs: review/11, audit, CHANGELOG, ARCHITECTURE and ROADMAP. No runtime/schema,
+dependency/provider/stage/storage changes, audio invalidation or backfill. Human merge required.
