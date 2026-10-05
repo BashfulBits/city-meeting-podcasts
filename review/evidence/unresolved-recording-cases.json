@@ -430,9 +430,9 @@
       "uid": "383dfdfed6140400",
       "provider_guid": "55634",
       "question": "Verified 2016 Council/P&Z joint lacks Council subscription",
-      "missing_evidence": "Contract preserving current P&Z canonical search owner",
-      "next_action": "Add Council membership with existing UID/audio and preserve P&Z search ownership",
-      "last_researched": "2026-10-04",
+      "missing_evidence": "Human merge and deployed Council/P&Z subscription verification",
+      "next_action": "Verify both feeds carry the same UID/audio after #2025; canonical Council page choice approved, participant discovery tracked in #2018",
+      "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "addison-tx-planning-and-zoning-commission"
       ],

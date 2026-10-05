@@ -1,0 +1,22 @@
+{
+  "audio": {
+    "attempts": 0,
+    "bytes": 57037560,
+    "duration_served": 4597.626,
+    "encode_time": "2026-07-02T15:44:29.831650+00:00",
+    "error": null,
+    "error_spec_hash": null,
+    "key": "swagit/abbf5e25e078/383dfdfed6140400-af5d316833b2.m4a",
+    "last_attempt": null,
+    "rebuild": null,
+    "spec_hash": "af5d316833b2",
+    "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/383dfdfed6140400-af5d316833b2.m4a",
+    "verification": null
+  },
+  "body": "Joint Council & Planning & Zoning Commission Meeting",
+  "provider_guid": "55634",
+  "published": "2016-09-19T00:00:00+00:00",
+  "title": "Joint Council & Planning & Zoning Commission Meeting \u2013 Sep 19, 2016",
+  "uid": "383dfdfed6140400",
+  "video_url": "https://addisontx.new.swagit.com/videos/55634/download"
+}
