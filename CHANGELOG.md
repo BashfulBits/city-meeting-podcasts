@@ -7285,3 +7285,6 @@ browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89
 404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
 Public search and its expected manifest return 404; do not claim deployed search verification.
 Retain these visibility/access checks and all independent historical content evidence obligations.
+
+- Prepared Denton Special Citizens Bond Advisory Committee feed for exact GUID 28865,
+  removing its Council override while preserving raw UID/audio. No invalidation or backfill.

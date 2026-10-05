@@ -1776,3 +1776,37 @@ these memberships. Update eight register next actions, do not close until deploy
 Lifecycle review11/CHANGELOG/ARCHITECTURE/ROADMAP/audit. Whole offline/Ruff/format/currentCI;
 CodeRabbit actual code only under maintainer override. Human merge commits only. No runtime,
 schema/provider/stage/dependency changes, invalidation, backfill or production writes.
+
+### Denton 2019 Special Citizens Bond committee ownership — L3 (#2051)
+
+The retained official June 6, 2019 agenda explicitly convenes the Special Citizens Bond
+Advisory Committee, not Council, for public safety facilities in the proposed 2019 Bond
+Program. Exact source binding: GUID `28865`, UID `04689e3929ac104e`, body
+`Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM`, existing Denton Swagit
+source `https://dentontx.new.swagit.com/views/5`. This proves the named proceeding; it does
+not establish standing status, formal dissolution or other years' committee identities.
+
+Create `config/feeds/denton-tx-special-citizens-bond-advisory-committee.yml`, city `denton-tx`,
+provider `swagit`, existing list URL, exact single GUID/body `body_includes` only. Title
+`Denton: Special Citizens Bond Advisory Committee`, author `City of Denton, TX`, empty email,
+description `Verified recording of the Denton Special Citizens Bond Advisory Committee.`
+Omit optional family/lifecycle metadata. Remove only GUID `28865` and its body from
+`config/feeds/denton-tx-city-council.yml`; preserve every other selector.
+
+Add original minimal record fixture `tests/fixtures/denton-bond-retained.json` and
+`tests/test_denton_bond_ownership.py`: actual config selects the original committee record,
+Council rejects it, unchanged body with different GUID rejects it, RSS preserves UID/audio,
+and input record remains unchanged. Replay all 2,176 retained source records against the
+parent baseline: exactly one Council departure and one new committee addition, no other
+feed changes. Run the full offline suite and whole-repository Ruff lint/format checks.
+
+Update this contract and review/11 with implementation state, plus CHANGELOG, ARCHITECTURE,
+ROADMAP and the committed ownership audit. Set only this register case's next action to
+prepared verification; keep it open until deployed RSS identity/ownership proof. Freeze/stamp
+only after the change reaches main. Do not modify runtime, schemas, providers, dependencies,
+stages, records, audio or publication groups; no invalidation/backfill or production writes.
+
+Bond #2051 implementation is prepared on `feat/2051-denton-bond-feed` under this contract.
+Full 2,176-record replay changes Council 756→755 and the new committee feed 0→1 only;
+targeted identity/negative checks and whole-repository Ruff pass. The case remains open for
+post-main deployment verification; the contract is not frozen before the parent stack merges.

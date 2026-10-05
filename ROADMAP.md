@@ -550,3 +550,7 @@ retained, no stage invalidation/backfill. Deployment verification required befor
 Denton TIRZ #2048 prepared: eight standalone board recordings leave Council, six for Zone1
 and two for Zone2 dedicated feeds; preserve raw UID/audio. No stage invalidation/backfill.
 Cases remain open until deployed verification.
+
+Denton Bond committee #2051 is prepared under the committed review/51 contract: exact GUID
+28865 moves from Council to its dedicated feed; raw UID/audio remain unchanged. Deployment
+verification is pending; no lifecycle or broader committee-family claim is made.
