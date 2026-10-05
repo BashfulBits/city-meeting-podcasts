@@ -1090,3 +1090,18 @@ browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89
 404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
 Public search and its expected manifest return 404; do not claim deployed search verification.
 Retain these visibility/access checks and all independent historical content evidence obligations.
+
+### Access-check diagnosis (2026-10-05)
+
+Luncheon GUID55864 has exact stored body `Addison Economic Development Luncheon` and no
+matching feed selector. Raw pages are rendered from body-filtered `raw_retained_eps`; an
+archive-only declaration alone does not route unmatched records into that collection.
+The five other approved records have exact Public Input inclusions and accessible direct pages.
+Recommended bounded correction: add only the luncheon GUID/body to Public Input raw selection,
+keeping its source-wide archive-only declaration. Routing approval is pending; no code changed.
+
+Build & Deploy job111593502145 log at03:00:26 says the wall-clock window was spent when search
+started; at03:00:31 the index build deferred, retaining the last complete search output.
+This explains unavailable public search without evidence of archive identity conflicts.
+Configured search is enabled with a20-minute index budget, but the shared stop signal was already
+spent. Further scheduling/budget changes require a scoped contract; no production knobs changed.
