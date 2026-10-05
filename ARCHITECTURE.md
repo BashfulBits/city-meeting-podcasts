@@ -499,6 +499,13 @@ row-write budget** (Free plan: 100,000 billed rows/day; every index entry and tr
 billed row), enforced at **runtime against the rows the coordinator actually writes**: every SQL
 cursor's `rowsWritten` is persisted atomically inside each writing transaction, including
 the singleton accounting write itself. Object hibernation cannot discard the tally.
+Startup checks include the quota columns (`tpd_used`, `tpd_updated_at`, `prompt_cap_estimate`,
+`input_window_json`). An otherwise-current object adds only its missing quota columns and verifies
+readiness before serving RPCs; subsequent activations issue no schema or data writes. Before each
+writing transaction, a `LIMIT 0` query prepares against those columns without reading route rows
+or writing anything. A missing column/table blocks that instance's RPCs until recreation after
+migration, before expired-lease reaping or job/index mutations can repeat and roll back. Transient
+preflight read errors remain retryable. Partial quota upgrades resume at the missing columns.
 A 10,000-row account reserve caps enqueue and optional-write admission at 90,000. Before each claim, the coordinator
 reserves 28 rows per active leased job, 8 per active bundle, and worst-case headroom for the next
 bundle; it refuses the claim if that projection reaches the 90,000 safe stop. Dispatch can
