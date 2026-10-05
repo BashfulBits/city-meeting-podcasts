@@ -2110,3 +2110,27 @@ only after merge; direct live search verification still required for archive-cas
 
 #2083 prepared:185 targeted and4957 offline tests pass15 deselected, whole Ruff/format468
 clean. Full5353 replay changes only formal0→1/publictownhalls0→2. Deployment gates remain.
+
+### Fort Worth source-scoped EMSISD participant feed — L3, #2086
+
+User policy requires each proven participant subscription. Retained official April25,2016
+packet and live original provider cuepoints bind UID497b3aa05255bfb9/clip2491 to Council
+and EMSISD Board participation, shared presentation, both announcements and single adjournment.
+Council ownership is correct; missing participant discovery is the bounded correction.
+
+Add `config/feeds/fort-worth-tx-emsisd-board-joint-meetings.yml`, city fort-worth-tx, provider
+granicus, copying Council's existing five feed_urls unchanged, using only existing body_exact:
+`BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL`.
+Title: Eagle Mountain-Saginaw ISD Board Joint Meetings with Fort Worth Council. Source-scoped
+participation feed, not district-wide onboarding; no new source namespace or provider fetch path.
+
+Add original fixture `tests/fixtures/fortworth-emsisd-joint-retained.json` and
+`tests/test_fortworth_emsisd_joint_ownership.py`: actual config admits original alongside Council,
+RSS preserves UID/audio; same full label future GUID auto-admits proven institutional pair;
+Council-only/other-school-joint/unrelated-board negatives; raw record unchanged. Replay every
+retained Fort Worth source record across all configured feeds: new feed0→1 only original UID,
+all prior owners unchanged. Run full offline and whole Ruff/format. No Council or other existing
+selector changes, title/audio/record mutations, stage invalidation, publication groups or backfill.
+Update ARCHITECTURE/CHANGELOG/ROADMAP/review11, audit and case prepared action. Keep case open
+until human merge and deployed exact same UID/audio in both participant RSS feeds. Freeze/stamp
+only after human merge; no inference for other unresolved Fort Worth bundles.
