@@ -554,3 +554,7 @@ Cases remain open until deployed verification.
 Denton Bond committee #2051 is prepared under the committed review/51 contract: exact GUID
 28865 moves from Council to its dedicated feed; raw UID/audio remain unchanged. Deployment
 verification is pending; no lifecycle or broader committee-family claim is made.
+
+Recently shipped: the bounded Denton Health Commission, Library, TIRZ board and 2019 Bond
+committee feeds (#2043–#2053). Deployed ownership verification remains pending; broader
+historical coverage and model-admission gates remain active.

@@ -1369,3 +1369,8 @@ Cases remain open until deployed verification.
 Denton Bond committee #2051 is prepared under the committed review/51 contract: exact GUID
 28865 moves from Council to its dedicated feed; raw UID/audio remain unchanged. Deployment
 verification is pending; no lifecycle or broader committee-family claim is made.
+
+The Denton bounded ownership feeds are implemented on main through #2043–#2053: Health
+Commission, Library, separate TIRZ boards and the exact 2019 Bond committee recording.
+The Council/Library joint uses the same UID/audio in both feeds. Existing routing primitives
+serve these exact selectors; no runtime or schema change was introduced.

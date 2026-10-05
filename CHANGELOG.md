@@ -7288,3 +7288,8 @@ Retain these visibility/access checks and all independent historical content evi
 
 - Prepared Denton Special Citizens Bond Advisory Committee feed for exact GUID 28865,
   removing its Council override while preserving raw UID/audio. No invalidation or backfill.
+
+- Shipped exact Denton ownership corrections in #2043–#2053: four Health Commission,
+  two standalone Library, eight TIRZ board and one 2019 Bond committee recordings leave
+  Council for dedicated feeds; the proven Council/Library joint gains Library while retaining
+  Council. Raw UID/audio/source identities are preserved. No invalidation or backfill.
