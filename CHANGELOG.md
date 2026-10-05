@@ -17,6 +17,11 @@ Once 1.0 ships, entries move under semver tags.
   size bound while keeping shorter jobs eligible. Google uses trailing-minute input-only TPM,
   schema-inclusive queue estimates, and preserves the configured size safety margin. No stage
   version bump, artifact invalidation or automatic backfill. SambaNova token incident: #2027.
+- Remove the verified January 22, 2022 Dallas Redistricting Commission recording from Council;
+  retain its dedicated Commission feed, UID/audio and archives. No stage invalidation or backfill.
+
+- Restore exact raw archive routing for the approved Addison luncheon; retain archive-only
+  feed/search/browse exclusion, original UID/audio, and unchanged processing stages.
 
 - Prepare the verified September 19, 2016 Addison Council/P&Z joint subscription (#2025).
   Add Council alongside P&Z with the same UID/audio; existing canonical search attribution
@@ -7251,3 +7256,19 @@ GUID394474/UID757ab2a4aaf9bbca from Council to Addison: TIF Meetings. Canonical 
 attribution changes accordingly; original raw record, UID and hosted audio remain. After the
 Council narrowing,500 original Council selections remain. No audio invalidation or backfill.
 The case remains open pending human merge and deployed subscription verification.
+
+
+### Archive-only and 2016 joint shipped (2026-10-05)
+
+Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
+Their bounded implementation contracts are frozen. Main `ac0fa4bb` Build & Deploy succeeded.
+CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining actionable issues;
+#2026 was merged before its substantive review slot, an explicit review gap. No stage/audio
+invalidation or backfill. Both joint feeds carry the same original UID/audio; its case is resolved.
+The register now has seven open historical evidence cases, rather than eight.
+
+Live verification: six archive UIDs absent from Public Input/Council/P&Z RSS and Public Input
+browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89c7c5c5c returns
+404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
+Public search and its expected manifest return 404; do not claim deployed search verification.
+Retain these visibility/access checks and all independent historical content evidence obligations.
