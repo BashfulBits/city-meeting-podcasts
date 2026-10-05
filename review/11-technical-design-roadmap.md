@@ -1358,3 +1358,6 @@ Retain these visibility/access checks and all independent historical content evi
 
 Luncheon direct archive route: L3 bounded review/51 contract, maintainer authorized access fixes
 2026-10-05. Exact raw selector admission only, preserving archive-only public exclusion.
+
+Dallas Redistricting Council leakage: L3 bounded review/51 contract, official dated Commission
+agenda verifies one wrong Council override; preserve existing Commission subscription/UID/audio.
