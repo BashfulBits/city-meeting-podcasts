@@ -1332,3 +1332,11 @@ These four exact ownership cases are resolved. Full-stack run 37321232154 at `8a
 remains in progress. Library, TIRZ and Bond feeds returned 404 and remain unverified/open.
 Council RSS is bounded: absent historical joint/TIRZ UIDs do not prove removed coverage.
 The full-source config replay establishes unchanged retention separately from live RSS.
+
+### Arlington ETF exact source census — 2026-10-05 14:30 UTC
+
+All six registered ETF records occur in source `ecc3710ac47f`, with original MediaPlayer
+GUID URLs and exact two body labels. Their dated retained agendas each contain ETF call to
+order and adjournment; Council mentions concern report/recommendation context. Review/51
+#2055 records the bounded preimplementation contract, preserving All Meetings. No committee
+standing status or dissolution inference is made. Six cases remain open until deployed proof.
