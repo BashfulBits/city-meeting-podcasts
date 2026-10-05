@@ -1467,3 +1467,17 @@ stay open. Do not split audio, choose a duplicate winner or remove holders from 
 structure alone. Historical clips125/127 currently expose only a generic CableSchedule
 default document; their player pages return HTTP200 even though the web reader could not
 open them. This supplies no missing agenda proof for those two historical cases.
+
+### Dallas November4,2023 CBTF proof — 2026-10-05
+
+[City CBTF archive](https://dallascityhall.com/departments/bond-construction-management/2024-Bond-Dashboard/Pages/Community-Bond-Task-Force.aspx)
+links [dated minutes](https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/219/Meeting%20Minutes%20CBTF%2011-4-23_Revised_111623.pdf).
+Minutes name the Community Bond Task Force, task-force members, five visiting subcommittee
+chairs, call to order and chair Agarwal's closing/adjournment. Discussion of allocations by
+Council district and future Council decisions does not convene Council. Header8:24AM and
+body8:24PM disagree; preserve that official inconsistency. Original stored chapter for
+GUID280220 UIDbaa19208405acb22 explicitly identifies November4,2023. The retained
+program handbook previously found was institutional context, not dated meeting proof.
+Exact contract now recorded in review/51 #2062. Full5,353-record source census finds18
+CBTF/bond-task-force rows including five subcommittee rows and three2017town halls;
+remaining17 need individual proof and current ownership reconciliation.

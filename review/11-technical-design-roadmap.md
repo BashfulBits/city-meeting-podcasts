@@ -1442,3 +1442,6 @@ review was disabled; skipped review is not substantive review coverage.
 Arlington exact ETF correction Shipped in #2058; review/51 bounded contract frozen/stamped.
 Six deployed ownership checks remain pending. The aborted pre-merge review request is an
 explicit coverage gap, not substantive review completion.
+
+Dallas exact November2023 CBTF ownership correction is L3 in review/51, issue #2062.
+One verified recording only; broader CBTF/subcommittee census remains evidence work.
