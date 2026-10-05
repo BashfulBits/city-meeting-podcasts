@@ -1664,3 +1664,13 @@ This verifies these bounded ownership corrections, not complete historical RSS c
 | 96c10f4f75706719 | 246971 | https://audio.citymeetings.fyi/swagit/76869ed1994f/96c10f4f75706719-40ff3dfd58ad.m4a |
 
 Register169 cases:132 resolved37 open. Remaining content/binding obligations stay open.
+
+Transportation proposed complete-label replay (read-only, not implemented): all5,353 retained
+Dallas records give standing140→129, exactly the11 registered bond candidates removed and
+no additions. This preserves every currently matched named DART/legislative/Economic/Government
+Performance joint and standing alias. Four distinct bond labels identify the recurring collision.
+Before an L3 implementation, preserve the four existing GUID exceptions as exceptions; do not
+silently turn Mill Creek Tunnel Project or Transportation-for-Hire exception bodies into broad
+future-record admission. The mechanical replay is not official proof for the three dates missing
+from the archive or authorization to close any recording-binding case. Existing runtime/config
+remain unchanged. Report: /tmp/dallas-transportation-proposed-rule-replay.json (local scratch).
