@@ -18,7 +18,12 @@ def page(number, rows, more=False):
     return {
         "tier": "free",
         "intelligence_index_version": 4.3,
-        "pagination": {"page": number, "page_size": 200, "has_more": more},
+        "pagination": {
+            "page": number,
+            "page_size": 200,
+            "total_pages": number + int(more),
+            "has_more": more,
+        },
         "data": rows,
     }
 
@@ -100,3 +105,15 @@ def test_missing_key_does_not_request(monkeypatch):
     session = Session([])
     assert fetch_quality_index(session).error
     assert not session.calls
+
+
+@pytest.mark.parametrize(
+    "total_pages, has_more", [(2, False), (1, True), (0, False), (True, False)]
+)
+def test_contradictory_pagination_is_not_a_complete_catalog(monkeypatch, total_pages, has_more):
+    monkeypatch.setenv("ARTIFICIAL_ANALYSIS_API_KEY", "test-key")
+    payload = page(1, [row("OpenAI", "gpt-oss-120b", 30)])
+    payload["pagination"].update(total_pages=total_pages, has_more=has_more)
+    quality = fetch_quality_index(Session([payload]))
+    assert quality.error
+    assert not quality.scores

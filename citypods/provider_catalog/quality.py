@@ -122,10 +122,14 @@ def fetch_quality_index(session: requests.Session) -> QualityIndex:
             payload = response.json()
             rows = payload["data"]
             pagination = payload["pagination"]
+            total_pages = pagination["total_pages"]
             if (
                 not isinstance(rows, list)
                 or pagination["page"] != page
                 or not isinstance(pagination["has_more"], bool)
+                or type(total_pages) is not int
+                or total_pages < page
+                or pagination["has_more"] != (page < total_pages)
                 or (pagination["has_more"] and not rows)
             ):
                 return QualityIndex(error="Artificial Analysis invalid pagination or data")
