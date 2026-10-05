@@ -1569,3 +1569,28 @@ Development feed uses substring body Economic Development, which admits this sep
 bond institution. Future bounded routing contract must preserve all other current holders.
 Cached source has12 distinct matching body labels, only one bond-task-force row; no current
 selector change or subcommittee case closure is made here.
+
+### Reusable ownership-rule audit — maintainer follow-up October 5
+
+The maintainer asked whether recurring institution labels can replace recording-specific
+inclusions. Audit reusable rules alongside remaining cases; retain exact GUID exceptions only
+where labels cannot distinguish ownership reliably. This is a design follow-up, not permission
+for an untested broad selector or closure without deployed proof.
+
+Dallas source `76869ed1994f` contains five rows labeled `2024 Capital Bond CBTF Meeting`,
+one `2024 Capital Bond Program CBTF Meetings`, two singular `2024 Capital Bond Program CBTF
+Meeting`, and three other CBTF labels. Existing five verified inclusions therefore cover only
+part of the institutional label census. A label rule can cover later occurrences automatically,
+but the remaining dated/source-binding obligations must remain visible in the register.
+
+The standing Economic Development substring matches 138 retained rows across 12 labels,
+including one separately convened `2024 Bond Task Force Economic Development` proceeding.
+The other 11 labels include explicit joint proceedings and must be preserved. Prefer existing
+`body_exact` institutional aliases over a broad shared-word substring when the census and
+institutional proof support them. `body_exact` also accepts provider-duplicated normalized
+labels. Do not assume `body_exclude` is applied by runtime routing.
+
+Before implementation, commit a bounded review/51 contract naming aliases, affected feeds,
+fixtures and positive/negative tests. Replay all 5,353 Dallas rows, including genuine joints,
+subcommittees and town halls; preserve raw UIDs/audio and every unrelated holder. Explicitly
+separate institution ownership from recording-content proof and publication eligibility.
