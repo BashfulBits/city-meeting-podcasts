@@ -1890,7 +1890,9 @@ description `Verified Dallas 2024 Community Bond Task Force proceedings.` Remove
 GUID/body pair from Council. Preserve UID `baa19208405acb22`, source `76869ed1994f`, audio
 and raw record. Add minimal original `tests/fixtures/dallas-cbtf-retained.json` and
 `tests/test_dallas_cbtf_ownership.py` actual-config selection, Council negative, original RSS
-UID/audio, same body wrong GUID and same GUID wrong body negatives, unchanged raw input.
+UID/audio, same body wrong GUID negative and unchanged raw input. Existing body_includes
+selects by exact provider GUID; its body is metadata, not a second predicate. Do not change
+that runtime contract.
 Full5,353-record replay: one Council departure, one task-force addition, every other feed
 unchanged. Whole offline/Ruff/format required. Update review/11, CHANGELOG, ARCHITECTURE,
 ROADMAP, audit and register next action in implementation; keep case open until deployed
