@@ -1438,3 +1438,7 @@ all 4,925 Python offline tests were verified (the isolated-import test required 
 installation because the primary checkout was unreadable). Real workerd guards and accounting,
 compiled-config checks, packaging, Ruff/formatting, and PR CodeQL passed. CodeRabbit automatic
 review was disabled; skipped review is not substantive review coverage.
+
+Arlington exact ETF correction Shipped in #2058; review/51 bounded contract frozen/stamped.
+Six deployed ownership checks remain pending. The aborted pre-merge review request is an
+explicit coverage gap, not substantive review completion.

@@ -7309,3 +7309,6 @@ Retain these visibility/access checks and all independent historical content evi
 
 - Prepared exact six-record Arlington Environmental Task Force feed, removing Council
   leakage and preserving All Meetings, UID/audio. No invalidation or backfill.
+
+- Shipped exact six-record Arlington ETF ownership correction in #2058. Original raw UID/audio
+  and All Meetings preserved; no invalidation/backfill. Deployment verification pending.

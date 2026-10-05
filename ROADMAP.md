@@ -562,3 +562,5 @@ historical coverage and model-admission gates remain active.
 Arlington ETF #2055 implementation is prepared under the exact six-record review/51
 contract: dedicated feed, only Council ETF term removed, All Meetings/raw UID/audio
 preserved. Deployed verification pending; no standing or dissolution inference.
+
+Recently shipped: Arlington Environmental Task Force exact six-record feed correction #2058.
