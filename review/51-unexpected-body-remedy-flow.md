@@ -1905,3 +1905,86 @@ separate reconciliation. The exact single-record correction does not claim full 
 Dallas #2062 implementation prepared under the exact contract. Replay changes only
 Council358→357 and CBTF0→1; original raw records unchanged. Offline4,929 pass14 deselected,
 wholeRuff463/format pass. Current CI/review and deployed proof remain pending.
+
+### Dallas four additional CBTF recordings — bounded L3 (#2065)
+
+Dated city summaries establish CBTF convening/adjournment on June20, August15 and August22,
+2023. Original provider chapters identify those same dates; official city archive also links
+August22 GUID269916 directly. Add only these exact GUID/body inclusions to existing
+`config/feeds/dallas-tx-2024-community-bond-task-force.yml`:
+
+| UID | GUID | Exact original body |
+|---|---|---|
+| 96c10f4f75706719 | 246971 | 2024 Capital Bond CBTF Meeting |
+| aaf0ad8eaabe68a5 | 269278 | 2024 Capital Bond CBTF Meeting |
+| 130a7ebded8e0e1d | 269608 | 2024 Bond Task Force Community Bond Task Force Meeting |
+| cba1e023051d7c94 | 269916 | 2024 Capital Bond CBTF Meeting |
+
+All four currently match no feed. Preserve both August15 original UIDs and all audio/raw
+source identities; no duplicate-winner claim or publication-group change. Add original minimal
+`tests/fixtures/dallas-cbtf-additional-retained.json` and extend
+`tests/test_dallas_cbtf_ownership.py` with parametrized actual-config original RSS/audio,
+no Council holder, same-body/different-GUID negative and raw-preservation checks for each.
+Existing exact GUID runtime semantics stay unchanged. Full5,353 replay must add only these
+four UIDs to CBTF1→5, every other feed unchanged. Wholeoffline/Ruff/format required.
+Update review/11, CHANGELOG, ARCHITECTURE, ROADMAP, audit and four register next actions.
+Keep cases open until deployed verification; freeze/stamp after main merge. Do not modify
+other selectors, runtime, schemas, dependencies, providers, stages, records, audio or
+publication groups. No invalidation/backfill. May25 GUID233037 excluded pending stronger
+exact binding (current provider403 and no original chapter); other candidates remain open.
+
+Dallas #2065 implementation prepared. Exact four additions/no other full-source ownership
+changes; all4,933 offline tests pass14 deselected. WholeRuff463/format clean. Cases stay open
+until deployment; current CI and substantive code review still pending.
+
+### Dallas reusable Economic Development ownership rules — design follow-up
+
+The maintainer requested reusable institution selectors where possible. Existing source
+`body_exact` supports complete normalized labels without a new runtime/schema. The cached
+Dallas census has 138 Economic Development substring matches across 12 labels; one is the
+separately convened 2024 bond subcommittee (GUID269610). Replace the standing feed's broad
+substring with the other 11 complete labels only after recording the full alias contract and
+positive/negative replay. Preserve its unrelated GUID overrides and all genuine joint aliases.
+A dedicated bond-subcommittee feed should use its stable complete institutional label rather
+than require a new GUID exception for each recurrence. Original August15 chapters and official
+minutes establish this body independently of the standing Council committee.
+
+This entry is L2: no selector changes yet. Before L3, name the alias list, feed/fixture/test
+files, exact source replay deltas, and issue. Do not modify runtime body matching, providers,
+schemas, dependencies, stages, records, media, publication groups or existing joint policy.
+
+### Dallas Economic Development reusable rules — L3 (#2068)
+
+Supersedes the L2 follow-up above. In `config/feeds/dallas-tx-economic-development.yml`,
+replace only `source.body` with `source.body_exact` containing these 11 complete labels:
+
+- Economic Development
+- Economic Development and Housing Committee
+- Special Economic Development
+- Special Economic Development and Housing Committee
+- Special Called Joint Meeting of the Council Ad Hoc Committee on Professional Sports Recruitment and Retention and Council Economic Development Committee
+- Combined Economic Development & Housing
+- Special Called Joint Meeting of Economic Development and Workforce, Education, and Equity
+- Joint Meeting of Transportation and Economic Development Meeting
+- Special Call Meeting Economic Development & Housing Committee Housing Policy Stakeholder Forum
+- Economic Development & Committee on Finance
+- Economic Development Committee
+
+Preserve both existing GUID inclusions 205545/203327. Add
+`config/feeds/dallas-tx-2024-bond-economic-development-subcommittee.yml`, same city/provider/
+list_url as the standing feed, with only `source.body_exact` label
+`2024 Bond Task Force Economic Development`. Title it Dallas 2024 Bond Economic Development,
+Housing and Homeless Solutions Subcommittee. This is a reusable complete-label rule, not a
+GUID pin. Official August15 minutes and original chapters bind GUID269610,
+UID8969ad6d91ed23d2 to its independently convened proceeding.
+
+Add minimal original fixture `tests/fixtures/dallas-bond-economic-retained.json` and
+`tests/test_dallas_bond_economic_ownership.py`: actual-config standing rejection/new-feed
+acceptance; original RSS UID/audio and unchanged raw record; same-label/new-GUID acceptance;
+other bond subcommittee and unrelated Economic Development label negatives; all 11 standing
+aliases including joint labels retained. Replay all5,353 retained Dallas rows: standing feed
+loses only UID8969ad6d91ed23d2, new feed gains only it, every other holder unchanged. Run whole
+Ruff/format/offline. Update review/11, CHANGELOG, ARCHITECTURE, ROADMAP, audit and case next action.
+Case remains open until deployed ownership/audio proof. Do not modify runtime, other selectors,
+schemas, dependencies, providers, stages, records, media, publication groups or joint policy.
+No invalidation/backfill; no inference of other bond subcommittees' recording proof.

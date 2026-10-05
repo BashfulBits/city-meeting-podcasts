@@ -1448,3 +1448,21 @@ One verified recording only; broader CBTF/subcommittee census remains evidence w
 
 Dallas #2062 exact CBTF correction prepared: full5,353 replay Council358→357/newtaskforce1,
 4,929 offline tests passed14 deselected, wholeRuff463/format pass. Deployment closure pending.
+
+Dallas #2065 four additional verified CBTF recordings are L3 in review/51. Exact inclusion
+only; remaining task-force/subcommittee/town-hall proof remains active.
+
+Dallas #2065 four-record coverage prepared: full5,353 replay changes only CBTF1→5;
+4,933 offline pass14 deselected, wholeRuff463/format pass. CI/review/deployment pending.
+
+### Ownership selector rule audit — L2, October 5 follow-up
+
+Maintainer requests reusable institution rules instead of repeated per-record inclusions where
+labels reliably distinguish bodies. Start with Dallas standing Economic Development versus
+its separately convened 2024 bond subcommittee; use existing complete-label selectors and
+full-source positive/negative replay. Preserve genuine joints and ambiguous-record proof gates.
+The bounded design is in review/51, “Dallas reusable Economic Development ownership rules”.
+Existing prepared PR #2066 remains unchanged in production config/tests; this audit is follow-up.
+
+Dallas reusable Economic Development ownership rules are now **L3**, issue #2068, with the
+11 standing aliases, separate stable bond label, named tests and full-source replay in review/51.

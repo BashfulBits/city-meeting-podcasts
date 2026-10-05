@@ -6,6 +6,14 @@ source:
   body_includes:
     - provider_guid: "280220"
       body: "2024 Bond CBTF and Subcommittee Chairs Meeting"
+    - provider_guid: "246971"
+      body: "2024 Capital Bond CBTF Meeting"
+    - provider_guid: "269278"
+      body: "2024 Capital Bond CBTF Meeting"
+    - provider_guid: "269608"
+      body: "2024 Bond Task Force Community Bond Task Force Meeting"
+    - provider_guid: "269916"
+      body: "2024 Capital Bond CBTF Meeting"
 podcast_title: 'Dallas: 2024 Community Bond Task Force'
 podcast_author: City of Dallas, TX
 podcast_email: ''

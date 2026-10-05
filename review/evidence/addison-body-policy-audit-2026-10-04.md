@@ -1552,3 +1552,45 @@ raw UIDs; no duplicate winner is selected from common date/body or agenda.
 All additional cases remain open for exact source binding/contract and deployed coverage.
 No new selector expansion follows automatically from these dated summaries. September26
 and October3 are absent from this archive list and still need dated official proof.
+
+### Dallas four-record coverage prepared and next subcommittee proof — 2026-10-05
+
+#2065 adds only GUIDs246971/269278/269608/269916, CBTF1→5 in full5,353 source replay.
+Every other feed remains unchanged. Exact identity/negative checks pass; final fulloffline
+4,933 pass14 deselected. Initial full run caught six ETF register closure fields left empty;
+parent docs #2064 fixed55f0f165 retains nonempty evidence fields, carried before final pass.
+
+Independent next-case research: [official bond subcommittee archive](https://dallascityhall.com/departments/bond-construction-management/2024-Bond-Dashboard/Pages/Economic-Development-HHS-Subcommittee.aspx)
+links [August15 minutes](https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/171/ECO,%20HOU,%20OHS%20Meeting_081523_Meeting%20Minutes.pdf).
+These identify Economic Development, Housing and Homeless Solutions 2024 Bond Task Force
+subcommittee, chair Tony Shidid, own convening6:08PM/adjournment7:54PM. Original chapter
+for GUID269610 UID8969ad6d91ed23d2 identifies August15,2023. Current standing Economic
+Development feed uses substring body Economic Development, which admits this separate
+bond institution. Future bounded routing contract must preserve all other current holders.
+Cached source has12 distinct matching body labels, only one bond-task-force row; no current
+selector change or subcommittee case closure is made here.
+
+### Reusable ownership-rule audit — maintainer follow-up October 5
+
+The maintainer asked whether recurring institution labels can replace recording-specific
+inclusions. Audit reusable rules alongside remaining cases; retain exact GUID exceptions only
+where labels cannot distinguish ownership reliably. This is a design follow-up, not permission
+for an untested broad selector or closure without deployed proof.
+
+Dallas source `76869ed1994f` contains five rows labeled `2024 Capital Bond CBTF Meeting`,
+one `2024 Capital Bond Program CBTF Meetings`, two singular `2024 Capital Bond Program CBTF
+Meeting`, and three other CBTF labels. Existing five verified inclusions therefore cover only
+part of the institutional label census. A label rule can cover later occurrences automatically,
+but the remaining dated/source-binding obligations must remain visible in the register.
+
+The standing Economic Development substring matches 138 retained rows across 12 labels,
+including one separately convened `2024 Bond Task Force Economic Development` proceeding.
+The other 11 labels include explicit joint proceedings and must be preserved. Prefer existing
+`body_exact` institutional aliases over a broad shared-word substring when the census and
+institutional proof support them. `body_exact` also accepts provider-duplicated normalized
+labels. Do not assume `body_exclude` is applied by runtime routing.
+
+Before implementation, commit a bounded review/51 contract naming aliases, affected feeds,
+fixtures and positive/negative tests. Replay all 5,353 Dallas rows, including genuine joints,
+subcommittees and town halls; preserve raw UIDs/audio and every unrelated holder. Explicitly
+separate institution ownership from recording-content proof and publication eligibility.
