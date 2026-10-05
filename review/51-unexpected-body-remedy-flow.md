@@ -1747,3 +1747,8 @@ next actions without closure. Lifecycle review11/CHANGELOG/ARCHITECTURE/ROADMAP/
 Ruff/format/currentCI. CodeRabbit only actual code changes per maintainer override2026-10-05;
 configuration YAML/documentation alone needs no bot review. Human merge commits only.
 No runtime/schema/provider/stage/dependency changes, invalidation, backfill or production writes.
+
+Library integration acceptance: tests/test_feed_body_routing.py must remove GUID13509 from
+the obsolete single-owner list and explicitly require exactly Council and Library holders.
+This updates the earlier #1231 regression to the approved proven-participant joint policy;
+retain all unrelated single-owner pins. No runtime change.
