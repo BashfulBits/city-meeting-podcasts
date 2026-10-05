@@ -189,6 +189,11 @@ def test_luncheon_raw_archive_route_keeps_public_exclusion():
         record, source_body_filter(city.source), source_body_inclusions(city.source)
     )
     assert is_archive_only(load_archive_index(cities), source_key(city), record)
+    assert record["audio"]["key"] == "swagit/abbf5e25e078/35a78fa89c7c5c5c-b60288bf7dfc.m4a"
+    assert record["audio"]["url"] == (
+        "https://audio.citymeetings.fyi/swagit/abbf5e25e078/"
+        "35a78fa89c7c5c5c-b60288bf7dfc.m4a"
+    )
     wrong = dict(record, provider_guid="not-the-luncheon")
     assert not record_matches_body(
         wrong, source_body_filter(city.source), source_body_inclusions(city.source)
