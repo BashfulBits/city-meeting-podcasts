@@ -1451,3 +1451,6 @@ Dallas #2062 exact CBTF correction prepared: full5,353 replay Council358→357/n
 
 Dallas #2065 four additional verified CBTF recordings are L3 in review/51. Exact inclusion
 only; remaining task-force/subcommittee/town-hall proof remains active.
+
+Dallas #2065 four-record coverage prepared: full5,353 replay changes only CBTF1→5;
+4,933 offline pass14 deselected, wholeRuff463/format pass. CI/review/deployment pending.

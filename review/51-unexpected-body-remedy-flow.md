@@ -1932,3 +1932,7 @@ Keep cases open until deployed verification; freeze/stamp after main merge. Do n
 other selectors, runtime, schemas, dependencies, providers, stages, records, audio or
 publication groups. No invalidation/backfill. May25 GUID233037 excluded pending stronger
 exact binding (current provider403 and no original chapter); other candidates remain open.
+
+Dallas #2065 implementation prepared. Exact four additions/no other full-source ownership
+changes; all4,933 offline tests pass14 deselected. WholeRuff463/format clean. Cases stay open
+until deployment; current CI and substantive code review still pending.

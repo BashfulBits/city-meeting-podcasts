@@ -7314,3 +7314,5 @@ Retain these visibility/access checks and all independent historical content evi
   and All Meetings preserved; no invalidation/backfill. Deployment verification pending.
 
 Dallas exact November2023 Community Bond Task Force recording280220 leaves Council for its own feed. Original UID/audio/raw records preserved; no stage invalidation or backfill.
+
+Four additional verified Dallas CBTF recordings gain their own feed coverage through exact GUID inclusions. Both August15 original source UIDs remain; no duplicate winner, audio change, stage invalidation or backfill.

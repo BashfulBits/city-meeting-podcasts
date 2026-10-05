@@ -1,0 +1,90 @@
+[
+  {
+    "uid": "96c10f4f75706719",
+    "provider_guid": "246971",
+    "body": "2024 Capital Bond CBTF Meeting",
+    "title": "2024 Capital Bond CBTF Meeting \u2013 Jun 20, 2023",
+    "published": "2023-06-20T00:00:00+00:00",
+    "video_url": "https://dallastx.new.swagit.com/videos/246971/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 88535548,
+      "duration_served": 7129.349,
+      "encode_time": "2026-07-27T20:12:55.874393+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/96c10f4f75706719-40ff3dfd58ad.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "40ff3dfd58ad",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/96c10f4f75706719-40ff3dfd58ad.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "aaf0ad8eaabe68a5",
+    "provider_guid": "269278",
+    "body": "2024 Capital Bond CBTF Meeting",
+    "title": "2024 Capital Bond CBTF Meeting \u2013 Aug 15, 2023",
+    "published": "2023-08-15T00:00:00+00:00",
+    "video_url": "https://dallastx.new.swagit.com/videos/269278/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 100982694,
+      "duration_served": 8149.371,
+      "encode_time": "2026-07-27T20:11:48.233869+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/aaf0ad8eaabe68a5-ed70d2044779.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "ed70d2044779",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/aaf0ad8eaabe68a5-ed70d2044779.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "130a7ebded8e0e1d",
+    "provider_guid": "269608",
+    "body": "2024 Bond Task Force Community Bond Task Force Meeting",
+    "title": "2024 Bond Task Force Community Bond Task Force Meeting \u2013 Aug 15, 2023",
+    "published": "2023-08-15T00:00:00+00:00",
+    "video_url": "https://dallastx.new.swagit.com/videos/269608/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 99586066,
+      "duration_served": 8009.26,
+      "encode_time": "2026-07-27T20:21:30.749062+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/130a7ebded8e0e1d-e00bd282e3cd.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "e00bd282e3cd",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/130a7ebded8e0e1d-e00bd282e3cd.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "cba1e023051d7c94",
+    "provider_guid": "269916",
+    "body": "2024 Capital Bond CBTF Meeting",
+    "title": "2024 Capital Bond CBTF Meeting \u2013 Aug 22, 2023",
+    "published": "2023-08-22T00:00:00+00:00",
+    "video_url": "https://dallastx.new.swagit.com/videos/269916/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 79312566,
+      "duration_served": 6400.521,
+      "encode_time": "2026-07-27T20:10:17.463513+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/76869ed1994f/cba1e023051d7c94-b4869d828ea7.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "b4869d828ea7",
+      "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/cba1e023051d7c94-b4869d828ea7.m4a",
+      "verification": null
+    }
+  }
+]
