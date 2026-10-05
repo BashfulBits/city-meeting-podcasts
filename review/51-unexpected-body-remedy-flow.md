@@ -1726,3 +1726,24 @@ Denton Health & Building Standards implementation #2044 was human-merged on 2026
 at10:00:30Z, before substantive CodeRabbit review and before PR CI completed. Record this review
 gap explicitly; skipped automatic review is not coverage. Full4918 offline tests passed locally.
 Deployed membership verification remains pending; four cases stay open.
+
+### Denton Library Board ownership — L3 bounded contract
+
+Two retained official agendas convene Library Board alone: GUID120859 (May13,2021,
+UIDb50c6a018b2c08e7) and118306 (Apr8,2021,UIDc10f3f6cd97ac38f). The March3,2014
+GUID13509 UIDa1aa4af8f26e120c agenda explicitly convenes Council jointly with Library Board.
+
+Create config/feeds/denton-tx-library-board.yml, slug denton-tx-library-board, city denton-tx,
+provider swagit, existing source.list_url https://dentontx.new.swagit.com/views/5.
+Use body_includes the three exact existing Council GUID/body pairs copied unchanged. Remove only
+120859 and118306 from Council; preserve13509. Title Denton: Library Board, author City of Denton,
+TX, empty email, descriptive Library Board text; omit lifecycle and optional meeting_family.
+No broad substring selection. This slice does not claim complete Library recording coverage.
+New tests/fixtures/denton-library-retained.json captures three original metadata/audio records;
+tests/test_denton_library_ownership.py verifies actual config, two Council departures/three Library
+additions, joint remaining Council, RSS UID/audio, exact-GUID negatives and unchanged records.
+Full retained Denton replay must change only these memberships. Update three register preparation
+next actions without closure. Lifecycle review11/CHANGELOG/ARCHITECTURE/ROADMAP/audit. Whole offline,
+Ruff/format/currentCI. CodeRabbit only actual code changes per maintainer override2026-10-05;
+configuration YAML/documentation alone needs no bot review. Human merge commits only.
+No runtime/schema/provider/stage/dependency changes, invalidation, backfill or production writes.
