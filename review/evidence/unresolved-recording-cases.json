@@ -2095,14 +2095,14 @@
       "uid": "1cbf75c664b7c63e",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=1251",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
     },
     {
       "case_id": "fort-worth-tx-1d3f5b988918cba0-ownership",
@@ -2111,15 +2111,15 @@
       "uid": "1d3f5b988918cba0",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2292",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-crime-control-and-prevention-district"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
     },
     {
       "case_id": "fort-worth-tx-27254aa1a700569f-ownership",
@@ -2160,14 +2160,14 @@
       "uid": "6a1dd0e9e8088440",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=155",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
     },
     {
       "case_id": "fort-worth-tx-83d6abdb749bc76f-ownership",
@@ -2176,15 +2176,15 @@
       "uid": "83d6abdb749bc76f",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2015",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-crime-control-and-prevention-district"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
     },
     {
       "case_id": "fort-worth-tx-99152cb9e61fa091-ownership",
@@ -2210,14 +2210,14 @@
       "uid": "b7a9ee9eae6fafc6",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=153",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
     },
     {
       "case_id": "fort-worth-tx-c57e1210d9282ab1-ownership",
@@ -2226,15 +2226,15 @@
       "uid": "c57e1210d9282ab1",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=1761",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-crime-control-and-prevention-district"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
     },
     {
       "case_id": "fort-worth-tx-e0736bdd5835b1d4-ownership",
@@ -2243,15 +2243,15 @@
       "uid": "e0736bdd5835b1d4",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2015",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-crime-control-and-prevention-district"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
     },
     {
       "case_id": "fort-worth-tx-ead427dae0bbb284-ownership",
@@ -2279,15 +2279,15 @@
       "uid": "f28ae055829705ec",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2292",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "missing_evidence": "None for body ownership; bounded Council RSS and duplicate publication selection are separate obligations.",
+      "next_action": "Preserve proven Council and joint participant eligibility; reopen if ownership or retained audio changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-crime-control-and-prevention-district"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official retained agenda establishes Council workshop or genuine Council/CCPD joint. Existing selectors correct; deployed Council owner page HTTP200 retains original audio, and joint CCPD RSS retains same UID/audio. Council RSS bounded at500 omits these historical entries; no routing change or duplicate-winner decision. See audit Fort Worth eight ownership dispositions."
     }
   ]
 }
