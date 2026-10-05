@@ -4077,3 +4077,98 @@ def test_held_alias_redirects_ignore_malformed_cached_rows(tmp_path, payload):
     (tmp_path / "redirects.json").write_text(payload)
     run._write_aliases(tmp_path, "https://example.gov", [city], {}, held_slugs={city.slug})
     assert json.loads((tmp_path / "redirects.json").read_text()) == []
+
+
+def test_archive_only_cached_removal_reversal_preserves_raw_pages(tmp_path):
+    """Archive visibility rebuilds cached projections while direct archives remain intact."""
+    from citypods.publication_selection import load_selection_index
+    from citypods.records import records_path, source_key
+
+    city, pipeline = _publication_render_fixture(tmp_path)
+    city.extra.pop("publication_selection")
+    city.max_episodes = 10
+    episodes = pipeline.render_from_records(city)
+    linked = AgendaRecord(
+        body="Council",
+        published=episodes[0].published,
+        title="Hidden calendar recording",
+        video_guid="same",
+    )
+    independent = AgendaRecord(
+        body="Council", published=episodes[0].published, title="Independent official calendar"
+    )
+    pipeline.calendar_records = lambda city: [linked, independent]
+    state = records_path(pipeline.state_dir, source_key(city))
+    original = state.read_bytes()
+    out = tmp_path / "docs"
+    cache = {}
+
+    def render(index=None):
+        result, entry = run._process_city(
+            city,
+            "https://example.gov",
+            out,
+            cache,
+            0,
+            False,
+            pipeline,
+            {},
+            "original",
+            no_refresh=True,
+            selection_index=index,
+        )
+        cache[city.slug] = entry
+        return result
+
+    assert render().episode_count == 2
+    city.extra["archive_only"] = [
+        {
+            "uid": ep.uid,
+            "provider_guid": ep.guid,
+            "reason": "Human-approved archive retention",
+            "approval_ref": "https://example.gov/approval",
+        }
+        for ep in episodes
+    ]
+    # The declaration may live on another feed sharing this source.
+    import copy
+
+    declaring = copy.deepcopy(city)
+    declaring.slug = "another-feed"
+    declaration = city.extra.pop("archive_only")
+    declaring.extra["archive_only"] = declaration
+    index = load_selection_index([city, declaring])
+    assert render(index).episode_count == 0
+    rss = (out / city.slug / "audio_feed.xml").read_text()
+    assert "<item>" not in rss
+    browse = (out / city.slug / "archive" / "index.html").read_text()
+    assert "Hidden calendar recording" not in browse
+    assert "Independent official calendar" in browse
+    for ep in episodes:
+        assert (out / city.slug / ep.uid / "index.html").exists()
+    assert render(index).status == "skipped"
+    declaring.extra.pop("archive_only")
+    assert render(load_selection_index([city, declaring])).episode_count == 2
+    assert (out / city.slug / "audio_feed.xml").read_text().count("<item>") == 2
+    assert state.read_bytes() == original
+
+
+def test_archive_only_identity_conflict_is_a_city_error_without_writes(tmp_path):
+    """A bad identity preserves that city's output without raising into the render executor."""
+    city, pipeline = _publication_render_fixture(tmp_path)
+    city.extra.pop("publication_selection")
+    ep = pipeline.render_from_records(city)[0]
+    city.extra["archive_only"] = [
+        {"uid": ep.uid, "provider_guid": "wrong", "reason": "hold", "approval_ref": "approval"}
+    ]
+    out = tmp_path / "docs"
+    target = out / city.slug
+    target.mkdir(parents=True)
+    (target / "audio_feed.xml").write_text("previous output")
+    result, entry = run._process_city(
+        city, "https://example.gov", out, {}, 0, False, pipeline, {}, "original", no_refresh=True
+    )
+    assert result.status == "error"
+    assert "GUID mismatch" in result.detail
+    assert entry is None
+    assert (target / "audio_feed.xml").read_text() == "previous output"

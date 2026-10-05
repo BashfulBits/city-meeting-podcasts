@@ -1301,3 +1301,13 @@ GUID394474/UID757ab2a4aaf9bbca from Council to Addison: TIF Meetings. Canonical 
 attribution changes accordingly; original raw record, UID and hosted audio remain. After the
 Council narrowing,500 original Council selections remain. No audio invalidation or backfill.
 The case remains open pending human merge and deployed subscription verification.
+
+
+### Archive-only publication visibility
+
+Human-approved `archive_only` declarations bind exact UID/provider GUID pairs to an existing
+source. They exclude those recordings from feed, browse, speaker and search projections across
+that source while preserving raw records, audio and direct meeting pages. Independent official
+calendar records remain retained. The policy hash invalidates derived render/search caches on
+addition or reversal; audio specifications and processing stages are unchanged. Source-scoped
+identity conflicts fail visibly instead of silently hiding an unrelated recording.
