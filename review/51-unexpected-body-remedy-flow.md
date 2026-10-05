@@ -2098,7 +2098,8 @@ as search record inputs. Search downloads that exact artifact (no fresh snapshot
 same pinned production deps, runs new command under20minute indexing deadline with bounded job
 setup allowance, uploads complete site. Deploy consumes only that site's same-run artifact,
 retains existing Pages concurrency/deployment environment/retries. Keep current60minute job
-ceiling; job-level least privilege: render/search contents:read, deployment Pages/id-token only.
+ceiling; job-level least privilege: render contents:read plus pages:read for existing metadata lookup, search contents:read,
+deployment pages:write/id-token:write only.
 Existing storage read secrets scoped to search command; no new names/backend or interactive auth.
 Preserve paths on deferral and allow deployment of retained complete site with explicit summary.
 
@@ -2140,3 +2141,8 @@ only after human merge; no inference for other unresolved Fort Worth bundles.
 build-deploy job. Update only deploy workflow job/artifact/order assertions for approved
 render→search→deploy, retaining credential scope, pinned action, permissions, refresh/render
 and deploy gates. This is required validation of the already approved three-job contract.
+
+#2084 Pages metadata compatibility: pinned configure-pages45bfe uses getPages for existing
+site metadata; enablement defaults false. Render retains this action with explicit
+enablement:false and pages:read only, preserving dynamic base_url for custom-domain and
+github.io sites. Provisioning is disabled; Pages/id-token write remains deployment-only.
