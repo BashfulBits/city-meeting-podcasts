@@ -1336,6 +1336,9 @@ page attribution becomes Council; participant discovery remains the #2018 redesi
 Keep the evidence case open until human merge and deployed subscription verification.
 
 
+Arlington CND #2038 prepared/unmerged: four verified committee recordings receive a dedicated
+exact-label feed and leave Council, retaining the All Meetings aggregate and original UID/audio.
+No stage invalidation or backfill. Cases remain open until deployed membership verification.
 ### Archive-only and 2016 joint shipped (2026-10-05)
 
 Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).

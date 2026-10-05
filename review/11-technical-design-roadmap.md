@@ -1344,6 +1344,10 @@ Arlington Community and Neighborhood Development ownership: L3 bounded review/51
 Four official standalone committee recordings move out of Council into a dedicated exact-label
 feed; preserve the intentional All Meetings aggregate. Environmental Task Force assessed separately.
 
+
+Arlington CND #2038 prepared/unmerged: four verified committee recordings receive a dedicated
+exact-label feed and leave Council, retaining the All Meetings aggregate and original UID/audio.
+No stage invalidation or backfill. Cases remain open until deployed membership verification.
 ### Archive-only and 2016 joint shipped (2026-10-05)
 
 Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).

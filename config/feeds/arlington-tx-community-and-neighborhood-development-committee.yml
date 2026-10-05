@@ -1,0 +1,12 @@
+slug: arlington-tx-community-and-neighborhood-development-committee
+city: arlington-tx
+provider: granicus
+source:
+  feed_url: https://arlingtontx.granicus.com/ViewPublisherRSS.php?view_id=2&mode=vpodcast
+  body_exact:
+  - Community and Neighborhood Development Committee
+podcast_title: 'Arlington: Community and Neighborhood Development Committee'
+podcast_author: City of Arlington, TX
+podcast_email: ''
+podcast_description: Meetings of Arlington's Community and Neighborhood Development
+  Committee.

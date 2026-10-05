@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Give four verified Arlington Community and Neighborhood Development committee recordings
+  their own exact-label feed; remove Council leakage and preserve All Meetings, UID/audio and
+  archives. No stage invalidation or audio backfill.
+
 - Correct dispatch quota accounting: reserve and settle Qwen 3.8's 200k daily token allowance;
   classify OrcaRouter prompt-cap errors by metadata, reroute rejected jobs and retain a learned
   size bound while keeping shorter jobs eligible. Google uses trailing-minute input-only TPM,
