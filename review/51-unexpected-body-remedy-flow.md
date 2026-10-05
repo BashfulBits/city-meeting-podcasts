@@ -1636,3 +1636,28 @@ Council membership and change no other feed memberships; negative unrelated-GUID
 Case register updates preparation evidence only; keep open until deployed verification.
 Lifecycle docs: review/11, audit, CHANGELOG, ARCHITECTURE and ROADMAP. No runtime/schema,
 dependency/provider/stage/storage changes, audio invalidation or backfill. Human merge required.
+
+### Arlington Community and Neighborhood Development — L3
+
+Maintainer-authorized catalog-wide committee ownership correction. Four retained 2020 records
+have exact body `Community and Neighborhood Development Committee`; dated official agendas
+convene that committee alone. Current official Council-member assignments and the2026 city
+Neighborhood Matching Grant guide distinguish this continuing committee from full Council.
+
+Create config/feeds/arlington-tx-community-and-neighborhood-development-committee.yml with
+slug matching filename, city arlington-tx, provider granicus, existing view2 feed_url, source
+body_exact list containing only that exact committee label. Title Arlington: Community and
+Neighborhood Development Committee, author City of Arlington, TX, empty email, description
+Meetings of Arlington's Community and Neighborhood Development Committee. Do not infer
+lifecycle retirement from old cached dates; omit lifecycle and optional meeting_family.
+Remove only that label from arlington-tx-council.yml body_any. Preserve arlington-tx All Meetings
+and every other selector. No global exclusions or changes to genuine Council joint recordings.
+
+New tests/fixtures/arlington-cnd-retained.json captures four original minimal records/audio;
+tests/test_arlington_cnd_ownership.py loads actual config and verifies four Council departures,
+four dedicated-feed additions, unchanged All Meetings selection, original RSS UID/enclosure,
+near-label/topic negatives and unchanged raw records. Full retained-source replay must show
+only those exact membership changes. Update four register cases with prepared proof, not closure.
+Lifecycle review11/CHANGELOG/ARCHITECTURE/ROADMAP/audit. Issue before code, whole offline/Ruff,
+current CI/CodeRabbit then human merge. No runtime/provider/schema/dependency/stage changes.
+Environmental Task Force remains a separate lifecycle/evidence decision, not silently bundled.

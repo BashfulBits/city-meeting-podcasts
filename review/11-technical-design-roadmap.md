@@ -1339,3 +1339,7 @@ while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership rep
 exactly one Council membership (500 to 501), with no other feed changes. Existing canonical
 page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
 Keep the evidence case open until human merge and deployed subscription verification.
+
+Arlington Community and Neighborhood Development ownership: L3 bounded review/51 contract.
+Four official standalone committee recordings move out of Council into a dedicated exact-label
+feed; preserve the intentional All Meetings aggregate. Environmental Task Force assessed separately.
