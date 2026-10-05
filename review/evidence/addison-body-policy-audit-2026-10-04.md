@@ -1067,3 +1067,10 @@ The maintainer subsequently approved Archive only for all six recordings: GUID55
 56026, 56027, 56028, 56059, and 56060. This publication decision does not invent an institutional
 identity for uncertain films or erase excerpt/source-binding obligations. Direct archives and
 audio remain; public feed/search/browse omission is implemented separately under #2023.
+
+
+September 2016 joint correction (#2025), prepared/unmerged: exact GUID55634 adds Council
+while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership replay adds
+exactly one Council membership (500 to 501), with no other feed changes. Existing canonical
+page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
+Keep the evidence case open until human merge and deployed subscription verification.

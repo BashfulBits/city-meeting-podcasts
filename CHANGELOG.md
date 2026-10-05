@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Prepare the verified September 19, 2016 Addison Council/P&Z joint subscription (#2025).
+  Add Council alongside P&Z with the same UID/audio; existing canonical search attribution
+  becomes Council. No record changes, stage invalidation or audio backfill.
+
 - Prepare source-scoped Archive-only visibility (#2023) for six approved Addison historical
   recordings. Remove public feed/search/browse discovery while preserving raw records, direct
   meeting pages, stable UIDs and audio. Policy changes rebuild only derived render/search outputs;

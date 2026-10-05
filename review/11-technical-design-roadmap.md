@@ -1332,3 +1332,10 @@ and current-head CodeRabbit/CI validation remain required; no audio backfill or 
 September2016 Council/P&Z joint correction: L3 bounded review/51 contract; restore only the
 missing Council subscription, retain P&Z and stable recording identity, use existing canonical
 Council page choice with participant discovery deferred to #2018. Human merge/deployment gated.
+
+
+September 2016 joint correction (#2025), prepared/unmerged: exact GUID55634 adds Council
+while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership replay adds
+exactly one Council membership (500 to 501), with no other feed changes. Existing canonical
+page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
+Keep the evidence case open until human merge and deployed subscription verification.
