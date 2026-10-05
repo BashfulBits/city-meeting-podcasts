@@ -1513,3 +1513,21 @@ newly introduced regressions. No ownership proof is inferred from the candidate 
 | eb1c279cc51a9b04 | 202452 | Citizens Bond Task Force: Town Hall Meeting | none |
 | eeca5aeceda62d39 | 272005 | 2024 Capital Bond Program CBTF Meeting | none |
 | fc9ad3b1d9def142 | 202451 | Citizens Bond Task Force: Town Hall Meeting | none |
+
+### Arlington ETF deployed ownership closure — 2026-10-05
+
+Deploy37333553141 on5479ff68 succeeded. Read-only dedicated ETF audio RSS returns200
+with6 items; actual Council slug arlington-tx-council audio RSS returns200 with495 items.
+All six original UIDs occur in ETF with exact persisted audio URLs and are absent from
+Council. Six ownership cases resolve; source raw records, namespaces and audio unchanged.
+The deliberately unfiltered All Meetings aggregate remains unchanged by full1,515 replay;
+bounded live history is not a completeness claim. Register159 cases:127 resolved32 open.
+
+| UID | Original verified audio URL |
+|---|---|
+| 1792515fdd51c6c2 | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/1792515fdd51c6c2-6ce74547f120.m4a |
+| 25e9b8510b0a7a66 | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/25e9b8510b0a7a66-52d20ccf2d77.m4a |
+| 2d5dc451df2da130 | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/2d5dc451df2da130-257b989183aa.m4a |
+| 35b22fcc8d07967b | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/35b22fcc8d07967b-bedc78824c46.m4a |
+| 9b66e98b682a47f2 | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/9b66e98b682a47f2-5965cabd9a0a.m4a |
+| a683af6e13e2bd7a | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/a683af6e13e2bd7a-3a59dddd57ab.m4a |
