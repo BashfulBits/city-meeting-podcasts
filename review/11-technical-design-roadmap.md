@@ -1361,3 +1361,7 @@ Luncheon direct archive route: L3 bounded review/51 contract, maintainer authori
 
 Dallas Redistricting Council leakage: L3 bounded review/51 contract, official dated Commission
 agenda verifies one wrong Council override; preserve existing Commission subscription/UID/audio.
+
+
+Dallas Commission correction #2034 prepared: remove only GUID203320 Council inclusion;
+retain dedicated Commission feed and original UID/audio. Human merge/deployment verification gated.

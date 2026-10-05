@@ -12,6 +12,9 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Remove the verified January 22, 2022 Dallas Redistricting Commission recording from Council;
+  retain its dedicated Commission feed, UID/audio and archives. No stage invalidation or backfill.
+
 - Restore exact raw archive routing for the approved Addison luncheon; retain archive-only
   feed/search/browse exclusion, original UID/audio, and unchanged processing stages.
 
