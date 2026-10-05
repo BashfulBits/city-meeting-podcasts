@@ -1770,8 +1770,8 @@
       "uid": "bd172b762dd20b63",
       "provider_guid": "203320",
       "question": "Council selector admits apparent separate body; official ownership proof required",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "missing_evidence": "Human merge and deployed Commission-only RSS verification",
+      "next_action": "Verify prepared #2034 Council override removal after deployment, preserving Commission UID/audio",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-city-council",
@@ -1930,9 +1930,9 @@
       "source_key": "3b7588310856",
       "uid": "a1aa4af8f26e120c",
       "provider_guid": "13509",
-      "question": "Council selector admits apparent separate body; official ownership proof required",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "question": "Verified Council/Library Board joint needs Library participation coverage",
+      "missing_evidence": "Dedicated Library Board feed admission and exact participant subscription replay",
+      "next_action": "Preserve Council: official March3,2014 agenda explicitly convenes joint meeting; include same UID/audio in future verified Library Board feed",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "denton-tx-city-council"

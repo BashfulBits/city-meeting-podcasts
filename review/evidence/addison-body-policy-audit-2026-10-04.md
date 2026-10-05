@@ -1185,3 +1185,13 @@ Current selectors already admit it to the dedicated Redistricting Commission fee
 Council. Recommended correction removes only its Council GUID override, retaining Commission,
 raw UID/audio and historical feed. This verdict does not classify the other CBTF recording:
 its available packet describes the program and subcommittees, requiring dated meeting proof.
+
+
+Denton UIDa1aa4af8f26e120c/GUID13509: official March3,2014 agenda explicitly convenes
+Council jointly with the Library Board. Retain Council; investigate missing Library subscription.
+This is a genuine joint, not a false Council inclusion. Case remains active until participant
+coverage is prepared and verified. The body-label heuristic alone would have misclassified it.
+
+Dallas #2034 prepared ownership replay: all5353 retained records/1095 labels examined.
+Council359->358 removes only UIDbd172b762dd20b63; every other feed UID set unchanged.
+Raw records are unchanged. Case remains open until human merge and deployed verification.
