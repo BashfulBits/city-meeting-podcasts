@@ -2023,3 +2023,17 @@ audio/source UID, storage, dependency, workflow, publication-selection, search o
 No invalidation/backfill. Update audit/register prepared actions, ARCHITECTURE/CHANGELOG/ROADMAP
 and review11. Close no case solely from selectors; keep independent missing-date/content evidence
 and deployment verification explicit. Freeze/stamp this section only after human merge.
+
+### Remaining37 maintainer decisions — October5 follow-up
+
+Maintainer explicitly requests resolution of all37 registered open recordings. Independent
+proof work may proceed in parallel; closures still require verified evidence and deployed proof.
+Fort Worth3814 disposition approved: keep whole consecutive CCPD/Council bundle in both proven
+participant feeds, explicitly label it as consecutive proceedings. Preserve both source-view
+UIDs and whole audio; no duplicate winner or audio split. Design the bounded presentation-only
+label contract before changing code; no broader bundled-recording inference.
+
+Search scheduling choice approved: run search in a separate bounded job, keep the existing
+search time ceiling. Prepare exact workflow/CLI/artifact ownership and failure/preservation
+contract before implementation. This is authorization for the chosen approach, not permission
+to introduce an unspecified schema, raise a budget or touch credentials interactively.

@@ -784,9 +784,9 @@
       "uid": "63b22f80ce9500ff",
       "provider_guid": "56029",
       "question": "Citizen Advisory historical compilation retained in Public Input",
-      "missing_evidence": "Exact program binding and provider eleven-item versus ten-source-part reconciliation",
-      "next_action": "Reconcile original compilation chapters and official historical program records",
-      "last_researched": "2026-10-04",
+      "missing_evidence": "Exact historical program-to-recording binding; eleven-item archive count is not an established eleven-part recording requirement.",
+      "next_action": "Bind the ten retained compilation parts to official advisory program records; do not infer a missing part from archive listing count.",
+      "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
       ],
@@ -2062,8 +2062,8 @@
       "uid": "0c66fc968402fabd",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3814",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "missing_evidence": "Publication disposition for proven consecutive CCPD/Council bundle; exact original chapter boundaries verified.",
+      "next_action": "Obtain maintainer bundle disposition, commit bounded L3, preserve whole raw recording/audio, verify deployment.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
@@ -2193,8 +2193,8 @@
       "uid": "99152cb9e61fa091",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=3814",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "missing_evidence": "Publication disposition for proven consecutive CCPD/Council bundle; exact original chapter boundaries verified.",
+      "next_action": "Obtain maintainer bundle disposition, commit bounded L3, preserve whole raw recording/audio, verify deployment.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
@@ -2355,7 +2355,7 @@
       "provider_guid": "269613",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
       "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Reconcile official CBTF archive and source chapters, prepare bounded ownership contract; no title-only closure",
+      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
@@ -2547,7 +2547,7 @@
       "provider_guid": "270975",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Reconcile official bond subcommittee archive and original chapters; design complete-label rule preserving standing aliases and genuine joints before correction",
+      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
@@ -2563,7 +2563,7 @@
       "provider_guid": "259821",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Reconcile official bond subcommittee archive and original chapters; design complete-label rule preserving standing aliases and genuine joints before correction",
+      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
@@ -2579,7 +2579,7 @@
       "provider_guid": "233032",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Reconcile official bond subcommittee archive and original chapters; design complete-label rule preserving standing aliases and genuine joints before correction",
+      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
@@ -2595,7 +2595,7 @@
       "provider_guid": "269407",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Reconcile official bond subcommittee archive and original chapters; design complete-label rule preserving standing aliases and genuine joints before correction",
+      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
@@ -2611,7 +2611,7 @@
       "provider_guid": "269609",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Reconcile official bond subcommittee archive and original chapters; design complete-label rule preserving standing aliases and genuine joints before correction",
+      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
@@ -2627,7 +2627,7 @@
       "provider_guid": "277830",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Reconcile official bond subcommittee archive and original chapters; design complete-label rule preserving standing aliases and genuine joints before correction",
+      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
@@ -2643,7 +2643,7 @@
       "provider_guid": "259823",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Reconcile official bond subcommittee archive and original chapters; design complete-label rule preserving standing aliases and genuine joints before correction",
+      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
@@ -2659,7 +2659,7 @@
       "provider_guid": "277827",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Reconcile official bond subcommittee archive and original chapters; design complete-label rule preserving standing aliases and genuine joints before correction",
+      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
@@ -2675,7 +2675,7 @@
       "provider_guid": "259827",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Reconcile official bond subcommittee archive and original chapters; design complete-label rule preserving standing aliases and genuine joints before correction",
+      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
@@ -2691,7 +2691,7 @@
       "provider_guid": "232343",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Reconcile official bond subcommittee archive and original chapters; design complete-label rule preserving standing aliases and genuine joints before correction",
+      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"

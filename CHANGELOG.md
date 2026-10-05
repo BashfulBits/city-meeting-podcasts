@@ -7327,3 +7327,8 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   complete institutional aliases, preserving genuine joints and existing exceptions; add a
   complete-label 2024 bond subcommittee subscription. Recurrences need no GUID pin. Preserve
   raw UIDs/audio/source records; no stage invalidation or backfill.
+
+- Prepared #2081: separate Dallas 2024 bond Streets and Transportation with reusable complete
+  institution labels, preserving standing aliases/joints and four existing GUID exceptions.
+  Raw recordings/UIDs/audio stay unchanged; no stage invalidation or backfill. Cases stay open
+  pending independent recording evidence and deployed ownership verification.

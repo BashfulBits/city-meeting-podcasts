@@ -1401,3 +1401,9 @@ Dallas Economic Development uses complete normalized institutional aliases to se
 standing Council committee (including proven joint labels) from the independently convened
 2024 bond Economic Development/Housing/Homeless Solutions subcommittee. Both use existing
 `source.body_exact`; stable-label recurrences route automatically without per-record pins.
+
+Dallas Transportation ownership uses existing complete-label selectors for standing aliases
+and the distinct 2024 bond Streets subcommittee; four historic GUID exceptions remain explicit.
+Recurring same-label records need no new GUID admission. This changes subscription projection,
+not raw source retention, UID/audio identity or stage invalidation. Prepared #2081 retains
+independent evidence and deployment gates for case closure.
