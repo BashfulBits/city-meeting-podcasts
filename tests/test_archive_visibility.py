@@ -170,3 +170,26 @@ def test_approved_addison_config_archives_only_six_original_identities():
         assert is_archive_only(index, "abbf5e25e078", record)
         assert not is_archive_only(index, "another-source", record)
     assert records == original
+
+
+def test_luncheon_raw_archive_route_keeps_public_exclusion():
+    """Exact raw routing creates a page without granting public discovery."""
+    import json
+    from pathlib import Path
+
+    from citypods.bodies import record_matches_body, source_body_filter, source_body_inclusions
+    from citypods.config import load_city_configs
+
+    root = Path(__file__).resolve().parents[1]
+    cities = load_city_configs(root / "config", {})
+    city = next(c for c in cities if c.slug == "addison-tx-town-meetings")
+    records = json.loads((root / "tests/fixtures/addison-archive-only.json").read_text())
+    record = records["35a78fa89c7c5c5c"]
+    assert record_matches_body(
+        record, source_body_filter(city.source), source_body_inclusions(city.source)
+    )
+    assert is_archive_only(load_archive_index(cities), source_key(city), record)
+    wrong = dict(record, provider_guid="not-the-luncheon")
+    assert not record_matches_body(
+        wrong, source_body_filter(city.source), source_body_inclusions(city.source)
+    )
