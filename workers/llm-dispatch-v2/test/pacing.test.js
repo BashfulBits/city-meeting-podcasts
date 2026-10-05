@@ -374,3 +374,33 @@ test("effectiveBufferSeconds ignores absent or nonsensical buffers", () => {
   assert.equal(effectiveBufferSeconds({ buffer_seconds: 0, buffer_updated_at: now }, now), 0);
   assert.equal(effectiveBufferSeconds({ buffer_seconds: -5, buffer_updated_at: now }, now), 0);
 });
+
+
+test("TPD refills continuously: the reported 748-token deficit takes 323.136 seconds", () => {
+  const route = freshRoute({ tpd: 200000, tpd_used: 199659, tpd_updated_at: NOW });
+  const request = { input_token_estimate: 1000, max_output_token_estimate: 89 };
+  assert.equal(earliestSafeStart(route, request, NOW, NOW).notBeforeAt, NOW + 323136);
+  assert.equal(earliestSafeStart(route, request, NOW + 86400000, NOW + 86400000).notBeforeAt,
+    NOW + 86400000);
+  assert.equal(earliestSafeStart(route,
+    { input_token_estimate: 200001, max_output_token_estimate: 0 }, NOW, NOW), null);
+});
+
+test("learned free prompt cap preserves small requests and rejects larger ones", () => {
+  const route = freshRoute({ prompt_cap_estimate: 1000 });
+  assert.notEqual(earliestSafeStart(route,
+    { input_token_estimate: 1000, max_output_token_estimate: 0 }, NOW, NOW), null);
+  assert.equal(earliestSafeStart(route,
+    { input_token_estimate: 1001, max_output_token_estimate: 0 }, NOW, NOW), null);
+});
+
+test("Google uses input-only quota and trailing-minute starts despite idle credit", () => {
+  const route = freshRoute({ provider: "gemini", tpm: 10000,
+    input_window_json: JSON.stringify([{ at: NOW - 1000, tokens: 9000 }]),
+    full_token_budget: 1000000 });
+  const request = { input_token_estimate: 2000, max_output_token_estimate: 8192 };
+  assert.equal(reservationFor(request, { route }), 2000);
+  assert.equal(earliestSafeStart(route, request, NOW, NOW).notBeforeAt, NOW + 59000);
+  assert.equal(earliestSafeStart(route,
+    { input_token_estimate: 1000, max_output_token_estimate: 8192 }, NOW, NOW).notBeforeAt, NOW);
+});

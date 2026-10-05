@@ -891,6 +891,7 @@ async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits
       retryAfterSeconds: cls.retry_after_seconds ?? response.retryAfterSeconds,
       failureClass: cls.failure_class,
       ruleId: cls.rule_id,
+      tokenQuota: cls.token_quota ?? null,
     };
   }
 
@@ -1100,7 +1101,8 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
       attemptId,
       Date.now(),
       outcome.retryAfterSeconds,
-      outcome.failureClass
+      outcome.failureClass,
+      outcome.tokenQuota
     );
     if (!auth.authorized || auth.retry_not_before > bundleDeadline) {
       return {

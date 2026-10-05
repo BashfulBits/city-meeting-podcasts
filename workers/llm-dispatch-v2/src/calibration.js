@@ -59,12 +59,15 @@ export function routeInputTokenRatio(route) {
  * Infinity when the route has no ceiling.
  */
 export function hardInputCeilingLimit(route, { tolerant = false } = {}) {
+  const tpm = Number(route?.tpm);
+  const quotaCeiling = route?.provider === "gemini" && tpm > 0
+    ? tpm : Number.POSITIVE_INFINITY;
   const ceiling = Number(route?.hard_input_ceiling);
-  if (!Number.isFinite(ceiling) || ceiling <= 0) return Number.POSITIVE_INFINITY;
-  if (!tolerant) return ceiling;
+  if (!Number.isFinite(ceiling) || ceiling <= 0) return quotaCeiling;
+  if (!tolerant) return Math.min(ceiling, quotaCeiling);
   const tolerance = Number(route?.hard_input_ceiling_tolerance);
   const slack = Number.isFinite(tolerance) && tolerance > 0 && tolerance <= 0.5 ? tolerance : 0;
-  return Math.floor(ceiling * (1 + slack));
+  return Math.min(Math.floor(ceiling * (1 + slack)), quotaCeiling);
 }
 
 /** A raw chars/4 estimate expressed in the route's own tokenizer units. */

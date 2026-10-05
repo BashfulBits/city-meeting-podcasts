@@ -404,6 +404,7 @@ _NON_SIZE_CLASSES = frozenset(
         "server_error",
         "own_rpm",
         "own_rpd",
+        "own_tpd",
         "own_tpm",
         "payment_required",
         "unknown_429",

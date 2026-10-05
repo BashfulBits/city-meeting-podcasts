@@ -429,7 +429,7 @@ test("GET /v2/calibration reports the ratio the claim applies to a route and pro
   // Gemma's 1.2x headroom on the learned p95 lifts it above the 1.4 prior.
   assert.ok(Math.abs(body.input_ratio_effective - 1.56) < 1e-9);
   assert.equal(body.hard_input_ceiling, 14400);
-  assert.equal(body.hard_input_ceiling_tolerance, 0.1);
+  assert.equal(body.hard_input_ceiling_tolerance, 0);
 });
 
 test("GET /v2/stats makes historical diagnostics explicit and clamps their limit", async () => {

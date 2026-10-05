@@ -419,6 +419,7 @@ _WORKER_ROUTE_FIELDS = (
     "account_id",
     "rpm",
     "rpd",
+    "tpd",
     "tpm",
     "concurrency",
     "request_start_margin_seconds",
@@ -943,6 +944,16 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                 route["rpm"] = _scale_rate_limit(route["rpm"], split_cap_multiplier)
             if route.get("rpd") is not None:
                 route["rpd"] = _scale_rate_limit(route["rpd"], split_cap_multiplier)
+        if route.get("tpd") is not None:
+            tpd = route["tpd"]
+            if (
+                isinstance(tpd, bool)
+                or not isinstance(tpd, (int, float))
+                or tpd <= 0
+                or not math.isfinite(tpd)
+            ):
+                raise ValueError(f"route {route['route_id']} has invalid tpd: {tpd!r}")
+            route["tpd"] = _scale_rate_limit(tpd, token_estimate_buffer * split_cap_multiplier)
         if route.get("tpm") is not None and (
             token_estimate_buffer != 1.0 or split_cap_multiplier != 1.0
         ):
@@ -1115,6 +1126,7 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                 "own_rpm",
                 "own_tpm",
                 "own_rpd",
+                "own_tpd",
                 "unknown_429",
             ):
                 raise ValueError(

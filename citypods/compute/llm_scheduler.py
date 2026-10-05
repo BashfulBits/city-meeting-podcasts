@@ -228,6 +228,9 @@ def _next_quota_reset(
         token_ready_at = datetime.fromisoformat(ledger.tokens_available_at)
         if token_ready_at > now.astimezone(UTC):
             resets.append(token_ready_at)
+    if quota.tpd is not None and ledger.tokens_day + tokens > quota.tpd:
+        deficit = ledger.tokens_day + tokens - quota.tpd
+        resets.append(now.astimezone(UTC) + timedelta(seconds=deficit * 86400 / quota.tpd))
     if quota.rpd is not None and ledger.requests_day + requests > quota.rpd:
         resets.append(_next_local_midnight(quota.reset_timezone, now))
     if pricing.daily_cost_cap is not None and ledger.cost_day_used + cost > pricing.daily_cost_cap:
@@ -466,6 +469,9 @@ def select_route(
         route_requests, route_tokens = _reservation_size(
             route, requests=requests, tokens=route_estimated_tokens, transport=transport
         )
+        if route.quota.tpd is not None and route_tokens > route.quota.tpd:
+            rejected.append((model, "daily token limit per reservation"))
+            continue
         # Flexible work waits for the cheaper price before capacity admission. In particular,
         # applying a peak-rate estimate to a daily cost cap must not reject work that can fit at
         # the imminent off-peak rate; its next selection re-evaluates all quota and cost gates.
