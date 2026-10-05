@@ -1594,3 +1594,26 @@ Before implementation, commit a bounded review/51 contract naming aliases, affec
 fixtures and positive/negative tests. Replay all 5,353 Dallas rows, including genuine joints,
 subcommittees and town halls; preserve raw UIDs/audio and every unrelated holder. Explicitly
 separate institution ownership from recording-content proof and publication eligibility.
+
+Dallas #2068 reusable rule implementation replay: all5,353 retained source rows; standing
+Economic Development157→156 loses only UID8969ad6d91ed23d2, new bond subcommittee0→1 gains
+that UID, every other subscription unchanged. Eleven full standing labels preserve explicit
+joints. Same-label/new-GUID acceptance is intentional; unrelated labels/subcommittees reject.
+Original audio/raw identity preserved. Case remains open pending actual deployment proof.
+
+### Transportation reusable-rule census — October 5 follow-up
+
+Dallas standing Transportation and Infrastructure config includes the broad `Transportation`
+substring. Full cached source census finds 11 distinct bond-subcommittee rows admitted by it:
+two `2024 Capital Bond Streets & Transportation Subcommittee Meeting`, four
+`2024 Capital Bond Streets and Transportation Meeting`, four
+`2024 Capital Bond Streets and Transportation Subcommittee Meeting`, and one
+`2024 Bond Task Force Streets and Transportation Subcommittee` (registered GUID269613).
+Thus the original one-record case understates this selector's institutional collision; ten
+additional retained recordings need individual raw identity registration and official proof.
+
+The same selector admits genuine named Council/DART and legislative-ad-hoc joint labels,
+Transportation-for-Hire proceedings, and standing aliases. Preserve those while auditing
+complete-label rules. These counts identify candidates, not a verified ownership verdict or
+live RSS coverage. Do not remove all bond-looking titles until independent institutional and
+recording binding evidence supports a bounded contract. Existing source records remain intact.

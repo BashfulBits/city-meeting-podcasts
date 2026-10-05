@@ -3,13 +3,25 @@ city: dallas-tx
 provider: swagit
 source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
-  body: "Economic Development"
   body_includes:
-    - provider_guid: "205545"
-      body: "Small Business Resource Virtual Town Hall Meeting"
-    - provider_guid: "203327"
-      body: "Dallas Development Fund"
-podcast_title: "Dallas: Economic Development"
-podcast_author: "City of Dallas, TX"
-podcast_email: ""
-podcast_description: "Economic Development meetings for Dallas."
+    - provider_guid: '205545'
+      body: Small Business Resource Virtual Town Hall Meeting
+    - provider_guid: '203327'
+      body: Dallas Development Fund
+  body_exact:
+    - Combined Economic Development & Housing
+    - Economic Development
+    - Economic Development & Committee on Finance
+    - Economic Development Committee
+    - Economic Development and Housing Committee
+    - Joint Meeting of Transportation and Economic Development Meeting
+    - Special Call Meeting Economic Development & Housing Committee Housing Policy Stakeholder Forum
+    - Special Called Joint Meeting of Economic Development and Workforce, Education, and Equity
+    - Special Called Joint Meeting of the Council Ad Hoc Committee on Professional Sports Recruitment
+      and Retention and Council Economic Development Committee
+    - Special Economic Development
+    - Special Economic Development and Housing Committee
+podcast_title: 'Dallas: Economic Development'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Economic Development meetings for Dallas.
