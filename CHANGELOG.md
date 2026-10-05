@@ -12,6 +12,9 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Separate four verified Denton Health & Building Standards Commission recordings from Council;
+  retain original UID/audio/raw records. No stage invalidation or automatic backfill.
+
 - Give four verified Arlington Community and Neighborhood Development committee recordings
   their own exact-label feed; remove Council leakage and preserve All Meetings, UID/audio and
   archives. No stage invalidation or audio backfill.

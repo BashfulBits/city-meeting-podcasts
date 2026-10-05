@@ -1375,3 +1375,7 @@ retain dedicated Commission feed and original UID/audio. Human merge/deployment 
 
 Denton Health & Building Standards: L3 bounded review/51 contract for four exact verified
 commission records, dedicated feed and Council correction; preserve Council/Library joint.
+
+Denton #2042 prepared: four verified Health & Building Standards Commission records move
+out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
+joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.

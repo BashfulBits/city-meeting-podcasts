@@ -1353,3 +1353,7 @@ browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89
 404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
 Public search and its expected manifest return 404; do not claim deployed search verification.
 Retain these visibility/access checks and all independent historical content evidence obligations.
+
+Denton #2042 prepared: four verified Health & Building Standards Commission records move
+out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
+joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.
