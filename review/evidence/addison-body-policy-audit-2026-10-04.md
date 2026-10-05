@@ -1121,3 +1121,57 @@ records Ordinance2012-366 establishing TIRZ2 and its board
 separately labels Environmental Task Force and Community/Neighborhood Development meetings
 (https://arlingtontx.granicus.com/ViewPublisher.php?view_id=9). Recording-specific agendas still
 need reconciliation before config corrections. No global substring exclusion is authorized.
+
+
+### Cross-city agenda retrieval checkpoint (2026-10-05)
+
+Read-only retrieval found hosted official agenda text for 39 of 43 registered candidates.
+HTTP success is availability, not a completed institutional/recording verdict. Four remaining
+retrieval gaps and all joint/segmentation decisions remain tracked. The April14 Environmental
+Task Force and April28 Community and Neighborhood Development agendas explicitly convene
+their named bodies with their own call-to-order/adjournment and telephone participation; these
+are substantive standalone-body evidence, not title-only classifications.
+
+- `arlington-tx-1792515fdd51c6c2-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/1792515fdd51c6c2/agenda-1cdc5446aa8e9d8f).
+- `arlington-tx-237c28f30496e3e0-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/237c28f30496e3e0/agenda-760478986af0cdb4).
+- `arlington-tx-25e9b8510b0a7a66-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/25e9b8510b0a7a66/agenda-326e3957aea95c2b).
+- `arlington-tx-2d5dc451df2da130-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/2d5dc451df2da130/agenda-048d3c873f28336b).
+- `arlington-tx-30b28efc23346a6d-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/30b28efc23346a6d/agenda-eeb106c3db36574b).
+- `arlington-tx-35b22fcc8d07967b-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/35b22fcc8d07967b/agenda-28a6b1309cb11254).
+- `arlington-tx-4357f0c39d1ae58f-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/4357f0c39d1ae58f/agenda-e797bc0615bc85b2).
+- `arlington-tx-9b66e98b682a47f2-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/9b66e98b682a47f2/agenda-d2b04dc26e89fb9c).
+- `arlington-tx-a683af6e13e2bd7a-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/a683af6e13e2bd7a/agenda-3a5431516baaa224).
+- `arlington-tx-d8f3b672b482369b-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/d8f3b672b482369b/agenda-b302b68ab4ef8b57).
+- `dallas-tx-baa19208405acb22-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/76869ed1994f/baa19208405acb22/agenda-85a528fa8d921cf9).
+- `dallas-tx-bd172b762dd20b63-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/76869ed1994f/bd172b762dd20b63/agenda-7e81fd4e35c6b9ba).
+- `denton-tx-04689e3929ac104e-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/04689e3929ac104e/agenda-b5f13d2a4b3df899).
+- `denton-tx-1c91182b70afefb3-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/1c91182b70afefb3/agenda-9c76e89344ec579b).
+- `denton-tx-2493e59c0844a4b4-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/2493e59c0844a4b4/agenda-f00ea12cc9662b4f).
+- `denton-tx-280db52d91547dd6-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/280db52d91547dd6/agenda-0a73365f4da36fd3).
+- `denton-tx-2b458f3c556df459-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/2b458f3c556df459/agenda-1fc469c352fec9dc).
+- `denton-tx-5a2ce8afb18c6a82-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/5a2ce8afb18c6a82/agenda-f0d0a8cd24db6a71).
+- `denton-tx-69d3fee77a42058c-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/69d3fee77a42058c/agenda-2e5a44f16a8ca995).
+- `denton-tx-70a6450a1deda017-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/70a6450a1deda017/agenda-6c9f1683eafa17ab).
+- `denton-tx-7abd583b2ed8189a-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/7abd583b2ed8189a/agenda-20fec26c8f520b20).
+- `denton-tx-a1aa4af8f26e120c-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/a1aa4af8f26e120c/agenda-791e2ea203a5919d).
+- `denton-tx-a9089a57a1557991-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/a9089a57a1557991/agenda-e4fb61bfcfd1cae7).
+- `denton-tx-b50c6a018b2c08e7-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/b50c6a018b2c08e7/agenda-b1a1afd7fc2c1c02).
+- `denton-tx-c10f3f6cd97ac38f-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/c10f3f6cd97ac38f/agenda-105b6b641b98eeca).
+- `denton-tx-c26f2f99a4bdaf8f-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/c26f2f99a4bdaf8f/agenda-09fac2977c403dab).
+- `denton-tx-d419e8107262d0d0-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/d419e8107262d0d0/agenda-c55034ec305175f8).
+- `denton-tx-e7c1990b7a8e539e-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/e7c1990b7a8e539e/agenda-4497295b281ff426).
+- `fort-worth-tx-081d2695d7d0136a-ownership`: agenda status no artifact; locate official agenda.
+- `fort-worth-tx-0c66fc968402fabd-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/0c66fc968402fabd/agenda-b6965cf9b8b2ec44).
+- `fort-worth-tx-0d5832dbd08e6dd8-ownership`: agenda status no artifact; locate official agenda.
+- `fort-worth-tx-1cbf75c664b7c63e-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/1cbf75c664b7c63e/agenda-dc304ac57a1bef1e).
+- `fort-worth-tx-1d3f5b988918cba0-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/1d3f5b988918cba0/agenda-0de271fd089eee9f).
+- `fort-worth-tx-27254aa1a700569f-ownership`: agenda status no artifact; locate official agenda.
+- `fort-worth-tx-497b3aa05255bfb9-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/497b3aa05255bfb9/agenda-9d13c4c47d8e5225).
+- `fort-worth-tx-6a1dd0e9e8088440-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/6a1dd0e9e8088440/agenda-538bf69c30bf1d42).
+- `fort-worth-tx-83d6abdb749bc76f-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/83d6abdb749bc76f/agenda-f77d64b9f1d0bf88).
+- `fort-worth-tx-99152cb9e61fa091-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/99152cb9e61fa091/agenda-b6965cf9b8b2ec44).
+- `fort-worth-tx-b7a9ee9eae6fafc6-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/b7a9ee9eae6fafc6/agenda-c9785e507c29505b).
+- `fort-worth-tx-c57e1210d9282ab1-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/c57e1210d9282ab1/agenda-2effb0b0240c0426).
+- `fort-worth-tx-e0736bdd5835b1d4-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/e0736bdd5835b1d4/agenda-f77d64b9f1d0bf88).
+- `fort-worth-tx-ead427dae0bbb284-ownership`: agenda status no artifact; locate official agenda.
+- `fort-worth-tx-f28ae055829705ec-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/f28ae055829705ec/agenda-0de271fd089eee9f).
