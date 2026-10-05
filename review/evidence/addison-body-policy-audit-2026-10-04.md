@@ -1340,3 +1340,53 @@ GUID URLs and exact two body labels. Their dated retained agendas each contain E
 order and adjournment; Council mentions concern report/recommendation context. Review/51
 #2055 records the bounded preimplementation contract, preserving All Meetings. No committee
 standing status or dissolution inference is made. Six cases remain open until deployed proof.
+
+Arlington ETF #2055 implementation is prepared under the exact six-record review/51
+contract: dedicated feed, only Council ETF term removed, All Meetings/raw UID/audio
+preserved. Deployed verification pending; no standing or dissolution inference.
+
+### Denton full-stack live verification — 2026-10-05 15:00 UTC
+
+Successful deployment 37321232154 main `8a4adbeb`; all six checked feed URLs return 200.
+Fourteen of sixteen exact records match expected membership and original fixture audio URLs.
+Only those fourteen cases are resolved (four previously verified Health cases plus ten now).
+Council RSS has 493 items; Library has two, Zone1 six, Zone2 one, Bond one, Health four.
+
+| UID | Verified dedicated feed | Original audio filename under Swagit source 3b7588310856 |
+|---|---|---|
+| 280db52d91547dd6 | denton-tx-health-building-standards-commission | 280db52d91547dd6-11174e3f8f49.m4a |
+| 7abd583b2ed8189a | denton-tx-health-building-standards-commission | 7abd583b2ed8189a-c760fcff8133.m4a |
+| d419e8107262d0d0 | denton-tx-health-building-standards-commission | d419e8107262d0d0-f68204d763e1.m4a |
+| e7c1990b7a8e539e | denton-tx-health-building-standards-commission | e7c1990b7a8e539e-e2a2da60a988.m4a |
+| b50c6a018b2c08e7 | denton-tx-library-board | b50c6a018b2c08e7-a61458854406.m4a |
+| c10f3f6cd97ac38f | denton-tx-library-board | c10f3f6cd97ac38f-e6ac08b8754e.m4a |
+| 04689e3929ac104e | denton-tx-special-citizens-bond-advisory-committee | 04689e3929ac104e-8842e26bc64f.m4a |
+| 1c91182b70afefb3 | denton-tx-tirz-2-board | 1c91182b70afefb3-f46afc15e128.m4a |
+| 2493e59c0844a4b4 | denton-tx-tirz-1-board | 2493e59c0844a4b4-84c8677d0c8e.m4a |
+| 2b458f3c556df459 | denton-tx-tirz-1-board | 2b458f3c556df459-48f486dbd375.m4a |
+| 5a2ce8afb18c6a82 | denton-tx-tirz-1-board | 5a2ce8afb18c6a82-6f850a083849.m4a |
+| 69d3fee77a42058c | denton-tx-tirz-1-board | 69d3fee77a42058c-d8ce5d81fc3b.m4a |
+| 70a6450a1deda017 | denton-tx-tirz-1-board | 70a6450a1deda017-f1734abbc3e9.m4a |
+| a9089a57a1557991 | denton-tx-tirz-1-board | a9089a57a1557991-f8195642ee38.m4a |
+
+UID `a1aa4af8f26e120c` (2014 Council/Library joint) and `c26f2f99a4bdaf8f`
+(2017 TIRZ No.2) are absent from all expected checked feeds. They remain open; the complete
+local selector replay passes, but live membership is not verified. Do not claim truncation
+as the cause: Library and Zone2 feeds themselves are only two/one items. Investigate deployed
+retained-source availability and publication admission without raw state writes or backfill.
+
+### Denton withheld-media distinction — supersedes pending two ownership cases
+
+Further read-only evidence explains both remaining RSS omissions. Existing persisted
+`media_availability.state=confirmed_empty` verdicts report successful decode near-total
+silence, 24 confirmations, checked June 29, 2026. `citypods.feeds.enclosure_url` intentionally
+omits withheld media from both RSS kinds. The deployed direct pages all return HTTP200:
+Council and Library `/a1aa4af8f26e120c/`, and Zone2 `/c26f2f99a4bdaf8f/`. Each displays
+"Recording unavailable" and the same confirmed-empty reason/check timestamp. Deployment
+logs include all three exact pages and select Library three/Zone2 two episodes before RSS
+admission. This is correct ownership with preserved pages, not missing retained-source data.
+
+The two ownership cases are resolved on complete-source replay plus deployed owner-page
+proof; all sixteen Denton ownership corrections are verified (fourteen RSS, two intentionally
+withheld). No media verdict, raw record, UID or audio was changed. Availability review is a
+separate obligation; do not claim playable podcast coverage for these two recordings.

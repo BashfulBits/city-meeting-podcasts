@@ -1861,3 +1861,7 @@ review/11, CHANGELOG, ARCHITECTURE, ROADMAP, audit and six register next actions
 implementation; keep cases open until deployed proof. Freeze/stamp only after main merge.
 Do not modify runtime, schemas, providers, dependencies, stages, records, audio, publication
 groups or other selectors. No invalidation/backfill or production writes.
+
+Arlington ETF #2055 implementation is prepared on its feature branch: six exact GUID/body
+inclusions and only the Council ETF term removed. Full1,515 replay changes Council962→956,
+ETF0→6 and no other feed, including All Meetings. Deployment verification remains pending.
