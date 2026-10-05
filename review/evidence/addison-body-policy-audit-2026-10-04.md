@@ -1617,3 +1617,19 @@ Transportation-for-Hire proceedings, and standing aliases. Preserve those while 
 complete-label rules. These counts identify candidates, not a verified ownership verdict or
 live RSS coverage. Do not remove all bond-looking titles until independent institutional and
 recording binding evidence supports a bounded contract. Existing source records remain intact.
+
+Transportation census now registers all ten additional retained identities; total169 cases,
+127 resolved42 open. These are newly tracked candidates, not newly created regressions.
+
+| UID | GUID | Original body |
+|---|---|---|
+| 16300c982b358fe9 | 270975 | 2024 Capital Bond Streets & Transportation Subcommittee Meeting |
+| 2b172a76868ad86c | 259821 | 2024 Capital Bond Streets and Transportation Meeting |
+| 2bc4c440c974dba8 | 233032 | 2024 Capital Bond Streets and Transportation Meeting |
+| 2d2bc233efd9bf97 | 269407 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
+| 427b4f7de9ec3a32 | 269609 | 2024 Capital Bond Streets & Transportation Subcommittee Meeting |
+| 8578348e702caf35 | 277830 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
+| ae8f0826293006f0 | 259823 | 2024 Capital Bond Streets and Transportation Meeting |
+| b0471f29622b8165 | 277827 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
+| fe0b7e556c694307 | 259827 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
+| ffd212474f9b51ad | 232343 | 2024 Capital Bond Streets and Transportation Meeting |
