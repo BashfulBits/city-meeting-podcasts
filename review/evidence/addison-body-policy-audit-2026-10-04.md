@@ -1647,3 +1647,20 @@ and GUID232343 to June13 and May11 respectively. The May11 minutes link returned
 this check, so no unseen minutes content is asserted. August10/October26/October27 are absent
 from this archive list; their exact official recording bindings remain unresolved. All11 cases
 remain open; no routing change or deployment closure follows from this research alone.
+
+### CBTF deployment closure — October 5, 23:00 UTC
+
+Human merges #2063/#2066 deployed successfully in run37370642196 on main85e805d3.
+The public CBTF audio_feed.xml returned200 with all five verified UIDs; every enclosure
+exactly matches its retained source audio URL. All five are absent from current Council RSS.
+This verifies these bounded ownership corrections, not complete historical RSS coverage.
+
+| UID | GUID | Preserved enclosure |
+|---|---|---|
+| baa19208405acb22 | 280220 | https://audio.citymeetings.fyi/swagit/76869ed1994f/baa19208405acb22-e4a53a049ef6.m4a |
+| cba1e023051d7c94 | 269916 | https://audio.citymeetings.fyi/swagit/76869ed1994f/cba1e023051d7c94-b4869d828ea7.m4a |
+| 130a7ebded8e0e1d | 269608 | https://audio.citymeetings.fyi/swagit/76869ed1994f/130a7ebded8e0e1d-e00bd282e3cd.m4a |
+| aaf0ad8eaabe68a5 | 269278 | https://audio.citymeetings.fyi/swagit/76869ed1994f/aaf0ad8eaabe68a5-ed70d2044779.m4a |
+| 96c10f4f75706719 | 246971 | https://audio.citymeetings.fyi/swagit/76869ed1994f/96c10f4f75706719-40ff3dfd58ad.m4a |
+
+Register169 cases:132 resolved37 open. Remaining content/binding obligations stay open.
