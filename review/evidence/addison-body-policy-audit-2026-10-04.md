@@ -1713,3 +1713,15 @@ Transportation140→129 and new bond Streets0→11 only; every unrelated feed un
 original identities/audio preserved, four standing GUID exceptions retained.183 targeted and
 4954 full offline tests passed (15 deselected); whole Ruff/format467 clean. No case closure
 from these counts: independent recording proof and deployment gates remain explicit.
+
+Dallas2017 May22/May25 exact public-town-hall binding: provider agendas for202451/202452
+are the same official two-date notice, SHA256
+`bf95a89fcf271b90183ab2b94f8c686a9dac614485326cb938e0d0beeefe0be7`, matching retained
+agenda quality hashes. Visual notice inspection confirms public comment on taskforce work,
+May22/May25 at6pm, Council Chambers. Separate from the May27 formal taskforce notice above.
+Provider bindings: https://dallastx.new.swagit.com/videos/202451/agenda and
+https://dallastx.new.swagit.com/videos/202452/agenda
+
+#2083 prepared: all5353 source rows/1095 labels replayed; formal0→1, publictownhalls0→2,
+every other holder unchanged.185 targeted and4957 offline tests pass15 deselected; whole
+Ruff/format468 clean. Three cases stay open until deployed exact RSS/audio verification.

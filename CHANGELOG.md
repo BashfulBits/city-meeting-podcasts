@@ -7332,3 +7332,7 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   institution labels, preserving standing aliases/joints and four existing GUID exceptions.
   Raw recordings/UIDs/audio stay unchanged; no stage invalidation or backfill. Cases stay open
   pending independent recording evidence and deployed ownership verification.
+
+- Prepared #2083: exact official agenda bindings distinguish one2017Dallas bond taskforce
+  meeting from two identically labeled public town halls; original UID/audio/raw title retained.
+  No stage invalidation or backfill; case closure requires deployment verification.

@@ -2062,3 +2062,51 @@ Full5353-record/all-feed replay: formal0→1, publictownhalls0→2, all other fe
 Whole Ruff/format/offline required; no stage invalidation/backfill. Update ARCHITECTURE,
 CHANGELOG, ROADMAP, review11 and audit/register prepared actions. No case closure before live
 RSS original audio/ownership proof. Freeze/stamp only after human merge.
+
+### Separate bounded static search job — L3, #2084
+
+Maintainer approved separate job at unchanged20minute ceiling. Correction: current deployment
+already uses render phase, whose search creates a fresh deadline; the older exhausted shared
+stop diagnosis is not current deploy behavior. Separate scheduling is still the chosen approach.
+
+Named files: `citypods/cli.py`, `citypods/run.py`, `citypods/search.py`,
+`.github/workflows/deploy.yml`, `tests/test_static_search_job.py`, existing search/run/CLI tests,
+ARCHITECTURE/CHANGELOG/ROADMAP/review11 and this section. No dependency/provider/stage/state
+record/storage-write/Worker changes or public search schema changes.
+
+CLI: add render-only `build --skip-search` and `--search-context-output` path; add
+`search-index --state-dir --output-dir --site-config --config-dir --base-url --context-path`.
+Coordinator `search.build_search_site` directly reuses `build_search_index`, existing config
+loaders, `make_storage` sidecar read operations and templates. Never call build/providers,
+statesync or record persistence from this command. Fresh monotonic deadline uses configured
+search_index_budget_minutes, rejects values above20 or nonpositive values. No live model calls.
+
+Render exports same-run `feed_info`/base URL into internal artifact context JSON at the explicit
+context-output path, never a source record. Skip-search preserves prior complete files and
+advertises search only if a complete manifest/page already exists. Default local build behavior
+is unchanged. Search staging copies prior generated site/index before any shard mutation;
+mutate staged shards and output-local search cache only. On deferral/error discard staging,
+preserve every prior public index/shard/asset/navigation byte. On complete success publish staged
+search dirs/assets/page and regenerate root navigation from artifact feed_info; update root
+meta search counts without changing unrelated metadata. Remove stale source shards only on success.
+
+Workflow split: render→search→deploy. Render retains cache/statesync/read credentials and feed
+validation, runs `build --phase render --no-refresh --skip-search` plus explicit context path,
+then uploads same-run generated docs, context, and only `.citypods-state/sources/*/episodes.json`
+as search record inputs. Search downloads that exact artifact (no fresh snapshot), installs
+same pinned production deps, runs new command under20minute indexing deadline with bounded job
+setup allowance, uploads complete site. Deploy consumes only that site's same-run artifact,
+retains existing Pages concurrency/deployment environment/retries. Keep current60minute job
+ceiling; job-level least privilege: render/search contents:read, deployment Pages/id-token only.
+Existing storage read secrets scoped to search command; no new names/backend or interactive auth.
+Preserve paths on deferral and allow deployment of retained complete site with explicit summary.
+
+Tests: CLI wiring/invalid phase/budget, fresh independent deadline, no record/provider/storage
+writes, stopped second-source build preserves all old public bytes, complete success drops stale
+source output and updates navigation/meta, disabled-search behavior, same-run artifact flow,
+six Addison archive UIDs absent from complete shards while raw pages remain. Whole offline suite,
+whole Ruff/format and current-head workflow/code review required before human merge. Freeze/stamp
+only after merge; direct live search verification still required for archive-case closure.
+
+#2083 prepared:185 targeted and4957 offline tests pass15 deselected, whole Ruff/format468
+clean. Full5353 replay changes only formal0→1/publictownhalls0→2. Deployment gates remain.

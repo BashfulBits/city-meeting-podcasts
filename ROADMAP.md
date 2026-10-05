@@ -580,3 +580,6 @@ Dallas #2065 exact four-record CBTF coverage prepared; deployment proof and rema
 
 - Designed (L3): Dallas2017 formal bond taskforce versus public town halls (#2083), exact
   independent notices/source hashes; three cases remain open until deployed ownership proof.
+
+- Designed (L3): independent bounded static-search job (#2084), unchanged20minute deadline,
+  same-run record snapshot and complete-index preservation; required archive visibility check.

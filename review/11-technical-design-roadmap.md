@@ -1475,3 +1475,6 @@ positive/negative replay are specified in review/51. Recording/deployment proof 
 Dallas2017 bond proceeding ownership: **L3**, issue #2083. Exact provider agenda hashes bind
 one formal taskforce meeting and two public town halls despite their shared misleading label.
 Separate exact subscriptions and unchanged original records/audio per review/51; deployment pending.
+
+Separate bounded static search job: **L3**, #2084, maintainer-approved20minute ceiling and
+same-run snapshot/staged publication contract in review/51. No public schema or record writes.

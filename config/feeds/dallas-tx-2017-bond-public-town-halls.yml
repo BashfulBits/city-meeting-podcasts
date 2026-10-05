@@ -1,0 +1,14 @@
+slug: dallas-tx-2017-bond-public-town-halls
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body_includes:
+    - provider_guid: '202451'
+      body: 'Citizens Bond Task Force: Town Hall Meeting'
+    - provider_guid: '202452'
+      body: 'Citizens Bond Task Force: Town Hall Meeting'
+podcast_title: 'Dallas: 2017 Bond Public Town Halls'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: 'Dallas: 2017 Bond Public Town Halls proceedings verified by official notices.'
