@@ -186,10 +186,19 @@ const CURRENT_SCHEMA_TABLES = [
   "dispatch_pause",
 ];
 
+// One source for quota migration, startup readiness, and the write-free mutation preflight.
+const ROUTE_QUOTA_COLUMNS = {
+  tpd_updated_at: "INTEGER NOT NULL DEFAULT 0",
+  tpd_used: "INTEGER NOT NULL DEFAULT 0",
+  prompt_cap_estimate: "INTEGER NOT NULL DEFAULT 0",
+  input_window_json: "TEXT NOT NULL DEFAULT '[]'",
+};
+
 // Columns added after the initial table definitions. Keep this list aligned with the
 // _ensureColumn calls below: a current-schema fast path is safe only when all of these exist.
 const CURRENT_SCHEMA_ADDED_COLUMNS = {
   routes: [
+    ...Object.keys(ROUTE_QUOTA_COLUMNS),
     "rpd_window_start",
     "rpd_count",
     "rpd_day_key",
@@ -247,6 +256,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this.ctx = ctx;
     this.env = withTuning(env);
     this.sql = ctx?.storage?.sql || ctx?.sql;
+    this._schemaReady = false;
 
     let readiness;
     try {
@@ -266,8 +276,27 @@ export class LLMSchedulerDO extends DurableObjectBase {
           `LLMSchedulerDO schema needs initialization: ${readiness.missing.join(", ")}`
         );
       }
-      this._initSchema();
+      // Existing production objects need only these additive columns. Do not rerun unrelated
+      // DDL, index rebuilds, or data migrations over their queue to repair quota bookkeeping.
+      const quotaOnly = readiness.missing.every((item) =>
+        item.startsWith("column:routes.") &&
+        Object.hasOwn(ROUTE_QUOTA_COLUMNS, item.slice("column:routes.".length))
+      );
+      if (quotaOnly) {
+        for (const [column, definition] of Object.entries(ROUTE_QUOTA_COLUMNS)) {
+          if (readiness.missing.includes(`column:routes.${column}`)) {
+            this._ensureColumn("routes", column, definition);
+          }
+        }
+      } else {
+        this._initSchema();
+      }
+      readiness = this._inspectCurrentSchema();
+      if (!readiness.current) {
+        throw new Error(`LLMSchedulerDO schema not ready: ${readiness.missing.join(", ")}`);
+      }
     }
+    this._schemaReady = true;
     this._accountingReady = true;
     this._transactionSync(() => {});
   }
@@ -332,6 +361,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /** Commit accounting with the writes it describes, before the instance can hibernate. */
   _transactionSync(callback) {
     if (!this._accountingReady) return this.ctx.storage.transactionSync(callback);
+    // Prepare against the required quota columns before lease reaping, index deletes, or any
+    // other mutation. LIMIT 0 reads no route rows and writes none. A stale/incomplete schema
+    // therefore cannot repeatedly do job writes and roll them back on each cron tick.
+    this._assertSchemaReady();
+    try {
+      for (const _row of this._getSql().exec(
+        `SELECT ${Object.keys(ROUTE_QUOTA_COLUMNS).join(", ")} FROM routes LIMIT 0`
+      )) {}
+    } catch (error) {
+      if (/no such (column|table)/i.test(String(error))) {
+        this._schemaReady = false;
+        throw new Error("LLMSchedulerDO schema not ready; recreate after migration", {
+          cause: error,
+        });
+      }
+      throw error; // A transient read failure may recover on the next call, before any writes.
+    }
     this._drainRowCount();
     const pendingBefore = this._rowsUnflushed || 0;
     const loggedBefore = this._rowsSinceLog || 0;
@@ -351,6 +397,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
       throw error;
     } finally {
       this._transactionNow = previousNow;
+    }
+  }
+
+  _assertSchemaReady() {
+    if (!this._schemaReady) {
+      throw new Error("LLMSchedulerDO schema not ready; recreate after migration");
     }
   }
 
@@ -890,10 +942,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
     this._ensureColumn("routes", "rpd_window_start", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "rpd_count", "INTEGER NOT NULL DEFAULT 0");
     // Daily quotas reset on the provider's calendar day, not 24h after first use.
-    this._ensureColumn("routes", "tpd_updated_at", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureColumn("routes", "tpd_used", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureColumn("routes", "prompt_cap_estimate", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureColumn("routes", "input_window_json", "TEXT NOT NULL DEFAULT '[]'");
+    for (const [column, definition] of Object.entries(ROUTE_QUOTA_COLUMNS)) {
+      this._ensureColumn("routes", column, definition);
+    }
     this._ensureColumn("routes", "rpd_day_key", "TEXT NOT NULL DEFAULT ''");
     this._ensureColumn("routes", "payment_required_streak", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "upstream_capacity_streak", "INTEGER NOT NULL DEFAULT 0");
@@ -5648,6 +5699,7 @@ for (const name of Object.getOwnPropertyNames(LLMSchedulerDO.prototype)) {
     ...descriptor,
     value: {
       async [name](...args) {
+        this._assertSchemaReady();
         try {
           return await original.apply(this, args);
         } finally {
