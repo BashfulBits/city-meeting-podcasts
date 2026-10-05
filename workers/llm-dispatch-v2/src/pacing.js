@@ -162,6 +162,7 @@ export function inputWindow(route) {
     const entries = JSON.parse(route?.input_window_json || "[]");
     return Array.isArray(entries)
       ? entries.filter((e) => Number.isFinite(e.at) && Number.isFinite(e.tokens) && e.tokens > 0)
+          .sort((a, b) => a.at - b.at)
       : [];
   } catch { return []; }
 }

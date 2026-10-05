@@ -404,3 +404,13 @@ test("Google uses input-only quota and trailing-minute starts despite idle credi
   assert.equal(earliestSafeStart(route,
     { input_token_estimate: 1000, max_output_token_estimate: 8192 }, NOW, NOW).notBeforeAt, NOW);
 });
+
+
+test("Google releases trailing-window credit chronologically across overlapping claims", () => {
+  const route = freshRoute({ provider: "gemini", tpm: 10000, full_token_budget: 1000000,
+    input_window_json: JSON.stringify([
+      { at: NOW - 10000, tokens: 8000 }, { at: NOW - 50000, tokens: 4000 },
+    ]) });
+  const request = { input_token_estimate: 1000, max_output_token_estimate: 8192 };
+  assert.equal(earliestSafeStart(route, request, NOW, NOW).notBeforeAt, NOW + 10000);
+});
