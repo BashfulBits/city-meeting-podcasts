@@ -1348,3 +1348,27 @@ feed; preserve the intentional All Meetings aggregate. Environmental Task Force 
 Arlington CND #2038 prepared/unmerged: four verified committee recordings receive a dedicated
 exact-label feed and leave Council, retaining the All Meetings aggregate and original UID/audio.
 No stage invalidation or backfill. Cases remain open until deployed membership verification.
+### Archive-only and 2016 joint shipped (2026-10-05)
+
+Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
+Their bounded implementation contracts are frozen. Main `ac0fa4bb` Build & Deploy succeeded.
+CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining actionable issues;
+#2026 was merged before its substantive review slot, an explicit review gap. No stage/audio
+invalidation or backfill. Both joint feeds carry the same original UID/audio; its case is resolved.
+The register now has seven open historical evidence cases, rather than eight.
+
+Live verification: six archive UIDs absent from Public Input/Council/P&Z RSS and Public Input
+browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89c7c5c5c returns
+404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
+Public search and its expected manifest return 404; do not claim deployed search verification.
+Retain these visibility/access checks and all independent historical content evidence obligations.
+
+Luncheon direct archive route: L3 bounded review/51 contract, maintainer authorized access fixes
+2026-10-05. Exact raw selector admission only, preserving archive-only public exclusion.
+
+Dallas Redistricting Council leakage: L3 bounded review/51 contract, official dated Commission
+agenda verifies one wrong Council override; preserve existing Commission subscription/UID/audio.
+
+
+Dallas Commission correction #2034 prepared: remove only GUID203320 Council inclusion;
+retain dedicated Commission feed and original UID/audio. Human merge/deployment verification gated.

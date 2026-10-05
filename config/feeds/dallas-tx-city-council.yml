@@ -14,8 +14,6 @@ source:
     - "City Council Agenda - Afternoon"
     - "City Council Agenda - Morning"
   body_includes:
-    - provider_guid: "203320"
-      body: "Saturday Redistricting Commission"
     - provider_guid: "204508"
       body: "Redistricting Town Hall"
     - provider_guid: "204507"
