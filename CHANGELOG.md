@@ -7293,3 +7293,6 @@ Retain these visibility/access checks and all independent historical content evi
   two standalone Library, eight TIRZ board and one 2019 Bond committee recordings leave
   Council for dedicated feeds; the proven Council/Library joint gains Library while retaining
   Council. Raw UID/audio/source identities are preserved. No invalidation or backfill.
+
+- Prepared exact six-record Arlington Environmental Task Force feed, removing Council
+  leakage and preserving All Meetings, UID/audio. No invalidation or backfill.

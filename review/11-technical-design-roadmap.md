@@ -1414,3 +1414,7 @@ Health/TIRZ/Bond review gaps remain audit obligations; this is not full catalog 
 Arlington Environmental Task Force exact six-record correction is L3 in review/51 (#2055).
 Preserve All Meetings and raw identity; no standing-status or dissolution claim. Deployment
 proof remains separate from the complete-source selector replay.
+
+Arlington ETF #2055 implementation is prepared under the exact six-record review/51
+contract: dedicated feed, only Council ETF term removed, All Meetings/raw UID/audio
+preserved. Deployed verification pending; no standing or dissolution inference.

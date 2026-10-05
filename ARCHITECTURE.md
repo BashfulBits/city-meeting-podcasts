@@ -1374,3 +1374,7 @@ The Denton bounded ownership feeds are implemented on main through #2043–#2053
 Commission, Library, separate TIRZ boards and the exact 2019 Bond committee recording.
 The Council/Library joint uses the same UID/audio in both feeds. Existing routing primitives
 serve these exact selectors; no runtime or schema change was introduced.
+
+Arlington ETF #2055 implementation is prepared under the exact six-record review/51
+contract: dedicated feed, only Council ETF term removed, All Meetings/raw UID/audio
+preserved. Deployed verification pending; no standing or dissolution inference.
