@@ -1401,3 +1401,7 @@ Cases remain open until deployed verification.
 Denton Special Citizens Bond Advisory Committee bounded ownership is L3 in review/51
 (#2051): exact June 6, 2019 GUID/body only; preserve identity and all other feeds. Deployment
 verification remains a separate gate; no standing or dissolution inference is authorized.
+
+Denton Bond committee #2051 is prepared under the committed review/51 contract: exact GUID
+28865 moves from Council to its dedicated feed; raw UID/audio remain unchanged. Deployment
+verification is pending; no lifecycle or broader committee-family claim is made.
