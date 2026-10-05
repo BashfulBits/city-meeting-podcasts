@@ -1386,3 +1386,7 @@ joint are retained. Cases remain open until deployed verification; no stage inva
 
 Denton Library Board: L3 bounded review/51 contract for two standalone transfers and one
 Council/Library joint membership addition, preserving the Council subscription.
+
+Denton Library #2045 prepared: two standalone recordings leave Council for Library; the
+Council/Library joint joins Library while retaining Council. Original UID/audio/raw records
+retained, no stage invalidation/backfill. Deployment verification required before case closure.

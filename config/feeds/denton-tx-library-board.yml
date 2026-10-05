@@ -1,0 +1,16 @@
+slug: denton-tx-library-board
+city: denton-tx
+provider: swagit
+source:
+  list_url: https://dentontx.new.swagit.com/views/5
+  body_includes:
+    - provider_guid: "13509"
+      body: "Joint Luncheon with Library Board"
+    - provider_guid: "120859"
+      body: "Library Board on 2021-05-13 3:30 PM"
+    - provider_guid: "118306"
+      body: "Library Board on 2021-04-08 3:30 PM"
+podcast_title: "Denton: Library Board"
+podcast_author: "City of Denton, TX"
+podcast_email: ""
+podcast_description: "Meetings of the Denton Library Board."

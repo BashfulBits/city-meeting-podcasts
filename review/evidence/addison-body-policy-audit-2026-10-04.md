@@ -1237,3 +1237,7 @@ old CND UIDs; do not claim live aggregate historical coverage from config replay
 still unverified; Denton newCommission404 while deployment77e4f31a is running.
 
 Maintainer override: CodeRabbit reviews actual code changes only, not docs or configuration YAML.
+
+Denton Library #2045 prepared: two standalone recordings leave Council for Library; the
+Council/Library joint joins Library while retaining Council. Original UID/audio/raw records
+retained, no stage invalidation/backfill. Deployment verification required before case closure.

@@ -542,3 +542,7 @@ Retain these visibility/access checks and all independent historical content evi
 Denton #2042 prepared: four verified Health & Building Standards Commission records move
 out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
 joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.
+
+Denton Library #2045 prepared: two standalone recordings leave Council for Library; the
+Council/Library joint joins Library while retaining Council. Original UID/audio/raw records
+retained, no stage invalidation/backfill. Deployment verification required before case closure.

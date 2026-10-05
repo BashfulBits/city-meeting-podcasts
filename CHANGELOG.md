@@ -12,6 +12,9 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Correct two standalone Denton Library subscriptions and add Library to its verified Council
+  joint, preserving UID/audio/raw records. No stage invalidation or backfill.
+
 - Separate four verified Denton Health & Building Standards Commission recordings from Council;
   retain original UID/audio/raw records. No stage invalidation or automatic backfill.
 

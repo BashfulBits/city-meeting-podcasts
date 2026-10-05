@@ -1,0 +1,68 @@
+[
+  {
+    "uid": "a1aa4af8f26e120c",
+    "provider_guid": "13509",
+    "body": "Joint Luncheon with Library Board",
+    "title": "Joint Luncheon with Library Board \u2013 Mar 03, 2014",
+    "published": "2014-03-03T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/13509/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": null,
+      "duration_served": 4070.0,
+      "encode_time": null,
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/a1aa4af8f26e120c-2823e87b20ca.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "2823e87b20ca",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/a1aa4af8f26e120c-2823e87b20ca.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "b50c6a018b2c08e7",
+    "provider_guid": "120859",
+    "body": "Library Board on 2021-05-13 3:30 PM",
+    "title": "Library Board on 2021-05-13 3:30 PM \u2013 May 13, 2021",
+    "published": "2021-05-13T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/120859/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 29559446,
+      "duration_served": 2377.378,
+      "encode_time": "2026-07-02T17:31:56.406895+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/b50c6a018b2c08e7-a61458854406.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "a61458854406",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/b50c6a018b2c08e7-a61458854406.m4a",
+      "verification": null
+    }
+  },
+  {
+    "uid": "c10f3f6cd97ac38f",
+    "provider_guid": "118306",
+    "body": "Library Board on 2021-04-08 3:30 PM",
+    "title": "Library Board on 2021-04-08 3:30 PM \u2013 Apr 08, 2021",
+    "published": "2021-04-08T00:00:00+00:00",
+    "video_url": "https://dentontx.new.swagit.com/videos/118306/download",
+    "audio": {
+      "attempts": 0,
+      "bytes": 36517190,
+      "duration_served": 2918.153,
+      "encode_time": "2026-07-02T17:31:50.878012+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/3b7588310856/c10f3f6cd97ac38f-e6ac08b8754e.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "e6ac08b8754e",
+      "url": "https://audio.citymeetings.fyi/swagit/3b7588310856/c10f3f6cd97ac38f-e6ac08b8754e.m4a",
+      "verification": null
+    }
+  }
+]
