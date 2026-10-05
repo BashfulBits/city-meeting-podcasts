@@ -1936,3 +1936,19 @@ exact binding (current provider403 and no original chapter); other candidates re
 Dallas #2065 implementation prepared. Exact four additions/no other full-source ownership
 changes; all4,933 offline tests pass14 deselected. WholeRuff463/format clean. Cases stay open
 until deployment; current CI and substantive code review still pending.
+
+### Dallas reusable Economic Development ownership rules — design follow-up
+
+The maintainer requested reusable institution selectors where possible. Existing source
+`body_exact` supports complete normalized labels without a new runtime/schema. The cached
+Dallas census has 138 Economic Development substring matches across 12 labels; one is the
+separately convened 2024 bond subcommittee (GUID269610). Replace the standing feed's broad
+substring with the other 11 complete labels only after recording the full alias contract and
+positive/negative replay. Preserve its unrelated GUID overrides and all genuine joint aliases.
+A dedicated bond-subcommittee feed should use its stable complete institutional label rather
+than require a new GUID exception for each recurrence. Original August15 chapters and official
+minutes establish this body independently of the standing Council committee.
+
+This entry is L2: no selector changes yet. Before L3, name the alias list, feed/fixture/test
+files, exact source replay deltas, and issue. Do not modify runtime body matching, providers,
+schemas, dependencies, stages, records, media, publication groups or existing joint policy.

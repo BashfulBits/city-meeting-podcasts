@@ -1454,3 +1454,12 @@ only; remaining task-force/subcommittee/town-hall proof remains active.
 
 Dallas #2065 four-record coverage prepared: full5,353 replay changes only CBTF1→5;
 4,933 offline pass14 deselected, wholeRuff463/format pass. CI/review/deployment pending.
+
+### Ownership selector rule audit — L2, October 5 follow-up
+
+Maintainer requests reusable institution rules instead of repeated per-record inclusions where
+labels reliably distinguish bodies. Start with Dallas standing Economic Development versus
+its separately convened 2024 bond subcommittee; use existing complete-label selectors and
+full-source positive/negative replay. Preserve genuine joints and ambiguous-record proof gates.
+The bounded design is in review/51, “Dallas reusable Economic Development ownership rules”.
+Existing prepared PR #2066 remains unchanged in production config/tests; this audit is follow-up.
