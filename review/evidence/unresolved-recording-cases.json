@@ -430,14 +430,15 @@
       "uid": "383dfdfed6140400",
       "provider_guid": "55634",
       "question": "Verified 2016 Council/P&Z joint lacks Council subscription",
-      "missing_evidence": "Human merge and deployed Council/P&Z subscription verification",
-      "next_action": "Verify both feeds carry the same UID/audio after #2025; canonical Council page choice approved, participant discovery tracked in #2018",
+      "missing_evidence": "No missing subscription evidence",
+      "next_action": "Preserve both subscriptions; participant search discovery remains #2018",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
+        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Deployed Council and P&Z RSS both carry UID383dfdfed6140400 and identical original audio; verified 2026-10-05 after PR2026."
     },
     {
       "case_id": "addison-55613-3ba7b24d44e9da7f",
