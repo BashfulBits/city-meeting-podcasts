@@ -1414,3 +1414,14 @@ Health/TIRZ/Bond review gaps remain audit obligations; this is not full catalog 
 Arlington Environmental Task Force exact six-record correction is L3 in review/51 (#2055).
 Preserve All Meetings and raw identity; no standing-status or dissolution claim. Deployment
 proof remains separate from the complete-source selector replay.
+
+
+### Dispatch quota-schema incident correction (2026-10-05)
+
+Maintainer-authorized fix for PR #2028's missing startup-readiness entries: quota definitions now
+supply readiness, additive migration, and mutation preflight from the same four-column list.
+Otherwise-current objects add only missing columns, verify before RPC activation, and do no schema
+or data writes on later startups. A zero-row mutation preflight prevents stale quota schemas from
+repeating expired-lease/job/index writes before failure; the instance blocks RPCs until recreation.
+Partial migrations resume at missing columns; transient preflight read errors remain retryable.
+No throughput/quota changes, model/recipe change, pipeline-version bump, or artifact backfill.

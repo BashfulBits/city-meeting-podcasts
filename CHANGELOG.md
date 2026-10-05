@@ -12,6 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Guard dispatch quota schema upgrades before job writes.** Detect all four quota columns added
+  by PR #2028, add only missing columns on otherwise-current objects, and verify readiness before
+  serving RPCs. Current-schema startups remain write-free. Mutation preflight prepares a zero-row
+  quota query before lease reaping or queue writes; an incomplete schema blocks repeated RPCs until
+  recreation, while transient read errors can retry. Partial upgrades retain completed columns.
+  No quota or recipe changes, pipeline-version bump, artifact invalidation, or catalog backfill.
+
+
 - Correct eight Denton TIRZ board subscriptions from Council into separate Zone1/Zone2 feeds,
   preserving UID/audio/raw records. No stage invalidation or backfill.
 
