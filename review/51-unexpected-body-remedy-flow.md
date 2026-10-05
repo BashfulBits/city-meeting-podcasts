@@ -1661,3 +1661,40 @@ only those exact membership changes. Update four register cases with prepared pr
 Lifecycle review11/CHANGELOG/ARCHITECTURE/ROADMAP/audit. Issue before code, whole offline/Ruff,
 current CI/CodeRabbit then human merge. No runtime/provider/schema/dependency/stage changes.
 Environmental Task Force remains a separate lifecycle/evidence decision, not silently bundled.
+
+### Archive-only and 2016 joint shipped (2026-10-05)
+
+Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
+Their bounded implementation contracts are frozen. Main `ac0fa4bb` Build & Deploy succeeded.
+CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining actionable issues;
+#2026 was merged before its substantive review slot, an explicit review gap. No stage/audio
+invalidation or backfill. Both joint feeds carry the same original UID/audio; its case is resolved.
+The register now has seven open historical evidence cases, rather than eight.
+
+Live verification: six archive UIDs absent from Public Input/Council/P&Z RSS and Public Input
+browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89c7c5c5c returns
+404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
+Public search and its expected manifest return 404; do not claim deployed search verification.
+Retain these visibility/access checks and all independent historical content evidence obligations.
+
+### Luncheon direct archive routing — L3
+
+Maintainer authorized the proposed access fixes and catalog expansion on 2026-10-05.
+Add only GUID55864/body `Addison Economic Development Luncheon` to existing Public Input
+body_includes. Its existing archive-only declaration continues excluding all public discovery.
+Modify that feed config and tests/test_archive_visibility.py actual-config regression to prove
+raw selector admission and archive exclusion, preserving original UID/audio. No runtime changes.
+Update audit/review11/CHANGELOG; full offline suite and whole Ruff/format required. Human merge.
+
+### Dallas Redistricting Council leakage — L3 bounded correction
+
+Authorized catalog-wide body-policy correction. Official January22,2022 Commission notice
+binds GUID203320/UIDbd172b762dd20b63 to the existing Redistricting Commission feed.
+Remove only that GUID override from config/feeds/dallas-tx-city-council.yml. Preserve existing
+Commission selectors, source state, UID/audio and archive pages. New minimal fixture
+ tests/fixtures/dallas-redistricting-retained.json and tests/test_dallas_redistricting_ownership.py
+load actual configs and verify Commission-only membership, stable RSS enclosure/UID, exact
+negative and untouched raw record. Full cached Dallas replay must remove only this Council
+membership and change no other feed. No runtime/schema/provider/stage/dependency changes.
+Update register prepared evidence without closing until deployed proof; review11/CHANGELOG/audit.
+Create tracking issue before implementation, whole offline/Ruff/format, CodeRabbit and human merge.
