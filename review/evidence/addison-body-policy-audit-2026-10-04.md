@@ -1207,3 +1207,17 @@ coverage is prepared and verified. The body-label heuristic alone would have mis
 Dallas #2034 prepared ownership replay: all5353 retained records/1095 labels examined.
 Council359->358 removes only UIDbd172b762dd20b63; every other feed UID set unchanged.
 Raw records are unchanged. Case remains open until human merge and deployed verification.
+
+### Denton commission institutional proof
+
+Official current appointments and 2026 agendas corroborate a distinct continuing commission:
+https://denton-tx.legistar.com/LegislationDetail.aspx?ID=7513268
+https://denton-tx.legistar.com/View.ashx?ID=1355517&M=A
+
+Four retained dated agendas explicitly convene the commission alone:
+- denton-tx-280db52d91547dd6-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/280db52d91547dd6/agenda-0a73365f4da36fd3
+- denton-tx-7abd583b2ed8189a-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/7abd583b2ed8189a/agenda-20fec26c8f520b20
+- denton-tx-d419e8107262d0d0-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/d419e8107262d0d0/agenda-c55034ec305175f8
+- denton-tx-e7c1990b7a8e539e-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/e7c1990b7a8e539e/agenda-4497295b281ff426
+
+No case closure or runtime correction yet; exact L3 contract above precedes implementation.
