@@ -1594,3 +1594,9 @@ Before implementation, commit a bounded review/51 contract naming aliases, affec
 fixtures and positive/negative tests. Replay all 5,353 Dallas rows, including genuine joints,
 subcommittees and town halls; preserve raw UIDs/audio and every unrelated holder. Explicitly
 separate institution ownership from recording-content proof and publication eligibility.
+
+Dallas #2068 reusable rule implementation replay: all5,353 retained source rows; standing
+Economic Development157→156 loses only UID8969ad6d91ed23d2, new bond subcommittee0→1 gains
+that UID, every other subscription unchanged. Eleven full standing labels preserve explicit
+joints. Same-label/new-GUID acceptance is intentional; unrelated labels/subcommittees reject.
+Original audio/raw identity preserved. Case remains open pending actual deployment proof.

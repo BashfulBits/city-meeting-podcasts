@@ -1392,3 +1392,8 @@ GUID/body routing; Council omits those six, while All Meetings and raw identity 
 Dallas 2024 Community Bond Task Force feed uses exact GUID/body inclusion for verified recording280220. Council removes only that override; source namespace and original recording identity remain unchanged.
 
 Dallas2024 CBTF feed includes four additional proven recordings by exact original GUID, retaining provider/source/UID/audio identity. Body labels remain metadata; no broad task-force selector is added.
+
+Dallas Economic Development uses complete normalized institutional aliases to separate its
+standing Council committee (including proven joint labels) from the independently convened
+2024 bond Economic Development/Housing/Homeless Solutions subcommittee. Both use existing
+`source.body_exact`; stable-label recurrences route automatically without per-record pins.
