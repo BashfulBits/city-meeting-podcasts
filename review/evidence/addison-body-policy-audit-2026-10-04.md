@@ -1444,3 +1444,24 @@ Workshop of October14 despite its October21 publication date. Both cases remain 
 The two exact provider player URLs were unavailable through the web reader during this
 check; unavailable reader output is not evidence that the official recordings are gone.
 Do not resolve either case or add Task Force participation from this announcement alone.
+
+### Fort Worth clip6334 recovered official packet — 2026-10-05
+
+The live view9 clip6334 player exposes an AgendaViewer redirect to this
+[official eight-page packet](https://fortworthgov.granicus.com/DocumentViewer.php?file=fortworthgov_c04c7ebca76ffa89ac6586743c0d1baa.pdf&view=1).
+All eight rendered pages were visually inspected because the PDF character map makes text
+extraction unreliable. Pages1–2 give the August11,2026 Council Budget Work Session at1PM,
+with mayor call to order and adjournment. Pages3–5 give Property Management and Environmental
+Services Committee immediately following the budget session, with its own call to order and
+adjournment. Pages6–8 give Community Development Committee immediately following that
+committee meeting, with chair call to order and adjournment. This is a packet of three
+consecutive proceedings, not a joint convening. Shared Council members and room do not change
+that conclusion.
+
+Exact source clip6334 has registered UIDs `081d2695d7d0136a` (view9) and
+`ead427dae0bbb284` (view5). The recovered link directly binds the packet to view9; independent
+view5 binding and the recording's actual proceeding boundaries remain to verify. Both cases
+stay open. Do not split audio, choose a duplicate winner or remove holders from packet
+structure alone. Historical clips125/127 currently expose only a generic CableSchedule
+default document; their player pages return HTTP200 even though the web reader could not
+open them. This supplies no missing agenda proof for those two historical cases.
