@@ -12,6 +12,9 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Restore exact raw archive routing for the approved Addison luncheon; retain archive-only
+  feed/search/browse exclusion, original UID/audio, and unchanged processing stages.
+
 - Prepare the verified September 19, 2016 Addison Council/P&Z joint subscription (#2025).
   Add Council alongside P&Z with the same UID/audio; existing canonical search attribution
   becomes Council. No record changes, stage invalidation or audio backfill.
