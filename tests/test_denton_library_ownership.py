@@ -30,7 +30,7 @@ def test_actual_config_keeps_library_only_in_its_commission_feed():
         )
         assert record["uid"] in rss
         assert record["audio"]["url"] in rss
-        negative = dict(record, body="Unrelated Committee", provider_guid="unrelated")
+        negative = dict(record, provider_guid="unrelated")
         assert not record_matches_body(
             negative,
             source_body_filter(commission.source),
