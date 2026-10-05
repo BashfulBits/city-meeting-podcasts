@@ -1652,3 +1652,12 @@ browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89
 404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
 Public search and its expected manifest return 404; do not claim deployed search verification.
 Retain these visibility/access checks and all independent historical content evidence obligations.
+
+### Luncheon direct archive routing — L3
+
+Maintainer authorized the proposed access fixes and catalog expansion on 2026-10-05.
+Add only GUID55864/body `Addison Economic Development Luncheon` to existing Public Input
+body_includes. Its existing archive-only declaration continues excluding all public discovery.
+Modify that feed config and tests/test_archive_visibility.py actual-config regression to prove
+raw selector admission and archive exclusion, preserving original UID/audio. No runtime changes.
+Update audit/review11/CHANGELOG; full offline suite and whole Ruff/format required. Human merge.

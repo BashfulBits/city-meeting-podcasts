@@ -1355,3 +1355,6 @@ browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89
 404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
 Public search and its expected manifest return 404; do not claim deployed search verification.
 Retain these visibility/access checks and all independent historical content evidence obligations.
+
+Luncheon direct archive route: L3 bounded review/51 contract, maintainer authorized access fixes
+2026-10-05. Exact raw selector admission only, preserving archive-only public exclusion.
