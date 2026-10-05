@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-10-04 (publication-selection machinery under review;
+**Status: LIVING · last updated 2026-10-05 (publication-selection machinery under review;
 Initiative 20 shipped in PRs #1617–#1622 — LLM
 endpoint rate-limit characterization & failure-class-aware backoff; review/45 reconciled against
 `main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling +
@@ -1442,3 +1442,9 @@ review was disabled; skipped review is not substantive review coverage.
 Arlington exact ETF correction Shipped in #2058; review/51 bounded contract frozen/stamped.
 Six deployed ownership checks remain pending. The aborted pre-merge review request is an
 explicit coverage gap, not substantive review completion.
+
+Dallas exact November2023 CBTF ownership correction is L3 in review/51, issue #2062.
+One verified recording only; broader CBTF/subcommittee census remains evidence work.
+
+Dallas #2062 exact CBTF correction prepared: full5,353 replay Council358→357/newtaskforce1,
+4,929 offline tests passed14 deselected, wholeRuff463/format pass. Deployment closure pending.

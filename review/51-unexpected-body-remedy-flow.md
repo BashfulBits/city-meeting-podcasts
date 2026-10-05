@@ -1873,3 +1873,35 @@ and whole Ruff/format passed, current CI green. Full offline implementation suit
 Full review request5997651345 at15:30:50 UTC received reply5997653803 "Pull request is closed."
 No substantive review completed before merge; record the explicit gap, never request closed
 reviews. ETF six deployment cases remain open until live proof. No invalidation/backfill.
+
+### Dallas November 2023 Community Bond Task Force — bounded L3 (#2062)
+
+Official city CBTF archive and November4,2023 minutes establish a task-force proceeding,
+chaired by Arun Agarwal with separate call/adjournment. Stored original recording280220
+chapter explicitly identifies that same date. Subcommittee chairs attend, but no separate
+subcommittee or Council convening is proved. Minutes header gives8:24AM; body says8:24PM,
+an official inconsistency which must remain visible rather than silently corrected.
+
+Create `config/feeds/dallas-tx-2024-community-bond-task-force.yml`, city Dallas, Swagit
+provider and exact existing Council list_url. Use only body_includes GUID `280220`, exact
+body `2024 Bond CBTF and Subcommittee Chairs Meeting`, no broad body/family/lifecycle.
+Title `Dallas: 2024 Community Bond Task Force`, author `City of Dallas, TX`, empty email,
+description `Verified Dallas 2024 Community Bond Task Force proceedings.` Remove only that
+GUID/body pair from Council. Preserve UID `baa19208405acb22`, source `76869ed1994f`, audio
+and raw record. Add minimal original `tests/fixtures/dallas-cbtf-retained.json` and
+`tests/test_dallas_cbtf_ownership.py` actual-config selection, Council negative, original RSS
+UID/audio, same body wrong GUID negative and unchanged raw input. Existing body_includes
+selects by exact provider GUID; its body is metadata, not a second predicate. Do not change
+that runtime contract.
+Full5,353-record replay: one Council departure, one task-force addition, every other feed
+unchanged. Whole offline/Ruff/format required. Update review/11, CHANGELOG, ARCHITECTURE,
+ROADMAP, audit and register next action in implementation; keep case open until deployed
+proof; freeze/stamp after main merge. Do not modify runtime, schema, provider, dependencies,
+stages, records, audio, publication groups or other selectors. No invalidation/backfill.
+
+Census also finds17 other CBTF/subcommittee/town-hall rows; their proof and coverage require
+separate reconciliation. The exact single-record correction does not claim full family coverage.
+
+Dallas #2062 implementation prepared under the exact contract. Replay changes only
+Council358→357 and CBTF0→1; original raw records unchanged. Offline4,929 pass14 deselected,
+wholeRuff463/format pass. Current CI/review and deployed proof remain pending.

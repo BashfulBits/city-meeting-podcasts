@@ -1388,3 +1388,5 @@ preserved. Deployed verification pending; no standing or dissolution inference.
 
 Arlington's exact Environmental Task Force feed is implemented in #2058 using existing
 GUID/body routing; Council omits those six, while All Meetings and raw identity remain intact.
+
+Dallas 2024 Community Bond Task Force feed uses exact GUID/body inclusion for verified recording280220. Council removes only that override; source namespace and original recording identity remain unchanged.
