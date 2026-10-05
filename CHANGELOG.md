@@ -17,6 +17,11 @@ Once 1.0 ships, entries move under semver tags.
   size bound while keeping shorter jobs eligible. Google uses trailing-minute input-only TPM,
   schema-inclusive queue estimates, and preserves the configured size safety margin. No stage
   version bump, artifact invalidation or automatic backfill. SambaNova token incident: #2027.
+- Remove the verified January 22, 2022 Dallas Redistricting Commission recording from Council;
+  retain its dedicated Commission feed, UID/audio and archives. No stage invalidation or backfill.
+
+- Restore exact raw archive routing for the approved Addison luncheon; retain archive-only
+  feed/search/browse exclusion, original UID/audio, and unchanged processing stages.
 
 - Prepare the verified September 19, 2016 Addison Council/P&Z joint subscription (#2025).
   Add Council alongside P&Z with the same UID/audio; existing canonical search attribution
