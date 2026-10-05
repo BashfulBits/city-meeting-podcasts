@@ -1617,3 +1617,60 @@ Transportation-for-Hire proceedings, and standing aliases. Preserve those while 
 complete-label rules. These counts identify candidates, not a verified ownership verdict or
 live RSS coverage. Do not remove all bond-looking titles until independent institutional and
 recording binding evidence supports a bounded contract. Existing source records remain intact.
+
+Transportation census now registers all ten additional retained identities; total169 cases,
+127 resolved42 open. These are newly tracked candidates, not newly created regressions.
+
+| UID | GUID | Original body |
+|---|---|---|
+| 16300c982b358fe9 | 270975 | 2024 Capital Bond Streets & Transportation Subcommittee Meeting |
+| 2b172a76868ad86c | 259821 | 2024 Capital Bond Streets and Transportation Meeting |
+| 2bc4c440c974dba8 | 233032 | 2024 Capital Bond Streets and Transportation Meeting |
+| 2d2bc233efd9bf97 | 269407 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
+| 427b4f7de9ec3a32 | 269609 | 2024 Capital Bond Streets & Transportation Subcommittee Meeting |
+| 8578348e702caf35 | 277830 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
+| ae8f0826293006f0 | 259823 | 2024 Capital Bond Streets and Transportation Meeting |
+| b0471f29622b8165 | 277827 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
+| fe0b7e556c694307 | 259827 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
+| ffd212474f9b51ad | 232343 | 2024 Capital Bond Streets and Transportation Meeting |
+
+Transportation institution proof follow-up: the city's [subcommittee archive](https://dallascityhall.com/departments/bond-construction-management/Pages/Streets-and-Transportation-Subcommittee.aspx)
+separately lists May11/May25/June13/June20/June28/July17/August15/August22,2023 proceedings.
+Its [May25 minutes](https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/99/Streets%20and%20Transportation%20Meeting_052523_Meeting%20Minutes.pdf)
+and [June13 minutes](https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/119/Streets%20and%20Transportation%20Meeting%20061323_Meeting%20Minutes.pdf)
+identify the Streets and Transportation Subcommittee of the 2024 Bond Task Force, chaired by
+Linda Koop, with its own convening and adjournment. This independently establishes a separate
+bond institution; department presentations and Council-district discussion do not establish
+standing Council committee participation. June13 convened6:00pm/adjourned7:35pm; May25
+convened6:35pm/adjourned8:00pm. Original provider chapter dates additionally bind GUID259821
+and GUID232343 to June13 and May11 respectively. The May11 minutes link returned502 during
+this check, so no unseen minutes content is asserted. August10/October26/October27 are absent
+from this archive list; their exact official recording bindings remain unresolved. All11 cases
+remain open; no routing change or deployment closure follows from this research alone.
+
+### CBTF deployment closure — October 5, 23:00 UTC
+
+Human merges #2063/#2066 deployed successfully in run37370642196 on main85e805d3.
+The public CBTF audio_feed.xml returned200 with all five verified UIDs; every enclosure
+exactly matches its retained source audio URL. All five are absent from current Council RSS.
+This verifies these bounded ownership corrections, not complete historical RSS coverage.
+
+| UID | GUID | Preserved enclosure |
+|---|---|---|
+| baa19208405acb22 | 280220 | https://audio.citymeetings.fyi/swagit/76869ed1994f/baa19208405acb22-e4a53a049ef6.m4a |
+| cba1e023051d7c94 | 269916 | https://audio.citymeetings.fyi/swagit/76869ed1994f/cba1e023051d7c94-b4869d828ea7.m4a |
+| 130a7ebded8e0e1d | 269608 | https://audio.citymeetings.fyi/swagit/76869ed1994f/130a7ebded8e0e1d-e00bd282e3cd.m4a |
+| aaf0ad8eaabe68a5 | 269278 | https://audio.citymeetings.fyi/swagit/76869ed1994f/aaf0ad8eaabe68a5-ed70d2044779.m4a |
+| 96c10f4f75706719 | 246971 | https://audio.citymeetings.fyi/swagit/76869ed1994f/96c10f4f75706719-40ff3dfd58ad.m4a |
+
+Register169 cases:132 resolved37 open. Remaining content/binding obligations stay open.
+
+Transportation proposed complete-label replay (read-only, not implemented): all5,353 retained
+Dallas records give standing140→129, exactly the11 registered bond candidates removed and
+no additions. This preserves every currently matched named DART/legislative/Economic/Government
+Performance joint and standing alias. Four distinct bond labels identify the recurring collision.
+Before an L3 implementation, preserve the four existing GUID exceptions as exceptions; do not
+silently turn Mill Creek Tunnel Project or Transportation-for-Hire exception bodies into broad
+future-record admission. The mechanical replay is not official proof for the three dates missing
+from the archive or authorization to close any recording-binding case. Existing runtime/config
+remain unchanged. Report: /tmp/dallas-transportation-proposed-rule-replay.json (local scratch).
