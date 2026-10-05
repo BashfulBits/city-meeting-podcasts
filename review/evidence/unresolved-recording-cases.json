@@ -1576,6 +1576,718 @@
       ],
       "status": "resolved",
       "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
+    },
+    {
+      "case_id": "arlington-tx-1792515fdd51c6c2-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "1792515fdd51c6c2",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3443",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "arlington-tx-237c28f30496e3e0-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "237c28f30496e3e0",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3453",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "arlington-tx-25e9b8510b0a7a66-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "25e9b8510b0a7a66",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3494",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "arlington-tx-2d5dc451df2da130-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "2d5dc451df2da130",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3454",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "arlington-tx-30b28efc23346a6d-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "30b28efc23346a6d",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3505",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "arlington-tx-35b22fcc8d07967b-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "35b22fcc8d07967b",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3424",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "arlington-tx-4357f0c39d1ae58f-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "4357f0c39d1ae58f",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3480",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "arlington-tx-9b66e98b682a47f2-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "9b66e98b682a47f2",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3508",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "arlington-tx-a683af6e13e2bd7a-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "a683af6e13e2bd7a",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3479",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "arlington-tx-d8f3b672b482369b-ownership",
+      "city": "arlington-tx",
+      "source_key": "ecc3710ac47f",
+      "uid": "d8f3b672b482369b",
+      "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3493",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "arlington-tx",
+        "arlington-tx-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "dallas-tx-baa19208405acb22-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "baa19208405acb22",
+      "provider_guid": "280220",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "dallas-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "dallas-tx-bd172b762dd20b63-ownership",
+      "city": "dallas-tx",
+      "source_key": "76869ed1994f",
+      "uid": "bd172b762dd20b63",
+      "provider_guid": "203320",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "dallas-tx-city-council",
+        "dallas-tx-redistricting-commission"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-04689e3929ac104e-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "04689e3929ac104e",
+      "provider_guid": "28865",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-1c91182b70afefb3-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "1c91182b70afefb3",
+      "provider_guid": "111521",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-2493e59c0844a4b4-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "2493e59c0844a4b4",
+      "provider_guid": "116732",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-280db52d91547dd6-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "280db52d91547dd6",
+      "provider_guid": "122398",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-2b458f3c556df459-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "2b458f3c556df459",
+      "provider_guid": "73923",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-5a2ce8afb18c6a82-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "5a2ce8afb18c6a82",
+      "provider_guid": "87440",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-69d3fee77a42058c-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "69d3fee77a42058c",
+      "provider_guid": "78064",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-70a6450a1deda017-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "70a6450a1deda017",
+      "provider_guid": "112601",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-7abd583b2ed8189a-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "7abd583b2ed8189a",
+      "provider_guid": "119886",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-a1aa4af8f26e120c-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "a1aa4af8f26e120c",
+      "provider_guid": "13509",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-a9089a57a1557991-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "a9089a57a1557991",
+      "provider_guid": "122084",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-b50c6a018b2c08e7-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "b50c6a018b2c08e7",
+      "provider_guid": "120859",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-c10f3f6cd97ac38f-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "c10f3f6cd97ac38f",
+      "provider_guid": "118306",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-c26f2f99a4bdaf8f-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "c26f2f99a4bdaf8f",
+      "provider_guid": "14400",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-d419e8107262d0d0-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "d419e8107262d0d0",
+      "provider_guid": "120506",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "denton-tx-e7c1990b7a8e539e-ownership",
+      "city": "denton-tx",
+      "source_key": "3b7588310856",
+      "uid": "e7c1990b7a8e539e",
+      "provider_guid": "120835",
+      "question": "Council selector admits apparent separate body; official ownership proof required",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "denton-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-081d2695d7d0136a-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "081d2695d7d0136a",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=6334",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-city-council-worksession",
+        "fort-worth-tx-community-development-committee",
+        "fort-worth-tx-property-management-and-environmental-services-committee"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-0c66fc968402fabd-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "0c66fc968402fabd",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3814",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "0d5832dbd08e6dd8",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=127",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-1cbf75c664b7c63e-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "1cbf75c664b7c63e",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=1251",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-1d3f5b988918cba0-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "1d3f5b988918cba0",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2292",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-27254aa1a700569f-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "27254aa1a700569f",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=125",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-497b3aa05255bfb9-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "497b3aa05255bfb9",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-6a1dd0e9e8088440-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "6a1dd0e9e8088440",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=155",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-83d6abdb749bc76f-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "83d6abdb749bc76f",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2015",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-99152cb9e61fa091-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "99152cb9e61fa091",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=3814",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-b7a9ee9eae6fafc6-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "b7a9ee9eae6fafc6",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=153",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-c57e1210d9282ab1-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "c57e1210d9282ab1",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=1761",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-e0736bdd5835b1d4-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "e0736bdd5835b1d4",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2015",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-ead427dae0bbb284-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "ead427dae0bbb284",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&clip_id=6334",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-city-council-worksession",
+        "fort-worth-tx-community-development-committee",
+        "fort-worth-tx-property-management-and-environmental-services-committee"
+      ],
+      "status": "open",
+      "disposition": null
+    },
+    {
+      "case_id": "fort-worth-tx-f28ae055829705ec-ownership",
+      "city": "fort-worth-tx",
+      "source_key": "6540eef2dc2e",
+      "uid": "f28ae055829705ec",
+      "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=2292",
+      "question": "Verify participating bodies and joint versus bundled recording ownership",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "last_researched": "2026-10-05",
+      "current_feed_assignments": [
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-crime-control-and-prevention-district"
+      ],
+      "status": "open",
+      "disposition": null
     }
   ]
 }

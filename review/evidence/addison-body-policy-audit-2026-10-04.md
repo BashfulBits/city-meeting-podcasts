@@ -1105,3 +1105,19 @@ started; at03:00:31 the index build deferred, retaining the last complete search
 This explains unavailable public search without evidence of archive identity conflicts.
 Configured search is enabled with a20-minute index budget, but the shared stop signal was already
 spent. Further scheduling/budget changes require a scoped contract; no production knobs changed.
+
+### Catalog expansion authorized (2026-10-05)
+
+Maintainer authorized access fixes and catalog-wide ownership audit/corrections. The durable
+register now includes the previously enumerated Arlington, Dallas, Denton and Fort Worth UID
+candidates. These are proof obligations, not automatic publication exclusions. Fort Worth joint
+candidates retain Council pending agenda/segmentation proof. All current selectors are snapshotted
+from cached records; the existing sweep surfaces them even when matched or historical.
+
+Official initial institution evidence: Denton's Departments directory lists TIRZ boards as
+separate bodies (https://denton-tx.legistar.com/Departments.aspx); its Development Districts page
+records Ordinance2012-366 establishing TIRZ2 and its board
+(https://www.cityofdenton.com/1145/Development-Districts). Arlington's official provider archive
+separately labels Environmental Task Force and Community/Neighborhood Development meetings
+(https://arlingtontx.granicus.com/ViewPublisher.php?view_id=9). Recording-specific agendas still
+need reconciliation before config corrections. No global substring exclusion is authorized.
