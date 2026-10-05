@@ -1,14 +1,13 @@
 """Relative model quality from Artificial Analysis (AA): informational, never a gate.
 
-One AA fetch per run. A model is matched by exact identity only -- normalized creator + model
-slug -- with generic naming rules instead of hand-kept per-model alias tables: AA may prefix the
-creator to the slug, and release-channel/variant suffixes (`-it`, `-instruct`, `-chat`, `-preview`,
-`-reasoning`) are optional on either side. An exact slug always wins; a suffix-normalized match is
-used only when exactly one AA model normalizes to it, so ambiguity stays unscored. A model AA
-does not know is "unscored", and the issue offers research links rather than a guessed score. The
-floor
-(the lower of GPT-OSS-120B and Nemotron-3 Super) is shown as a flag; lanes, not this module,
-decide what is good enough.
+One paginated AA catalog fetch per run. A model is matched by exact identity only -- normalized
+creator + model slug -- with generic naming rules instead of hand-kept per-model alias tables:
+AA may prefix the creator to the slug, and release-channel/variant suffixes (`-it`, `-instruct`,
+`-chat`, `-preview`, `-reasoning`) are optional on either side. An exact slug always wins; a
+suffix-normalized match is used only when exactly one AA model normalizes to it, so ambiguity
+stays unscored. A model AA does not know is "unscored", and the issue offers research links
+rather than a guessed score. The floor (the lower of GPT-OSS-120B and Nemotron-3 Super) is shown
+as a flag; lanes, not this module, decide what is good enough.
 """
 
 from __future__ import annotations
@@ -21,7 +20,7 @@ from typing import Any
 
 import requests
 
-AA_URL = "https://artificialanalysis.ai/api/v2/data/llms/models"
+AA_URL = "https://artificialanalysis.ai/api/v2/language/models/free"
 AA_KEY_ENV = "ARTIFICIAL_ANALYSIS_API_KEY"
 AA_METRIC = "artificial_analysis_intelligence_index"
 FLOOR_MODELS = (("openai", "gpt-oss-120b"), ("nvidia", "nvidia-nemotron-3-super-120b-a12b"))
@@ -111,25 +110,55 @@ def fetch_quality_index(session: requests.Session) -> QualityIndex:
     api_key = os.environ.get(AA_KEY_ENV)
     if not api_key:
         return QualityIndex(error=f"{AA_KEY_ENV} not set")
+    scores: dict[tuple[str, str], float] = {}
+    page = 1
     try:
-        response = session.get(AA_URL, headers={"x-api-key": api_key}, timeout=30)
-        if not response.ok:
-            return QualityIndex(error=f"Artificial Analysis HTTP {response.status_code}")
-        rows = response.json().get("data") or []
-    except (requests.RequestException, ValueError, AttributeError) as exc:
+        while True:
+            response = session.get(
+                AA_URL, headers={"x-api-key": api_key}, params={"page": page}, timeout=30
+            )
+            if not response.ok:
+                return QualityIndex(error=f"Artificial Analysis HTTP {response.status_code}")
+            payload = response.json()
+            rows = payload["data"]
+            pagination = payload["pagination"]
+            total_pages = pagination["total_pages"]
+            if (
+                not isinstance(rows, list)
+                or pagination["page"] != page
+                or not isinstance(pagination["has_more"], bool)
+                or type(total_pages) is not int
+                or total_pages < page
+                or pagination["has_more"] != (page < total_pages)
+                or (pagination["has_more"] and not rows)
+            ):
+                return QualityIndex(error="Artificial Analysis invalid pagination or data")
+            scores.update(_scores(rows))
+            if not pagination["has_more"]:
+                break
+            page += 1
+    except (requests.RequestException, ValueError, AttributeError, KeyError, TypeError) as exc:
         return QualityIndex(error=f"Artificial Analysis {type(exc).__name__}")
-    return QualityIndex(scores=_scores(rows))
+    return QualityIndex(scores=scores)
 
 
 def _scores(rows: list[Mapping[str, Any]]) -> dict[tuple[str, str], float]:
     scores: dict[tuple[str, str], float] = {}
     for row in rows:
-        creator = (row.get("model_creator") or {}).get("slug")
+        creator_name = (row.get("model_creator") or {}).get("name")
+        creator = _slug(creator_name) if isinstance(creator_name, str) else ""
+        # V2 exposes publisher names, not the legacy creator slug.
+        creator = {
+            "mistral-ai": "mistral",
+            "moonshot-ai": "kimi",
+            "z-ai": "zai",
+            "x-ai": "xai",
+        }.get(creator, creator)
         slug = row.get("slug")
         try:
             value = float((row.get("evaluations") or {})[AA_METRIC])
         except (KeyError, TypeError, ValueError):
             continue
-        if isinstance(creator, str) and isinstance(slug, str) and value >= 0:
+        if creator and isinstance(slug, str) and value >= 0:
             scores[(creator.lower(), slug.lower())] = value
     return scores

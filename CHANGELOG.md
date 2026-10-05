@@ -276,6 +276,12 @@ Phase R (Research-Tool Surface)._
   Optional `llm_backlog` settings control the window and thresholds. This is a read-only
   consumer: no producer, Worker, durable schema, pipeline recipe or stored artifact changes.
   The scheduled workflow remains review/50 PR2 (GH#1969).
+- Migrated provider-catalog quality scoring to Artificial Analysis's supported Free V2 language
+  models endpoint ahead of the November 4, 2026 legacy retirement. Fetches all pages, matches
+  creator names from the new schema, and leaves all candidates unscored if any page fails.
+  Existing API keys and issue attribution remain in use; no Pro subscription is needed. An
+  independent weekly endpoint-contract job now checks the live quality catalog and both reference
+  models, failing visibly on missing credentials or an unusable response.
 
 - **A judge evaluation lane (`evals/judge/`, `scripts/eval_judge.py`).** The pilot harness for the review/49
   judge stack, in the `evals/chapter-agenda` layout: a frozen `manifest.json` (inputs) and `gold.json` (truth),

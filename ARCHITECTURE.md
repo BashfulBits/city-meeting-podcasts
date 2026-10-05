@@ -218,7 +218,11 @@ provider is a plugin (`providers/<name>.py`: free evidence, response signals, re
 contract tests keep in step with `config/provider_limits.yml`; lanes come only from `load_lanes()`.
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane
 checkboxes, unacknowledged anomalies, collapsed observations) that closes when nothing is
-actionable. It changes no config. See [review/48](review/48-provider-catalog-reconciliation.md).
+actionable. Quality uses the paginated `/api/v2/language/models/free` endpoint with the existing
+`ARTIFICIAL_ANALYSIS_API_KEY`; creator names are normalized to publisher identities. A failed page
+leaves the whole run unscored rather than exposing a partial catalog. The weekly endpoint-contract
+workflow separately exercises this client and requires usable reference-model scores; missing
+credentials and API/schema failures fail the job. Reconciliation changes no config. See [review/48](review/48-provider-catalog-reconciliation.md).
 
 | Area | Modules |
 |---|---|

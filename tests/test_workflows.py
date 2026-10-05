@@ -1653,3 +1653,18 @@ def test_provider_catalog_reconcile_is_issue_only_paused_and_keyed_from_config()
         needed |= {a["api_key_env"] for a in accounts if a["id"] == route.get("account_id")}
     for name in sorted(needed):
         assert env.get(name) == f"${{{{ secrets.{name} }}}}", name
+
+
+def test_contracts_probe_artificial_analysis_with_production_secret():
+    _wf, job = _job("contracts.yml", "artificial-analysis")
+    assert job["permissions"] == {"contents": "read"}
+    assert not job.get("needs"), "Quality contract must run independently of media probes"
+    step = next(
+        s for s in job["steps"] if s.get("name") == "Probe Artificial Analysis quality catalog"
+    )
+    assert step["env"]["ARTIFICIAL_ANALYSIS_API_KEY"] == (
+        "${{ secrets.ARTIFICIAL_ANALYSIS_API_KEY }}"
+    )
+    assert "tests/live/test_artificial_analysis_contract.py -m live" in step["run"]
+    assert not step.get("continue-on-error")
+    assert not job.get("continue-on-error")
