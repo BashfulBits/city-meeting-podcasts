@@ -195,7 +195,7 @@ def test_hard_input_ceiling_tolerance_is_bounded_and_needs_a_ceiling(route_extra
             compile_llm_limits.compile_limits()
 
 
-def test_gemma_ai_studio_routes_carry_a_ceiling_tolerance_under_googles_quota():
+def test_gemma_ai_studio_routes_preserve_quota_headroom_without_ceiling_tolerance():
     routes = compile_llm_limits.compile_limits()["routes_by_id"]
     for route_id in (
         "gemma_4_31b_primary",
@@ -204,9 +204,8 @@ def test_gemma_ai_studio_routes_carry_a_ceiling_tolerance_under_googles_quota():
         "gemma_4_26b_secondary",
     ):
         route = routes[route_id]
-        assert route["hard_input_ceiling_tolerance"] == 0.1
-        # 14,400 x 1.1 = 15,840 stays under Google's 16,000 input tokens/minute.
-        assert route["hard_input_ceiling"] * (1 + route["hard_input_ceiling_tolerance"]) < 16000
+        assert not route.get("hard_input_ceiling_tolerance")
+        assert route["hard_input_ceiling"] == route["tpm"] == 14400
 
 
 def test_compiled_routes_resolve_a_structured_output_method_per_route():
@@ -998,3 +997,13 @@ def test_reasoning_controls_are_validated(controls, match):
         compile_llm_limits._validate_reasoning_controls(
             {"route_id": "r", "reasoning_controls": controls}
         )
+
+
+def test_qwen_daily_tokens_are_compiled_with_safety_buffer():
+    compiled = compile_llm_limits.compile_limits()
+    route = compiled["routes_by_id"]["groq_qwen_3_8_27b_primary"]
+    assert route["tpd"] == 180_000
+    assert route["rpm"] == 30
+    assert route["rpd"] == 1000
+    worker = compile_llm_limits._worker_catalog(compiled)
+    assert worker["routes_by_id"][route["route_id"]]["tpd"] == 180_000

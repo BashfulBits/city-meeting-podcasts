@@ -279,6 +279,8 @@ def test_serialized_ledger_matches_worker_shape():
         "cost_day_key",
         "requests_minute",
         "tokens_minute",
+        "tokens_day",
+        "tokens_day_updated_at",
         "requests_minute_key",
         "requests_available_at",
         "requests_day",
@@ -733,3 +735,35 @@ def test_provider_tpm_non_positive_and_zero_division_guard():
         cost=0.0,
         now=NOW,
     )
+
+
+def test_daily_tokens_reserve_settle_release_and_rollover():
+    from dataclasses import replace
+
+    route = replace(ROUTE, quota=QuotaPolicy(tpd=200_000))
+    budget = LLMBudget()
+    budget.reserve("a", route.model, route=route, requests=1, tokens=199_000, cost=0, now=NOW)
+    assert not budget.available(route.model, route=route, requests=1, tokens=1089, cost=0, now=NOW)
+    budget.settle("a", route.model, route=route, now=NOW, actual_tokens=100_000)
+    assert budget.available(route.model, route=route, requests=1, tokens=1089, cost=0, now=NOW)
+    budget.reserve("b", route.model, route=route, requests=1, tokens=1000, cost=0, now=NOW)
+    restored = LLMBudget.from_dict(budget.to_dict())
+    restored.release("b", route.model, route=route, now=NOW)
+    assert restored.routes[route.model].tokens_day == 100_000
+    tomorrow = NOW + timedelta(days=1)
+    assert restored.available(
+        route.model, route=route, requests=1, tokens=200_000, cost=0, now=tomorrow
+    )
+    assert restored.routes[route.model].tokens_day == 0
+
+
+def test_old_day_token_settlement_does_not_change_new_day():
+    from dataclasses import replace
+
+    route = replace(ROUTE, quota=QuotaPolicy(tpd=200_000))
+    budget = LLMBudget()
+    budget.reserve("old", route.model, route=route, requests=1, tokens=1000, cost=0, now=NOW)
+    tomorrow = NOW + timedelta(days=1)
+    budget.reserve("new", route.model, route=route, requests=1, tokens=1500, cost=0, now=tomorrow)
+    budget.settle("old", route.model, route=route, now=tomorrow, actual_tokens=500)
+    assert budget.routes[route.model].tokens_day == 1500

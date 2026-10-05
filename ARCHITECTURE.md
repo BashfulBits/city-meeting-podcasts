@@ -616,14 +616,30 @@ in the Worker). The v2 Worker additionally learns, per route × model × prompt 
 ratio and p95 output size of the last 32 completions (after 16 samples) and reserves
 `scaled input + min(max_tokens, 1.25 × p95 output)` rather than the full `max_tokens`; each successful
 completion then settles the route's token bucket to the provider's reported usage. The Worker checks
-`hard_input_ceiling` at that learned ratio. A route may add `hard_input_ceiling_tolerance` (0.1 on the
-Gemma AI Studio routes, still under Google's 16,000/minute quota): a job refused only for being within
-it is tried when a claim finds nothing else to dispatch, one per route per claim, so near misses drain
-instead of stranding at the head of the queue. A queued job over every usable route's ceiling even
+`hard_input_ceiling` at that learned ratio. Google reservations count only input, with a persisted
+trailing-minute start ledger, so idle credit and fixed-window boundaries cannot buy excess TPM.
+Queue estimates include response schemas. Gemma AI Studio routes retain their 14,400 input ceiling
+without tolerance, preserving the 10% quota margin. Other routes may add
+`hard_input_ceiling_tolerance`; near misses are tried only when nothing else can dispatch. A queued
+job over every usable route's ceiling even
 with that tolerance (and with any uncapped route's daily quota spent) is failed at claim time, recorded
 as `input_over_route_ceiling`, so it cannot hold the claim's bounded lookahead and the producer re-plans
 it into batches that fit; producers read the same ratio from the read-only `GET /v2/calibration`
-(one row) and size prelabeler batches to it with a 5% margin. A job whose model has zero
+(one row) and size prelabeler batches to it with a 5% margin.
+Qwen 3.8 additionally declares `tpd: 200000` (180k after the quota safety buffer). The route's
+`tpd_used` includes claim-time reservations, settles to actual input plus output on completion,
+and refills continuously at the configured tokens/day rate, independently of the calendar-day
+request counter. The observed 199,659 used + 1,089 requested against 200,000 yields a 748-token
+deficit: exactly 323.136 seconds at 200,000/day, matching the provider's error. `own_tpd` imports
+the provider's reported remaining allowance and honors Retry-After without exhausting RPD or
+blocking until midnight. Unknown usage stays charged. Python's direct ledger enforces the same
+refill axis and permits sibling routing after a TPD response.
+OrcaRouter's unpublished free prompt cap is learned as a raw-estimate upper bound from an explicit
+`err_free_prompt_cap` response. It prevents that size or larger from being retried on the same
+route, requeues on the bounded route-input retry budget, and leaves short work eligible. The
+bound is not an exact tokenizer limit; progressively smaller requests can still discover a
+lower bound. It persists until an operator clears `prompt_cap_estimate` after a tier change. A job
+whose model has zero
 configured routes at all is instead indexed under that model's own (unconfigured) name, so a later
 catalog addition makes it searchable with no sweep needed (`scripts/reconcile_stuck_chapter_agenda.py
 --lane any` reaches a job stuck this way permanently, e.g. one pinned to a model retired from its

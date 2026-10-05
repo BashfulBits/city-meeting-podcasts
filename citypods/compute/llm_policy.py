@@ -155,6 +155,7 @@ class QuotaPolicy:
     rpm: int | None = None
     rpd: int | None = None
     tpm: int | None = None
+    tpd: int | None = None
     concurrency: int | None = None
     reset_timezone: str = "UTC"
 
@@ -313,6 +314,7 @@ def _load_generated_catalog() -> tuple[list[LLMRoute], dict[str, str], dict[str,
                     rpm=item.get("rpm"),
                     rpd=item.get("rpd"),
                     tpm=item.get("tpm"),
+                    tpd=item.get("tpd"),
                     concurrency=item.get("concurrency"),
                     reset_timezone=str(item.get("reset_timezone", "UTC")),
                 ),
