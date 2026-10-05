@@ -1865,3 +1865,11 @@ groups or other selectors. No invalidation/backfill or production writes.
 Arlington ETF #2055 implementation is prepared on its feature branch: six exact GUID/body
 inclusions and only the Council ETF term removed. Full1,515 replay changes Council962→956,
 ETF0→6 and no other feed, including All Meetings. Deployment verification remains pending.
+
+Arlington ETF bounded contract is implemented/frozen in PR #2058 (human merged October 5,
+2026 at 15:31:42 UTC). Conflict resolution `8c312d45` preserved both roadmap entries and
+main's unrelated Worker changes; ETF selectors/test remained unchanged, ten targeted checks
+and whole Ruff/format passed, current CI green. Full offline implementation suite passed4,927.
+Full review request5997651345 at15:30:50 UTC received reply5997653803 "Pull request is closed."
+No substantive review completed before merge; record the explicit gap, never request closed
+reviews. ETF six deployment cases remain open until live proof. No invalidation/backfill.

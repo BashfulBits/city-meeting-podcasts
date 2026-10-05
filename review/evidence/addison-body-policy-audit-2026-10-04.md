@@ -1390,3 +1390,19 @@ The two ownership cases are resolved on complete-source replay plus deployed own
 proof; all sixteen Denton ownership corrections are verified (fourteen RSS, two intentionally
 withheld). No media verdict, raw record, UID or audio was changed. Availability review is a
 separate obligation; do not claim playable podcast coverage for these two recordings.
+
+### Catalog five ownership verification — 2026-10-05 15:30 UTC
+
+Read-only dedicated and Council audio RSS all return HTTP200: Arlington CND four items,
+Arlington Council495, Dallas Redistricting28 and Dallas Council355. Five exact UIDs occur
+in their dedicated feeds with audio equal to original persisted records, absent from Council.
+The five ownership cases are resolved. Arlington All Meetings retention is proven separately
+by the full1,515-record replay; bounded live aggregate RSS is not historical coverage proof.
+
+| UID | Dedicated feed | Original verified audio filename |
+|---|---|---|
+| 237c28f30496e3e0 | arlington-tx-community-and-neighborhood-development-committee | 237c28f30496e3e0-d2419bdee50a.m4a |
+| 30b28efc23346a6d | arlington-tx-community-and-neighborhood-development-committee | 30b28efc23346a6d-07a7c67138c4.m4a |
+| 4357f0c39d1ae58f | arlington-tx-community-and-neighborhood-development-committee | 4357f0c39d1ae58f-354e7dead089.m4a |
+| d8f3b672b482369b | arlington-tx-community-and-neighborhood-development-committee | d8f3b672b482369b-5427e9c557a1.m4a |
+| bd172b762dd20b63 | dallas-tx-redistricting-commission | bd172b762dd20b63-7cd53a44abef.m4a |

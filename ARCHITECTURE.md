@@ -1385,3 +1385,6 @@ serve these exact selectors; no runtime or schema change was introduced.
 Arlington ETF #2055 implementation is prepared under the exact six-record review/51
 contract: dedicated feed, only Council ETF term removed, All Meetings/raw UID/audio
 preserved. Deployed verification pending; no standing or dissolution inference.
+
+Arlington's exact Environmental Task Force feed is implemented in #2058 using existing
+GUID/body routing; Council omits those six, while All Meetings and raw identity remain intact.

@@ -1601,15 +1601,15 @@
       "uid": "237c28f30496e3e0",
       "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3453",
       "question": "Council selector admits apparent separate body; official ownership proof required",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "missing_evidence": "None for this exact ownership correction; broader coverage remains separate.",
+      "next_action": "Reopen if later deployed ownership or original audio verification changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
-        "arlington-tx",
-        "arlington-tx-council"
+        "arlington-tx-community-and-neighborhood-development-committee",
+        "arlington-tx"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified 2026-10-05 15:30 UTC live dedicated RSS original UID/audio and Council absence; full-source replay independently preserves Arlington All Meetings. See catalog five ownership verification in committed audit."
     },
     {
       "case_id": "arlington-tx-25e9b8510b0a7a66-ownership",
@@ -1652,15 +1652,15 @@
       "uid": "30b28efc23346a6d",
       "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3505",
       "question": "Council selector admits apparent separate body; official ownership proof required",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "missing_evidence": "None for this exact ownership correction; broader coverage remains separate.",
+      "next_action": "Reopen if later deployed ownership or original audio verification changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
-        "arlington-tx",
-        "arlington-tx-council"
+        "arlington-tx-community-and-neighborhood-development-committee",
+        "arlington-tx"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified 2026-10-05 15:30 UTC live dedicated RSS original UID/audio and Council absence; full-source replay independently preserves Arlington All Meetings. See catalog five ownership verification in committed audit."
     },
     {
       "case_id": "arlington-tx-35b22fcc8d07967b-ownership",
@@ -1686,15 +1686,15 @@
       "uid": "4357f0c39d1ae58f",
       "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3480",
       "question": "Council selector admits apparent separate body; official ownership proof required",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "missing_evidence": "None for this exact ownership correction; broader coverage remains separate.",
+      "next_action": "Reopen if later deployed ownership or original audio verification changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
-        "arlington-tx",
-        "arlington-tx-council"
+        "arlington-tx-community-and-neighborhood-development-committee",
+        "arlington-tx"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified 2026-10-05 15:30 UTC live dedicated RSS original UID/audio and Council absence; full-source replay independently preserves Arlington All Meetings. See catalog five ownership verification in committed audit."
     },
     {
       "case_id": "arlington-tx-9b66e98b682a47f2-ownership",
@@ -1737,15 +1737,15 @@
       "uid": "d8f3b672b482369b",
       "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3493",
       "question": "Council selector admits apparent separate body; official ownership proof required",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Verify official body and exact recording, then prepare bounded feed correction with full ownership replay",
+      "missing_evidence": "None for this exact ownership correction; broader coverage remains separate.",
+      "next_action": "Reopen if later deployed ownership or original audio verification changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
-        "arlington-tx",
-        "arlington-tx-council"
+        "arlington-tx-community-and-neighborhood-development-committee",
+        "arlington-tx"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified 2026-10-05 15:30 UTC live dedicated RSS original UID/audio and Council absence; full-source replay independently preserves Arlington All Meetings. See catalog five ownership verification in committed audit."
     },
     {
       "case_id": "dallas-tx-baa19208405acb22-ownership",
@@ -1770,15 +1770,14 @@
       "uid": "bd172b762dd20b63",
       "provider_guid": "203320",
       "question": "Council selector admits apparent separate body; official ownership proof required",
-      "missing_evidence": "Human merge and deployed Commission-only RSS verification",
-      "next_action": "Verify prepared #2034 Council override removal after deployment, preserving Commission UID/audio",
+      "missing_evidence": "None for this exact ownership correction; broader coverage remains separate.",
+      "next_action": "Reopen if later deployed ownership or original audio verification changes.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
-        "dallas-tx-city-council",
         "dallas-tx-redistricting-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified 2026-10-05 15:30 UTC live dedicated RSS original UID/audio and Council absence; full-source replay independently preserves Arlington All Meetings. See catalog five ownership verification in committed audit."
     },
     {
       "case_id": "denton-tx-04689e3929ac104e-ownership",
