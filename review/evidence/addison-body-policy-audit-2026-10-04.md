@@ -1431,3 +1431,16 @@ cases resolve; source duplication/publication-winner decisions remain separate.
 Live owner paths are `https://www.citymeetings.fyi/fort-worth-tx-city-council/<UID>/`.
 Original audio keys are unchanged under Swagit/Granicus source namespaces. Separate
 Board/Council packets, ISD participation and four missing-agenda cases remain open.
+
+### Fort Worth October 14 joint corroboration — 2026-10-05
+
+[Official October 7, 2008 Council minutes](https://fortworthgov.granicus.com/MinutesViewer.php?clip_id=94&view_id=2)
+record the mayor announcing an October 14 joint Council/Gas Well Task Force meeting at
+1:30 p.m. in the Will Rogers Memorial Center Stagecoach Room. This is independent evidence
+that the joint event was planned. It does not yet bind the event to recording UID
+`0d5832dbd08e6dd8` (clip127) or `27254aa1a700569f` (clip125). The latter listing says
+Workshop of October14 despite its October21 publication date. Both cases remain open.
+
+The two exact provider player URLs were unavailable through the web reader during this
+check; unavailable reader output is not evidence that the official recordings are gone.
+Do not resolve either case or add Task Force participation from this announcement alone.
