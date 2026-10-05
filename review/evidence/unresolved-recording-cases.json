@@ -8,15 +8,14 @@
       "uid": "01960ed1399198df",
       "provider_guid": "394156",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-56025-02cedb500a3fdb57",
@@ -39,15 +38,14 @@
       "uid": "041b680eca8c01c1",
       "provider_guid": "364715",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-224232-06bbb874afec6cc0",
@@ -56,15 +54,14 @@
       "uid": "06bbb874afec6cc0",
       "provider_guid": "224232",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55603-078e31754cb52b70",
@@ -105,15 +102,14 @@
       "uid": "0d0655a79a4e1e10",
       "provider_guid": "167693",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55623-0d0f97d0a5e4234f",
@@ -138,15 +134,14 @@
       "uid": "0ee826769ea9f6f8",
       "provider_guid": "156697",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-317783-109ce44a66ecbb9f",
@@ -155,15 +150,14 @@
       "uid": "109ce44a66ecbb9f",
       "provider_guid": "317783",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55621-1269a0f7dc0f5806",
@@ -220,15 +214,14 @@
       "uid": "1956d71b85fb8371",
       "provider_guid": "355667",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55600-1e85dcff232fcba8",
@@ -253,15 +246,14 @@
       "uid": "1ed43638327380eb",
       "provider_guid": "349764",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-361917-1ef623b5f2bc909a",
@@ -270,12 +262,14 @@
       "uid": "1ef623b5f2bc909a",
       "provider_guid": "361917",
       "question": "Verified temporary Bond committee recording lacks a subscription",
-      "missing_evidence": "Human merge and deployed Bond subscription verification for #2016",
-      "next_action": "Review/merge exact Bond-family feed; verify four original enclosures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
-      "current_feed_assignments": [],
-      "status": "open",
-      "disposition": null
+      "current_feed_assignments": [
+        "addison-tx-bond-committees"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-56023-1f50e2274a6dd26c",
@@ -284,14 +278,12 @@
       "uid": "1f50e2274a6dd26c",
       "provider_guid": "56023",
       "question": "Council swearing-in ceremony included as Council meeting",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
-      "current_feed_assignments": [
-        "addison-tx-city-council"
-      ],
-      "status": "open",
-      "disposition": null
+      "current_feed_assignments": [],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-320828-2095f0d63e326bf0",
@@ -300,15 +292,14 @@
       "uid": "2095f0d63e326bf0",
       "provider_guid": "320828",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-56020-235c1c030568dac0",
@@ -345,15 +336,14 @@
       "uid": "28b12e6b65220f00",
       "provider_guid": "205784",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55605-2929e7152647c257",
@@ -378,15 +368,14 @@
       "uid": "2b50ac2023534681",
       "provider_guid": "312954",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55618-2f9b5fd70b5514c5",
@@ -411,12 +400,14 @@
       "uid": "31b194e3b25f0bf8",
       "provider_guid": "359742",
       "question": "Verified temporary Bond committee recording lacks a subscription",
-      "missing_evidence": "Human merge and deployed Bond subscription verification for #2016",
-      "next_action": "Review/merge exact Bond-family feed; verify four original enclosures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
-      "current_feed_assignments": [],
-      "status": "open",
-      "disposition": null
+      "current_feed_assignments": [
+        "addison-tx-bond-committees"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55864-35a78fa89c7c5c5c",
@@ -426,7 +417,7 @@
       "provider_guid": "55864",
       "question": "Historical Economic Development Luncheon is uncovered",
       "missing_evidence": "Recording-bound public briefing versus promotional event evidence",
-      "next_action": "Research official luncheon agenda/content before publication decision",
+      "next_action": "Apply approved Archive-only visibility #2023; verify feeds/search/browse omission and direct archive retention; continue any independent content identity evidence.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [],
       "status": "open",
@@ -487,15 +478,14 @@
       "uid": "3c738579c7a5b935",
       "provider_guid": "346014",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55615-3cfc07ccaaa89fef",
@@ -520,15 +510,14 @@
       "uid": "3e5d9a3360600836",
       "provider_guid": "302919",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55622-47fc5fa46cd0d106",
@@ -585,15 +574,14 @@
       "uid": "4b69d73512792a44",
       "provider_guid": "148373",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-276855-4ef85ec6540cf95b",
@@ -602,15 +590,15 @@
       "uid": "4ef85ec6540cf95b",
       "provider_guid": "276855",
       "question": "Verified joint subscription correction prepared in PR2012",
-      "missing_evidence": "Human merge and deployed projection verification",
-      "next_action": "Merge reviewed dependency stack manually and verify participating subscriptions",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
         "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-222435-519328ed1d5a3ca7",
@@ -619,15 +607,14 @@
       "uid": "519328ed1d5a3ca7",
       "provider_guid": "222435",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-153032-52ec3e810707f814",
@@ -636,15 +623,14 @@
       "uid": "52ec3e810707f814",
       "provider_guid": "153032",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-184783-564732c5642e0723",
@@ -653,15 +639,14 @@
       "uid": "564732c5642e0723",
       "provider_guid": "184783",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-337754-56af6e490a958190",
@@ -670,15 +655,14 @@
       "uid": "56af6e490a958190",
       "provider_guid": "337754",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-276796-57e8c5a0393e87fe",
@@ -687,15 +671,14 @@
       "uid": "57e8c5a0393e87fe",
       "provider_guid": "276796",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55620-5885503f6962565a",
@@ -721,7 +704,7 @@
       "provider_guid": "56060",
       "question": "Historical municipal media/presentation classification remains unproved",
       "missing_evidence": "Recording-bound content and institutional context",
-      "next_action": "Research archived official materials; retain current publication pending evidenced decision",
+      "next_action": "Apply approved Archive-only visibility #2023; verify feeds/search/browse omission and direct archive retention; continue any independent content identity evidence.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
@@ -736,15 +719,14 @@
       "uid": "5a5d09da1bd31bda",
       "provider_guid": "267232",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-178980-5aa3c2d183ed4f52",
@@ -753,15 +735,14 @@
       "uid": "5aa3c2d183ed4f52",
       "provider_guid": "178980",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55608-5c3910b54cff845e",
@@ -818,15 +799,14 @@
       "uid": "699939eb5a53e258",
       "provider_guid": "382950",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-305960-6bafb2c16f76603b",
@@ -835,15 +815,14 @@
       "uid": "6bafb2c16f76603b",
       "provider_guid": "305960",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55612-6d954cb309211df9",
@@ -868,15 +847,14 @@
       "uid": "709f0cf53c420a2c",
       "provider_guid": "191239",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-394474-757ab2a4aaf9bbca",
@@ -885,14 +863,14 @@
       "uid": "757ab2a4aaf9bbca",
       "provider_guid": "394474",
       "question": "TIRZ board is assigned to Council instead of city TIF family",
-      "missing_evidence": "Human merge and deployed TIF subscription/search verification for #2017",
-      "next_action": "Review/merge verified TIRZ Council->TIF move; verify original UID/audio and canonical attribution",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council"
+        "addison-tx-tif"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55601-78880dfd58cacebd",
@@ -917,15 +895,14 @@
       "uid": "788daedde0f6d9a4",
       "provider_guid": "375371",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-271981-7d335b073b6a11d4",
@@ -934,15 +911,14 @@
       "uid": "7d335b073b6a11d4",
       "provider_guid": "271981",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-315406-8447e1d9e60fd6a7",
@@ -951,15 +927,14 @@
       "uid": "8447e1d9e60fd6a7",
       "provider_guid": "315406",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-175924-84c42f696f6dbef9",
@@ -968,15 +943,14 @@
       "uid": "84c42f696f6dbef9",
       "provider_guid": "175924",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-353043-854622aa2f150a57",
@@ -985,15 +959,14 @@
       "uid": "854622aa2f150a57",
       "provider_guid": "353043",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-281236-876e9334a9c3d72e",
@@ -1002,15 +975,14 @@
       "uid": "876e9334a9c3d72e",
       "provider_guid": "281236",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55627-87a3548cd62f20d6",
@@ -1035,15 +1007,14 @@
       "uid": "894926556b8a5f15",
       "provider_guid": "358763",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-371625-902400566a6637b5",
@@ -1052,12 +1023,14 @@
       "uid": "902400566a6637b5",
       "provider_guid": "371625",
       "question": "Verified temporary Bond committee recording lacks a subscription",
-      "missing_evidence": "Human merge and deployed Bond subscription verification for #2016",
-      "next_action": "Review/merge exact Bond-family feed; verify four original enclosures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
-      "current_feed_assignments": [],
-      "status": "open",
-      "disposition": null
+      "current_feed_assignments": [
+        "addison-tx-bond-committees"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55625-9cabf11f0dab1ad5",
@@ -1098,15 +1071,14 @@
       "uid": "a4e00eac785ab695",
       "provider_guid": "245443",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-56026-a7ffa0a2ca5e1840",
@@ -1116,7 +1088,7 @@
       "provider_guid": "56026",
       "question": "Historical municipal media/presentation classification remains unproved",
       "missing_evidence": "Recording-bound content and institutional context",
-      "next_action": "Research archived official materials; retain current publication pending evidenced decision",
+      "next_action": "Apply approved Archive-only visibility #2023; verify feeds/search/browse omission and direct archive retention; continue any independent content identity evidence.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
@@ -1132,7 +1104,7 @@
       "provider_guid": "56027",
       "question": "Historical municipal media/presentation classification remains unproved",
       "missing_evidence": "Recording-bound content and institutional context",
-      "next_action": "Research archived official materials; retain current publication pending evidenced decision",
+      "next_action": "Apply approved Archive-only visibility #2023; verify feeds/search/browse omission and direct archive retention; continue any independent content identity evidence.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
@@ -1147,15 +1119,14 @@
       "uid": "ab76536c44140f06",
       "provider_guid": "388458",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-310398-acd22fa4f0f08c91",
@@ -1164,15 +1135,14 @@
       "uid": "acd22fa4f0f08c91",
       "provider_guid": "310398",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-208747-ad631855f512ba4f",
@@ -1181,15 +1151,14 @@
       "uid": "ad631855f512ba4f",
       "provider_guid": "208747",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-335172-bb056f86d6f26066",
@@ -1198,15 +1167,14 @@
       "uid": "bb056f86d6f26066",
       "provider_guid": "335172",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55611-c18e4590c589606f",
@@ -1232,7 +1200,7 @@
       "provider_guid": "56028",
       "question": "Historical municipal media/presentation classification remains unproved",
       "missing_evidence": "Recording-bound content and institutional context",
-      "next_action": "Research archived official materials; retain current publication pending evidenced decision",
+      "next_action": "Apply approved Archive-only visibility #2023; verify feeds/search/browse omission and direct archive retention; continue any independent content identity evidence.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
@@ -1247,15 +1215,14 @@
       "uid": "c87abe7fbf3e202d",
       "provider_guid": "205724",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-230288-c8d120c8bdae1a7b",
@@ -1264,15 +1231,14 @@
       "uid": "c8d120c8bdae1a7b",
       "provider_guid": "230288",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-310072-c95af66385f6cf31",
@@ -1281,16 +1247,16 @@
       "uid": "c95af66385f6cf31",
       "provider_guid": "310072",
       "question": "Verified joint subscription correction prepared in PR2012",
-      "missing_evidence": "Human merge and deployed projection verification",
-      "next_action": "Merge reviewed dependency stack manually and verify participating subscriptions",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
         "addison-tx-city-council",
         "addison-tx-comprehensive-plan-advisory-committee",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-372562-ca03473c2506f62f",
@@ -1299,15 +1265,14 @@
       "uid": "ca03473c2506f62f",
       "provider_guid": "372562",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-177382-ca62ec8b0c2dd613",
@@ -1316,15 +1281,14 @@
       "uid": "ca62ec8b0c2dd613",
       "provider_guid": "177382",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-362796-cb34bf9c6001c32a",
@@ -1333,12 +1297,14 @@
       "uid": "cb34bf9c6001c32a",
       "provider_guid": "362796",
       "question": "Verified temporary Bond committee recording lacks a subscription",
-      "missing_evidence": "Human merge and deployed Bond subscription verification for #2016",
-      "next_action": "Review/merge exact Bond-family feed; verify four original enclosures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
-      "current_feed_assignments": [],
-      "status": "open",
-      "disposition": null
+      "current_feed_assignments": [
+        "addison-tx-bond-committees"
+      ],
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-56024-db2189f7ab620a65",
@@ -1393,15 +1359,14 @@
       "uid": "e2e2e4d8c9b5330c",
       "provider_guid": "150744",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55628-e3725c3d1f32d8c5",
@@ -1442,15 +1407,14 @@
       "uid": "e5cbc38145f8131d",
       "provider_guid": "269302",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-56022-ee80c45122c4f9f0",
@@ -1474,7 +1438,7 @@
       "provider_guid": "56059",
       "question": "Historical municipal media/presentation classification remains unproved",
       "missing_evidence": "Recording-bound content and institutional context",
-      "next_action": "Research archived official materials; retain current publication pending evidenced decision",
+      "next_action": "Apply approved Archive-only visibility #2023; verify feeds/search/browse omission and direct archive retention; continue any independent content identity evidence.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
@@ -1489,15 +1453,14 @@
       "uid": "f72183a5e7102bf1",
       "provider_guid": "308298",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-55617-f86aabec5e474882",
@@ -1538,15 +1501,14 @@
       "uid": "f9f99cbaf58c7402",
       "provider_guid": "186775",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-295839-fcc9bde16c7f47fe",
@@ -1555,16 +1517,16 @@
       "uid": "fcc9bde16c7f47fe",
       "provider_guid": "295839",
       "question": "Verified joint subscription correction prepared in PR2012",
-      "missing_evidence": "Human merge and deployed projection verification",
-      "next_action": "Merge reviewed dependency stack manually and verify participating subscriptions",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
         "addison-tx-city-council",
         "addison-tx-comprehensive-plan-advisory-committee",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-327186-fd1cfcfdff127609",
@@ -1573,15 +1535,14 @@
       "uid": "fd1cfcfdff127609",
       "provider_guid": "327186",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-300264-fde86a41f004984a",
@@ -1590,15 +1551,14 @@
       "uid": "fde86a41f004984a",
       "provider_guid": "300264",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     },
     {
       "case_id": "addison-154641-ff8eac28f4881cd2",
@@ -1607,15 +1567,14 @@
       "uid": "ff8eac28f4881cd2",
       "provider_guid": "154641",
       "question": "P&Z-only work session currently included in Council",
-      "missing_evidence": "Human merge and deployed projection verification of #2015 correction",
-      "next_action": "Review/merge bounded exact Council correction; verify P&Z-only and ceremony departures in deployed RSS",
+      "missing_evidence": "None for this assignment correction; broader historical coverage is separate.",
+      "next_action": "Reopen if a subsequent sweep changes this verified assignment.",
       "last_researched": "2026-10-04",
       "current_feed_assignments": [
-        "addison-tx-city-council",
         "addison-tx-planning-and-zoning-commission"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Verified deployed public RSS after human merges #2012/#2019/#2020/#2021; see addison-body-policy-audit-2026-10-04.md deployed verification section."
     }
   ]
 }

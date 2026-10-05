@@ -507,3 +507,8 @@ GUID394474/UID757ab2a4aaf9bbca from Council to Addison: TIF Meetings. Canonical 
 attribution changes accordingly; original raw record, UID and hosted audio remain. After the
 Council narrowing,500 original Council selections remain. No audio invalidation or backfill.
 The case remains open pending human merge and deployed subscription verification.
+
+
+Archive-only visibility (#2023): development-ready bounded contract in review/51. Six Addison
+recordings approved; retain direct archives and independent evidence obligations. Prepared code
+requires current CI and substantive CodeRabbit review before human merge.

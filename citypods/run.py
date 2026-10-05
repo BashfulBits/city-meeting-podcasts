@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from citypods.archive_visibility import archive_policy_hash, is_archive_only, load_archive_index
 from citypods.artwork import render_cover
 from citypods.bodies import filter_by_body, source_body_filter, source_body_inclusions
 from citypods.compute import DispatchCoordinator, make_compute
@@ -1133,6 +1134,8 @@ def _process_city(
     )
     raw_retained_eps = retained_eps
     selection_hash = None
+    visibility_hash = None
+    hidden_recording_guids = set()
     if render:
         selection_index = selection_index or load_selection_index([city])
         if any(group.feed_slug == city.slug for group in selection_index.groups):
@@ -1163,11 +1166,28 @@ def _process_city(
                     [fingerprint, selection_hash, plan.selected_uids], separators=(",", ":")
                 ).encode()
             ).hexdigest()
+        archive_index = load_archive_index(list(selection_index.owners.values()))
+        visibility_hash = archive_policy_hash(archive_index, source_key(city))
+        hidden_recording_guids = {
+            ep.guid for ep in episodes if is_archive_only(archive_index, source_key(city), ep)
+        }
+        retained_eps = [
+            ep for ep in retained_eps if not is_archive_only(archive_index, source_key(city), ep)
+        ]
+        if visibility_hash is not None:
+            fingerprint = hashlib.sha256(
+                json.dumps([fingerprint, visibility_hash], separators=(",", ":")).encode()
+            ).hexdigest()
     calendar_records = sorted(
         filter_by_body(pipeline.calendar_records(city), body_filter, body_inclusions),
         key=lambda record: record.published,
         reverse=True,
     )
+    calendar_records = [
+        record
+        for record in calendar_records
+        if not record.video_guid or record.video_guid not in hidden_recording_guids
+    ]
     feed_eps = retained_eps[: city.max_episodes]
     detail = f"{archived} archived"
     if archived > len(feed_eps):
@@ -1251,7 +1271,12 @@ def _process_city(
 
                         shutil.rmtree(child)
             archive_hash = _city_archive_hash(
-                city, retained_eps, calendar_records, base_url, selection_hash=selection_hash
+                city,
+                retained_eps,
+                calendar_records,
+                base_url,
+                selection_hash=selection_hash,
+                archive_hash=visibility_hash,
             )
             new_entry["archive_hash"] = archive_hash
             if cache_entry is None or cache_entry.get("archive_hash") != archive_hash:
@@ -1283,12 +1308,14 @@ def _process_city(
         _write_chapter_sidecars(
             city_dir,
             city,
-            raw_retained_eps if selection_hash is not None else feed_eps,
+            raw_retained_eps
+            if selection_hash is not None or visibility_hash is not None
+            else feed_eps,
             base_url,
             include_generated_chapters=include_generated_chapters,
         )
         # A valid selection must replace stale alternate items even without playable audio.
-        if has_audio or selection_hash is not None:
+        if has_audio or selection_hash is not None or visibility_hash is not None:
             (city_dir / "audio_feed.xml").write_text(
                 build_rss(
                     city,
@@ -4251,6 +4278,7 @@ def _city_archive_hash(
     base_url: str,
     *,
     selection_hash: str | None = None,
+    archive_hash: str | None = None,
 ) -> str:
     """Hash the city archive page's render inputs for incremental publication."""
     payload = [
@@ -4287,6 +4315,8 @@ def _city_archive_hash(
     ]
     if selection_hash is not None:
         payload.append([selection_hash, [ep.uid for ep in episodes]])
+    if archive_hash is not None:
+        payload.append(archive_hash)
     blob = json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()
 

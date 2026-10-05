@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
+from citypods.archive_visibility import archive_policy_hash, is_archive_only, load_archive_index
 from citypods.bodies import matches, source_body_filter, source_body_inclusions
 from citypods.chapters import episode_served_chapters
 from citypods.feeds import episode_resource_links, meeting_page_url
@@ -419,7 +420,12 @@ def _search_record_inputs(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def _shard_hash(
-    records: dict[str, Any], candidates: list[City], base_url: str, *, selection: Any = None
+    records: dict[str, Any],
+    candidates: list[City],
+    base_url: str,
+    *,
+    selection: Any = None,
+    archive_hash: str = "",
 ) -> str:
     """Hash only local, durable inputs so unchanged shards skip sidecar reads and writes."""
     payload = {
@@ -447,6 +453,8 @@ def _shard_hash(
             "policy_hash": selection.policy_hash,
             "selected_uids": selection.selected_uids,
         }
+    if archive_hash:
+        payload["archive_only"] = archive_hash
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode()
     return hashlib.sha256(encoded).hexdigest()
 
@@ -496,6 +504,7 @@ def build_search_index(
     representatives = _shard_source(all_cities)
     candidates_by_source = _shard_cities(all_cities)
     selection_index = load_selection_index(all_cities)
+    archive_index = load_archive_index(all_cities)
     records_by_source = {src_key: load_records(state_dir, src_key) for src_key in representatives}
     plans = {
         src_key: select_search_publication(selection_index, src_key, records)
@@ -522,7 +531,13 @@ def build_search_index(
         records = records_by_source[src_key]
         plan = plans[src_key]
         candidates = candidates_by_source[src_key]
-        digest = _shard_hash(records, candidates, base_url, selection=plan)
+        digest = _shard_hash(
+            records,
+            candidates,
+            base_url,
+            selection=plan,
+            archive_hash=archive_policy_hash(archive_index, src_key),
+        )
         cached = cache_shards.get(src_key)
         if (
             isinstance(cached, dict)
@@ -536,6 +551,8 @@ def build_search_index(
 
         documents: list[dict[str, Any]] = []
         for record in plan.public_items:
+            if is_archive_only(archive_index, src_key, record):
+                continue
             if stop is not None and stop():
                 return None
             document = _record_to_document(

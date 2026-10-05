@@ -1,0 +1,134 @@
+{
+  "35a78fa89c7c5c5c": {
+    "audio": {
+      "attempts": 0,
+      "bytes": 42332422,
+      "duration_served": 3376.87,
+      "encode_time": "2026-06-19T00:19:26.143322+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/abbf5e25e078/35a78fa89c7c5c5c-b60288bf7dfc.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "b60288bf7dfc",
+      "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/35a78fa89c7c5c5c-b60288bf7dfc.m4a",
+      "verification": null
+    },
+    "body": "Addison Economic Development Luncheon",
+    "provider_guid": "55864",
+    "published": "2017-06-02T00:00:00+00:00",
+    "title": "Addison Economic Development Luncheon \u2013 Jun 02, 2017",
+    "uid": "35a78fa89c7c5c5c",
+    "video_url": "https://addisontx.new.swagit.com/videos/55864/download"
+  },
+  "a7ffa0a2ca5e1840": {
+    "audio": {
+      "attempts": 0,
+      "bytes": 2355640,
+      "duration_served": 191.872,
+      "encode_time": "2026-06-19T01:19:53.744015+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/abbf5e25e078/a7ffa0a2ca5e1840-26132a52bc01.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "26132a52bc01",
+      "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/a7ffa0a2ca5e1840-26132a52bc01.m4a",
+      "verification": null
+    },
+    "body": "Destination Addison",
+    "provider_guid": "56026",
+    "published": "2009-02-25T00:00:00+00:00",
+    "title": "Destination Addison \u2013 Feb 25, 2009",
+    "uid": "a7ffa0a2ca5e1840",
+    "video_url": "https://addisontx.new.swagit.com/videos/56026/download"
+  },
+  "a818b6f650cf4030": {
+    "audio": {
+      "attempts": 0,
+      "bytes": 7609810,
+      "duration_served": 602.622,
+      "encode_time": "2026-07-02T16:27:13.288292+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/abbf5e25e078/a818b6f650cf4030-138ac354801f.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "138ac354801f",
+      "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/a818b6f650cf4030-138ac354801f.m4a",
+      "verification": null
+    },
+    "body": "Addison Way",
+    "provider_guid": "56027",
+    "published": "2009-02-10T00:00:00+00:00",
+    "title": "Addison Way \u2013 Feb 10, 2009",
+    "uid": "a818b6f650cf4030",
+    "video_url": "https://addisontx.new.swagit.com/videos/56027/download"
+  },
+  "c3e05def1b9a737b": {
+    "audio": {
+      "attempts": 0,
+      "bytes": 5243034,
+      "duration_served": 423.394,
+      "encode_time": "2026-07-02T16:27:12.113219+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/abbf5e25e078/c3e05def1b9a737b-8718671e1fa6.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "8718671e1fa6",
+      "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/c3e05def1b9a737b-8718671e1fa6.m4a",
+      "verification": null
+    },
+    "body": "Vitruvian Park",
+    "provider_guid": "56028",
+    "published": "2008-04-09T00:00:00+00:00",
+    "title": "Vitruvian Park \u2013 Apr 09, 2008",
+    "uid": "c3e05def1b9a737b",
+    "video_url": "https://addisontx.new.swagit.com/videos/56028/download"
+  },
+  "efe3faf61b7b949a": {
+    "audio": {
+      "attempts": 0,
+      "bytes": 20688445,
+      "duration_served": 1669.236,
+      "encode_time": "2026-06-18T20:43:05.965819+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/abbf5e25e078/efe3faf61b7b949a-4b628f6cf143.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "4b628f6cf143",
+      "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/efe3faf61b7b949a-4b628f6cf143.m4a",
+      "verification": null
+    },
+    "body": "Former Sam's Club Staff Presentation",
+    "provider_guid": "56059",
+    "published": "2016-01-13T00:00:00+00:00",
+    "title": "Former Sam's Club Staff Presentation \u2013 Jan 13, 2016",
+    "uid": "efe3faf61b7b949a",
+    "video_url": "https://addisontx.new.swagit.com/videos/56059/download"
+  },
+  "58bbcd2c03cc82b8": {
+    "audio": {
+      "attempts": 0,
+      "bytes": 6706830,
+      "duration_served": 541.14,
+      "encode_time": "2026-06-18T20:41:39.157513+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "swagit/abbf5e25e078/58bbcd2c03cc82b8-eecf9dff38bd.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "eecf9dff38bd",
+      "url": "https://audio.citymeetings.fyi/swagit/abbf5e25e078/58bbcd2c03cc82b8-eecf9dff38bd.m4a",
+      "verification": null
+    },
+    "body": "Former Sam's Club Applicant Presentation",
+    "provider_guid": "56060",
+    "published": "2016-01-13T00:00:00+00:00",
+    "title": "Former Sam's Club Applicant Presentation \u2013 Jan 13, 2016",
+    "uid": "58bbcd2c03cc82b8",
+    "video_url": "https://addisontx.new.swagit.com/videos/56060/download"
+  }
+}

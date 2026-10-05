@@ -70,6 +70,73 @@ def _shard(tmp_path, src):
     return json.loads((tmp_path / "docs" / "data" / "search" / f"{src}.json").read_text())
 
 
+def test_archive_only_search_removal_and_restoration_invalidate_cached_shards(tmp_path):
+    city = _city()
+    declaration = _city("archive-policy", body="Unrelated body")
+    record = episode_to_record(_episode(transcript_key="one"))
+    src = _save(tmp_path, city, {"u1": record})
+    storage = _Storage(
+        {"one": json.dumps({"segments": [{"start": 10, "text": "parks discussion"}]}).encode()}
+    )
+    cache = {}
+
+    def build():
+        return build_search_index(
+            tmp_path / "state",
+            [city, declaration],
+            tmp_path / "docs",
+            "https://site.test",
+            storage=storage,
+            cache=cache,
+        )
+
+    build()
+    assert len(_shard(tmp_path, src)["documents"]) == 1
+    initial_hash = cache["shards"][src]["hash"]
+    declaration.extra["archive_only"] = [
+        {
+            "uid": "u1",
+            "provider_guid": "guid-u1",
+            "reason": "Human-approved archive disposition",
+            "approval_ref": "https://example.test/approval/1",
+        }
+    ]
+    storage.calls.clear()
+    build()
+    assert _shard(tmp_path, src)["documents"] == []
+    assert cache["shards"][src]["hash"] != initial_hash
+    assert storage.calls == []
+    assert search_mod.load_records(tmp_path / "state", src) == {"u1": record}
+
+    declaration.extra.pop("archive_only")
+    build()
+    assert len(_shard(tmp_path, src)["documents"]) == 1
+    assert storage.calls == ["one"]
+    assert cache["shards"][src]["hash"] == initial_hash
+
+
+def test_archive_only_search_dispositions_do_not_cross_sources(tmp_path):
+    archived = _city()
+    public = _city("other-council")
+    public.source["url"] = "https://other.test/archive"
+    archived.extra["archive_only"] = [
+        {
+            "uid": "u1",
+            "provider_guid": "guid-u1",
+            "reason": "Human-approved archive disposition",
+            "approval_ref": "https://example.test/approval/1",
+        }
+    ]
+    record = episode_to_record(_episode())
+    archived_src = _save(tmp_path, archived, {"u1": record})
+    public_src = _save(tmp_path, public, {"u1": record})
+    build_search_index(
+        tmp_path / "state", [archived, public], tmp_path / "docs", "https://site.test"
+    )
+    assert _shard(tmp_path, archived_src)["documents"] == []
+    assert [doc["uid"] for doc in _shard(tmp_path, public_src)["documents"]] == ["u1"]
+
+
 def test_search_routing_uses_directional_body_matching():
     broad_label = _city("agenda", body="City Council Agenda Meetings")
     exact_label = _city("council", body="City Council")

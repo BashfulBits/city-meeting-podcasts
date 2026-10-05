@@ -1584,7 +1584,7 @@ assertions against the corrected P&Z-only membership, rather than requiring the 
 false match. This is regression compatibility, not a new sweep/runtime path.
 
 
-## Archive-only disposition — L3 approved serialized contract
+## Archive-only disposition — L3 approved serialized contract (#2023)
 
 Maintainer approved broader archive-only visibility for all six Addison recordings on
 2026-10-04: GUID55864, 56026, 56027, 56028, 56059 and 56060.

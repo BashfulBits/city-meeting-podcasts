@@ -8,6 +8,7 @@ from pathlib import Path
 
 import yaml
 
+from citypods.archive_visibility import load_archive_index, parse_archive_only
 from citypods.bodies import body_key, source_body_filter, source_body_inclusions
 from citypods.models import (
     DEFAULT_FULL_ARTIFACT_EPISODES,
@@ -447,6 +448,11 @@ def _build_city(
         ),
     )
 
+    if "archive_only" in raw:
+        try:
+            parse_archive_only(raw["archive_only"])
+        except ValueError as exc:
+            raise ValueError(f"{source_file.name}: {exc}") from exc
     if "publication_selection" in raw:
         try:
             parse_publication_selection(
@@ -529,6 +535,7 @@ def load_city_configs(config_dir: str | Path, defaults: dict) -> list[City]:
                     f"{files[city.slug]}: alias {alias!r} already used by {seen_aliases[alias]!r}"
                 )
             seen_aliases[alias] = city.slug
+    load_archive_index(cities)
     return cities
 
 
