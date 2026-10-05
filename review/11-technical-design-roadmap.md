@@ -1416,7 +1416,7 @@ Preserve All Meetings and raw identity; no standing-status or dissolution claim.
 proof remains separate from the complete-source selector replay.
 
 
-### Dispatch quota-schema incident correction (2026-10-05)
+### Dispatch quota-schema incident correction (2026-10-05; shipped in PR #2057)
 
 Maintainer-authorized fix for PR #2028's missing startup-readiness entries: quota definitions now
 supply readiness, additive migration, and mutation preflight from the same four-column list.
@@ -1425,3 +1425,13 @@ or data writes on later startups. A zero-row mutation preflight prevents stale q
 repeating expired-lease/job/index writes before failure; the instance blocks RPCs until recreation.
 Partial migrations resume at missing columns; transient preflight read errors remain retryable.
 No throughput/quota changes, model/recipe change, pipeline-version bump, or artifact backfill.
+
+Rollout evidence: code `5b3b9f6` deployed through the existing Worker workflow as version
+`266f6645-51c9-41f8-85f3-c7c4e4f4cee9`; detailed stats now succeed. Maintainer-reported 90,000
+account rows supplied a conservative same-day floor (31,780 -> 90,002 including repair writes),
+not an exact billing reconstruction. Live migration added five writes, reaching 90,007; ingress
+and claims remain closed until UTC reset. All 374 Worker tests passed locally and in deployment;
+all 4,925 Python offline tests were verified (the isolated-import test required a separate editable
+installation because the primary checkout was unreadable). Real workerd guards and accounting,
+compiled-config checks, packaging, Ruff/formatting, and PR CodeQL passed. CodeRabbit automatic
+review was disabled; skipped review is not substantive review coverage.
