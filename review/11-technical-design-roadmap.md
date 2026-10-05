@@ -1316,3 +1316,26 @@ Joint participant discovery in website search/browse is tracked by #2018 for the
 with canonical page ownership separate from proven participating-body membership.
 The 2016 joint subscription, historical excerpts/media, missing official meeting recordings,
 PID winner approval, and P2a proof/binding schemas retain their specific evidence/approval gates.
+
+
+Archive-only visibility: **L3**, maintainer approved all six Addison dispositions and the exact
+serialized implementation contract in review/51. Retention and direct archive access remain separate from public discovery.
+
+
+Archive-only #2023 is prepared in a separate code PR: six exact Addison dispositions filter
+public discovery across the shared source while direct raw archives/audio remain. Source-scoped
+policy hashes rebuild feed/search/browse projections on changes and reversal. Read-only deployed
+RSS verification closed 56 assignment cases; eight historical cases remain visible. Human merge
+and current-head CodeRabbit/CI validation remain required; no audio backfill or stage bump.
+
+
+September2016 Council/P&Z joint correction: L3 bounded review/51 contract; restore only the
+missing Council subscription, retain P&Z and stable recording identity, use existing canonical
+Council page choice with participant discovery deferred to #2018. Human merge/deployment gated.
+
+
+September 2016 joint correction (#2025), prepared/unmerged: exact GUID55634 adds Council
+while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership replay adds
+exactly one Council membership (500 to 501), with no other feed changes. Existing canonical
+page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
+Keep the evidence case open until human merge and deployed subscription verification.

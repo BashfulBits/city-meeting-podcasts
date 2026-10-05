@@ -31,6 +31,8 @@ source:
     - "Work Session - Economic Development Strategic Plan"
     - "Work Session and Regular Meeting"
   body_includes:
+    - provider_guid: "55634"
+      body: "Joint Council & Planning & Zoning Commission Meeting"
     - provider_guid: "297695"
       body: "Council Strategic Planning Day 1 & 2"
     - provider_guid: "55874"

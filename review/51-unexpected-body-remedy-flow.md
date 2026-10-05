@@ -1582,3 +1582,57 @@ original549 (48 initial corrections plus TIRZ). Update the earlier sweep regress
 tests/test_unresolved_recordings_sweep.py to preserve its matched-open-case/assignment-change
 assertions against the corrected P&Z-only membership, rather than requiring the removed Council
 false match. This is regression compatibility, not a new sweep/runtime path.
+
+
+## Archive-only disposition — L3 approved serialized contract (#2023)
+
+Maintainer approved broader archive-only visibility for all six Addison recordings on
+2026-10-04: GUID55864, 56026, 56027, 56028, 56059 and 56060.
+This is a human publication disposition, not a claim that every recording's historical
+institution or content binding has been proved. Outstanding evidence obligations remain visible.
+
+Maintainer approved this contract in chat on 2026-10-04.
+
+Approved serialized contract: top-level feed `archive_only` list, each entry containing exactly
+`uid`, `provider_guid`, `reason`, and `approval_ref` nonempty strings. The declaring feed's
+existing source key scopes the disposition; it applies across every feed/search projection of
+that source. Duplicate identical declarations are tolerated; conflicting entries fail config
+validation. Exact UID plus provider GUID guards against suppressing an unrelated observation.
+No title/substring matching, no blanket body suppression, and no record mutation.
+
+Approved implementation plan: new pure `citypods/archive_visibility.py` parser,
+source-scoped index and projection helpers; config validation in `citypods/config.py`; filter
+public render projections in `citypods/run.py` after capturing raw page records; filter search
+records before document/sidecar generation in `citypods/search.py`. Include the disposition
+hash in feed/render and search cache inputs so removal and reversal rewrite derived outputs.
+Keep raw meeting pages and direct archived links, stable UIDs/audio, source state and stage versions.
+Website feed lists, search documents, speaker projections and recording-based browse/calendar
+outputs must omit archive-only recordings; official independent calendar records are not erased.
+The read-only unresolved sweep continues reporting these records and their evidence obligations.
+
+Declare the six exact dispositions in Addison Public Input config, retaining existing inclusion
+selectors so raw archive pages are preserved. Update case-register next actions to distinguish
+human-approved visibility from unresolved identity proof. Do not add the luncheon to Briefings.
+Tests: exact identity/source scoping, invalid/duplicate declarations, feed/search/browse absence,
+raw-page retention, unchanged bytes/UIDs, and cached-output removal/restoration. Lifecycle docs:
+review/11, ARCHITECTURE, CHANGELOG and ROADMAP. No dependency/provider/storage/stage changes,
+no audio backfill, no production writes in local verification.
+
+
+## September 2016 Addison joint subscription — L3 bounded correction
+
+The maintainer approved proceeding with the remaining verified joint correction, with canonical
+page-link choice separate from redesigned participant discovery (#2018). The earlier proposed
+P&Z-owner preservation is superseded by use of the existing Council canonical page choice;
+this avoids adding an ownership schema for one UID. Both direct archive pages remain retained.
+
+Files: `config/feeds/addison-tx-city-council.yml` adds only exact body_includes GUID55634,
+body `Joint Council & Planning & Zoning Commission Meeting`; new minimal retained fixture
+`tests/fixtures/addison-2016-joint.json` and `tests/test_addison_2016_joint.py` exercise actual
+config and RSS/search ownership. Existing P&Z rules and runtime modules are unchanged.
+Preserve UID383dfdfed6140400, September19 stored date, hosted audio and raw records.
+Official cached joint agenda proof is in the Addison audit. Full822 replay must add exactly one
+Council membership and change no other feed memberships; negative unrelated-GUID near label.
+Case register updates preparation evidence only; keep open until deployed verification.
+Lifecycle docs: review/11, audit, CHANGELOG, ARCHITECTURE and ROADMAP. No runtime/schema,
+dependency/provider/stage/storage changes, audio invalidation or backfill. Human merge required.

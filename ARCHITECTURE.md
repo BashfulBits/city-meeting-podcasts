@@ -1317,3 +1317,20 @@ GUID394474/UID757ab2a4aaf9bbca from Council to Addison: TIF Meetings. Canonical 
 attribution changes accordingly; original raw record, UID and hosted audio remain. After the
 Council narrowing,500 original Council selections remain. No audio invalidation or backfill.
 The case remains open pending human merge and deployed subscription verification.
+
+
+### Archive-only publication visibility
+
+Human-approved `archive_only` declarations bind exact UID/provider GUID pairs to an existing
+source. They exclude those recordings from feed, browse, speaker and search projections across
+that source while preserving raw records, audio and direct meeting pages. Independent official
+calendar records remain retained. The policy hash invalidates derived render/search caches on
+addition or reversal; audio specifications and processing stages are unchanged. Source-scoped
+identity conflicts fail visibly instead of silently hiding an unrelated recording.
+
+
+September 2016 joint correction (#2025), prepared/unmerged: exact GUID55634 adds Council
+while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership replay adds
+exactly one Council membership (500 to 501), with no other feed changes. Existing canonical
+page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
+Keep the evidence case open until human merge and deployed subscription verification.

@@ -1048,3 +1048,29 @@ GUID394474/UID757ab2a4aaf9bbca from Council to Addison: TIF Meetings. Canonical 
 attribution changes accordingly; original raw record, UID and hosted audio remain. After the
 Council narrowing,500 original Council selections remain. No audio invalidation or backfill.
 The case remains open pending human merge and deployed subscription verification.
+
+
+## Deployed correction verification after stack merge
+
+A read-only fetch of public audio RSS verified all 56 implemented assignment cases:
+47 P&Z work sessions are P&Z-only; four Bond recordings are Bond-only; the ceremony is
+absent from the checked feeds; TIRZ is TIF-only; three genuine joints have their exact proven
+participant subscriptions. Every checked entry matched the expected stable UID membership.
+Feeds checked: Council, P&Z, CPAC, Bond Committees, TIF, and Public Input. URLs follow
+`https://www.citymeetings.fyi/<feed-slug>/audio_feed.xml`. Main deployed commit: `1a90c62e`.
+Local verification report: `/tmp/addison-deployed-verification.json` (56 passed, zero failed).
+The case register now closes these assignment obligations, retaining all entries and their
+verified memberships. Eight historical evidence/visibility cases remain open; no completeness
+claim is made for the city or sources outside the local snapshot.
+
+The maintainer subsequently approved Archive only for all six recordings: GUID55864,
+56026, 56027, 56028, 56059, and 56060. This publication decision does not invent an institutional
+identity for uncertain films or erase excerpt/source-binding obligations. Direct archives and
+audio remain; public feed/search/browse omission is implemented separately under #2023.
+
+
+September 2016 joint correction (#2025), prepared/unmerged: exact GUID55634 adds Council
+while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership replay adds
+exactly one Council membership (500 to 501), with no other feed changes. Existing canonical
+page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
+Keep the evidence case open until human merge and deployed subscription verification.

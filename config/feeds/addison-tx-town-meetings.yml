@@ -37,3 +37,35 @@ podcast_title: "Addison: Public Input"
 podcast_author: "City of Addison, TX"
 podcast_email: ""
 podcast_description: "Town halls, community meetings, open houses and historical citizen input."
+
+archive_only:
+- uid: 35a78fa89c7c5c5c
+  provider_guid: '55864'
+  reason: Maintainer-approved archive-only historical recording; retain direct archive and evidence
+    obligations.
+  approval_ref: https://github.com/BashfulBits/city-meeting-podcasts/issues/2023
+- uid: 58bbcd2c03cc82b8
+  provider_guid: '56060'
+  reason: Maintainer-approved archive-only historical recording; retain direct archive and evidence
+    obligations.
+  approval_ref: https://github.com/BashfulBits/city-meeting-podcasts/issues/2023
+- uid: a7ffa0a2ca5e1840
+  provider_guid: '56026'
+  reason: Maintainer-approved archive-only historical recording; retain direct archive and evidence
+    obligations.
+  approval_ref: https://github.com/BashfulBits/city-meeting-podcasts/issues/2023
+- uid: a818b6f650cf4030
+  provider_guid: '56027'
+  reason: Maintainer-approved archive-only historical recording; retain direct archive and evidence
+    obligations.
+  approval_ref: https://github.com/BashfulBits/city-meeting-podcasts/issues/2023
+- uid: c3e05def1b9a737b
+  provider_guid: '56028'
+  reason: Maintainer-approved archive-only historical recording; retain direct archive and evidence
+    obligations.
+  approval_ref: https://github.com/BashfulBits/city-meeting-podcasts/issues/2023
+- uid: efe3faf61b7b949a
+  provider_guid: '56059'
+  reason: Maintainer-approved archive-only historical recording; retain direct archive and evidence
+    obligations.
+  approval_ref: https://github.com/BashfulBits/city-meeting-podcasts/issues/2023

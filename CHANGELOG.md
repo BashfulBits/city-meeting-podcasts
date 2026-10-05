@@ -18,6 +18,16 @@ Once 1.0 ships, entries move under semver tags.
   schema-inclusive queue estimates, and preserves the configured size safety margin. No stage
   version bump, artifact invalidation or automatic backfill. SambaNova token incident: #2027.
 
+- Prepare the verified September 19, 2016 Addison Council/P&Z joint subscription (#2025).
+  Add Council alongside P&Z with the same UID/audio; existing canonical search attribution
+  becomes Council. No record changes, stage invalidation or audio backfill.
+
+- Prepare source-scoped Archive-only visibility (#2023) for six approved Addison historical
+  recordings. Remove public feed/search/browse discovery while preserving raw records, direct
+  meeting pages, stable UIDs and audio. Policy changes rebuild only derived render/search outputs;
+  no audio/stage invalidation or backfill. Verify and close 56 deployed assignment corrections;
+  eight historical evidence/visibility cases remain tracked.
+
 - **Addison body-policy stack merged (#2010, #2012, #2014, #2019–#2021).** Ship Public Input,
   Briefings and BZA/Appeals presentation, proven joint subscriptions, exact Council ownership,
   Bond/TIF feeds and the read-only historical unresolved sweep. Preserve raw records, UIDs,
