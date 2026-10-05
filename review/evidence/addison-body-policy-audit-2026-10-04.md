@@ -1312,3 +1312,23 @@ predated the Health parent merge. Review/51 freezes/stamps the bounded contracts
 Health, TIRZ and Bond substantive-review gaps. Library's valid test finding is fixed/resolved.
 Latest repository-wide human full request remains #2050 comment5994485501 at 12:30:52 UTC,
 aborted for head change; no new request was made on any closed PR.
+
+### Denton Health verification — 2026-10-05 14:30 UTC
+
+Successful deployment 37320977847 at `c753afa4` includes the Health parent merge. Read-only
+HTTP checks of `/denton-tx-health-building-standards-commission/audio_feed.xml` and
+`/denton-tx-city-council/audio_feed.xml` on `https://www.citymeetings.fyi` both return 200.
+All four Commission UIDs are present in the four-item Commission feed, absent from the
+493-item Council feed, and have the exact original fixture audio URLs:
+
+| UID | Hosted audio suffix under `https://audio.citymeetings.fyi/swagit/3b7588310856/` |
+|---|---|
+| 280db52d91547dd6 | 280db52d91547dd6-11174e3f8f49.m4a |
+| e7c1990b7a8e539e | e7c1990b7a8e539e-e2a2da60a988.m4a |
+| d419e8107262d0d0 | d419e8107262d0d0-f68204d763e1.m4a |
+| 7abd583b2ed8189a | 7abd583b2ed8189a-c760fcff8133.m4a |
+
+These four exact ownership cases are resolved. Full-stack run 37321232154 at `8a4adbeb`
+remains in progress. Library, TIRZ and Bond feeds returned 404 and remain unverified/open.
+Council RSS is bounded: absent historical joint/TIRZ UIDs do not prove removed coverage.
+The full-source config replay establishes unchanged retention separately from live RSS.
