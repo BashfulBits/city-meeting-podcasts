@@ -1633,3 +1633,17 @@ Transportation census now registers all ten additional retained identities; tota
 | b0471f29622b8165 | 277827 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
 | fe0b7e556c694307 | 259827 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
 | ffd212474f9b51ad | 232343 | 2024 Capital Bond Streets and Transportation Meeting |
+
+Transportation institution proof follow-up: the city's [subcommittee archive](https://dallascityhall.com/departments/bond-construction-management/Pages/Streets-and-Transportation-Subcommittee.aspx)
+separately lists May11/May25/June13/June20/June28/July17/August15/August22,2023 proceedings.
+Its [May25 minutes](https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/99/Streets%20and%20Transportation%20Meeting_052523_Meeting%20Minutes.pdf)
+and [June13 minutes](https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/119/Streets%20and%20Transportation%20Meeting%20061323_Meeting%20Minutes.pdf)
+identify the Streets and Transportation Subcommittee of the 2024 Bond Task Force, chaired by
+Linda Koop, with its own convening and adjournment. This independently establishes a separate
+bond institution; department presentations and Council-district discussion do not establish
+standing Council committee participation. June13 convened6:00pm/adjourned7:35pm; May25
+convened6:35pm/adjourned8:00pm. Original provider chapter dates additionally bind GUID259821
+and GUID232343 to June13 and May11 respectively. The May11 minutes link returned502 during
+this check, so no unseen minutes content is asserted. August10/October26/October27 are absent
+from this archive list; their exact official recording bindings remain unresolved. All11 cases
+remain open; no routing change or deployment closure follows from this research alone.
