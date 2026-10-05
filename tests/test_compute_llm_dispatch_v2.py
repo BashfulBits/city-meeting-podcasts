@@ -2156,3 +2156,40 @@ def test_a_retired_v1_worker_handle_is_terminal_and_not_schema_corrected():
         backend.reconcile(legacy)
     with pytest.raises(LLMBackendError, match="not supported"):
         backend.retry_malformed_dispatched(legacy)
+
+
+def test_queue_input_estimate_includes_response_schema():
+    import math
+
+    from citypods.compute.llm_policy import estimate_tokens
+
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.side_effect = _accept_all
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview",
+            dispatch_v2_url="https://dispatch-v2.example.com",
+            dispatch_v2_auth_token="secret-v2",
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    backend.enqueue_batch(
+        [
+            InferenceJob(
+                task="tag",
+                inputs={
+                    "messages": [{"role": "user", "content": "hello"}],
+                    "structured_output": "dispatch-v2-test-pong",
+                },
+            )
+        ]
+    )
+    payload_key = next(key for key in storage.files if key.startswith("payloads/"))
+    payload = json.loads(storage.files[payload_key])
+    submitted = session.post.call_args.kwargs["json"]["jobs"][0]
+    assert submitted["input_token_estimate"] == (
+        estimate_tokens(payload["messages"])
+        + math.ceil(len(json.dumps(payload["structured_output"])) / 4)
+    )

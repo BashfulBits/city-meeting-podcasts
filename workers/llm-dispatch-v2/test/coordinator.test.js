@@ -2517,7 +2517,8 @@ test("a length-truncated reply settles the token bucket to its measured usage", 
     },
   ]);
   const route = sql.exec("SELECT full_token_budget FROM routes WHERE route_id = ?", routeId)[0];
-  assert.equal(route.full_token_budget, 100000 + 17384 - 66536);
+  // Google TPM counts only input; output usage stays in the attempt telemetry.
+  assert.equal(route.full_token_budget, 100000 + 17384 - 1000);
   // The attempt keeps the lane and reservation for usage_today after the job row is retired.
   const attempt = sql.exec("SELECT purpose, reserved_output_tokens FROM attempts WHERE attempt_id = 'att-long'")[0];
   assert.deepEqual([attempt.purpose, attempt.reserved_output_tokens], ["chapter-agenda", 16384]);
@@ -2561,4 +2562,73 @@ test("detailedStats can restrict route_failures to named classes past the row li
     await coordinator.detailedStats(now, 2, { failureClasses: ["output_budget_exhausted"] })
   ).route_failures;
   assert.deepEqual(filtered.map((row) => row.route_id), ["cut"]);
+});
+
+
+test("TPD reserves and settles daily tokens to actual usage", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const routeId = "groq_qwen_3_8_27b_primary";
+  const catalog = coordinator._dispatchLimits().routes_by_id[routeId];
+  const ledger = coordinator._getOrCreateRouteLedger(routeId, now, catalog);
+  const reserved = coordinator._applyProvisionalReservation({ ...catalog, ...ledger }, 2000, now);
+  coordinator._writeRouteLedger(reserved);
+  assert.equal(sql.exec("SELECT tpd_used FROM routes WHERE route_id=?", routeId)[0].tpd_used, 2000);
+  sql.exec(`INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at,
+    dispatch_window_end, created_at) VALUES ('tpd-b', 'tok', 'active', ?, ?, ?)`,
+    now + 60000, now + 60000, now);
+  sql.exec(`INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, bundle_id,
+    lease_route_id, lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+    payload_key, created_at, updated_at, token_reservation, reservation_rpd_day_key)
+    VALUES ('tpd-j', 'tpd-k', 'd', '{}', 'leased', 'tpd-b', ?, 'lt', 'tags', 1000, 1000,
+    'payload', ?, ?, 2000, ?)`, routeId, now, now, reserved.rpd_day_key);
+  await coordinator.completeBatch('tpd-b', 'tok', [{ job_id: 'tpd-j', lease_token: 'lt',
+    attempt_id: 'tpd-a', planned_at: now, outcome: 'success', provider_status_code: 200,
+    observed_input_tokens: 800, observed_output_tokens: 200 }]);
+  assert.equal(sql.exec("SELECT tpd_used FROM routes WHERE route_id=?", routeId)[0].tpd_used, 1000);
+});
+
+test("Orca prompt cap requeues and learns a size bound without blocking short work", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const routeId = 'orcarouter_zai_glm_5_3_flash_free';
+  coordinator._getOrCreateRouteLedger(routeId, now, {});
+  sql.exec(`INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at,
+    dispatch_window_end, created_at) VALUES ('cap-b', 'tok', 'active', ?, ?, ?)`,
+    now + 60000, now + 60000, now);
+  sql.exec(`INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, bundle_id,
+    lease_route_id, lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+    payload_key, created_at, updated_at, token_reservation)
+    VALUES ('cap-j', 'cap-k', 'd', '{"allowed_models":["zai/glm-5.3-flash"]}', 'leased', 'cap-b',
+    ?, 'lt', 'tags', 12000, 1000, 'payload', ?, ?, 13000)`, routeId, now, now);
+  await coordinator.completeBatch('cap-b', 'tok', [{ job_id: 'cap-j', lease_token: 'lt',
+    attempt_id: 'cap-a', planned_at: now, outcome: 'terminal_error', provider_status_code: 400,
+    failure_class: 'free_prompt_cap' }]);
+  assert.equal(sql.exec("SELECT state FROM jobs WHERE id='cap-j'")[0].state, 'queued');
+  const route = sql.exec("SELECT * FROM routes WHERE route_id=?", routeId)[0];
+  assert.equal(route.prompt_cap_estimate, 11999);
+  assert.equal(route.blocked_until, null);
+});
+
+
+test("TPD feedback keeps remaining tokens and does not exhaust daily requests", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  const routeId = "groq_qwen_3_8_27b_primary";
+  coordinator._getOrCreateRouteLedger(routeId, now, {});
+  sql.exec(`INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at,
+    dispatch_window_end, created_at) VALUES ('tpd-feedback', 'tok', 'active', ?, ?, ?)`,
+    now + 60000, now + 60000, now);
+  sql.exec(`INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, bundle_id,
+    lease_route_id, lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
+    payload_key, created_at, updated_at)
+    VALUES ('tpd-feedback-j', 'tpd-feedback-k', 'd', '{}', 'leased', 'tpd-feedback', ?, 'lt',
+    'tags', 1000, 89, 'payload', ?, ?)`, routeId, now, now);
+  const reply = await coordinator.authorizeRetry('tpd-feedback-j', 'lt', 'a', now,
+    323.136, 'own_tpd', { limit: 200000, used: 199659 });
+  assert.equal(reply.authorized, false);
+  const ledger = sql.exec("SELECT * FROM routes WHERE route_id=?", routeId)[0];
+  assert.equal(ledger.tpd_used, 180000 - 341);
+  assert.equal(ledger.rpd_count, 0);
+  assert.equal(ledger.blocked_until, now + 323136);
 });

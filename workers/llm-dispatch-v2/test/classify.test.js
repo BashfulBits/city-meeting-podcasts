@@ -296,7 +296,7 @@ test("classifyProviderFailure matches groq-tpd", () => {
     headers: null,
     route: { provider: "groq", route_id: "groq/llama" },
   });
-  assert.equal(res.failure_class, "own_rpd");
+  assert.equal(res.failure_class, "own_tpd");
   assert.equal(res.rule_id, "groq-tpd");
 });
 
@@ -711,4 +711,25 @@ test("orcarouter free-tier rate limits with Retry-After map to own_rpm and own_r
   });
   assert.equal(resRpd.failure_class, "own_rpd");
   assert.equal(resRpd.rule_id, "orcarouter-daily-window");
+});
+
+
+test("Orca prompt caps use metadata regardless of localized text or Retry-After", () => {
+  for (const status of [400, 429]) {
+    const result = classifyProviderFailure({ status,
+      route: { provider: "orcarouter" }, headers: { "retry-after": "30" },
+      body: { error: { code: "free_rate_limited", message: "localized",
+        metadata: { reason: "err_free_prompt_cap", retryable: false } } } });
+    assert.equal(result.failure_class, "free_prompt_cap");
+    assert.equal(result.retry_after_seconds, null);
+  }
+});
+
+
+test("Groq TPD imports token usage from the observed quota error", () => {
+  const result = classifyProviderFailure({ status: 429, route: { provider: "groq" },
+    body: { error: { message: "tokens per day (TPD): Limit 200000, Used 199659, Requested 1089. " +
+      "Please try again in 5m23.135999999s." } } });
+  assert.equal(result.failure_class, "own_tpd");
+  assert.deepEqual(result.token_quota, { limit: 200000, used: 199659 });
 });

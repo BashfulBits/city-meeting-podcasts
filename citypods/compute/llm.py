@@ -1548,6 +1548,10 @@ class LiteLLMBackend(Backend):
                 if retry_after is not None:
                     until = max(until, now + timedelta(seconds=retry_after))
                 retry_sibling = False
+            elif classification.failure_class == "own_tpd":
+                cooldown = retry_after if retry_after is not None else _DEFAULT_BLOCK_SECONDS
+                until = now + timedelta(seconds=cooldown)
+                retry_sibling = True
             elif classification.failure_class == "upstream_capacity":
                 cooldown = (
                     retry_after if retry_after is not None else UPSTREAM_CAPACITY_COOLDOWN_SECONDS
@@ -2027,7 +2031,9 @@ class LiteLLMBackend(Backend):
                 payload_writes.append((payload_key, canonical_payload_str.encode("utf-8")))
 
             messages = _messages(job)
-            in_tokens = estimate_tokens(messages)
+            in_tokens = estimate_tokens(payload.get("messages", messages))
+            if payload.get("structured_output"):
+                in_tokens += math.ceil(len(json.dumps(payload["structured_output"])) / 4)
             out_tokens = self._output_token_budget(job)
             priority = policy.priority if policy else 1
 
@@ -2944,6 +2950,10 @@ class LiteLLMBackend(Backend):
         corrected_key = f"payloads/{handle.ref}/schema-correction.json"
         request_digest = hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
         input_token_estimate = estimate_tokens(corrected_messages)
+        if corrected_payload.get("structured_output"):
+            input_token_estimate += math.ceil(
+                len(json.dumps(corrected_payload["structured_output"])) / 4
+            )
 
         try:
             storage.put_cas(

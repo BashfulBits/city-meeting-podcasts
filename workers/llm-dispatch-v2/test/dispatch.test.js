@@ -103,7 +103,7 @@ test("claimDispatchWindow claims a queued job and leases it", async () => {
   assert.ok(claimed.lease_token);
   assert.ok(["route-a", "route-b"].includes(claimed.route_id));
   assert.equal(claimed.wait_ms, 0); // fresh route, no prior usage
-  assert.ok(claimed.token_reservation >= 700);
+  assert.ok(claimed.token_reservation >= 500);
 
   const rows = [...sql.exec("SELECT state, lease_token, bundle_id FROM jobs WHERE id = 'j1'")];
   assert.equal(rows[0].state, "leased");
@@ -785,8 +785,8 @@ test("claim reserves input in the route's tokenizer units via its input_token_ra
   await coordinator.enqueueBatch([gemmaJob("g1", 5000)]);
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
   assert.equal(plan.jobs.length, 1);
-  // ceil(5000 * 1.2) input + the full 1000 max_tokens before any calibration samples exist.
-  assert.equal(plan.jobs[0].token_reservation, 7000);
+  // Google counts ceil(5000 * 1.2) input only, independently of max_tokens.
+  assert.equal(plan.jobs[0].token_reservation, 6000);
 });
 
 test("calibration follows recent output sizes instead of ratcheting on one large job", async () => {
@@ -803,8 +803,8 @@ test("calibration follows recent output sizes instead of ratcheting on one large
   await coordinator.enqueueBatch([gemmaJob("g1", 5000)]);
   const plan = await coordinator.claimDispatchWindow(Date.now(), 30);
   // The learned ratio (1.0 * 1.2 gemma headroom) never drops below the 1.2 route prior, so
-  // 5000 * 1.2 input + ceil(200 * 1.25) forecast; the 15000 margin no longer applies.
-  assert.equal(plan.jobs[0].token_reservation, 6250);
+  // 5000 * 1.2 input only; output forecast and the old 15000 margin do not apply.
+  assert.equal(plan.jobs[0].token_reservation, 6000);
 
   await succeed(coordinator, plan, plan.jobs[0], 5100, 180, "a1");
   const row = [...sql.exec("SELECT margin_tokens, recent_observed_summary FROM estimates WHERE key = ?", key)][0];
@@ -826,14 +826,17 @@ test("a successful completion settles the token bucket to actual usage", async (
   const before = read();
   await succeed(coordinator, plan, plan.jobs[0], 4000, 300, "a1");
   const after = read();
-  const refund = reservation - 4300;
+  const refund = reservation - 4000;
   assert.ok(refund > 0);
   assert.equal(after.full_token_budget, before.full_token_budget + refund);
   assert.equal(after.tpm_reserved, Math.max(0, before.tpm_reserved - refund));
 });
 
 test("settlement leaves the per-minute window alone for a reservation larger than tpm", async () => {
-  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: CEILING_CATALOG });
+  // A provider with combined input/output TPM can still admit a large output reservation.
+  const catalog = structuredClone(CEILING_CATALOG);
+  catalog.routes_by_id["gemma-ai-studio"].provider = "nvidia";
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog });
   // 8,000 raw x 1.2 = 9,600 input + 8,000 max_tokens = 17,600 > 14,400 tpm: bucket-gated only.
   await coordinator.enqueueBatch([
     gemmaJob("big-reservation", 8000, { max_output_token_estimate: 8000 }),
@@ -947,6 +950,8 @@ test("near misses over the calibrated ceiling drain only when nothing else is di
             ...CEILING_CATALOG.routes_by_id["gemma-ai-studio"],
             hard_input_ceiling: 14400,
             hard_input_ceiling_tolerance: tolerance,
+            // Synthetic quota leaves room above this ceiling; production Gemma does not.
+            tpm: 16000,
             input_token_ratio: 1.4,
           },
         },
@@ -2946,4 +2951,24 @@ test("reconciliation checks the full catalog, not the pause-filtered one, so a p
     [...sql.exec("SELECT model FROM job_models WHERE job_id = 'grows-in'")].map((r) => r.model),
     ["acme/two-route-model"]
   );
+});
+
+test("learned Orca caps remove oversized queue heads so short work can drain", async () => {
+  const catalog = {
+    model_routes_map: { orca: ["orca"] },
+    routes_by_id: { orca: { route_id: "orca", provider: "orcarouter", free: true,
+      rpm: 10, rpd: 800, input_context_limit: 1000000, output_context_limit: 128000 } },
+  };
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog,
+    MAX_CANDIDATE_LOOKAHEAD: "2", MAX_JOBS_PER_MODEL_CLAIM: "1" });
+  const now = Date.now();
+  coordinator._getOrCreateRouteLedger("orca", now, catalog.routes_by_id.orca);
+  sql.exec("UPDATE routes SET prompt_cap_estimate=500 WHERE route_id='orca'");
+  await coordinator.enqueueBatch([1000, 1000, 1000, 100].map((input, i) => makeJob(`orca-${i}`, {
+    input_token_estimate: input, policy_json: JSON.stringify({ allowed_models: ["orca"] }),
+  })));
+  assert.equal((await coordinator.claimDispatchWindow(now, 25)).jobs.length, 0);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state='failed'")[0].n, 2);
+  assert.deepEqual((await coordinator.claimDispatchWindow(now + 1, 25)).jobs.map((j) => j.id),
+    ["orca-3"]);
 });

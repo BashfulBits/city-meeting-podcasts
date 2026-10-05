@@ -54,9 +54,15 @@ export const FAILURE_SIGNATURES = [
   {
     rule_id: "groq-tpd",
     provider: "groq",
-    failure_class: "own_rpd",
+    failure_class: "own_tpd",
     match: ({ msg }) =>
-      msg.includes("tokens per day") || msg.includes("requests per day"),
+      msg.includes("tokens per day"),
+  },
+  {
+    rule_id: "groq-rpd",
+    provider: "groq",
+    failure_class: "own_rpd",
+    match: ({ msg }) => msg.includes("requests per day"),
   },
   {
     rule_id: "groq-rate-limit",
@@ -440,6 +446,12 @@ export function classifyProviderFailure({ status, body, headers, route }) {
     };
   }
 
+  if ((status === 400 || status === 429) && route?.provider === "orcarouter" &&
+      body?.error?.metadata?.reason === "err_free_prompt_cap") {
+    return { failure_class: "free_prompt_cap", rule_id: "orcarouter-free-prompt-cap",
+      retry_after_seconds: null, scope: "route" };
+  }
+
   // 5. HTTP 429 -> walk FAILURE_SIGNATURES
   if (status === 429) {
     const msg = providerFailureMessage(body);
@@ -463,6 +475,12 @@ export function classifyProviderFailure({ status, body, headers, route }) {
           rule_id: rule.rule_id,
           retry_after_seconds: retryAfterSeconds,
           scope: "route",
+          ...(rule.failure_class === "own_tpd" ? {
+            token_quota: (() => {
+              const match = msg.match(/limit:?\s*([\d.]+),\s*used:?\s*([\d.]+)/i);
+              return match ? { limit: Number(match[1]), used: Number(match[2]) } : null;
+            })(),
+          } : {}),
         };
       }
     }
@@ -573,6 +591,8 @@ export function classifyProviderFailure({ status, body, headers, route }) {
       scope: "route",
     };
   }
+
+
 
   // 9. Any other status -> request_defect
   return {

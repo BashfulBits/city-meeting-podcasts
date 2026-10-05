@@ -384,7 +384,6 @@ routes:
     rpd: 14400
     tpm: 16000
     hard_input_ceiling: 14400
-    hard_input_ceiling_tolerance: 0.1
     free: true
     observed_on: "2026-09-12"
     observed_input_ceiling: 10000
@@ -404,7 +403,6 @@ routes:
     rpd: 14400
     tpm: 16000
     hard_input_ceiling: 14400
-    hard_input_ceiling_tolerance: 0.1
     free: true
     observed_on: "2026-09-12"
     observed_input_ceiling: 10000
@@ -424,7 +422,6 @@ routes:
     rpd: 14400
     tpm: 16000
     hard_input_ceiling: 14400
-    hard_input_ceiling_tolerance: 0.1
     free: true
     observed_on: "2026-09-12"
     observed_input_ceiling: 10000
@@ -444,7 +441,6 @@ routes:
     rpd: 14400
     tpm: 16000
     hard_input_ceiling: 14400
-    hard_input_ceiling_tolerance: 0.1
     free: true
     observed_on: "2026-09-12"
     observed_input_ceiling: 10000
@@ -691,6 +687,8 @@ routes:
     account_id: primary
     rpm: 30
     rpd: 1000
+    # Observed 2026-10-04: the organization also enforces 200k tokens/day.
+    tpd: 200000
     # Same correction as qwen3.6-27b above: "input tokens per minute (ITPM): Limit 7000"
     # (confirmed live 2026-09-12), stricter than the 8000 previously copied from gpt-oss-120b.
     tpm: 7000

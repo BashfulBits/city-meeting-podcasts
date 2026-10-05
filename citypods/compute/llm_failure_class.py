@@ -92,8 +92,14 @@ FAILURE_SIGNATURES: list[dict[str, Any]] = [
     {
         "rule_id": "groq-tpd",
         "provider": "groq",
+        "failure_class": "own_tpd",
+        "match": lambda ctx: "tokens per day" in ctx["msg"],
+    },
+    {
+        "rule_id": "groq-rpd",
+        "provider": "groq",
         "failure_class": "own_rpd",
-        "match": lambda ctx: "tokens per day" in ctx["msg"] or "requests per day" in ctx["msg"],
+        "match": lambda ctx: "requests per day" in ctx["msg"],
     },
     {
         "rule_id": "groq-rate-limit",
@@ -351,7 +357,7 @@ def classify_provider_failure(
     route: Any = None,
     retry_after_seconds: int | None = None,
 ) -> FailureClassification:
-    """Classify an HTTP response into the 9-class provider failure taxonomy."""
+    """Classify an HTTP response into the provider failure taxonomy."""
     # Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY -- `[{"error":
     # {...}}]` -- not a bare object. Mirrors the same unwrap in classify.js: without it, a
     # completely genuine Gemini 429 quota exhaustion falls through every dict-shaped check below
@@ -412,6 +418,16 @@ def classify_provider_failure(
             retry_after_seconds=retry_after_seconds,
             scope="provider",
         )
+
+    if (
+        status in (400, 429)
+        and (
+            route.get("provider", "") if isinstance(route, dict) else getattr(route, "provider", "")
+        )
+        == "orcarouter"
+        and (_error_dict(body).get("metadata") or {}).get("reason") == "err_free_prompt_cap"
+    ):
+        return FailureClassification("free_prompt_cap", "orcarouter-free-prompt-cap", None, "route")
 
     # 5. HTTP 429 -> walk FAILURE_SIGNATURES
     if status == 429:

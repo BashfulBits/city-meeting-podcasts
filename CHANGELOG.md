@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Correct dispatch quota accounting: reserve and settle Qwen 3.8's 200k daily token allowance;
+  classify OrcaRouter prompt-cap errors by metadata, reroute rejected jobs and retain a learned
+  size bound while keeping shorter jobs eligible. Google uses trailing-minute input-only TPM,
+  schema-inclusive queue estimates, and preserves the configured size safety margin. No stage
+  version bump, artifact invalidation or automatic backfill. SambaNova token incident: #2027.
+
 - Prepare the verified September 19, 2016 Addison Council/P&Z joint subscription (#2025).
   Add Council alongside P&Z with the same UID/audio; existing canonical search attribution
   becomes Council. No record changes, stage invalidation or audio backfill.
