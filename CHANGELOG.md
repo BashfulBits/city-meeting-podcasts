@@ -12,6 +12,9 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Correct eight Denton TIRZ board subscriptions from Council into separate Zone1/Zone2 feeds,
+  preserving UID/audio/raw records. No stage invalidation or backfill.
+
 - Correct two standalone Denton Library subscriptions and add Library to its verified Council
   joint, preserving UID/audio/raw records. No stage invalidation or backfill.
 

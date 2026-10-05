@@ -1255,3 +1255,7 @@ named board independently. No Council joint inferred from room name.
 - denton-tx-70a6450a1deda017-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/70a6450a1deda017/agenda-6c9f1683eafa17ab
 - denton-tx-a9089a57a1557991-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/a9089a57a1557991/agenda-e4fb61bfcfd1cae7
 - denton-tx-c26f2f99a4bdaf8f-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/c26f2f99a4bdaf8f/agenda-09fac2977c403dab
+
+Denton TIRZ #2048 prepared: eight standalone board recordings leave Council, six for Zone1
+and two for Zone2 dedicated feeds; preserve raw UID/audio. No stage invalidation/backfill.
+Cases remain open until deployed verification.
