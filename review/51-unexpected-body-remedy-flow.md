@@ -1810,3 +1810,54 @@ Bond #2051 implementation is prepared on `feat/2051-denton-bond-feed` under this
 Full 2,176-record replay changes Council 756→755 and the new committee feed 0→1 only;
 targeted identity/negative checks and whole-repository Ruff pass. The case remains open for
 post-main deployment verification; the contract is not frozen before the parent stack merges.
+
+### Denton bounded stack implemented — frozen stamp, 2026-10-05
+
+The Health Commission, Library, TIRZ boards and 2019 Bond committee contracts above are
+implemented and frozen in PRs #2044/#2043, #2047/#2046, #2050/#2049 and #2053/#2052.
+The parent stack reached main `8a4adbeb` on October 5. Earlier #2044 and #2053 child merges
+into documentation branches did not themselves ship to main. Original raw records, UIDs,
+audio and source namespaces remain unchanged. No stage invalidation or backfill occurred.
+
+Library substantive review covered `cb4fa348`; one exact-GUID negative-test finding was
+fixed in test-only `1690b8e0`, replied and resolved, with green CI. Health #2044 merged before
+substantive review. TIRZ's only full request at 12:30:52 UTC was aborted on head change;
+#2050 merged before retry. Bond #2053 merged before a full request. These are explicit
+review gaps, not completed reviews. Do not request reviews on the closed PRs. Full offline
+suites and CI passed for the implementation heads; deployed ownership verification remains
+outstanding. Keep the sixteen Denton cases open until actual deployed proof is recorded.
+
+### Arlington Environmental Task Force — bounded L3 (#2055)
+
+Six retained 2020 agendas explicitly convene the Environmental Task Force with its own call
+and adjournment. Council references describe reports/recommendations, not a joint call.
+Full cached source `ecc3710ac47f` census finds exactly six ETF records. The 2022 official
+ARP report describes recommendations completed in 2020 and Municipal Policy Committee
+implementation in 2021; do not infer standing status or formal dissolution from that report.
+
+Create `config/feeds/arlington-tx-environmental-task-force.yml`, city `arlington-tx`, provider
+`granicus`, existing feed URL from Council, exact GUID/body `body_includes` for the six UIDs
+below only. Provider GUIDs are the original full MediaPlayer URLs, never just clip integers.
+Title `Arlington: Environmental Task Force`, author `City of Arlington, TX`, empty email,
+description `Verified 2020 Arlington Environmental Task Force proceedings.` Omit optional
+family/lifecycle metadata. Remove only Council's `Environmental Task Force` body_any term.
+Keep the deliberately unfiltered `arlington-tx` All Meetings feed unchanged.
+
+| UID | clip_id in original `https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=` | Exact body |
+|---|---|---|
+| 1792515fdd51c6c2 | 3443 | Environmental Task Force |
+| 25e9b8510b0a7a66 | 3494 | Environmental Task Force Meeting |
+| 2d5dc451df2da130 | 3454 | Environmental Task Force Meeting |
+| 35b22fcc8d07967b | 3424 | Environmental Task Force Meeting |
+| 9b66e98b682a47f2 | 3508 | Environmental Task Force Meeting |
+| a683af6e13e2bd7a | 3479 | Environmental Task Force Meeting |
+
+Add original minimal six-record `tests/fixtures/arlington-etf-retained.json` and actual-config
+`tests/test_arlington_etf_ownership.py`: ETF selected, Council rejected, All Meetings retained,
+RSS original UID/audio, unchanged raw input, and same body with different GUID rejected.
+Replay all 1,515 source records: exactly six Council departures/six ETF additions, all other
+feeds including aggregate unchanged. Whole offline/Ruff/format checks required. Update
+review/11, CHANGELOG, ARCHITECTURE, ROADMAP, audit and six register next actions in the
+implementation; keep cases open until deployed proof. Freeze/stamp only after main merge.
+Do not modify runtime, schemas, providers, dependencies, stages, records, audio, publication
+groups or other selectors. No invalidation/backfill or production writes.

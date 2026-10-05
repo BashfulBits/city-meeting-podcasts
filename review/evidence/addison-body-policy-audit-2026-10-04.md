@@ -1303,3 +1303,40 @@ Council proceedings in one packet. Do not label that bundle a genuine joint or s
 identity/audio without the separately approved publication contract. Four registered records
 without retained agenda artifacts remain unproven. Cases remain open pending full-source
 census, exact selectors/identity checks and deployed verification where needed.
+
+### Denton stack main merge checkpoint — 2026-10-05 14:00 UTC
+
+Main `8a4adbeb` includes all four Denton slices. Build & Deploy 37321232154 is pending;
+no new deployed ownership claim or case closure is made. The prior 77e4f31a deployment
+predated the Health parent merge. Review/51 freezes/stamps the bounded contracts and records
+Health, TIRZ and Bond substantive-review gaps. Library's valid test finding is fixed/resolved.
+Latest repository-wide human full request remains #2050 comment5994485501 at 12:30:52 UTC,
+aborted for head change; no new request was made on any closed PR.
+
+### Denton Health verification — 2026-10-05 14:30 UTC
+
+Successful deployment 37320977847 at `c753afa4` includes the Health parent merge. Read-only
+HTTP checks of `/denton-tx-health-building-standards-commission/audio_feed.xml` and
+`/denton-tx-city-council/audio_feed.xml` on `https://www.citymeetings.fyi` both return 200.
+All four Commission UIDs are present in the four-item Commission feed, absent from the
+493-item Council feed, and have the exact original fixture audio URLs:
+
+| UID | Hosted audio suffix under `https://audio.citymeetings.fyi/swagit/3b7588310856/` |
+|---|---|
+| 280db52d91547dd6 | 280db52d91547dd6-11174e3f8f49.m4a |
+| e7c1990b7a8e539e | e7c1990b7a8e539e-e2a2da60a988.m4a |
+| d419e8107262d0d0 | d419e8107262d0d0-f68204d763e1.m4a |
+| 7abd583b2ed8189a | 7abd583b2ed8189a-c760fcff8133.m4a |
+
+These four exact ownership cases are resolved. Full-stack run 37321232154 at `8a4adbeb`
+remains in progress. Library, TIRZ and Bond feeds returned 404 and remain unverified/open.
+Council RSS is bounded: absent historical joint/TIRZ UIDs do not prove removed coverage.
+The full-source config replay establishes unchanged retention separately from live RSS.
+
+### Arlington ETF exact source census — 2026-10-05 14:30 UTC
+
+All six registered ETF records occur in source `ecc3710ac47f`, with original MediaPlayer
+GUID URLs and exact two body labels. Their dated retained agendas each contain ETF call to
+order and adjournment; Council mentions concern report/recommendation context. Review/51
+#2055 records the bounded preimplementation contract, preserving All Meetings. No committee
+standing status or dissolution inference is made. Six cases remain open until deployed proof.
