@@ -1459,8 +1459,10 @@ consecutive proceedings, not a joint convening. Shared Council members and room 
 that conclusion.
 
 Exact source clip6334 has registered UIDs `081d2695d7d0136a` (view9) and
-`ead427dae0bbb284` (view5). The recovered link directly binds the packet to view9; independent
-view5 binding and the recording's actual proceeding boundaries remain to verify. Both cases
+`ead427dae0bbb284` (view5). The recovered link directly binds the packet to view9. A subsequent read-only view5
+player check exposes its own AgendaViewer redirect to the identical document filename,
+binding that packet to both registered views. The recording's actual proceeding boundaries
+remain to verify. Both cases
 stay open. Do not split audio, choose a duplicate winner or remove holders from packet
 structure alone. Historical clips125/127 currently expose only a generic CableSchedule
 default document; their player pages return HTTP200 even though the web reader could not
