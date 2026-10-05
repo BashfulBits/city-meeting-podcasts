@@ -1826,3 +1826,38 @@ substantive review. TIRZ's only full request at 12:30:52 UTC was aborted on head
 review gaps, not completed reviews. Do not request reviews on the closed PRs. Full offline
 suites and CI passed for the implementation heads; deployed ownership verification remains
 outstanding. Keep the sixteen Denton cases open until actual deployed proof is recorded.
+
+### Arlington Environmental Task Force — bounded L3 (#2055)
+
+Six retained 2020 agendas explicitly convene the Environmental Task Force with its own call
+and adjournment. Council references describe reports/recommendations, not a joint call.
+Full cached source `ecc3710ac47f` census finds exactly six ETF records. The 2022 official
+ARP report describes recommendations completed in 2020 and Municipal Policy Committee
+implementation in 2021; do not infer standing status or formal dissolution from that report.
+
+Create `config/feeds/arlington-tx-environmental-task-force.yml`, city `arlington-tx`, provider
+`granicus`, existing feed URL from Council, exact GUID/body `body_includes` for the six UIDs
+below only. Provider GUIDs are the original full MediaPlayer URLs, never just clip integers.
+Title `Arlington: Environmental Task Force`, author `City of Arlington, TX`, empty email,
+description `Verified 2020 Arlington Environmental Task Force proceedings.` Omit optional
+family/lifecycle metadata. Remove only Council's `Environmental Task Force` body_any term.
+Keep the deliberately unfiltered `arlington-tx` All Meetings feed unchanged.
+
+| UID | clip_id in original `https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=` | Exact body |
+|---|---|---|
+| 1792515fdd51c6c2 | 3443 | Environmental Task Force |
+| 25e9b8510b0a7a66 | 3494 | Environmental Task Force Meeting |
+| 2d5dc451df2da130 | 3454 | Environmental Task Force Meeting |
+| 35b22fcc8d07967b | 3424 | Environmental Task Force Meeting |
+| 9b66e98b682a47f2 | 3508 | Environmental Task Force Meeting |
+| a683af6e13e2bd7a | 3479 | Environmental Task Force Meeting |
+
+Add original minimal six-record `tests/fixtures/arlington-etf-retained.json` and actual-config
+`tests/test_arlington_etf_ownership.py`: ETF selected, Council rejected, All Meetings retained,
+RSS original UID/audio, unchanged raw input, and same body with different GUID rejected.
+Replay all 1,515 source records: exactly six Council departures/six ETF additions, all other
+feeds including aggregate unchanged. Whole offline/Ruff/format checks required. Update
+review/11, CHANGELOG, ARCHITECTURE, ROADMAP, audit and six register next actions in the
+implementation; keep cases open until deployed proof. Freeze/stamp only after main merge.
+Do not modify runtime, schemas, providers, dependencies, stages, records, audio, publication
+groups or other selectors. No invalidation/backfill or production writes.
