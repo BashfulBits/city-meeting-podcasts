@@ -1487,3 +1487,29 @@ leaves Council358→357 and enters new CBTF0→1. Raw mapping unchanged. Offline
 Seventeen additional candidates:15 have no current holder; Streets/Transportation269613
 and EconomicDevelopment269610 match standing Council committee feeds, requiring separate
 institutional identity proof. No additional ownership change is inferred from titles alone.
+
+### Dallas additional bond source register — 2026-10-05
+
+Seventeen candidates are now registered with original UID/provider GUID/source namespace.
+Counts are159 cases,121 resolved and38 open; expansion reveals coverage work rather than
+newly introduced regressions. No ownership proof is inferred from the candidate title.
+
+| UID | Original GUID | Source body | Current holder |
+|---|---|---|---|
+| 130a7ebded8e0e1d | 269608 | 2024 Bond Task Force Community Bond Task Force Meeting | none |
+| 5e9fdb6ff9e8ef68 | 202453 | Citizens Bond Task Force: Town Hall Meeting | none |
+| 6135249a278494c5 | 273327 | 2024 Capital Bond Program CBTF Meetings | none |
+| 6a3caf1854bdd2cd | 277589 | 2024 Capital Bond CBTF and Subcommittee Chairs Meeting | none |
+| 78173acda7f7efea | 269613 | 2024 Bond Task Force Streets and Transportation Subcommittee | Transportation and Infrastructure |
+| 8280ec97799c999e | 269612 | 2024 Bond Task Force Flood | none |
+| 84fcc0492e66906d | 233037 | 2024 Capital Bond CBTF Meeting | none |
+| 8969ad6d91ed23d2 | 269610 | 2024 Bond Task Force Economic Development | Economic Development |
+| 96c10f4f75706719 | 246971 | 2024 Capital Bond CBTF Meeting | none |
+| 977d943cea00258e | 269611 | 2024 Bond Task Force Critical Facilities Subcommittee Meeting | none |
+| aa65e2aafc90711b | 272574 | 2024 Capital Bond Program CBTF Meeting | none |
+| aaf0ad8eaabe68a5 | 269278 | 2024 Capital Bond CBTF Meeting | none |
+| cba1e023051d7c94 | 269916 | 2024 Capital Bond CBTF Meeting | none |
+| deb5a67aa9b6e8d1 | 259822 | 2024 Capital Bond CBTF Meeting | none |
+| eb1c279cc51a9b04 | 202452 | Citizens Bond Task Force: Town Hall Meeting | none |
+| eeca5aeceda62d39 | 272005 | 2024 Capital Bond Program CBTF Meeting | none |
+| fc9ad3b1d9def142 | 202451 | Citizens Bond Task Force: Town Hall Meeting | none |
