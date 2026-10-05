@@ -1952,3 +1952,39 @@ minutes establish this body independently of the standing Council committee.
 This entry is L2: no selector changes yet. Before L3, name the alias list, feed/fixture/test
 files, exact source replay deltas, and issue. Do not modify runtime body matching, providers,
 schemas, dependencies, stages, records, media, publication groups or existing joint policy.
+
+### Dallas Economic Development reusable rules — L3 (#2068)
+
+Supersedes the L2 follow-up above. In `config/feeds/dallas-tx-economic-development.yml`,
+replace only `source.body` with `source.body_exact` containing these 11 complete labels:
+
+- Economic Development
+- Economic Development and Housing Committee
+- Special Economic Development
+- Special Economic Development and Housing Committee
+- Special Called Joint Meeting of the Council Ad Hoc Committee on Professional Sports Recruitment and Retention and Council Economic Development Committee
+- Combined Economic Development & Housing
+- Special Called Joint Meeting of Economic Development and Workforce, Education, and Equity
+- Joint Meeting of Transportation and Economic Development Meeting
+- Special Call Meeting Economic Development & Housing Committee Housing Policy Stakeholder Forum
+- Economic Development & Committee on Finance
+- Economic Development Committee
+
+Preserve both existing GUID inclusions 205545/203327. Add
+`config/feeds/dallas-tx-2024-bond-economic-development-subcommittee.yml`, same city/provider/
+list_url as the standing feed, with only `source.body_exact` label
+`2024 Bond Task Force Economic Development`. Title it Dallas 2024 Bond Economic Development,
+Housing and Homeless Solutions Subcommittee. This is a reusable complete-label rule, not a
+GUID pin. Official August15 minutes and original chapters bind GUID269610,
+UID8969ad6d91ed23d2 to its independently convened proceeding.
+
+Add minimal original fixture `tests/fixtures/dallas-bond-economic-retained.json` and
+`tests/test_dallas_bond_economic_ownership.py`: actual-config standing rejection/new-feed
+acceptance; original RSS UID/audio and unchanged raw record; same-label/new-GUID acceptance;
+other bond subcommittee and unrelated Economic Development label negatives; all 11 standing
+aliases including joint labels retained. Replay all5,353 retained Dallas rows: standing feed
+loses only UID8969ad6d91ed23d2, new feed gains only it, every other holder unchanged. Run whole
+Ruff/format/offline. Update review/11, CHANGELOG, ARCHITECTURE, ROADMAP, audit and case next action.
+Case remains open until deployed ownership/audio proof. Do not modify runtime, other selectors,
+schemas, dependencies, providers, stages, records, media, publication groups or joint policy.
+No invalidation/backfill; no inference of other bond subcommittees' recording proof.

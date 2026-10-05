@@ -1463,3 +1463,6 @@ its separately convened 2024 bond subcommittee; use existing complete-label sele
 full-source positive/negative replay. Preserve genuine joints and ambiguous-record proof gates.
 The bounded design is in review/51, “Dallas reusable Economic Development ownership rules”.
 Existing prepared PR #2066 remains unchanged in production config/tests; this audit is follow-up.
+
+Dallas reusable Economic Development ownership rules are now **L3**, issue #2068, with the
+11 standing aliases, separate stable bond label, named tests and full-source replay in review/51.
