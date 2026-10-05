@@ -1229,3 +1229,11 @@ Deployed membership verification remains pending; four cases stay open.
 Denton #2042 prepared: four verified Health & Building Standards Commission records move
 out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
 joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.
+
+Live2026-10-05 verification: Arlington four CND UIDs present dedicated feed/absent Council;
+Dallas Redistricting UIDbd172b762dd20b63 present Commission/absent Council; six Addison archive
+pages HTTP200 and no Public Input browse mentions. All Meetings RSS contains495items and omits
+old CND UIDs; do not claim live aggregate historical coverage from config replay. Search404
+still unverified; Denton newCommission404 while deployment77e4f31a is running.
+
+Maintainer override: CodeRabbit reviews actual code changes only, not docs or configuration YAML.

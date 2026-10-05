@@ -1383,3 +1383,6 @@ Deployed membership verification remains pending; four cases stay open.
 Denton #2042 prepared: four verified Health & Building Standards Commission records move
 out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
 joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.
+
+Denton Library Board: L3 bounded review/51 contract for two standalone transfers and one
+Council/Library joint membership addition, preserving the Council subscription.
