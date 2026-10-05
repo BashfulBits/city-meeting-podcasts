@@ -1175,3 +1175,13 @@ are substantive standalone-body evidence, not title-only classifications.
 - `fort-worth-tx-e0736bdd5835b1d4-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/e0736bdd5835b1d4/agenda-f77d64b9f1d0bf88).
 - `fort-worth-tx-ead427dae0bbb284-ownership`: agenda status no artifact; locate official agenda.
 - `fort-worth-tx-f28ae055829705ec-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/f28ae055829705ec/agenda-0de271fd089eee9f).
+
+### Recording-specific Dallas verdict
+
+UIDbd172b762dd20b63/GUID203320 is officially the January22,2022 Redistricting Commission
+public town hall. Its retained official notice convenes that Commission at Pleasant Oaks,
+with Commission chair introductions and a redistricting agenda. It does not convene Council.
+Current selectors already admit it to the dedicated Redistricting Commission feed and also
+Council. Recommended correction removes only its Council GUID override, retaining Commission,
+raw UID/audio and historical feed. This verdict does not classify the other CBTF recording:
+its available packet describes the program and subcommittees, requiring dated meeting proof.
