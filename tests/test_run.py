@@ -4151,3 +4151,24 @@ def test_archive_only_cached_removal_reversal_preserves_raw_pages(tmp_path):
     assert render(load_selection_index([city, declaring])).episode_count == 2
     assert (out / city.slug / "audio_feed.xml").read_text().count("<item>") == 2
     assert state.read_bytes() == original
+
+
+def test_archive_only_identity_conflict_is_a_city_error_without_writes(tmp_path):
+    """A bad identity preserves that city's output without raising into the render executor."""
+    city, pipeline = _publication_render_fixture(tmp_path)
+    city.extra.pop("publication_selection")
+    ep = pipeline.render_from_records(city)[0]
+    city.extra["archive_only"] = [
+        {"uid": ep.uid, "provider_guid": "wrong", "reason": "hold", "approval_ref": "approval"}
+    ]
+    out = tmp_path / "docs"
+    target = out / city.slug
+    target.mkdir(parents=True)
+    (target / "audio_feed.xml").write_text("previous output")
+    result, entry = run._process_city(
+        city, "https://example.gov", out, {}, 0, False, pipeline, {}, "original", no_refresh=True
+    )
+    assert result.status == "error"
+    assert "GUID mismatch" in result.detail
+    assert entry is None
+    assert (target / "audio_feed.xml").read_text() == "previous output"

@@ -516,6 +516,14 @@ def build_search_index(
                 "Search publication selection held: %s", plan.diagnostics
             )
             return None
+    # Validate all identities before touching any shard so a conflict preserves the complete index.
+    try:
+        for src_key, records in records_by_source.items():
+            for record in records.values():
+                is_archive_only(archive_index, src_key, record)
+    except ValueError as exc:
+        logging.getLogger(__name__).warning("Search archive visibility held: %s", exc)
+        return None
     search_dir.mkdir(parents=True, exist_ok=True)
     cache_shards = cache.setdefault("shards", {}) if cache is not None else {}
     artifact_cache: dict[str, bytes] = {}

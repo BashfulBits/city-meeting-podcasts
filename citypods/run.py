@@ -1168,12 +1168,17 @@ def _process_city(
             ).hexdigest()
         archive_index = load_archive_index(list(selection_index.owners.values()))
         visibility_hash = archive_policy_hash(archive_index, source_key(city))
-        hidden_recording_guids = {
-            ep.guid for ep in episodes if is_archive_only(archive_index, source_key(city), ep)
-        }
-        retained_eps = [
-            ep for ep in retained_eps if not is_archive_only(archive_index, source_key(city), ep)
-        ]
+        try:
+            hidden_recording_guids = {
+                ep.guid for ep in episodes if is_archive_only(archive_index, source_key(city), ep)
+            }
+            retained_eps = [
+                ep
+                for ep in retained_eps
+                if not is_archive_only(archive_index, source_key(city), ep)
+            ]
+        except ValueError as exc:
+            return CityResult(city.slug, "error", detail=str(exc)), None
         if visibility_hash is not None:
             fingerprint = hashlib.sha256(
                 json.dumps([fingerprint, visibility_hash], separators=(",", ":")).encode()

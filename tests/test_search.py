@@ -560,3 +560,29 @@ def test_search_selection_policy_invalidates_only_configured_hash(tmp_path):
     assert search_mod._shard_hash(records, [owner], "https://site.test", selection=feed_only) == (
         search_mod._shard_hash(records, [owner], "https://site.test")
     )
+
+
+def test_archive_identity_conflict_holds_index_before_any_output_write(tmp_path):
+    """A later source conflict must not replace any part of the complete search index."""
+    first, later = _city("first"), _city("later")
+    later.source = {**later.source, "url": "https://other.test/archive"}
+    record = episode_to_record(_episode())
+    _save(tmp_path, first, {record["uid"]: record})
+    _save(tmp_path, later, {record["uid"]: record})
+    later.extra["archive_only"] = [
+        {
+            "uid": record["uid"],
+            "provider_guid": "wrong",
+            "reason": "hold",
+            "approval_ref": "approval",
+        }
+    ]
+    cache = {}
+    assert (
+        build_search_index(
+            tmp_path / "state", [first, later], tmp_path / "docs", "https://site.test", cache=cache
+        )
+        is None
+    )
+    assert not (tmp_path / "docs").exists()
+    assert cache == {}
