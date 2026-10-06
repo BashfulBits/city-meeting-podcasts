@@ -1755,3 +1755,14 @@ Six Streets cases remain open despite deployed correct ownership: May25/June20/A
 original dated chapter or other exact official recording link; Aug10/Oct26/Oct27 lack independent
 official archive-date/content binding. No closure solely from label/replay/RSS counts.
 Register169cases141resolved28open: Addison7/Dallas14/FortWorth7.
+
+### Destination Addison manual provider playback — 2026-10-06
+
+The official player at https://addisontx.new.swagit.com/videos/56026 loaded and played in
+browser inspection, with duration03:11 and the original February25,2009 title. Sampled frames
+at00:14 show a hotel reception with the Addison wordmark;01:17 shows an aerial venue/city
+montage;03:00 shows an event montage explicitly captioned “Addison's Year Round Special
+Events!” This supplies direct promotional-content corroboration beyond its previously unusable
+VTT. These sampled frames do not establish the content of every interval. Archive-only remains
+approved; the case stays open for deployed search verification and completion of its evidence
+obligation. No media download, recording mutation or new processing was performed.
