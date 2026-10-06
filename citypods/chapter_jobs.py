@@ -31,6 +31,7 @@ from citypods.chapter_titles import (
     AGENDA_PRODUCTION_MODELS,
     build_production_agenda_item_extraction_request,
     ensure_agenda_item_extractor_contract,
+    record_llm_cache_telemetry,
     recover_agenda_item_extractor_response,
 )
 from citypods.compute.base import InferenceJob, JobResult
@@ -165,6 +166,10 @@ def finalize_agenda_job(
     rescue, preserving today's fail-and-retry-later behavior for those.
     """
     resolved_model = model or result.model or AGENDA_PRODUCTION_MODEL
+    if isinstance(result.output, Mapping):
+        usage = result.output.get("usage")
+        if isinstance(usage, Mapping):
+            record_llm_cache_telemetry(resolved_model, usage)
 
     content = _response_content(result.output)
     assessment = recover_agenda_item_extractor_response(content, agenda_text=agenda_text)
