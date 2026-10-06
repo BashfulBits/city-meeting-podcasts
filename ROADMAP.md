@@ -604,4 +604,4 @@ Recently shipped (human merge commits): #2091 Flood, #2093 CBTF additions,
 verified live; remaining merged corrections await deployed evidence. Register:169 cases,
 143 resolved,26 open. Search checkpoint review gap remains explicit.
 
-Prepared development #2097: restore exact May25 CBTF recording from verified original proof.
+Prepared #2097: exact May25 CBTF recording added from verified original proof; deployment pending.

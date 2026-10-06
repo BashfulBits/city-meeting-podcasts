@@ -2325,3 +2325,8 @@ stages, dependencies, search, storage, audio, titles/dates or any other feed.
 `test_three_verified_cbtf_proceedings_preserve_identity` negative for233037 is superseded
 by the newly verified May25 admission. Replace that obsolete negative with the same body
 and a different unverified GUID; retain the272574 negative. No broad label admission.
+
+#2097 prepared: full5353-record/1095-label replay changes only CBTF8→9 with original
+UID84fcc0492e66906d; every other holder set unchanged.20 targeted and4984 full offline
+tests pass15 deselected; whole Ruff/format472 clean. Original UID/audio preserved.
+Deployment still required; two independently proven deployed Streets cases close.
