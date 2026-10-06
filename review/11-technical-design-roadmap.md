@@ -105,8 +105,8 @@ The approved joint-meeting rule applies across all cities and future onboarding:
 recording in each officially proven participating body's feed, preserving stable identity. This
 requires genuine joint convening, not topic mentions, common membership or bundled separate meetings.
 
-Classification settlement hold (2026-10-04): no further CodeRabbit requests until full Addison
-body policy, cross-city spot checks and onboarding acceptance are stabilized. See the
+Classification settlement hold (2026-10-04) was explicitly lifted by the maintainer at 19:50 UTC
+that day; it is not an active review restriction. See the
 [retained-label audit and proposed policy](evidence/addison-body-policy-audit-2026-10-04.md).
 Prepared CPC coverage alone does not complete this city baseline or authorize broader migrations.
 The approved public-input/briefing and BZA presentation slice is L3 in
