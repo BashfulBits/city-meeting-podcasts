@@ -1485,3 +1485,7 @@ bounded contract frozen and substantive review gap recorded in review/51.
 Dallas #2092 additional three CBTF proceedings: L3, implementation prepared in review/51; verified archive/source
 bindings, two exact ambiguous-label pins plus one reusable chairs-meeting institution alias.
 Existing holders/raw UID/audio preserved; full replay and deployed proof gate closure.
+
+Dallas #2094 dedicated bond Critical Facilities institution: L3 in review/51. Exact full
+label, independent institution plus dated archive/source chapter proof; all prior holders
+preserved. Missing August15 minutes documented; deployed verification gates closure.

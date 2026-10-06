@@ -2169,3 +2169,35 @@ Freeze/stamp this bounded contract and mark shipped after human merge, not prepa
 
 #2092 preparation: selectors/tests implemented; cases remain open until deployed own RSS/audio
 verification. Full retained-source replay changes only CBTF5→8, the three contracted UIDs.
+
+### Dallas bond Critical Facilities institution — L3, #2094
+
+Evidence: official archive dated August15 Meeting#5 plus original269611 chapter binds the
+recording. Correctly linked August22 minutes independently prove the named subcommittee,
+chair and own convening/adjournment. These are separate evidence roles: do not claim
+August22 minutes describe August15. Missing August15 minutes remain a documented limit.
+The committed audit retains the official URLs and excludes the mislinked May11 summary.
+
+Files: new config/feeds/dallas-tx-2024-bond-critical-facilities-subcommittee.yml; new
+tests/fixtures/dallas-bond-critical-retained.json; new tests/test_dallas_bond_critical_ownership.py;
+CHANGELOG, ROADMAP, review11, this doc, evidence audit/register. No architecture change.
+
+Reuse Dallas views113 provider source and body_exact only:
+2024 Bond Task Force Critical Facilities Subcommittee Meeting. New dedicated podcast named
+Dallas: 2024 Bond Critical Facilities Subcommittee, existing Dallas author/email conventions.
+Exact institutional label automatically accepts future GUIDs; no Critical Facilities topic
+substring, alternate unproven alias or GUID replacement. Copy retained977d943cea00258e/269611
+unaltered into fixture. No prior holder changes, no other feed config modifications.
+
+Actual-config tests: own feed eligibility, absent Council/standing committees, exact original
+RSS UID/audio, unchanged fixture, future GUID with same complete label admitted, near-label
+public-town-hall/standing-Council/topic-only candidates excluded. Replay all5,353 rows/1,095
+labels: new feed0→1 only977d943cea00258e; all previous feed holder sets byte-identical.
+If replay differs, stop and investigate before widening scope. Run targeted routing/sweep,
+whole offline suite, whole Ruff/format and diff checks. Actual code review requires the
+repository-wide65minute request gate and current CI. Human merge commits only.
+
+Record prepared selector assignment while keeping case open until live own RSS/original
+audio proof. After human merge freeze/stamp this contract and ship lifecycle docs.
+Do not modify runtime/model/provider/schema/storage/stage/worker/workflow/other selectors,
+records/titles/dates/chapters/audio; no splits/winner/backfill/invalidation or quota work.
