@@ -2434,10 +2434,12 @@
       "uid": "977d943cea00258e",
       "provider_guid": "269611",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Reconcile official CBTF archive and source chapters, prepare bounded ownership contract; no title-only closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
+      "missing_evidence": "Live dedicated RSS ownership and original audio proof; August 15 minutes unavailable, separate August 22 institution proof retained",
+      "next_action": "Prepared #2094 exact institutional feed; verify deployed original UID/audio before closure",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-critical-facilities-subcommittee"
+      ],
       "status": "open",
       "disposition": null
     },

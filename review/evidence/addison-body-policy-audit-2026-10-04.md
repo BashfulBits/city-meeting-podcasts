@@ -1851,6 +1851,16 @@ Critical Facilities convening proof. A bounded institution-feed contract can use
 bound archive event/chapter plus this independent institution proof; do not claim the
 August22 minutes describe the August15 recording. Case977d943cea00258e remains open.
 
+### Prepared Critical Facilities institutional routing (#2094)
+
+The exact full institutional alias adds only retained UID977d943cea00258e/GUID269611 to its
+new dedicated feed. Full cached Dallas replay covered5,353records/1,095labels: new feed0→1;
+every previous feed holder set unchanged. Original fixture, raw identity and audio retained.
+Actual-config tests accept a future GUID with the same full institution label and reject
+public-town-hall, standing-Council/topic-only and shortened aliases. The case remains open
+until deployed dedicated RSS/original-audio proof; unavailable August15minutes are not
+substituted with the independent August22institution minutes.
+
 ### Dallas Flood subcommittee prepared implementation — #2089
 
 Exact original GUID269612/UID8280ec97799c999e routes to the new complete-label subscription;

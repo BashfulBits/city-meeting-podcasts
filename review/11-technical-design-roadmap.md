@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-10-05 (publication-selection machinery under review;
+**Status: LIVING · last updated 2026-10-06 (publication-selection machinery under review;
 Initiative 20 shipped in PRs #1617–#1622 — LLM
 endpoint rate-limit characterization & failure-class-aware backoff; review/45 reconciled against
 `main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling +
@@ -1489,6 +1489,8 @@ Existing holders/raw UID/audio preserved; full replay and deployed proof gate cl
 Dallas #2094 dedicated bond Critical Facilities institution: L3 in review/51. Exact full
 label, independent institution plus dated archive/source chapter proof; all prior holders
 preserved. Missing August15 minutes documented; deployed verification gates closure.
+
+Dallas #2094 prepared: exact Critical Facilities feed; case open until deployment proof.
 
 Dallas bond Flood institution: **L3**, #2089, reusable complete label and independently
 convened official minutes/source chapter binding. Implementation prepared with original fixture;

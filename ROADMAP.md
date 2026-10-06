@@ -587,6 +587,9 @@ Dallas #2065 exact four-record CBTF coverage prepared; deployment proof and rema
 - Prepared #2092: three additional verified Dallas CBTF proceedings; exact ambiguous-label
   pins and reusable complete chairs alias preserve all prior holders. Deployment proof pending.
 
+- Prepared #2094: Dallas bond Critical Facilities exact institutional feed; original identity
+  and every prior holder preserved. Case stays open until deployed RSS/audio proof.
+
 Shipped #2086 in #2088: EMSISD participant discovery; deployed original UID/audio verified.
 
 Prepared #2089: complete-label Dallas Flood bond subcommittee subscription; full-source replay
