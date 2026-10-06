@@ -2297,3 +2297,13 @@ a real multiple-budget source-resumption test, with the same deadline and source
 whole Ruff/format471 clean. Real three-source/three-budget replay advances one uncached source
 each run; cross-run complete→deferred→complete retains last-complete publication and fresh raw
 pages. CodeRabbit material-fix review and human merge remain required.
+
+### Frozen implementation stamps — 2026-10-06
+
+Implemented in PR #2091 (#2089 Flood), PR #2093 (#2092 CBTF additions),
+PR #2095 (#2094 Critical Facilities), and PR #2087 (#2084 bounded search/checkpoints).
+These bounded contracts are frozen as implemented; further changes need a new contract.
+#2091/#2093/#2095 retain substantive reviewed selector/test coverage and fixed prose findings.
+#2087 original98cb725b had substantive review; material checkpoint fix9b1027cf and
+conflict merge b3400313 merged before substantive new-code review. Do not count skipped
+automatic checks as review or request reviews on these closed PRs.

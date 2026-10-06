@@ -1894,3 +1894,12 @@ and audio remain intact; the case stays open until live deployment ownership ver
 Cached5353-record/1095-label replay: new Flood subscription0→1 for UID8280ec97799c999e only;
 every pre-existing feed holder unchanged. Targeted feed/editor/register checks198passed.
 Final full offline suite4961passed/15deselected; whole Ruff/format470files and diff check clean.
+
+### Live merged backlog verification — 2026-10-06
+
+Read-only live `https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/audio_feed.xml`
+returned the exact UID8280ec97799c999e and audio URL from source76869ed1994f retained records.
+Official Aug15 independently convened Flood minutes and dated source chapters are retained
+above. This closes only its bounded ownership case. CBTF UIDsdeb5a67aa9b6e8d1,
+eeca5aeceda62d39 and6a3caf1854bdd2cd were absent from current own RSS; Critical feed404.
+Those four remain open, with deployment still in progress. No raw or audio changes.

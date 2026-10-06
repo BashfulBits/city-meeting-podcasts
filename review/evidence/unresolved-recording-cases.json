@@ -2374,12 +2374,14 @@
       "uid": "8280ec97799c999e",
       "provider_guid": "269612",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Prepared #2089 complete-label Flood subcommittee subscription; verify deployed original UID/audio before closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
-      "status": "open",
-      "disposition": null
+      "missing_evidence": "No remaining bounded ownership evidence gap; official Aug15 minutes and retained source chapter binding recorded in the audit.",
+      "next_action": "Retain official/source and deployed RSS proof; preserve original records and audio.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-flood-subcommittee"
+      ],
+      "status": "resolved",
+      "disposition": "Dedicated Flood subscription deployed after human merge #2091; exact original UID and hosted audio URL verified in live RSS."
     },
     {
       "case_id": "dallas-tx-84fcc0492e66906d-ownership",

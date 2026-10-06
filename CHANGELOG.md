@@ -7376,3 +7376,12 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
 - Prepared #2087 review fix: persist working search progress separately from last-complete
   publication across Actions runs. Deferred builds retain the latest complete index while keeping
   fresh non-search pages. No deadline increase, storage writes, stage bump or catalog backfill.
+
+### Merged backlog corrections — 2026-10-06
+
+- #2091, #2093 and #2095 shipped Flood, three CBTF additions and Critical Facilities feeds.
+  Original UID/audio/raw records remain intact; no stage invalidation or backfill.
+- #2087 shipped separate bounded search and cross-run working/complete checkpoints.
+  The material checkpoint fix merged before substantive new-code review; this gap is recorded.
+- Live Flood RSS contains UID8280ec97799c999e with the exact retained hosted audio URL.
+  CBTF additions and Critical feed remain pending deployment verification.

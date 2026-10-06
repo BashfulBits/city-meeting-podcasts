@@ -598,3 +598,8 @@ Shipped #2086 in #2088: EMSISD participant discovery; deployed original UID/audi
 
 Prepared #2089: complete-label Dallas Flood bond subcommittee subscription; full-source replay
 adds one original UID with every existing holder unchanged. Deployment proof pending.
+
+Recently shipped (human merge commits): #2091 Flood, #2093 CBTF additions,
+#2095 Critical Facilities, #2087 bounded search/checkpoint persistence. Flood ownership
+verified live; remaining merged corrections await deployed evidence. Register:169 cases,
+143 resolved,26 open. Search checkpoint review gap remains explicit.
