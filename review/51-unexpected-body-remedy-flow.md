@@ -2378,6 +2378,10 @@ UIDs have decoded7952.06s/audio. Packet combines three proceedings but does not 
 original combined recording content. Both6334 cases stay open; no refresh/split/winner/holder
 change. Evidence screenshot paths and exact observed content are retained in the audit.
 
+Maintainer disposition (2026-10-06): preserve both UIDs' current feed assignments and keep their
+cases open until exact UID-to-segment evidence is found. The agenda PDF alone does not establish
+which recording UID belongs to which proceeding; do not split audio or change a winner/holder.
+
 Do not modify runtime/provider/schema/storage/stages/workers/workflows/dependencies, source
 records, raw titles/dates/chapters/audio or other configs. No merge, split, winner, invalidation,
 backfill or production write. Actual test-code review obeys repository-wide65minute spacing.
