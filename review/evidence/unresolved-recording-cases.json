@@ -2145,13 +2145,13 @@
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
       "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
-      "last_researched": "2026-10-05",
+      "next_action": "Retain source records and both participant subscriptions; current Council RSS is bounded and omits this historical item",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "fort-worth-tx-city-council"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Proven Council/EMSISD joint: new participant RSS and retained Council page verified original UID/audio after #2088 deployment"
     },
     {
       "case_id": "fort-worth-tx-6a1dd0e9e8088440-ownership",

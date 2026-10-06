@@ -1478,3 +1478,6 @@ Separate exact subscriptions and unchanged original records/audio per review/51;
 
 Separate bounded static search job: **L3**, #2084, maintainer-approved20minute ceiling and
 same-run snapshot/staged publication contract in review/51. No public schema or record writes.
+
+Fort Worth EMSISD participant #2086: **Shipped** in #2088; original audio verified deployed,
+bounded contract frozen and substantive review gap recorded in review/51.

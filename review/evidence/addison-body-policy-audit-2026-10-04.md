@@ -1766,3 +1766,14 @@ Events!” This supplies direct promotional-content corroboration beyond its pre
 VTT. These sampled frames do not establish the content of every interval. Archive-only remains
 approved; the case stays open for deployed search verification and completion of its evidence
 obligation. No media download, recording mutation or new processing was performed.
+
+### EMSISD joint deployed verification — 2026-10-06
+
+PR #2088 human merged01:24:40UTC; deployment37399019547/f986567b succeeded. Live
+EMSISD participant RSS returns200 with UID497b3aa05255bfb9 exactly once and its original
+hosted audio. Council's retained original page returns200 with the same UID/audio at
+https://www.citymeetings.fyi/fort-worth-tx-city-council/497b3aa05255bfb9/ . Its bounded current
+RSS omits this historical recording; no claim of historical Council RSS completeness is made.
+Official April25,2016 agenda and independent source calls/chapters establish genuine joint
+participation; full5896-record replay retained every prior holder. This case is resolved.
+Register169cases/142resolved/27open pending this documentation merge. No raw/audio changes.

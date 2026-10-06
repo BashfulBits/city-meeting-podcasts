@@ -2130,3 +2130,8 @@ Specific config/model presentation-schema approval remains necessary before code
 prior no-unspecified-schema gate. After approval mature to L3 with named parser/model/run/feeds/
 site/cache files and original two-record positive/negative/RSS/raw-page tests. No general bundle
 classifier, audio splitting, publication winner, other source/holder change or backfill.
+
+#2086 implemented in PR #2088, human merged2026-10-06T01:24:40Z. Contract frozen.
+Human merge preceded a substantive CodeRabbit request; explicit review gap, no closed-PR review.
+Live EMSISD RSS and retained Council page verify the original UID/audio; current bounded Council
+RSS omits this historical item. Closure proof is recorded in the committed audit.
