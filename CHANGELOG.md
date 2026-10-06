@@ -7368,6 +7368,11 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   its complete institution label. Preserve raw UID/audio; no stage invalidation or backfill.
   Case remains open pending deployment verification.
 
+### Prepared workflow tooling correction (#2041)
+
+- Synchronize the exact Wrangler 4.147.0 smoke assertion with the selected tooling pin.
+- Record the Node 24 CI-validated Renovate 44.139.0 validator pin.
+- No runtime source, Python target, pipeline version, or stored artifact changes.
 - Prepared #2087 review fix: persist working search progress separately from last-complete
   publication across Actions runs. Deferred builds retain the latest complete index while keeping
   fresh non-search pages. No deadline increase, storage writes, stage bump or catalog backfill.
