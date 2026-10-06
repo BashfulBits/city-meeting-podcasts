@@ -2201,3 +2201,5 @@ Record prepared selector assignment while keeping case open until live own RSS/o
 audio proof. After human merge freeze/stamp this contract and ship lifecycle docs.
 Do not modify runtime/model/provider/schema/storage/stage/worker/workflow/other selectors,
 records/titles/dates/chapters/audio; no splits/winner/backfill/invalidation or quota work.
+
+Prepared #2094: exact institutional feed implemented; deployment verification remains required.

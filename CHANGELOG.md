@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared #2094 Dallas bond Critical Facilities feed.** Exact institution label retains
+  original UID/audio and automatically admits future matching GUIDs; prior feeds unchanged.
+  Deployment evidence remains required before case closure.
+
 - **Guard dispatch quota schema upgrades before job writes (PR #2057).** Detect all four quota columns added
   by PR #2028, add only missing columns on otherwise-current objects, and verify readiness before
   serving RPCs. Current-schema startups remain write-free. Mutation preflight prepares a zero-row
