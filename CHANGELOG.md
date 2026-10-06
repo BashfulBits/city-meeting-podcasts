@@ -7347,3 +7347,7 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
 - Prepared #2092: three verified Dallas CBTF recordings gain own subscription coverage,
   using two exact GUID pins and one reusable complete chairs-meeting alias. Preserve original
   UID/audio/raw records; no stage invalidation or backfill. Deployment proof gates closure.
+
+- Prepared #2089: add Dallas 2024 bond Flood Control and Storm Drainage subscription using
+  its complete institution label. Preserve raw UID/audio; no stage invalidation or backfill.
+  Case remains open pending deployment verification.

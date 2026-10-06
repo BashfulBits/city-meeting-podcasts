@@ -1491,3 +1491,7 @@ label, independent institution plus dated archive/source chapter proof; all prio
 preserved. Missing August15 minutes documented; deployed verification gates closure.
 
 Dallas #2094 prepared: exact Critical Facilities feed; case open until deployment proof.
+
+Dallas bond Flood institution: **L3**, #2089, reusable complete label and independently
+convened official minutes/source chapter binding. Implementation prepared with original fixture;
+5353-record replay adds only one Flood subscription. Deployment proof remains pending.

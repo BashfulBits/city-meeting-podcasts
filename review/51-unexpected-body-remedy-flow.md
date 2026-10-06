@@ -2203,3 +2203,22 @@ Do not modify runtime/model/provider/schema/storage/stage/worker/workflow/other 
 records/titles/dates/chapters/audio; no splits/winner/backfill/invalidation or quota work.
 
 Prepared #2094: exact institutional feed implemented; deployment verification remains required.
+
+### Dallas bond Flood subcommittee reusable ownership — L3, #2089
+
+Official August15,2023 Flood Control/Storm Drainage Subcommittee minutes independently
+convene chair Anita Childress6:05pm and adjourn8:15pm. Original provider chapters bind
+GUID269612/UID8280ec97799c999e to that date and institution. This is a standalone2024Bond
+subcommittee; Council recommendations discussed are not Council participation.
+
+Add `config/feeds/dallas-tx-2024-bond-flood-subcommittee.yml`, same Dallas/Swagit113 source,
+existing body_exact only `2024 Bond Task Force Flood`; title Dallas2024Bond Flood Control and
+Storm Drainage Subcommittee. No existing selector changes. Add original fixture
+`tests/fixtures/dallas-bond-flood-retained.json` and `tests/test_dallas_bond_flood_ownership.py`:
+actual-config new feed accepts original, same-label/future-GUID recurrence auto-admits,
+standing Council/Flood topic/other bond bodies reject; raw UID/audio/RSS remain unchanged.
+Full5353-record/all-feed replay must add only original UID to newfeed0→1, every old holder
+unchanged. Full offline and whole Ruff/format required. No provider/runtime/schema/record/audio/
+stage/dependency changes, backfill or publication winner. Update ARCHITECTURE/CHANGELOG/
+ROADMAP/review11/audit and case prepared action; case stays open until human merge and live
+exact UID/audio verification. Freeze/stamp after human merge only.
