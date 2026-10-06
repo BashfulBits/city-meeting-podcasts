@@ -41,7 +41,7 @@ jobs:
           apiToken: smoke-test-no-cloudflare-access
           accountId: "00000000000000000000000000000000"
           workingDirectory: workers/${{ matrix.worker }}
-          wranglerVersion: "4.137.0"
+          wranglerVersion: "4.147.0"
           command: deploy --dry-run --outdir /tmp/worker-package
       - name: Verify bundle exists and exact Wrangler was installed
         working-directory: workers/${{ matrix.worker }}

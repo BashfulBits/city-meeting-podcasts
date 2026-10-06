@@ -74,4 +74,4 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_LLM_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: workers/llm-dispatch-v2
-          wranglerVersion: "4.137.0"
+          wranglerVersion: "4.147.0"
