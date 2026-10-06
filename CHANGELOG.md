@@ -7343,3 +7343,9 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
 - Prepared #2089: add Dallas 2024 bond Flood Control and Storm Drainage subscription using
   its complete institution label. Preserve raw UID/audio; no stage invalidation or backfill.
   Case remains open pending deployment verification.
+
+### Prepared workflow tooling correction (#2041)
+
+- Synchronize the exact Wrangler 4.147.0 smoke assertion with the selected tooling pin.
+- Record the Node 24 CI-validated Renovate 44.139.0 validator pin.
+- No runtime source, Python target, pipeline version, or stored artifact changes.

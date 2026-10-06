@@ -47,4 +47,4 @@ jobs:
         working-directory: workers/${{ matrix.worker }}
         run: |
           test -s /tmp/worker-package/index.js
-          test "$(node -p 'require("wrangler/package.json").version')" = "4.137.0"
+          test "$(node -p 'require("wrangler/package.json").version')" = "4.147.0"
