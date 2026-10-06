@@ -2675,6 +2675,8 @@ def _build_impl(
     no_refresh: bool = False,
     shard_plan_path: str | Path | None = None,
     state_snapshot_restored: bool = False,
+    skip_search: bool = False,
+    search_context_output: str | Path | None = None,
     maintenance_lease: MaintenanceLease | CompositeMaintenanceLease | None = None,
     _compute_backend_holder: list[object] | None = None,
 ) -> list[CityResult]:
@@ -2708,6 +2710,8 @@ def _build_impl(
     cache) without depending on live provider availability (which only timed out the preview, never
     added value — URL/contract validation lives in ``contracts.yml``). An empty store renders an
     empty feed, not an error."""
+    if (skip_search or search_context_output is not None) and phase != "render":
+        raise ValueError("search handoff options require render phase")
     if phase not in ("all", "render", "enrich"):
         raise ValueError(f"unknown build phase {phase!r}")
     if lane is not None and lane not in (
@@ -3815,7 +3819,17 @@ def _build_impl(
                 shutil.rmtree(request_dir, ignore_errors=True)
             search_manifest = {"shards": []}
             search_available = False
-            if search_enabled:
+            if search_context_output is not None:
+                context_path = Path(search_context_output)
+                context_path.parent.mkdir(parents=True, exist_ok=True)
+                context_path.write_text(json.dumps({"feed_info": feed_info, "base_url": base_url}))
+            if skip_search:
+                manifest_path = output_dir / "data" / "search" / "manifest.json"
+                page_path = output_dir / "search" / "index.html"
+                if search_enabled and manifest_path.is_file() and page_path.is_file():
+                    search_manifest = json.loads(manifest_path.read_text())
+                    search_available = True
+            elif search_enabled:
                 search_cache = cache.setdefault("_static_search", {})
                 search_stop = stop
                 if search_stop is None:
@@ -4118,6 +4132,8 @@ def build(
     no_refresh: bool = False,
     shard_plan_path: str | Path | None = None,
     state_snapshot_restored: bool = False,
+    skip_search: bool = False,
+    search_context_output: str | Path | None = None,
 ) -> list[CityResult]:
     """Run a build and always close a subprocess-backed compute backend."""
     compute_backend_holder: list[object] = []
@@ -4162,6 +4178,8 @@ def build(
             no_refresh=no_refresh,
             shard_plan_path=shard_plan_path,
             state_snapshot_restored=state_snapshot_restored,
+            skip_search=skip_search,
+            search_context_output=search_context_output,
             maintenance_lease=maintenance_lease,
             _compute_backend_holder=compute_backend_holder,
         )

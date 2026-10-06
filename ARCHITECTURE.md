@@ -1412,9 +1412,21 @@ Dallas2017 bond publication uses source-bound GUID exceptions where the provider
 TownHall label for a formal taskforce meeting and two public-input sessions. Exact official
 agenda hashes establish the distinction; raw provider labels/audio/UIDs remain unchanged (#2083).
 
+Static search has a separate bounded deployment coordinator (#2084). Render hands off the
+same-run generated site, feed context and source record JSONs; search reads hosted sidecars
+without provider refresh or record/storage writes. It stages the complete site, preserving
+prior public bytes on deferred/error builds. Complete search publishes navigation/meta together.
+Existing20minute indexing ceiling and60minute job ceiling remain; deployment alone writes Pages.
+
 Fort Worth EMSISD Board participant feed reuses the existing Granicus source and exact joint
 institution label. Council ownership and original whole recording UID/audio are preserved.
 
 Dallas 2024 bond Flood Control and Storm Drainage uses the existing complete institutional
 label selector, admitting stable-label recurrences without GUID pins. Original source records,
 UIDs and audio remain unchanged (#2089).
+
+Search publication checkpoint (#2087): the independent search job restores and saves
+.citypods-search-checkpoint with resumable working shards/cache and separate last-complete
+search output. Deferrals retain completed-source progress and overlay only complete search files
+on current rendered pages; non-search pages remain fresh. Storage remains read-only, with the
+existing 20-minute indexing ceiling and no stage-version or backfill change.

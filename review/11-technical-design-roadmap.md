@@ -1492,6 +1492,14 @@ preserved. Missing August15 minutes documented; deployed verification gates clos
 
 Dallas #2094 prepared: exact Critical Facilities feed; case open until deployment proof.
 
+Dallas reusable Streets #2081: **Shipped** in #2082; exact2017 #2083: **Shipped** in #2085.
+Review/51 bounded contracts frozen; substantive review gaps recorded. Deployment closures pending.
+
 Dallas bond Flood institution: **L3**, #2089, reusable complete label and independently
 convened official minutes/source chapter binding. Implementation prepared with original fixture;
 5353-record replay adds only one Flood subscription. Deployment proof remains pending.
+
+#2087 checkpoint extension implemented in prepared code: working shards/cache resume across
+runs, while deferrals overlay only last-complete search output on freshly rendered pages.
+Cross-run completion/deferral/resumption and malformed-checkpoint tests cover the review finding.
+Human merge and current-head substantive review remain required.

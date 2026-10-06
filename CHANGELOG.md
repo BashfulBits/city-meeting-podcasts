@@ -7346,6 +7346,17 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   meeting from two identically labeled public town halls; original UID/audio/raw title retained.
   No stage invalidation or backfill; case closure requires deployment verification.
 
+- Prepared #2084: separate render/search/deploy jobs with same-run record/artifact handoff,
+  read-only sidecar indexing and staged complete publication. Deferred/error search retains
+  prior complete site; no provider refresh, record writes, schema change or stage backfill.
+  Existing20minute indexing and60minute job ceilings preserved.
+
+- Shipped #2081 in PR #2082: reusable Dallas Streets bond subcommittee ownership, preserving
+  standing aliases and joint feeds. Five recordings verified deployed; six exact bindings remain open.
+- Shipped #2083 in PR #2085: exact 2017 bond task-force and public town-hall subscriptions.
+  All three original recording UIDs/audio verified deployed; closure evidence is in PR #2090.
+
+
 - Shipped #2086 in PR #2088: EMSISD joint participant subscription. Live participant RSS and
   retained Council page verified original UID/audio; no backfill or stage invalidation.
 
@@ -7356,3 +7367,7 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
 - Prepared #2089: add Dallas 2024 bond Flood Control and Storm Drainage subscription using
   its complete institution label. Preserve raw UID/audio; no stage invalidation or backfill.
   Case remains open pending deployment verification.
+
+- Prepared #2087 review fix: persist working search progress separately from last-complete
+  publication across Actions runs. Deferred builds retain the latest complete index while keeping
+  fresh non-search pages. No deadline increase, storage writes, stage bump or catalog backfill.
