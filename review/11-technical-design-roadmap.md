@@ -1476,34 +1476,36 @@ Dallas2017 bond proceeding ownership: **L3**, issue #2083. Exact provider agenda
 one formal taskforce meeting and two public town halls despite their shared misleading label.
 Separate exact subscriptions and unchanged original records/audio per review/51; deployment pending.
 
-Separate bounded static search job: **L3**, #2084, maintainer-approved20minute ceiling and
+Separate bounded static search job: **Shipped** in #2087, #2084, maintainer-approved20minute ceiling and
 same-run snapshot/staged publication contract in review/51. No public schema or record writes.
 
 Fort Worth EMSISD participant #2086: **Shipped** in #2088; original audio verified deployed,
 bounded contract frozen and substantive review gap recorded in review/51.
 
-Dallas #2092 additional three CBTF proceedings: L3, implementation prepared in review/51; verified archive/source
+Dallas #2092 additional three CBTF proceedings: **Shipped** in #2093; verified archive/source
 bindings, two exact ambiguous-label pins plus one reusable chairs-meeting institution alias.
 Existing holders/raw UID/audio preserved; full replay and deployed proof gate closure.
 
-Dallas #2094 dedicated bond Critical Facilities institution: L3 in review/51. Exact full
+Dallas #2094 dedicated bond Critical Facilities institution: **Shipped** in #2095. Exact full
 label, independent institution plus dated archive/source chapter proof; all prior holders
 preserved. Missing August15 minutes documented; deployed verification gates closure.
 
-Dallas #2094 prepared: exact Critical Facilities feed; case open until deployment proof.
+Dallas #2094 shipped: exact Critical Facilities feed; case open until deployment proof.
 
 Dallas reusable Streets #2081: **Shipped** in #2082; exact2017 #2083: **Shipped** in #2085.
 Review/51 bounded contracts frozen; substantive review gaps recorded. Deployment closures pending.
 
-Dallas bond Flood institution: **L3**, #2089, reusable complete label and independently
+Dallas bond Flood institution: **Shipped** in #2091, #2089, reusable complete label and independently
 convened official minutes/source chapter binding. Implementation prepared with original fixture;
-5353-record replay adds only one Flood subscription. Deployment proof remains pending.
+5353-record replay adds only one Flood subscription. Original UID/audio verified in live Flood RSS on 2026-10-06.
 
-#2087 checkpoint extension implemented in prepared code: working shards/cache resume across
+#2087 checkpoint extension shipped: working shards/cache resume across
 runs, while deferrals overlay only last-complete search output on freshly rendered pages.
 Cross-run completion/deferral/resumption and malformed-checkpoint tests cover the review finding.
-Human merge and current-head substantive review remain required.
+Human merged at 10:04:48 UTC; checkpoint fix lacks substantive review of its new code.
+Review gap retained; live search and archive visibility verification remain outstanding.
 
+Dallas May25 CBTF exact retained binding #2097: **L3, implementation prepared**, review/51; only GUID233037.
 
 ### #2098 Fort Worth Gas Drilling Task Force participant — L3
 

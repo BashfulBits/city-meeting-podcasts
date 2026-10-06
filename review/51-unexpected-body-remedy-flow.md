@@ -2298,6 +2298,38 @@ whole Ruff/format471 clean. Real three-source/three-budget replay advances one u
 each run; cross-run complete→deferred→complete retains last-complete publication and fresh raw
 pages. CodeRabbit material-fix review and human merge remain required.
 
+### Frozen implementation stamps — 2026-10-06
+
+Implemented in PR #2091 (#2089 Flood), PR #2093 (#2092 CBTF additions),
+PR #2095 (#2094 Critical Facilities), and PR #2087 (#2084 bounded search/checkpoints).
+These bounded contracts are frozen as implemented; further changes need a new contract.
+#2091/#2093/#2095 retain substantive reviewed selector/test coverage and fixed prose findings.
+#2087 original98cb725b had substantive review; material checkpoint fix9b1027cf and
+conflict merge b3400313 merged before substantive new-code review. Do not count skipped
+automatic checks as review or request reviews on these closed PRs.
+
+### #2097 verified May25 CBTF source binding — L3
+
+Before code: add only GUID233037/body from retained record84fcc0492e66906d to existing
+config/feeds/dallas-tx-2024-community-bond-task-force.yml body_includes. Original source chapter
+May25 plus independent official minutes attachment79 establish exact proceeding binding.
+Add original fixture tests/fixtures/dallas-cbtf-may25-retained.json and test in
+tests/test_dallas_cbtf_ownership.py: UID/audio/holder preservation, samebody wrongGUID
+negative, ambiguous272574 remains excluded. Full5353-record ownership replay must add
+only this UID to CBTF; all other holders unchanged. Full offline suite, whole Ruff/format.
+Update register prepared assignment/next action, keep open until deployed. Update review11,
+ROADMAP and CHANGELOG. Do not modify source records, runtime code, schemas, provider,
+stages, dependencies, search, storage, audio, titles/dates or any other feed.
+
+#2097 compatibility clarification before test edits: the existing
+`test_three_verified_cbtf_proceedings_preserve_identity` negative for233037 is superseded
+by the newly verified May25 admission. Replace that obsolete negative with the same body
+and a different unverified GUID; retain the272574 negative. No broad label admission.
+
+#2097 prepared: full5353-record/1095-label replay changes only CBTF8→9 with original
+UID84fcc0492e66906d; every other holder set unchanged.20 targeted and4984 full offline
+tests pass15 deselected; whole Ruff/format472 clean. Original UID/audio preserved.
+Deployment still required; two independently proven deployed Streets cases close.
 
 ### Fort Worth Gas Drilling Task Force joint participant — L3, #2098
 

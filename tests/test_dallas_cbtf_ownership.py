@@ -100,6 +100,40 @@ def test_three_verified_cbtf_proceedings_preserve_identity(index):
     for body in (record["body"] + " Public Town Hall", "CBTF and Subcommittee Chairs Meeting"):
         assert not matches(dict(record, provider_guid="future-recording", body=body))
     if index < 2:
-        unproven_guid = ("233037", "272574")[index]
+        unproven_guid = ("unverified-recording", "272574")[index]
         assert not matches(dict(record, provider_guid=unproven_guid))
+    assert record == original
+
+
+def test_verified_may25_cbtf_preserves_identity_and_bounded_admission():
+    """Original chapters plus official minutes verify one shared-label recording."""
+    root = Path(__file__).resolve().parents[1]
+    cities = load_city_configs(root / "config", {})
+    record = json.loads((root / "tests/fixtures/dallas-cbtf-may25-retained.json").read_text())
+    original = copy.deepcopy(record)
+    task_force = next(c for c in cities if c.slug == "dallas-tx-2024-community-bond-task-force")
+
+    def holders(candidate):
+        return {
+            c.slug
+            for c in cities
+            if c.city_entity == "dallas-tx"
+            and record_matches_body(
+                candidate, source_body_filter(c.source), source_body_inclusions(c.source)
+            )
+        }
+
+    assert holders(record) == {task_force.slug}
+    assert not holders(dict(record, provider_guid="unverified-recording"))
+    assert not holders(
+        dict(record, provider_guid="272574", body="2024 Capital Bond Program CBTF Meeting")
+    )
+    assert record["source_chapters"] == [
+        {"start": 374, "end": 8578, "title": "2024 Bond CBTF Meeting on May 25, 2023."}
+    ]
+    rss = build_rss(
+        task_force, [record_to_episode(record)], "audio", "https://www.citymeetings.fyi"
+    )
+    assert record["uid"] in rss
+    assert record["audio"]["url"] in rss
     assert record == original

@@ -1895,6 +1895,182 @@ Cached5353-record/1095-label replay: new Flood subscription0→1 for UID8280ec97
 every pre-existing feed holder unchanged. Targeted feed/editor/register checks198passed.
 Final full offline suite4961passed/15deselected; whole Ruff/format470files and diff check clean.
 
+### Live merged backlog verification — 2026-10-06
+
+Read-only live `https://www.citymeetings.fyi/dallas-tx-2024-bond-flood-subcommittee/audio_feed.xml`
+returned the exact UID8280ec97799c999e and audio URL from source76869ed1994f retained records.
+Official Aug15 independently convened Flood minutes and dated source chapters are retained
+above. This closes only its bounded ownership case. CBTF UIDsdeb5a67aa9b6e8d1,
+eeca5aeceda62d39 and6a3caf1854bdd2cd were absent from current own RSS; Critical feed404.
+Those four remain open, with deployment still in progress. No raw or audio changes.
+
+### Dallas remaining exact bindings — October 6, 2026
+
+Read-only pass. No configuration, raw records, UIDs, audio or register mutations.
+Primary evidence extraction: `/tmp/dallas-remaining-exact-bindings-2026-10-06.json`,
+from actual cached source `.citypods-state/sources/76869ed1994f/episodes.json`.
+
+## Material correction to stale audit
+
+The actual current source contains original `source_chapters` for GUID233037, contrary to
+prior audit assertions that it lacked chapters. Its original source chapter explicitly says
+`2024 Bond CBTF Meeting on May 25, 2023.`, start374/end8578. Retained source s0 is Swagit
+233037, source duration8578.45, watch URL exactGUID233037. This is source evidence, not the
+rendered title or a generated/served chapter. Official May25 minutes freshly return200 and
+independently establish CBTF, chair Arun Agarwal, convened6:35pm/adjourned8:53pm:
+https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/79/CBTF%20Meeting_052523_Meeting%20Minutes.pdf
+SHA256 a5468c270660c4efd1cde5c51d0bdc6a49e568e9086a99be0a0012c1e4e670ef.
+Recommend bounded exactGUID233037 CBTF addition using same original-chapter plus official
+minutes contract accepted for earlier CBTF additions. Keep case open until deployment.
+Do not admit ambiguous272574 merely because it shares the body label.
+
+| GUID | UID | Actual original source chapter | Disposition |
+|---|---|---|---|
+|233032|2bc4c440c974dba8|May25 Streets meeting;2–3117|Binding now established with independent May25 institutional minutes; verify deployed originalaudio before closure|
+|259823|ae8f0826293006f0|June20 Streets meeting;2–6550|Binding now established with independent city dated Streets archive; verify deployed originalaudio before closure|
+|269407|2d2bc233efd9bf97|August10 Streets subcommittee;2–6499|Source binding exists; independent exactdated city corroboration still missing|
+|270975|16300c982b358fe9|None|August22 official city archive exists but source binding still missing|
+|277827|b0471f29622b8165|October26 Streets subcommittee;2–7268|Source binding exists; independent exactdated city corroboration missing|
+|277830|8578348e702caf35|October27 Streets subcommittee;4–6174|Source binding exists; independent exactdated city corroboration missing|
+|233037|84fcc0492e66906d|May25 CBTF;374–8578|Exact bounded addition recommended; old no-chapter claim superseded|
+|272574|aa65e2aafc90711b|September26 CBTF;3–7967|Official guide planned TownHall2; convening/classification ambiguity persists|
+|273327|6135249a278494c5|October3 CBTF;3–5040|Independent city earlyOctober plan now located; exactdated meeting proof still missing|
+
+Official Streets archive freshly returns200:
+https://dallascityhall.com/departments/bond-construction-management/Pages/Streets-and-Transportation-Subcommittee.aspx
+Explicit dated list May11/May25/June13/June20/June28/July17/August15/August22.
+Video buttons carry no href in fetched HTML; do not invent direct bindings from these labels.
+May25 Streets minutes return200, chairLindaKoop, ownconvene6:35pm/adjourn8:00pm:
+https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/99/Streets%20and%20Transportation%20Meeting_052523_Meeting%20Minutes.pdf
+SHA25682b7e23fcdfa142e1877f8ba9d1c6fe9310644dacc6a6978f3f84facc1276c81.
+
+## New independent contextual official documents
+
+September29 city-manager memorandum says CBTF plans to meet earlyOctober to determine
+allocations and subcommittees reconvene weekOctober23. This corroborates a planned period,
+NOT an exact October3 source binding and NOT permission to close273327.
+https://dallascityhall.com/government/citymanager/Documents/FY%2022-23%20Memos/2024%20Bond%20Program_Community%20Bond%20Task.pdf
+Fresh200, saved `/tmp/dallas-new-memo-1.pdf` / `.txt`.
+
+October27 city-manager memorandum confirms October24 CBTF allocations and says bond
+subcommittees will reconvene/provide revisedrecommendations byOctober31. This supports
+institutional context for October26/27 Streets, NOT the exact dates orGUIDs.
+https://dallascityhall.com/government/citymanager/Documents/FY23-24%20Memos/Council%20Memorandum%20-%20CBTF%20Recommended%20Bond%20Allocations%20-%2010-27-23.pdf
+Fresh200, saved `/tmp/dallas-new-memo-0.pdf` / `.txt`.
+
+All9 Swagit video routes fresh403. Old Swagit host269407 and chapter/agenda routes also403.
+No media downloaded, quota spent, provider workaround, title/date changes or speculative
+publication corrections. Exact source preservation is mandatory.
+
+### Dallas original-source binding reconciliation — October 6, #2097
+
+Read-only pass. No configuration, raw records, UIDs, audio or register mutations.
+Primary evidence extraction: `/tmp/dallas-remaining-exact-bindings-2026-10-06.json`,
+from actual cached source `.citypods-state/sources/76869ed1994f/episodes.json`.
+
+## Material correction to stale audit
+
+The actual current source contains original `source_chapters` for GUID233037, contrary to
+prior audit assertions that it lacked chapters. Its original source chapter explicitly says
+`2024 Bond CBTF Meeting on May 25, 2023.`, start374/end8578. Retained source s0 is Swagit
+233037, source duration8578.45, watch URL exactGUID233037. This is source evidence, not the
+rendered title or a generated/served chapter. Official May25 minutes freshly return200 and
+independently establish CBTF, chair Arun Agarwal, convened6:35pm/adjourned8:53pm:
+https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/79/CBTF%20Meeting_052523_Meeting%20Minutes.pdf
+SHA256 a5468c270660c4efd1cde5c51d0bdc6a49e568e9086a99be0a0012c1e4e670ef.
+Recommend bounded exactGUID233037 CBTF addition using same original-chapter plus official
+minutes contract accepted for earlier CBTF additions. Keep case open until deployment.
+Do not admit ambiguous272574 merely because it shares the body label.
+
+| GUID | UID | Actual original source chapter | Disposition |
+|---|---|---|---|
+|233032|2bc4c440c974dba8|May25 Streets meeting;2–3117|Binding now established with independent May25 institutional minutes; verify deployed originalaudio before closure|
+|259823|ae8f0826293006f0|June20 Streets meeting;2–6550|Binding now established with independent city dated Streets archive; verify deployed originalaudio before closure|
+|269407|2d2bc233efd9bf97|August10 Streets subcommittee;2–6499|Source binding exists; independent exactdated city corroboration still missing|
+|270975|16300c982b358fe9|None|August22 official city archive exists but source binding still missing|
+|277827|b0471f29622b8165|October26 Streets subcommittee;2–7268|Source binding exists; independent exactdated city corroboration missing|
+|277830|8578348e702caf35|October27 Streets subcommittee;4–6174|Source binding exists; independent exactdated city corroboration missing|
+|233037|84fcc0492e66906d|May25 CBTF;374–8578|Exact bounded addition recommended; old no-chapter claim superseded|
+|272574|aa65e2aafc90711b|September26 CBTF;3–7967|Official guide planned TownHall2; convening/classification ambiguity persists|
+|273327|6135249a278494c5|October3 CBTF;3–5040|Independent city earlyOctober plan now located; exactdated meeting proof still missing|
+
+Official Streets archive freshly returns200:
+https://dallascityhall.com/departments/bond-construction-management/Pages/Streets-and-Transportation-Subcommittee.aspx
+Explicit dated list May11/May25/June13/June20/June28/July17/August15/August22.
+Video buttons carry no href in fetched HTML; do not invent direct bindings from these labels.
+May25 Streets minutes return200, chairLindaKoop, ownconvene6:35pm/adjourn8:00pm:
+https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/99/Streets%20and%20Transportation%20Meeting_052523_Meeting%20Minutes.pdf
+SHA25682b7e23fcdfa142e1877f8ba9d1c6fe9310644dacc6a6978f3f84facc1276c81.
+
+## New independent contextual official documents
+
+September29 city-manager memorandum says CBTF plans to meet earlyOctober to determine
+allocations and subcommittees reconvene weekOctober23. This corroborates a planned period,
+NOT an exact October3 source binding and NOT permission to close273327.
+https://dallascityhall.com/government/citymanager/Documents/FY%2022-23%20Memos/2024%20Bond%20Program_Community%20Bond%20Task.pdf
+Fresh200, saved `/tmp/dallas-new-memo-1.pdf` / `.txt`.
+
+October27 city-manager memorandum confirms October24 CBTF allocations and says bond
+subcommittees will reconvene/provide revisedrecommendations byOctober31. This supports
+institutional context for October26/27 Streets, NOT the exact dates orGUIDs.
+https://dallascityhall.com/government/citymanager/Documents/FY23-24%20Memos/Council%20Memorandum%20-%20CBTF%20Recommended%20Bond%20Allocations%20-%2010-27-23.pdf
+Fresh200, saved `/tmp/dallas-new-memo-0.pdf` / `.txt`.
+
+All9 Swagit video routes fresh403. Old Swagit host269407 and chapter/agenda routes also403.
+No media downloaded, quota spent, provider workaround, title/date changes or speculative
+publication corrections. Exact source preservation is mandatory.
+
+## Additional ASR research leads (untrusted, not closure evidence)
+
+The retained, already-produced public ASR for273327 returns200:
+https://audio.citymeetings.fyi/transcripts/76869ed1994f/6135249a278494c5-asr-3e72738cd970.vtt
+Saved `/tmp/dallas-gap-6135249a278494c5.vtt`. At served00:03.740 the ASR reports a formal
+BondTaskForce calltoorder6:09; at00:51.460–01:13.120 it reports approval of bothSeptember19
+andSeptember26minutes, motion/second/vote. This is a strong manual-review lead for resolving
+272574's TownHall-vs-formalCBTF ambiguity and273327 convening. It is NOT official text and
+cannot replace direct recording review or exact official minutes. No closure recommended
+solely from this ASR.
+
+Retained ASR277827 also returns200:
+https://audio.citymeetings.fyi/transcripts/76869ed1994f/b0471f29622b8165-asr-967090a95fd4.vtt
+Saved `/tmp/dallas-gap-b0471f29622b8165.vtt`. Served00:02:04–02:57 ASR says their committee
+reported toCBTF('biggercommitteeaboveus'), requested675,reducedto375,andneedstore-submit
+byMonday. 00:04:18–04:30 allocationnumbers375Streets/350Parks/75Flood/100Housing/200Critical
+matchthe freshofficialOct27memo. This corroborates institutional context, NOT exactdated
+recording identity; manualrecordingreview remainsneeded.
+
+
+Fresh deployed Streets proof: own feed and standing Transportation RSS both200; these two
+UIDs present only in own current RSS with exact retained audio. No historical completeness
+claim is made. Cases233032/259823 resolved;233037 stays open prepared.
+
+- 2bc4c440c974dba8: https://audio.citymeetings.fyi/swagit/76869ed1994f/2bc4c440c974dba8-9785d0dc5d82.m4a
+- ae8f0826293006f0: https://audio.citymeetings.fyi/swagit/76869ed1994f/ae8f0826293006f0-28ecf352023b.m4a
+
+Register169 cases:145 resolved24 open after these two proof closures and prior Flood closure.
+
+
+### September26/October3 provider transcript reconciliation (2026-10-06)
+
+The official provider pages load in the browser even though direct HTTP reads return403.
+Both players report a media-load error, so direct listening remains unavailable. Their
+transcripts explicitly warn that unreviewed voice-to-text is not official minutes.
+
+- GUID272574: https://dallastx.new.swagit.com/videos/272574
+  Provider heading and retained original chapter name September26. Transcript opening
+  describes task-force convening at6:07, followed by staff explaining town-hall listening
+  sessions and public speakers. Closing describes October3 as another town hall and
+  task-force adjournment at8:18. The Fullagenda tab exposes an iframe with an empty source;
+  it provides no exact official agenda. Formal convening and public-input function coexist
+  in this evidence; do not force an exclusive classification or close the case.
+- GUID273327: https://dallastx.new.swagit.com/videos/273327
+  Provider heading and original chapter bind October3. Provider transcript corroborates
+  convening6:09, approval of September19/26 minutes by motion/second/vote, and adjournment
+  at7:33. This supports further recording review but does not replace official minutes
+  or direct listening. No publication change or closure follows solely from ASR.
+
+Bounded research packet: `/tmp/dallas-september-october-provider-proof.json`. No media
+was downloaded, no raw titles/dates/records were overwritten, and both cases stay open.
 
 ### Fort Worth125/127 exact native opening slates — 2026-10-06, #2098
 
