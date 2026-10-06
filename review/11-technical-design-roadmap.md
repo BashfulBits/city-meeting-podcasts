@@ -1514,3 +1514,9 @@ Implement the dedicated participant subscription under the bounded contract in
 [review/51](51-unexpected-body-remedy-flow.md#fort-worth-gas-drilling-task-force-joint-participant--l3-2098).
 Preserve both UIDs/audio/Council eligibility; keep cases open until deployment.6334 remains
 a source-version discrepancy, not an approved split or winner.
+
+## Deployed ownership checkpoint — 2026-10-06
+
+Implemented in PR #2099 through #2096 and PR #2100. These bounded contracts are
+frozen; #2100 merged before substantive review. Seven deployed RSS/audio checks
+close only their assignment cases. See [deployment proof](deployed-ownership-proof-2026-10-06.md).

@@ -7400,3 +7400,6 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   The material checkpoint fix merged before substantive new-code review; this gap is recorded.
 - Live Flood RSS contains UID8280ec97799c999e with the exact retained hosted audio URL.
   CBTF additions and Critical feed remain pending deployment verification.
+
+- Verified seven Dallas/Fort Worth deployed ownership assignments with unchanged audio;
+  recorded the #2100 substantive-review gap and retained unresolved search obligations.
