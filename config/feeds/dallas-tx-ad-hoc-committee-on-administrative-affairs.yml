@@ -8,6 +8,8 @@ source:
     - "Ad Hoc Administrative Affairs Committee"
     - "Ad Hoc Judicial Nomination Committee"
     - "Ad Hoc Committee on COVID-19 Human and Social Recovery and Assistance: Dr. Perl"
+    - "Ad Hoc Committee on COVID-19 Recovery & Assistance"
+    - "Council Ad Hoc Committee on COVID-19 Recovery and Assistance"
   body_includes:
     - provider_guid: "202324"
       body: "Administrative Ad Hoc Committee"

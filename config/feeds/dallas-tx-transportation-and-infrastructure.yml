@@ -12,6 +12,8 @@ source:
       body: Mill Creek Tunnel Project
     - provider_guid: '205502'
       body: Transportation for Hire
+    - provider_guid: "226897"
+      body: "I-345 Panel and Public Discussion"
   body_exact:
     - Joint AD Hoc Legislative/Transportation & Infrastructure Committee
     - Joint Meeting Legislative Ad Hoc & Transportation & Infrastructure Committee

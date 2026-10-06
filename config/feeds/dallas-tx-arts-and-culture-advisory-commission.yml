@@ -9,6 +9,9 @@ source:
     - "Cultural Affairs Commission: Public Art Committee"
     - "Arts, Culture & Libraries"
     - "Creative Conversation"
+  body_includes:
+    - provider_guid: "203304"
+      body: "Art Community Meeting"
 podcast_title: "Dallas: Arts and Culture Advisory Commission"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

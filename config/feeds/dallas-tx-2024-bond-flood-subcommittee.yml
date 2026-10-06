@@ -5,6 +5,9 @@ source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body_exact:
     - 2024 Bond Task Force Flood
+  body_includes:
+    - provider_guid: "272240"
+      body: "2024 Bond Flood Protection and Storm Drainage Subcommittee Meeting"
 podcast_title: 'Dallas: 2024 Bond Flood Control and Storm Drainage Subcommittee'
 podcast_author: City of Dallas, TX
 podcast_email: ''

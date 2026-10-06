@@ -22,6 +22,16 @@ source:
       body: "2024 Capital Bond CBTF Meeting"
     - provider_guid: "272005"
       body: "2024 Capital Bond Program CBTF Meeting"
+    - provider_guid: "270978"
+      body: "2024 Bond Parks and Trails Subcommittee Meeting"
+    - provider_guid: "268088"
+      body: "2024 Bond Program: Allocation Discussion"
+    - provider_guid: "237215"
+      body: "2024 Bond Parks and Trails Meeting"
+    - provider_guid: "230801"
+      body: "2024 Bond Parks and Trails Meeting"
+    - provider_guid: "230802"
+      body: "2024 Bond Kick off"
 podcast_title: 'Dallas: 2024 Community Bond Task Force'
 podcast_author: City of Dallas, TX
 podcast_email: ''

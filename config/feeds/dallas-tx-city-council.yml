@@ -13,6 +13,7 @@ source:
     - "Special City Council"
     - "City Council Agenda - Afternoon"
     - "City Council Agenda - Morning"
+    - "Council Agenda"
   body_includes:
     - provider_guid: "204508"
       body: "Redistricting Town Hall"

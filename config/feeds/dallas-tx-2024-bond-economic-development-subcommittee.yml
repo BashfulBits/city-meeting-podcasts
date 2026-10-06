@@ -5,6 +5,11 @@ source:
   list_url: https://dallastx.new.swagit.com/views/113/city-council
   body_exact:
     - 2024 Bond Task Force Economic Development
+  body_includes:
+    - provider_guid: "259828"
+      body: "2024 Capital Bond ECONOM Meeting"
+    - provider_guid: "259831"
+      body: "2024 Capital Bond ECONOM Meeting"
 podcast_title: 'Dallas: 2024 Bond Economic Development, Housing and Homeless Solutions Subcommittee'
 podcast_author: City of Dallas, TX
 podcast_email: ''
