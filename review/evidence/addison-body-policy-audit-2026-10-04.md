@@ -1850,3 +1850,13 @@ The May11 archive summary remains mislinked to whole-CBTF minutes and must not b
 Critical Facilities convening proof. A bounded institution-feed contract can use the correctly
 bound archive event/chapter plus this independent institution proof; do not claim the
 August22 minutes describe the August15 recording. Case977d943cea00258e remains open.
+
+### Dallas Flood subcommittee prepared implementation — #2089
+
+Exact original GUID269612/UID8280ec97799c999e routes to the new complete-label subscription;
+future same-label GUIDs admit automatically. No existing selectors change. Original raw record
+and audio remain intact; the case stays open until live deployment ownership verification.
+
+Cached5353-record/1095-label replay: new Flood subscription0→1 for UID8280ec97799c999e only;
+every pre-existing feed holder unchanged. Targeted feed/editor/register checks198passed.
+Final full offline suite4961passed/15deselected; whole Ruff/format470files and diff check clean.

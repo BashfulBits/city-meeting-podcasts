@@ -1489,3 +1489,7 @@ Existing holders/raw UID/audio preserved; full replay and deployed proof gate cl
 Dallas #2094 dedicated bond Critical Facilities institution: L3 in review/51. Exact full
 label, independent institution plus dated archive/source chapter proof; all prior holders
 preserved. Missing August15 minutes documented; deployed verification gates closure.
+
+Dallas bond Flood institution: **L3**, #2089, reusable complete label and independently
+convened official minutes/source chapter binding. Implementation prepared with original fixture;
+5353-record replay adds only one Flood subscription. Deployment proof remains pending.
