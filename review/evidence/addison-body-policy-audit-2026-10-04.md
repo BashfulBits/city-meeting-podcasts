@@ -1809,3 +1809,20 @@ contract can expand the existing CBTF feed for the proven identities, preserving
 holders and recording bytes, and must test these shared-label negative cases. The unique
 chairs-meeting label is a candidate reusable institutional alias after the official proof
 packet is verified. All three cases remain open until implementation and deployed proof.
+
+### Dallas CBTF official dated archive recheck — 2026-10-06 04:07UTC
+
+The official Community Bond Task Force archive was fetched read-only again:
+https://dallascityhall.com/departments/bond-construction-management/2024-Bond-Dashboard/Pages/Community-Bond-Task-Force.aspx
+
+Its June13,2023 CBTF Meeting#3 card directly links exact Swagit259822. Its September19,2023
+card names Subcommittee Recommendations to CBTF; its October24,2023 card names CBTF
+Allocations to Subcommittees. Those latter cards expose video buttons rather than ordinary
+video hyperlinks in the fetched HTML; the retained original dated chapters bind272005 and
+277589 respectively. Do not describe those buttons as inspected exact GUID hyperlinks.
+
+This independently confirms the three dated institutional events in the preceding source
+identity table. Preserve the existing five CBTF inclusions; shared ambiguous labels still
+require bounded identity admission for259822/272005. The exact chairs-meeting label277589
+can support a reusable institution alias, with the existing formal CBTF feed as holder.
+No selector or case status was changed by this evidence check.
