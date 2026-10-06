@@ -141,8 +141,6 @@ def _parse_uid_overrides(raw: object, *, source_file: Path) -> dict[str, str]:
 
 def _parse_publication_notes(raw: object, *, source_file: Path) -> list[dict[str, str]]:
     """Validate exact-identity, feed-local presentation notes."""
-    if raw is None:
-        return []
     if not isinstance(raw, list):
         raise ValueError(f"{source_file.name}: publication_notes must be a list")
     required = {"uid", "provider_guid", "note", "approval_ref"}
@@ -327,7 +325,8 @@ def _build_city(
     source_id = _parse_source_id(raw.get("source_id"), source_file=source_file)
     uid_overrides = _parse_uid_overrides(raw.get("uid_overrides"), source_file=source_file)
     publication_notes = _parse_publication_notes(
-        raw.get("publication_notes"), source_file=source_file
+        raw["publication_notes"] if "publication_notes" in raw else [],
+        source_file=source_file,
     )
     lifecycle = _parse_lifecycle(raw.get("lifecycle"), source_file=source_file)
 

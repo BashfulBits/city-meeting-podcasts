@@ -4039,6 +4039,7 @@ def test_publication_note_projects_only_exact_uid_to_rss_and_raw_page(tmp_path):
 
 def test_publication_note_identity_mismatch_preserves_public_files_and_cache(tmp_path):
     city, pipeline = _publication_render_fixture(tmp_path)
+    city.source["body_exact"] = ["A body this archive does not contain"]
     city.publication_notes = [
         {
             "uid": "1" * 16,

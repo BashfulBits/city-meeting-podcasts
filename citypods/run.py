@@ -1122,6 +1122,12 @@ def _process_city(
             # treat as a per-city error so one bad submission can't fail the whole build.
             return CityResult(city.slug, "error", detail=str(exc)), None
 
+    if render:
+        try:
+            _validate_publication_note_identities(city, episodes)
+        except ValueError as exc:
+            return CityResult(city.slug, "error", detail=str(exc)), None
+
     # Filter the shared source archive to this feed's body, then cap to the most-recent
     # max_episodes (a feed never shows more; the archive itself retains far more — issue #109).
     archived = len(episodes)
@@ -1133,11 +1139,6 @@ def _process_city(
         reverse=True,
     )
     raw_retained_eps = retained_eps
-    if render:
-        try:
-            _validate_publication_note_identities(city, raw_retained_eps)
-        except ValueError as exc:
-            return CityResult(city.slug, "error", detail=str(exc)), None
     selection_hash = None
     visibility_hash = None
     hidden_recording_guids = set()

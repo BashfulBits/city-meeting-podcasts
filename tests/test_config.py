@@ -114,6 +114,12 @@ def test_publication_note_parser_rejects_malformed_entries(tmp_path, entries, me
         load_city_configs(tmp_path, DEFAULTS)
 
 
+def test_publication_note_parser_rejects_explicit_null(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID + "publication_notes: null\n")
+    with pytest.raises(ValueError, match="publication_notes must be a list"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
 def test_publication_note_parser_rejects_duplicate_uids(tmp_path):
     entry = "{uid: 0c66fc968402fabd, provider_guid: g, note: n, approval_ref: a}"
     body = VALID + f"publication_notes:\n  - {entry}\n  - {entry}\n"
