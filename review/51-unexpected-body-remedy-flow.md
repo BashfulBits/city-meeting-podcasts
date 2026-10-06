@@ -1637,6 +1637,19 @@ raw-page retention, unchanged bytes/UIDs, and cached-output removal/restoration.
 review/11, ARCHITECTURE, CHANGELOG and ROADMAP. No dependency/provider/storage/stage changes,
 no audio backfill, no production writes in local verification.
 
+### Addison archive-only deployment evidence — 2026-10-06
+
+Read-only public GET checks against Build & Deploy run 37480863678 (`355bad56`) verified all six
+approved UID/GUID pairs across all ten current Addison RSS feeds and both Town Meetings browse
+pages: none are listed, while all six direct raw pages return HTTP 200. Citizen Advisory
+UID`63b22f80ce9500ff`/GUID`56029` remains in the Town Meetings RSS and both browse pages. The
+checks and response hashes are recorded in
+[`review/evidence/addison-archive-live-2026-10-06.json`](evidence/addison-archive-live-2026-10-06.json).
+The public `/search/` and `/data/search/manifest.json` routes returned HTTP 404; this is recorded as
+unavailable live search verification, not as evidence about indexed content. The six publication
+dispositions are therefore resolved, with their content/institution uncertainty retained in the
+case register. No title, UID, source namespace, raw page, or audio was changed.
+
 
 ## September 2016 Addison joint subscription — L3 bounded correction
 
@@ -2189,30 +2202,13 @@ coverage confirmed before merge.2017 was merged before review request. Explicit 
 green CI/skipped automatic status is not review coverage. No requests on closed PRs.
 Both implementations shipped; case closures still await actual deployed RSS/audio proof.
 
-#2084 prepared:135 targeted tests and4971 full offline tests pass15 deselected; whole
-Ruff/format469 clean. Complete staged publication, actual second-source deferral preservation,
-all six Addison exclusions/raw-page retention and same-run workflow transfer verified offline.
-Live search proof still awaits human merge/deployment; no archive cases closed from tests.
-
-### Consecutive Fort Worth3814 publication note — L2, specific schema gate
-
-Disposition approved: both whole recordings remain in Council/CCPD subscriptions and explicitly
-identify consecutive proceedings. Existing rendering has no per-record publication-note field;
-raw official titles, descriptions and source chapters must remain immutable.
-
-Proposed bounded implementation contract: source-scoped city config `publication_notes`, each
-entry strict UID/provider_guid/note/approval_ref, only the two proven3814 UIDs. Exact note:
-“Consecutive CCPD Board and City Council proceedings; whole recording retained.” Add ephemeral
-Episode `publication_note` for RSS/page rendering only, never persist it in records or alter
-source title/description, UID/audio, search schema, chapters or stage versions. Validate exact
-UID/GUID/source binding before rendering and preserve previous output on identity error. Include
-note policy in render/feed-content cache hash only; no audio invalidation. Render escaped note
-in episode RSS show notes and raw page; both original participant feeds retain both UIDs.
-
-Specific config/model presentation-schema approval remains necessary before code under the
-prior no-unspecified-schema gate. After approval mature to L3 with named parser/model/run/feeds/
-site/cache files and original two-record positive/negative/RSS/raw-page tests. No general bundle
-classifier, audio splitting, publication winner, other source/holder change or backfill.
+#2084 shipped in PR #2087: separate bounded render, search and deployment jobs with a persisted
+same-run source-record artifact and last-complete search publication. The checkpoint extension
+merged without substantive review of the final material change; this explicit review gap is frozen
+below. Build & Deploy #37480863678 succeeded on `355bad56`; the public `/search/` and manifest routes
+return 404, so live search coverage remains unverified. The six approved Addison archive-only
+dispositions were closed only after separate live RSS, browse and direct-raw-page checks recorded
+above; offline tests alone did not close them.
 
 ### #2084 review checkpoint extension — L3, maintainer authorized 2026-10-06
 

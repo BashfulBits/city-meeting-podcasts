@@ -94,12 +94,23 @@ and its manifest. Cached sources date to October 3; this is not live-source comp
 ownership proof. P0 remains open until each inventory row receives an evidence-backed disposition
 and required source refresh/deployment checks.
 
+After the frozen replay, read-only public checks verified the approved Archive-only projection for
+six exact Addison UID/GUID pairs in
+[`addison-archive-live-2026-10-06.json`](evidence/addison-archive-live-2026-10-06.json): all ten
+current Addison RSS feeds and both Town Meetings browse pages omit them; all six direct raw pages
+remain available. Citizen Advisory remains in the Town Meetings feed and browse pages. The two
+public search routes returned 404, so live search omission was not independently observed. These
+six publication-disposition cases are resolved without claiming their historical content or
+institution is identified; their individual missing-evidence notes remain. The register now has 158
+resolved and 11 open cases. This closes only those six approved exclusions; the 680-row P0 baseline
+remains open.
+
 Maintainer clarification (2026-10-04): specific continuing standing committees, including Council
 subcommittees, have dedicated feeds across cities unless evidence establishes a temporary body.
 Seasonal schedules and Council-only membership do not make a committee temporary. Addison CPC's
 [dedicated-feed contract](51-unexpected-body-remedy-flow.md#addison-cpc-dedicated-feed--l3-implementation-under-validation)
-is L3 under PR #2003 validation; it supersedes Council placement, preserves source identities and
-records historical meeting/recording gaps in its dated evidence packet.
+shipped in PRs #2003/#2010; it supersedes Council placement, preserves source identities and records
+historical meeting/recording gaps in its dated evidence packet.
 
 The approved joint-meeting rule applies across all cities and future onboarding: publish the same
 recording in each officially proven participating body's feed, preserving stable identity. This
@@ -1236,11 +1247,11 @@ telemetry deduplication/submission accounting/report discovery are shared. Resea
 coverage remain explicit; no quota, recipe, pipeline-version, Worker or artifact changes are included.
 
 
-Addison verified joint subscriptions (#2011, prepared/unmerged): GUID295839 and310072
-now join the existing P&Z and CPAC subscriptions; GUID276855 joins P&Z only. Council
-canonical search ownership, recording UIDs and audio are preserved. Complete822-record replay
-adds exactly three P&Z and two CPAC memberships, with no removals or other feed changes.
-Other historical assignments remain active evidence tasks; CodeRabbit requests remain held.
+Addison verified joint subscriptions (#2011, shipped in PR #2026): GUID295839 and310072
+join the existing P&Z and CPAC subscriptions; GUID276855 joins P&Z only. Council canonical search
+ownership, recording UIDs and audio are preserved. The full replay adds exactly three P&Z and two
+CPAC memberships, with no removals or other feed changes. Other historical assignments remain
+active evidence tasks.
 
 
 Historical unresolved sweep: **L3**, maintainer-approved typed read-only contract in review/51,
@@ -1256,31 +1267,27 @@ dispatch or scheduled notification is enabled; P2a model-policy schemas remain i
 
 
 Maintainer lifted the review hold2026-10-04: code PRs receive spaced CodeRabbit reviews,
-documentation-only PRs skip new requests. Parallel follow-on L3 slices in review/51:
-#2015 Council ownership, #2016 Bond family, #2017 TIRZ board; exact files/tests and evidence
-are bounded there. Human merges only. The2016 joint search-owner decision remains pending.
+documentation-only PRs skip new requests. This paragraph records historical review policy; it is
+not a hold. Follow-on L3 slices in review/51 remain individually scoped, and human merges only.
 
 
-Council ownership correction (#2015) prepared/unmerged:25 proved exact aliases replace broad
-substrings;549->501 selector replay removes47 P&Z-only work sessions and one ceremony,
-preserving all genuine Council/joint memberships, records, UIDs and hosted audio. P&Z search
-attribution is corrected where Council previously matched incorrectly. TIRZ stays in Council
-until its separate #2017 correction. Registered cases remain open until human merge/deployment.
-No audio invalidation, pipeline changes or backfill. Full checks precede push/review.
+Council ownership correction (#2015) shipped in PR #2019:25 proved exact aliases replace broad
+substrings;549->501 selector replay removes47 P&Z-only work sessions and one ceremony, preserving
+all genuine Council/joint memberships, records, UIDs and hosted audio. P&Z search attribution is
+corrected where Council previously matched incorrectly. No audio invalidation, pipeline changes
+or backfill.
 
 
-Bond family correction (#2016) prepared/unmerged: four verified committee recordings gain
+Bond family correction (#2016) shipped in PR #2020: four verified committee recordings gain
 Addison: Bond Committees subscriptions with original UIDs/audio. Existing other memberships
 are unchanged; canonical search attribution corrects the erroneous unmatched BZA fallback to
 Bond. Council recommendations remain Council-only. No audio backfill or stage invalidation.
-Cases remain open for human merge and deployed projection verification.
 
 
-TIRZ ownership correction (#2017) prepared/unmerged: official dated board agenda moves only
-GUID394474/UID757ab2a4aaf9bbca from Council to Addison: TIF Meetings. Canonical search
-attribution changes accordingly; original raw record, UID and hosted audio remain. After the
-Council narrowing,500 original Council selections remain. No audio invalidation or backfill.
-The case remains open pending human merge and deployed subscription verification.
+TIRZ ownership correction (#2017) shipped in PR #2021: official dated board agenda moves only
+GUID394474/UID757ab2a4aaf9bbca from Council to Addison: TIF Meetings. Canonical search attribution
+changes accordingly; original raw record, UID and hosted audio remain. After the Council narrowing,
+500 original Council selections remain. No audio invalidation or backfill.
 
 ### Dispatch write-accounting correction (2026-10-04)
 
@@ -1343,34 +1350,37 @@ missing Council subscription, retain P&Z and stable recording identity, use exis
 Council page choice with participant discovery deferred to #2018. Human merge/deployment gated.
 
 
-September 2016 joint correction (#2025), prepared/unmerged: exact GUID55634 adds Council
-while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership replay adds
-exactly one Council membership (500 to 501), with no other feed changes. Existing canonical
-page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
-Keep the evidence case open until human merge and deployed subscription verification.
+September 2016 joint correction (#2025) shipped in PR #2026: exact GUID55634 adds Council
+while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership replay adds exactly
+one Council membership (500 to 501), with no other feed changes. Existing canonical page attribution
+is Council; participant discovery remains the #2018 redesign follow-up. Its deployment case is
+resolved; #2026 merged before substantive review, an explicit review gap.
 
 Arlington Community and Neighborhood Development ownership: L3 bounded review/51 contract.
 Four official standalone committee recordings move out of Council into a dedicated exact-label
 feed; preserve the intentional All Meetings aggregate. Environmental Task Force assessed separately.
 
 
-Arlington CND #2038 prepared/unmerged: four verified committee recordings receive a dedicated
+Arlington CND #2038 shipped in PR #2040: four verified committee recordings receive a dedicated
 exact-label feed and leave Council, retaining the All Meetings aggregate and original UID/audio.
-No stage invalidation or backfill. Cases remain open until deployed membership verification.
+No stage invalidation or backfill. Five deployed ownership cases were later verified in PR #2059;
+the All Meetings historical RSS truncation is not a completeness claim.
 ### Archive-only and 2016 joint shipped (2026-10-05)
 
 Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
-Their bounded implementation contracts are frozen. Main `ac0fa4bb` Build & Deploy succeeded.
-CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining actionable issues;
-#2026 was merged before its substantive review slot, an explicit review gap. No stage/audio
-invalidation or backfill. Both joint feeds carry the same original UID/audio; its case is resolved.
-The register now has seven open historical evidence cases, rather than eight.
+Their bounded implementation contracts are frozen. Main `355bad56` Build & Deploy run
+37480863678 succeeded. CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining
+actionable issues; #2026 was merged before its substantive review slot, an explicit review gap.
+No stage/audio invalidation or backfill. Both joint feeds carry the same original UID/audio; its case
+is resolved.
 
-Live verification: six archive UIDs absent from Public Input/Council/P&Z RSS and Public Input
-browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89c7c5c5c returns
-404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
-Public search and its expected manifest return 404; do not claim deployed search verification.
-Retain these visibility/access checks and all independent historical content evidence obligations.
+The deployment report verifies all six approved Addison Archive-only UID/GUID pairs absent from all
+ten current Addison RSS feeds and both Town Meetings browse pages, with all six direct raw pages
+returning 200. Citizen Advisory UID`63b22f80ce9500ff` remains in the Town Meetings RSS and browse
+pages. Search routes `/search/` and `/data/search/manifest.json` returned 404; live search omission
+was not independently observed. The six publication dispositions are resolved, while their
+historical content/institution uncertainties remain recorded. The register now has158 resolved and
+11 open cases; see [the exact checks and response hashes](evidence/addison-archive-live-2026-10-06.json).
 
 Luncheon direct archive route: L3 bounded review/51 contract, maintainer authorized access fixes
 2026-10-05. Exact raw selector admission only, preserving archive-only public exclusion.
