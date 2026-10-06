@@ -2135,3 +2135,34 @@ classifier, audio splitting, publication winner, other source/holder change or b
 Human merge preceded a substantive CodeRabbit request; explicit review gap, no closed-PR review.
 Live EMSISD RSS and retained Council page verify the original UID/audio; current bounded Council
 RSS omits this historical item. Closure proof is recorded in the committed audit.
+
+### Dallas additional CBTF proceedings — L3, #2092
+
+Verified official archive/source bindings are recorded in the October6 additional CBTF
+evidence sections of the committed audit. Existing CBTF institution policy applies.
+
+Files: config/feeds/dallas-tx-2024-community-bond-task-force.yml; new original-record fixture
+tests/fixtures/dallas-cbtf-three-retained.json; tests/test_dallas_cbtf_ownership.py; this doc,
+review11, CHANGELOG, ROADMAP and the evidence audit/register for preparation/deployed status.
+No ARCHITECTURE change: existing body_exact/body_includes semantics are reused.
+
+Preserve five existing GUID inclusions. Add exact body_includes259822 (2024 Capital Bond
+CBTF Meeting) and272005 (2024 Capital Bond Program CBTF Meeting). Add one reusable body_exact
+alias: 2024 Capital Bond CBTF and Subcommittee Chairs Meeting, proven277589. Future GUIDs
+with that exact complete institutional alias are eligible. Do not broaden either shared
+label: unproven233037/272574 remain excluded. No Council or other selector changes.
+
+Retain original UID deb5a67aa9b6e8d1/259822, eeca5aeceda62d39/272005 and
+6a3caf1854bdd2cd/277589 with original audio/title/date/chapter metadata. New fixture is an
+unaltered copy of these three retained records. Tests use actual config, prove own RSS/audio
+identity and Council absence, unchanged records, same-body/wrong-GUID rejection for two
+pins, future-GUID acceptance only for exact chairs alias, and near-label negatives.
+
+Full5,353-record replay must change only CBTF5→8, exactly these three UIDs; every prior
+holder remains identical. Whole offline suite, whole Ruff/format and diff check required.
+Actual test-code review follows repository-wide65minute gate; human merge commits only.
+Keep all three cases open/prepared until live own subscription/audio verification.
+
+Do not modify providers, models, schema, runtime modules, storage, stages, workers, workflow,
+other city/feed configs, source records or audio; no winner, split, backfill or invalidation.
+Freeze/stamp this bounded contract and mark shipped after human merge, not preparation.
