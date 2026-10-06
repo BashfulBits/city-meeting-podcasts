@@ -598,3 +598,8 @@ Shipped #2086 in #2088: EMSISD participant discovery; deployed original UID/audi
 
 Prepared #2089: complete-label Dallas Flood bond subcommittee subscription; full-source replay
 adds one original UID with every existing holder unchanged. Deployment proof pending.
+
+
+Prepared #2098: Gas Drilling Task Force participant feed for two visually verified joint
+workshops, preserving all prior holders and recording identity. Deployment remains required
+before case closure;6334 source-version discrepancy stays open.
