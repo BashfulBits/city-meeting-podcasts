@@ -1,0 +1,19 @@
+slug: fort-worth-tx-gas-drilling-task-force
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body_exact:
+  - City Council - Gas Drilling Task Force Workshop City Council - Gas Drilling Task Force Workshop
+  - City Council - Gas Drilling Task Force Workshop of October 14 City Council - Gas Drilling Task Force
+    Workshop of October 14
+podcast_title: 'Fort Worth: Gas Drilling Task Force'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: Gas Drilling Task Force proceedings, including proven joint workshops with Fort
+  Worth Council; original whole recordings retained.

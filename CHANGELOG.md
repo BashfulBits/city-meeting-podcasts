@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared #2098 Fort Worth Gas Drilling Task Force participant.** Exact official opening
+  slates establish125/127 as Council/Task Force joint workshops. Both original UIDs/audio and
+  Council eligibility remain; two full aliases admit recurrence. Deployment closure pending.
+
 - **Prepared #2094 Dallas bond Critical Facilities feed.** Exact institution label retains
   original UID/audio and automatically admits future matching GUIDs; prior feeds unchanged.
   Deployment evidence remains required before case closure.

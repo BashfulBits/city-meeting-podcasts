@@ -2337,3 +2337,11 @@ Do not modify runtime/provider/schema/storage/stages/workers/workflows/dependenc
 records, raw titles/dates/chapters/audio or other configs. No merge, split, winner, invalidation,
 backfill or production write. Actual test-code review obeys repository-wide65minute spacing.
 Freeze/stamp only after human merge; deployment proof is separately required for closure.
+
+
+Prepared #2098: exact participant feed and retained-record regression test implemented;
+125/127 cases remain open until deployed own RSS and original audio verified.
+
+#2098 validation:20 targeted tests,4985 offline tests pass15 deselected; whole Ruff/format473
+clean. Full5896-record/979-label replay adds only the two original UIDs to the new feed0→2;
+every previous holder is unchanged. No case closure before deployed proof.

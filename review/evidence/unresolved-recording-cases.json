@@ -2079,11 +2079,12 @@
       "uid": "0d5832dbd08e6dd8",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=127",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "Deployment of Task Force participant feed with exact original UID/audio; recording identity and joint participation now proven by each official opening slate.",
+      "next_action": "After human merge of #2098 implementation, verify both original UIDs/audio in live Task Force RSS and Council retention; keep both raw UIDs/publication dates and no duplicate winner.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
-        "fort-worth-tx-city-council"
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-gas-drilling-task-force"
       ],
       "status": "open",
       "disposition": null
@@ -2128,11 +2129,12 @@
       "uid": "27254aa1a700569f",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=125",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "Deployment of Task Force participant feed with exact original UID/audio; recording identity and joint participation now proven by each official opening slate.",
+      "next_action": "After human merge of #2098 implementation, verify both original UIDs/audio in live Task Force RSS and Council retention; keep both raw UIDs/publication dates and no duplicate winner.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
-        "fort-worth-tx-city-council"
+        "fort-worth-tx-city-council",
+        "fort-worth-tx-gas-drilling-task-force"
       ],
       "status": "open",
       "disposition": null
