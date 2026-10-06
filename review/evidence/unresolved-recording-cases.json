@@ -2079,15 +2079,15 @@
       "uid": "0d5832dbd08e6dd8",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=127",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Deployment of Task Force participant feed with exact original UID/audio; recording identity and joint participation now proven by each official opening slate.",
-      "next_action": "After human merge of #2098 implementation, verify both original UIDs/audio in live Task Force RSS and Council retention; keep both raw UIDs/publication dates and no duplicate winner.",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
       "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-gas-drilling-task-force"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
     },
     {
       "case_id": "fort-worth-tx-1cbf75c664b7c63e-ownership",
@@ -2129,15 +2129,15 @@
       "uid": "27254aa1a700569f",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=125",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Deployment of Task Force participant feed with exact original UID/audio; recording identity and joint participation now proven by each official opening slate.",
-      "next_action": "After human merge of #2098 implementation, verify both original UIDs/audio in live Task Force RSS and Council retention; keep both raw UIDs/publication dates and no duplicate winner.",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
       "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-gas-drilling-task-force"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
     },
     {
       "case_id": "fort-worth-tx-497b3aa05255bfb9-ownership",
@@ -2344,14 +2344,14 @@
       "uid": "6a3caf1854bdd2cd",
       "provider_guid": "277589",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Live own subscription coverage and original audio after human merge/deployment; dated official/source binding retained in audit.",
-      "next_action": "Prepared #2092: verify deployed CBTF subscription and original audio before bounded case closure.",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
       "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "dallas-tx-2024-community-bond-task-force"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
     },
     {
       "case_id": "dallas-tx-78173acda7f7efea-ownership",
@@ -2392,14 +2392,14 @@
       "uid": "84fcc0492e66906d",
       "provider_guid": "233037",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Exact original source chapter and May25 official minutes verified; deployed new subscription remains unverified.",
-      "next_action": "Prepared exact GUID233037 addition #2097; verify live CBTF RSS and original audio after human merge.",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
       "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "dallas-tx-2024-community-bond-task-force"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
     },
     {
       "case_id": "dallas-tx-8969ad6d91ed23d2-ownership",
@@ -2440,14 +2440,14 @@
       "uid": "977d943cea00258e",
       "provider_guid": "269611",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Live dedicated RSS ownership and original audio proof; August 15 minutes unavailable, separate August 22 institution proof retained",
-      "next_action": "Prepared #2094 exact institutional feed; verify deployed original UID/audio before closure",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
       "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "dallas-tx-2024-bond-critical-facilities-subcommittee"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
     },
     {
       "case_id": "dallas-tx-aa65e2aafc90711b-ownership",
@@ -2502,14 +2502,14 @@
       "uid": "deb5a67aa9b6e8d1",
       "provider_guid": "259822",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Live own subscription coverage and original audio after human merge/deployment; dated official/source binding retained in audit.",
-      "next_action": "Prepared #2092: verify deployed CBTF subscription and original audio before bounded case closure.",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
       "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "dallas-tx-2024-community-bond-task-force"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
     },
     {
       "case_id": "dallas-tx-eb1c279cc51a9b04-ownership",
@@ -2534,14 +2534,14 @@
       "uid": "eeca5aeceda62d39",
       "provider_guid": "272005",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Live own subscription coverage and original audio after human merge/deployment; dated official/source binding retained in audit.",
-      "next_action": "Prepared #2092: verify deployed CBTF subscription and original audio before bounded case closure.",
+      "missing_evidence": "None for this bounded feed assignment; broader historical coverage and search remain separate.",
+      "next_action": "Preserve raw UID/audio and reopen if verified ownership changes.",
       "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "dallas-tx-2024-community-bond-task-force"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official identity evidence and deployed own-feed RSS verified with unchanged retained audio after deployment 37454483032; see deployed-ownership-proof-2026-10-06.md."
     },
     {
       "case_id": "dallas-tx-fc9ad3b1d9def142-ownership",
