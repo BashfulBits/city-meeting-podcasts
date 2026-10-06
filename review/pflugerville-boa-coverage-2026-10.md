@@ -1,8 +1,9 @@
 # Pflugerville Board of Adjustment historical coverage
 
-One approved category-B decision: add the named **Board of Adjustment** meeting feed, separate
-from City Council and Planning and Zoning Commission. This applies the maintainer-approved
-missing named-body direction; it does not complete Pflugerville's whole-city baseline.
+**Status: Implemented in PR #1993 (merged 2026-10-03) · FROZEN**
+Feed  is deployed in 
+and verified by . Ten retained recording identities and official Legistar
+bindings are verified. This applies the maintainer-approved missing named-body direction.
 
 ## Evidence and scope
 

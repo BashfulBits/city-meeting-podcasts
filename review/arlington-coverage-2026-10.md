@@ -1,8 +1,10 @@
 # Arlington historical named-body coverage — 2026-10-02
 
-Status: two approved A/B decisions prepared for review; available provider and persisted records
-replayed.
-This batch does not complete Arlington's historical census or approve an archive exception.
+**Status: Implemented in commit 5ffabb6 (merged 2026-10-02) · FROZEN**
+Feeds  and  are
+deployed in  and verified by .
+This batch establishes coverage for the two verified independent bodies; broader Arlington historical
+census and held foundation groups are tracked under review/51.
 
 ## Decisions and official evidence
 

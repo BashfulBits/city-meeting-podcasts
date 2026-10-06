@@ -109,21 +109,21 @@ Citizen Advisory remains public input with stable identity and an active
 historical evidence obligation; unknown older recordings are not silently retired.
 
 
-P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) prepares one named-body decision covering
-three verified committee recordings. Exact labels exclude the Open House; CPC duplicate identities
-remain in [#1991](https://github.com/BashfulBits/city-meeting-podcasts/issues/1991). This does not
-complete the city baseline or the approved public-input migration.
+P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) shipped in PR #1992, covering
+three verified committee recordings ().
+Exact labels exclude the Open House; CPC duplicate identities shipped in #2003/#2010.
 
-P0's [Pflugerville BOA batch](pflugerville-boa-coverage-2026-10.md) prepares one named-body
-decision with ten retained recording identities, full source replay and fifteen regression cases.
-Older media availability remains explicit; this does not certify the full city baseline.
+P0's [Pflugerville BOA batch](pflugerville-boa-coverage-2026-10.md) shipped in PR #1993, adding
+the verified  feed with ten retained recording identities,
+full source replay and fifteen regression cases.
 
 P0's exact-label selector prerequisite separates bare committee names from distinct public-input
 formats. It preserves the source namespace/UIDs and does not change any existing feed configuration.
 
-P0's [Arlington batch](arlington-coverage-2026-10.md) prepares two named-body decisions with
-full provider/persisted replay and retained UID verification. The three reviewed Foundation duplicate groups shipped in #2002;
-an unidentified clip remains held. Arlington is not yet a complete approved onboarding baseline.
+P0's [Arlington batch](arlington-coverage-2026-10.md) shipped in commit 5ffabb6, covering
+two verified named-body decisions ( and
+) with full provider/persisted replay and retained UID
+verification. Reviewed Foundation duplicate groups shipped in #2002.
 
 P0's guard prerequisite generalizes local policy protection to the approved aggregate families and
 exact reviewed named bodies. Unknown identities remain held; this does not complete the historical

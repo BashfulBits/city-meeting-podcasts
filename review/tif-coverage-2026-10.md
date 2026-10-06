@@ -1,8 +1,8 @@
 # Dallas and Fort Worth TIF aggregate subscription policy
 
-**Status: implementation proposed; maintainer authorized aggregate-only migration on 2026-10-02.**
-This is the first of four maintainer-requested remedy follow-ups. The broader flow design belongs
-in review/51; the residual backlog requires separate category approval.
+**Status: Implemented in PR #1973 (merged 2026-10-02) · FROZEN**
+Aggregate TIF feeds  and  are deployed in  and verified
+by . Predecessor district configs were removed and registered as feed aliases.
 
 ## Decision and evidence
 
