@@ -585,3 +585,6 @@ Dallas #2065 exact four-record CBTF coverage prepared; deployment proof and rema
   same-run record snapshot and complete-index preservation; required archive visibility check.
 
 Prepared #2086: restore proven Fort Worth EMSISD participant discovery; deployment proof pending.
+
+Prepared #2089: complete-label Dallas Flood bond subcommittee subscription; full-source replay
+adds one original UID with every existing holder unchanged. Deployment proof pending.

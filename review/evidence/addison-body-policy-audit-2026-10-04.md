@@ -1728,3 +1728,13 @@ Ruff/format468 clean. Three cases stay open until deployed exact RSS/audio verif
 
 #2086 prepared replay:5896 retained source rows/979labels, new EMSISD participant0→1 only
 UID497b3aa05255bfb9; every prior feed unchanged.186 targeted and4959 full offline tests pass15 deselected; whole Ruff/format469 clean.
+
+### Dallas Flood subcommittee prepared implementation — #2089
+
+Exact original GUID269612/UID8280ec97799c999e routes to the new complete-label subscription;
+future same-label GUIDs admit automatically. No existing selectors change. Original raw record
+and audio remain intact; the case stays open until live deployment ownership verification.
+
+Cached5353-record/1095-label replay: new Flood subscription0→1 for UID8280ec97799c999e only;
+every pre-existing feed holder unchanged. Targeted feed/editor/register checks198passed.
+Final full offline suite4961passed/15deselected; whole Ruff/format470files and diff check clean.

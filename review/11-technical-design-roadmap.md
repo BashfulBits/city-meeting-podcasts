@@ -1481,3 +1481,7 @@ same-run snapshot/staged publication contract in review/51. No public schema or 
 
 Fort Worth EMSISD participant discovery: **L3**, #2086, source-scoped full institutional label,
 same UID/audio and retained Council ownership. Exact fixture/full-source replay in review/51.
+
+Dallas bond Flood institution: **L3**, #2089, reusable complete label and independently
+convened official minutes/source chapter binding. Implementation prepared with original fixture;
+5353-record replay adds only one Flood subscription. Deployment proof remains pending.
