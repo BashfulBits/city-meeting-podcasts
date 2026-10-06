@@ -1481,3 +1481,6 @@ same-run snapshot/staged publication contract in review/51. No public schema or 
 
 Fort Worth EMSISD participant discovery: **L3**, #2086, source-scoped full institutional label,
 same UID/audio and retained Council ownership. Exact fixture/full-source replay in review/51.
+
+Dallas reusable Streets #2081: **Shipped** in #2082; exact2017 #2083: **Shipped** in #2085.
+Review/51 bounded contracts frozen; substantive review gaps recorded. Deployment closures pending.

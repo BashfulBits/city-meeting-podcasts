@@ -7336,3 +7336,8 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
 - Prepared #2083: exact official agenda bindings distinguish one2017Dallas bond taskforce
   meeting from two identically labeled public town halls; original UID/audio/raw title retained.
   No stage invalidation or backfill; case closure requires deployment verification.
+
+- Prepared #2084: separate render/search/deploy jobs with same-run record/artifact handoff,
+  read-only sidecar indexing and staged complete publication. Deferred/error search retains
+  prior complete site; no provider refresh, record writes, schema change or stage backfill.
+  Existing20minute indexing and60minute job ceilings preserved.

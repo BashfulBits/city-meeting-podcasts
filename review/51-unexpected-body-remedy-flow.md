@@ -1993,7 +1993,7 @@ No invalidation/backfill; no inference of other bond subcommittees' recording pr
 WholeRuff464/format/diff clean. Initial serializer indentation failure corrected without
 runtime changes. Full replay preserves all other holders; deployed closure remains pending.
 
-### Dallas reusable Streets bond ownership rules — L3, #2081
+### Dallas reusable Streets bond ownership rules — Implemented in PR #2082 (frozen)
 
 Approved scope: resolve remaining registered recordings with reusable institution rules under
 maintainer direction. Independent city bond archive and May25/June13 minutes establish Streets
@@ -2038,7 +2038,7 @@ search time ceiling. Prepare exact workflow/CLI/artifact ownership and failure/p
 contract before implementation. This is authorization for the chosen approach, not permission
 to introduce an unspecified schema, raise a budget or touch credentials interactively.
 
-### Dallas2017 bond taskforce versus town halls — L3, #2083
+### Dallas2017 bond taskforce versus town halls — Implemented in PR #2085 (frozen)
 
 Exact agenda binding supersedes misleading shared provider label: May27 GUID202453
 UID5e9fdb6ff9e8ef68 provider agenda SHA256eb8a902b8b7b6d309acd807bb940cea1d4fa08ad041ec4ee609107223125dc8f
@@ -2146,3 +2146,15 @@ and deploy gates. This is required validation of the already approved three-job 
 site metadata; enablement defaults false. Render retains this action with explicit
 enablement:false and pages:read only, preserving dynamic base_url for custom-domain and
 github.io sites. Provisioning is disabled; Pages/id-token write remains deployment-only.
+
+October5 lifecycle checkpoint: #2082 human merged23:54:21UTC (20a9d83b), #2085 human
+merged23:54:57UTC. These bounded contracts are frozen. Streets full-review request
+6005806253 at23:51:28 received base/head-changed rejection at23:51:36; no substantive
+coverage confirmed before merge.2017 was merged before review request. Explicit review gaps;
+green CI/skipped automatic status is not review coverage. No requests on closed PRs.
+Both implementations shipped; case closures still await actual deployed RSS/audio proof.
+
+#2084 prepared:135 targeted tests and4971 full offline tests pass15 deselected; whole
+Ruff/format469 clean. Complete staged publication, actual second-source deferral preservation,
+all six Addison exclusions/raw-page retention and same-run workflow transfer verified offline.
+Live search proof still awaits human merge/deployment; no archive cases closed from tests.

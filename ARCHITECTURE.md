@@ -1411,3 +1411,9 @@ independent evidence and deployment gates for case closure.
 Dallas2017 bond publication uses source-bound GUID exceptions where the provider reused one
 TownHall label for a formal taskforce meeting and two public-input sessions. Exact official
 agenda hashes establish the distinction; raw provider labels/audio/UIDs remain unchanged (#2083).
+
+Static search has a separate bounded deployment coordinator (#2084). Render hands off the
+same-run generated site, feed context and source record JSONs; search reads hosted sidecars
+without provider refresh or record/storage writes. It stages the complete site, preserving
+prior public bytes on deferred/error builds. Complete search publishes navigation/meta together.
+Existing20minute indexing ceiling and60minute job ceiling remain; deployment alone writes Pages.

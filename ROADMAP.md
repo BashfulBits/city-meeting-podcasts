@@ -583,3 +583,6 @@ Dallas #2065 exact four-record CBTF coverage prepared; deployment proof and rema
 
 - Designed (L3): independent bounded static-search job (#2084), unchanged20minute deadline,
   same-run record snapshot and complete-index preservation; required archive visibility check.
+
+Recently shipped: Dallas reusable Streets institution separation #2082 and distinct2017
+formal-taskforce/public-town-hall subscriptions #2085. Deployed evidence verification pending.

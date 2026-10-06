@@ -649,3 +649,88 @@ def build_search_index(
     )
     _write_search_asset(output_dir)
     return manifest_payload
+
+
+def build_search_site(
+    *,
+    state_dir: str | Path,
+    output_dir: str | Path,
+    context_path: str | Path,
+    site_config_path: str | Path = "config/site_config.yml",
+    config_dir: str | Path = "config",
+    base_url: str | None = None,
+) -> str:
+    """Build in a disposable site copy; deferred work cannot publish partial shards.
+
+    The only durable inputs are the render job's records and handoff context. Storage is used
+    solely by the existing indexer's sidecar readers. No state synchronization or writes occur.
+    """
+    import time
+
+    from citypods.config import load_city_configs, load_site_config
+    from citypods.site import render_index, render_search_page
+    from citypods.storage import make_storage
+
+    config = load_site_config(site_config_path)
+    defaults = config.get("defaults", {})
+    budget = float(defaults.get("search_index_budget_minutes", 20))
+    if not 0 < budget <= 20:
+        raise ValueError("search_index_budget_minutes must be greater than zero and at most 20")
+    deadline = time.monotonic() + budget * 60
+    context = json.loads(Path(context_path).read_text())
+    resolved_base = base_url if base_url is not None else context["base_url"]
+    cities = load_city_configs(config_dir, defaults)
+    output = Path(output_dir).resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=".search-stage-", dir=output.parent) as temporary:
+        staged = Path(temporary) / "site"
+        shutil.copytree(output, staged)
+        cache_path = staged / ".search-cache.json"
+        cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+        enabled = bool(defaults.get("search", True))
+        manifest: dict[str, Any] = {"shards": []}
+        try:
+            if enabled:
+                built = build_search_index(
+                    state_dir,
+                    cities,
+                    staged,
+                    resolved_base,
+                    storage=make_storage(config, resolved_base, staged),
+                    cache=cache,
+                    stop=lambda: time.monotonic() >= deadline,
+                )
+                if built is None:
+                    return "deferred: retaining complete prior site"
+                manifest = built
+                page = staged / "search" / "index.html"
+                page.parent.mkdir(parents=True, exist_ok=True)
+                page.write_text(render_search_page(config, resolved_base))
+                cache_path.write_text(json.dumps(cache, sort_keys=True) + "\n")
+            else:
+                shutil.rmtree(staged / "search", ignore_errors=True)
+                shutil.rmtree(staged / "data" / "search", ignore_errors=True)
+                (staged / "assets" / SEARCH_ASSET).unlink(missing_ok=True)
+                (staged / "assets" / SEARCH_LICENSE).unlink(missing_ok=True)
+                cache_path.unlink(missing_ok=True)
+            (staged / "index.html").write_text(
+                render_index(
+                    cities, config, resolved_base, context["feed_info"], search_enabled=enabled
+                )
+            )
+            meta_path = staged / "meta.json"
+            meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+            meta["search_shards"] = len(manifest["shards"])
+            meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+        except Exception:
+            logging.getLogger(__name__).exception("Search staging failed; retaining prior site")
+            return "deferred: retaining complete prior site"
+        # Both renames stay on the same filesystem. Restore the original on publication failure.
+        backup = Path(temporary) / "prior-site"
+        output.rename(backup)
+        try:
+            staged.rename(output)
+        except BaseException:
+            backup.rename(output)
+            raise
+    return "complete" if enabled else "disabled"

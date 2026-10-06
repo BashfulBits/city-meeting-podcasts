@@ -599,6 +599,35 @@ def test_render_writes_static_search_outputs(tmp_path, fake_provider):
     assert (tmp_path / "docs" / "assets" / "LICENSES" / "minisearch-7.1.2.txt").exists()
 
 
+def test_render_search_handoff_preserves_complete_index(tmp_path, fake_provider, monkeypatch):
+    cities = _setup(tmp_path)
+    _build(tmp_path, cities)
+    output = tmp_path / "docs"
+    paths = [
+        *(output / "data" / "search").glob("*.json"),
+        output / "search" / "index.html",
+        output / "assets" / "minisearch-7.1.2.js",
+    ]
+    before = {path: path.read_bytes() for path in paths}
+    monkeypatch.setattr(run, "build_search_index", lambda *_a, **_k: pytest.fail("index build"))
+    context = tmp_path / "handoff.json"
+    run.build(
+        site_config_path=tmp_path / "site_config.yml",
+        config_dir=cities,
+        output_dir=output,
+        base_url="https://example.test",
+        phase="render",
+        no_refresh=True,
+        skip_search=True,
+        search_context_output=context,
+    )
+    assert {path: path.read_bytes() for path in paths} == before
+    assert "/search/" in (output / "index.html").read_text()
+    payload = json.loads(context.read_text())
+    assert payload["base_url"] == "https://example.test"
+    assert payload["feed_info"]["fake-city"] == {"has_audio": True, "has_video": True}
+
+
 def test_render_writes_city_request_page_when_public_form_configured(tmp_path, fake_provider):
     cities = _setup(tmp_path)
     with (tmp_path / "site_config.yml").open("a") as config:
