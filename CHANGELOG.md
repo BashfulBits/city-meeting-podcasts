@@ -7251,3 +7251,9 @@ GUID394474/UID757ab2a4aaf9bbca from Council to Addison: TIF Meetings. Canonical 
 attribution changes accordingly; original raw record, UID and hosted audio remain. After the
 Council narrowing,500 original Council selections remain. No audio invalidation or backfill.
 The case remains open pending human merge and deployed subscription verification.
+
+### Prepared workflow pin corrections (#2036)
+
+- Preserve the ASR Python 3.12 constraints target while updating pinned build Actions.
+- Synchronize the exact Wrangler 4.147.0 packaging assertion and deployment Action test.
+- No pipeline version, stored artifact, runtime source, or production ceiling changes.
