@@ -1414,3 +1414,7 @@ agenda hashes establish the distinction; raw provider labels/audio/UIDs remain u
 
 Fort Worth EMSISD Board participant feed reuses the existing Granicus source and exact joint
 institution label. Council ownership and original whole recording UID/audio are preserved.
+
+Dallas 2024 bond Flood Control and Storm Drainage uses the existing complete institutional
+label selector, admitting stable-label recurrences without GUID pins. Original source records,
+UIDs and audio remain unchanged (#2089).
