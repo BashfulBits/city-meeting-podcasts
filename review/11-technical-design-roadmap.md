@@ -1485,3 +1485,7 @@ bounded contract frozen and substantive review gap recorded in review/51.
 Dallas #2092 additional three CBTF proceedings: L3 in review/51; verified archive/source
 bindings, two exact ambiguous-label pins plus one reusable chairs-meeting institution alias.
 Existing holders/raw UID/audio preserved; full replay and deployed proof gate closure.
+
+Dallas bond Flood institution: **L3**, #2089, reusable complete label and independently
+convened official minutes/source chapter binding. Implementation prepared with original fixture;
+5353-record replay adds only one Flood subscription. Deployment proof remains pending.

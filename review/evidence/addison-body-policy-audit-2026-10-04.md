@@ -1826,3 +1826,13 @@ identity table. Preserve the existing five CBTF inclusions; shared ambiguous lab
 require bounded identity admission for259822/272005. The exact chairs-meeting label277589
 can support a reusable institution alias, with the existing formal CBTF feed as holder.
 No selector or case status was changed by this evidence check.
+
+### Dallas Flood subcommittee prepared implementation — #2089
+
+Exact original GUID269612/UID8280ec97799c999e routes to the new complete-label subscription;
+future same-label GUIDs admit automatically. No existing selectors change. Original raw record
+and audio remain intact; the case stays open until live deployment ownership verification.
+
+Cached5353-record/1095-label replay: new Flood subscription0→1 for UID8280ec97799c999e only;
+every pre-existing feed holder unchanged. Targeted feed/editor/register checks198passed.
+Final full offline suite4961passed/15deselected; whole Ruff/format470files and diff check clean.
