@@ -1777,3 +1777,13 @@ RSS omits this historical recording; no claim of historical Council RSS complete
 Official April25,2016 agenda and independent source calls/chapters establish genuine joint
 participation; full5896-record replay retained every prior holder. This case is resolved.
 Register169cases/142resolved/27open pending this documentation merge. No raw/audio changes.
+
+### Vitruvian Park manual provider playback — 2026-10-06
+
+Official player https://addisontx.new.swagit.com/videos/56028 loaded the April9,2008 recording
+with duration07:04. At00:05 the frame identifies “Vitruvian Park in Addison”;01:33 presents
+an animated colored development model;04:57 shows a rendered cafe/residential streetscape with
+Vitruvian branding. These directly observed frames corroborate the scripted development promotion
+in stored ASR, beyond the provider title alone. They are sampled content, not proof of every
+interval. Archive-only remains approved; deployed search verification remains outstanding.
+No media download, new processing, raw title/date mutation or case closure occurred.
