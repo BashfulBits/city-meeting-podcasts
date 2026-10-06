@@ -383,6 +383,10 @@ were last written October 3, and selector eligibility does not establish correct
 approved exclusion. The missing case links and all uncovered labels remain P0 work. Do not equate
 the register's 17 open cases with the full historical backlog or close a row by count alone.
 
+Maintainer decision (2026-10-06): create or reuse a case at exact source-key/UID granularity only
+after case-by-case evidence confirms a real public recording. Keep unverified associations in the
+crosswalk; do not bulk-create cases or infer coverage/exclusion from selector gaps alone.
+
 ### P0 publication selection — inactive machinery shipped; activations separately gated
 
 The maintainer authorized writing this specification; runtime projection changes and affected feed
