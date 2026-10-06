@@ -1258,3 +1258,61 @@ def test_routed_manifest_is_published_on_r2_not_b2(tmp_path):
     assert b2.exists(f"{STATE_PREFIX}/sources/src/episodes.json")
     assert not b2.exists(f"{STATE_PREFIX}/catalog/manifest.json")
     assert r2.exists(f"{STATE_PREFIX}/catalog/manifest.json")
+
+
+def test_pull_state_only_prefixes_scopes_to_owned_sources(tmp_path):
+    """Review/45 Initiative 1: sparse pull only restores files matching only_prefixes."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    src = tmp_path / "seed"
+    for key in ("mine", "theirs"):
+        (src / "sources" / key).mkdir(parents=True)
+        (src / "sources" / key / "episodes.json").write_text(f'{{"src": "{key}"}}')
+    (src / "run_summary.json").write_text('{"run": 1}')
+    assert push_state(bucket, src) == 3
+
+    dest = tmp_path / "dest"
+    restored = pull_state(bucket, dest, only_prefixes=["sources/mine/"])
+    assert restored == 1
+    assert (dest / "sources" / "mine" / "episodes.json").exists()
+    assert not (dest / "sources" / "theirs" / "episodes.json").exists()
+    assert not (dest / "run_summary.json").exists()
+
+
+def test_pull_state_only_prefixes_and_only_paths_mutually_exclusive(tmp_path):
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    dest = tmp_path / "dest"
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        pull_state(bucket, dest, only_prefixes=["sources/mine/"], only_paths=["run_summary.json"])
+
+
+def test_shard_pull_prefixes_includes_owned_and_global_controls():
+    from citypods.statesync import GLOBAL_CONTROL_PREFIXES, shard_pull_prefixes
+
+    prefixes = shard_pull_prefixes(["source-b", "source-a"])
+    assert prefixes[:2] == ["sources/source-a/", "sources/source-b/"]
+    assert set(prefixes[2:]) == set(GLOBAL_CONTROL_PREFIXES)
+
+
+def test_push_records_merged_skips_unchanged_sources(tmp_path):
+    """Review/45 Initiative 4: push_records_merged skips unchanged sources on second push."""
+    bucket = LocalStorage(root=tmp_path / "bucket", url_prefix="https://x")
+    state_dir = tmp_path / "state"
+
+    for sk in ("src1", "src2"):
+        _seed_remote(bucket, sk, {"u1": {"uid": "u1", "tags": []}})
+        save_records(state_dir, sk, {"u1": {"uid": "u1", "tags": [sk]}})
+
+    # First push: both sources are dirty -> pushes 2
+    pushed1 = push_records_merged(bucket, state_dir, ["src1", "src2"], protected_blocks=())
+    assert pushed1 == 2
+
+    # Second push: neither source modified -> pushes 0 (skipped)
+    pushed2 = push_records_merged(bucket, state_dir, ["src1", "src2"], protected_blocks=())
+    assert pushed2 == 0
+
+    # Modify only src1
+    save_records(state_dir, "src1", {"u1": {"uid": "u1", "tags": ["src1", "updated"]}})
+
+    # Third push: only src1 is dirty -> pushes 1
+    pushed3 = push_records_merged(bucket, state_dir, ["src1", "src2"], protected_blocks=())
+    assert pushed3 == 1

@@ -52,6 +52,7 @@ def pull_canonical_state(
     *,
     base_url: str = "",
     only_paths: Iterable[str | Path] | None = None,
+    only_prefixes: Iterable[str] | None = None,
     log: Callable[[str], None] | None = None,
 ) -> Path:
     """Resolve ``state_dir`` and pull the durable snapshot from the bucket into it.
@@ -68,7 +69,9 @@ def pull_canonical_state(
     state_dir = resolve_state_dir(site_config, output_dir)
     try:
         storage = make_storage(site_config, base_url, output_dir)
-        restored = pull_state(storage, state_dir, only_paths=only_paths, log=emit)
+        restored = pull_state(
+            storage, state_dir, only_paths=only_paths, only_prefixes=only_prefixes, log=emit
+        )
     except Exception as exc:  # noqa: BLE001 — state unavailable must not abort the caller
         emit(f"state: could not pull canonical state from the bucket ({exc}); using local copy")
         return state_dir
