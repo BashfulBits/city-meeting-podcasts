@@ -1411,3 +1411,6 @@ independent evidence and deployment gates for case closure.
 Dallas2017 bond publication uses source-bound GUID exceptions where the provider reused one
 TownHall label for a formal taskforce meeting and two public-input sessions. Exact official
 agenda hashes establish the distinction; raw provider labels/audio/UIDs remain unchanged (#2083).
+
+Fort Worth EMSISD Board participant feed reuses the existing Granicus source and exact joint
+institution label. Council ownership and original whole recording UID/audio are preserved.

@@ -1725,3 +1725,6 @@ https://dallastx.new.swagit.com/videos/202452/agenda
 #2083 prepared: all5353 source rows/1095 labels replayed; formal0→1, publictownhalls0→2,
 every other holder unchanged.185 targeted and4957 offline tests pass15 deselected; whole
 Ruff/format468 clean. Three cases stay open until deployed exact RSS/audio verification.
+
+#2086 prepared replay:5896 retained source rows/979labels, new EMSISD participant0→1 only
+UID497b3aa05255bfb9; every prior feed unchanged.186 targeted and4959 full offline tests pass15 deselected; whole Ruff/format469 clean.

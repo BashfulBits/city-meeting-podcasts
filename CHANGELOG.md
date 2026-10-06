@@ -7336,3 +7336,6 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
 - Prepared #2083: exact official agenda bindings distinguish one2017Dallas bond taskforce
   meeting from two identically labeled public town halls; original UID/audio/raw title retained.
   No stage invalidation or backfill; case closure requires deployment verification.
+
+- Prepared #2086: add source-scoped EMSISD Board/Fort Worth Council joint subscription for
+  proven clip2491, preserving Council ownership and original recording/audio. No backfill.
