@@ -2981,7 +2981,15 @@ def _build_impl(
     # Restore the durable state snapshot from the bucket (canonical) before loading any state,
     # so a missing/evicted actions/cache self-heals instead of losing derived artifacts.
     if not dry_run and not state_snapshot_restored:
-        restored = pull_state(storage, state_dir)
+        if shard is not None or source:
+            owned_sources = owned if shard is not None else {source}
+            from citypods.statesync import shard_pull_prefixes
+
+            restored = pull_state(
+                storage, state_dir, only_prefixes=shard_pull_prefixes(owned_sources)
+            )
+        else:
+            restored = pull_state(storage, state_dir)
         if restored:
             print(f"state: restored {restored} file(s) from durable storage")
     elif state_snapshot_restored:
