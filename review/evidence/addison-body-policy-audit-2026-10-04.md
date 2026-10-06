@@ -1903,3 +1903,61 @@ Official Aug15 independently convened Flood minutes and dated source chapters ar
 above. This closes only its bounded ownership case. CBTF UIDsdeb5a67aa9b6e8d1,
 eeca5aeceda62d39 and6a3caf1854bdd2cd were absent from current own RSS; Critical feed404.
 Those four remain open, with deployment still in progress. No raw or audio changes.
+
+### Dallas remaining exact bindings — October 6, 2026
+
+Read-only pass. No configuration, raw records, UIDs, audio or register mutations.
+Primary evidence extraction: `/tmp/dallas-remaining-exact-bindings-2026-10-06.json`,
+from actual cached source `.citypods-state/sources/76869ed1994f/episodes.json`.
+
+## Material correction to stale audit
+
+The actual current source contains original `source_chapters` for GUID233037, contrary to
+prior audit assertions that it lacked chapters. Its original source chapter explicitly says
+`2024 Bond CBTF Meeting on May 25, 2023.`, start374/end8578. Retained source s0 is Swagit
+233037, source duration8578.45, watch URL exactGUID233037. This is source evidence, not the
+rendered title or a generated/served chapter. Official May25 minutes freshly return200 and
+independently establish CBTF, chair Arun Agarwal, convened6:35pm/adjourned8:53pm:
+https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/79/CBTF%20Meeting_052523_Meeting%20Minutes.pdf
+SHA256 a5468c270660c4efd1cde5c51d0bdc6a49e568e9086a99be0a0012c1e4e670ef.
+Recommend bounded exactGUID233037 CBTF addition using same original-chapter plus official
+minutes contract accepted for earlier CBTF additions. Keep case open until deployment.
+Do not admit ambiguous272574 merely because it shares the body label.
+
+| GUID | UID | Actual original source chapter | Disposition |
+|---|---|---|---|
+|233032|2bc4c440c974dba8|May25 Streets meeting;2–3117|Binding now established with independent May25 institutional minutes; verify deployed originalaudio before closure|
+|259823|ae8f0826293006f0|June20 Streets meeting;2–6550|Binding now established with independent city dated Streets archive; verify deployed originalaudio before closure|
+|269407|2d2bc233efd9bf97|August10 Streets subcommittee;2–6499|Source binding exists; independent exactdated city corroboration still missing|
+|270975|16300c982b358fe9|None|August22 official city archive exists but source binding still missing|
+|277827|b0471f29622b8165|October26 Streets subcommittee;2–7268|Source binding exists; independent exactdated city corroboration missing|
+|277830|8578348e702caf35|October27 Streets subcommittee;4–6174|Source binding exists; independent exactdated city corroboration missing|
+|233037|84fcc0492e66906d|May25 CBTF;374–8578|Exact bounded addition recommended; old no-chapter claim superseded|
+|272574|aa65e2aafc90711b|September26 CBTF;3–7967|Official guide planned TownHall2; convening/classification ambiguity persists|
+|273327|6135249a278494c5|October3 CBTF;3–5040|Independent city earlyOctober plan now located; exactdated meeting proof still missing|
+
+Official Streets archive freshly returns200:
+https://dallascityhall.com/departments/bond-construction-management/Pages/Streets-and-Transportation-Subcommittee.aspx
+Explicit dated list May11/May25/June13/June20/June28/July17/August15/August22.
+Video buttons carry no href in fetched HTML; do not invent direct bindings from these labels.
+May25 Streets minutes return200, chairLindaKoop, ownconvene6:35pm/adjourn8:00pm:
+https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/99/Streets%20and%20Transportation%20Meeting_052523_Meeting%20Minutes.pdf
+SHA25682b7e23fcdfa142e1877f8ba9d1c6fe9310644dacc6a6978f3f84facc1276c81.
+
+## New independent contextual official documents
+
+September29 city-manager memorandum says CBTF plans to meet earlyOctober to determine
+allocations and subcommittees reconvene weekOctober23. This corroborates a planned period,
+NOT an exact October3 source binding and NOT permission to close273327.
+https://dallascityhall.com/government/citymanager/Documents/FY%2022-23%20Memos/2024%20Bond%20Program_Community%20Bond%20Task.pdf
+Fresh200, saved `/tmp/dallas-new-memo-1.pdf` / `.txt`.
+
+October27 city-manager memorandum confirms October24 CBTF allocations and says bond
+subcommittees will reconvene/provide revisedrecommendations byOctober31. This supports
+institutional context for October26/27 Streets, NOT the exact dates orGUIDs.
+https://dallascityhall.com/government/citymanager/Documents/FY23-24%20Memos/Council%20Memorandum%20-%20CBTF%20Recommended%20Bond%20Allocations%20-%2010-27-23.pdf
+Fresh200, saved `/tmp/dallas-new-memo-0.pdf` / `.txt`.
+
+All9 Swagit video routes fresh403. Old Swagit host269407 and chapter/agenda routes also403.
+No media downloaded, quota spent, provider workaround, title/date changes or speculative
+publication corrections. Exact source preservation is mandatory.

@@ -603,3 +603,5 @@ Recently shipped (human merge commits): #2091 Flood, #2093 CBTF additions,
 #2095 Critical Facilities, #2087 bounded search/checkpoint persistence. Flood ownership
 verified live; remaining merged corrections await deployed evidence. Register:169 cases,
 143 resolved,26 open. Search checkpoint review gap remains explicit.
+
+Prepared development #2097: restore exact May25 CBTF recording from verified original proof.

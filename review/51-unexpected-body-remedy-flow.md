@@ -2307,3 +2307,16 @@ These bounded contracts are frozen as implemented; further changes need a new co
 #2087 original98cb725b had substantive review; material checkpoint fix9b1027cf and
 conflict merge b3400313 merged before substantive new-code review. Do not count skipped
 automatic checks as review or request reviews on these closed PRs.
+
+### #2097 verified May25 CBTF source binding — L3
+
+Before code: add only GUID233037/body from retained record84fcc0492e66906d to existing
+config/feeds/dallas-tx-2024-community-bond-task-force.yml body_includes. Original source chapter
+May25 plus independent official minutes attachment79 establish exact proceeding binding.
+Add original fixture tests/fixtures/dallas-cbtf-may25-retained.json and test in
+tests/test_dallas_cbtf_ownership.py: UID/audio/holder preservation, samebody wrongGUID
+negative, ambiguous272574 remains excluded. Full5353-record ownership replay must add
+only this UID to CBTF; all other holders unchanged. Full offline suite, whole Ruff/format.
+Update register prepared assignment/next action, keep open until deployed. Update review11,
+ROADMAP and CHANGELOG. Do not modify source records, runtime code, schemas, provider,
+stages, dependencies, search, storage, audio, titles/dates or any other feed.
