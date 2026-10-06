@@ -2110,3 +2110,23 @@ only after merge; direct live search verification still required for archive-cas
 
 #2083 prepared:185 targeted and4957 offline tests pass15 deselected, whole Ruff/format468
 clean. Full5353 replay changes only formal0→1/publictownhalls0→2. Deployment gates remain.
+
+### Consecutive Fort Worth3814 publication note — L2, specific schema gate
+
+Disposition approved: both whole recordings remain in Council/CCPD subscriptions and explicitly
+identify consecutive proceedings. Existing rendering has no per-record publication-note field;
+raw official titles, descriptions and source chapters must remain immutable.
+
+Proposed bounded implementation contract: source-scoped city config `publication_notes`, each
+entry strict UID/provider_guid/note/approval_ref, only the two proven3814 UIDs. Exact note:
+“Consecutive CCPD Board and City Council proceedings; whole recording retained.” Add ephemeral
+Episode `publication_note` for RSS/page rendering only, never persist it in records or alter
+source title/description, UID/audio, search schema, chapters or stage versions. Validate exact
+UID/GUID/source binding before rendering and preserve previous output on identity error. Include
+note policy in render/feed-content cache hash only; no audio invalidation. Render escaped note
+in episode RSS show notes and raw page; both original participant feeds retain both UIDs.
+
+Specific config/model presentation-schema approval remains necessary before code under the
+prior no-unspecified-schema gate. After approval mature to L3 with named parser/model/run/feeds/
+site/cache files and original two-record positive/negative/RSS/raw-page tests. No general bundle
+classifier, audio splitting, publication winner, other source/holder change or backfill.

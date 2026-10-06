@@ -1725,3 +1725,33 @@ https://dallastx.new.swagit.com/videos/202452/agenda
 #2083 prepared: all5353 source rows/1095 labels replayed; formal0→1, publictownhalls0→2,
 every other holder unchanged.185 targeted and4957 offline tests pass15 deselected; whole
 Ruff/format468 clean. Three cases stay open until deployed exact RSS/audio verification.
+
+### October6 nine-case deployed closure
+
+Successful main deployment37391178308/d889c0b6 includes #2073/#2082/#2085. Read-only public
+RSS verification returns200 for all seven checked subscriptions; all fifteen prepared Dallas
+UIDs are present in their intended feed with exact original hosted audio, absent from the
+incorrect prior current RSS. This verifies visibility, not complete historical RSS coverage.
+Close only the following nine whose independent recording/date proof is established:
+
+- `2b172a76868ad86c` / GUID`259821`: `dallas-tx-2024-bond-streets-and-transportation-subcommittee`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/2b172a76868ad86c-5a72aa9a1670.m4a`.
+- `427b4f7de9ec3a32` / GUID`269609`: `dallas-tx-2024-bond-streets-and-transportation-subcommittee`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/427b4f7de9ec3a32-b422b7b7b73d.m4a`.
+- `5e9fdb6ff9e8ef68` / GUID`202453`: `dallas-tx-2017-citizens-bond-task-force`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/5e9fdb6ff9e8ef68-7a982e6ad91d.m4a`.
+- `78173acda7f7efea` / GUID`269613`: `dallas-tx-2024-bond-streets-and-transportation-subcommittee`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/78173acda7f7efea-9783de27f3d3.m4a`.
+- `8969ad6d91ed23d2` / GUID`269610`: `dallas-tx-2024-bond-economic-development-subcommittee`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/8969ad6d91ed23d2-37656a4c3d8e.m4a`.
+- `eb1c279cc51a9b04` / GUID`202452`: `dallas-tx-2017-bond-public-town-halls`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/eb1c279cc51a9b04-0a46fb46c2eb.m4a`.
+- `fc9ad3b1d9def142` / GUID`202451`: `dallas-tx-2017-bond-public-town-halls`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/fc9ad3b1d9def142-b27b1925c6b1.m4a`.
+- `fe0b7e556c694307` / GUID`259827`: `dallas-tx-2024-bond-streets-and-transportation-subcommittee`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/fe0b7e556c694307-66bc0d6eb83a.m4a`.
+- `ffd212474f9b51ad` / GUID`232343`: `dallas-tx-2024-bond-streets-and-transportation-subcommittee`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/ffd212474f9b51ad-807a27408e4a.m4a`.
+
+Economic269610: own chair/convening/adjournment minutes plus original August15 chapter.
+2017three: byte-identical provider/official notices and retained document hashes, visually
+verified formal May27 versus public May22/May25. Streets five: official eight-date institutional
+archive and original dated source chapters bind May11/June13/June28/July17/Aug15, with
+independent May25/June13 own-chair minutes establishing the separate recurring subcommittee.
+May11 minutes502 does not erase independently retained archive/chapter binding.
+
+Six Streets cases remain open despite deployed correct ownership: May25/June20/Aug22 lack
+original dated chapter or other exact official recording link; Aug10/Oct26/Oct27 lack independent
+official archive-date/content binding. No closure solely from label/replay/RSS counts.
+Register169cases141resolved28open: Addison7/Dallas14/FortWorth7.
