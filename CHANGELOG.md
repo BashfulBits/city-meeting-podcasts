@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared #2094 Dallas bond Critical Facilities feed.** Exact institution label retains
+  original UID/audio and automatically admits future matching GUIDs; prior feeds unchanged.
+  Deployment evidence remains required before case closure.
+
 - **Guard dispatch quota schema upgrades before job writes (PR #2057).** Detect all four quota columns added
   by PR #2028, add only missing columns on otherwise-current objects, and verify readiness before
   serving RPCs. Current-schema startups remain write-free. Mutation preflight prepares a zero-row
@@ -7289,6 +7293,11 @@ attribution changes accordingly; original raw record, UID and hosted audio remai
 Council narrowing,500 original Council selections remain. No audio invalidation or backfill.
 The case remains open pending human merge and deployed subscription verification.
 
+### Prepared workflow pin corrections (#2036)
+
+- Preserve the ASR Python 3.12 constraints target while updating pinned build Actions.
+- Synchronize the exact Wrangler 4.147.0 packaging assertion and deployment Action test.
+- No pipeline version, stored artifact, runtime source, or production ceiling changes.
 
 ### Archive-only and 2016 joint shipped (2026-10-05)
 
@@ -7337,8 +7346,12 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   meeting from two identically labeled public town halls; original UID/audio/raw title retained.
   No stage invalidation or backfill; case closure requires deployment verification.
 
-- Prepared #2086: add source-scoped EMSISD Board/Fort Worth Council joint subscription for
-  proven clip2491, preserving Council ownership and original recording/audio. No backfill.
+- Shipped #2086 in PR #2088: EMSISD joint participant subscription. Live participant RSS and
+  retained Council page verified original UID/audio; no backfill or stage invalidation.
+
+- Prepared #2092: three verified Dallas CBTF recordings gain own subscription coverage,
+  using two exact GUID pins and one reusable complete chairs-meeting alias. Preserve original
+  UID/audio/raw records; no stage invalidation or backfill. Deployment proof gates closure.
 
 - Prepared #2089: add Dallas 2024 bond Flood Control and Storm Drainage subscription using
   its complete institution label. Preserve raw UID/audio; no stage invalidation or backfill.

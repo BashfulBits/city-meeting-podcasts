@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-10-05 (publication-selection machinery under review;
+**Status: LIVING · last updated 2026-10-06 (publication-selection machinery under review;
 Initiative 20 shipped in PRs #1617–#1622 — LLM
 endpoint rate-limit characterization & failure-class-aware backoff; review/45 reconciled against
 `main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling +
@@ -1479,8 +1479,18 @@ Separate exact subscriptions and unchanged original records/audio per review/51;
 Separate bounded static search job: **L3**, #2084, maintainer-approved20minute ceiling and
 same-run snapshot/staged publication contract in review/51. No public schema or record writes.
 
-Fort Worth EMSISD participant discovery: **L3**, #2086, source-scoped full institutional label,
-same UID/audio and retained Council ownership. Exact fixture/full-source replay in review/51.
+Fort Worth EMSISD participant #2086: **Shipped** in #2088; original audio verified deployed,
+bounded contract frozen and substantive review gap recorded in review/51.
+
+Dallas #2092 additional three CBTF proceedings: L3, implementation prepared in review/51; verified archive/source
+bindings, two exact ambiguous-label pins plus one reusable chairs-meeting institution alias.
+Existing holders/raw UID/audio preserved; full replay and deployed proof gate closure.
+
+Dallas #2094 dedicated bond Critical Facilities institution: L3 in review/51. Exact full
+label, independent institution plus dated archive/source chapter proof; all prior holders
+preserved. Missing August15 minutes documented; deployed verification gates closure.
+
+Dallas #2094 prepared: exact Critical Facilities feed; case open until deployment proof.
 
 Dallas bond Flood institution: **L3**, #2089, reusable complete label and independently
 convened official minutes/source chapter binding. Implementation prepared with original fixture;

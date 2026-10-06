@@ -179,3 +179,15 @@ version assertion. The current head's Node 24 dependency check passed with Renov
 the documented validator pin accordingly. Validate workflow tests, whole Ruff, and four credential-free
 package smoke jobs. Do not change Python 3.12, constraints, runtime source, worker bindings, secrets,
 permissions, pipeline versions, production ceilings, or stored artifacts. Human merges only.
+
+### Bounded 2026-10-06 workflow maintenance contract (PRs #2036 and #2041)
+
+The maintainer authorized addressing these existing Renovate PRs. Before implementation, scope is
+limited to their workflow tooling pins, `tests/test_workflows.py`, this policy, and the changelog.
+Restore Python 3.12 in ASR, bench, quality, and diarization lanes to preserve the existing compiled
+constraints contract. Retain the selected Wrangler 4.147.0 pin and synchronize the package-smoke
+exact-version assertion; update the Granicus test's exact action SHA to the selected pinned revision.
+For #2041, reconcile the validator documentation only after its Node 24 dependency check succeeds.
+Validate workflow tests, all-repository Ruff checks, and four credential-free package smoke jobs.
+Do not change runtime source, worker bindings, secrets, permissions, dependency constraints, pipeline
+versions, production ceilings, or stored artifacts. Human merges only; no deployment is performed.
