@@ -2620,3 +2620,57 @@ def test_tag_shadow_prelabeler_records_beside_production_without_changing_displa
     assert snapshot["topic-tags:prelabeler"]["consumed"] == 1
     assert snapshot["topic-tags:prelabeler-shadow"]["consumed"] == 1
     assert snapshot["topic-tags:prelabeler-shadow"]["backlog"] == 0
+
+
+def test_all_stage_classes_satisfy_runtime_checkable_protocol():
+    """All 17 concrete stage classes implement the @runtime_checkable EnrichmentStage protocol."""
+    from citypods.stages import (
+        AgendaChapterCandidatesStage,
+        AgendaTextStage,
+        AudioStage,
+        ChapterBoundaryLocatorStage,
+        ChaptersStage,
+        EnrichmentStage,
+        LinksStage,
+        MinutesTextStage,
+        MomentAdmissionStage,
+        MomentJudgeStage,
+        MomentsStage,
+        NativeDiarizeStage,
+        RemapStage,
+        SpeakerIdentityStage,
+        TagsStage,
+        TimelineStage,
+        TranscriptStage,
+        VideoClipsStage,
+    )
+
+    stage_classes = [
+        AgendaChapterCandidatesStage,
+        AgendaTextStage,
+        AudioStage,
+        ChapterBoundaryLocatorStage,
+        ChaptersStage,
+        LinksStage,
+        MinutesTextStage,
+        MomentAdmissionStage,
+        MomentJudgeStage,
+        MomentsStage,
+        NativeDiarizeStage,
+        RemapStage,
+        SpeakerIdentityStage,
+        TagsStage,
+        TimelineStage,
+        TranscriptStage,
+        VideoClipsStage,
+    ]
+
+    assert len(stage_classes) == 17
+    for cls in stage_classes:
+        instance = cls()
+        assert isinstance(instance, EnrichmentStage), (
+            f"{cls.__name__} does not satisfy EnrichmentStage"
+        )
+        assert isinstance(instance.name, str) and instance.name
+        assert isinstance(instance.version, str) and instance.version
+        assert callable(getattr(instance, "process", None))

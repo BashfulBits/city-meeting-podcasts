@@ -77,6 +77,11 @@ jobs:
           echo "CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE=$CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE" >> "$GITHUB_ENV"
           python scripts/llm_submission_telemetry.py snapshot start
       - name: Run or package R5 shadow benchmark
+        # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
+        # GitHub reports as a grey "cancelled" -- skipping telemetry and artifact upload steps.
+        # A STEP-level timeout below the job's fails the step, so the run goes red and
+        # post-steps still execute.
+        timeout-minutes: 165
         env:
           BENCHMARK_OPERATION: ${{ inputs.operation }}
           BENCHMARK_SAMPLE_SIZE: ${{ inputs.sample_size }}

@@ -2486,12 +2486,35 @@ def _probe_audio_bitrate(
     return _probe_audio_stream(url, ffmpeg_binary, timeout=timeout).bit_rate
 
 
+_MEDIA_PROBE_LOCK = threading.Lock()
+_AUDIO_DURATION_DETAILS_CACHE: dict[tuple[str, int, int, str], AudioDurationProbe] = {}
+_DURATION_SECS_CACHE: dict[tuple[str, int, int, str], float | None] = {}
+_MAX_PROBE_CACHE_ENTRIES = 2048
+
+
+def clear_media_probe_cache() -> None:
+    """Clear the in-process media probe caches (Initiative 2)."""
+    with _MEDIA_PROBE_LOCK:
+        _AUDIO_DURATION_DETAILS_CACHE.clear()
+        _DURATION_SECS_CACHE.clear()
+
+
 def _probe_duration_secs(path: Path, ffmpeg_binary: str = "ffmpeg") -> float | None:
     """Read container duration from a local file via ffprobe (header-only, fast).
 
     Used after encoding to capture the served duration before the temp file is deleted,
     so the record carries ``audio_duration_served`` even for providers (Swagit, CivicPlus)
     that never set ``ep.duration``."""
+    cache_key: tuple[str, int, int, str] | None = None
+    try:
+        st = path.stat()
+        cache_key = (str(path.resolve()), st.st_size, st.st_mtime_ns, ffmpeg_binary)
+        with _MEDIA_PROBE_LOCK:
+            if cache_key in _DURATION_SECS_CACHE:
+                return _DURATION_SECS_CACHE[cache_key]
+    except OSError:
+        pass
+
     # Replace only the trailing path component so a parent dir named "ffmpeg" is preserved.
     ffprobe = "ffprobe".join(ffmpeg_binary.rsplit("ffmpeg", 1))
     try:
@@ -2511,9 +2534,16 @@ def _probe_duration_secs(path: Path, ffmpeg_binary: str = "ffmpeg") -> float | N
             text=True,
             timeout=10.0,
         ).stdout.strip()
-        return float(out) if out else None
+        val = float(out) if out else None
     except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError, ValueError):
-        return None
+        val = None
+
+    if cache_key is not None:
+        with _MEDIA_PROBE_LOCK:
+            if len(_DURATION_SECS_CACHE) >= _MAX_PROBE_CACHE_ENTRIES:
+                _DURATION_SECS_CACHE.pop(next(iter(_DURATION_SECS_CACHE)))
+            _DURATION_SECS_CACHE[cache_key] = val
+    return val
 
 
 # Public alias for cross-module callers (scripts/availability_digest.py, CR2-SC-08) — the
@@ -2570,6 +2600,17 @@ def _probe_audio_duration_details(path: Path, ffmpeg_binary: str = "ffmpeg") -> 
     back to bounded PCM decoding only when stream timing is unavailable or contradicts other
     evidence.
     """
+    cache_key: tuple[str, int, int, str] | None = None
+    try:
+        st = path.stat()
+        cache_key = (str(path.resolve()), st.st_size, st.st_mtime_ns, ffmpeg_binary)
+        with _MEDIA_PROBE_LOCK:
+            cached = _AUDIO_DURATION_DETAILS_CACHE.get(cache_key)
+            if cached is not None:
+                return cached
+    except OSError:
+        pass
+
     # Replace only the trailing path component so a parent dir named "ffmpeg" is preserved.
     ffprobe = "ffprobe".join(ffmpeg_binary.rsplit("ffmpeg", 1))
     try:
@@ -2610,12 +2651,18 @@ def _probe_audio_duration_details(path: Path, ffmpeg_binary: str = "ffmpeg") -> 
     probe_error = None
     if container is None and stream_duration is None:
         probe_error = "no-duration-metadata"
-    return AudioDurationProbe(
+    res = AudioDurationProbe(
         container_duration=container,
         stream_sample_duration=stream_duration,
         stream_duration_source=stream_source,
         probe_error=probe_error,
     )
+    if cache_key is not None and probe_error != "ffprobe-error":
+        with _MEDIA_PROBE_LOCK:
+            if len(_AUDIO_DURATION_DETAILS_CACHE) >= _MAX_PROBE_CACHE_ENTRIES:
+                _AUDIO_DURATION_DETAILS_CACHE.pop(next(iter(_AUDIO_DURATION_DETAILS_CACHE)))
+            _AUDIO_DURATION_DETAILS_CACHE[cache_key] = res
+    return res
 
 
 def _probe_served_duration_secs(path: Path, ffmpeg_binary: str = "ffmpeg") -> float | None:

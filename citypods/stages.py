@@ -86,7 +86,7 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from math import nan
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 from urllib.parse import urljoin
 
 from citypods import asr as asr_mod
@@ -719,6 +719,7 @@ class StageStats:
         return " ".join(parts) if len(parts) == 1 else parts[0] + " (" + ", ".join(parts[1:]) + ")"
 
 
+@runtime_checkable
 class EnrichmentStage(Protocol):
     name: str
     version: str
@@ -1165,7 +1166,7 @@ class MomentsStage(LLMProducerStage):
             if not (ep.uid or ep.guid):
                 continue
             work = ctx.llm_work.item("r6-moments", ep.uid or ep.guid, producer=self.name)
-            if ctx.stop and ctx.stop():
+            if ctx.stop is not None and ctx.stop():
                 work.defer("stopped")
                 stats.defer("stop")
                 continue
@@ -1488,7 +1489,7 @@ class MomentJudgeStage(LLMProducerStage):
                         for row in existing
                     ):
                         continue
-                    if ctx.stop and ctx.stop():
+                    if ctx.stop is not None and ctx.stop():
                         work.defer("stopped")
                         stats.defer("stop")
                         break
@@ -1599,7 +1600,7 @@ class MomentAdmissionStage:
         refresh_policies(state)
         mode = str((ctx.moment_evaluation_config or {}).get("mode") or "manual")
         for ep in episodes:
-            if ctx.stop and ctx.stop():
+            if ctx.stop is not None and ctx.stop():
                 stats.defer("stop")
                 continue
             raw = _read_storage_bytes(ctx.storage, ep.transcript_key or "")
@@ -1666,7 +1667,7 @@ class VideoClipsStage:
         if ctx.storage is None or ctx.dry_run:
             return stats
         for ep in episodes:
-            if ctx.stop and ctx.stop():
+            if ctx.stop is not None and ctx.stop():
                 stats.defer("stop")
                 continue
             admitted = [
