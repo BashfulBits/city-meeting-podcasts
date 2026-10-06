@@ -2048,3 +2048,26 @@ claim is made. Cases233032/259823 resolved;233037 stays open prepared.
 - ae8f0826293006f0: https://audio.citymeetings.fyi/swagit/76869ed1994f/ae8f0826293006f0-28ecf352023b.m4a
 
 Register169 cases:145 resolved24 open after these two proof closures and prior Flood closure.
+
+
+### September26/October3 provider transcript reconciliation (2026-10-06)
+
+The official provider pages load in the browser even though direct HTTP reads return403.
+Both players report a media-load error, so direct listening remains unavailable. Their
+transcripts explicitly warn that unreviewed voice-to-text is not official minutes.
+
+- GUID272574: https://dallastx.new.swagit.com/videos/272574
+  Provider heading and retained original chapter name September26. Transcript opening
+  describes task-force convening at6:07, followed by staff explaining town-hall listening
+  sessions and public speakers. Closing describes October3 as another town hall and
+  task-force adjournment at8:18. The Fullagenda tab exposes an iframe with an empty source;
+  it provides no exact official agenda. Formal convening and public-input function coexist
+  in this evidence; do not force an exclusive classification or close the case.
+- GUID273327: https://dallastx.new.swagit.com/videos/273327
+  Provider heading and original chapter bind October3. Provider transcript corroborates
+  convening6:09, approval of September19/26 minutes by motion/second/vote, and adjournment
+  at7:33. This supports further recording review but does not replace official minutes
+  or direct listening. No publication change or closure follows solely from ASR.
+
+Bounded research packet: `/tmp/dallas-september-october-provider-proof.json`. No media
+was downloaded, no raw titles/dates/records were overwritten, and both cases stay open.
