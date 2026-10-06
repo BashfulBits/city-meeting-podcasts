@@ -1826,3 +1826,11 @@ identity table. Preserve the existing five CBTF inclusions; shared ambiguous lab
 require bounded identity admission for259822/272005. The exact chairs-meeting label277589
 can support a reusable institution alias, with the existing formal CBTF feed as holder.
 No selector or case status was changed by this evidence check.
+
+### October6 — additional CBTF coverage prepared, #2092
+
+Actual selectors add259822/272005 exact identity pins and the complete277589 chairs-meeting
+alias. Full5,353-record/1,095-label replay changes only CBTF5→8: deb5a67aa9b6e8d1,
+eeca5aeceda62d39 and6a3caf1854bdd2cd. Every previous holder remains unchanged; no records
+mutated. Shared-label233037/272574 remain excluded. All three cases stay open pending
+human merge, deployment and exact own RSS/audio proof; preparation is not closure.

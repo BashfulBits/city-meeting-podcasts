@@ -1482,6 +1482,6 @@ same-run snapshot/staged publication contract in review/51. No public schema or 
 Fort Worth EMSISD participant #2086: **Shipped** in #2088; original audio verified deployed,
 bounded contract frozen and substantive review gap recorded in review/51.
 
-Dallas #2092 additional three CBTF proceedings: L3 in review/51; verified archive/source
+Dallas #2092 additional three CBTF proceedings: L3, implementation prepared in review/51; verified archive/source
 bindings, two exact ambiguous-label pins plus one reusable chairs-meeting institution alias.
 Existing holders/raw UID/audio preserved; full replay and deployed proof gate closure.

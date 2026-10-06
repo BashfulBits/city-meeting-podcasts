@@ -2166,3 +2166,6 @@ Keep all three cases open/prepared until live own subscription/audio verificatio
 Do not modify providers, models, schema, runtime modules, storage, stages, workers, workflow,
 other city/feed configs, source records or audio; no winner, split, backfill or invalidation.
 Freeze/stamp this bounded contract and mark shipped after human merge, not preparation.
+
+#2092 preparation: selectors/tests implemented; cases remain open until deployed own RSS/audio
+verification. Full retained-source replay changes only CBTF5→8, the three contracted UIDs.
