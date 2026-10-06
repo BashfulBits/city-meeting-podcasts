@@ -67,3 +67,39 @@ def test_additional_verified_cbtf_record_keeps_original_identity(uid):
         negative, source_body_filter(task_force.source), source_body_inclusions(task_force.source)
     )
     assert record == original
+
+
+@pytest.mark.parametrize("index", [0, 1, 2])
+def test_three_verified_cbtf_proceedings_preserve_identity(index):
+    """Two ambiguous labels require GUIDs; the complete chairs alias is reusable."""
+    root = Path(__file__).resolve().parents[1]
+    cities = load_city_configs(root / "config", {})
+    council = next(c for c in cities if c.slug == "dallas-tx-city-council")
+    task_force = next(c for c in cities if c.slug == "dallas-tx-2024-community-bond-task-force")
+    records = json.loads((root / "tests/fixtures/dallas-cbtf-three-retained.json").read_text())
+    record = records[index]
+    original = copy.deepcopy(record)
+
+    def matches(candidate):
+        return record_matches_body(
+            candidate,
+            source_body_filter(task_force.source),
+            source_body_inclusions(task_force.source),
+        )
+
+    assert matches(record)
+    assert not record_matches_body(
+        record, source_body_filter(council.source), source_body_inclusions(council.source)
+    )
+    rss = build_rss(
+        task_force, [record_to_episode(record)], "audio", "https://www.citymeetings.fyi"
+    )
+    assert record["uid"] in rss
+    assert record["audio"]["url"] in rss
+    assert matches(dict(record, provider_guid="future-recording")) is (index == 2)
+    for body in (record["body"] + " Public Town Hall", "CBTF and Subcommittee Chairs Meeting"):
+        assert not matches(dict(record, provider_guid="future-recording", body=body))
+    if index < 2:
+        unproven_guid = ("233037", "272574")[index]
+        assert not matches(dict(record, provider_guid=unproven_guid))
+    assert record == original

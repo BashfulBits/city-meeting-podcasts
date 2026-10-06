@@ -2144,14 +2144,14 @@
       "uid": "497b3aa05255bfb9",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Deployed same UID/audio in EMSISD Board participant feed; independent original official joint proof established",
-      "next_action": "Prepared under #2086; human merge/deployment then verify Council plus EMSISD participant RSS original whole audio before closure",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
+      "next_action": "Retain source records and both participant subscriptions; current Council RSS is bounded and omits this historical item",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "fort-worth-tx-city-council"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Proven Council/EMSISD joint: new participant RSS and retained Council page verified original UID/audio after #2088 deployment"
     },
     {
       "case_id": "fort-worth-tx-6a1dd0e9e8088440-ownership",
@@ -2312,12 +2312,14 @@
       "uid": "5e9fdb6ff9e8ef68",
       "provider_guid": "202453",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Deployed subscription ownership and original hosted audio verification; exact official notice binding established",
-      "next_action": "Prepared under #2083; human merge and deployment, then verify exact UID/audio in its distinct formal-taskforce or public-town-hall feed before closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
-      "status": "open",
-      "disposition": null
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2017-citizens-bond-task-force"
+      ],
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
     },
     {
       "case_id": "dallas-tx-6135249a278494c5-ownership",
@@ -2340,10 +2342,12 @@
       "uid": "6a3caf1854bdd2cd",
       "provider_guid": "277589",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Reconcile official CBTF archive and source chapters, prepare bounded ownership contract; no title-only closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
+      "missing_evidence": "Live own subscription coverage and original audio after human merge/deployment; dated official/source binding retained in audit.",
+      "next_action": "Prepared #2092: verify deployed CBTF subscription and original audio before bounded case closure.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
       "status": "open",
       "disposition": null
     },
@@ -2354,14 +2358,14 @@
       "uid": "78173acda7f7efea",
       "provider_guid": "269613",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
-        "dallas-tx-transportation-and-infrastructure"
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
     },
     {
       "case_id": "dallas-tx-8280ec97799c999e-ownership",
@@ -2398,14 +2402,14 @@
       "uid": "8969ad6d91ed23d2",
       "provider_guid": "269610",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Deployed standing-feed removal and own-subcommittee RSS original UID/audio verification",
-      "next_action": "Prepared reusable complete-label institution rules under #2068; verify deployment before closure; retain dated August15 minutes and original chapter binding",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
-        "dallas-tx-economic-development"
+        "dallas-tx-2024-bond-economic-development-subcommittee"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
     },
     {
       "case_id": "dallas-tx-96c10f4f75706719-ownership",
@@ -2430,10 +2434,12 @@
       "uid": "977d943cea00258e",
       "provider_guid": "269611",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Reconcile official CBTF archive and source chapters, prepare bounded ownership contract; no title-only closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
+      "missing_evidence": "Live dedicated RSS ownership and original audio proof; August 15 minutes unavailable, separate August 22 institution proof retained",
+      "next_action": "Prepared #2094 exact institutional feed; verify deployed original UID/audio before closure",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-bond-critical-facilities-subcommittee"
+      ],
       "status": "open",
       "disposition": null
     },
@@ -2490,10 +2496,12 @@
       "uid": "deb5a67aa9b6e8d1",
       "provider_guid": "259822",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Reconcile official CBTF archive and source chapters, prepare bounded ownership contract; no title-only closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
+      "missing_evidence": "Live own subscription coverage and original audio after human merge/deployment; dated official/source binding retained in audit.",
+      "next_action": "Prepared #2092: verify deployed CBTF subscription and original audio before bounded case closure.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
       "status": "open",
       "disposition": null
     },
@@ -2504,12 +2512,14 @@
       "uid": "eb1c279cc51a9b04",
       "provider_guid": "202452",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Deployed subscription ownership and original hosted audio verification; exact official notice binding established",
-      "next_action": "Prepared under #2083; human merge and deployment, then verify exact UID/audio in its distinct formal-taskforce or public-town-hall feed before closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
-      "status": "open",
-      "disposition": null
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2017-bond-public-town-halls"
+      ],
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
     },
     {
       "case_id": "dallas-tx-eeca5aeceda62d39-ownership",
@@ -2518,10 +2528,12 @@
       "uid": "eeca5aeceda62d39",
       "provider_guid": "272005",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Reconcile official CBTF archive and source chapters, prepare bounded ownership contract; no title-only closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
+      "missing_evidence": "Live own subscription coverage and original audio after human merge/deployment; dated official/source binding retained in audit.",
+      "next_action": "Prepared #2092: verify deployed CBTF subscription and original audio before bounded case closure.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
       "status": "open",
       "disposition": null
     },
@@ -2532,12 +2544,14 @@
       "uid": "fc9ad3b1d9def142",
       "provider_guid": "202451",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Deployed subscription ownership and original hosted audio verification; exact official notice binding established",
-      "next_action": "Prepared under #2083; human merge and deployment, then verify exact UID/audio in its distinct formal-taskforce or public-town-hall feed before closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
-      "status": "open",
-      "disposition": null
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2017-bond-public-town-halls"
+      ],
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
     },
     {
       "case_id": "dallas-tx-16300c982b358fe9-ownership",
@@ -2562,14 +2576,14 @@
       "uid": "2b172a76868ad86c",
       "provider_guid": "259821",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
-        "dallas-tx-transportation-and-infrastructure"
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
     },
     {
       "case_id": "dallas-tx-2bc4c440c974dba8-ownership",
@@ -2610,14 +2624,14 @@
       "uid": "427b4f7de9ec3a32",
       "provider_guid": "269609",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
-        "dallas-tx-transportation-and-infrastructure"
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
     },
     {
       "case_id": "dallas-tx-8578348e702caf35-ownership",
@@ -2674,14 +2688,14 @@
       "uid": "fe0b7e556c694307",
       "provider_guid": "259827",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
-        "dallas-tx-transportation-and-infrastructure"
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
     },
     {
       "case_id": "dallas-tx-ffd212474f9b51ad-ownership",
@@ -2690,14 +2704,14 @@
       "uid": "ffd212474f9b51ad",
       "provider_guid": "232343",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "None for this bounded ownership correction; broader recording coverage remains separate.",
+      "next_action": "Reopen if retained proof or deployed exact ownership/audio changes.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
-        "dallas-tx-transportation-and-infrastructure"
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Official institutional/date proof and original recording binding retained in audit; live RSS after successful d889c0b6 deployment verified own subscription exact original UID/audio and absence from incorrect prior current RSS. See October6 nine-case deployed closure audit."
     }
   ]
 }

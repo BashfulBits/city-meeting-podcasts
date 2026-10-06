@@ -1750,6 +1750,141 @@ https://dallascityhall.com/departments/public-works/dallasbondprogram/Documents/
 #2086 prepared replay:5896 retained source rows/979labels, new EMSISD participant0→1 only
 UID497b3aa05255bfb9; every prior feed unchanged.186 targeted and4959 full offline tests pass15 deselected; whole Ruff/format469 clean.
 
+### October6 nine-case deployed closure
+
+Successful main deployment37391178308/d889c0b6 includes #2073/#2082/#2085. Read-only public
+RSS verification returns200 for all seven checked subscriptions; all fifteen prepared Dallas
+UIDs are present in their intended feed with exact original hosted audio, absent from the
+incorrect prior current RSS. This verifies visibility, not complete historical RSS coverage.
+Close only the following nine whose independent recording/date proof is established:
+
+- `2b172a76868ad86c` / GUID`259821`: `dallas-tx-2024-bond-streets-and-transportation-subcommittee`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/2b172a76868ad86c-5a72aa9a1670.m4a`.
+- `427b4f7de9ec3a32` / GUID`269609`: `dallas-tx-2024-bond-streets-and-transportation-subcommittee`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/427b4f7de9ec3a32-b422b7b7b73d.m4a`.
+- `5e9fdb6ff9e8ef68` / GUID`202453`: `dallas-tx-2017-citizens-bond-task-force`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/5e9fdb6ff9e8ef68-7a982e6ad91d.m4a`.
+- `78173acda7f7efea` / GUID`269613`: `dallas-tx-2024-bond-streets-and-transportation-subcommittee`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/78173acda7f7efea-9783de27f3d3.m4a`.
+- `8969ad6d91ed23d2` / GUID`269610`: `dallas-tx-2024-bond-economic-development-subcommittee`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/8969ad6d91ed23d2-37656a4c3d8e.m4a`.
+- `eb1c279cc51a9b04` / GUID`202452`: `dallas-tx-2017-bond-public-town-halls`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/eb1c279cc51a9b04-0a46fb46c2eb.m4a`.
+- `fc9ad3b1d9def142` / GUID`202451`: `dallas-tx-2017-bond-public-town-halls`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/fc9ad3b1d9def142-b27b1925c6b1.m4a`.
+- `fe0b7e556c694307` / GUID`259827`: `dallas-tx-2024-bond-streets-and-transportation-subcommittee`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/fe0b7e556c694307-66bc0d6eb83a.m4a`.
+- `ffd212474f9b51ad` / GUID`232343`: `dallas-tx-2024-bond-streets-and-transportation-subcommittee`; exact original audio `https://audio.citymeetings.fyi/swagit/76869ed1994f/ffd212474f9b51ad-807a27408e4a.m4a`.
+
+Economic269610: own chair/convening/adjournment minutes plus original August15 chapter.
+2017three: byte-identical provider/official notices and retained document hashes, visually
+verified formal May27 versus public May22/May25. Streets five: official eight-date institutional
+archive and original dated source chapters bind May11/June13/June28/July17/Aug15, with
+independent May25/June13 own-chair minutes establishing the separate recurring subcommittee.
+May11 minutes502 does not erase independently retained archive/chapter binding.
+
+Six Streets cases remain open despite deployed correct ownership: May25/June20/Aug22 lack
+original dated chapter or other exact official recording link; Aug10/Oct26/Oct27 lack independent
+official archive-date/content binding. No closure solely from label/replay/RSS counts.
+Register169cases141resolved28open: Addison7/Dallas14/FortWorth7.
+
+### Destination Addison manual provider playback — 2026-10-06
+
+The official player at https://addisontx.new.swagit.com/videos/56026 loaded and played in
+browser inspection, with duration03:11 and the original February25,2009 title. Sampled frames
+at00:14 show a hotel reception with the Addison wordmark;01:17 shows an aerial venue/city
+montage;03:00 shows an event montage explicitly captioned “Addison's Year Round Special
+Events!” This supplies direct promotional-content corroboration beyond its previously unusable
+VTT. These sampled frames do not establish the content of every interval. Archive-only remains
+approved; the case stays open for deployed search verification and completion of its evidence
+obligation. No media download, recording mutation or new processing was performed.
+
+### EMSISD joint deployed verification — 2026-10-06
+
+PR #2088 human merged01:24:40UTC; deployment37399019547/f986567b succeeded. Live
+EMSISD participant RSS returns200 with UID497b3aa05255bfb9 exactly once and its original
+hosted audio. Council's retained original page returns200 with the same UID/audio at
+https://www.citymeetings.fyi/fort-worth-tx-city-council/497b3aa05255bfb9/ . Its bounded current
+RSS omits this historical recording; no claim of historical Council RSS completeness is made.
+Official April25,2016 agenda and independent source calls/chapters establish genuine joint
+participation; full5896-record replay retained every prior holder. This case is resolved.
+Register169cases/142resolved/27open pending this documentation merge. No raw/audio changes.
+
+### Vitruvian Park manual provider playback — 2026-10-06
+
+Official player https://addisontx.new.swagit.com/videos/56028 loaded the April9,2008 recording
+with duration07:04. At00:05 the frame identifies “Vitruvian Park in Addison”;01:33 presents
+an animated colored development model;04:57 shows a rendered cafe/residential streetscape with
+Vitruvian branding. These directly observed frames corroborate the scripted development promotion
+in stored ASR, beyond the provider title alone. They are sampled content, not proof of every
+interval. Archive-only remains approved; deployed search verification remains outstanding.
+No media download, new processing, raw title/date mutation or case closure occurred.
+
+### Additional Dallas CBTF source identity verification — 2026-10-06
+
+Read-only inspection of source76869ed1994f independently confirms these retained identities:
+
+| UID | GUID | Original body | Original chapter binding |
+|---|---|---|---|
+| deb5a67aa9b6e8d1 | 259822 | 2024 Capital Bond CBTF Meeting | No chapter; official June13 archive links exact video |
+| eeca5aeceda62d39 | 272005 | 2024 Capital Bond Program CBTF Meeting | September19,2023; source chapter1–12363.659547 |
+| 6a3caf1854bdd2cd | 277589 | 2024 Capital Bond CBTF and Subcommittee Chairs Meeting | October24,2023; source chapter2–6395 |
+
+The prior remaining-proof packet in the #2087 audit records September19 Subcommittee
+Recommendations and October24 allocations events, with the October27 official CBTF
+Recommended Bond Allocations memorandum as corroboration. Carry the dated official links
+into a bounded L3 contract before implementation; this source inspection alone is not closure.
+
+Shared labels remain ambiguous: GUID233037 shares259822's body; GUID272574 shares272005's
+body. Do not admit those unproven recordings through blanket body selectors. A subsequent
+contract can expand the existing CBTF feed for the proven identities, preserving all existing
+holders and recording bytes, and must test these shared-label negative cases. The unique
+chairs-meeting label is a candidate reusable institutional alias after the official proof
+packet is verified. All three cases remain open until implementation and deployed proof.
+
+### Dallas CBTF official dated archive recheck — 2026-10-06 04:07UTC
+
+The official Community Bond Task Force archive was fetched read-only again:
+https://dallascityhall.com/departments/bond-construction-management/2024-Bond-Dashboard/Pages/Community-Bond-Task-Force.aspx
+
+Its June13,2023 CBTF Meeting#3 card directly links exact Swagit259822. Its September19,2023
+card names Subcommittee Recommendations to CBTF; its October24,2023 card names CBTF
+Allocations to Subcommittees. Those latter cards expose video buttons rather than ordinary
+video hyperlinks in the fetched HTML; the retained original dated chapters bind272005 and
+277589 respectively. Do not describe those buttons as inspected exact GUID hyperlinks.
+
+This independently confirms the three dated institutional events in the preceding source
+identity table. Preserve the existing five CBTF inclusions; shared ambiguous labels still
+require bounded identity admission for259822/272005. The exact chairs-meeting label277589
+can support a reusable institution alias, with the existing formal CBTF feed as holder.
+No selector or case status was changed by this evidence check.
+
+### October6 — additional CBTF coverage prepared, #2092
+
+Actual selectors add259822/272005 exact identity pins and the complete277589 chairs-meeting
+alias. Full5,353-record/1,095-label replay changes only CBTF5→8: deb5a67aa9b6e8d1,
+eeca5aeceda62d39 and6a3caf1854bdd2cd. Every previous holder remains unchanged; no records
+mutated. Shared-label233037/272574 remain excluded. All three cases stay open pending
+human merge, deployment and exact own RSS/audio proof; preparation is not closure.
+
+### Dallas Critical Facilities institution corroboration — 2026-10-06
+
+The official archive directly links August22 Critical Facilities Meeting#6 minutes:
+https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/184/Critical%20Facilities%20Meeting_082223_Meeting%20Minutes.pdf
+
+Retrieved PDF identifies Critical Facilities Subcommittee, 2024 Bond Task Force, its own
+members and Chair Gates, August22 convening6:02pm/adjournment7:50pm. This independently proves
+a distinct subcommittee institution rather than Council topic or venue. It corroborates the
+same archive's August15 Meeting#5 and original269611 dated chapter; it does not supply the
+missing August15 minutes or prove an exact video hyperlink for that archive button.
+
+The May11 archive summary remains mislinked to whole-CBTF minutes and must not be used as
+Critical Facilities convening proof. A bounded institution-feed contract can use the correctly
+bound archive event/chapter plus this independent institution proof; do not claim the
+August22 minutes describe the August15 recording. Case977d943cea00258e remains open.
+
+### Prepared Critical Facilities institutional routing (#2094)
+
+The exact full institutional alias adds only retained UID977d943cea00258e/GUID269611 to its
+new dedicated feed. Full cached Dallas replay covered5,353records/1,095labels: new feed0→1;
+every previous feed holder set unchanged. Original fixture, raw identity and audio retained.
+Actual-config tests accept a future GUID with the same full institution label and reject
+public-town-hall, standing-Council/topic-only and shortened aliases. The case remains open
+until deployed dedicated RSS/original-audio proof; unavailable August15minutes are not
+substituted with the independent August22institution minutes.
+
 ### Dallas Flood subcommittee prepared implementation — #2089
 
 Exact original GUID269612/UID8280ec97799c999e routes to the new complete-label subscription;

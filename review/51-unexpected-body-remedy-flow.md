@@ -2113,29 +2113,25 @@ only after merge; direct live search verification still required for archive-cas
 #2083 prepared:185 targeted and4957 offline tests pass15 deselected, whole Ruff/format468
 clean. Full5353 replay changes only formal0→1/publictownhalls0→2. Deployment gates remain.
 
-### Fort Worth source-scoped EMSISD participant feed — L3, #2086
+### Consecutive Fort Worth3814 publication note — L2, specific schema gate
 
-User policy requires each proven participant subscription. Retained official April25,2016
-packet and live original provider cuepoints bind UID497b3aa05255bfb9/clip2491 to Council
-and EMSISD Board participation, shared presentation, both announcements and single adjournment.
-Council ownership is correct; missing participant discovery is the bounded correction.
+Disposition approved: both whole recordings remain in Council/CCPD subscriptions and explicitly
+identify consecutive proceedings. Existing rendering has no per-record publication-note field;
+raw official titles, descriptions and source chapters must remain immutable.
 
-Add `config/feeds/fort-worth-tx-emsisd-board-joint-meetings.yml`, city fort-worth-tx, provider
-granicus, copying Council's existing five feed_urls unchanged, using only existing body_exact:
-`BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL`.
-Title: Eagle Mountain-Saginaw ISD Board Joint Meetings with Fort Worth Council. Source-scoped
-participation feed, not district-wide onboarding; no new source namespace or provider fetch path.
+Proposed bounded implementation contract: source-scoped city config `publication_notes`, each
+entry strict UID/provider_guid/note/approval_ref, only the two proven3814 UIDs. Exact note:
+“Consecutive CCPD Board and City Council proceedings; whole recording retained.” Add ephemeral
+Episode `publication_note` for RSS/page rendering only, never persist it in records or alter
+source title/description, UID/audio, search schema, chapters or stage versions. Validate exact
+UID/GUID/source binding before rendering and preserve previous output on identity error. Include
+note policy in render/feed-content cache hash only; no audio invalidation. Render escaped note
+in episode RSS show notes and raw page; both original participant feeds retain both UIDs.
 
-Add original fixture `tests/fixtures/fortworth-emsisd-joint-retained.json` and
-`tests/test_fortworth_emsisd_joint_ownership.py`: actual config admits original alongside Council,
-RSS preserves UID/audio; same full label future GUID auto-admits proven institutional pair;
-Council-only/other-school-joint/unrelated-board negatives; raw record unchanged. Replay every
-retained Fort Worth source record across all configured feeds: new feed0→1 only original UID,
-all prior owners unchanged. Run full offline and whole Ruff/format. No Council or other existing
-selector changes, title/audio/record mutations, stage invalidation, publication groups or backfill.
-Update ARCHITECTURE/CHANGELOG/ROADMAP/review11, audit and case prepared action. Keep case open
-until human merge and deployed exact same UID/audio in both participant RSS feeds. Freeze/stamp
-only after human merge; no inference for other unresolved Fort Worth bundles.
+Specific config/model presentation-schema approval remains necessary before code under the
+prior no-unspecified-schema gate. After approval mature to L3 with named parser/model/run/feeds/
+site/cache files and original two-record positive/negative/RSS/raw-page tests. No general bundle
+classifier, audio splitting, publication winner, other source/holder change or backfill.
 
 #2084 test compatibility: existing tests/test_workflows.py pins the superseded single
 build-deploy job. Update only deploy workflow job/artifact/order assertions for approved
@@ -2199,6 +2195,79 @@ Preserve fresh non-search pages. A malformed or missing checkpoint must never de
 No provider/schema/storage writes, dependencies, stage changes or deadline increases.
 Run full offline and whole Ruff/format; material fix requires current-head substantive review.
 
+
+#2086 implemented in PR #2088, human merged2026-10-06T01:24:40Z. Contract frozen.
+Human merge preceded a substantive CodeRabbit request; explicit review gap, no closed-PR review.
+Live EMSISD RSS and retained Council page verify the original UID/audio; current bounded Council
+RSS omits this historical item. Closure proof is recorded in the committed audit.
+
+### Dallas additional CBTF proceedings — L3, #2092
+
+Verified official archive/source bindings are recorded in the October6 additional CBTF
+evidence sections of the committed audit. Existing CBTF institution policy applies.
+
+Files: config/feeds/dallas-tx-2024-community-bond-task-force.yml; new original-record fixture
+tests/fixtures/dallas-cbtf-three-retained.json; tests/test_dallas_cbtf_ownership.py; this doc,
+review11, CHANGELOG, ROADMAP and the evidence audit/register for preparation/deployed status.
+No ARCHITECTURE change: existing body_exact/body_includes semantics are reused.
+
+Preserve five existing GUID inclusions. Add exact body_includes259822 (2024 Capital Bond
+CBTF Meeting) and272005 (2024 Capital Bond Program CBTF Meeting). Add one reusable body_exact
+alias: 2024 Capital Bond CBTF and Subcommittee Chairs Meeting, proven277589. Future GUIDs
+with that exact complete institutional alias are eligible. Do not broaden either shared
+label: unproven233037/272574 remain excluded. No Council or other selector changes.
+
+Retain original UID deb5a67aa9b6e8d1/259822, eeca5aeceda62d39/272005 and
+6a3caf1854bdd2cd/277589 with original audio/title/date/chapter metadata. New fixture is an
+unaltered copy of these three retained records. Tests use actual config, prove own RSS/audio
+identity and Council absence, unchanged records, same-body/wrong-GUID rejection for two
+pins, future-GUID acceptance only for exact chairs alias, and near-label negatives.
+
+Full5,353-record replay must change only CBTF5→8, exactly these three UIDs; every prior
+holder remains identical. Whole offline suite, whole Ruff/format and diff check required.
+Actual test-code review follows repository-wide65minute gate; human merge commits only.
+Keep all three cases open/prepared until live own subscription/audio verification.
+
+Do not modify providers, models, schema, runtime modules, storage, stages, workers, workflow,
+other city/feed configs, source records or audio; no winner, split, backfill or invalidation.
+Freeze/stamp this bounded contract and mark shipped after human merge, not preparation.
+
+#2092 preparation: selectors/tests implemented; cases remain open until deployed own RSS/audio
+verification. Full retained-source replay changes only CBTF5→8, the three contracted UIDs.
+
+### Dallas bond Critical Facilities institution — L3, #2094
+
+Evidence: official archive dated August15 Meeting#5 plus original269611 chapter binds the
+recording. Correctly linked August22 minutes independently prove the named subcommittee,
+chair and own convening/adjournment. These are separate evidence roles: do not claim
+August22 minutes describe August15. Missing August15 minutes remain a documented limit.
+The committed audit retains the official URLs and excludes the mislinked May11 summary.
+
+Files: new config/feeds/dallas-tx-2024-bond-critical-facilities-subcommittee.yml; new
+tests/fixtures/dallas-bond-critical-retained.json; new tests/test_dallas_bond_critical_ownership.py;
+CHANGELOG, ROADMAP, review11, this doc, evidence audit/register. No architecture change.
+
+Reuse Dallas views113 provider source and body_exact only:
+2024 Bond Task Force Critical Facilities Subcommittee Meeting. New dedicated podcast named
+Dallas: 2024 Bond Critical Facilities Subcommittee, existing Dallas author/email conventions.
+Exact institutional label automatically accepts future GUIDs; no Critical Facilities topic
+substring, alternate unproven alias or GUID replacement. Copy retained977d943cea00258e/269611
+unaltered into fixture. No prior holder changes, no other feed config modifications.
+
+Actual-config tests: own feed eligibility, absent Council/standing committees, exact original
+RSS UID/audio, unchanged fixture, future GUID with same complete label admitted, near-label
+public-town-hall/standing-Council/topic-only candidates excluded. Replay all5,353 rows/1,095
+labels: new feed0→1 only977d943cea00258e; all previous feed holder sets byte-identical.
+If replay differs, stop and investigate before widening scope. Run targeted routing/sweep,
+whole offline suite, whole Ruff/format and diff checks. Actual code review requires the
+repository-wide65minute request gate and current CI. Human merge commits only.
+
+Record prepared selector assignment while keeping case open until live own RSS/original
+audio proof. After human merge freeze/stamp this contract and ship lifecycle docs.
+Do not modify runtime/model/provider/schema/storage/stage/worker/workflow/other selectors,
+records/titles/dates/chapters/audio; no splits/winner/backfill/invalidation or quota work.
+
+Prepared #2094: exact institutional feed implemented; deployment verification remains required.
 
 ### Dallas bond Flood subcommittee reusable ownership — L3, #2089
 

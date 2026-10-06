@@ -919,7 +919,7 @@ def test_granicus_worker_deploy_is_path_scoped_and_uses_cloudflare_secrets():
     assert test_step["working-directory"] == "workers/granicus-media-proxy"
     deploy = next(step for step in job["steps"] if step.get("name") == "Deploy Worker")
     # SHA-pinned per review/22 / GH#734 (the `# v4` comment is stripped by the YAML parser).
-    assert deploy["uses"] == "cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0"
+    assert deploy["uses"] == "cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0"
     assert deploy["with"]["workingDirectory"] == "workers/granicus-media-proxy"
     assert deploy["with"]["apiToken"] == "${{ secrets.CLOUDFLARE_API_TOKEN }}"
     assert deploy["with"]["accountId"] == "${{ secrets.CLOUDFLARE_ACCOUNT_ID }}"
