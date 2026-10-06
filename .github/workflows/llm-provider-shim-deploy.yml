@@ -40,7 +40,7 @@ jobs:
         run: npm test
 
       - name: Deploy Worker
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -48,4 +48,4 @@ jobs:
           # Exact pin per review/22 (Node/Cloudflare Worker class: "exact / lockfile"). "4" would
           # resolve ^4.0.0, so a later deploy could use a different Wrangler than the one this
           # Worker was verified with. Renovate tracks this pin as npm tooling (GH#1328).
-          wranglerVersion: "4.137.0"
+          wranglerVersion: "4.147.0"
