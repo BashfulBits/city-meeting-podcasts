@@ -117,20 +117,22 @@ historical evidence obligation; unknown older recordings are not silently retire
 
 
 P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) shipped in PR #1992, covering
-three verified committee recordings ().
-Exact labels exclude the Open House; CPC duplicate identities shipped in #2003/#2010.
+three verified Unified Development Code Advisory Committee recordings. Exact labels exclude the
+Open House; CPC duplicate identities shipped in #2003/#2010.
 
 P0's [Pflugerville BOA batch](pflugerville-boa-coverage-2026-10.md) shipped in PR #1993, adding
-the verified  feed with ten retained recording identities,
-full source replay and fifteen regression cases.
+the verified Board of Adjustment feed with ten retained recording identities, full source replay,
+and fifteen regression cases.
 
 P0's exact-label selector prerequisite separates bare committee names from distinct public-input
 formats. It preserves the source namespace/UIDs and does not change any existing feed configuration.
+The approved Fort Worth #3814 consecutive-proceedings note is L3 at
+[review/51](51-unexpected-body-remedy-flow.md#consecutive-fort-worth3814-publication-note--l3-2107),
+tracked by [#2107](https://github.com/BashfulBits/city-meeting-podcasts/issues/2107).
 
 P0's [Arlington batch](arlington-coverage-2026-10.md) shipped in commit 5ffabb6, covering
-two verified named-body decisions ( and
-) with full provider/persisted replay and retained UID
-verification. Reviewed Foundation duplicate groups shipped in #2002.
+the Housing Finance Corporation and Zoning Board of Adjustment with full provider/persisted replay
+and retained UID verification. Reviewed Foundation duplicate groups shipped in #2002.
 
 P0's guard prerequisite generalizes local policy protection to the approved aggregate families and
 exact reviewed named bodies. Unknown identities remain held; this does not complete the historical

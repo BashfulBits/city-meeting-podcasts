@@ -2126,25 +2126,45 @@ only after merge; direct live search verification still required for archive-cas
 #2083 prepared:185 targeted and4957 offline tests pass15 deselected, whole Ruff/format468
 clean. Full5353 replay changes only formal0→1/publictownhalls0→2. Deployment gates remain.
 
-### Consecutive Fort Worth3814 publication note — L2, specific schema gate
+### Consecutive Fort Worth3814 publication note — L3 (#2107)
 
-Disposition approved: both whole recordings remain in Council/CCPD subscriptions and explicitly
-identify consecutive proceedings. Existing rendering has no per-record publication-note field;
-raw official titles, descriptions and source chapters must remain immutable.
+**Disposition and field schema approved 2026-10-06.** Both whole recordings remain in Council and
+CCPD subscriptions and identify consecutive proceedings. The approved note is “Consecutive CCPD
+Board and City Council proceedings; whole recording retained.” Official title/description, source
+chapters, stable UID, and audio remain unchanged.
 
-Proposed bounded implementation contract: source-scoped city config `publication_notes`, each
-entry strict UID/provider_guid/note/approval_ref, only the two proven3814 UIDs. Exact note:
-“Consecutive CCPD Board and City Council proceedings; whole recording retained.” Add ephemeral
-Episode `publication_note` for RSS/page rendering only, never persist it in records or alter
-source title/description, UID/audio, search schema, chapters or stage versions. Validate exact
-UID/GUID/source binding before rendering and preserve previous output on identity error. Include
-note policy in render/feed-content cache hash only; no audio invalidation. Render escaped note
-in episode RSS show notes and raw page; both original participant feeds retain both UIDs.
+**Bounded implementation:** add `publication_notes` to only the Council and CCPD feed configs,
+with strict entries containing `uid`, `provider_guid`, `note`, and `approval_ref`. The two exact
+bindings are UID `0c66fc968402fabd` to the provider GUID ending `view_id=10&clip_id=3814`, and UID
+`99152cb9e61fa091` to the GUID ending `view_id=11&clip_id=3814`. The exact provider GUIDs are
+`https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3814` and
+`https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=3814`. Their shared source key is
+`6540eef2dc2e`; all 28 configured Fort Worth feeds currently resolve to that one source archive.
+Keep these notes in the two participant feed configs so they do not appear in unrelated feeds.
 
-Specific config/model presentation-schema approval remains necessary before code under the
-prior no-unspecified-schema gate. After approval mature to L3 with named parser/model/run/feeds/
-site/cache files and original two-record positive/negative/RSS/raw-page tests. No general bundle
-classifier, audio splitting, publication winner, other source/holder change or backfill.
+- `citypods/models.py`: add parsed `City.publication_notes` config and ephemeral
+  `Episode.publication_note` presentation fields. The episode field must stay out of persisted
+  records.
+- `citypods/config.py`: strictly parse the optional list; require exactly the four named nonempty
+  string keys, reject unknown keys and duplicate UIDs, and preserve the exact strings.
+- `citypods/run.py`: after source-key records are loaded and feed bodies are selected, validate
+  each present UID against its exact provider GUID before writing any feed/page output. Project
+  notes onto shallow episode copies for the two participant feeds; on a mismatch return an error
+  without replacing existing output. Missing UIDs remain unannotated until present.
+- `citypods/feeds.py` and `templates/meeting.html.j2`: HTML-escape the note and display it as a
+  separate publication note in RSS rich show notes and raw meeting pages. Do not overwrite the
+  provider description or title.
+- `citypods/records.py`: include the ephemeral note in `feed_content_hash` and `meeting_page_hash`
+  so note edits re-render only; do not add it to `audio_spec_hash` or `episode_to_record`.
+- Tests in `tests/test_config.py`, `tests/test_feeds.py`, `tests/test_site.py`,
+  `tests/test_run.py`, and `tests/test_records.py`: cover exact positive bindings, wrong UID/GUID,
+  unrelated feeds, HTML escaping, RSS/page output, immutable records/audio, note-sensitive render
+  hashes, and preserving prior output on identity mismatch.
+
+No new modules, dependencies, provider behavior, search schema, stage versions, audio splitting,
+publication winner, other source/holder change, or backfill. Run targeted tests, the whole offline
+suite, whole `ruff check .`, and `ruff format --check .`; CodeRabbit review is required for the
+resulting code PR. Human merge only.
 
 #2084 test compatibility: existing tests/test_workflows.py pins the superseded single
 build-deploy job. Update only deploy workflow job/artifact/order assertions for approved
