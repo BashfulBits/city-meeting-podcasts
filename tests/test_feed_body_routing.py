@@ -67,14 +67,13 @@ def test_recurring_label_routes_to_exactly_one_feed(label, owner, siblings, feed
 
 
 # (provider GUID, the one feed allowed to pin it).  A one-off inclusion is only correct if
-# exactly one feed carries it -- two would publish the same recording twice.
+# exactly one feed carries it; verified joints are separately pinned to their participants.
 PINNED_GUIDS = [
     (
         "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3622",
         "arlington-tx-council",
     ),
     ("205110", "dallas-tx-bid-purchasing"),
-    ("13509", "denton-tx-city-council"),
     # An advisory board, not a Council session: it belongs with boards/commissions even though
     # both feeds read the same Swagit view.
     ("392481", "waco-tx-boards-and-commissions-committee"),
@@ -97,3 +96,13 @@ def test_tirz_selector_needs_no_body_any_alternative(feeds) -> None:
     assert selector == "TIRZ"
     assert matches("TIRZ Board", selector)
     assert matches("TIRZ Board Meeting", selector)
+
+
+def test_verified_library_joint_has_exact_participant_feeds(feeds) -> None:
+    """The official Council/Library joint belongs to both proven participants."""
+    holders = {
+        slug
+        for slug, city in feeds.items()
+        if any(inc.provider_guid == "13509" for inc in source_body_inclusions(city.source))
+    }
+    assert holders == {"denton-tx-city-council", "denton-tx-library-board"}

@@ -12,11 +12,42 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Guard dispatch quota schema upgrades before job writes (PR #2057).** Detect all four quota columns added
+  by PR #2028, add only missing columns on otherwise-current objects, and verify readiness before
+  serving RPCs. Current-schema startups remain write-free. Mutation preflight prepares a zero-row
+  quota query before lease reaping or queue writes; an incomplete schema blocks repeated RPCs until
+  recreation, while transient read errors can retry. Partial upgrades retain completed columns.
+  No quota or recipe changes, pipeline-version bump, artifact invalidation, or catalog backfill.
+  Live rollout deployed code `5b3b9f6` as Worker version
+  `266f6645-51c9-41f8-85f3-c7c4e4f4cee9`. Detailed stats now succeed. A conservative same-day
+  reconciliation based on the maintainer-reported 90,000-row account warning raised the local
+  counter from 31,780 to 90,002; the four-column migration added five writes (90,007 total).
+  Admission is closed until UTC reset. This floor is not an exact billing reconstruction.
+
+
+- Correct eight Denton TIRZ board subscriptions from Council into separate Zone1/Zone2 feeds,
+  preserving UID/audio/raw records. No stage invalidation or backfill.
+
+- Correct two standalone Denton Library subscriptions and add Library to its verified Council
+  joint, preserving UID/audio/raw records. No stage invalidation or backfill.
+
+- Separate four verified Denton Health & Building Standards Commission recordings from Council;
+  retain original UID/audio/raw records. No stage invalidation or automatic backfill.
+
+- Give four verified Arlington Community and Neighborhood Development committee recordings
+  their own exact-label feed; remove Council leakage and preserve All Meetings, UID/audio and
+  archives. No stage invalidation or audio backfill.
+
 - Correct dispatch quota accounting: reserve and settle Qwen 3.8's 200k daily token allowance;
   classify OrcaRouter prompt-cap errors by metadata, reroute rejected jobs and retain a learned
   size bound while keeping shorter jobs eligible. Google uses trailing-minute input-only TPM,
   schema-inclusive queue estimates, and preserves the configured size safety margin. No stage
   version bump, artifact invalidation or automatic backfill. SambaNova token incident: #2027.
+- Remove the verified January 22, 2022 Dallas Redistricting Commission recording from Council;
+  retain its dedicated Commission feed, UID/audio and archives. No stage invalidation or backfill.
+
+- Restore exact raw archive routing for the approved Addison luncheon; retain archive-only
+  feed/search/browse exclusion, original UID/audio, and unchanged processing stages.
 
 - Prepare the verified September 19, 2016 Addison Council/P&Z joint subscription (#2025).
   Add Council alongside P&Z with the same UID/audio; existing canonical search attribution
@@ -245,6 +276,12 @@ Phase R (Research-Tool Surface)._
   Optional `llm_backlog` settings control the window and thresholds. This is a read-only
   consumer: no producer, Worker, durable schema, pipeline recipe or stored artifact changes.
   The scheduled workflow remains review/50 PR2 (GH#1969).
+- Migrated provider-catalog quality scoring to Artificial Analysis's supported Free V2 language
+  models endpoint ahead of the November 4, 2026 legacy retirement. Fetches all pages, matches
+  creator names from the new schema, and leaves all candidates unscored if any page fails.
+  Existing API keys and issue attribution remain in use; no Pro subscription is needed. An
+  independent weekly endpoint-contract job now checks the live quality catalog and both reference
+  models, failing visibly on missing credentials or an unusable response.
 
 - **A judge evaluation lane (`evals/judge/`, `scripts/eval_judge.py`).** The pilot harness for the review/49
   judge stack, in the `evals/chapter-agenda` layout: a frozen `manifest.json` (inputs) and `gold.json` (truth),
@@ -7257,3 +7294,57 @@ The case remains open pending human merge and deployed subscription verification
 - Preserve the ASR Python 3.12 constraints target while updating pinned build Actions.
 - Synchronize the exact Wrangler 4.147.0 packaging assertion and deployment Action test.
 - No pipeline version, stored artifact, runtime source, or production ceiling changes.
+
+### Archive-only and 2016 joint shipped (2026-10-05)
+
+Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
+Their bounded implementation contracts are frozen. Main `ac0fa4bb` Build & Deploy succeeded.
+CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining actionable issues;
+#2026 was merged before its substantive review slot, an explicit review gap. No stage/audio
+invalidation or backfill. Both joint feeds carry the same original UID/audio; its case is resolved.
+The register now has seven open historical evidence cases, rather than eight.
+
+Live verification: six archive UIDs absent from Public Input/Council/P&Z RSS and Public Input
+browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89c7c5c5c returns
+404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
+Public search and its expected manifest return 404; do not claim deployed search verification.
+Retain these visibility/access checks and all independent historical content evidence obligations.
+
+- Prepared Denton Special Citizens Bond Advisory Committee feed for exact GUID 28865,
+  removing its Council override while preserving raw UID/audio. No invalidation or backfill.
+
+- Shipped exact Denton ownership corrections in #2043–#2053: four Health Commission,
+  two standalone Library, eight TIRZ board and one 2019 Bond committee recordings leave
+  Council for dedicated feeds; the proven Council/Library joint gains Library while retaining
+  Council. Raw UID/audio/source identities are preserved. No invalidation or backfill.
+
+- Prepared exact six-record Arlington Environmental Task Force feed, removing Council
+  leakage and preserving All Meetings, UID/audio. No invalidation or backfill.
+
+- Shipped exact six-record Arlington ETF ownership correction in #2058. Original raw UID/audio
+  and All Meetings preserved; no invalidation/backfill. Deployment verification pending.
+
+Dallas exact November2023 Community Bond Task Force recording280220 leaves Council for its own feed. Original UID/audio/raw records preserved; no stage invalidation or backfill.
+
+Four additional verified Dallas CBTF recordings gain their own feed coverage through exact GUID inclusions. Both August15 original source UIDs remain; no duplicate winner, audio change, stage invalidation or backfill.
+
+- Dallas Economic Development ownership: replace the standing broad substring with 11
+  complete institutional aliases, preserving genuine joints and existing exceptions; add a
+  complete-label 2024 bond subcommittee subscription. Recurrences need no GUID pin. Preserve
+  raw UIDs/audio/source records; no stage invalidation or backfill.
+
+- Prepared #2081: separate Dallas 2024 bond Streets and Transportation with reusable complete
+  institution labels, preserving standing aliases/joints and four existing GUID exceptions.
+  Raw recordings/UIDs/audio stay unchanged; no stage invalidation or backfill. Cases stay open
+  pending independent recording evidence and deployed ownership verification.
+
+- Prepared #2083: exact official agenda bindings distinguish one2017Dallas bond taskforce
+  meeting from two identically labeled public town halls; original UID/audio/raw title retained.
+  No stage invalidation or backfill; case closure requires deployment verification.
+
+- Prepared #2086: add source-scoped EMSISD Board/Fort Worth Council joint subscription for
+  proven clip2491, preserving Council ownership and original recording/audio. No backfill.
+
+- Prepared #2089: add Dallas 2024 bond Flood Control and Storm Drainage subscription using
+  its complete institution label. Preserve raw UID/audio; no stage invalidation or backfill.
+  Case remains open pending deployment verification.

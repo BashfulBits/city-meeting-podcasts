@@ -69,3 +69,18 @@ This recreates coordinator instances against the same workerd SQLite storage bet
 RPCs and compares the independent billed-write meter with the persisted counter delta.
 Both must match exactly. Worst-case projection constants now include accounting: 8 rows per
 bundle, 28 per leased job, and 5 per cleanup job. Configured quotas and thresholds are unchanged.
+
+
+## Quota-schema guard regression (2026-10-05)
+
+Run `curl -s "http://127.0.0.1:8799/schema?name=schema-guard"` against a fresh local object.
+The harness removes the four quota columns after enqueue/claim, attempts three expired-lease
+claims, then recreates the coordinator to migrate and resume. Each failed claim must write zero
+rows; migration must add only missing columns, resumed jobs must be nonzero, and the next
+current-schema recreation must write zero rows. The independent meter uses real workerd cursors,
+including index entries. Use local storage only: this harness deliberately removes columns.
+
+Measured with the deployment's workerd 1.20260921.1: three rejected claims each wrote/read zero
+rows; all four missing-column ALTERs plus accounting cost five writes once; dispatch resumed four
+jobs; the next recreation wrote zero rows. The separate accounting recreation check still measured
+71 writes and an exactly matching persisted delta.

@@ -1636,3 +1636,524 @@ Council membership and change no other feed memberships; negative unrelated-GUID
 Case register updates preparation evidence only; keep open until deployed verification.
 Lifecycle docs: review/11, audit, CHANGELOG, ARCHITECTURE and ROADMAP. No runtime/schema,
 dependency/provider/stage/storage changes, audio invalidation or backfill. Human merge required.
+
+### Arlington Community and Neighborhood Development — L3
+
+Maintainer-authorized catalog-wide committee ownership correction. Four retained 2020 records
+have exact body `Community and Neighborhood Development Committee`; dated official agendas
+convene that committee alone. Current official Council-member assignments and the2026 city
+Neighborhood Matching Grant guide distinguish this continuing committee from full Council.
+
+Create config/feeds/arlington-tx-community-and-neighborhood-development-committee.yml with
+slug matching filename, city arlington-tx, provider granicus, existing view2 feed_url, source
+body_exact list containing only that exact committee label. Title Arlington: Community and
+Neighborhood Development Committee, author City of Arlington, TX, empty email, description
+Meetings of Arlington's Community and Neighborhood Development Committee. Do not infer
+lifecycle retirement from old cached dates; omit lifecycle and optional meeting_family.
+Remove only that label from arlington-tx-council.yml body_any. Preserve arlington-tx All Meetings
+and every other selector. No global exclusions or changes to genuine Council joint recordings.
+
+New tests/fixtures/arlington-cnd-retained.json captures four original minimal records/audio;
+tests/test_arlington_cnd_ownership.py loads actual config and verifies four Council departures,
+four dedicated-feed additions, unchanged All Meetings selection, original RSS UID/enclosure,
+near-label/topic negatives and unchanged raw records. Full retained-source replay must show
+only those exact membership changes. Update four register cases with prepared proof, not closure.
+Lifecycle review11/CHANGELOG/ARCHITECTURE/ROADMAP/audit. Issue before code, whole offline/Ruff,
+current CI/CodeRabbit then human merge. No runtime/provider/schema/dependency/stage changes.
+Environmental Task Force remains a separate lifecycle/evidence decision, not silently bundled.
+
+### Archive-only and 2016 joint shipped (2026-10-05)
+
+Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
+Their bounded implementation contracts are frozen. Main `ac0fa4bb` Build & Deploy succeeded.
+CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining actionable issues;
+#2026 was merged before its substantive review slot, an explicit review gap. No stage/audio
+invalidation or backfill. Both joint feeds carry the same original UID/audio; its case is resolved.
+The register now has seven open historical evidence cases, rather than eight.
+
+Live verification: six archive UIDs absent from Public Input/Council/P&Z RSS and Public Input
+browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89c7c5c5c returns
+404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
+Public search and its expected manifest return 404; do not claim deployed search verification.
+Retain these visibility/access checks and all independent historical content evidence obligations.
+
+### Luncheon direct archive routing — L3
+
+Maintainer authorized the proposed access fixes and catalog expansion on 2026-10-05.
+Add only GUID55864/body `Addison Economic Development Luncheon` to existing Public Input
+body_includes. Its existing archive-only declaration continues excluding all public discovery.
+Modify that feed config and tests/test_archive_visibility.py actual-config regression to prove
+raw selector admission and archive exclusion, preserving original UID/audio. No runtime changes.
+Update audit/review11/CHANGELOG; full offline suite and whole Ruff/format required. Human merge.
+
+### Dallas Redistricting Council leakage — L3 bounded correction
+
+Authorized catalog-wide body-policy correction. Official January22,2022 Commission notice
+binds GUID203320/UIDbd172b762dd20b63 to the existing Redistricting Commission feed.
+Remove only that GUID override from config/feeds/dallas-tx-city-council.yml. Preserve existing
+Commission selectors, source state, UID/audio and archive pages. New minimal fixture
+ tests/fixtures/dallas-redistricting-retained.json and tests/test_dallas_redistricting_ownership.py
+load actual configs and verify Commission-only membership, stable RSS enclosure/UID, exact
+negative and untouched raw record. Full cached Dallas replay must remove only this Council
+membership and change no other feed. No runtime/schema/provider/stage/dependency changes.
+Update register prepared evidence without closing until deployed proof; review11/CHANGELOG/audit.
+Create tracking issue before implementation, whole offline/Ruff/format, CodeRabbit and human merge.
+
+### Denton Health & Building Standards ownership — L3 bounded contract
+
+Authorized catalog correction: four dated official agendas independently convene the commission,
+not Council. Council Work Session Room is their venue. Institutional continuity is corroborated
+by official 2026 commission agendas and current municipal appointments.
+
+Create config/feeds/denton-tx-health-building-standards-commission.yml, slug matching filename,
+city denton-tx, provider swagit, source.list_url https://dentontx.new.swagit.com/views/5.
+Use source.body_includes only the existing four exact GUID/body pairs 122398,120835,120506,119886
+copied from Council. Remove only those four Council overrides. Title Denton: Health & Building
+Standards Commission, author City of Denton, TX, empty email and descriptive commission text.
+Omit optional meeting_family and lifecycle; no broad substring rule or invented family.
+This bounded migration does not claim complete commission recording coverage.
+
+New tests/fixtures/denton-health-standards-retained.json captures four minimal original records
+and hosted audio. tests/test_denton_health_standards_ownership.py loads actual config, verifies
+four Council departures/four commission additions, near-GUID negatives, RSS UID/audio and
+unchanged raw records. Full retained Denton source replay must change only these four memberships;
+retain the proved Council/Library joint. Update four case preparation evidence, keep cases open.
+Lifecycle files: review11, audit, CHANGELOG, ARCHITECTURE and ROADMAP. Whole offline/Ruff/format,
+current CI and CodeRabbit before human merge commits. No runtime/schema/provider/dependency/stage
+changes, invalidation, backfill or production writes. Remaining Denton bodies are separate slices.
+
+Denton Health & Building Standards implementation #2044 was human-merged on 2026-10-05
+at10:00:30Z, before substantive CodeRabbit review and before PR CI completed. Record this review
+gap explicitly; skipped automatic review is not coverage. Full4918 offline tests passed locally.
+Deployed membership verification remains pending; four cases stay open.
+
+### Denton Library Board ownership — L3 bounded contract
+
+Two retained official agendas convene Library Board alone: GUID120859 (May13,2021,
+UIDb50c6a018b2c08e7) and118306 (Apr8,2021,UIDc10f3f6cd97ac38f). The March3,2014
+GUID13509 UIDa1aa4af8f26e120c agenda explicitly convenes Council jointly with Library Board.
+
+Create config/feeds/denton-tx-library-board.yml, slug denton-tx-library-board, city denton-tx,
+provider swagit, existing source.list_url https://dentontx.new.swagit.com/views/5.
+Use body_includes the three exact existing Council GUID/body pairs copied unchanged. Remove only
+120859 and118306 from Council; preserve13509. Title Denton: Library Board, author City of Denton,
+TX, empty email, descriptive Library Board text; omit lifecycle and optional meeting_family.
+No broad substring selection. This slice does not claim complete Library recording coverage.
+New tests/fixtures/denton-library-retained.json captures three original metadata/audio records;
+tests/test_denton_library_ownership.py verifies actual config, two Council departures/three Library
+additions, joint remaining Council, RSS UID/audio, exact-GUID negatives and unchanged records.
+Full retained Denton replay must change only these memberships. Update three register preparation
+next actions without closure. Lifecycle review11/CHANGELOG/ARCHITECTURE/ROADMAP/audit. Whole offline,
+Ruff/format/currentCI. CodeRabbit only actual code changes per maintainer override2026-10-05;
+configuration YAML/documentation alone needs no bot review. Human merge commits only.
+No runtime/schema/provider/stage/dependency changes, invalidation, backfill or production writes.
+
+Library integration acceptance: tests/test_feed_body_routing.py must remove GUID13509 from
+the obsolete single-owner list and explicitly require exactly Council and Library holders.
+This updates the earlier #1231 regression to the approved proven-participant joint policy;
+retain all unrelated single-owner pins. No runtime change.
+
+### Denton TIRZ boards ownership — L3 bounded contract
+
+Eight retained dated agendas explicitly convene their named TIRZ board, not Council. Zone1
+has six records (122084,116732,112601,87440,78064,73923); Zone2 has two (111521,14400).
+The official Development Districts page and Legistar departments corroborate distinct boards.
+Council Work Session Room is a venue, not joint participation proof.
+
+Create config/feeds/denton-tx-tirz-1-board.yml and denton-tx-tirz-2-board.yml, slugs matching
+filenames, city denton-tx, provider swagit, existing source.list_url
+https://dentontx.new.swagit.com/views/5. Each source.body_includes copies only its listed exact
+GUID/body pairs unchanged from Council; remove only these eight Council overrides. Titles
+Denton: TIRZ No. 1 Board and Denton: TIRZ No. 2 Board, author City of Denton, TX, empty email,
+descriptions naming each board. Omit optional meeting_family/lifecycle, no broad selectors.
+Do not infer complete board coverage or retirement from these old cached records.
+
+New tests/fixtures/denton-tirz-retained.json captures eight original metadata/audio records.
+tests/test_denton_tirz_ownership.py loads actual config, verifies eight Council departures,
+six Zone1/two Zone2 additions, no wrong-zone matches, exact-GUID negatives, original RSS
+UID/audio and raw records. Retain the Council/Library joint. Full2176-source replay changes only
+these memberships. Update eight register next actions, do not close until deployed verification.
+Lifecycle review11/CHANGELOG/ARCHITECTURE/ROADMAP/audit. Whole offline/Ruff/format/currentCI;
+CodeRabbit actual code only under maintainer override. Human merge commits only. No runtime,
+schema/provider/stage/dependency changes, invalidation, backfill or production writes.
+
+### Denton 2019 Special Citizens Bond committee ownership — L3 (#2051)
+
+The retained official June 6, 2019 agenda explicitly convenes the Special Citizens Bond
+Advisory Committee, not Council, for public safety facilities in the proposed 2019 Bond
+Program. Exact source binding: GUID `28865`, UID `04689e3929ac104e`, body
+`Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM`, existing Denton Swagit
+source `https://dentontx.new.swagit.com/views/5`. This proves the named proceeding; it does
+not establish standing status, formal dissolution or other years' committee identities.
+
+Create `config/feeds/denton-tx-special-citizens-bond-advisory-committee.yml`, city `denton-tx`,
+provider `swagit`, existing list URL, exact single GUID/body `body_includes` only. Title
+`Denton: Special Citizens Bond Advisory Committee`, author `City of Denton, TX`, empty email,
+description `Verified recording of the Denton Special Citizens Bond Advisory Committee.`
+Omit optional family/lifecycle metadata. Remove only GUID `28865` and its body from
+`config/feeds/denton-tx-city-council.yml`; preserve every other selector.
+
+Add original minimal record fixture `tests/fixtures/denton-bond-retained.json` and
+`tests/test_denton_bond_ownership.py`: actual config selects the original committee record,
+Council rejects it, unchanged body with different GUID rejects it, RSS preserves UID/audio,
+and input record remains unchanged. Replay all 2,176 retained source records against the
+parent baseline: exactly one Council departure and one new committee addition, no other
+feed changes. Run the full offline suite and whole-repository Ruff lint/format checks.
+
+Update this contract and review/11 with implementation state, plus CHANGELOG, ARCHITECTURE,
+ROADMAP and the committed ownership audit. Set only this register case's next action to
+prepared verification; keep it open until deployed RSS identity/ownership proof. Freeze/stamp
+only after the change reaches main. Do not modify runtime, schemas, providers, dependencies,
+stages, records, audio or publication groups; no invalidation/backfill or production writes.
+
+Bond #2051 implementation is prepared on `feat/2051-denton-bond-feed` under this contract.
+Full 2,176-record replay changes Council 756→755 and the new committee feed 0→1 only;
+targeted identity/negative checks and whole-repository Ruff pass. The case remains open for
+post-main deployment verification; the contract is not frozen before the parent stack merges.
+
+### Denton bounded stack implemented — frozen stamp, 2026-10-05
+
+The Health Commission, Library, TIRZ boards and 2019 Bond committee contracts above are
+implemented and frozen in PRs #2044/#2043, #2047/#2046, #2050/#2049 and #2053/#2052.
+The parent stack reached main `8a4adbeb` on October 5. Earlier #2044 and #2053 child merges
+into documentation branches did not themselves ship to main. Original raw records, UIDs,
+audio and source namespaces remain unchanged. No stage invalidation or backfill occurred.
+
+Library substantive review covered `cb4fa348`; one exact-GUID negative-test finding was
+fixed in test-only `1690b8e0`, replied and resolved, with green CI. Health #2044 merged before
+substantive review. TIRZ's only full request at 12:30:52 UTC was aborted on head change;
+#2050 merged before retry. Bond #2053 merged before a full request. These are explicit
+review gaps, not completed reviews. Do not request reviews on the closed PRs. Full offline
+suites and CI passed for the implementation heads; deployed ownership verification remains
+outstanding. Keep the sixteen Denton cases open until actual deployed proof is recorded.
+
+### Arlington Environmental Task Force — bounded L3 (#2055)
+
+Six retained 2020 agendas explicitly convene the Environmental Task Force with its own call
+and adjournment. Council references describe reports/recommendations, not a joint call.
+Full cached source `ecc3710ac47f` census finds exactly six ETF records. The 2022 official
+ARP report describes recommendations completed in 2020 and Municipal Policy Committee
+implementation in 2021; do not infer standing status or formal dissolution from that report.
+
+Create `config/feeds/arlington-tx-environmental-task-force.yml`, city `arlington-tx`, provider
+`granicus`, existing feed URL from Council, exact GUID/body `body_includes` for the six UIDs
+below only. Provider GUIDs are the original full MediaPlayer URLs, never just clip integers.
+Title `Arlington: Environmental Task Force`, author `City of Arlington, TX`, empty email,
+description `Verified 2020 Arlington Environmental Task Force proceedings.` Omit optional
+family/lifecycle metadata. Remove only Council's `Environmental Task Force` body_any term.
+Keep the deliberately unfiltered `arlington-tx` All Meetings feed unchanged.
+
+| UID | clip_id in original `https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=` | Exact body |
+|---|---|---|
+| 1792515fdd51c6c2 | 3443 | Environmental Task Force |
+| 25e9b8510b0a7a66 | 3494 | Environmental Task Force Meeting |
+| 2d5dc451df2da130 | 3454 | Environmental Task Force Meeting |
+| 35b22fcc8d07967b | 3424 | Environmental Task Force Meeting |
+| 9b66e98b682a47f2 | 3508 | Environmental Task Force Meeting |
+| a683af6e13e2bd7a | 3479 | Environmental Task Force Meeting |
+
+Add original minimal six-record `tests/fixtures/arlington-etf-retained.json` and actual-config
+`tests/test_arlington_etf_ownership.py`: ETF selected, Council rejected, All Meetings retained,
+RSS original UID/audio, unchanged raw input, and same body with different GUID rejected.
+Replay all 1,515 source records: exactly six Council departures/six ETF additions, all other
+feeds including aggregate unchanged. Whole offline/Ruff/format checks required. Update
+review/11, CHANGELOG, ARCHITECTURE, ROADMAP, audit and six register next actions in the
+implementation; keep cases open until deployed proof. Freeze/stamp only after main merge.
+Do not modify runtime, schemas, providers, dependencies, stages, records, audio, publication
+groups or other selectors. No invalidation/backfill or production writes.
+
+Arlington ETF #2055 implementation is prepared on its feature branch: six exact GUID/body
+inclusions and only the Council ETF term removed. Full1,515 replay changes Council962→956,
+ETF0→6 and no other feed, including All Meetings. Deployment verification remains pending.
+
+Arlington ETF bounded contract is implemented/frozen in PR #2058 (human merged October 5,
+2026 at 15:31:42 UTC). Conflict resolution `8c312d45` preserved both roadmap entries and
+main's unrelated Worker changes; ETF selectors/test remained unchanged, ten targeted checks
+and whole Ruff/format passed, current CI green. Full offline implementation suite passed4,927.
+Full review request5997651345 at15:30:50 UTC received reply5997653803 "Pull request is closed."
+No substantive review completed before merge; record the explicit gap, never request closed
+reviews. ETF six deployment cases remain open until live proof. No invalidation/backfill.
+
+### Dallas November 2023 Community Bond Task Force — bounded L3 (#2062)
+
+Official city CBTF archive and November4,2023 minutes establish a task-force proceeding,
+chaired by Arun Agarwal with separate call/adjournment. Stored original recording280220
+chapter explicitly identifies that same date. Subcommittee chairs attend, but no separate
+subcommittee or Council convening is proved. Minutes header gives8:24AM; body says8:24PM,
+an official inconsistency which must remain visible rather than silently corrected.
+
+Create `config/feeds/dallas-tx-2024-community-bond-task-force.yml`, city Dallas, Swagit
+provider and exact existing Council list_url. Use only body_includes GUID `280220`, exact
+body `2024 Bond CBTF and Subcommittee Chairs Meeting`, no broad body/family/lifecycle.
+Title `Dallas: 2024 Community Bond Task Force`, author `City of Dallas, TX`, empty email,
+description `Verified Dallas 2024 Community Bond Task Force proceedings.` Remove only that
+GUID/body pair from Council. Preserve UID `baa19208405acb22`, source `76869ed1994f`, audio
+and raw record. Add minimal original `tests/fixtures/dallas-cbtf-retained.json` and
+`tests/test_dallas_cbtf_ownership.py` actual-config selection, Council negative, original RSS
+UID/audio, same body wrong GUID negative and unchanged raw input. Existing body_includes
+selects by exact provider GUID; its body is metadata, not a second predicate. Do not change
+that runtime contract.
+Full5,353-record replay: one Council departure, one task-force addition, every other feed
+unchanged. Whole offline/Ruff/format required. Update review/11, CHANGELOG, ARCHITECTURE,
+ROADMAP, audit and register next action in implementation; keep case open until deployed
+proof; freeze/stamp after main merge. Do not modify runtime, schema, provider, dependencies,
+stages, records, audio, publication groups or other selectors. No invalidation/backfill.
+
+Census also finds17 other CBTF/subcommittee/town-hall rows; their proof and coverage require
+separate reconciliation. The exact single-record correction does not claim full family coverage.
+
+Dallas #2062 implementation prepared under the exact contract. Replay changes only
+Council358→357 and CBTF0→1; original raw records unchanged. Offline4,929 pass14 deselected,
+wholeRuff463/format pass. Current CI/review and deployed proof remain pending.
+
+### Dallas four additional CBTF recordings — bounded L3 (#2065)
+
+Dated city summaries establish CBTF convening/adjournment on June20, August15 and August22,
+2023. Original provider chapters identify those same dates; official city archive also links
+August22 GUID269916 directly. Add only these exact GUID/body inclusions to existing
+`config/feeds/dallas-tx-2024-community-bond-task-force.yml`:
+
+| UID | GUID | Exact original body |
+|---|---|---|
+| 96c10f4f75706719 | 246971 | 2024 Capital Bond CBTF Meeting |
+| aaf0ad8eaabe68a5 | 269278 | 2024 Capital Bond CBTF Meeting |
+| 130a7ebded8e0e1d | 269608 | 2024 Bond Task Force Community Bond Task Force Meeting |
+| cba1e023051d7c94 | 269916 | 2024 Capital Bond CBTF Meeting |
+
+All four currently match no feed. Preserve both August15 original UIDs and all audio/raw
+source identities; no duplicate-winner claim or publication-group change. Add original minimal
+`tests/fixtures/dallas-cbtf-additional-retained.json` and extend
+`tests/test_dallas_cbtf_ownership.py` with parametrized actual-config original RSS/audio,
+no Council holder, same-body/different-GUID negative and raw-preservation checks for each.
+Existing exact GUID runtime semantics stay unchanged. Full5,353 replay must add only these
+four UIDs to CBTF1→5, every other feed unchanged. Wholeoffline/Ruff/format required.
+Update review/11, CHANGELOG, ARCHITECTURE, ROADMAP, audit and four register next actions.
+Keep cases open until deployed verification; freeze/stamp after main merge. Do not modify
+other selectors, runtime, schemas, dependencies, providers, stages, records, audio or
+publication groups. No invalidation/backfill. May25 GUID233037 excluded pending stronger
+exact binding (current provider403 and no original chapter); other candidates remain open.
+
+Dallas #2065 implementation prepared. Exact four additions/no other full-source ownership
+changes; all4,933 offline tests pass14 deselected. WholeRuff463/format clean. Cases stay open
+until deployment; current CI and substantive code review still pending.
+
+### Dallas reusable Economic Development ownership rules — design follow-up
+
+The maintainer requested reusable institution selectors where possible. Existing source
+`body_exact` supports complete normalized labels without a new runtime/schema. The cached
+Dallas census has 138 Economic Development substring matches across 12 labels; one is the
+separately convened 2024 bond subcommittee (GUID269610). Replace the standing feed's broad
+substring with the other 11 complete labels only after recording the full alias contract and
+positive/negative replay. Preserve its unrelated GUID overrides and all genuine joint aliases.
+A dedicated bond-subcommittee feed should use its stable complete institutional label rather
+than require a new GUID exception for each recurrence. Original August15 chapters and official
+minutes establish this body independently of the standing Council committee.
+
+This entry is L2: no selector changes yet. Before L3, name the alias list, feed/fixture/test
+files, exact source replay deltas, and issue. Do not modify runtime body matching, providers,
+schemas, dependencies, stages, records, media, publication groups or existing joint policy.
+
+### Dallas Economic Development reusable rules — L3 (#2068)
+
+Supersedes the L2 follow-up above. In `config/feeds/dallas-tx-economic-development.yml`,
+replace only `source.body` with `source.body_exact` containing these 11 complete labels:
+
+- Economic Development
+- Economic Development and Housing Committee
+- Special Economic Development
+- Special Economic Development and Housing Committee
+- Special Called Joint Meeting of the Council Ad Hoc Committee on Professional Sports Recruitment and Retention and Council Economic Development Committee
+- Combined Economic Development & Housing
+- Special Called Joint Meeting of Economic Development and Workforce, Education, and Equity
+- Joint Meeting of Transportation and Economic Development Meeting
+- Special Call Meeting Economic Development & Housing Committee Housing Policy Stakeholder Forum
+- Economic Development & Committee on Finance
+- Economic Development Committee
+
+Preserve both existing GUID inclusions 205545/203327. Add
+`config/feeds/dallas-tx-2024-bond-economic-development-subcommittee.yml`, same city/provider/
+list_url as the standing feed, with only `source.body_exact` label
+`2024 Bond Task Force Economic Development`. Title it Dallas 2024 Bond Economic Development,
+Housing and Homeless Solutions Subcommittee. This is a reusable complete-label rule, not a
+GUID pin. Official August15 minutes and original chapters bind GUID269610,
+UID8969ad6d91ed23d2 to its independently convened proceeding.
+
+Add minimal original fixture `tests/fixtures/dallas-bond-economic-retained.json` and
+`tests/test_dallas_bond_economic_ownership.py`: actual-config standing rejection/new-feed
+acceptance; original RSS UID/audio and unchanged raw record; same-label/new-GUID acceptance;
+other bond subcommittee and unrelated Economic Development label negatives; all 11 standing
+aliases including joint labels retained. Replay all5,353 retained Dallas rows: standing feed
+loses only UID8969ad6d91ed23d2, new feed gains only it, every other holder unchanged. Run whole
+Ruff/format/offline. Update review/11, CHANGELOG, ARCHITECTURE, ROADMAP, audit and case next action.
+Case remains open until deployed ownership/audio proof. Do not modify runtime, other selectors,
+schemas, dependencies, providers, stages, records, media, publication groups or joint policy.
+No invalidation/backfill; no inference of other bond subcommittees' recording proof.
+
+#2068 prepared: 193 targeted tests pass; final full offline4,935 pass14 deselected.
+WholeRuff464/format/diff clean. Initial serializer indentation failure corrected without
+runtime changes. Full replay preserves all other holders; deployed closure remains pending.
+
+### Dallas reusable Streets bond ownership rules — L3, #2081
+
+Approved scope: resolve remaining registered recordings with reusable institution rules under
+maintainer direction. Independent city bond archive and May25/June13 minutes establish Streets
+and Transportation as a separately convened 2024 Bond Task Force subcommittee, chaired by Linda
+Koop. Original chapter dates corroborate May11/June13/June28/July17/Aug15 records. Institution
+routing does not assert that every recording's date/content evidence is complete.
+
+Files: replace `body`/`body_any` in
+`config/feeds/dallas-tx-transportation-and-infrastructure.yml` with existing `body_exact`:
+all current matched full labels except the four 2024 bond labels and the three exception-only
+labels Mill Creek Tunnel Project, Transportation for Hire, Transportation-for-Hire Work Group.
+Preserve existing four `body_includes` entries unchanged. Add
+`config/feeds/dallas-tx-2024-bond-streets-and-transportation-subcommittee.yml`, same Dallas/source
+Swagit113, exact four labels from the committed census. No new selector/schema/runtime path.
+Existing named DART/legislative/Economic/Government Performance joints remain standing aliases.
+
+Add original eleven-record fixture `tests/fixtures/dallas-bond-streets-retained.json` and test
+`tests/test_dallas_bond_streets_ownership.py`: all originals move standing→bond; each same-label
+new GUID auto-admits bond; all standing aliases retain standing and reject bond; four GUID
+exceptions preserve existing identities and reject same-body different-GUID exception rows;
+other bond bodies/unrelated labels reject; RSS preserves each UID/audio and raw records unchanged.
+Use standard indented YAML lists compatible with existing feed editor.
+
+Full cached-source/all-feed replay acceptance: 5353 rows, standing140→129, bond0→11, no other
+holder additions/removals. Whole Ruff/format and full offline suite required. No provider/stage,
+audio/source UID, storage, dependency, workflow, publication-selection, search or record changes.
+No invalidation/backfill. Update audit/register prepared actions, ARCHITECTURE/CHANGELOG/ROADMAP
+and review11. Close no case solely from selectors; keep independent missing-date/content evidence
+and deployment verification explicit. Freeze/stamp this section only after human merge.
+
+### Remaining37 maintainer decisions — October5 follow-up
+
+Maintainer explicitly requests resolution of all37 registered open recordings. Independent
+proof work may proceed in parallel; closures still require verified evidence and deployed proof.
+Fort Worth3814 disposition approved: keep whole consecutive CCPD/Council bundle in both proven
+participant feeds, explicitly label it as consecutive proceedings. Preserve both source-view
+UIDs and whole audio; no duplicate winner or audio split. Design the bounded presentation-only
+label contract before changing code; no broader bundled-recording inference.
+
+Search scheduling choice approved: run search in a separate bounded job, keep the existing
+search time ceiling. Prepare exact workflow/CLI/artifact ownership and failure/preservation
+contract before implementation. This is authorization for the chosen approach, not permission
+to introduce an unspecified schema, raise a budget or touch credentials interactively.
+
+### Dallas2017 bond taskforce versus town halls — L3, #2083
+
+Exact agenda binding supersedes misleading shared provider label: May27 GUID202453
+UID5e9fdb6ff9e8ef68 provider agenda SHA256eb8a902b8b7b6d309acd807bb940cea1d4fa08ad041ec4ee609107223125dc8f
+matches official revised formal2017CitizensBondTaskForce notice. May22/May25 GUID202451/202452
+UIDfc9ad3b1d9def142/eb1c279cc51a9b04 agendas share official two-public-town-hall notice,
+SHA256bf95a89fcf271b90183ab2b94f8c686a9dac614485326cb938e0d0beeefe0be7.
+Both notices visually verified; Council Chambers is venue, not Council participation.
+
+Add `config/feeds/dallas-tx-2017-citizens-bond-task-force.yml` with exact GUID202453 inclusion,
+and `config/feeds/dallas-tx-2017-bond-public-town-halls.yml` with exact GUID202451/202452.
+Both reuse city/provider/source Swagit113 and expected original body
+`Citizens Bond Task Force: Town Hall Meeting`; runtime GUID semantics remain unchanged.
+Three source records are all cached occurrences of this shared label. Distinct subscriptions
+are necessary because the same label denotes two different proceeding types; do not generalize
+by label here. No Council/source/other-feed edits or raw title replacement.
+
+Add `tests/fixtures/dallas-2017-bond-retained.json` original three records and
+`tests/test_dallas_2017_bond_ownership.py`: actual configs exact owners, same-body different-GUID
+negative, each other owner's GUID negative, RSS original UID/audio, raw identity unchanged.
+Full5353-record/all-feed replay: formal0→1, publictownhalls0→2, all other feeds unchanged.
+Whole Ruff/format/offline required; no stage invalidation/backfill. Update ARCHITECTURE,
+CHANGELOG, ROADMAP, review11 and audit/register prepared actions. No case closure before live
+RSS original audio/ownership proof. Freeze/stamp only after human merge.
+
+### Separate bounded static search job — L3, #2084
+
+Maintainer approved separate job at unchanged20minute ceiling. Correction: current deployment
+already uses render phase, whose search creates a fresh deadline; the older exhausted shared
+stop diagnosis is not current deploy behavior. Separate scheduling is still the chosen approach.
+
+Named files: `citypods/cli.py`, `citypods/run.py`, `citypods/search.py`,
+`.github/workflows/deploy.yml`, `tests/test_static_search_job.py`, existing search/run/CLI tests,
+ARCHITECTURE/CHANGELOG/ROADMAP/review11 and this section. No dependency/provider/stage/state
+record/storage-write/Worker changes or public search schema changes.
+
+CLI: add render-only `build --skip-search` and `--search-context-output` path; add
+`search-index --state-dir --output-dir --site-config --config-dir --base-url --context-path`.
+Coordinator `search.build_search_site` directly reuses `build_search_index`, existing config
+loaders, `make_storage` sidecar read operations and templates. Never call build/providers,
+statesync or record persistence from this command. Fresh monotonic deadline uses configured
+search_index_budget_minutes, rejects values above20 or nonpositive values. No live model calls.
+
+Render exports same-run `feed_info`/base URL into internal artifact context JSON at the explicit
+context-output path, never a source record. Skip-search preserves prior complete files and
+advertises search only if a complete manifest/page already exists. Default local build behavior
+is unchanged. Search staging copies prior generated site/index before any shard mutation;
+mutate staged shards and output-local search cache only. On deferral/error discard staging,
+preserve every prior public index/shard/asset/navigation byte. On complete success publish staged
+search dirs/assets/page and regenerate root navigation from artifact feed_info; update root
+meta search counts without changing unrelated metadata. Remove stale source shards only on success.
+
+Workflow split: render→search→deploy. Render retains cache/statesync/read credentials and feed
+validation, runs `build --phase render --no-refresh --skip-search` plus explicit context path,
+then uploads same-run generated docs, context, and only `.citypods-state/sources/*/episodes.json`
+as search record inputs. Search downloads that exact artifact (no fresh snapshot), installs
+same pinned production deps, runs new command under20minute indexing deadline with bounded job
+setup allowance, uploads complete site. Deploy consumes only that site's same-run artifact,
+retains existing Pages concurrency/deployment environment/retries. Keep current60minute job
+ceiling; job-level least privilege: render/search contents:read, deployment Pages/id-token only.
+Existing storage read secrets scoped to search command; no new names/backend or interactive auth.
+Preserve paths on deferral and allow deployment of retained complete site with explicit summary.
+
+Tests: CLI wiring/invalid phase/budget, fresh independent deadline, no record/provider/storage
+writes, stopped second-source build preserves all old public bytes, complete success drops stale
+source output and updates navigation/meta, disabled-search behavior, same-run artifact flow,
+six Addison archive UIDs absent from complete shards while raw pages remain. Whole offline suite,
+whole Ruff/format and current-head workflow/code review required before human merge. Freeze/stamp
+only after merge; direct live search verification still required for archive-case closure.
+
+#2083 prepared:185 targeted and4957 offline tests pass15 deselected, whole Ruff/format468
+clean. Full5353 replay changes only formal0→1/publictownhalls0→2. Deployment gates remain.
+
+### Fort Worth source-scoped EMSISD participant feed — L3, #2086
+
+User policy requires each proven participant subscription. Retained official April25,2016
+packet and live original provider cuepoints bind UID497b3aa05255bfb9/clip2491 to Council
+and EMSISD Board participation, shared presentation, both announcements and single adjournment.
+Council ownership is correct; missing participant discovery is the bounded correction.
+
+Add `config/feeds/fort-worth-tx-emsisd-board-joint-meetings.yml`, city fort-worth-tx, provider
+granicus, copying Council's existing five feed_urls unchanged, using only existing body_exact:
+`BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL BOARD OF TRUSTEES OF EAGLE MOUNTAIN-SAGINAW ISD AND THE FORT WORTH CITY COUNCIL`.
+Title: Eagle Mountain-Saginaw ISD Board Joint Meetings with Fort Worth Council. Source-scoped
+participation feed, not district-wide onboarding; no new source namespace or provider fetch path.
+
+Add original fixture `tests/fixtures/fortworth-emsisd-joint-retained.json` and
+`tests/test_fortworth_emsisd_joint_ownership.py`: actual config admits original alongside Council,
+RSS preserves UID/audio; same full label future GUID auto-admits proven institutional pair;
+Council-only/other-school-joint/unrelated-board negatives; raw record unchanged. Replay every
+retained Fort Worth source record across all configured feeds: new feed0→1 only original UID,
+all prior owners unchanged. Run full offline and whole Ruff/format. No Council or other existing
+selector changes, title/audio/record mutations, stage invalidation, publication groups or backfill.
+Update ARCHITECTURE/CHANGELOG/ROADMAP/review11, audit and case prepared action. Keep case open
+until human merge and deployed exact same UID/audio in both participant RSS feeds. Freeze/stamp
+only after human merge; no inference for other unresolved Fort Worth bundles.
+
+#2086 prepared:186 targeted and4959 full offline tests pass15 deselected; whole Ruff/format469
+clean. Full5896 replay adds only one EMSISD participant holder, all existing feeds unchanged.
+No case closure until deployed original audio/UID verified.
+
+### Dallas bond Flood subcommittee reusable ownership — L3, #2089
+
+Official August15,2023 Flood Control/Storm Drainage Subcommittee minutes independently
+convene chair Anita Childress6:05pm and adjourn8:15pm. Original provider chapters bind
+GUID269612/UID8280ec97799c999e to that date and institution. This is a standalone2024Bond
+subcommittee; Council recommendations discussed are not Council participation.
+
+Add `config/feeds/dallas-tx-2024-bond-flood-subcommittee.yml`, same Dallas/Swagit113 source,
+existing body_exact only `2024 Bond Task Force Flood`; title Dallas2024Bond Flood Control and
+Storm Drainage Subcommittee. No existing selector changes. Add original fixture
+`tests/fixtures/dallas-bond-flood-retained.json` and `tests/test_dallas_bond_flood_ownership.py`:
+actual-config new feed accepts original, same-label/future-GUID recurrence auto-admits,
+standing Council/Flood topic/other bond bodies reject; raw UID/audio/RSS remain unchanged.
+Full5353-record/all-feed replay must add only original UID to newfeed0→1, every old holder
+unchanged. Full offline and whole Ruff/format required. No provider/runtime/schema/record/audio/
+stage/dependency changes, backfill or publication winner. Update ARCHITECTURE/CHANGELOG/
+ROADMAP/review11/audit and case prepared action; case stays open until human merge and live
+exact UID/audio verification. Freeze/stamp after human merge only.

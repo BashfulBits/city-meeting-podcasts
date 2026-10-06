@@ -14,8 +14,6 @@ source:
     - "City Council Agenda - Afternoon"
     - "City Council Agenda - Morning"
   body_includes:
-    - provider_guid: "203320"
-      body: "Saturday Redistricting Commission"
     - provider_guid: "204508"
       body: "Redistricting Town Hall"
     - provider_guid: "204507"
@@ -32,8 +30,6 @@ source:
       body: "Ballot Order Drawing"
     - provider_guid: "205567"
       body: "Ballot Order Drawing"
-    - provider_guid: "280220"
-      body: "2024 Bond CBTF and Subcommittee Chairs Meeting"
     - provider_guid: "245386"
       body: "City Council Inauguration"
     - provider_guid: "202270"

@@ -1,0 +1,22 @@
+{
+  "uid": "baa19208405acb22",
+  "provider_guid": "280220",
+  "body": "2024 Bond CBTF and Subcommittee Chairs Meeting",
+  "title": "2024 Bond CBTF and Subcommittee Chairs Meeting \u2013 Nov 04, 2023",
+  "published": "2023-11-04T00:00:00+00:00",
+  "video_url": "https://dallastx.new.swagit.com/videos/280220/download",
+  "audio": {
+    "attempts": 0,
+    "bytes": 169995682,
+    "duration_served": 15036.101,
+    "encode_time": "2026-07-27T19:44:53.604508+00:00",
+    "error": null,
+    "error_spec_hash": null,
+    "key": "swagit/76869ed1994f/baa19208405acb22-e4a53a049ef6.m4a",
+    "last_attempt": null,
+    "rebuild": null,
+    "spec_hash": "e4a53a049ef6",
+    "url": "https://audio.citymeetings.fyi/swagit/76869ed1994f/baa19208405acb22-e4a53a049ef6.m4a",
+    "verification": null
+  }
+}

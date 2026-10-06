@@ -1,6 +1,6 @@
 # review/49 — Judge-consensus admission (JEV as anchor judge)
 
-**Maturity: L2-partial (approach chosen, risks and capacity worked out; not L3 dev-ready) · authored 2026-09-29, revised 2026-09-30.
+**Maturity: L2-partial (approach chosen, risks and capacity worked out; not L3 dev-ready) · authored 2026-09-29, revised 2026-10-05.
 The gap to L3 is listed in "Path to L3" at the bottom; this doc is not yet in `review/11`.**
 
 **Document map.** This document is the umbrella design: why, what, decisions, capacity and evidence. Each implementation phase gets its own build spec
@@ -153,7 +153,7 @@ tags attach to; this design does not judge chapter discovery (that stays with th
      Groq Dev tier (paid) would lift it, which is not planned. The second adjudicator route should be whichever
      locator-target model falls out of contention once the locator verdict is final, using its long context for large packets;
      `gemini-3.8/3.7/3.6-flash` (40 RPD each) are small overflow. **Quality check (2026-09-30):** on the same 30 known-truth items packed 5 per request (about 760 prompt tokens, 400–800 reasoning tokens, about 2 s each, `reasoning_effort: high`, `json_schema`) Qwen3.8-27B was 30/30 correct with quoted evidence; the set is easy, so this confirms it can do the job within its 7k-token packets, not its accuracy on hard cases. Sharing a model with the locator is acceptable because adjudicators
-     are rarely called (it only shares RPD).
+     are rarely called; shared RPD, TPM and TPD still need a combined demand budget (see below).
    - *Volume and packing.* Judging is per (tag, chapter) pair, not per call: at about 25 pairs per episode, 1,000 episodes
      is about 25,000 pairs/day, and 10% contested is 2,500 pairs/day (not 10% of the roughly 1,750 tagger and moment calls). Adjudication
      is packed, not per pair: greedy packets of contested items across chapters and episodes, up to the route's input ceiling and at most
@@ -445,7 +445,55 @@ Today's quotas total about 34.8k units/day across all lanes (69.6k rows if fully
 | Adjudicator (packed, ≤ 20 questions or route ceiling) | about 60 to 120 | 200 |
 | Agenda / locator | about 300 jobs each | existing route capacity |
 
-At 500 episodes/day the adjudicator need is small enough that Qwen3.8-27B (about 6k-token packets, 1,000 RPD) plus one former locator route covers it comfortably.
+The 60–120 adjudicator calls/day target cannot be justified from Qwen's 1,000 RPD alone.
+The observed TPD cap below makes Qwen supplemental capacity at 6k-token packet sizes; coverage
+by Qwen plus a former locator route remains unproven until the combined token budget is measured.
+
+### Token-cap evidence and sibling/adjudicator selection (2026-10-05)
+
+Snapshot after [PR #2028](https://github.com/BashfulBits/city-meeting-podcasts/pull/2028).
+Configured values below come from [`config/provider_limits.yml`](../config/provider_limits.yml);
+compiled admission limits come from
+[`dispatch_limits.json`](../workers/llm-dispatch-v2/src/dispatch_limits.json).
+**An absent `tpd` is unknown/unconfigured, not evidence of unlimited daily tokens.**
+The observations are maintainer-supplied Gateway failures and the earlier probes recorded above;
+no fresh live quota probes were run for this note.
+
+| Candidate route(s) | Configured raw TPD | Compiled TPD | Observed TPD evidence |
+|---|---|---|---|
+| Groq `groq_qwen_3_8_27b_primary` | 200,000 | 180,000 (10% safety margin) | HTTP 429: `Limit 200000, Used 199659, Requested 1089`; service tier `on_demand` |
+| Groq Qwen 3.6 (catalog entry, not a current lane) | Absent | Absent | No numerical TPD observation recorded here; do not copy Qwen 3.8's cap |
+| AI Studio Gemma 4 26B / 31B, primary and secondary projects | Absent | Absent | No numerical TPD observation recorded here |
+| Gemini 3.8 / 3.7 / 3.6 / 3.5 Flash and 3.5 / 3.1 Flash Lite, both projects | Absent | Absent | Google quota 429 reported; actual quota metric and daily token ceiling not supplied |
+| OrcaRouter GLM 5.3 Flash / DeepSeek v4 Flash (potential former locator routes) | Absent | Absent | HTTP 400 `err_free_prompt_cap`: per-request free prompt cap, **not TPD**; numerical cap unknown |
+| NVIDIA Kimi K3 / DeepSeek v4.1 Flash and other catalog Gemma routes (NVIDIA, OpenRouter, SambaNova) | Absent | Absent | No numerical TPD observation recorded here |
+| BeatAPI JEV (planned anchor; not yet in the route catalog) | Not configured | Not configured | No numerical TPD observation recorded here; the documented 1 RPM / concurrency 1 is a separate constraint |
+
+Qwen's sample needs 748 more tokens than the remaining 341. Its advertised retry delay,
+323.136 seconds, matches replenishment at `200000 / 86400` tokens/second. PR #2028 therefore
+accounts for continuous token refill rather than assuming a midnight daily-token reset.
+At steady state the raw allowance is about 139 tokens/minute, or 125 after the safety margin.
+Budget prompt, schema, completion and reasoning tokens, with retries and probes, across **all**
+consumers of this organization/model quota, including the existing pinned `r6-judge` lane during
+migration. Configuring another route or key against the same quota does not multiply capacity.
+
+At 6,000 input tokens plus 1,000 output/reasoning tokens per packet, Qwen supplies only about
+**25 packets/day** from the compiled 180k allowance, before other consumers. The proposed
+60–120 adjudicator packets would need 420k–840k tokens/day at that size. Smaller packets improve
+this, but the 1,000 RPD figure does not establish sibling or adjudicator throughput. Packing
+saves repeated evidence and per-call overhead; it does not eliminate token consumption.
+
+**Model-selection follow-up for P1/P2:** measure actual total tokens per subject/packet at each
+context tier, including thinking mode, probes, retries and contested-rate sensitivity. Record
+verified TPD values, quota scope and refill/reset behavior for candidate siblings and adjudicators
+before relying on them; retain unknown caps as explicit risks. Select independent families with
+sufficient combined token headroom for the routine sibling load and the adjudication residual,
+sharing budgets with their producer lanes. Keep Qwen supplemental unless measured packet demand
+fits its remaining TPD; choose additional adjudicator capacity for the rest without assuming
+paid upgrades. Google input-only TPM and per-project RPD remain separate constraints; Orca's
+unpublished free prompt cap must be checked at the selected packet size even when RPD remains.
+Do not graduate shadow throughput or repeat the earlier “covers it comfortably” claim until
+these token budgets and admissible packet sizes have been verified.
 
 ## Lane inventory (current `llm_lanes` and non-lane purposes)
 

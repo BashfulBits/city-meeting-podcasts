@@ -1074,3 +1074,667 @@ while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership rep
 exactly one Council membership (500 to 501), with no other feed changes. Existing canonical
 page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
 Keep the evidence case open until human merge and deployed subscription verification.
+
+Arlington CND standing-body evidence: current Council-member assignments list the committee
+(https://www.arlingtontx.gov/Government/City-Government/City-Council/City-Council-Members/Council-Member-Bowie-Hogg-District-7),
+and the2026 Neighborhood Matching Grant guide distinguishes committee recommendations from
+subsequent Council approval. All four cached committee GUID agendas convene that body alone.
+Exactly four retained records have its exact label. All Meetings intentionally remains an aggregate.
+
+Dallas #2035 was human-merged before its substantive CodeRabbit request; record that review gap.
+The Council override correction is shipped, with deployed membership proof still pending.
+
+
+Arlington CND #2038 prepared/unmerged: four verified committee recordings receive a dedicated
+exact-label feed and leave Council, retaining the All Meetings aggregate and original UID/audio.
+No stage invalidation or backfill. Cases remain open until deployed membership verification.
+### Archive-only and 2016 joint shipped (2026-10-05)
+
+Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
+Their bounded implementation contracts are frozen. Main `ac0fa4bb` Build & Deploy succeeded.
+CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining actionable issues;
+#2026 was merged before its substantive review slot, an explicit review gap. No stage/audio
+invalidation or backfill. Both joint feeds carry the same original UID/audio; its case is resolved.
+The register now has seven open historical evidence cases, rather than eight.
+
+Live verification: six archive UIDs absent from Public Input/Council/P&Z RSS and Public Input
+browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89c7c5c5c returns
+404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
+Public search and its expected manifest return 404; do not claim deployed search verification.
+Retain these visibility/access checks and all independent historical content evidence obligations.
+
+### Access-check diagnosis (2026-10-05)
+
+Luncheon GUID55864 has exact stored body `Addison Economic Development Luncheon` and no
+matching feed selector. Raw pages are rendered from body-filtered `raw_retained_eps`; an
+archive-only declaration alone does not route unmatched records into that collection.
+The five other approved records have exact Public Input inclusions and accessible direct pages.
+Recommended bounded correction: add only the luncheon GUID/body to Public Input raw selection,
+keeping its source-wide archive-only declaration. Routing approval is pending; no code changed.
+
+Build & Deploy job111593502145 log at03:00:26 says the wall-clock window was spent when search
+started; at03:00:31 the index build deferred, retaining the last complete search output.
+This explains unavailable public search without evidence of archive identity conflicts.
+Configured search is enabled with a20-minute index budget, but the shared stop signal was already
+spent. Further scheduling/budget changes require a scoped contract; no production knobs changed.
+
+### Catalog expansion authorized (2026-10-05)
+
+Maintainer authorized access fixes and catalog-wide ownership audit/corrections. The durable
+register now includes the previously enumerated Arlington, Dallas, Denton and Fort Worth UID
+candidates. These are proof obligations, not automatic publication exclusions. Fort Worth joint
+candidates retain Council pending agenda/segmentation proof. All current selectors are snapshotted
+from cached records; the existing sweep surfaces them even when matched or historical.
+
+Official initial institution evidence: Denton's Departments directory lists TIRZ boards as
+separate bodies (https://denton-tx.legistar.com/Departments.aspx); its Development Districts page
+records Ordinance2012-366 establishing TIRZ2 and its board
+(https://www.cityofdenton.com/1145/Development-Districts). Arlington's official provider archive
+separately labels Environmental Task Force and Community/Neighborhood Development meetings
+(https://arlingtontx.granicus.com/ViewPublisher.php?view_id=9). Recording-specific agendas still
+need reconciliation before config corrections. No global substring exclusion is authorized.
+
+
+### Cross-city agenda retrieval checkpoint (2026-10-05)
+
+Read-only retrieval found hosted official agenda text for 39 of 43 registered candidates.
+HTTP success is availability, not a completed institutional/recording verdict. Four remaining
+retrieval gaps and all joint/segmentation decisions remain tracked. The April14 Environmental
+Task Force and April28 Community and Neighborhood Development agendas explicitly convene
+their named bodies with their own call-to-order/adjournment and telephone participation; these
+are substantive standalone-body evidence, not title-only classifications.
+
+- `arlington-tx-1792515fdd51c6c2-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/1792515fdd51c6c2/agenda-1cdc5446aa8e9d8f).
+- `arlington-tx-237c28f30496e3e0-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/237c28f30496e3e0/agenda-760478986af0cdb4).
+- `arlington-tx-25e9b8510b0a7a66-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/25e9b8510b0a7a66/agenda-326e3957aea95c2b).
+- `arlington-tx-2d5dc451df2da130-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/2d5dc451df2da130/agenda-048d3c873f28336b).
+- `arlington-tx-30b28efc23346a6d-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/30b28efc23346a6d/agenda-eeb106c3db36574b).
+- `arlington-tx-35b22fcc8d07967b-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/35b22fcc8d07967b/agenda-28a6b1309cb11254).
+- `arlington-tx-4357f0c39d1ae58f-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/4357f0c39d1ae58f/agenda-e797bc0615bc85b2).
+- `arlington-tx-9b66e98b682a47f2-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/9b66e98b682a47f2/agenda-d2b04dc26e89fb9c).
+- `arlington-tx-a683af6e13e2bd7a-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/a683af6e13e2bd7a/agenda-3a5431516baaa224).
+- `arlington-tx-d8f3b672b482369b-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/ecc3710ac47f/d8f3b672b482369b/agenda-b302b68ab4ef8b57).
+- `dallas-tx-baa19208405acb22-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/76869ed1994f/baa19208405acb22/agenda-85a528fa8d921cf9).
+- `dallas-tx-bd172b762dd20b63-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/76869ed1994f/bd172b762dd20b63/agenda-7e81fd4e35c6b9ba).
+- `denton-tx-04689e3929ac104e-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/04689e3929ac104e/agenda-b5f13d2a4b3df899).
+- `denton-tx-1c91182b70afefb3-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/1c91182b70afefb3/agenda-9c76e89344ec579b).
+- `denton-tx-2493e59c0844a4b4-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/2493e59c0844a4b4/agenda-f00ea12cc9662b4f).
+- `denton-tx-280db52d91547dd6-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/280db52d91547dd6/agenda-0a73365f4da36fd3).
+- `denton-tx-2b458f3c556df459-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/2b458f3c556df459/agenda-1fc469c352fec9dc).
+- `denton-tx-5a2ce8afb18c6a82-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/5a2ce8afb18c6a82/agenda-f0d0a8cd24db6a71).
+- `denton-tx-69d3fee77a42058c-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/69d3fee77a42058c/agenda-2e5a44f16a8ca995).
+- `denton-tx-70a6450a1deda017-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/70a6450a1deda017/agenda-6c9f1683eafa17ab).
+- `denton-tx-7abd583b2ed8189a-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/7abd583b2ed8189a/agenda-20fec26c8f520b20).
+- `denton-tx-a1aa4af8f26e120c-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/a1aa4af8f26e120c/agenda-791e2ea203a5919d).
+- `denton-tx-a9089a57a1557991-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/a9089a57a1557991/agenda-e4fb61bfcfd1cae7).
+- `denton-tx-b50c6a018b2c08e7-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/b50c6a018b2c08e7/agenda-b1a1afd7fc2c1c02).
+- `denton-tx-c10f3f6cd97ac38f-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/c10f3f6cd97ac38f/agenda-105b6b641b98eeca).
+- `denton-tx-c26f2f99a4bdaf8f-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/c26f2f99a4bdaf8f/agenda-09fac2977c403dab).
+- `denton-tx-d419e8107262d0d0-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/d419e8107262d0d0/agenda-c55034ec305175f8).
+- `denton-tx-e7c1990b7a8e539e-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/3b7588310856/e7c1990b7a8e539e/agenda-4497295b281ff426).
+- `fort-worth-tx-081d2695d7d0136a-ownership`: agenda status no artifact; locate official agenda.
+- `fort-worth-tx-0c66fc968402fabd-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/0c66fc968402fabd/agenda-b6965cf9b8b2ec44).
+- `fort-worth-tx-0d5832dbd08e6dd8-ownership`: agenda status no artifact; locate official agenda.
+- `fort-worth-tx-1cbf75c664b7c63e-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/1cbf75c664b7c63e/agenda-dc304ac57a1bef1e).
+- `fort-worth-tx-1d3f5b988918cba0-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/1d3f5b988918cba0/agenda-0de271fd089eee9f).
+- `fort-worth-tx-27254aa1a700569f-ownership`: agenda status no artifact; locate official agenda.
+- `fort-worth-tx-497b3aa05255bfb9-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/497b3aa05255bfb9/agenda-9d13c4c47d8e5225).
+- `fort-worth-tx-6a1dd0e9e8088440-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/6a1dd0e9e8088440/agenda-538bf69c30bf1d42).
+- `fort-worth-tx-83d6abdb749bc76f-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/83d6abdb749bc76f/agenda-f77d64b9f1d0bf88).
+- `fort-worth-tx-99152cb9e61fa091-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/99152cb9e61fa091/agenda-b6965cf9b8b2ec44).
+- `fort-worth-tx-b7a9ee9eae6fafc6-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/b7a9ee9eae6fafc6/agenda-c9785e507c29505b).
+- `fort-worth-tx-c57e1210d9282ab1-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/c57e1210d9282ab1/agenda-2effb0b0240c0426).
+- `fort-worth-tx-e0736bdd5835b1d4-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/e0736bdd5835b1d4/agenda-f77d64b9f1d0bf88).
+- `fort-worth-tx-ead427dae0bbb284-ownership`: agenda status no artifact; locate official agenda.
+- `fort-worth-tx-f28ae055829705ec-ownership`: agenda status 200; [retained official agenda](https://audio.citymeetings.fyi/documents/6540eef2dc2e/f28ae055829705ec/agenda-0de271fd089eee9f).
+
+### Recording-specific Dallas verdict
+
+UIDbd172b762dd20b63/GUID203320 is officially the January22,2022 Redistricting Commission
+public town hall. Its retained official notice convenes that Commission at Pleasant Oaks,
+with Commission chair introductions and a redistricting agenda. It does not convene Council.
+Current selectors already admit it to the dedicated Redistricting Commission feed and also
+Council. Recommended correction removes only its Council GUID override, retaining Commission,
+raw UID/audio and historical feed. This verdict does not classify the other CBTF recording:
+its available packet describes the program and subcommittees, requiring dated meeting proof.
+
+
+Denton UIDa1aa4af8f26e120c/GUID13509: official March3,2014 agenda explicitly convenes
+Council jointly with the Library Board. Retain Council; investigate missing Library subscription.
+This is a genuine joint, not a false Council inclusion. Case remains active until participant
+coverage is prepared and verified. The body-label heuristic alone would have misclassified it.
+
+Dallas #2034 prepared ownership replay: all5353 retained records/1095 labels examined.
+Council359->358 removes only UIDbd172b762dd20b63; every other feed UID set unchanged.
+Raw records are unchanged. Case remains open until human merge and deployed verification.
+
+### Denton commission institutional proof
+
+Official current appointments and 2026 agendas corroborate a distinct continuing commission:
+https://denton-tx.legistar.com/LegislationDetail.aspx?ID=7513268
+https://denton-tx.legistar.com/View.ashx?ID=1355517&M=A
+
+Four retained dated agendas explicitly convene the commission alone:
+- denton-tx-280db52d91547dd6-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/280db52d91547dd6/agenda-0a73365f4da36fd3
+- denton-tx-7abd583b2ed8189a-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/7abd583b2ed8189a/agenda-20fec26c8f520b20
+- denton-tx-d419e8107262d0d0-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/d419e8107262d0d0/agenda-c55034ec305175f8
+- denton-tx-e7c1990b7a8e539e-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/e7c1990b7a8e539e/agenda-4497295b281ff426
+
+No case closure or runtime correction yet; exact L3 contract above precedes implementation.
+
+Denton Health & Building Standards implementation #2044 was human-merged on 2026-10-05
+at10:00:30Z, before substantive CodeRabbit review and before PR CI completed. Record this review
+gap explicitly; skipped automatic review is not coverage. Full4918 offline tests passed locally.
+Deployed membership verification remains pending; four cases stay open.
+Denton #2042 prepared: four verified Health & Building Standards Commission records move
+out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
+joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.
+
+Live2026-10-05 verification: Arlington four CND UIDs present dedicated feed/absent Council;
+Dallas Redistricting UIDbd172b762dd20b63 present Commission/absent Council; six Addison archive
+pages HTTP200 and no Public Input browse mentions. All Meetings RSS contains495items and omits
+old CND UIDs; do not claim live aggregate historical coverage from config replay. Search404
+still unverified; Denton newCommission404 while deployment77e4f31a is running.
+
+Maintainer override: CodeRabbit reviews actual code changes only, not docs or configuration YAML.
+
+Denton Library #2045 prepared: two standalone recordings leave Council for Library; the
+Council/Library joint joins Library while retaining Council. Original UID/audio/raw records
+retained, no stage invalidation/backfill. Deployment verification required before case closure.
+
+### Denton TIRZ board dated proof
+
+Official institutional census: https://www.cityofdenton.com/1145/Development-Districts
+and https://denton-tx.legistar.com/Departments.aspx; eight retained agendas convene their
+named board independently. No Council joint inferred from room name.
+- denton-tx-1c91182b70afefb3-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/1c91182b70afefb3/agenda-9c76e89344ec579b
+- denton-tx-2493e59c0844a4b4-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/2493e59c0844a4b4/agenda-f00ea12cc9662b4f
+- denton-tx-2b458f3c556df459-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/2b458f3c556df459/agenda-1fc469c352fec9dc
+- denton-tx-5a2ce8afb18c6a82-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/5a2ce8afb18c6a82/agenda-f0d0a8cd24db6a71
+- denton-tx-69d3fee77a42058c-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/69d3fee77a42058c/agenda-2e5a44f16a8ca995
+- denton-tx-70a6450a1deda017-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/70a6450a1deda017/agenda-6c9f1683eafa17ab
+- denton-tx-a9089a57a1557991-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/a9089a57a1557991/agenda-e4fb61bfcfd1cae7
+- denton-tx-c26f2f99a4bdaf8f-ownership: https://audio.citymeetings.fyi/documents/3b7588310856/c26f2f99a4bdaf8f/agenda-09fac2977c403dab
+
+Denton TIRZ #2048 prepared: eight standalone board recordings leave Council, six for Zone1
+and two for Zone2 dedicated feeds; preserve raw UID/audio. No stage invalidation/backfill.
+Cases remain open until deployed verification.
+
+### Denton deployment ancestry clarification — 2026-10-05 12:30 UTC
+
+PR #2044 merged into `docs/denton-health-standards-ownership`, not main. Its parent #2043
+remains open against main. Successful deployment 37293889023 used main `77e4f31a`, which
+has no Health Commission config file. Live Commission RSS 404 and four UIDs still in Council
+are therefore expected before #2043 merges, not evidence of a render regression. Keep the
+four cases open until deployment after the parent merge. Library #2047 current `1690b8e0`
+has green test/deps/preview checks; its sole review finding was fixed and resolved. TIRZ
+#2050 `a9fd3784` has green CI and full review requested at 12:30:52 UTC, comment 5994485501,
+after repository-wide reconstruction found latest prior request #2047 at 11:00:40 UTC.
+
+### Denton Bond contract and TIRZ review status — 2026-10-05 13:00 UTC
+
+Issue #2051 binds the June 6, 2019 committee proceeding to retained official agenda
+`https://audio.citymeetings.fyi/documents/3b7588310856/04689e3929ac104e/agenda-b5f13d2a4b3df899`.
+The agenda explicitly convenes the committee; proposed 2019 Bond Program is its stated
+purpose, not evidence of Council participation. Review/51 records the exact bounded L3.
+
+TIRZ #2050 review request 5994485501 at 12:30:52 UTC was aborted by CodeRabbit reply
+5994487454: "Head commit changed." Documentation push `5faac1c6` left reviewed test code
+unchanged, but no substantive review completed. Current CI is green. Do not mark review
+complete or duplicate the request before 13:35:52 UTC and repository-wide reconstruction.
+
+Denton Bond committee #2051 is prepared under the committed review/51 contract: exact GUID
+28865 moves from Council to its dedicated feed; raw UID/audio remain unchanged. Deployment
+verification is pending; no lifecycle or broader committee-family claim is made.
+
+### Fort Worth convening distinctions — 2026-10-05 13:30 UTC
+
+Retained official agendas for UIDs `1cbf75c664b7c63e` (August 16, 2011) and
+`b7a9ee9eae6fafc6` (November 4, 2008) explicitly name City Council Gas Drilling Workshops,
+with mayor opening/call to order. Task Force recommendations are agenda subject matter;
+these are not evidence of false Council ownership. Preserve their Council eligibility.
+
+UIDs `1d3f5b988918cba0`, `c57e1210d9282ab1`, `e0736bdd5835b1d4` and
+`f28ae055829705ec` have official joint Council/Crime Control and Prevention District board
+agendas with a joint call to order. Council must remain eligible; participant-board feed
+coverage is the outstanding question. Similar titles alone must not infer duplicate winners.
+UID `0c66fc968402fabd` July 24, 2020 instead has distinct special-called Board and special
+Council proceedings in one packet. Do not label that bundle a genuine joint or split its raw
+identity/audio without the separately approved publication contract. Four registered records
+without retained agenda artifacts remain unproven. Cases remain open pending full-source
+census, exact selectors/identity checks and deployed verification where needed.
+
+### Denton stack main merge checkpoint — 2026-10-05 14:00 UTC
+
+Main `8a4adbeb` includes all four Denton slices. Build & Deploy 37321232154 is pending;
+no new deployed ownership claim or case closure is made. The prior 77e4f31a deployment
+predated the Health parent merge. Review/51 freezes/stamps the bounded contracts and records
+Health, TIRZ and Bond substantive-review gaps. Library's valid test finding is fixed/resolved.
+Latest repository-wide human full request remains #2050 comment5994485501 at 12:30:52 UTC,
+aborted for head change; no new request was made on any closed PR.
+
+### Denton Health verification — 2026-10-05 14:30 UTC
+
+Successful deployment 37320977847 at `c753afa4` includes the Health parent merge. Read-only
+HTTP checks of `/denton-tx-health-building-standards-commission/audio_feed.xml` and
+`/denton-tx-city-council/audio_feed.xml` on `https://www.citymeetings.fyi` both return 200.
+All four Commission UIDs are present in the four-item Commission feed, absent from the
+493-item Council feed, and have the exact original fixture audio URLs:
+
+| UID | Hosted audio suffix under `https://audio.citymeetings.fyi/swagit/3b7588310856/` |
+|---|---|
+| 280db52d91547dd6 | 280db52d91547dd6-11174e3f8f49.m4a |
+| e7c1990b7a8e539e | e7c1990b7a8e539e-e2a2da60a988.m4a |
+| d419e8107262d0d0 | d419e8107262d0d0-f68204d763e1.m4a |
+| 7abd583b2ed8189a | 7abd583b2ed8189a-c760fcff8133.m4a |
+
+These four exact ownership cases are resolved. Full-stack run 37321232154 at `8a4adbeb`
+remains in progress. Library, TIRZ and Bond feeds returned 404 and remain unverified/open.
+Council RSS is bounded: absent historical joint/TIRZ UIDs do not prove removed coverage.
+The full-source config replay establishes unchanged retention separately from live RSS.
+
+### Arlington ETF exact source census — 2026-10-05 14:30 UTC
+
+All six registered ETF records occur in source `ecc3710ac47f`, with original MediaPlayer
+GUID URLs and exact two body labels. Their dated retained agendas each contain ETF call to
+order and adjournment; Council mentions concern report/recommendation context. Review/51
+#2055 records the bounded preimplementation contract, preserving All Meetings. No committee
+standing status or dissolution inference is made. Six cases remain open until deployed proof.
+
+Arlington ETF #2055 implementation is prepared under the exact six-record review/51
+contract: dedicated feed, only Council ETF term removed, All Meetings/raw UID/audio
+preserved. Deployed verification pending; no standing or dissolution inference.
+
+### Denton full-stack live verification — 2026-10-05 15:00 UTC
+
+Successful deployment 37321232154 main `8a4adbeb`; all six checked feed URLs return 200.
+Fourteen of sixteen exact records match expected membership and original fixture audio URLs.
+Only those fourteen cases are resolved (four previously verified Health cases plus ten now).
+Council RSS has 493 items; Library has two, Zone1 six, Zone2 one, Bond one, Health four.
+
+| UID | Verified dedicated feed | Original audio filename under Swagit source 3b7588310856 |
+|---|---|---|
+| 280db52d91547dd6 | denton-tx-health-building-standards-commission | 280db52d91547dd6-11174e3f8f49.m4a |
+| 7abd583b2ed8189a | denton-tx-health-building-standards-commission | 7abd583b2ed8189a-c760fcff8133.m4a |
+| d419e8107262d0d0 | denton-tx-health-building-standards-commission | d419e8107262d0d0-f68204d763e1.m4a |
+| e7c1990b7a8e539e | denton-tx-health-building-standards-commission | e7c1990b7a8e539e-e2a2da60a988.m4a |
+| b50c6a018b2c08e7 | denton-tx-library-board | b50c6a018b2c08e7-a61458854406.m4a |
+| c10f3f6cd97ac38f | denton-tx-library-board | c10f3f6cd97ac38f-e6ac08b8754e.m4a |
+| 04689e3929ac104e | denton-tx-special-citizens-bond-advisory-committee | 04689e3929ac104e-8842e26bc64f.m4a |
+| 1c91182b70afefb3 | denton-tx-tirz-2-board | 1c91182b70afefb3-f46afc15e128.m4a |
+| 2493e59c0844a4b4 | denton-tx-tirz-1-board | 2493e59c0844a4b4-84c8677d0c8e.m4a |
+| 2b458f3c556df459 | denton-tx-tirz-1-board | 2b458f3c556df459-48f486dbd375.m4a |
+| 5a2ce8afb18c6a82 | denton-tx-tirz-1-board | 5a2ce8afb18c6a82-6f850a083849.m4a |
+| 69d3fee77a42058c | denton-tx-tirz-1-board | 69d3fee77a42058c-d8ce5d81fc3b.m4a |
+| 70a6450a1deda017 | denton-tx-tirz-1-board | 70a6450a1deda017-f1734abbc3e9.m4a |
+| a9089a57a1557991 | denton-tx-tirz-1-board | a9089a57a1557991-f8195642ee38.m4a |
+
+UID `a1aa4af8f26e120c` (2014 Council/Library joint) and `c26f2f99a4bdaf8f`
+(2017 TIRZ No.2) are absent from all expected checked feeds. They remain open; the complete
+local selector replay passes, but live membership is not verified. Do not claim truncation
+as the cause: Library and Zone2 feeds themselves are only two/one items. Investigate deployed
+retained-source availability and publication admission without raw state writes or backfill.
+
+### Denton withheld-media distinction — supersedes pending two ownership cases
+
+Further read-only evidence explains both remaining RSS omissions. Existing persisted
+`media_availability.state=confirmed_empty` verdicts report successful decode near-total
+silence, 24 confirmations, checked June 29, 2026. `citypods.feeds.enclosure_url` intentionally
+omits withheld media from both RSS kinds. The deployed direct pages all return HTTP200:
+Council and Library `/a1aa4af8f26e120c/`, and Zone2 `/c26f2f99a4bdaf8f/`. Each displays
+"Recording unavailable" and the same confirmed-empty reason/check timestamp. Deployment
+logs include all three exact pages and select Library three/Zone2 two episodes before RSS
+admission. This is correct ownership with preserved pages, not missing retained-source data.
+
+The two ownership cases are resolved on complete-source replay plus deployed owner-page
+proof; all sixteen Denton ownership corrections are verified (fourteen RSS, two intentionally
+withheld). No media verdict, raw record, UID or audio was changed. Availability review is a
+separate obligation; do not claim playable podcast coverage for these two recordings.
+
+### Catalog five ownership verification — 2026-10-05 15:30 UTC
+
+Read-only dedicated and Council audio RSS all return HTTP200: Arlington CND four items,
+Arlington Council495, Dallas Redistricting28 and Dallas Council355. Five exact UIDs occur
+in their dedicated feeds with audio equal to original persisted records, absent from Council.
+The five ownership cases are resolved. Arlington All Meetings retention is proven separately
+by the full1,515-record replay; bounded live aggregate RSS is not historical coverage proof.
+
+| UID | Dedicated feed | Original verified audio filename |
+|---|---|---|
+| 237c28f30496e3e0 | arlington-tx-community-and-neighborhood-development-committee | 237c28f30496e3e0-d2419bdee50a.m4a |
+| 30b28efc23346a6d | arlington-tx-community-and-neighborhood-development-committee | 30b28efc23346a6d-07a7c67138c4.m4a |
+| 4357f0c39d1ae58f | arlington-tx-community-and-neighborhood-development-committee | 4357f0c39d1ae58f-354e7dead089.m4a |
+| d8f3b672b482369b | arlington-tx-community-and-neighborhood-development-committee | d8f3b672b482369b-5427e9c557a1.m4a |
+| bd172b762dd20b63 | dallas-tx-redistricting-commission | bd172b762dd20b63-7cd53a44abef.m4a |
+
+### Fort Worth eight ownership dispositions — 2026-10-05
+
+Three official Council Gas Drilling Workshop agendas name Council and mayor call/opening.
+Five official Council/CCPD joint agendas have a joint call to order. Existing source selectors
+already give the correct holders; no routing changes are needed. Read-only live Council
+owner pages return HTTP200 for all eight and retain original audio URLs; CCPD RSS200
+(178 items) includes all five joints with exact original UID/audio. Council RSS200 has500
+items and omits these older entries. Do not claim unlimited RSS history. Eight body ownership
+cases resolve; source duplication/publication-winner decisions remain separate.
+
+| UID | Proven proceeding | Retained official agenda |
+|---|---|---|
+| 1cbf75c664b7c63e | Council workshop | https://audio.citymeetings.fyi/documents/6540eef2dc2e/1cbf75c664b7c63e/agenda-dc304ac57a1bef1e |
+| 1d3f5b988918cba0 | Council/CCPD joint | https://audio.citymeetings.fyi/documents/6540eef2dc2e/1d3f5b988918cba0/agenda-0de271fd089eee9f |
+| 6a1dd0e9e8088440 | Council workshop | https://audio.citymeetings.fyi/documents/6540eef2dc2e/6a1dd0e9e8088440/agenda-538bf69c30bf1d42 |
+| 83d6abdb749bc76f | Council/CCPD joint | https://audio.citymeetings.fyi/documents/6540eef2dc2e/83d6abdb749bc76f/agenda-f77d64b9f1d0bf88 |
+| b7a9ee9eae6fafc6 | Council workshop | https://audio.citymeetings.fyi/documents/6540eef2dc2e/b7a9ee9eae6fafc6/agenda-c9785e507c29505b |
+| c57e1210d9282ab1 | Council/CCPD joint | https://audio.citymeetings.fyi/documents/6540eef2dc2e/c57e1210d9282ab1/agenda-2effb0b0240c0426 |
+| e0736bdd5835b1d4 | Council/CCPD joint | https://audio.citymeetings.fyi/documents/6540eef2dc2e/e0736bdd5835b1d4/agenda-f77d64b9f1d0bf88 |
+| f28ae055829705ec | Council/CCPD joint | https://audio.citymeetings.fyi/documents/6540eef2dc2e/f28ae055829705ec/agenda-0de271fd089eee9f |
+
+Live owner paths are `https://www.citymeetings.fyi/fort-worth-tx-city-council/<UID>/`.
+Original audio keys are unchanged under Swagit/Granicus source namespaces. Separate
+Board/Council packets, ISD participation and four missing-agenda cases remain open.
+
+### Fort Worth October 14 joint corroboration — 2026-10-05
+
+[Official October 7, 2008 Council minutes](https://fortworthgov.granicus.com/MinutesViewer.php?clip_id=94&view_id=2)
+record the mayor announcing an October 14 joint Council/Gas Well Task Force meeting at
+1:30 p.m. in the Will Rogers Memorial Center Stagecoach Room. This is independent evidence
+that the joint event was planned. It does not yet bind the event to recording UID
+`0d5832dbd08e6dd8` (clip127) or `27254aa1a700569f` (clip125). The latter listing says
+Workshop of October14 despite its October21 publication date. Both cases remain open.
+
+The two exact provider player URLs were unavailable through the web reader during this
+check; unavailable reader output is not evidence that the official recordings are gone.
+Do not resolve either case or add Task Force participation from this announcement alone.
+
+### Fort Worth clip6334 recovered official packet — 2026-10-05
+
+The live view9 clip6334 player exposes an AgendaViewer redirect to this
+[official eight-page packet](https://fortworthgov.granicus.com/DocumentViewer.php?file=fortworthgov_c04c7ebca76ffa89ac6586743c0d1baa.pdf&view=1).
+All eight rendered pages were visually inspected because the PDF character map makes text
+extraction unreliable. Pages1–2 give the August11,2026 Council Budget Work Session at1PM,
+with mayor call to order and adjournment. Pages3–5 give Property Management and Environmental
+Services Committee immediately following the budget session, with its own call to order and
+adjournment. Pages6–8 give Community Development Committee immediately following that
+committee meeting, with chair call to order and adjournment. This is a packet of three
+consecutive proceedings, not a joint convening. Shared Council members and room do not change
+that conclusion.
+
+Exact source clip6334 has registered UIDs `081d2695d7d0136a` (view9) and
+`ead427dae0bbb284` (view5). The recovered link directly binds the packet to view9. A subsequent read-only view5
+player check exposes its own AgendaViewer redirect to the identical document filename,
+binding that packet to both registered views. The recording's actual proceeding boundaries
+remain to verify. Both cases
+stay open. Do not split audio, choose a duplicate winner or remove holders from packet
+structure alone. Historical clips125/127 currently expose only a generic CableSchedule
+default document; their player pages return HTTP200 even though the web reader could not
+open them. This supplies no missing agenda proof for those two historical cases.
+
+### Dallas November4,2023 CBTF proof — 2026-10-05
+
+[City CBTF archive](https://dallascityhall.com/departments/bond-construction-management/2024-Bond-Dashboard/Pages/Community-Bond-Task-Force.aspx)
+links [dated minutes](https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/219/Meeting%20Minutes%20CBTF%2011-4-23_Revised_111623.pdf).
+Minutes name the Community Bond Task Force, task-force members, five visiting subcommittee
+chairs, call to order and chair Agarwal's closing/adjournment. Discussion of allocations by
+Council district and future Council decisions does not convene Council. Header8:24AM and
+body8:24PM disagree; preserve that official inconsistency. Original stored chapter for
+GUID280220 UIDbaa19208405acb22 explicitly identifies November4,2023. The retained
+program handbook previously found was institutional context, not dated meeting proof.
+Exact contract now recorded in review/51 #2062. Full5,353-record source census finds18
+CBTF/bond-task-force rows including four subcommittee rows and three2017town halls;
+remaining17 need individual proof and current ownership reconciliation.
+
+Dallas #2062 full-source replay:5,353 records/1,095 labels, only UIDbaa19208405acb22
+leaves Council358→357 and enters new CBTF0→1. Raw mapping unchanged. Offline4,929 pass.
+Seventeen additional candidates:15 have no current holder; Streets/Transportation269613
+and EconomicDevelopment269610 match standing Council committee feeds, requiring separate
+institutional identity proof. No additional ownership change is inferred from titles alone.
+
+### Dallas additional bond source register — 2026-10-05
+
+Seventeen candidates are now registered with original UID/provider GUID/source namespace.
+Counts are159 cases,121 resolved and38 open; expansion reveals coverage work rather than
+newly introduced regressions. No ownership proof is inferred from the candidate title.
+
+| UID | Original GUID | Source body | Current holder |
+|---|---|---|---|
+| 130a7ebded8e0e1d | 269608 | 2024 Bond Task Force Community Bond Task Force Meeting | none |
+| 5e9fdb6ff9e8ef68 | 202453 | Citizens Bond Task Force: Town Hall Meeting | none |
+| 6135249a278494c5 | 273327 | 2024 Capital Bond Program CBTF Meetings | none |
+| 6a3caf1854bdd2cd | 277589 | 2024 Capital Bond CBTF and Subcommittee Chairs Meeting | none |
+| 78173acda7f7efea | 269613 | 2024 Bond Task Force Streets and Transportation Subcommittee | Transportation and Infrastructure |
+| 8280ec97799c999e | 269612 | 2024 Bond Task Force Flood | none |
+| 84fcc0492e66906d | 233037 | 2024 Capital Bond CBTF Meeting | none |
+| 8969ad6d91ed23d2 | 269610 | 2024 Bond Task Force Economic Development | Economic Development |
+| 96c10f4f75706719 | 246971 | 2024 Capital Bond CBTF Meeting | none |
+| 977d943cea00258e | 269611 | 2024 Bond Task Force Critical Facilities Subcommittee Meeting | none |
+| aa65e2aafc90711b | 272574 | 2024 Capital Bond Program CBTF Meeting | none |
+| aaf0ad8eaabe68a5 | 269278 | 2024 Capital Bond CBTF Meeting | none |
+| cba1e023051d7c94 | 269916 | 2024 Capital Bond CBTF Meeting | none |
+| deb5a67aa9b6e8d1 | 259822 | 2024 Capital Bond CBTF Meeting | none |
+| eb1c279cc51a9b04 | 202452 | Citizens Bond Task Force: Town Hall Meeting | none |
+| eeca5aeceda62d39 | 272005 | 2024 Capital Bond Program CBTF Meeting | none |
+| fc9ad3b1d9def142 | 202451 | Citizens Bond Task Force: Town Hall Meeting | none |
+
+### Arlington ETF deployed ownership closure — 2026-10-05
+
+Deploy37333553141 on5479ff68 succeeded. Read-only dedicated ETF audio RSS returns200
+with6 items; actual Council slug arlington-tx-council audio RSS returns200 with495 items.
+All six original UIDs occur in ETF with exact persisted audio URLs and are absent from
+Council. Six ownership cases resolve; source raw records, namespaces and audio unchanged.
+The deliberately unfiltered All Meetings aggregate remains unchanged by full1,515 replay;
+bounded live history is not a completeness claim. Register159 cases:127 resolved32 open.
+
+| UID | Original verified audio URL |
+|---|---|
+| 1792515fdd51c6c2 | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/1792515fdd51c6c2-6ce74547f120.m4a |
+| 25e9b8510b0a7a66 | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/25e9b8510b0a7a66-52d20ccf2d77.m4a |
+| 2d5dc451df2da130 | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/2d5dc451df2da130-257b989183aa.m4a |
+| 35b22fcc8d07967b | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/35b22fcc8d07967b-bedc78824c46.m4a |
+| 9b66e98b682a47f2 | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/9b66e98b682a47f2-5965cabd9a0a.m4a |
+| a683af6e13e2bd7a | https://audio.citymeetings.fyi/granicus/ecc3710ac47f/a683af6e13e2bd7a-3a59dddd57ab.m4a |
+
+### Dallas CBTF additional dated institutional proof — 2026-10-05
+
+The official CBTF archive lists dated May25, June13, June20, August15 and August22 meetings.
+Four linked summaries were retrieved read-only: each names Community Bond Task Force and
+records its own convening/adjournment and chair. These are task-force proceedings, not
+standing Council committee meetings. Archive directly links Swagit259822 for June13 and
+269916 for August22. Original provider chapters also date June20 GUID246971, August15
+GUIDs269278/269608 and August22 GUID269916. Two August15 source recordings remain separate
+raw UIDs; no duplicate winner is selected from common date/body or agenda.
+
+| Official date | City summary | Candidate GUIDs needing bounded inclusion |
+|---|---|---|
+| August22,2023 | https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/181/CBTF%20Meeting_082223_Meeting%20Minutes.pdf | 269916 |
+| August15,2023 | https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/163/CBTF%20Meeting_081523_Meeting%20Minutes.pdf | 269278/269608 |
+| June20,2023 | https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/122/CBTF%20Meeting_062023_Meeting%20Minutes.pdf | 246971 |
+| May25,2023 | https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/79/CBTF%20Meeting_052523_Meeting%20Minutes.pdf | 233037 |
+
+All additional cases remain open for exact source binding/contract and deployed coverage.
+No new selector expansion follows automatically from these dated summaries. September26
+and October3 are absent from this archive list and still need dated official proof.
+
+### Dallas four-record coverage prepared and next subcommittee proof — 2026-10-05
+
+#2065 adds only GUIDs246971/269278/269608/269916, CBTF1→5 in full5,353 source replay.
+Every other feed remains unchanged. Exact identity/negative checks pass; final fulloffline
+4,933 pass14 deselected. Initial full run caught six ETF register closure fields left empty;
+parent docs #2064 fixed55f0f165 retains nonempty evidence fields, carried before final pass.
+
+Independent next-case research: [official bond subcommittee archive](https://dallascityhall.com/departments/bond-construction-management/2024-Bond-Dashboard/Pages/Economic-Development-HHS-Subcommittee.aspx)
+links [August15 minutes](https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/171/ECO,%20HOU,%20OHS%20Meeting_081523_Meeting%20Minutes.pdf).
+These identify Economic Development, Housing and Homeless Solutions 2024 Bond Task Force
+subcommittee, chair Tony Shidid, own convening6:08PM/adjournment7:54PM. Original chapter
+for GUID269610 UID8969ad6d91ed23d2 identifies August15,2023. Current standing Economic
+Development feed uses substring body Economic Development, which admits this separate
+bond institution. Future bounded routing contract must preserve all other current holders.
+Cached source has12 distinct matching body labels, only one bond-task-force row; no current
+selector change or subcommittee case closure is made here.
+
+### Reusable ownership-rule audit — maintainer follow-up October 5
+
+The maintainer asked whether recurring institution labels can replace recording-specific
+inclusions. Audit reusable rules alongside remaining cases; retain exact GUID exceptions only
+where labels cannot distinguish ownership reliably. This is a design follow-up, not permission
+for an untested broad selector or closure without deployed proof.
+
+Dallas source `76869ed1994f` contains five rows labeled `2024 Capital Bond CBTF Meeting`,
+one `2024 Capital Bond Program CBTF Meetings`, two singular `2024 Capital Bond Program CBTF
+Meeting`, and three other CBTF labels. Existing five verified inclusions therefore cover only
+part of the institutional label census. A label rule can cover later occurrences automatically,
+but the remaining dated/source-binding obligations must remain visible in the register.
+
+The standing Economic Development substring matches 138 retained rows across 12 labels,
+including one separately convened `2024 Bond Task Force Economic Development` proceeding.
+The other 11 labels include explicit joint proceedings and must be preserved. Prefer existing
+`body_exact` institutional aliases over a broad shared-word substring when the census and
+institutional proof support them. `body_exact` also accepts provider-duplicated normalized
+labels. Do not assume `body_exclude` is applied by runtime routing.
+
+Before implementation, commit a bounded review/51 contract naming aliases, affected feeds,
+fixtures and positive/negative tests. Replay all 5,353 Dallas rows, including genuine joints,
+subcommittees and town halls; preserve raw UIDs/audio and every unrelated holder. Explicitly
+separate institution ownership from recording-content proof and publication eligibility.
+
+Dallas #2068 reusable rule implementation replay: all5,353 retained source rows; standing
+Economic Development157→156 loses only UID8969ad6d91ed23d2, new bond subcommittee0→1 gains
+that UID, every other subscription unchanged. Eleven full standing labels preserve explicit
+joints. Same-label/new-GUID acceptance is intentional; unrelated labels/subcommittees reject.
+Original audio/raw identity preserved. Case remains open pending actual deployment proof.
+
+### Transportation reusable-rule census — October 5 follow-up
+
+Dallas standing Transportation and Infrastructure config includes the broad `Transportation`
+substring. Full cached source census finds 11 distinct bond-subcommittee rows admitted by it:
+two `2024 Capital Bond Streets & Transportation Subcommittee Meeting`, four
+`2024 Capital Bond Streets and Transportation Meeting`, four
+`2024 Capital Bond Streets and Transportation Subcommittee Meeting`, and one
+`2024 Bond Task Force Streets and Transportation Subcommittee` (registered GUID269613).
+Thus the original one-record case understates this selector's institutional collision; ten
+additional retained recordings need individual raw identity registration and official proof.
+
+The same selector admits genuine named Council/DART and legislative-ad-hoc joint labels,
+Transportation-for-Hire proceedings, and standing aliases. Preserve those while auditing
+complete-label rules. These counts identify candidates, not a verified ownership verdict or
+live RSS coverage. Do not remove all bond-looking titles until independent institutional and
+recording binding evidence supports a bounded contract. Existing source records remain intact.
+
+Transportation census now registers all ten additional retained identities; total169 cases,
+127 resolved42 open. These are newly tracked candidates, not newly created regressions.
+
+| UID | GUID | Original body |
+|---|---|---|
+| 16300c982b358fe9 | 270975 | 2024 Capital Bond Streets & Transportation Subcommittee Meeting |
+| 2b172a76868ad86c | 259821 | 2024 Capital Bond Streets and Transportation Meeting |
+| 2bc4c440c974dba8 | 233032 | 2024 Capital Bond Streets and Transportation Meeting |
+| 2d2bc233efd9bf97 | 269407 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
+| 427b4f7de9ec3a32 | 269609 | 2024 Capital Bond Streets & Transportation Subcommittee Meeting |
+| 8578348e702caf35 | 277830 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
+| ae8f0826293006f0 | 259823 | 2024 Capital Bond Streets and Transportation Meeting |
+| b0471f29622b8165 | 277827 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
+| fe0b7e556c694307 | 259827 | 2024 Capital Bond Streets and Transportation Subcommittee Meeting |
+| ffd212474f9b51ad | 232343 | 2024 Capital Bond Streets and Transportation Meeting |
+
+Transportation institution proof follow-up: the city's [subcommittee archive](https://dallascityhall.com/departments/bond-construction-management/Pages/Streets-and-Transportation-Subcommittee.aspx)
+separately lists May11/May25/June13/June20/June28/July17/August15/August22,2023 proceedings.
+Its [May25 minutes](https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/99/Streets%20and%20Transportation%20Meeting_052523_Meeting%20Minutes.pdf)
+and [June13 minutes](https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/119/Streets%20and%20Transportation%20Meeting%20061323_Meeting%20Minutes.pdf)
+identify the Streets and Transportation Subcommittee of the 2024 Bond Task Force, chaired by
+Linda Koop, with its own convening and adjournment. This independently establishes a separate
+bond institution; department presentations and Council-district discussion do not establish
+standing Council committee participation. June13 convened6:00pm/adjourned7:35pm; May25
+convened6:35pm/adjourned8:00pm. Original provider chapter dates additionally bind GUID259821
+and GUID232343 to June13 and May11 respectively. The May11 minutes link returned502 during
+this check, so no unseen minutes content is asserted. August10/October26/October27 are absent
+from this archive list; their exact official recording bindings remain unresolved. All11 cases
+remain open; no routing change or deployment closure follows from this research alone.
+
+### CBTF deployment closure — October 5, 23:00 UTC
+
+Human merges #2063/#2066 deployed successfully in run37370642196 on main85e805d3.
+The public CBTF audio_feed.xml returned200 with all five verified UIDs; every enclosure
+exactly matches its retained source audio URL. All five are absent from current Council RSS.
+This verifies these bounded ownership corrections, not complete historical RSS coverage.
+
+| UID | GUID | Preserved enclosure |
+|---|---|---|
+| baa19208405acb22 | 280220 | https://audio.citymeetings.fyi/swagit/76869ed1994f/baa19208405acb22-e4a53a049ef6.m4a |
+| cba1e023051d7c94 | 269916 | https://audio.citymeetings.fyi/swagit/76869ed1994f/cba1e023051d7c94-b4869d828ea7.m4a |
+| 130a7ebded8e0e1d | 269608 | https://audio.citymeetings.fyi/swagit/76869ed1994f/130a7ebded8e0e1d-e00bd282e3cd.m4a |
+| aaf0ad8eaabe68a5 | 269278 | https://audio.citymeetings.fyi/swagit/76869ed1994f/aaf0ad8eaabe68a5-ed70d2044779.m4a |
+| 96c10f4f75706719 | 246971 | https://audio.citymeetings.fyi/swagit/76869ed1994f/96c10f4f75706719-40ff3dfd58ad.m4a |
+
+Register169 cases:132 resolved37 open. Remaining content/binding obligations stay open.
+
+Transportation proposed complete-label replay (read-only, not implemented): all5,353 retained
+Dallas records give standing140→129, exactly the11 registered bond candidates removed and
+no additions. This preserves every currently matched named DART/legislative/Economic/Government
+Performance joint and standing alias. Four distinct bond labels identify the recurring collision.
+Before an L3 implementation, preserve the four existing GUID exceptions as exceptions; do not
+silently turn Mill Creek Tunnel Project or Transportation-for-Hire exception bodies into broad
+future-record admission. The mechanical replay is not official proof for the three dates missing
+from the archive or authorization to close any recording-binding case. Existing runtime/config
+remain unchanged. Report: /tmp/dallas-transportation-proposed-rule-replay.json (local scratch).
+
+### Remaining-recording proof reconciliation — maintainer resolve37 request
+
+Fort Worth3814 live official player cuepoints and retained `source_chapters` independently
+bind both UIDs0c66fc968402fabd/99152cb9e61fa091 to consecutive proceedings: CCPD heading470s,
+call475s, adjourn589s; Council heading616s, call620s, adjourn724s. These are separate convened
+meetings in one recording, not a joint. Both raw recordings/audio remain intact. Publication
+of an unsplit bundle requires the pending maintainer disposition; no duplicate winner inferred.
+Official player: https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3814
+
+Fort Worth2491 UID497b3aa05255bfb9 exact original player/source chapters identify EMSISD
+Board President call8s, Mayor welcome71s, joint overview449s, announcements for both bodies
+7788s/7884s and one adjourn8092s. This corroborates the retained official April25,2016 joint
+packet. Council subscription remains; a source-scoped participant-feed L3 contract is needed.
+Official player: https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491
+
+Citizen56029 provenance correction: earliest research describes eleven items in the Community
+Events archive listing, not eleven Citizen recording parts. Its ten consecutive source files
+05192009-16 through -25, ten chapters and31724.448s do not prove a missing eleventh part. Exact
+program-to-recording binding remains required, but the archive-wide count must not be treated
+as an established compilation gap. Live archive/player returned403 during this proof pass.
+The official FY2007–08 budget corroborates advisory education/culinary/theatre recommendations:
+https://www.addisontx.gov/files/sharedassets/main/v/1/finance/documents/fy-2007-2008-addison-annual-budget.pdf
+
+Dallas2017 May27 binding resolved independently: official revised notice identifies the
+2017 Capital Bond Program Citizens Bond Task Force, May27,2017 at9am, Council Chambers6EN
+(venue does not establish Council participation). Provider GUID202453 `/agenda` bytes are
+identical to the official city notice, SHA256
+`eb8a902b8b7b6d309acd807bb940cea1d4fa08ad041ec4ee609107223125dc8f`, also matching retained
+UID5e9fdb6ff9e8ef68 agenda quality document hash. Provider TownHall body is misleading here;
+a bounded formal-taskforce subscription exception is required, not a blanket TownHall rule.
+Official notice: https://dallascityhall.com/departments/public-works/dallasbondprogram/Documents/CBTF%20-%20May%2027th%20Meeting%20notice.pdf
+Exact provider binding: https://dallastx.new.swagit.com/videos/202453/agenda
+
+#2081 implementation verification: all5353 source records/1095 labels replayed, standing
+Transportation140→129 and new bond Streets0→11 only; every unrelated feed unchanged. All11
+original identities/audio preserved, four standing GUID exceptions retained.183 targeted and
+4954 full offline tests passed (15 deselected); whole Ruff/format467 clean. No case closure
+from these counts: independent recording proof and deployment gates remain explicit.
+
+Dallas2017 May22/May25 exact public-town-hall binding: provider agendas for202451/202452
+are the same official two-date notice, SHA256
+`bf95a89fcf271b90183ab2b94f8c686a9dac614485326cb938e0d0beeefe0be7`, matching retained
+agenda quality hashes. Visual notice inspection confirms public comment on taskforce work,
+May22/May25 at6pm, Council Chambers. Separate from the May27 formal taskforce notice above.
+Provider bindings: https://dallastx.new.swagit.com/videos/202451/agenda and
+https://dallastx.new.swagit.com/videos/202452/agenda
+
+#2083 prepared: all5353 source rows/1095 labels replayed; formal0→1, publictownhalls0→2,
+every other holder unchanged.185 targeted and4957 offline tests pass15 deselected; whole
+Ruff/format468 clean. Three cases stay open until deployed exact RSS/audio verification.
+
+#2086 prepared replay:5896 retained source rows/979labels, new EMSISD participant0→1 only
+UID497b3aa05255bfb9; every prior feed unchanged.186 targeted and4959 full offline tests pass15 deselected; whole Ruff/format469 clean.
+
+### Dallas Flood subcommittee prepared implementation — #2089
+
+Exact original GUID269612/UID8280ec97799c999e routes to the new complete-label subscription;
+future same-label GUIDs admit automatically. No existing selectors change. Original raw record
+and audio remain intact; the case stays open until live deployment ownership verification.
+
+Cached5353-record/1095-label replay: new Flood subscription0→1 for UID8280ec97799c999e only;
+every pre-existing feed holder unchanged. Targeted feed/editor/register checks198passed.
+Final full offline suite4961passed/15deselected; whole Ruff/format470files and diff check clean.

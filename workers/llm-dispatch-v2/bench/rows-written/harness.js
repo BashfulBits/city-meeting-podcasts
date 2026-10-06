@@ -188,11 +188,45 @@ MeasureDO.prototype.measureAccounting = async function () {
   return { actual_writes: this._take().w, persisted_delta: count() - before };
 };
 
+// Offline-only regression: old quota schema, expired leases, migration, and recreation.
+MeasureDO.prototype.measureSchema = async function () {
+  const now = Date.now();
+  await this.claimDispatchWindow(now, 30);
+  await this.enqueueBatch(Array.from({ length: 30 }, (_, i) =>
+    job(i, "chapter-agenda", NEMOTRON)
+  ));
+  await this.claimDispatchWindow(now + 61_000, 30);
+  for (const column of ["tpd_updated_at", "tpd_used", "prompt_cap_estimate", "input_window_json"]) {
+    this.sql.exec(`ALTER TABLE routes DROP COLUMN ${column}`);
+  }
+  this._take();
+  const failures = [];
+  for (let i = 0; i < 3; i++) {
+    let error = null;
+    try {
+      await this.claimDispatchWindow(now + 3_600_000 + i * 61_000, 30);
+    } catch (err) {
+      error = String(err);
+    }
+    failures.push({ error, ...this._take() });
+  }
+  const repaired = new MeasureDO(this.ctx, this.env);
+  const migration = repaired._take();
+  const resumed = await repaired.claimDispatchWindow(now + 3_600_000, 30);
+  const resumedWrites = repaired._take();
+  const recreated = new MeasureDO(this.ctx, this.env);
+  return {
+    failures, migration, resumed_jobs: resumed.jobs.length, resumed_writes: resumedWrites.w,
+    recreation: recreated._take(),
+  };
+};
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const name = url.searchParams.get("name") || crypto.randomUUID();
     const stub = env.M.get(env.M.idFromName(name));
+    if (url.pathname === "/schema") return Response.json(await stub.measureSchema());
     if (url.pathname === "/accounting") return Response.json(await stub.measureAccounting());
     if (url.pathname === "/retry") return Response.json(await stub.measureRetry());
     if (url.pathname === "/r429") return Response.json(await stub.measure429());

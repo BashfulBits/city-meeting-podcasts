@@ -218,7 +218,11 @@ provider is a plugin (`providers/<name>.py`: free evidence, response signals, re
 contract tests keep in step with `config/provider_limits.yml`; lanes come only from `load_lanes()`.
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane
 checkboxes, unacknowledged anomalies, collapsed observations) that closes when nothing is
-actionable. It changes no config. See [review/48](review/48-provider-catalog-reconciliation.md).
+actionable. Quality uses the paginated `/api/v2/language/models/free` endpoint with the existing
+`ARTIFICIAL_ANALYSIS_API_KEY`; creator names are normalized to publisher identities. A failed page
+leaves the whole run unscored rather than exposing a partial catalog. The weekly endpoint-contract
+workflow separately exercises this client and requires usable reference-model scores; missing
+credentials and API/schema failures fail the job. Reconciliation changes no config. See [review/48](review/48-provider-catalog-reconciliation.md).
 
 | Area | Modules |
 |---|---|
@@ -499,6 +503,13 @@ row-write budget** (Free plan: 100,000 billed rows/day; every index entry and tr
 billed row), enforced at **runtime against the rows the coordinator actually writes**: every SQL
 cursor's `rowsWritten` is persisted atomically inside each writing transaction, including
 the singleton accounting write itself. Object hibernation cannot discard the tally.
+Startup checks include the quota columns (`tpd_used`, `tpd_updated_at`, `prompt_cap_estimate`,
+`input_window_json`). An otherwise-current object adds only its missing quota columns and verifies
+readiness before serving RPCs; subsequent activations issue no schema or data writes. Before each
+writing transaction, a `LIMIT 0` query prepares against those columns without reading route rows
+or writing anything. A missing column/table blocks that instance's RPCs until recreation after
+migration, before expired-lease reaping or job/index mutations can repeat and roll back. Transient
+preflight read errors remain retryable. Partial quota upgrades resume at the missing columns.
 A 10,000-row account reserve caps enqueue and optional-write admission at 90,000. Before each claim, the coordinator
 reserves 28 rows per active leased job, 8 per active bundle, and worst-case headroom for the next
 bundle; it refuses the claim if that projection reaches the 90,000 safe stop. Dispatch can
@@ -1334,3 +1345,76 @@ while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership rep
 exactly one Council membership (500 to 501), with no other feed changes. Existing canonical
 page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
 Keep the evidence case open until human merge and deployed subscription verification.
+
+
+Arlington CND #2038 prepared/unmerged: four verified committee recordings receive a dedicated
+exact-label feed and leave Council, retaining the All Meetings aggregate and original UID/audio.
+No stage invalidation or backfill. Cases remain open until deployed membership verification.
+### Archive-only and 2016 joint shipped (2026-10-05)
+
+Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
+Their bounded implementation contracts are frozen. Main `ac0fa4bb` Build & Deploy succeeded.
+CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining actionable issues;
+#2026 was merged before its substantive review slot, an explicit review gap. No stage/audio
+invalidation or backfill. Both joint feeds carry the same original UID/audio; its case is resolved.
+The register now has seven open historical evidence cases, rather than eight.
+
+Live verification: six archive UIDs absent from Public Input/Council/P&Z RSS and Public Input
+browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89c7c5c5c returns
+404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
+Public search and its expected manifest return 404; do not claim deployed search verification.
+Retain these visibility/access checks and all independent historical content evidence obligations.
+
+Denton #2042 prepared: four verified Health & Building Standards Commission records move
+out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
+joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.
+
+Denton Library #2045 prepared: two standalone recordings leave Council for Library; the
+Council/Library joint joins Library while retaining Council. Original UID/audio/raw records
+retained, no stage invalidation/backfill. Deployment verification required before case closure.
+
+Denton TIRZ #2048 prepared: eight standalone board recordings leave Council, six for Zone1
+and two for Zone2 dedicated feeds; preserve raw UID/audio. No stage invalidation/backfill.
+Cases remain open until deployed verification.
+
+Denton Bond committee #2051 is prepared under the committed review/51 contract: exact GUID
+28865 moves from Council to its dedicated feed; raw UID/audio remain unchanged. Deployment
+verification is pending; no lifecycle or broader committee-family claim is made.
+
+The Denton bounded ownership feeds are implemented on main through #2043–#2053: Health
+Commission, Library, separate TIRZ boards and the exact 2019 Bond committee recording.
+The Council/Library joint uses the same UID/audio in both feeds. Existing routing primitives
+serve these exact selectors; no runtime or schema change was introduced.
+
+Arlington ETF #2055 implementation is prepared under the exact six-record review/51
+contract: dedicated feed, only Council ETF term removed, All Meetings/raw UID/audio
+preserved. Deployed verification pending; no standing or dissolution inference.
+
+Arlington's exact Environmental Task Force feed is implemented in #2058 using existing
+GUID/body routing; Council omits those six, while All Meetings and raw identity remain intact.
+
+Dallas 2024 Community Bond Task Force feed uses exact GUID/body inclusion for verified recording280220. Council removes only that override; source namespace and original recording identity remain unchanged.
+
+Dallas2024 CBTF feed includes four additional proven recordings by exact original GUID, retaining provider/source/UID/audio identity. Body labels remain metadata; no broad task-force selector is added.
+
+Dallas Economic Development uses complete normalized institutional aliases to separate its
+standing Council committee (including proven joint labels) from the independently convened
+2024 bond Economic Development/Housing/Homeless Solutions subcommittee. Both use existing
+`source.body_exact`; stable-label recurrences route automatically without per-record pins.
+
+Dallas Transportation ownership uses existing complete-label selectors for standing aliases
+and the distinct 2024 bond Streets subcommittee; four historic GUID exceptions remain explicit.
+Recurring same-label records need no new GUID admission. This changes subscription projection,
+not raw source retention, UID/audio identity or stage invalidation. Prepared #2081 retains
+independent evidence and deployment gates for case closure.
+
+Dallas2017 bond publication uses source-bound GUID exceptions where the provider reused one
+TownHall label for a formal taskforce meeting and two public-input sessions. Exact official
+agenda hashes establish the distinction; raw provider labels/audio/UIDs remain unchanged (#2083).
+
+Fort Worth EMSISD Board participant feed reuses the existing Granicus source and exact joint
+institution label. Council ownership and original whole recording UID/audio are preserved.
+
+Dallas 2024 bond Flood Control and Storm Drainage uses the existing complete institutional
+label selector, admitting stable-label recurrences without GUID pins. Original source records,
+UIDs and audio remain unchanged (#2089).

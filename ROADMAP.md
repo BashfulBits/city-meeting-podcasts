@@ -519,3 +519,72 @@ while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership rep
 exactly one Council membership (500 to 501), with no other feed changes. Existing canonical
 page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
 Keep the evidence case open until human merge and deployed subscription verification.
+
+
+Arlington CND #2038 prepared/unmerged: four verified committee recordings receive a dedicated
+exact-label feed and leave Council, retaining the All Meetings aggregate and original UID/audio.
+No stage invalidation or backfill. Cases remain open until deployed membership verification.
+### Archive-only and 2016 joint shipped (2026-10-05)
+
+Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
+Their bounded implementation contracts are frozen. Main `ac0fa4bb` Build & Deploy succeeded.
+CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining actionable issues;
+#2026 was merged before its substantive review slot, an explicit review gap. No stage/audio
+invalidation or backfill. Both joint feeds carry the same original UID/audio; its case is resolved.
+The register now has seven open historical evidence cases, rather than eight.
+
+Live verification: six archive UIDs absent from Public Input/Council/P&Z RSS and Public Input
+browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89c7c5c5c returns
+404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
+Public search and its expected manifest return 404; do not claim deployed search verification.
+Retain these visibility/access checks and all independent historical content evidence obligations.
+
+Denton #2042 prepared: four verified Health & Building Standards Commission records move
+out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
+joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.
+
+Denton Library #2045 prepared: two standalone recordings leave Council for Library; the
+Council/Library joint joins Library while retaining Council. Original UID/audio/raw records
+retained, no stage invalidation/backfill. Deployment verification required before case closure.
+
+Denton TIRZ #2048 prepared: eight standalone board recordings leave Council, six for Zone1
+and two for Zone2 dedicated feeds; preserve raw UID/audio. No stage invalidation/backfill.
+Cases remain open until deployed verification.
+
+Denton Bond committee #2051 is prepared under the committed review/51 contract: exact GUID
+28865 moves from Council to its dedicated feed; raw UID/audio remain unchanged. Deployment
+verification is pending; no lifecycle or broader committee-family claim is made.
+
+Recently shipped: the bounded Denton Health Commission, Library, TIRZ board and 2019 Bond
+committee feeds (#2043–#2053). Deployed ownership verification remains pending; broader
+historical coverage and model-admission gates remain active.
+
+Arlington ETF #2055 implementation is prepared under the exact six-record review/51
+contract: dedicated feed, only Council ETF term removed, All Meetings/raw UID/audio
+preserved. Deployed verification pending; no standing or dissolution inference.
+
+Recently shipped: Arlington Environmental Task Force exact six-record feed correction #2058.
+
+Dallas #2062 exact November2023 CBTF feed correction prepared; deployment verification and remaining task-force/subcommittee census still pending.
+
+Dallas #2065 exact four-record CBTF coverage prepared; deployment proof and remaining source census cases still pending.
+
+- Prepared: reusable Dallas Economic Development institutional aliases and separate 2024 bond
+  subcommittee subscription (#2068); deployment proof remains required for case closure.
+
+- Designed (L3): Dallas reusable Streets bond institution rules (#2081), preserving existing
+  joints/GUID exceptions; independent recording gaps and deployment proof remain required.
+
+- Prepared #2081 reusable Dallas Streets institution rules: eleven source records separated;
+  original audio/raw identity, named joints and GUID exceptions preserved. Deployment pending.
+
+- Designed (L3): Dallas2017 formal bond taskforce versus public town halls (#2083), exact
+  independent notices/source hashes; three cases remain open until deployed ownership proof.
+
+- Designed (L3): independent bounded static-search job (#2084), unchanged20minute deadline,
+  same-run record snapshot and complete-index preservation; required archive visibility check.
+
+Prepared #2086: restore proven Fort Worth EMSISD participant discovery; deployment proof pending.
+
+Prepared #2089: complete-label Dallas Flood bond subcommittee subscription; full-source replay
+adds one original UID with every existing holder unchanged. Deployment proof pending.

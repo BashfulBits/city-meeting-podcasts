@@ -1,6 +1,6 @@
 # Technical Design Roadmap (canonical, living)
 
-**Status: LIVING · last updated 2026-10-04 (publication-selection machinery under review;
+**Status: LIVING · last updated 2026-10-05 (publication-selection machinery under review;
 Initiative 20 shipped in PRs #1617–#1622 — LLM
 endpoint rate-limit characterization & failure-class-aware backoff; review/45 reconciled against
 `main` after 123 commits; interactive direct remedy #1231; Gemini free-tier hard input ceiling +
@@ -1339,3 +1339,149 @@ while retaining P&Z and UID383dfdfed6140400/audio. Full 822-record ownership rep
 exactly one Council membership (500 to 501), with no other feed changes. Existing canonical
 page attribution becomes Council; participant discovery remains the #2018 redesign follow-up.
 Keep the evidence case open until human merge and deployed subscription verification.
+
+Arlington Community and Neighborhood Development ownership: L3 bounded review/51 contract.
+Four official standalone committee recordings move out of Council into a dedicated exact-label
+feed; preserve the intentional All Meetings aggregate. Environmental Task Force assessed separately.
+
+
+Arlington CND #2038 prepared/unmerged: four verified committee recordings receive a dedicated
+exact-label feed and leave Council, retaining the All Meetings aggregate and original UID/audio.
+No stage invalidation or backfill. Cases remain open until deployed membership verification.
+### Archive-only and 2016 joint shipped (2026-10-05)
+
+Implemented in human-merged PR #2024 (archive visibility) and PR #2026 (joint subscription).
+Their bounded implementation contracts are frozen. Main `ac0fa4bb` Build & Deploy succeeded.
+CodeRabbit substantively reviewed #2024 head `56e2cb8e` with no remaining actionable issues;
+#2026 was merged before its substantive review slot, an explicit review gap. No stage/audio
+invalidation or backfill. Both joint feeds carry the same original UID/audio; its case is resolved.
+The register now has seven open historical evidence cases, rather than eight.
+
+Live verification: six archive UIDs absent from Public Input/Council/P&Z RSS and Public Input
+browse. Five direct Public Input archive pages return 200. Luncheon UID35a78fa89c7c5c5c returns
+404 at checked Public Input/Council/BZA/Briefings paths; its direct archive route remains unverified.
+Public search and its expected manifest return 404; do not claim deployed search verification.
+Retain these visibility/access checks and all independent historical content evidence obligations.
+
+Luncheon direct archive route: L3 bounded review/51 contract, maintainer authorized access fixes
+2026-10-05. Exact raw selector admission only, preserving archive-only public exclusion.
+
+Dallas Redistricting Council leakage: L3 bounded review/51 contract, official dated Commission
+agenda verifies one wrong Council override; preserve existing Commission subscription/UID/audio.
+
+
+Dallas Commission correction #2034 prepared: remove only GUID203320 Council inclusion;
+retain dedicated Commission feed and original UID/audio. Human merge/deployment verification gated.
+
+Denton Health & Building Standards: L3 bounded review/51 contract for four exact verified
+commission records, dedicated feed and Council correction; preserve Council/Library joint.
+
+Denton Health & Building Standards implementation #2044 was human-merged on 2026-10-05
+at10:00:30Z, before substantive CodeRabbit review and before PR CI completed. Record this review
+gap explicitly; skipped automatic review is not coverage. Full4918 offline tests passed locally.
+Deployed membership verification remains pending; four cases stay open.
+Denton #2042 prepared: four verified Health & Building Standards Commission records move
+out of Council into their dedicated exact-GUID feed. UID/audio/raw records and Council/Library
+joint are retained. Cases remain open until deployed verification; no stage invalidation/backfill.
+
+Denton Library Board: L3 bounded review/51 contract for two standalone transfers and one
+Council/Library joint membership addition, preserving the Council subscription.
+
+Denton Library #2045 prepared: two standalone recordings leave Council for Library; the
+Council/Library joint joins Library while retaining Council. Original UID/audio/raw records
+retained, no stage invalidation/backfill. Deployment verification required before case closure.
+
+Denton TIRZ board ownership: L3 review/51 exact-eight-record contract, separate Zone1/Zone2
+feeds, Council departures with original UID/audio retained.
+
+Denton TIRZ #2048 prepared: eight standalone board recordings leave Council, six for Zone1
+and two for Zone2 dedicated feeds; preserve raw UID/audio. No stage invalidation/backfill.
+Cases remain open until deployed verification.
+
+Denton Special Citizens Bond Advisory Committee bounded ownership is L3 in review/51
+(#2051): exact June 6, 2019 GUID/body only; preserve identity and all other feeds. Deployment
+verification remains a separate gate; no standing or dissolution inference is authorized.
+
+Denton Bond committee #2051 is prepared under the committed review/51 contract: exact GUID
+28865 moves from Council to its dedicated feed; raw UID/audio remain unchanged. Deployment
+verification is pending; no lifecycle or broader committee-family claim is made.
+
+Denton bounded ownership corrections are Shipped in #2043/#2044 (Health Commission),
+#2046/#2047 (Library), #2049/#2050 (TIRZ boards) and #2052/#2053 (2019 Bond committee).
+Review/51 contracts are frozen/stamped. Deployment verification and the explicitly recorded
+Health/TIRZ/Bond review gaps remain audit obligations; this is not full catalog completion.
+
+Arlington Environmental Task Force exact six-record correction is L3 in review/51 (#2055).
+Preserve All Meetings and raw identity; no standing-status or dissolution claim. Deployment
+proof remains separate from the complete-source selector replay.
+
+Arlington ETF #2055 implementation is prepared under the exact six-record review/51
+contract: dedicated feed, only Council ETF term removed, All Meetings/raw UID/audio
+preserved. Deployed verification pending; no standing or dissolution inference.
+
+### Dispatch quota-schema incident correction (2026-10-05; shipped in PR #2057)
+
+Maintainer-authorized fix for PR #2028's missing startup-readiness entries: quota definitions now
+supply readiness, additive migration, and mutation preflight from the same four-column list.
+Otherwise-current objects add only missing columns, verify before RPC activation, and do no schema
+or data writes on later startups. A zero-row mutation preflight prevents stale quota schemas from
+repeating expired-lease/job/index writes before failure; the instance blocks RPCs until recreation.
+Partial migrations resume at missing columns; transient preflight read errors remain retryable.
+No throughput/quota changes, model/recipe change, pipeline-version bump, or artifact backfill.
+
+Rollout evidence: code `5b3b9f6` deployed through the existing Worker workflow as version
+`266f6645-51c9-41f8-85f3-c7c4e4f4cee9`; detailed stats now succeed. Maintainer-reported 90,000
+account rows supplied a conservative same-day floor (31,780 -> 90,002 including repair writes),
+not an exact billing reconstruction. Live migration added five writes, reaching 90,007; ingress
+and claims remain closed until UTC reset. All 374 Worker tests passed locally and in deployment;
+all 4,925 Python offline tests were verified (the isolated-import test required a separate editable
+installation because the primary checkout was unreadable). Real workerd guards and accounting,
+compiled-config checks, packaging, Ruff/formatting, and PR CodeQL passed. CodeRabbit automatic
+review was disabled; skipped review is not substantive review coverage.
+
+Arlington exact ETF correction Shipped in #2058; review/51 bounded contract frozen/stamped.
+Six deployed ownership checks remain pending. The aborted pre-merge review request is an
+explicit coverage gap, not substantive review completion.
+
+Dallas exact November2023 CBTF ownership correction is L3 in review/51, issue #2062.
+One verified recording only; broader CBTF/subcommittee census remains evidence work.
+
+Dallas #2062 exact CBTF correction prepared: full5,353 replay Council358→357/newtaskforce1,
+4,929 offline tests passed14 deselected, wholeRuff463/format pass. Deployment closure pending.
+
+Dallas #2065 four additional verified CBTF recordings are L3 in review/51. Exact inclusion
+only; remaining task-force/subcommittee/town-hall proof remains active.
+
+Dallas #2065 four-record coverage prepared: full5,353 replay changes only CBTF1→5;
+4,933 offline pass14 deselected, wholeRuff463/format pass. CI/review/deployment pending.
+
+### Ownership selector rule audit — L2, October 5 follow-up
+
+Maintainer requests reusable institution rules instead of repeated per-record inclusions where
+labels reliably distinguish bodies. Start with Dallas standing Economic Development versus
+its separately convened 2024 bond subcommittee; use existing complete-label selectors and
+full-source positive/negative replay. Preserve genuine joints and ambiguous-record proof gates.
+The bounded design is in review/51, “Dallas reusable Economic Development ownership rules”.
+Existing prepared PR #2066 remains unchanged in production config/tests; this audit is follow-up.
+
+Dallas reusable Economic Development ownership rules are now **L3**, issue #2068, with the
+11 standing aliases, separate stable bond label, named tests and full-source replay in review/51.
+Status: Prepared; deployment proof remains required for case closure.
+
+Dallas reusable Streets bond ownership rules: **L3**, issue #2081. Complete standing aliases,
+four stable bond labels, preserved GUID exceptions, eleven original fixtures and full-source
+positive/negative replay are specified in review/51. Recording/deployment proof gates remain.
+
+Dallas2017 bond proceeding ownership: **L3**, issue #2083. Exact provider agenda hashes bind
+one formal taskforce meeting and two public town halls despite their shared misleading label.
+Separate exact subscriptions and unchanged original records/audio per review/51; deployment pending.
+
+Separate bounded static search job: **L3**, #2084, maintainer-approved20minute ceiling and
+same-run snapshot/staged publication contract in review/51. No public schema or record writes.
+
+Fort Worth EMSISD participant discovery: **L3**, #2086, source-scoped full institutional label,
+same UID/audio and retained Council ownership. Exact fixture/full-source replay in review/51.
+
+Dallas bond Flood institution: **L3**, #2089, reusable complete label and independently
+convened official minutes/source chapter binding. Implementation prepared with original fixture;
+5353-record replay adds only one Flood subscription. Deployment proof remains pending.

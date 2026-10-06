@@ -1,0 +1,90 @@
+{
+  "237c28f30496e3e0": {
+    "uid": "237c28f30496e3e0",
+    "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3453",
+    "body": "Community and Neighborhood Development Committee",
+    "title": "Community and Neighborhood Development Committee",
+    "published": "2020-04-28T00:00:00+00:00",
+    "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3453",
+    "audio": {
+      "attempts": 0,
+      "bytes": 36800736,
+      "duration_served": 2887.369,
+      "encode_time": "2026-07-14T12:50:45.119343+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/ecc3710ac47f/237c28f30496e3e0-d2419bdee50a.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "d2419bdee50a",
+      "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/237c28f30496e3e0-d2419bdee50a.m4a",
+      "verification": null
+    }
+  },
+  "30b28efc23346a6d": {
+    "uid": "30b28efc23346a6d",
+    "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3505",
+    "body": "Community and Neighborhood Development Committee",
+    "title": "Community and Neighborhood Development Committee",
+    "published": "2020-06-23T00:00:00+00:00",
+    "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3505",
+    "audio": {
+      "attempts": 0,
+      "bytes": 22046491,
+      "duration_served": 1718.934,
+      "encode_time": "2026-07-14T12:50:23.688452+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/ecc3710ac47f/30b28efc23346a6d-07a7c67138c4.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "07a7c67138c4",
+      "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/30b28efc23346a6d-07a7c67138c4.m4a",
+      "verification": null
+    }
+  },
+  "4357f0c39d1ae58f": {
+    "uid": "4357f0c39d1ae58f",
+    "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3480",
+    "body": "Community and Neighborhood Development Committee",
+    "title": "Community and Neighborhood Development Committee",
+    "published": "2020-05-19T00:00:00+00:00",
+    "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3480",
+    "audio": {
+      "attempts": 0,
+      "bytes": 35976736,
+      "duration_served": 2837.636,
+      "encode_time": "2026-07-14T12:49:32.631525+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/ecc3710ac47f/4357f0c39d1ae58f-354e7dead089.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "354e7dead089",
+      "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/4357f0c39d1ae58f-354e7dead089.m4a",
+      "verification": null
+    }
+  },
+  "d8f3b672b482369b": {
+    "uid": "d8f3b672b482369b",
+    "provider_guid": "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=3493",
+    "body": "Community and Neighborhood Development Committee",
+    "title": "Community and Neighborhood Development Committee",
+    "published": "2020-06-09T00:00:00+00:00",
+    "video_url": "https://arlingtontx.granicus.com/DownloadFile.php?view_id=2&clip_id=3493",
+    "audio": {
+      "attempts": 0,
+      "bytes": 29080961,
+      "duration_served": 2290.55,
+      "encode_time": "2026-07-14T12:49:30.101514+00:00",
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/ecc3710ac47f/d8f3b672b482369b-5427e9c557a1.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "5427e9c557a1",
+      "url": "https://audio.citymeetings.fyi/granicus/ecc3710ac47f/d8f3b672b482369b-5427e9c557a1.m4a",
+      "verification": null
+    }
+  }
+}
