@@ -139,6 +139,38 @@ def _parse_uid_overrides(raw: object, *, source_file: Path) -> dict[str, str]:
     return overrides
 
 
+def _parse_publication_notes(raw: object, *, source_file: Path) -> list[dict[str, str]]:
+    """Validate exact-identity, feed-local presentation notes."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ValueError(f"{source_file.name}: publication_notes must be a list")
+    required = {"uid", "provider_guid", "note", "approval_ref"}
+    seen_uids: set[str] = set()
+    parsed: list[dict[str, str]] = []
+    for index, entry in enumerate(raw):
+        if not isinstance(entry, dict) or set(entry) != required:
+            raise ValueError(
+                f"{source_file.name}: publication_notes[{index}] must contain exactly "
+                "uid, provider_guid, note, and approval_ref"
+            )
+        if any(not isinstance(entry[key], str) or not entry[key] for key in required):
+            raise ValueError(
+                f"{source_file.name}: publication_notes[{index}] values must be non-empty strings"
+            )
+        uid = entry["uid"]
+        if not _EPISODE_UID_RE.fullmatch(uid):
+            raise ValueError(
+                f"{source_file.name}: publication_notes[{index}].uid must be a 16-character "
+                "lowercase hexadecimal stable UID"
+            )
+        if uid in seen_uids:
+            raise ValueError(f"{source_file.name}: duplicate publication note UID {uid!r}")
+        seen_uids.add(uid)
+        parsed.append({key: entry[key] for key in ("uid", "provider_guid", "note", "approval_ref")})
+    return parsed
+
+
 def _parse_lifecycle(raw: object, *, source_file: Path) -> FeedLifecycle:
     if raw is None:
         return FeedLifecycle()
@@ -294,6 +326,9 @@ def _build_city(
         _validate_slug_format(str(alias), source_file=source_file, kind="alias")
     source_id = _parse_source_id(raw.get("source_id"), source_file=source_file)
     uid_overrides = _parse_uid_overrides(raw.get("uid_overrides"), source_file=source_file)
+    publication_notes = _parse_publication_notes(
+        raw.get("publication_notes"), source_file=source_file
+    )
     lifecycle = _parse_lifecycle(raw.get("lifecycle"), source_file=source_file)
 
     # Merge entity fields (city_website, meetings_url, state, colors) as base layer; explicit
@@ -350,6 +385,7 @@ def _build_city(
             "city",
             "source_id",
             "uid_overrides",
+            "publication_notes",
             "lifecycle",
             "aux_provider",
             "aux_source",
@@ -408,6 +444,7 @@ def _build_city(
         podcast_description=raw["podcast_description"],
         source_id=source_id,
         uid_overrides=uid_overrides,
+        publication_notes=publication_notes,
         lifecycle=lifecycle,
         aux_provider=aux_provider_name,
         aux_source=dict(aux_source) if isinstance(aux_source, dict) else None,

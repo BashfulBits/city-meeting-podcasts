@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared Fort Worth #3814 consecutive-proceedings note.** A feed-local, exact UID/GUID-bound
+  annotation is projected to Council and CCPD RSS/raw meeting pages while preserving official
+  provider metadata and whole-recording UID/audio. It does not persist into episode records or
+  alter audio processing; deployment and case closure remain pending.
+
 - **Certified October 2026 Coverage Feed Implementations.** Reconciled and certified status for
   October 2026 coverage batches across Addison UDC (PR #1992), Arlington HFC and ZBA (commit
   5ffabb6), Pflugerville BOA (PR #1993), and Dallas/Fort Worth TIF aggregates (PR #1973). Updated

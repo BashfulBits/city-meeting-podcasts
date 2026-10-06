@@ -321,6 +321,26 @@ def test_meeting_page_renders_permalinks_chapters_and_transcript(sample_city):
     assert "starttime=120" in html
 
 
+def test_meeting_page_renders_escaped_publication_note_separately(sample_city):
+    from datetime import UTC, datetime
+
+    from citypods.models import Episode
+    from citypods.site import render_meeting_page
+
+    ep = Episode(
+        guid="g",
+        uid="meeting-note",
+        title="Official title",
+        published=datetime(2026, 5, 1, tzinfo=UTC),
+        video_url="https://media.example/x.mp4",
+        description="Official description.",
+        publication_note="Board & Council <proceedings>.",
+    )
+    html = render_meeting_page(sample_city, ep, "https://e.test")
+    assert "Board &amp; Council &lt;proceedings&gt;." in html
+    assert "Official description." in html
+
+
 def test_meeting_page_keeps_unavailable_recording_discoverable(sample_city):
     from datetime import UTC, datetime
 
