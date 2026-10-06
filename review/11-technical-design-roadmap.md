@@ -86,6 +86,13 @@ PRs [#1973](https://github.com/BashfulBits/city-meeting-podcasts/pull/1973) and
 [Coverage and migration evidence](tif-coverage-2026-10.md) records their archive checks.
 The [historical inventory](historical-feed-coverage-2026-10.md) merged in #1975; directions A–F
 are approved but residual policy application is still P0, not completed by merging that inventory.
+The 2026-10-06 current-selector replay linked all 680 inventory labels to cached UID-level selector
+results: 14 labels are fully matched, one is partial and 665 still have no selector match. Only 20
+of 2,028 cached UID/label associations link to the 169-case register. The detailed crosswalk and
+input hashes are recorded in [the refreshed replay](evidence/historical-selector-replay-2026-10-06.csv)
+and its manifest. Cached sources date to October 3; this is not live-source completeness or
+ownership proof. P0 remains open until each inventory row receives an evidence-backed disposition
+and required source refresh/deployment checks.
 
 Maintainer clarification (2026-10-04): specific continuing standing committees, including Council
 subcommittees, have dedicated feeds across cities unless evidence establishes a temporary body.

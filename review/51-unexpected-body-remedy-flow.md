@@ -370,6 +370,19 @@ issue, or a documented unavailable-source exception. An unresolved legitimate re
 “covered.” The current 680-row inventory is a starting snapshot, not a permanently complete census.
 P1 can supply evaluation tooling while P0 is being completed; P5 requires an approved city baseline.
 
+### P0 current-selector crosswalk — 2026-10-06
+
+The row-level replay at
+[`historical-selector-replay-2026-10-06.csv`](evidence/historical-selector-replay-2026-10-06.csv)
+reconciles all 680 frozen inventory IDs against selectors in main and the cached source snapshots.
+Input hashes, the code revision, and limitations are recorded in its companion JSON manifest.
+It found 14 fully selector-matched labels, one partial label and 665 labels with no match; 40 of
+2,028 cached UID/label associations match a feed selector. It links only 20 associations across
+nine inventory labels to the 169-case register. This is not completion evidence: the cached inputs
+were last written October 3, and selector eligibility does not establish correct ownership or an
+approved exclusion. The missing case links and all uncovered labels remain P0 work. Do not equate
+the register's 17 open cases with the full historical backlog or close a row by count alone.
+
 ### P0 publication selection — inactive machinery shipped; activations separately gated
 
 The maintainer authorized writing this specification; runtime projection changes and affected feed

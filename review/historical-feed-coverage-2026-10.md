@@ -243,3 +243,39 @@ exact GUID inclusions, and preserves all archived records. It creates no feed ch
 #1623 remains an operational signal to reconcile with a future controlled audit, while this
 inventory remains the historical completion ledger. Preserve held #1986, #1989 and #1991;
 publication-selection proof and the P2 evidence/exclusion ledger remain prerequisites for them.
+
+## Current-selector replay refresh — 2026-10-06
+
+The current main selector set was replayed against all 680 inventory labels and the locally
+retained source snapshots. The row-level UID/feed crosswalk is in
+[the refreshed replay](evidence/historical-selector-replay-2026-10-06.csv); its input hashes and
+limits are in the [input manifest](evidence/historical-selector-replay-2026-10-06-inputs.json).
+This is a read-only eligibility replay, not a live provider refresh or a judgment that a selector
+has the correct institutional owner.
+
+| City | Inventory labels | Fully selector-matched labels | Partial labels | Labels with no selector match | Cached UID/label rows matched / unmatched |
+|---|---:|---:|---:|---:|---:|
+| Addison | 4 | 4 | 0 | 0 | 14 / 0 |
+| Arlington | 3 | 3 | 0 | 0 | 3 / 0 |
+| Dallas | 150 | 6 | 1 | 143 | 13 / 560 |
+| Denton | 183 | 0 | 0 | 183 | 0 / 200 |
+| Fort Worth | 339 | 0 | 0 | 339 | 0 / 1,228 |
+| Pflugerville | 1 | 1 | 0 | 0 | 10 / 0 |
+| **Total** | **680** | **14** | **1** | **665** | **40 / 1,988** |
+
+The cached replay contains 2,028 source-key/UID/label associations. The frozen proposal reports
+2,011 provider observations; these are different measures and are not unique cross-provider
+recordings. Against the October 3 selector replay, the refreshed selectors add 24 matched cached
+associations (16 to 40), while 1,988 associations still have no feed selector. Of the 2,028
+associations, only 20 link by source key and UID to the 169-case unresolved-recording register,
+across nine inventory labels. The replay therefore exposes two P0 gaps: most selector gaps still
+lack a case-level evidence link, and selector eligibility alone does not establish the correct
+owner or a verified exclusion.
+
+The source snapshots in this replay were last written locally on October 3, 2026; no provider was
+fetched. Denton's historical Granicus and current Swagit namespaces remain separate, and Fort
+Worth's repeated views remain separate observations. The 665 no-match labels are open coverage
+work, not approved exclusions. Do not close or suppress them from selector counts. P0 remains
+incomplete until each inventory row has applied, evidence-backed coverage/exclusion, an
+evidence-backed unresolved case, or a documented unavailable-source exception, followed by
+source-refresh and deployment verification where required.
