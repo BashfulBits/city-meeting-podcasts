@@ -87,6 +87,12 @@ jobs:
         run: python scripts/preflight_diarization.py
 
       - name: Diarize Denton pilot meetings
+        # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
+        # GitHub reports as a grey "cancelled" -- skipping the trailing projection and review
+        # candidate step. A STEP-level timeout below the job's fails the step, so the run goes
+        # red and post-steps still execute. Bound: Python start cutoff (285m) < backstop (320m) <
+        # step timeout (325m) < job timeout (330m).
+        timeout-minutes: 325
         env:
           GITHUB_TOKEN: ${{ github.token }}
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}

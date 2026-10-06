@@ -241,7 +241,10 @@ def test_r7_diarization_workflow_runs_preflight_and_both_pilot_lanes():
     defaults = yaml.safe_load(Path("config/site_config.yml").read_text())["defaults"]
     start_cutoff = float(defaults["diarize_start_cutoff_minutes"])
     backstop = float(defaults["diarize_backstop_minutes"])
-    assert start_cutoff < backstop < float(job["timeout-minutes"])
+    step_timeout = float(diarize["timeout-minutes"])
+    job_timeout = float(job["timeout-minutes"])
+    assert start_cutoff < backstop < step_timeout < job_timeout
+    assert diarize["timeout-minutes"] == 325
 
 
 def test_speaker_calibration_review_gate_matches_packaged_titles():
@@ -1673,3 +1676,80 @@ def test_contracts_probe_artificial_analysis_with_production_secret():
     assert "tests/live/test_artificial_analysis_contract.py -m live" in step["run"]
     assert not step.get("continue-on-error")
     assert not job.get("continue-on-error")
+
+
+@pytest.mark.parametrize(
+    ("workflow_file", "job_name", "step_name", "job_timeout", "step_timeout"),
+    [
+        ("tag.yml", "tag", "Produce bounded LLM topic-tag candidates", 180, 165),
+        (
+            "moments.yml",
+            "moments",
+            "Produce bounded R6 moment candidates and judge assessments",
+            180,
+            165,
+        ),
+        ("chapter-agenda.yml", "extract", "Extract agenda candidates", 240, 225),
+        (
+            "chapter-locator.yml",
+            "locate",
+            "Locate agenda candidates in complete transcripts",
+            45,
+            38,
+        ),
+        ("llm-tournament.yml", "tournament", "Run bounded tag samples", 180, 165),
+        ("r7-diarization.yml", "diarize", "Diarize Denton pilot meetings", 330, 325),
+        ("audio.yml", "audio", "Audio (shard ${{ matrix.shard }}/4)", 360, 330),
+        (
+            "llm-deferred-sweep.yml",
+            "sweep",
+            "Reconcile pending deferred/dispatched LLM requests",
+            360,
+            330,
+        ),
+        ("r5-benchmark.yml", "benchmark", "Run or package R5 shadow benchmark", 180, 165),
+        (
+            "tournament-tag-backfill.yml",
+            "backfill",
+            "Refresh one retained source through the normal bounded tag lane",
+            180,
+            165,
+        ),
+        (
+            "asr.yml",
+            "asr",
+            "${{ matrix.lane }} worker ${{ matrix.slot }}/${{ matrix.workers }}",
+            360,
+            330,
+        ),
+        (
+            "asr.yml",
+            "reconcile",
+            "Rebuild work index + reconcile dispatch leases + free-tier budget",
+            60,
+            50,
+        ),
+    ],
+)
+def test_workflow_step_level_timeouts_and_ordering(
+    workflow_file: str, job_name: str, step_name: str, job_timeout: int, step_timeout: int
+):
+    """Review/45 Initiative 6: All primary long-running steps have step-level timeouts.
+
+    Invariant: in-process cutoff < in-process backstop < step timeout < job timeout.
+    This guarantees that steps fail visibly (red) instead of the entire run being
+    cancelled (grey), allowing trailing post-processing and reporting steps to execute.
+    """
+    _wf, job = _job(workflow_file, job_name)
+    actual_job_timeout = job.get("timeout-minutes")
+    assert actual_job_timeout == job_timeout, (
+        f"{workflow_file} :: {job_name} job timeout is {actual_job_timeout}, expected {job_timeout}"
+    )
+    step = next((s for s in job["steps"] if s.get("name") == step_name), None)
+    assert step is not None, f"Step {step_name!r} not found in {workflow_file} :: {job_name}"
+    actual_step_timeout = step.get("timeout-minutes")
+    assert actual_step_timeout == step_timeout, (
+        f"{workflow_file} :: {job_name} :: {step_name} step timeout is {actual_step_timeout}, "
+        f"expected {step_timeout}"
+    )
+    assert step["timeout-minutes"] < job["timeout-minutes"]

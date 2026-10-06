@@ -66,6 +66,11 @@ jobs:
           python scripts/llm_submission_telemetry.py snapshot start
 
       - name: Reconcile pending deferred/dispatched LLM requests
+        # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
+        # GitHub reports as a grey "cancelled" -- skipping the summary report where submit_failed
+        # surfaces. A STEP-level timeout below the job's fails the step, so the run goes red and
+        # post-steps still execute.
+        timeout-minutes: 330
         env:
           # Surface phase telemetry even when GitHub cancels the job during a storage read.
           PYTHONUNBUFFERED: "1"

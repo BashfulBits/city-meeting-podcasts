@@ -67,6 +67,11 @@ jobs:
           echo "issue=$(jq -r '.issue_number // empty' next.json)" >> "$GITHUB_OUTPUT"
           echo "model=$(jq -r '.model // empty' next.json)" >> "$GITHUB_OUTPUT"
       - name: Refresh one retained source through the normal bounded tag lane
+        # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
+        # GitHub reports as a grey "cancelled" -- skipping telemetry summaries and artifacts.
+        # A STEP-level timeout below the job's fails the step, so the run goes red and
+        # post-steps still execute.
+        timeout-minutes: 165
         if: steps.next.outputs.status == 'active'
         env:
           GITHUB_TOKEN: ${{ github.token }}

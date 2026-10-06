@@ -26,6 +26,7 @@ permissions:
 jobs:
   asr:
     runs-on: ubuntu-latest
+    timeout-minutes: 360
     # Rebuild the discovery index + reap dead workers once before any internal pull worker claims.
     needs: reconcile
     strategy:
@@ -126,6 +127,10 @@ jobs:
       # Each worker claims from the shared transcript queue until the start cutoff or a newer run
       # is queued behind it. Completion persists per-item; the next run resumes from storage.
       - name: ${{ matrix.lane }} worker ${{ matrix.slot }}/${{ matrix.workers }}
+        # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
+        # GitHub reports as a grey "cancelled". A STEP-level timeout below the job's fails the
+        # step, so the run goes red and post-steps still execute.
+        timeout-minutes: 330
         id: asr
         env:
           # Lets the shard poll the Actions API and yield gracefully when a newer run is queued
@@ -163,6 +168,7 @@ jobs:
   # No Whisper model / ffmpeg: it only reads/writes JSON state.
   reconcile:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -180,6 +186,10 @@ jobs:
       # Only this step touches storage; scope the secrets here instead of job-level
       # (CR2-GH-16/MR-GH-02) so checkout/setup-python/install remain credential-free.
       - name: Rebuild work index + reconcile dispatch leases + free-tier budget
+        # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
+        # GitHub reports as a grey "cancelled". A STEP-level timeout below the job's fails the
+        # step, so the run goes red and post-steps still execute.
+        timeout-minutes: 50
         env:
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}

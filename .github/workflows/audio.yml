@@ -201,6 +201,11 @@ jobs:
       # Materialize audio for this shard's sources only. Bounded by the wall-clock window; yields
       # gracefully (exit 143 after the stop signal) when a newer audio run is queued behind it.
       - name: Audio (shard ${{ matrix.shard }}/4)
+        # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
+        # GitHub reports as a grey "cancelled" -- skipping the trailing H16 run event and
+        # shard evidence collection. A STEP-level timeout below the job's fails the step, so
+        # the run goes red and post-steps still execute.
+        timeout-minutes: 330
         id: audio
         env:
           # Lets the shard poll the Actions API and yield gracefully when a newer run is queued
