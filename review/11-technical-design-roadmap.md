@@ -1506,3 +1506,11 @@ Human merged at 10:04:48 UTC; checkpoint fix lacks substantive review of its new
 Review gap retained; live search and archive visibility verification remain outstanding.
 
 Dallas May25 CBTF exact retained binding #2097: **L3, implementation prepared**, review/51; only GUID233037.
+
+### #2098 Fort Worth Gas Drilling Task Force participant — L3
+
+Two exact official opening slates bind125/127 to Council/Task Force joint proceedings.
+Implement the dedicated participant subscription under the bounded contract in
+[review/51](51-unexpected-body-remedy-flow.md#fort-worth-gas-drilling-task-force-joint-participant--l3-2098).
+Preserve both UIDs/audio/Council eligibility; keep cases open until deployment.6334 remains
+a source-version discrepancy, not an approved split or winner.

@@ -15,6 +15,10 @@ Once 1.0 ships, entries move under semver tags.
 - **Prepared #2097 Dallas May25 CBTF subscription.** Exact GUID admission preserves original
   UID/audio. Two Streets cases close after original chapter and deployed RSS proof reconciliation.
 
+- **Prepared #2098 Fort Worth Gas Drilling Task Force participant.** Exact official opening
+  slates establish125/127 as Council/Task Force joint workshops. Both original UIDs/audio and
+  Council eligibility remain; two full aliases admit recurrence. Deployment closure pending.
+
 - **Prepared #2094 Dallas bond Critical Facilities feed.** Exact institution label retains
   original UID/audio and automatically admits future matching GUIDs; prior feeds unchanged.
   Deployment evidence remains required before case closure.

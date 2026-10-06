@@ -2330,3 +2330,50 @@ and a different unverified GUID; retain the272574 negative. No broad label admis
 UID84fcc0492e66906d; every other holder set unchanged.20 targeted and4984 full offline
 tests pass15 deselected; whole Ruff/format472 clean. Original UID/audio preserved.
 Deployment still required; two independently proven deployed Streets cases close.
+
+### Fort Worth Gas Drilling Task Force joint participant — L3, #2098
+
+User direction to process all remaining gaps authorizes this independently proven participant
+coverage under the existing same-UID joint policy. Native official players for clip125/view9
+and clip127/view12 independently show the opening slate: Fort Worth City Council, 2008 Gas
+Drilling Task Force, Joint Environmental Workshop, Tuesday October14,2008, Will Rogers
+Memorial Center, Amon G. Carter Exhibit Hall Stagecoach Room. Independent October7 Council
+minutes announce that same joint event and place. Both retain distinct UIDs and publication
+dates; neither identical media references nor equal lengths authorize a duplicate winner.
+
+Files: new config/feeds/fort-worth-tx-gas-drilling-task-force.yml, original retained fixture
+tests/fixtures/fortworth-gas-joint-retained.json, tests/test_fortworth_gas_joint_ownership.py,
+review11, this doc, CHANGELOG, ROADMAP, existing evidence audit/register. No ARCHITECTURE change.
+Reuse the five current Fort Worth Granicus source views and body_exact TWO complete aliases:
+City Council - Gas Drilling Task Force Workshop City Council - Gas Drilling Task Force Workshop;
+City Council - Gas Drilling Task Force Workshop of October 14 City Council - Gas Drilling Task
+Force Workshop of October 14. Future GUIDs with these exact institutional labels auto-admit.
+No broad Gas, Workshop or topic substring; unproved153/155/180 do not establish Task Force
+participation. New title Fort Worth: Gas Drilling Task Force; current author/email conventions.
+
+Keep Council and all existing selectors unchanged. Preserve original UID27254aa1a700569f/125
+and0d5832dbd08e6dd8/127, official stored title/date, source namespaces and hosted audio. Copy
+these complete records unchanged into fixture. Actual-config tests prove both participant
+holders, RSS original UID/audio, future-GUID alias positives, near-label negatives including
+153/155/180, unchanged source records and matching source feed URLs. Replay all5,896 retained
+source rows: add only these two UIDs to new feed; every prior holder unchanged. Whole offline
+suite and whole Ruff/format/diff required. Cases stay open/prepared until deployment evidence.
+
+Durably record6334 discrepancy: both current live views show Budget Work Session, Aug11,2026,
+2:12:32; two retained combined-label UIDs show10740s and no audio/sources. Existing budget-only
+UIDs have decoded7952.06s/audio. Packet combines three proceedings but does not establish
+original combined recording content. Both6334 cases stay open; no refresh/split/winner/holder
+change. Evidence screenshot paths and exact observed content are retained in the audit.
+
+Do not modify runtime/provider/schema/storage/stages/workers/workflows/dependencies, source
+records, raw titles/dates/chapters/audio or other configs. No merge, split, winner, invalidation,
+backfill or production write. Actual test-code review obeys repository-wide65minute spacing.
+Freeze/stamp only after human merge; deployment proof is separately required for closure.
+
+
+Prepared #2098: exact participant feed and retained-record regression test implemented;
+125/127 cases remain open until deployed own RSS and original audio verified.
+
+#2098 validation:20 targeted tests,4985 offline tests pass15 deselected; whole Ruff/format473
+clean. Full5896-record/979-label replay adds only the two original UIDs to the new feed0→2;
+every previous holder is unchanged. No case closure before deployed proof.

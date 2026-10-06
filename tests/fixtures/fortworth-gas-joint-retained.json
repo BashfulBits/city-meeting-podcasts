@@ -1,0 +1,440 @@
+[
+  {
+    "agenda_backup": null,
+    "agenda_text": {
+      "attempts": 7,
+      "last_attempt": "2026-09-29T21:13:22.872676+00:00",
+      "quality": {
+        "assessment_attempts": 7,
+        "document_hash": "96075776f783fdd68189d7dfa02a8515d5697b6d76b632209342235e2f41e4a1",
+        "eligibility": "unknown",
+        "first_seen": "2026-08-17T14:07:54.587555+00:00",
+        "last_seen": "2026-09-29T21:13:22.872646+00:00",
+        "method": "none",
+        "native_chars": 174,
+        "native_ocr_similarity": null,
+        "ocr_chars": 0,
+        "ocr_mean_confidence": null,
+        "page_count": 0,
+        "pipeline_version": "3",
+        "reason": "placeholder-or-low-quality-html",
+        "source_url": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=12&clip_id=127",
+        "status": "rejected",
+        "truncated": false
+      },
+      "url": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=12&clip_id=127"
+    },
+    "audio": {
+      "attempts": 0,
+      "bytes": null,
+      "duration_served": null,
+      "encode_time": null,
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/6540eef2dc2e/0d5832dbd08e6dd8-11f8d5ca9e83.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "11f8d5ca9e83",
+      "url": "https://audio.citymeetings.fyi/granicus/6540eef2dc2e/0d5832dbd08e6dd8-11f8d5ca9e83.m4a",
+      "verification": null
+    },
+    "body": "City Council - Gas Drilling Task Force Workshop City Council - Gas Drilling Task Force Workshop",
+    "chapter_tags": null,
+    "chapters": [],
+    "chapters_basis": "source:s0",
+    "duration": 9300,
+    "generated_agenda_candidates": null,
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": null,
+    "integrity": null,
+    "links": {
+      "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=12&clip_id=127",
+      "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=127"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-29T13:21:10.894004+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "ddd8c1b2fe0c6f4e",
+      "state": "available"
+    },
+    "media_kind": "direct",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=127",
+    "provider_transcript": null,
+    "published": "2008-10-14T00:00:00+00:00",
+    "served_duration_seconds": null,
+    "source_chapters": null,
+    "source_duration_seconds": 9300.0,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 9300.05,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "direct",
+        "provider": "granicus",
+        "ref": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=12&clip_id=127",
+        "watch_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=127"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": null,
+      "audio": {
+        "completed_at": "2026-07-29T13:21:10.895152+00:00",
+        "input_fingerprint": "4c3f32811a6ac9901f6f87af92389f7696815fd5d20fa5f04ade97a1609ffd2d",
+        "output": "granicus/6540eef2dc2e/0d5832dbd08e6dd8-11f8d5ca9e83.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-29T13:20:04.673285+00:00",
+        "input_fingerprint": "491c537165498aaacb7d72bd3445b3be9160ece9c7a5a2329dbcdf69c21b3e1a",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "8b666bc4ed1af8ce836db64cd4fb0ae473486dfc8464f09bdf205665a980858b",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "2a9452d352b3c6264dab82e6100429352b9171d46f281be5b3a5a5a991542d9b",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T01:05:01.353893+00:00",
+        "input_fingerprint": "1c96859297f9673505ca877e9c769220050a785254d82dd30d2b70569610e02d",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T01:05:01.353801+00:00",
+        "input_fingerprint": "992fefa53a5209d9ec227de6a17ed074b6d19ae9726539789b189300b239b6fe",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:49:53.853674+00:00",
+        "input_fingerprint": "755e13467a2a48e8d1285646399023aa56e66c1793d38744c992ed882da323b4",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:42:04.864774+00:00",
+        "input_fingerprint": "49aaeb0467664b1c0e837e30f352a595568a390382d3127ba7eb7ebb321629bb",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "completed_at": "2026-09-05T02:39:30.236741+00:00",
+        "input_fingerprint": "3e7654f3c4edd1cd59d195e6e989d5a26da92ca306727d347d3428d3cca41ac6",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "timeline": {
+        "completed_at": "2026-07-29T13:21:10.894399+00:00",
+        "input_fingerprint": "16b07451cb1f778b994518451b87ef425f6fd81531f21f5dd758cd8c78766a14",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-24T20:17:55.036236+00:00",
+        "input_fingerprint": "3592e3c5f0d8d431f0a52b22e1908839ee311c6b935e7a06490c31fdf7229c40",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "7bba9a7da1a55d96",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": "69aebed620fb55d9",
+    "tags_spec_hash": "8ac9da588278259a",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 3673.023424,
+          "served_start": 0.0,
+          "source_end": 3673.023424,
+          "source_id": "s0",
+          "source_start": 0.0
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 6384.009977,
+          "served_start": 3673.023424,
+          "source_end": 6396.862585,
+          "source_id": "s0",
+          "source_start": 3685.876032
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 9275.254829999998,
+          "served_start": 6384.009977,
+          "source_end": 9300.05,
+          "source_id": "s0",
+          "source_start": 6408.805147
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "City Council - Gas Drilling Task Force Workshop City Council - Gas Drilling Task Force Workshop",
+    "transcript": null,
+    "uid": "0d5832dbd08e6dd8",
+    "video_url": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=12&clip_id=127"
+  },
+  {
+    "agenda_backup": null,
+    "agenda_text": {
+      "attempts": 7,
+      "last_attempt": "2026-09-29T15:06:39.270005+00:00",
+      "quality": {
+        "assessment_attempts": 7,
+        "document_hash": "96075776f783fdd68189d7dfa02a8515d5697b6d76b632209342235e2f41e4a1",
+        "eligibility": "unknown",
+        "first_seen": "2026-08-17T11:55:22.670248+00:00",
+        "last_seen": "2026-09-29T15:06:39.269970+00:00",
+        "method": "none",
+        "native_chars": 174,
+        "native_ocr_similarity": null,
+        "ocr_chars": 0,
+        "ocr_mean_confidence": null,
+        "page_count": 0,
+        "pipeline_version": "3",
+        "reason": "placeholder-or-low-quality-html",
+        "source_url": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=9&clip_id=125",
+        "status": "rejected",
+        "truncated": false
+      },
+      "url": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=9&clip_id=125"
+    },
+    "audio": {
+      "attempts": 0,
+      "bytes": null,
+      "duration_served": null,
+      "encode_time": null,
+      "error": null,
+      "error_spec_hash": null,
+      "key": "granicus/6540eef2dc2e/27254aa1a700569f-482dd187b73d.m4a",
+      "last_attempt": null,
+      "rebuild": null,
+      "spec_hash": "482dd187b73d",
+      "url": "https://audio.citymeetings.fyi/granicus/6540eef2dc2e/27254aa1a700569f-482dd187b73d.m4a",
+      "verification": null
+    },
+    "body": "City Council - Gas Drilling Task Force Workshop of October 14 City Council - Gas Drilling Task Force Workshop of October 14",
+    "chapter_tags": null,
+    "chapters": [],
+    "chapters_basis": "source:s0",
+    "duration": 9300,
+    "generated_agenda_candidates": null,
+    "generated_chapters": null,
+    "generated_chapters_spec_hash": null,
+    "integrity": null,
+    "links": {
+      "agenda": "https://fortworthgov.granicus.com/AgendaViewer.php?view_id=9&clip_id=125",
+      "canonical_video": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=125"
+    },
+    "llm_tag_candidates": null,
+    "media_availability": {
+      "detector_version": "1",
+      "evidence_ref": null,
+      "last_check": "2026-07-29T12:35:01.221359+00:00",
+      "operator_override": null,
+      "operator_reason": "",
+      "partial_confirmations": 0,
+      "profile": "noise=-40.0dB;min_s=5.0;min_f=0.02",
+      "reason": "playable audio",
+      "recovered_at": null,
+      "silent_confirmations": 0,
+      "source_fingerprint": "ddd8c1b2fe0c6f4e",
+      "state": "available"
+    },
+    "media_kind": "direct",
+    "minutes_roster": null,
+    "minutes_text": null,
+    "minutes_votes": null,
+    "moments": null,
+    "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=125",
+    "provider_transcript": null,
+    "published": "2008-10-21T00:00:00+00:00",
+    "served_duration_seconds": null,
+    "source_chapters": null,
+    "source_duration_seconds": 9300.0,
+    "sources": [
+      {
+        "backup_key": null,
+        "duration": 9300.05,
+        "duration_basis": "decoded",
+        "id": "s0",
+        "media_kind": "direct",
+        "provider": "granicus",
+        "ref": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=9&clip_id=125",
+        "watch_url": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=125"
+      }
+    ],
+    "speakers": null,
+    "stage_completion": {
+      "agenda_text": null,
+      "audio": {
+        "completed_at": "2026-07-29T12:35:01.222631+00:00",
+        "input_fingerprint": "2dc75d75bdbaa837280081545385e8d0ce4d67105dd03f5b3688abba49123335",
+        "output": "granicus/6540eef2dc2e/27254aa1a700569f-482dd187b73d.m4a",
+        "state": "complete",
+        "version": "1"
+      },
+      "chapters": {
+        "completed_at": "2026-07-29T12:33:40.294937+00:00",
+        "input_fingerprint": "7302ed283498248aeb0374d5341807ad1eeb1d31a555fe404ddf08261dcf1449",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "links": {
+        "input_fingerprint": "fd3fe76c1fef1ff8e63c22f51c3836cf90bc545b5249803a57ebb1b5f9e01d38",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "minutes_text": {
+        "input_fingerprint": "42fca1172029213c3e314befac3ad62a4ea76383292b7504708bb1aec349924b",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-admission": {
+        "completed_at": "2026-10-04T01:05:43.626993+00:00",
+        "input_fingerprint": "df955c7a6cce7ef7e718fdab1182655e9857d760a68fed3751194ff550253b1b",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moment-judge": {
+        "completed_at": "2026-10-04T01:05:43.626818+00:00",
+        "input_fingerprint": "6ad093a0e35e98b690fdec967f6c784486b0c22cb191eb0743ba5bce8ee58ece",
+        "output": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "moments": {
+        "completed_at": "2026-09-25T05:50:35.861045+00:00",
+        "input_fingerprint": "fa21db87323a534d910a2251d413bc711fa0d4c2170e6eaa289a782df6ed0b8b",
+        "output": [],
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "remap": {
+        "completed_at": "2026-08-10T21:41:36.080478+00:00",
+        "input_fingerprint": "b866cbdcd46886553f9d98db37e754edbcf1c9e97d8daa167a84bd6bab4cb658",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "tags": {
+        "completed_at": "2026-09-05T02:44:27.729317+00:00",
+        "input_fingerprint": "566deeb8fb04fd139b17373f727f3b25be05eaecf2751649a0137e81ff46643c",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      },
+      "timeline": {
+        "completed_at": "2026-07-29T12:35:01.221860+00:00",
+        "input_fingerprint": "00863b95f220ca8f93a3658fc671a455ace4a04863e4487de38e321a94ccf269",
+        "output": null,
+        "state": "complete-empty",
+        "version": "1"
+      },
+      "video-clips": {
+        "completed_at": "2026-08-24T20:16:33.883370+00:00",
+        "input_fingerprint": "09f245c5d1302da7abf07144c34988534b8837df6e458cd78722bd9fb62170e5",
+        "output": null,
+        "state": "complete-empty",
+        "version": "2"
+      }
+    },
+    "summary": "",
+    "tags": null,
+    "tags_input_fingerprint": "7bba9a7da1a55d96",
+    "tags_llm_call_attempts": null,
+    "tags_llm_recipe_hash": "69aebed620fb55d9",
+    "tags_spec_hash": "8ac9da588278259a",
+    "timeline": {
+      "basis": "served",
+      "segments": [
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 3673.023424,
+          "served_start": 0.0,
+          "source_end": 3673.023424,
+          "source_id": "s0",
+          "source_start": 0.0
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 6384.009977,
+          "served_start": 3673.023424,
+          "source_end": 6396.862585,
+          "source_id": "s0",
+          "source_start": 3685.876032
+        },
+        {
+          "asset_id": null,
+          "asset_version": null,
+          "insert": null,
+          "kind": "source",
+          "served_end": 9275.254829999998,
+          "served_start": 6384.009977,
+          "source_end": 9300.05,
+          "source_id": "s0",
+          "source_start": 6408.805147
+        }
+      ],
+      "version": "silence:3+swagit-concat:1"
+    },
+    "title": "City Council - Gas Drilling Task Force Workshop of October 14 City Council - Gas Drilling Task Force Workshop of October 14",
+    "transcript": null,
+    "uid": "27254aa1a700569f",
+    "video_url": "https://fortworthgov.granicus.com/DownloadFile.php?view_id=9&clip_id=125"
+  }
+]

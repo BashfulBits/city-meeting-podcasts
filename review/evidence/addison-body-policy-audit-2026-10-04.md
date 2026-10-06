@@ -2071,3 +2071,45 @@ transcripts explicitly warn that unreviewed voice-to-text is not official minute
 
 Bounded research packet: `/tmp/dallas-september-october-provider-proof.json`. No media
 was downloaded, no raw titles/dates/records were overwritten, and both cases stay open.
+
+### Fort Worth125/127 exact native opening slates — 2026-10-06, #2098
+
+Read-only native playback of both official sources independently identifies Fort Worth City
+Council, 2008 Gas Drilling Task Force, Joint Environmental Workshop, Tuesday October14,2008,
+Will Rogers Memorial Center, Amon G. Carter Exhibit Hall Stagecoach Room,3400 Burnett Tandy
+Drive. Each opening frame00:00 has duration2:35:00. Exact sources:
+- https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=125
+- https://fortworthgov.granicus.com/MediaPlayer.php?view_id=12&clip_id=127
+
+These bind the planned event independently announced in
+https://fortworthgov.granicus.com/MinutesViewer.php?clip_id=94&view_id=2 to both original
+UIDs27254aa1a700569f and0d5832dbd08e6dd8. Preserve original October21/October14 publication
+dates respectively. Native screenshot paths /tmp/fw-125-official-opening.png and
+/tmp/fw-127-official-opening.png; metadata packet /tmp/fortworth-remaining-binding-proof.json.
+Both embed the identical provider asset reference fortworthgov_0b4dcc91-d458-450c-86ca-
+ad8c814a287a.mp4. This proves reference equivalence, not byte hashing or a duplicate winner.
+No media was downloaded. Caption endpoints return an empty WEBVTT header; no index points.
+
+Prepared subscription adds both to the exact-label Gas Drilling Task Force feed and keeps
+Council. Future GUIDs with either complete institutional alias auto-admit. Other census
+labels City Council Gas Drilling Workshop (153/155) and Gas Ordinance Recommendations (180)
+do not prove Task Force participation and remain outside this new feed. Cases stay open
+until deployed own RSS/original audio verification; preparation is not evidence closure.
+
+### Fort Worth6334 live/cached source-version discrepancy — 2026-10-06
+
+Both current live6334 view9 and view5 players identify Budget Work Session, opening slate
+Budget Work Session on the FY2027 Budget, August11,2026, scheduled1PM, duration2:12:32.
+Screenshots /tmp/fw-6334-view9-official-opening.png and
+/tmp/fw-6334-view5-official-opening.png independently show that slate and runtime.
+The previously recovered three-proceeding packet remains linked, but does not itself prove
+that the served recording includes all three proceedings. Current provider media reference
+is fortworthgov_1e975e8b-95e4-11f1-bb61-005056a89546.mp4.
+
+Retained combined-title UIDs081d2695d7d0136a/ead427dae0bbb284 have10740s declared duration,
+no sources and no audio. Two retained Budget-only rows0f3655c3ae429d4c/3329a7d799dddea3 have
+original decoded7952.06s source and August12 encoded audio,98488660 bytes each, distinct
+content-addressed keys. Separate same-date PMES6336 and Community Development6337 records
+also exist. These facts narrow the gap to planned-placeholder/source-version disposition;
+they do not authorize dropping retained rows, refreshing source fields, selecting a winner
+or changing holders. Both combined-row cases remain open. No source record/audio changes.
