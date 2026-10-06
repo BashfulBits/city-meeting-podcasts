@@ -1424,3 +1424,9 @@ institution label. Council ownership and original whole recording UID/audio are 
 Dallas 2024 bond Flood Control and Storm Drainage uses the existing complete institutional
 label selector, admitting stable-label recurrences without GUID pins. Original source records,
 UIDs and audio remain unchanged (#2089).
+
+Search publication checkpoint (#2087): the independent search job restores and saves
+.citypods-search-checkpoint with resumable working shards/cache and separate last-complete
+search output. Deferrals retain completed-source progress and overlay only complete search files
+on current rendered pages; non-search pages remain fresh. Storage remains read-only, with the
+existing 20-minute indexing ceiling and no stage-version or backfill change.

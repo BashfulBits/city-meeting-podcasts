@@ -7353,3 +7353,7 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
 - Prepared #2089: add Dallas 2024 bond Flood Control and Storm Drainage subscription using
   its complete institution label. Preserve raw UID/audio; no stage invalidation or backfill.
   Case remains open pending deployment verification.
+
+- Prepared #2087 review fix: persist working search progress separately from last-complete
+  publication across Actions runs. Deferred builds retain the latest complete index while keeping
+  fresh non-search pages. No deadline increase, storage writes, stage bump or catalog backfill.

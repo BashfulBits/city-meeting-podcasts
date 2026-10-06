@@ -158,6 +158,13 @@ jobs:
           name: render-search-input
       - name: Install
         run: pip install -e ".[storage]" -c constraints/prod.txt
+      - name: Restore resumable search checkpoint
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .citypods-search-checkpoint
+          key: search-checkpoint-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            search-checkpoint-
       - name: Build bounded search
         env:
           # Existing storage credentials are used only to read hosted sidecars.

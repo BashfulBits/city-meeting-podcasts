@@ -2223,3 +2223,8 @@ exact UID/audio verification. Freeze/stamp after human merge only.
 after completed-source cache hits. Cheap cached-source bookkeeping must not consume restartable
 work admission. Moving the existing stop check after cache-hit continue is authorized alongside
 a real multiple-budget source-resumption test, with the same deadline and source hash checks.
+
+#2087 checkpoint fix prepared:16 targeted tests and4978 full offline tests pass15 deselected;
+whole Ruff/format471 clean. Real three-source/three-budget replay advances one uncached source
+each run; cross-run complete→deferred→complete retains last-complete publication and fresh raw
+pages. CodeRabbit material-fix review and human merge remain required.
