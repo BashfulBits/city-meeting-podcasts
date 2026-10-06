@@ -531,8 +531,6 @@ def build_search_index(
     wanted_names = {"manifest.json"}
 
     for src_key, city in sorted(representatives.items()):
-        if stop is not None and stop():
-            return None
         filename = f"{src_key}.json"
         wanted_names.add(filename)
         shard_path = search_dir / filename
@@ -557,6 +555,8 @@ def build_search_index(
             manifest.append(cached["manifest"])
             continue
 
+        if stop is not None and stop():
+            return None
         documents: list[dict[str, Any]] = []
         for record in plan.public_items:
             if is_archive_only(archive_index, src_key, record):
@@ -649,3 +649,165 @@ def build_search_index(
     )
     _write_search_asset(output_dir)
     return manifest_payload
+
+
+def build_search_site(
+    *,
+    state_dir: str | Path,
+    output_dir: str | Path,
+    context_path: str | Path,
+    site_config_path: str | Path = "config/site_config.yml",
+    config_dir: str | Path = "config",
+    base_url: str | None = None,
+) -> str:
+    """Build with a resumable working checkpoint and a separate complete publication.
+
+    The only durable inputs are the render job's records and handoff context. Storage is used
+    solely by the existing indexer's sidecar readers. No state synchronization or writes occur.
+    """
+    import time
+
+    from citypods.config import load_city_configs, load_site_config
+    from citypods.site import render_index, render_search_page
+    from citypods.storage import make_storage
+
+    config = load_site_config(site_config_path)
+    defaults = config.get("defaults", {})
+    budget = float(defaults.get("search_index_budget_minutes", 20))
+    if not 0 < budget <= 20:
+        raise ValueError("search_index_budget_minutes must be greater than zero and at most 20")
+    deadline = time.monotonic() + budget * 60
+    context = json.loads(Path(context_path).read_text())
+    resolved_base = base_url if base_url is not None else context["base_url"]
+    cities = load_city_configs(config_dir, defaults)
+    output = Path(output_dir).resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint = output.parent / ".citypods-search-checkpoint"
+    search_paths = (
+        "data/search",
+        "search",
+        f"assets/{SEARCH_ASSET}",
+        f"assets/{SEARCH_LICENSE}",
+        ".search-cache.json",
+    )
+
+    def overlay(source: Path, target: Path) -> None:
+        for relative in search_paths:
+            src, dst = source / relative, target / relative
+            if not src.exists():
+                continue
+            if src.is_dir():
+                shutil.rmtree(dst, ignore_errors=True)
+                shutil.copytree(src, dst)
+            else:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+
+    def save_checkpoint(source: Path, name: str) -> None:
+        checkpoint.mkdir(parents=True, exist_ok=True)
+        replacement = checkpoint / f"{name}-next"
+        shutil.rmtree(replacement, ignore_errors=True)
+        replacement.mkdir()
+        overlay(source, replacement)
+        destination = checkpoint / name
+        prior = checkpoint / f"{name}-prior"
+        shutil.rmtree(prior, ignore_errors=True)
+        if destination.exists():
+            destination.rename(prior)
+        try:
+            replacement.rename(destination)
+        except BaseException:
+            if prior.exists():
+                prior.rename(destination)
+            raise
+        shutil.rmtree(prior, ignore_errors=True)
+
+    def prior_publication() -> str:
+        complete = checkpoint / "complete"
+        try:
+            prior = json.loads((complete / "data/search/manifest.json").read_text())
+            if not isinstance(prior["shards"], list):
+                raise ValueError("invalid complete search manifest")
+            for shard in prior["shards"]:
+                filename = shard["shard_url"].rsplit("/", 1)[-1]
+                shard_data = json.loads((complete / "data/search" / filename).read_text())
+                if not isinstance(shard_data["documents"], list):
+                    raise ValueError("invalid complete shard")
+            if not (complete / "search/index.html").is_file():
+                raise ValueError("missing complete search page")
+        except (OSError, ValueError, KeyError, TypeError):
+            return "deferred: retaining complete prior site"
+        # Re-render navigation with current feed information, retaining all fresh non-search pages.
+        navigation = render_index(
+            cities, config, resolved_base, context["feed_info"], search_enabled=True
+        )
+        meta_path = output / "meta.json"
+        meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+        meta["search_shards"] = len(prior["shards"])
+        overlay(complete, output)
+        (output / "index.html").write_text(navigation)
+        meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+        return "deferred: retaining complete prior site"
+
+    with tempfile.TemporaryDirectory(prefix=".search-stage-", dir=output.parent) as temporary:
+        staged = Path(temporary) / "site"
+        shutil.copytree(output, staged)
+        overlay(checkpoint / "working", staged)
+        cache_path = staged / ".search-cache.json"
+        try:
+            cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+            if not isinstance(cache, dict):
+                cache = {}
+        except (OSError, ValueError):
+            cache = {}
+        enabled = bool(defaults.get("search", True))
+        manifest: dict[str, Any] = {"shards": []}
+        try:
+            if enabled:
+                built = build_search_index(
+                    state_dir,
+                    cities,
+                    staged,
+                    resolved_base,
+                    storage=make_storage(config, resolved_base, staged),
+                    cache=cache,
+                    stop=lambda: time.monotonic() >= deadline,
+                )
+                cache_path.write_text(json.dumps(cache, sort_keys=True) + "\n")
+                save_checkpoint(staged, "working")
+                if built is None:
+                    return prior_publication()
+                manifest = built
+                page = staged / "search" / "index.html"
+                page.parent.mkdir(parents=True, exist_ok=True)
+                page.write_text(render_search_page(config, resolved_base))
+                cache_path.write_text(json.dumps(cache, sort_keys=True) + "\n")
+            else:
+                shutil.rmtree(staged / "search", ignore_errors=True)
+                shutil.rmtree(staged / "data" / "search", ignore_errors=True)
+                (staged / "assets" / SEARCH_ASSET).unlink(missing_ok=True)
+                (staged / "assets" / SEARCH_LICENSE).unlink(missing_ok=True)
+                cache_path.unlink(missing_ok=True)
+            (staged / "index.html").write_text(
+                render_index(
+                    cities, config, resolved_base, context["feed_info"], search_enabled=enabled
+                )
+            )
+            meta_path = staged / "meta.json"
+            meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+            meta["search_shards"] = len(manifest["shards"])
+            meta_path.write_text(json.dumps(meta, indent=2) + "\n")
+        except Exception:
+            logging.getLogger(__name__).exception("Search staging failed; retaining prior site")
+            return prior_publication()
+        # Both renames stay on the same filesystem. Restore the original on publication failure.
+        backup = Path(temporary) / "prior-site"
+        output.rename(backup)
+        try:
+            staged.rename(output)
+        except BaseException:
+            backup.rename(output)
+            raise
+        save_checkpoint(output, "complete")
+        save_checkpoint(output, "working")
+    return "complete" if enabled else "disabled"

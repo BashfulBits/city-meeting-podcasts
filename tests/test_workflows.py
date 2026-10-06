@@ -52,7 +52,7 @@ def _step_index(job: dict, needle: str) -> int:
     ("workflow", "job_name", "step_name"),
     [
         ("audio.yml", "audio", "Audio (shard ${{ matrix.shard }}/4)"),
-        ("deploy.yml", "build-deploy", "Render feeds"),
+        ("deploy.yml", "render", "Render feeds"),
         ("tag.yml", "tag", "Produce bounded LLM topic-tag candidates"),
         ("moments.yml", "moments", "Produce bounded R6 moment candidates and judge assessments"),
         ("audit.yml", "audit", "Run audit"),
@@ -942,9 +942,12 @@ def test_deploy_is_render_only():
         "deploy.yml must drop `actions: read` once enrich (the only Actions-API caller) moves out"
     )
     render = _step_index(job, "citypods build --phase render --no-refresh")
-    deploy = _step_index(job, "actions/deploy-pages")
+    deploy_job = wf["jobs"]["deploy"]
+    deploy = _step_index(deploy_job, "actions/deploy-pages")
     assert render >= 0 and deploy >= 0, "render and deploy steps required"
-    assert render < deploy, "deploy.yml must render before deploying"
+    assert wf["jobs"]["search"]["needs"] == "render"
+    assert deploy_job["needs"] == "search"
+    uses = " ".join(str(s.get("uses", "")) for s in deploy_job["steps"])
     # The Pages plumbing stays on deploy, not enrich.
     assert "actions/upload-pages-artifact" in uses and "actions/deploy-pages" in uses
 
@@ -958,7 +961,9 @@ def test_deploy_scopes_storage_secrets_to_render_step_only():
         k.startswith(("B2_", "R2_", "CLOUDFLARE_")) for k in (job.get("env") or {})
     )
     render = next(
-        s for s in job["steps"] if s.get("run") == "citypods build --phase render --no-refresh"
+        s
+        for s in job["steps"]
+        if str(s.get("run", "")).startswith("citypods build --phase render --no-refresh")
     )
     env = render.get("env", {})
     for var in ("B2_ENDPOINT", "B2_KEY_ID", "B2_APP_KEY", "B2_BUCKET", "B2_PUBLIC_BASE_URL"):

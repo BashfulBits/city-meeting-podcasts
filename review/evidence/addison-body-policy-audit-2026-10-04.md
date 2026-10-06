@@ -1726,6 +1726,30 @@ https://dallastx.new.swagit.com/videos/202452/agenda
 every other holder unchanged.185 targeted and4957 offline tests pass15 deselected; whole
 Ruff/format468 clean. Three cases stay open until deployed exact RSS/audio verification.
 
+Remaining Dallas official proof pass: June13GUID259822 official archive links exact source
+video; September19GUID272005 source chapter binds official Subcommittee Recommendations event;
+October24GUID277589 source chapter binds official allocations event, corroborated by the
+October27 CBTF Recommended Bond Allocations memorandum:
+https://dallascityhall.com/government/citymanager/Documents/FY23-24%20Memos/Council%20Memorandum%20-%20CBTF%20Recommended%20Bond%20Allocations%20-%2010-27-23.pdf
+May25GUID233037 exact source binding remains missing despite institutional minutes.
+September26GUID272574 remains ambiguous: official information guide planned TownHall2,
+provider chapter instead labels CBTF Meeting. October3GUID273327 lacks independent dated
+event proof. Do not replace these uncertainties with broad CBTF label admission.
+
+FloodGUID269612 UID8280ec97799c999e original August15 chapter and official minutes prove
+separate 2024Bond Flood Control/Storm Drainage Subcommittee, chair Anita Childress, convened
+6:05pm/adjourned8:15pm. Complete label can safely support reusable institution routing.
+https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/175/Flood%20Control%20and%20Storm%20Drainage%20Meeting_081523_MM.pdf
+CriticalFacilities269611 original dated chapter and official archive Meeting5/presentation
+establish institutional identity, but independent convening minutes remain unavailable. May11
+archive Summary53 links whole CBTF minutes and cannot prove Critical convening.
+
+Independent official2017 two-town-hall notice corroborates exact provider notice bindings:
+https://dallascityhall.com/departments/public-works/dallasbondprogram/Documents/2017%20Bond%20Program%20Town%20Hall%20Notices%20May%2022252017FINAL.pdf
+
+#2086 prepared replay:5896 retained source rows/979labels, new EMSISD participant0→1 only
+UID497b3aa05255bfb9; every prior feed unchanged.186 targeted and4959 full offline tests pass15 deselected; whole Ruff/format469 clean.
+
 ### October6 nine-case deployed closure
 
 Successful main deployment37391178308/d889c0b6 includes #2073/#2082/#2085. Read-only public

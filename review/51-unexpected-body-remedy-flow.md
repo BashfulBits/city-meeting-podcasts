@@ -1993,7 +1993,7 @@ No invalidation/backfill; no inference of other bond subcommittees' recording pr
 WholeRuff464/format/diff clean. Initial serializer indentation failure corrected without
 runtime changes. Full replay preserves all other holders; deployed closure remains pending.
 
-### Dallas reusable Streets bond ownership rules — L3, #2081
+### Dallas reusable Streets bond ownership rules — Implemented in PR #2082 (frozen)
 
 Approved scope: resolve remaining registered recordings with reusable institution rules under
 maintainer direction. Independent city bond archive and May25/June13 minutes establish Streets
@@ -2038,7 +2038,7 @@ search time ceiling. Prepare exact workflow/CLI/artifact ownership and failure/p
 contract before implementation. This is authorization for the chosen approach, not permission
 to introduce an unspecified schema, raise a budget or touch credentials interactively.
 
-### Dallas2017 bond taskforce versus town halls — L3, #2083
+### Dallas2017 bond taskforce versus town halls — Implemented in PR #2085 (frozen)
 
 Exact agenda binding supersedes misleading shared provider label: May27 GUID202453
 UID5e9fdb6ff9e8ef68 provider agenda SHA256eb8a902b8b7b6d309acd807bb940cea1d4fa08ad041ec4ee609107223125dc8f
@@ -2070,7 +2070,8 @@ already uses render phase, whose search creates a fresh deadline; the older exha
 stop diagnosis is not current deploy behavior. Separate scheduling is still the chosen approach.
 
 Named files: `citypods/cli.py`, `citypods/run.py`, `citypods/search.py`,
-`.github/workflows/deploy.yml`, `tests/test_static_search_job.py`, existing search/run/CLI tests,
+`.github/workflows/deploy.yml`, `tests/test_static_search_job.py`, `tests/test_workflows.py`,
+existing search/run/CLI tests,
 ARCHITECTURE/CHANGELOG/ROADMAP/review11 and this section. No dependency/provider/stage/state
 record/storage-write/Worker changes or public search schema changes.
 
@@ -2097,7 +2098,8 @@ as search record inputs. Search downloads that exact artifact (no fresh snapshot
 same pinned production deps, runs new command under20minute indexing deadline with bounded job
 setup allowance, uploads complete site. Deploy consumes only that site's same-run artifact,
 retains existing Pages concurrency/deployment environment/retries. Keep current60minute job
-ceiling; job-level least privilege: render/search contents:read, deployment Pages/id-token only.
+ceiling; job-level least privilege: render contents:read plus pages:read for existing metadata lookup, search contents:read,
+deployment pages:write/id-token:write only.
 Existing storage read secrets scoped to search command; no new names/backend or interactive auth.
 Preserve paths on deferral and allow deployment of retained complete site with explicit summary.
 
@@ -2130,6 +2132,69 @@ Specific config/model presentation-schema approval remains necessary before code
 prior no-unspecified-schema gate. After approval mature to L3 with named parser/model/run/feeds/
 site/cache files and original two-record positive/negative/RSS/raw-page tests. No general bundle
 classifier, audio splitting, publication winner, other source/holder change or backfill.
+
+#2084 test compatibility: existing tests/test_workflows.py pins the superseded single
+build-deploy job. Update only deploy workflow job/artifact/order assertions for approved
+render→search→deploy, retaining credential scope, pinned action, permissions, refresh/render
+and deploy gates. This is required validation of the already approved three-job contract.
+
+#2084 Pages metadata compatibility: pinned configure-pages45bfe uses getPages for existing
+site metadata; enablement defaults false. Render retains this action with explicit
+enablement:false and pages:read only, preserving dynamic base_url for custom-domain and
+github.io sites. Provisioning is disabled; Pages/id-token write remains deployment-only.
+
+October5 lifecycle checkpoint: #2082 human merged23:54:21UTC (20a9d83b), #2085 human
+merged23:54:57UTC. These bounded contracts are frozen. Streets full-review request
+6005806253 at23:51:28 received base/head-changed rejection at23:51:36; no substantive
+coverage confirmed before merge.2017 was merged before review request. Explicit review gaps;
+green CI/skipped automatic status is not review coverage. No requests on closed PRs.
+Both implementations shipped; case closures still await actual deployed RSS/audio proof.
+
+#2084 prepared:135 targeted tests and4971 full offline tests pass15 deselected; whole
+Ruff/format469 clean. Complete staged publication, actual second-source deferral preservation,
+all six Addison exclusions/raw-page retention and same-run workflow transfer verified offline.
+Live search proof still awaits human merge/deployment; no archive cases closed from tests.
+
+### Consecutive Fort Worth3814 publication note — L2, specific schema gate
+
+Disposition approved: both whole recordings remain in Council/CCPD subscriptions and explicitly
+identify consecutive proceedings. Existing rendering has no per-record publication-note field;
+raw official titles, descriptions and source chapters must remain immutable.
+
+Proposed bounded implementation contract: source-scoped city config `publication_notes`, each
+entry strict UID/provider_guid/note/approval_ref, only the two proven3814 UIDs. Exact note:
+“Consecutive CCPD Board and City Council proceedings; whole recording retained.” Add ephemeral
+Episode `publication_note` for RSS/page rendering only, never persist it in records or alter
+source title/description, UID/audio, search schema, chapters or stage versions. Validate exact
+UID/GUID/source binding before rendering and preserve previous output on identity error. Include
+note policy in render/feed-content cache hash only; no audio invalidation. Render escaped note
+in episode RSS show notes and raw page; both original participant feeds retain both UIDs.
+
+Specific config/model presentation-schema approval remains necessary before code under the
+prior no-unspecified-schema gate. After approval mature to L3 with named parser/model/run/feeds/
+site/cache files and original two-record positive/negative/RSS/raw-page tests. No general bundle
+classifier, audio splitting, publication winner, other source/holder change or backfill.
+
+### #2084 review checkpoint extension — L3, maintainer authorized 2026-10-06
+
+CodeRabbit4190579663 correctly identifies that render saves its cache before search completes;
+next-run fallback therefore cannot promise the latest completed index. Proposed extension in
+already named search/workflow/test files: `.citypods-search-checkpoint/` local working directory,
+containing resumable completed shards/cache and a separately committed last-complete search
+publication. Restore/save with the existing pinned cache action in the search job. Deferred
+partial work may advance only the working checkpoint; public output uses only last-complete
+manifest/shards/assets/navigation. Never replace complete public output with a partial manifest.
+Cross-run success→deferral and multiple-budget completion tests are required. Existing20minute
+indexing ceiling, same-run source-record artifact, read-only storage and credentials stay fixed.
+The maintainer explicitly directed addressing #2087 after the checkpoint finding and proposal.
+Implement in citypods/search.py build_search_site, .github/workflows/deploy.yml search job,
+and tests/test_static_search_job.py; update ARCHITECTURE/CHANGELOG/review11 and this contract.
+Use checkpoint working/ and complete/ directories plus working cache; persist completed-source
+progress on deferral while overlaying only complete search publication on the current rendered site.
+Preserve fresh non-search pages. A malformed or missing checkpoint must never delete prior output.
+No provider/schema/storage writes, dependencies, stage changes or deadline increases.
+Run full offline and whole Ruff/format; material fix requires current-head substantive review.
+
 
 #2086 implemented in PR #2088, human merged2026-10-06T01:24:40Z. Contract frozen.
 Human merge preceded a substantive CodeRabbit request; explicit review gap, no closed-PR review.
@@ -2222,3 +2287,13 @@ unchanged. Full offline and whole Ruff/format required. No provider/runtime/sche
 stage/dependency changes, backfill or publication winner. Update ARCHITECTURE/CHANGELOG/
 ROADMAP/review11/audit and case prepared action; case stays open until human merge and live
 exact UID/audio verification. Freeze/stamp after human merge only.
+
+#2087 bounded equivalent-site clarification: build_search_index must check its deadline only
+after completed-source cache hits. Cheap cached-source bookkeeping must not consume restartable
+work admission. Moving the existing stop check after cache-hit continue is authorized alongside
+a real multiple-budget source-resumption test, with the same deadline and source hash checks.
+
+#2087 checkpoint fix prepared:16 targeted tests and4978 full offline tests pass15 deselected;
+whole Ruff/format471 clean. Real three-source/three-budget replay advances one uncached source
+each run; cross-run complete→deferred→complete retains last-complete publication and fresh raw
+pages. CodeRabbit material-fix review and human merge remain required.

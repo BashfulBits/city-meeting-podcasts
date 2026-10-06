@@ -31,22 +31,19 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
-# Render-only deploy (H11b): no `actions: read` graceful-yield token — render is not time-bounded
-# (it always finishes in minutes), so it never polls the Actions API or yields. The heavy phase
-# that needed that token lives in the audio.yml / asr.yml workflows now.
+# Render and bounded read-only search never poll the Actions API. Heavy audio/ASR work and
+# its graceful-yield token remain in their existing workflows.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
-  build-deploy:
+  render:
+    permissions:
+      contents: read
+      pages: read
     runs-on: ubuntu-latest
     # A stalled render/deploy must not hold the `pages` concurrency slot for hours (CR2-GH-16/H6).
     timeout-minutes: 60
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url || steps.deployment2.outputs.page_url || steps.deployment3.outputs.page_url }}
     # Render-only: it reads the durable record store (restored from object storage by
     # citypods/statesync.py) to publish feeds/pages, so it needs the storage creds — but no
     # ffmpeg, no Whisper model, and no audio/ASR encodes. All heavy work runs in audio.yml/asr.yml.
@@ -82,6 +79,8 @@ jobs:
       - name: Configure Pages
         id: pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+        with:
+          enablement: false
 
       # Render feeds/pages from the record store + apply any code/template/config changes, using
       # audio & chapters already hosted by the enrich workflow. No encoding, so this finishes in
@@ -111,7 +110,7 @@ jobs:
           GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
           SWAGIT_PROXY_BASE_URL: ${{ secrets.SWAGIT_PROXY_BASE_URL }}
           SWAGIT_PROXY_TOKEN: ${{ secrets.SWAGIT_PROXY_TOKEN }}
-        run: citypods build --phase render --no-refresh
+        run: citypods build --phase render --no-refresh --skip-search --search-context-output search-context.json
 
       # Resource cost/time projection: writes docs/admin/{index.html,report.json} (the live
       # what-if calculator) and appends a summary to the run page. Reads accumulated run history
@@ -129,6 +128,81 @@ jobs:
       - name: Validate generated feeds
         run: citypods validate-build docs/ --state-dir .citypods-state
 
+      - name: Upload render handoff
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: render-search-input
+          include-hidden-files: true
+          path: |
+            docs
+            search-context.json
+            .citypods-state/sources/*/episodes.json
+
+  search:
+    needs: render
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - name: Download same-run render handoff
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: render-search-input
+      - name: Install
+        run: pip install -e ".[storage]" -c constraints/prod.txt
+      - name: Restore resumable search checkpoint
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: .citypods-search-checkpoint
+          key: search-checkpoint-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            search-checkpoint-
+      - name: Build bounded search
+        env:
+          # Existing storage credentials are used only to read hosted sidecars.
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          # Cloudflare R2:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+        run: citypods search-index --context-path search-context.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload completed site
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: search-complete-site
+          path: docs
+          include-hidden-files: true
+
+  deploy:
+    needs: search
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url || steps.deployment2.outputs.page_url || steps.deployment3.outputs.page_url }}
+    steps:
+      - name: Download same-run completed site
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: search-complete-site
+          path: docs
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:

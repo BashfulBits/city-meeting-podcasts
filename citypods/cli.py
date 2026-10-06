@@ -48,6 +48,16 @@ def main(argv: list[str] | None = None) -> int:
         "on live provider availability). Only meaningful with --phase render.",
     )
 
+    b.add_argument("--skip-search", action="store_true")
+    b.add_argument("--search-context-output")
+    search = sub.add_parser("search-index", help="build search from same-run retained records")
+    search.add_argument("--state-dir", default=".citypods-state")
+    search.add_argument("--output-dir", default="docs")
+    search.add_argument("--site-config", default="config/site_config.yml")
+    search.add_argument("--config-dir", default="config")
+    search.add_argument("--base-url")
+    search.add_argument("--context-path", required=True)
+
     e = sub.add_parser(
         "enrich",
         help="heavy backfill (chapters + audio) into object storage; no render/deploy. "
@@ -392,7 +402,23 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "h16-report":
         return _h16_report(args)
 
+    if args.command == "search-index":
+        from citypods.search import build_search_site
+
+        outcome = build_search_site(
+            state_dir=args.state_dir,
+            output_dir=args.output_dir,
+            site_config_path=args.site_config,
+            config_dir=args.config_dir,
+            base_url=args.base_url,
+            context_path=args.context_path,
+        )
+        print(f"search: {outcome}")
+        return 0
+
     if args.command == "build":
+        if (args.skip_search or args.search_context_output) and args.phase != "render":
+            parser.error("search handoff options require --phase render")
         return _run_build(args, phase=args.phase, dry_run=args.dry_run)
 
     if args.command == "enrich":
@@ -485,6 +511,8 @@ def _run_build(args, *, phase: str, dry_run: bool) -> int:
         no_refresh=getattr(args, "no_refresh", False),
         shard_plan_path=getattr(args, "shard_plan", None),
         state_snapshot_restored=getattr(args, "state_snapshot_restored", False),
+        skip_search=getattr(args, "skip_search", False),
+        search_context_output=getattr(args, "search_context_output", None),
     )
     built = sum(r.status == "built" for r in results)
     skipped = sum(r.status == "skipped" for r in results)
