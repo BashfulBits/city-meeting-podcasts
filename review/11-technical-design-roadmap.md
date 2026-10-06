@@ -1478,3 +1478,6 @@ Separate exact subscriptions and unchanged original records/audio per review/51;
 
 Separate bounded static search job: **L3**, #2084, maintainer-approved20minute ceiling and
 same-run snapshot/staged publication contract in review/51. No public schema or record writes.
+
+Fort Worth EMSISD participant discovery: **L3**, #2086, source-scoped full institutional label,
+same UID/audio and retained Council ownership. Exact fixture/full-source replay in review/51.

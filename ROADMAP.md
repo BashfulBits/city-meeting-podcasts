@@ -583,3 +583,5 @@ Dallas #2065 exact four-record CBTF coverage prepared; deployment proof and rema
 
 - Designed (L3): independent bounded static-search job (#2084), unchanged20minute deadline,
   same-run record snapshot and complete-index preservation; required archive visibility check.
+
+Prepared #2086: restore proven Fort Worth EMSISD participant discovery; deployment proof pending.
