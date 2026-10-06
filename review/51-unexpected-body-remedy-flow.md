@@ -74,16 +74,18 @@ A–F taxonomy directions in #1975 are approved; individual uncertain identities
 The future-flow structure is approved. Only a phase marked L3 with its predecessor gates satisfied
 is executable; exact phase contracts and tests below replace the earlier open design decisions.
 
-## Classification settlement hold (2026-10-04)
+## Classification settlement hold — lifted 2026-10-04
 
 The maintainer paused further CodeRabbit requests until the policy is settled, applied across
 Addison bodies, spot-checked in other cities, and reflected in stable onboarding goals. The
 [all-label Addison audit and shared-policy draft](evidence/addison-body-policy-audit-2026-10-04.md)
 records confirmed selector overlaps, gaps, cross-city examples and proposed acceptance rules.
-This hold supersedes the earlier proactive review cadence; a request already issued for #2003
-at 17:06:20 UTC may finish, but no additional request is authorized during the hold. Its dedicated
-CPC feed is prepared, not evidence that the wider city taxonomy is settled. General standing-body
-preference is approved; ambiguous joint/combined proceedings and exact city migrations stay gated.
+This historical hold superseded the earlier proactive review cadence. The maintainer explicitly
+lifted it at 19:50 UTC on 2026-10-04. It no longer restricts review requests; current review scope
+and pacing follow the maintainer's later instructions and repository contribution policy. The
+dedicated CPC feed was prepared, not evidence that the wider city taxonomy was settled. General
+standing-body preference was approved; ambiguous joint/combined proceedings and exact city
+migrations remained evidence-gated.
 
 ## Why the existing flow produces too much weak work
 
@@ -369,6 +371,23 @@ P0 exit: every inventory row links to applied coverage/exclusion, an evidence-ba
 issue, or a documented unavailable-source exception. An unresolved legitimate recording is not
 “covered.” The current 680-row inventory is a starting snapshot, not a permanently complete census.
 P1 can supply evaluation tooling while P0 is being completed; P5 requires an approved city baseline.
+
+### P0 current-selector crosswalk — 2026-10-06
+
+The row-level replay at
+[`historical-selector-replay-2026-10-06.csv`](evidence/historical-selector-replay-2026-10-06.csv)
+reconciles all 680 frozen inventory IDs against selectors in main and the cached source snapshots.
+Input hashes, the code revision, and limitations are recorded in its companion JSON manifest.
+It found 14 fully selector-matched labels, one partial label and 665 labels with no match; 40 of
+2,028 cached UID/label associations match a feed selector. It links only 20 associations across
+nine inventory labels to the 169-case register. This is not completion evidence: the cached inputs
+were last written October 3, and selector eligibility does not establish correct ownership or an
+approved exclusion. The missing case links and all uncovered labels remain P0 work. Do not equate
+the register's 17 open cases with the full historical backlog or close a row by count alone.
+
+Maintainer decision (2026-10-06): create or reuse a case at exact source-key/UID granularity only
+after case-by-case evidence confirms a real public recording. Keep unverified associations in the
+crosswalk; do not bulk-create cases or infer coverage/exclusion from selector gaps alone.
 
 ### P0 publication selection — inactive machinery shipped; activations separately gated
 
@@ -1618,6 +1637,19 @@ raw-page retention, unchanged bytes/UIDs, and cached-output removal/restoration.
 review/11, ARCHITECTURE, CHANGELOG and ROADMAP. No dependency/provider/storage/stage changes,
 no audio backfill, no production writes in local verification.
 
+### Addison archive-only deployment evidence — 2026-10-06
+
+Read-only public GET checks against Build & Deploy run 37480863678 (`355bad56`) verified all six
+approved UID/GUID pairs across all ten current Addison RSS feeds and both Town Meetings browse
+pages: none are listed, while all six direct raw pages return HTTP 200. Citizen Advisory
+UID`63b22f80ce9500ff`/GUID`56029` remains in the Town Meetings RSS and both browse pages. The
+checks and response hashes are recorded in
+[`review/evidence/addison-archive-live-2026-10-06.json`](evidence/addison-archive-live-2026-10-06.json).
+The public `/search/` and `/data/search/manifest.json` routes returned HTTP 404; this is recorded as
+unavailable live search verification, not as evidence about indexed content. The six publication
+dispositions are therefore resolved, with their content/institution uncertainty retained in the
+case register. No title, UID, source namespace, raw page, or audio was changed.
+
 
 ## September 2016 Addison joint subscription — L3 bounded correction
 
@@ -2113,25 +2145,45 @@ only after merge; direct live search verification still required for archive-cas
 #2083 prepared:185 targeted and4957 offline tests pass15 deselected, whole Ruff/format468
 clean. Full5353 replay changes only formal0→1/publictownhalls0→2. Deployment gates remain.
 
-### Consecutive Fort Worth3814 publication note — L2, specific schema gate
+### Consecutive Fort Worth3814 publication note — L3 (#2107)
 
-Disposition approved: both whole recordings remain in Council/CCPD subscriptions and explicitly
-identify consecutive proceedings. Existing rendering has no per-record publication-note field;
-raw official titles, descriptions and source chapters must remain immutable.
+**Disposition and field schema approved 2026-10-06.** Both whole recordings remain in Council and
+CCPD subscriptions and identify consecutive proceedings. The approved note is “Consecutive CCPD
+Board and City Council proceedings; whole recording retained.” Official title/description, source
+chapters, stable UID, and audio remain unchanged.
 
-Proposed bounded implementation contract: source-scoped city config `publication_notes`, each
-entry strict UID/provider_guid/note/approval_ref, only the two proven3814 UIDs. Exact note:
-“Consecutive CCPD Board and City Council proceedings; whole recording retained.” Add ephemeral
-Episode `publication_note` for RSS/page rendering only, never persist it in records or alter
-source title/description, UID/audio, search schema, chapters or stage versions. Validate exact
-UID/GUID/source binding before rendering and preserve previous output on identity error. Include
-note policy in render/feed-content cache hash only; no audio invalidation. Render escaped note
-in episode RSS show notes and raw page; both original participant feeds retain both UIDs.
+**Bounded implementation:** add `publication_notes` to only the Council and CCPD feed configs,
+with strict entries containing `uid`, `provider_guid`, `note`, and `approval_ref`. The two exact
+bindings are UID `0c66fc968402fabd` to the provider GUID ending `view_id=10&clip_id=3814`, and UID
+`99152cb9e61fa091` to the GUID ending `view_id=11&clip_id=3814`. The exact provider GUIDs are
+`https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3814` and
+`https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=3814`. Their shared source key is
+`6540eef2dc2e`; all 28 configured Fort Worth feeds currently resolve to that one source archive.
+Keep these notes in the two participant feed configs so they do not appear in unrelated feeds.
 
-Specific config/model presentation-schema approval remains necessary before code under the
-prior no-unspecified-schema gate. After approval mature to L3 with named parser/model/run/feeds/
-site/cache files and original two-record positive/negative/RSS/raw-page tests. No general bundle
-classifier, audio splitting, publication winner, other source/holder change or backfill.
+- `citypods/models.py`: add parsed `City.publication_notes` config and ephemeral
+  `Episode.publication_note` presentation fields. The episode field must stay out of persisted
+  records.
+- `citypods/config.py`: strictly parse the optional list; require exactly the four named nonempty
+  string keys, reject unknown keys and duplicate UIDs, and preserve the exact strings.
+- `citypods/run.py`: after source-key records are loaded and feed bodies are selected, validate
+  each present UID against its exact provider GUID before writing any feed/page output. Project
+  notes onto shallow episode copies for the two participant feeds; on a mismatch return an error
+  without replacing existing output. Missing UIDs remain unannotated until present.
+- `citypods/feeds.py` and `templates/meeting.html.j2`: HTML-escape the note and display it as a
+  separate publication note in RSS rich show notes and raw meeting pages. Do not overwrite the
+  provider description or title.
+- `citypods/records.py`: include the ephemeral note in `feed_content_hash` and `meeting_page_hash`
+  so note edits re-render only; do not add it to `audio_spec_hash` or `episode_to_record`.
+- Tests in `tests/test_config.py`, `tests/test_feeds.py`, `tests/test_site.py`,
+  `tests/test_run.py`, and `tests/test_records.py`: cover exact positive bindings, wrong UID/GUID,
+  unrelated feeds, HTML escaping, RSS/page output, immutable records/audio, note-sensitive render
+  hashes, and preserving prior output on identity mismatch.
+
+No new modules, dependencies, provider behavior, search schema, stage versions, audio splitting,
+publication winner, other source/holder change, or backfill. Run targeted tests, the whole offline
+suite, whole `ruff check .`, and `ruff format --check .`; CodeRabbit review is required for the
+resulting code PR. Human merge only.
 
 #2084 test compatibility: existing tests/test_workflows.py pins the superseded single
 build-deploy job. Update only deploy workflow job/artifact/order assertions for approved
@@ -2150,30 +2202,13 @@ coverage confirmed before merge.2017 was merged before review request. Explicit 
 green CI/skipped automatic status is not review coverage. No requests on closed PRs.
 Both implementations shipped; case closures still await actual deployed RSS/audio proof.
 
-#2084 prepared:135 targeted tests and4971 full offline tests pass15 deselected; whole
-Ruff/format469 clean. Complete staged publication, actual second-source deferral preservation,
-all six Addison exclusions/raw-page retention and same-run workflow transfer verified offline.
-Live search proof still awaits human merge/deployment; no archive cases closed from tests.
-
-### Consecutive Fort Worth3814 publication note — L2, specific schema gate
-
-Disposition approved: both whole recordings remain in Council/CCPD subscriptions and explicitly
-identify consecutive proceedings. Existing rendering has no per-record publication-note field;
-raw official titles, descriptions and source chapters must remain immutable.
-
-Proposed bounded implementation contract: source-scoped city config `publication_notes`, each
-entry strict UID/provider_guid/note/approval_ref, only the two proven3814 UIDs. Exact note:
-“Consecutive CCPD Board and City Council proceedings; whole recording retained.” Add ephemeral
-Episode `publication_note` for RSS/page rendering only, never persist it in records or alter
-source title/description, UID/audio, search schema, chapters or stage versions. Validate exact
-UID/GUID/source binding before rendering and preserve previous output on identity error. Include
-note policy in render/feed-content cache hash only; no audio invalidation. Render escaped note
-in episode RSS show notes and raw page; both original participant feeds retain both UIDs.
-
-Specific config/model presentation-schema approval remains necessary before code under the
-prior no-unspecified-schema gate. After approval mature to L3 with named parser/model/run/feeds/
-site/cache files and original two-record positive/negative/RSS/raw-page tests. No general bundle
-classifier, audio splitting, publication winner, other source/holder change or backfill.
+#2084 shipped in PR #2087: separate bounded render, search and deployment jobs with a persisted
+same-run source-record artifact and last-complete search publication. The checkpoint extension
+merged without substantive review of the final material change; this explicit review gap is frozen
+below. Build & Deploy #37480863678 succeeded on `355bad56`; the public `/search/` and manifest routes
+return 404, so live search coverage remains unverified. The six approved Addison archive-only
+dispositions were closed only after separate live RSS, browse and direct-raw-page checks recorded
+above; offline tests alone did not close them.
 
 ### #2084 review checkpoint extension — L3, maintainer authorized 2026-10-06
 
@@ -2364,6 +2399,10 @@ Durably record6334 discrepancy: both current live views show Budget Work Session
 UIDs have decoded7952.06s/audio. Packet combines three proceedings but does not establish
 original combined recording content. Both6334 cases stay open; no refresh/split/winner/holder
 change. Evidence screenshot paths and exact observed content are retained in the audit.
+
+Maintainer disposition (2026-10-06): preserve both UIDs' current feed assignments and keep their
+cases open until exact UID-to-segment evidence is found. The agenda PDF alone does not establish
+which recording UID belongs to which proceeding; do not split audio or change a winner/holder.
 
 Do not modify runtime/provider/schema/storage/stages/workers/workflows/dependencies, source
 records, raw titles/dates/chapters/audio or other configs. No merge, split, winner, invalidation,

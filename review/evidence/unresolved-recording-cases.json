@@ -417,11 +417,11 @@
       "provider_guid": "55864",
       "question": "Historical Economic Development Luncheon is uncovered",
       "missing_evidence": "Recording-bound public briefing versus promotional event evidence",
-      "next_action": "Apply approved Archive-only visibility #2023; verify feeds/search/browse omission and direct archive retention; continue any independent content identity evidence.",
-      "last_researched": "2026-10-04",
+      "next_action": "Reopen only if content/institution identity evidence or deployed visibility changes; approved Archive-only visibility remains in force.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Human-approved Archive-only publication disposition #2023, implemented in #2024 and verified on deployment 355bad56 via Build & Deploy run 37480863678. All ten Addison RSS feeds and both Town Meetings browse pages omit this UID; its direct raw Town Meetings page returns HTTP 200. This resolves the approved public-visibility disposition only; historical recording content and institutional identity remain unproved. Public search routes returned HTTP 404, so live search omission was not independently observed. Evidence: review/evidence/addison-archive-live-2026-10-06.json."
     },
     {
       "case_id": "addison-55634-383dfdfed6140400",
@@ -705,13 +705,13 @@
       "provider_guid": "56060",
       "question": "Historical municipal media/presentation classification remains unproved",
       "missing_evidence": "Recording-bound content and institutional context",
-      "next_action": "Apply approved Archive-only visibility #2023; verify feeds/search/browse omission and direct archive retention; continue any independent content identity evidence.",
-      "last_researched": "2026-10-04",
+      "next_action": "Reopen only if content/institution identity evidence or deployed visibility changes; approved Archive-only visibility remains in force.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Human-approved Archive-only publication disposition #2023, implemented in #2024 and verified on deployment 355bad56 via Build & Deploy run 37480863678. All ten Addison RSS feeds and both Town Meetings browse pages omit this UID; its direct raw Town Meetings page returns HTTP 200. This resolves the approved public-visibility disposition only; historical recording content and institutional identity remain unproved. Public search routes returned HTTP 404, so live search omission was not independently observed. Evidence: review/evidence/addison-archive-live-2026-10-06.json."
     },
     {
       "case_id": "addison-267232-5a5d09da1bd31bda",
@@ -1089,13 +1089,13 @@
       "provider_guid": "56026",
       "question": "Historical municipal media/presentation classification remains unproved",
       "missing_evidence": "Recording-bound content and institutional context",
-      "next_action": "Apply approved Archive-only visibility #2023; verify feeds/search/browse omission and direct archive retention; continue any independent content identity evidence.",
-      "last_researched": "2026-10-04",
+      "next_action": "Reopen only if content/institution identity evidence or deployed visibility changes; approved Archive-only visibility remains in force.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Human-approved Archive-only publication disposition #2023, implemented in #2024 and verified on deployment 355bad56 via Build & Deploy run 37480863678. All ten Addison RSS feeds and both Town Meetings browse pages omit this UID; its direct raw Town Meetings page returns HTTP 200. This resolves the approved public-visibility disposition only; historical recording content and institutional identity remain unproved. Public search routes returned HTTP 404, so live search omission was not independently observed. Evidence: review/evidence/addison-archive-live-2026-10-06.json."
     },
     {
       "case_id": "addison-56027-a818b6f650cf4030",
@@ -1105,13 +1105,13 @@
       "provider_guid": "56027",
       "question": "Historical municipal media/presentation classification remains unproved",
       "missing_evidence": "Recording-bound content and institutional context",
-      "next_action": "Apply approved Archive-only visibility #2023; verify feeds/search/browse omission and direct archive retention; continue any independent content identity evidence.",
-      "last_researched": "2026-10-04",
+      "next_action": "Reopen only if content/institution identity evidence or deployed visibility changes; approved Archive-only visibility remains in force.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Human-approved Archive-only publication disposition #2023, implemented in #2024 and verified on deployment 355bad56 via Build & Deploy run 37480863678. All ten Addison RSS feeds and both Town Meetings browse pages omit this UID; its direct raw Town Meetings page returns HTTP 200. This resolves the approved public-visibility disposition only; historical recording content and institutional identity remain unproved. Public search routes returned HTTP 404, so live search omission was not independently observed. Evidence: review/evidence/addison-archive-live-2026-10-06.json."
     },
     {
       "case_id": "addison-388458-ab76536c44140f06",
@@ -1201,13 +1201,13 @@
       "provider_guid": "56028",
       "question": "Historical municipal media/presentation classification remains unproved",
       "missing_evidence": "Recording-bound content and institutional context",
-      "next_action": "Apply approved Archive-only visibility #2023; verify feeds/search/browse omission and direct archive retention; continue any independent content identity evidence.",
-      "last_researched": "2026-10-04",
+      "next_action": "Reopen only if content/institution identity evidence or deployed visibility changes; approved Archive-only visibility remains in force.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Human-approved Archive-only publication disposition #2023, implemented in #2024 and verified on deployment 355bad56 via Build & Deploy run 37480863678. All ten Addison RSS feeds and both Town Meetings browse pages omit this UID; its direct raw Town Meetings page returns HTTP 200. This resolves the approved public-visibility disposition only; historical recording content and institutional identity remain unproved. Public search routes returned HTTP 404, so live search omission was not independently observed. Evidence: review/evidence/addison-archive-live-2026-10-06.json."
     },
     {
       "case_id": "addison-205724-c87abe7fbf3e202d",
@@ -1439,13 +1439,13 @@
       "provider_guid": "56059",
       "question": "Historical municipal media/presentation classification remains unproved",
       "missing_evidence": "Recording-bound content and institutional context",
-      "next_action": "Apply approved Archive-only visibility #2023; verify feeds/search/browse omission and direct archive retention; continue any independent content identity evidence.",
-      "last_researched": "2026-10-04",
+      "next_action": "Reopen only if content/institution identity evidence or deployed visibility changes; approved Archive-only visibility remains in force.",
+      "last_researched": "2026-10-06",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Human-approved Archive-only publication disposition #2023, implemented in #2024 and verified on deployment 355bad56 via Build & Deploy run 37480863678. All ten Addison RSS feeds and both Town Meetings browse pages omit this UID; its direct raw Town Meetings page returns HTTP 200. This resolves the approved public-visibility disposition only; historical recording content and institutional identity remain unproved. Public search routes returned HTTP 404, so live search omission was not independently observed. Evidence: review/evidence/addison-archive-live-2026-10-06.json."
     },
     {
       "case_id": "addison-308298-f72183a5e7102bf1",
@@ -2061,9 +2061,9 @@
       "source_key": "6540eef2dc2e",
       "uid": "0c66fc968402fabd",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3814",
-      "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Publication disposition for proven consecutive CCPD/Council bundle; exact original chapter boundaries verified.",
-      "next_action": "Obtain maintainer bundle disposition, commit bounded L3, preserve whole raw recording/audio, verify deployment.",
+      "question": "Verify deployed publication notes for approved consecutive CCPD/Council proceedings",
+      "missing_evidence": "Human-approved publication note is implemented in open PR #2111; substantive current-head review, human merge, deployment and live note verification remain.",
+      "next_action": "After substantive current-head review and human merge of #2111, verify both participant RSS entries and raw pages show the approved note while retaining original title, source chapters, UID and audio; keep cases open until deployment proof.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
@@ -2194,9 +2194,9 @@
       "source_key": "6540eef2dc2e",
       "uid": "99152cb9e61fa091",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=3814",
-      "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Publication disposition for proven consecutive CCPD/Council bundle; exact original chapter boundaries verified.",
-      "next_action": "Obtain maintainer bundle disposition, commit bounded L3, preserve whole raw recording/audio, verify deployment.",
+      "question": "Verify deployed publication notes for approved consecutive CCPD/Council proceedings",
+      "missing_evidence": "Human-approved publication note is implemented in open PR #2111; substantive current-head review, human merge, deployment and live note verification remain.",
+      "next_action": "After substantive current-head review and human merge of #2111, verify both participant RSS entries and raw pages show the approved note while retaining original title, source chapters, UID and audio; keep cases open until deployment proof.",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
