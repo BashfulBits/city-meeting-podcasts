@@ -1,7 +1,6 @@
 # Historical meeting coverage: category approval proposal
 
-**Status: directions A–F approved, 2026-10-02; ambiguous identities remain held. No residual feeds or exclusions
-have been applied.** Depends on the TIF migration and remedy guard (PRs #1973 and #1974).
+**Status: directions A–F approved, 2026-10-02; October 2026 batches (TIF in #1973, Arlington in #1980, Addison UDC in #1992, Pflugerville BOA in #1993) merged and deployed.** Residual policy applications, ambiguous identities, and remaining historical gaps are tracked under review/51 and review/evidence/unresolved-recording-cases.json.
 
 ## Scope and evidence
 

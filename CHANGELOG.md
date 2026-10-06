@@ -12,6 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Certified October 2026 Coverage Feed Implementations.** Reconciled and certified status for
+  October 2026 coverage batches across Addison UDC (PR #1992), Arlington HFC and ZBA (commit
+  5ffabb6), Pflugerville BOA (PR #1993), and Dallas/Fort Worth TIF aggregates (PR #1973). Updated
+  review documents (, ,
+  , ,
+  ) and  roadmap to record active production
+  feeds and passing regression test suites.
+
 - **Prepared #2097 Dallas May25 CBTF subscription.** Exact GUID admission preserves original
   UID/audio. Two Streets cases close after original chapter and deployed RSS proof reconciliation.
 

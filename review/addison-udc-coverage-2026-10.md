@@ -1,7 +1,10 @@
 # Addison UDC historical committee coverage
 
-Status: one approved named-body decision prepared for review. Generic exact-selector machinery
-is a dependency. No Community Partnership Committee or public-input migration is included.
+**Status: Implemented in PR #1992 (merged 2026-10-03) · FROZEN**
+The feed  is deployed in
+ and verified by
+. Generic exact-selector machinery was shipped in PR #1992.
+Community Partnership Committee and public-input migrations are covered separately in PR #2003/#2010.
 
 ## Subscription decision and evidence
 
