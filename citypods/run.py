@@ -2206,6 +2206,17 @@ def _run_enrich_global_queue(
         pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
         completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
         failed = _record_tag_batch_submission_failures(prepared, batch_outcomes)
+        from citypods.events import emit_event
+
+        emit_event(
+            "tag_batch_flush",
+            outcome="completed" if not failed else "errors",
+            lane="tag",
+            jobs=len(batch_outcomes),
+            pending=pending,
+            completed=completed,
+            errors=failed,
+        )
         print(
             f"[enrich] tag LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
             f"completed={completed} errors={failed}",
@@ -2373,6 +2384,14 @@ def _run_enrich_global_queue(
                 ctx.chapter_llm_backend = chapter_batcher
             ctx.chapter_llm_backend = original_chapter_backend
         elif audio_stages:
+            from citypods.events import emit_event
+
+            emit_event(
+                "audio_pass_start",
+                outcome="start",
+                lane="audio",
+                source_count=len(candidates),
+            )
             print(f"[enrich] audio pass: {len(candidates)} item(s) (newest-first)", flush=True)
             with ThreadPoolExecutor(max_workers=max_workers) as pool:
                 _run_bounded(
@@ -2381,6 +2400,12 @@ def _run_enrich_global_queue(
                     candidates,
                     max_pending=max_workers + ctx.audio_queue_lookahead,
                 )
+            emit_event(
+                "audio_pass_end",
+                outcome="completed",
+                lane="audio",
+                source_count=len(candidates),
+            )
             print("[enrich] audio pass done", flush=True)
             # Persist audio-pass results now, before the decoupled transcript pass — shrinks the
             # window in which a mid-run kill (SIGTERM/OOM/lost-comms) would lose every record update
@@ -2394,6 +2419,14 @@ def _run_enrich_global_queue(
                 owned_uids is None or item[1].uid in owned_uids.get(item[0], frozenset())
             )
             tx = [item for item in candidates if item[1].hosted_audio_url and owned(item)]
+            from citypods.events import emit_event
+
+            emit_event(
+                "transcript_pass_start",
+                outcome="start",
+                lane="transcript",
+                source_count=len(tx),
+            )
             print(
                 f"[enrich] transcript pass: {len(tx)} item(s) with audio (newest-first)", flush=True
             )
@@ -2406,6 +2439,12 @@ def _run_enrich_global_queue(
                     on_progress=_checkpoint_if_due,
                     stop=ctx.stop,
                 )
+            emit_event(
+                "transcript_pass_end",
+                outcome="completed",
+                lane="transcript",
+                source_count=len(tx),
+            )
             print("[enrich] transcript pass done", flush=True)
 
             # Tagging has no audio dependency (it only reads agenda/transcript text), so an
@@ -2991,6 +3030,9 @@ def _build_impl(
         else:
             restored = pull_state(storage, state_dir)
         if restored:
+            from citypods.events import emit_event
+
+            emit_event("state_restore", outcome="completed", source_count=restored)
             print(f"state: restored {restored} file(s) from durable storage")
     elif state_snapshot_restored:
         print("state: using canonical pre-matrix snapshot; durable restore already completed")

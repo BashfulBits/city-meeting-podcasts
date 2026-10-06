@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from citypods.agenda_text import AgendaTitleCandidate, agenda_title_similarity
@@ -1155,6 +1155,56 @@ def match_title_candidates(
     return matches
 
 
+def record_llm_cache_telemetry(
+    route: str,
+    usage: Mapping[str, object] | None,
+    *,
+    latency_ms: float | None = None,
+    log: Callable[[str], None] | None = None,
+) -> None:
+    """Record LLM prompt cache telemetry via emit_event (Review/45 Initiative 13).
+
+    Extracts cache-hit and cache-creation tokens from provider usage metadata
+    (e.g., prompt_tokens_details or direct cache fields) and emits an `llm_cache` event.
+    """
+    from citypods.events import emit_event
+
+    usage_dict = dict(usage or {})
+    details = usage_dict.get("prompt_tokens_details")
+    details_dict = dict(details) if isinstance(details, Mapping) else {}
+
+    raw_hit = (
+        details_dict.get("cached_tokens")
+        or usage_dict.get("cache_hit_tokens")
+        or usage_dict.get("cached_tokens")
+        or 0
+    )
+    raw_creation = (
+        details_dict.get("cache_creation_tokens") or usage_dict.get("cache_creation_tokens") or 0
+    )
+
+    try:
+        cache_hit_tokens = int(raw_hit)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        cache_hit_tokens = 0
+
+    try:
+        cache_creation_tokens = int(raw_creation)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        cache_creation_tokens = 0
+
+    outcome = "hit" if cache_hit_tokens > 0 else "miss"
+    emit_event(
+        "llm_cache",
+        outcome=outcome,
+        route=route,
+        cache_hit_tokens=cache_hit_tokens,
+        cache_creation_tokens=cache_creation_tokens,
+        latency_ms=round(latency_ms, 2) if latency_ms is not None else None,
+        log=log,
+    )
+
+
 __all__ = [
     "AGENDA_PRODUCTION_MODEL",
     "AGENDA_PRODUCTION_MODELS",
@@ -1181,6 +1231,7 @@ __all__ = [
     "ensure_title_equivalence_contract",
     "match_title_candidates",
     "outline_adds_title_evidence",
+    "record_llm_cache_telemetry",
     "recover_agenda_item_extractor_response",
     "validate_agenda_item_extractor_response",
     "validate_title_equivalence_response",

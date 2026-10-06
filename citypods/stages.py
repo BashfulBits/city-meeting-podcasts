@@ -3562,6 +3562,17 @@ def _asr_local_duration_eligible(ctx: StageContext, duration_hours: float) -> bo
 def _log_asr_external_required(
     ep_ref: str, *, duration_hours: float, duration_source: str, local_max_hours: float
 ) -> None:
+    from citypods.events import emit_event
+
+    emit_event(
+        "asr_skipped",
+        outcome="skipped",
+        ep_ref=ep_ref,
+        reason="external-required",
+        duration_h=round(duration_hours, 2),
+        duration_source=duration_source,
+        local_max_duration_h=round(local_max_hours, 2),
+    )
     print(
         f"[enrich] transcript asr skipped {ep_ref} reason=external-required "
         f"duration_h={duration_hours:.2f} duration_source={duration_source} "
@@ -3581,52 +3592,55 @@ class AudioStage:
     ) -> StageStats:
         if ctx.dry_run or ctx.storage is None:
             return StageStats(self.name)
-        for ep in episodes:
-            token = ensure_timeline_audio_repair_token(ep, REPAIR_AUDIO_REMATERIALIZE)
-            if token:
-                ep.audio_rebuild = token
-        ms: MaterializeStats = materialize_audio(
-            city,
-            _timeline_ready(
-                _playable(
-                    _materialize_set(
-                        episodes,
-                        city.full_artifact_episodes,
-                        feed_visible_per_body=city.max_episodes,
-                        policy=ctx.backlog_policy,
-                        city_slug=city.slug,
+        from citypods.telemetry import trace_stage_span
+
+        with trace_stage_span("stage.audio", attributes={"source_key": city.slug}):
+            for ep in episodes:
+                token = ensure_timeline_audio_repair_token(ep, REPAIR_AUDIO_REMATERIALIZE)
+                if token:
+                    ep.audio_rebuild = token
+            ms: MaterializeStats = materialize_audio(
+                city,
+                _timeline_ready(
+                    _playable(
+                        _materialize_set(
+                            episodes,
+                            city.full_artifact_episodes,
+                            feed_visible_per_body=city.max_episodes,
+                            policy=ctx.backlog_policy,
+                            city_slug=city.slug,
+                        )
                     )
-                )
-            ),
-            storage=ctx.storage,
-            ffmpeg=ctx.ffmpeg,
-            max_kbps=ctx.max_kbps,
-            loudness_profile=ctx.loudness_profile,
-            processing_profile=ctx.audio_processing_profile,
-            resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
-            stop=ctx.stop,
-            source_cache=ctx.source_cache,
-            max_workers=ctx.max_encodes_per_source,
-            resource_admission=ctx.resource_admission,
-            native_work_gate=ctx.native_work_gate,
-            memory_reservation=ctx.memory_reservation,
-            transport_telemetry=ctx.transport_telemetry,
-            hosted_keys_cache=ctx.hosted_keys_cache,
-            audio_artifact_cache=ctx.audio_artifact_cache,
-        )
-        return StageStats(
-            self.name,
-            ms.hosted,
-            ms.reused,
-            ms.skipped_budget + ms.skipped_backoff,
-            ms.errors,
-            bytes_written=ms.bytes_written,
-            encoded=ms.encoded,
-            credited=ms.credited,
-            rate_limited=ms.rate_limited,
-            defer_reasons=dict(ms.defer_reasons),
-            defer_samples=list(ms.defer_samples),
-        )
+                ),
+                storage=ctx.storage,
+                ffmpeg=ctx.ffmpeg,
+                max_kbps=ctx.max_kbps,
+                loudness_profile=ctx.loudness_profile,
+                processing_profile=ctx.audio_processing_profile,
+                resolve_media_url=lambda ep: provider.resolve_media_url(ep, city.source),
+                stop=ctx.stop,
+                source_cache=ctx.source_cache,
+                max_workers=ctx.max_encodes_per_source,
+                resource_admission=ctx.resource_admission,
+                native_work_gate=ctx.native_work_gate,
+                memory_reservation=ctx.memory_reservation,
+                transport_telemetry=ctx.transport_telemetry,
+                hosted_keys_cache=ctx.hosted_keys_cache,
+                audio_artifact_cache=ctx.audio_artifact_cache,
+            )
+            return StageStats(
+                self.name,
+                ms.hosted,
+                ms.reused,
+                ms.skipped_budget + ms.skipped_backoff,
+                ms.errors,
+                bytes_written=ms.bytes_written,
+                encoded=ms.encoded,
+                credited=ms.credited,
+                rate_limited=ms.rate_limited,
+                defer_reasons=dict(ms.defer_reasons),
+                defer_samples=list(ms.defer_samples),
+            )
 
 
 class TimelinePlanner(Protocol):
