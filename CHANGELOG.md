@@ -7340,6 +7340,10 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
 - Shipped #2086 in PR #2088: EMSISD joint participant subscription. Live participant RSS and
   retained Council page verified original UID/audio; no backfill or stage invalidation.
 
+- Prepared #2092: three verified Dallas CBTF recordings gain own subscription coverage,
+  using two exact GUID pins and one reusable complete chairs-meeting alias. Preserve original
+  UID/audio/raw records; no stage invalidation or backfill. Deployment proof gates closure.
+
 - Prepared #2089: add Dallas 2024 bond Flood Control and Storm Drainage subscription using
   its complete institution label. Preserve raw UID/audio; no stage invalidation or backfill.
   Case remains open pending deployment verification.

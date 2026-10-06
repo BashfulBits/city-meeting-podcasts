@@ -1482,9 +1482,13 @@ same-run snapshot/staged publication contract in review/51. No public schema or 
 Fort Worth EMSISD participant #2086: **Shipped** in #2088; original audio verified deployed,
 bounded contract frozen and substantive review gap recorded in review/51.
 
-Dallas #2092 additional three CBTF proceedings: L3 in review/51; verified archive/source
+Dallas #2092 additional three CBTF proceedings: L3, implementation prepared in review/51; verified archive/source
 bindings, two exact ambiguous-label pins plus one reusable chairs-meeting institution alias.
 Existing holders/raw UID/audio preserved; full replay and deployed proof gate closure.
+
+Dallas #2094 dedicated bond Critical Facilities institution: L3 in review/51. Exact full
+label, independent institution plus dated archive/source chapter proof; all prior holders
+preserved. Missing August15 minutes documented; deployed verification gates closure.
 
 Dallas bond Flood institution: **L3**, #2089, reusable complete label and independently
 convened official minutes/source chapter binding. Implementation prepared with original fixture;

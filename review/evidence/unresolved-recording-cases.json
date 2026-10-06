@@ -2342,10 +2342,12 @@
       "uid": "6a3caf1854bdd2cd",
       "provider_guid": "277589",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Reconcile official CBTF archive and source chapters, prepare bounded ownership contract; no title-only closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
+      "missing_evidence": "Live own subscription coverage and original audio after human merge/deployment; dated official/source binding retained in audit.",
+      "next_action": "Prepared #2092: verify deployed CBTF subscription and original audio before bounded case closure.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
       "status": "open",
       "disposition": null
     },
@@ -2492,10 +2494,12 @@
       "uid": "deb5a67aa9b6e8d1",
       "provider_guid": "259822",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Reconcile official CBTF archive and source chapters, prepare bounded ownership contract; no title-only closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
+      "missing_evidence": "Live own subscription coverage and original audio after human merge/deployment; dated official/source binding retained in audit.",
+      "next_action": "Prepared #2092: verify deployed CBTF subscription and original audio before bounded case closure.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
       "status": "open",
       "disposition": null
     },
@@ -2522,10 +2526,12 @@
       "uid": "eeca5aeceda62d39",
       "provider_guid": "272005",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Reconcile official CBTF archive and source chapters, prepare bounded ownership contract; no title-only closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
+      "missing_evidence": "Live own subscription coverage and original audio after human merge/deployment; dated official/source binding retained in audit.",
+      "next_action": "Prepared #2092: verify deployed CBTF subscription and original audio before bounded case closure.",
+      "last_researched": "2026-10-06",
+      "current_feed_assignments": [
+        "dallas-tx-2024-community-bond-task-force"
+      ],
       "status": "open",
       "disposition": null
     },
