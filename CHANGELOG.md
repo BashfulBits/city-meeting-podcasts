@@ -7337,8 +7337,8 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   meeting from two identically labeled public town halls; original UID/audio/raw title retained.
   No stage invalidation or backfill; case closure requires deployment verification.
 
-- Prepared #2086: add source-scoped EMSISD Board/Fort Worth Council joint subscription for
-  proven clip2491, preserving Council ownership and original recording/audio. No backfill.
+- Shipped #2086 in PR #2088: EMSISD joint participant subscription. Live participant RSS and
+  retained Council page verified original UID/audio; no backfill or stage invalidation.
 
 - Prepared #2089: add Dallas 2024 bond Flood Control and Storm Drainage subscription using
   its complete institution label. Preserve raw UID/audio; no stage invalidation or backfill.
