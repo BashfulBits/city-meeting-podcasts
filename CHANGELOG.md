@@ -7341,3 +7341,8 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   read-only sidecar indexing and staged complete publication. Deferred/error search retains
   prior complete site; no provider refresh, record writes, schema change or stage backfill.
   Existing20minute indexing and60minute job ceilings preserved.
+
+- Shipped #2081 in PR #2082: reusable Dallas Streets bond subcommittee ownership, preserving
+  standing aliases and joint feeds. Five recordings verified deployed; six exact bindings remain open.
+- Shipped #2083 in PR #2085: exact 2017 bond task-force and public town-hall subscriptions.
+  All three original recording UIDs/audio verified deployed; closure evidence is in PR #2090.

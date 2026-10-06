@@ -2178,3 +2178,16 @@ Specific config/model presentation-schema approval remains necessary before code
 prior no-unspecified-schema gate. After approval mature to L3 with named parser/model/run/feeds/
 site/cache files and original two-record positive/negative/RSS/raw-page tests. No general bundle
 classifier, audio splitting, publication winner, other source/holder change or backfill.
+
+### #2084 review checkpoint extension — L2, approval pending
+
+CodeRabbit4190579663 correctly identifies that render saves its cache before search completes;
+next-run fallback therefore cannot promise the latest completed index. Proposed extension in
+already named search/workflow/test files: `.citypods-search-checkpoint/` local working directory,
+containing resumable completed shards/cache and a separately committed last-complete search
+publication. Restore/save with the existing pinned cache action in the search job. Deferred
+partial work may advance only the working checkpoint; public output uses only last-complete
+manifest/shards/assets/navigation. Never replace complete public output with a partial manifest.
+Cross-run success→deferral and multiple-budget completion tests are required. Existing20minute
+indexing ceiling, same-run source-record artifact, read-only storage and credentials stay fixed.
+No implementation until this specific additional path/checkpoint contract is approved.
