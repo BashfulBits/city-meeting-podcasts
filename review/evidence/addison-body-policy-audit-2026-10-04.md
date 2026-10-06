@@ -1787,3 +1787,25 @@ Vitruvian branding. These directly observed frames corroborate the scripted deve
 in stored ASR, beyond the provider title alone. They are sampled content, not proof of every
 interval. Archive-only remains approved; deployed search verification remains outstanding.
 No media download, new processing, raw title/date mutation or case closure occurred.
+
+### Additional Dallas CBTF source identity verification — 2026-10-06
+
+Read-only inspection of source76869ed1994f independently confirms these retained identities:
+
+| UID | GUID | Original body | Original chapter binding |
+|---|---|---|---|
+| deb5a67aa9b6e8d1 | 259822 | 2024 Capital Bond CBTF Meeting | No chapter; official June13 archive links exact video |
+| eeca5aeceda62d39 | 272005 | 2024 Capital Bond Program CBTF Meeting | September19,2023; source chapter1–12363.659547 |
+| 6a3caf1854bdd2cd | 277589 | 2024 Capital Bond CBTF and Subcommittee Chairs Meeting | October24,2023; source chapter2–6395 |
+
+The prior remaining-proof packet in the #2087 audit records September19 Subcommittee
+Recommendations and October24 allocations events, with the October27 official CBTF
+Recommended Bond Allocations memorandum as corroboration. Carry the dated official links
+into a bounded L3 contract before implementation; this source inspection alone is not closure.
+
+Shared labels remain ambiguous: GUID233037 shares259822's body; GUID272574 shares272005's
+body. Do not admit those unproven recordings through blanket body selectors. A subsequent
+contract can expand the existing CBTF feed for the proven identities, preserving all existing
+holders and recording bytes, and must test these shared-label negative cases. The unique
+chairs-meeting label is a candidate reusable institutional alias after the official proof
+packet is verified. All three cases remain open until implementation and deployed proof.
