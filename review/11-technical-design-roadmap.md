@@ -1503,3 +1503,12 @@ convened official minutes/source chapter binding. Implementation prepared with o
 runs, while deferrals overlay only last-complete search output on freshly rendered pages.
 Cross-run completion/deferral/resumption and malformed-checkpoint tests cover the review finding.
 Human merge and current-head substantive review remain required.
+
+
+### #2098 Fort Worth Gas Drilling Task Force participant — L3
+
+Two exact official opening slates bind125/127 to Council/Task Force joint proceedings.
+Implement the dedicated participant subscription under the bounded contract in
+[review/51](51-unexpected-body-remedy-flow.md#fort-worth-gas-drilling-task-force-joint-participant--l3-2098).
+Preserve both UIDs/audio/Council eligibility; keep cases open until deployment.6334 remains
+a source-version discrepancy, not an approved split or winner.
