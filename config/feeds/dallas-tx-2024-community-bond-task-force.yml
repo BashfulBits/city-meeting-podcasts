@@ -6,6 +6,8 @@ source:
   body_exact:
     - "2024 Capital Bond CBTF and Subcommittee Chairs Meeting"
   body_includes:
+    - provider_guid: "233037"
+      body: "2024 Capital Bond CBTF Meeting"
     - provider_guid: "280220"
       body: "2024 Bond CBTF and Subcommittee Chairs Meeting"
     - provider_guid: "246971"
