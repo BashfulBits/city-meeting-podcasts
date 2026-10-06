@@ -170,3 +170,12 @@ and the `deps` job in `ci.yml`):
 - `review/11` — Phase-R "Runtime/dependency maintenance automation" (this doc executes it).
 - `AGENTS.md` — pipeline-version-bump contract; `SECURITY.md` — supply-chain posture.
 - OpenSSF Scorecard *Pinned-Dependencies*; GitHub Docs *Security hardening for GitHub Actions*.
+
+### Bounded 2026-10-06 workflow maintenance contract (#2041)
+
+The maintainer authorized fixing this existing Renovate PR. Scope is its workflow tooling pins,
+this policy, and changelog only. Retain selected Wrangler 4.147.0 and synchronize the smoke exact
+version assertion. The current head's Node 24 dependency check passed with Renovate 44.139.0; update
+the documented validator pin accordingly. Validate workflow tests, whole Ruff, and four credential-free
+package smoke jobs. Do not change Python 3.12, constraints, runtime source, worker bindings, secrets,
+permissions, pipeline versions, production ceilings, or stored artifacts. Human merges only.
