@@ -2144,8 +2144,8 @@
       "uid": "497b3aa05255bfb9",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=2491",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
+      "missing_evidence": "Deployed same UID/audio in EMSISD Board participant feed; independent original official joint proof established",
+      "next_action": "Prepared under #2086; human merge/deployment then verify Council plus EMSISD participant RSS original whole audio before closure",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [
         "fort-worth-tx-city-council"
@@ -2371,7 +2371,7 @@
       "provider_guid": "269612",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
       "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Reconcile official CBTF archive and source chapters, prepare bounded ownership contract; no title-only closure",
+      "next_action": "Prepared #2089 complete-label Flood subcommittee subscription; verify deployed original UID/audio before closure",
       "last_researched": "2026-10-05",
       "current_feed_assignments": [],
       "status": "open",

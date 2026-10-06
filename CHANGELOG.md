@@ -7346,3 +7346,10 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   standing aliases and joint feeds. Five recordings verified deployed; six exact bindings remain open.
 - Shipped #2083 in PR #2085: exact 2017 bond task-force and public town-hall subscriptions.
   All three original recording UIDs/audio verified deployed; closure evidence is in PR #2090.
+
+- Prepared #2086: add source-scoped EMSISD Board/Fort Worth Council joint subscription for
+  proven clip2491, preserving Council ownership and original recording/audio. No backfill.
+
+- Prepared #2089: add Dallas 2024 bond Flood Control and Storm Drainage subscription using
+  its complete institution label. Preserve raw UID/audio; no stage invalidation or backfill.
+  Case remains open pending deployment verification.

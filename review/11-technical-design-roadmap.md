@@ -1484,3 +1484,7 @@ same UID/audio and retained Council ownership. Exact fixture/full-source replay 
 
 Dallas reusable Streets #2081: **Shipped** in #2082; exact2017 #2083: **Shipped** in #2085.
 Review/51 bounded contracts frozen; substantive review gaps recorded. Deployment closures pending.
+
+Dallas bond Flood institution: **L3**, #2089, reusable complete label and independently
+convened official minutes/source chapter binding. Implementation prepared with original fixture;
+5353-record replay adds only one Flood subscription. Deployment proof remains pending.

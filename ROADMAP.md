@@ -586,3 +586,8 @@ Dallas #2065 exact four-record CBTF coverage prepared; deployment proof and rema
 
 Recently shipped: Dallas reusable Streets institution separation #2082 and distinct2017
 formal-taskforce/public-town-hall subscriptions #2085. Deployed evidence verification pending.
+
+Prepared #2086: restore proven Fort Worth EMSISD participant discovery; deployment proof pending.
+
+Prepared #2089: complete-label Dallas Flood bond subcommittee subscription; full-source replay
+adds one original UID with every existing holder unchanged. Deployment proof pending.

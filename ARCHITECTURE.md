@@ -1417,3 +1417,10 @@ same-run generated site, feed context and source record JSONs; search reads host
 without provider refresh or record/storage writes. It stages the complete site, preserving
 prior public bytes on deferred/error builds. Complete search publishes navigation/meta together.
 Existing20minute indexing ceiling and60minute job ceiling remain; deployment alone writes Pages.
+
+Fort Worth EMSISD Board participant feed reuses the existing Granicus source and exact joint
+institution label. Council ownership and original whole recording UID/audio are preserved.
+
+Dallas 2024 bond Flood Control and Storm Drainage uses the existing complete institutional
+label selector, admitting stable-label recurrences without GUID pins. Original source records,
+UIDs and audio remain unchanged (#2089).

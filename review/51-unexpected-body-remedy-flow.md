@@ -2179,7 +2179,7 @@ prior no-unspecified-schema gate. After approval mature to L3 with named parser/
 site/cache files and original two-record positive/negative/RSS/raw-page tests. No general bundle
 classifier, audio splitting, publication winner, other source/holder change or backfill.
 
-### #2084 review checkpoint extension — L2, approval pending
+### #2084 review checkpoint extension — L3, maintainer authorized 2026-10-06
 
 CodeRabbit4190579663 correctly identifies that render saves its cache before search completes;
 next-run fallback therefore cannot promise the latest completed index. Proposed extension in
@@ -2190,4 +2190,34 @@ partial work may advance only the working checkpoint; public output uses only la
 manifest/shards/assets/navigation. Never replace complete public output with a partial manifest.
 Cross-run success→deferral and multiple-budget completion tests are required. Existing20minute
 indexing ceiling, same-run source-record artifact, read-only storage and credentials stay fixed.
-No implementation until this specific additional path/checkpoint contract is approved.
+The maintainer explicitly directed addressing #2087 after the checkpoint finding and proposal.
+Implement in citypods/search.py build_search_site, .github/workflows/deploy.yml search job,
+and tests/test_static_search_job.py; update ARCHITECTURE/CHANGELOG/review11 and this contract.
+Use checkpoint working/ and complete/ directories plus working cache; persist completed-source
+progress on deferral while overlaying only complete search publication on the current rendered site.
+Preserve fresh non-search pages. A malformed or missing checkpoint must never delete prior output.
+No provider/schema/storage writes, dependencies, stage changes or deadline increases.
+Run full offline and whole Ruff/format; material fix requires current-head substantive review.
+
+#2086 prepared:186 targeted and4959 full offline tests pass15 deselected; whole Ruff/format469
+clean. Full5896 replay adds only one EMSISD participant holder, all existing feeds unchanged.
+No case closure until deployed original audio/UID verified.
+
+### Dallas bond Flood subcommittee reusable ownership — L3, #2089
+
+Official August15,2023 Flood Control/Storm Drainage Subcommittee minutes independently
+convene chair Anita Childress6:05pm and adjourn8:15pm. Original provider chapters bind
+GUID269612/UID8280ec97799c999e to that date and institution. This is a standalone2024Bond
+subcommittee; Council recommendations discussed are not Council participation.
+
+Add `config/feeds/dallas-tx-2024-bond-flood-subcommittee.yml`, same Dallas/Swagit113 source,
+existing body_exact only `2024 Bond Task Force Flood`; title Dallas2024Bond Flood Control and
+Storm Drainage Subcommittee. No existing selector changes. Add original fixture
+`tests/fixtures/dallas-bond-flood-retained.json` and `tests/test_dallas_bond_flood_ownership.py`:
+actual-config new feed accepts original, same-label/future-GUID recurrence auto-admits,
+standing Council/Flood topic/other bond bodies reject; raw UID/audio/RSS remain unchanged.
+Full5353-record/all-feed replay must add only original UID to newfeed0→1, every old holder
+unchanged. Full offline and whole Ruff/format required. No provider/runtime/schema/record/audio/
+stage/dependency changes, backfill or publication winner. Update ARCHITECTURE/CHANGELOG/
+ROADMAP/review11/audit and case prepared action; case stays open until human merge and live
+exact UID/audio verification. Freeze/stamp after human merge only.
