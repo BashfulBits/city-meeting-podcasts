@@ -2199,9 +2199,6 @@ Preserve fresh non-search pages. A malformed or missing checkpoint must never de
 No provider/schema/storage writes, dependencies, stage changes or deadline increases.
 Run full offline and whole Ruff/format; material fix requires current-head substantive review.
 
-#2086 prepared:186 targeted and4959 full offline tests pass15 deselected; whole Ruff/format469
-clean. Full5896 replay adds only one EMSISD participant holder, all existing feeds unchanged.
-No case closure until deployed original audio/UID verified.
 
 ### Dallas bond Flood subcommittee reusable ownership — L3, #2089
 
@@ -2221,3 +2218,8 @@ unchanged. Full offline and whole Ruff/format required. No provider/runtime/sche
 stage/dependency changes, backfill or publication winner. Update ARCHITECTURE/CHANGELOG/
 ROADMAP/review11/audit and case prepared action; case stays open until human merge and live
 exact UID/audio verification. Freeze/stamp after human merge only.
+
+#2087 bounded equivalent-site clarification: build_search_index must check its deadline only
+after completed-source cache hits. Cheap cached-source bookkeeping must not consume restartable
+work admission. Moving the existing stop check after cache-hit continue is authorized alongside
+a real multiple-budget source-resumption test, with the same deadline and source hash checks.
