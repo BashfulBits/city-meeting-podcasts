@@ -1834,3 +1834,19 @@ alias. Full5,353-record/1,095-label replay changes only CBTF5→8: deb5a67aa9b6e
 eeca5aeceda62d39 and6a3caf1854bdd2cd. Every previous holder remains unchanged; no records
 mutated. Shared-label233037/272574 remain excluded. All three cases stay open pending
 human merge, deployment and exact own RSS/audio proof; preparation is not closure.
+
+### Dallas Critical Facilities institution corroboration — 2026-10-06
+
+The official archive directly links August22 Critical Facilities Meeting#6 minutes:
+https://dallascityhall.com/departments/bond-construction-management/Lists/DepartmentNavigation/Attachments/184/Critical%20Facilities%20Meeting_082223_Meeting%20Minutes.pdf
+
+Retrieved PDF identifies Critical Facilities Subcommittee, 2024 Bond Task Force, its own
+members and Chair Gates, August22 convening6:02pm/adjournment7:50pm. This independently proves
+a distinct subcommittee institution rather than Council topic or venue. It corroborates the
+same archive's August15 Meeting#5 and original269611 dated chapter; it does not supply the
+missing August15 minutes or prove an exact video hyperlink for that archive button.
+
+The May11 archive summary remains mislinked to whole-CBTF minutes and must not be used as
+Critical Facilities convening proof. A bounded institution-feed contract can use the correctly
+bound archive event/chapter plus this independent institution proof; do not claim the
+August22 minutes describe the August15 recording. Case977d943cea00258e remains open.
