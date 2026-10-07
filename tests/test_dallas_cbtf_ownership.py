@@ -166,6 +166,7 @@ def test_approved_sep26_town_hall_is_shared_with_public_info_only():
     original_september19 = copy.deepcopy(september19)
 
     def matches_feed(record, city):
+        """Apply the same source selectors the feed uses when routing records."""
         return record_matches_body(
             record,
             source_body_filter(city.source),
