@@ -89,6 +89,25 @@ implementation details such as source keys or rule provenance unless a research/
 asks for it. This preserves the simple catalog → municipality → body hierarchy while making a topic
 result materially more useful than a meeting-level hit.
 
+### Feed-page history and RSS cap (maintainer direction, 2026-10-07)
+
+The maintainer prefers a project RSS cap of **300 episodes**, while keeping the full existing
+500-episode "Recent meetings" list on each feed page and retaining older records in the website
+archive/search. The feed page must plainly say that podcast apps receive only the latest 300 episodes
+from RSS and link listeners to the full archive/search. Do not imply that 300 is a limit imposed by
+Apple: Apple's published
+[RSS requirements](https://podcasters.apple.com/support/823-podcast-requirements) specify required
+feed structure and episode fields but do not state a 300-item maximum.
+
+This policy cannot be achieved by changing `max_episodes` alone. Today that setting is used both when
+building RSS (`citypods/feeds.py`) and when preparing the page's episode list (`citypods/run.py`),
+while body-aware retention and work priority also use the 500 value. The redesign implementation
+must separate the RSS output limit from the existing 500-item page/materialization window, preserve
+stable episode GUIDs and URLs, and avoid shrinking the archive or search inputs. Verify RSS contains
+at most 300 newest eligible episodes, the page still displays entries 1–500 with the disclosure,
+and older retained records remain reachable through the archive/search experience. Search is
+currently not published on the live site; this redesign requirement does not claim that it is.
+
 ### A.2 This doc specifies a process, not a visual identity — deliberately
 
 **Maintainer decision, 2026-07-13: this session produces roadmap/design documents, not the actual visual
