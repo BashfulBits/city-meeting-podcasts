@@ -389,7 +389,7 @@ Maintainer decision (2026-10-06): create or reuse a case at exact source-key/UID
 after case-by-case evidence confirms a real public recording. Keep unverified associations in the
 crosswalk; do not bulk-create cases or infer coverage/exclusion from selector gaps alone.
 
-### P0 completed local rule replay — 2026-10-07
+### P0 completed local rule replay — 2026-10-07 (historical snapshot)
 
 The current working-tree feed rules were replayed against 26,555 cached source entries from 42
 source namespaces. The [final report](evidence/p0-forward-rule-replay-2026-10-07.md) and its linked
@@ -422,7 +422,7 @@ open evidence/unavailable-source case, then live deployment checks. Do not claim
 recording is covered merely because its title matches a selector.
 
 
-### P0 deployed historical-coverage check — 2026-10-07
+### P0 deployed historical-coverage check — 2026-10-07 (historical snapshot)
 
 The 680-pattern rules from the 2026-10-07 replay are now deployed after merge commits in PRs
 [#2112](https://github.com/BashfulBits/city-meeting-podcasts/pull/2112) and
@@ -448,8 +448,8 @@ The frozen baseline has a recorded outcome for every row: 517 title patterns ass
 rules, one archive-only, and 162 not pursued. The register contains 169 cases: 159 resolved,
 10 open. The Citizen Advisory compilation is accepted in Public Input for P0; its exact historical
 program-to-recording link remains unknown, but an archive count of 11 does not establish a
-missing part. For Dallas GUID272574, the maintainer approved both Bond Program and Public Info;
-the remaining open work is live verification of both feeds. The other Dallas CBTF recording still
+missing part. At the time of this snapshot, Dallas GUID272574 had an approved Bond Program and
+Public Info placement; the later Bond-only direction and correction contract below supersede it. The other Dallas CBTF recording still
 needs exact event proof. The remaining evidence cases are recorded in
 [`unresolved-recording-cases.json`](evidence/unresolved-recording-cases.json). Under the P0 exit
 rule above, open cases remain explicit evidence work; the counts do not mean those recordings were

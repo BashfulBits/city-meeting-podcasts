@@ -142,15 +142,16 @@ and entries without usable recordings stay with the existing no-recording flow.
 
 The final decision worksheet covers all **680 historical title patterns / 2,028 source-and-UID
 listings**. After PR #2154, 518 patterns (1,667 listings) are assigned by local feed rules, one
-pattern/listing is archive-only, and 161 patterns (360 listings) are not to pursue. The replay of
-26,555 cached source records currently reports 1,976 added policy placements across 1,952
+pattern/listing is archive-only, and 161 patterns (360 listings) are not to pursue. The corrected
+local replay of 26,555 cached source records reports 1,975 added policy placements across 1,952
 source/UID pairs, and 30 removed Fort Worth City Council placements for the “Minority Leaders and
 Citizens Council” civic series. Ten Dallas CBTF selections already appear in live Bond Program RSS.
-The maintainer has since directed that GUID 272574 remain only in Dallas Bond Program; a bounded
-correction is removing its exact Public Info inclusion. After that correction, the report should
-show 1,975 added placements, the same 1,952 source/UID pairs, 30 removed placements, and a net
-increase of 1,945 feed assignments. The unmatched count stays 411: 405 intentionally not pursued
-and six approved Addison archive-only items awaiting visibility verification. The October 3 Dallas
+The maintainer directed that GUID 272574 remain only in Dallas Bond Program. The full 5,353-record
+Dallas replay found exactly one Public Info placement removed and no other Dallas feed changes. The
+catalog-wide added-placement count is 1,975, with 1,952 distinct source/UID pairs, 30 removed
+placements, and a net increase of 1,945 feed assignments. The unmatched count stays 411: 405
+intentionally not pursued and six approved Addison archive-only items awaiting visibility
+verification. The October 3 Dallas
 CBTF recording is verified in Bond Program only. The September 26 evidence case remains open until
 the routing correction deploys and live RSS confirms Bond Program presence and Public Info and
 Task Force absence. Public comment alone does not send a meeting to Public Info. The replay also

@@ -1,4 +1,6 @@
-# Final P0 rule replay against the cached catalog — 2026-10-07
+# P0 rule replay against the cached catalog — 2026-10-07
+
+> **Current follow-up:** The maintainer later directed that Dallas GUID 272574 belong in Bond Program only. The original 680-pattern dispositions are unchanged, but the exact Public Info placement is removed in the current local correction. Older live-status paragraphs below describe earlier snapshots. See “Current correction replay” at the end.
 
 This is the final local replay of the maintainer-approved historical feed rules. It compares the
 current working-tree feed definitions with 26,555 cached source-record entries from 42 source
@@ -15,16 +17,16 @@ counts.
 | Measure | Before these local rules | With these local rules | Change |
 |---|---:|---:|---:|
 | Configured feeds | 173 | 224 | +51 |
-| Feed assignments in cached catalog | 27,434 | 29,380 | +1,946 net |
-| Added policy selections vs. prior baseline | — | 1,976 | 1,952 distinct source/UID pairs |
+| Feed assignments in cached catalog | 27,434 | 29,379 | +1,945 net |
+| Added policy selections vs. prior baseline | — | 1,975 | 1,952 distinct source/UID pairs |
 | Removed feed placements | — | 30 | 30 source/UID pairs |
 | Source/UID entries with no feed under the reviewed rules | — | 411 | See the disposition below |
 
 The 30 removals are Fort Worth “Minority Leaders and Citizens Council” civic-program recordings
 that had been incorrectly included in City Council. The feed rule no longer places them in Council;
 the raw source records and audio remain intact. The ten Dallas CBTF policy selections do not add ten
-new live RSS items: the published Bond Program selector already routes them at runtime, and this
-change only removes a contradictory exclusion from the P0 policy replay.
+new live RSS items: the published Bond Program selector already routes them at runtime. The later
+Bond-only correction removes one exact Public Info placement for GUID 272574.
 
 ## Follow-up: two existing feeds now cover three recordings
 
@@ -111,21 +113,22 @@ Advisory compilation. The maintainer later accepted that compilation's Public In
 for P0 on 2026-10-07; its exact historical program-to-recording link remains unknown, and the
 archive's 11-item count does not establish a missing part. The current register had nine open cases before the Fort Worth #3814 check was accepted:
 two Fort Worth 6334 clip-to-segment bindings, two Fort Worth 3814 bundle publication checks, one
-Dallas dual-feed deployment check, and four Dallas bond Streets recording bindings. Six approved
+Dallas Bond-only deployment check, and four Dallas bond Streets recording bindings. Six approved
 Addison archive-only entries still need a separate visibility check, but they are not open rows in
 the current case register. The October 3, 2023 Dallas CBTF recording is resolved by the maintainer's
 Bond Program-only decision and a live RSS check showing the original UID/audio in Bond Program and
 its absence from Public Info and the dedicated Task Force feed; see
 [`dallas-cbtf-live-rss-2026-10-07.md`](dallas-cbtf-live-rss-2026-10-07.md). The September 26
-recording is assigned to both Bond Program and Public Info in the local rules, but its merged Public
-Info deployment is not yet verified. Keep that case open until both feeds show the same original
-UID/audio. The two 6334 assignments remain unchanged as the maintainer directed. Do not close a case
+recording is Bond Program only in the current local correction, but that correction is not yet
+deployed. Keep that case open until Bond Program RSS shows its original UID/audio and Public Info
+and the dedicated Task Force RSS omit it. The two 6334 assignments remain unchanged as the
+maintainer directed. Do not close a case
 because a selector matched or because an item was classified “not to pursue.”
 
 The open-case register is not the same count as the 411 unmatched catalog entries: some open cases
 are already assigned to a feed but still need live proof, while most unmatched entries are
-intentionally not pursued. This replay includes the September 26 recording in Dallas Bond Program
-and Public Info and the October 3 recording in Dallas Bond Program only. Public comment at a meeting
+intentionally not pursued. This replay includes the September 26 and October 3 recordings in Dallas
+Bond Program only. Public comment at a meeting
 does not automatically make it a Public Info session. The 680-row disposition and exact replay are
 the measures for policy coverage; live deployment evidence remains a separate P0 finish gate.
 
@@ -149,8 +152,9 @@ validation, the search job and Pages deployment all passed. This live check is s
 
 A later read-only RSS check confirmed the October3 Dallas recording (GUID273327, UID
 `6135249a278494c5`) and its original audio URL in Bond Program, and absent from Public Info and the
-dedicated Task Force feed. That case is resolved. PR #2116 adds September26 GUID272574 to Public Info,
-but its deployment was still pending at this check; that dual-feed case remains open. The full
+dedicated Task Force feed. That case is resolved. PR #2116 added September 26 GUID 272574 to Public
+Info. That older deployment state is superseded by the maintainer’s Bond-only direction and the
+correction described below. The full
 results are in [`dallas-cbtf-live-rss-2026-10-07.md`](dallas-cbtf-live-rss-2026-10-07.md).
 
 All 72 feeds containing proposed placements returned HTTP 200. Of 1,965 placements across 1,942
@@ -175,7 +179,7 @@ This is a separate site-search limitation; the P0 feed rules and RSS checks abov
 The frozen 680-pattern disposition baseline is applied on the public site. The revised local
 disposition has 518 assigned patterns, one archive-only pattern, and 161 not pursued. Nine
 registered evidence cases remained open before the Fort Worth #3814 closure. The current register
-has seven open cases: two Fort Worth 6334 segment bindings, one Dallas dual-feed deployment check,
+has seven open cases: two Fort Worth 6334 segment bindings, one Dallas Bond-only deployment check,
 and four Dallas Streets bond bindings. The two 3814 publication checks are resolved.
 The Citizen
 Advisory compilation's Public Input classification
@@ -184,3 +188,29 @@ is inferred. The register remains the source of truth for the remaining proof ob
 historical dispositions are deployed;
 case closure and public search availability are tracked separately and must not be inferred from
 this disposition count.
+
+### Current correction replay — Dallas GUID 272574, 2026-10-07
+
+The maintainer directed that the September 26, 2023 recording (UID `aa65e2aafc90711b`) belong only
+in Dallas Bond Program. The exact Public Info GUID inclusion has been removed locally; no broader
+body rule was added. The Bond selector still accepts the recording.
+
+The complete cached Dallas source was replayed: 5,353 records and 1,095 body labels. Compared with
+the merged #2154 config, exactly one holder changed: this UID was removed from Dallas Public Info.
+No other Dallas feed selection changed. The input SHA-256 and before/after config hashes are in
+[`dallas-272574-replay-2026-10-07.json`](dallas-272574-replay-2026-10-07.json).
+
+Applying that one-row change to the cached-catalog replay yields 1,975 added feed placements,
+1,952 distinct source/UID pairs, 30 removed Fort Worth Council placements, and 29,379 total feed
+assignments (net +1,945 from baseline). The no-feed count remains 411: 405 intentionally not
+pursued and six approved Addison archive-only items. The 680 title-pattern outcomes do not change.
+These are local rule results, not deployed verification.
+
+The September 26 case remains open until a deployment check finds the original UID/audio in Bond
+Program RSS and absent from Public Info and the dedicated Task Force feed.
+
+The latest live check before this correction (Build and Deploy #37672877235, completed 2026-10-07
+20:16 UTC) confirms the older dual-feed version is currently published: the original UID/audio is in
+both Bond Program and Public Info and absent from the dedicated Task Force feed. The corrected local
+config has not been deployed. The case therefore remains open and the current public feeds do not
+yet match the maintainer's final Bond-only direction.
