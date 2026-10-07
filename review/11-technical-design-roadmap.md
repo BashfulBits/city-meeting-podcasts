@@ -101,9 +101,12 @@ current Addison RSS feeds and both Town Meetings browse pages omit them; all six
 remain available. Citizen Advisory remains in the Town Meetings feed and browse pages. The two
 public search routes returned 404, so live search omission was not independently observed. These
 six publication-disposition cases are resolved without claiming their historical content or
-institution is identified; their individual missing-evidence notes remain. The register now has 158
-resolved and 11 open cases. This closes only those six approved exclusions; the 680-row P0 baseline
-remains open.
+institution is identified; their individual missing-evidence notes remain. On 2026-10-07, the
+maintainer also accepted the single Citizen Advisory compilation in Public Input as its P0
+classification. Its exact historical program-to-recording link remains unknown, but is no longer a
+blocking classification question; the archive's 11-item count does not establish a missing part.
+The register now has 159 resolved and 10 open cases. The 680-row P0 baseline remains open until the
+remaining source-binding evidence cases are resolved or otherwise dispositioned.
 
 Maintainer clarification (2026-10-04): specific continuing standing committees, including Council
 subcommittees, have dedicated feeds across cities unless evidence establishes a temporary body.
@@ -123,11 +126,13 @@ Prepared CPC coverage alone does not complete this city baseline or authorize br
 The approved public-input/briefing and BZA presentation slice is L3 in
 [review/51](51-unexpected-body-remedy-flow.md#addison-public-input-display-and-verified-routing--l3-bounded-implementation),
 tracked by #2009 and implemented with validation passed; review disposition is in PR #2010.
-Citizen Advisory remains public input with stable identity and an active
-historical evidence obligation; unknown older recordings are not silently retired.
+Citizen Advisory remains public input with stable identity. The maintainer accepted its P0
+classification on 2026-10-07; the exact historical program-to-recording link remains unknown in the
+evidence record, and no missing recording part is inferred. Unknown older recordings are not
+silently retired.
 
 
-### P0 historical coverage rules — local final draft (2026-10-07)
+### P0 historical coverage rules — deployed baseline (2026-10-07)
 
 After PR #2106, the maintainer approved one Public Info feed per city for briefings,
 information and public-input sessions; a separate Fort Worth Speaker’s Podium feed; a Dallas bond
@@ -141,19 +146,39 @@ archive-only, and 162 patterns (363 listings) are not to pursue. In a read-only 
 cached source records, the rules add 1,965 feed placements across 1,942 source/UID pairs and remove
 30 wrong Fort Worth City Council placements for the “Minority Leaders and Citizens Council” civic
 series. The net count is 1,935 more feed assignments. The replay leaves 413 source/UID entries
-without a feed: 405 not to pursue, two Dallas CBTF items held for exact source-to-event evidence, and
-six approved Addison archive-only items awaiting visibility verification. The follow-up also adds
-Dallas Subdivision Review Committee recordings to its parent City Planning Commission feed and
+without a feed: 405 not to pursue, two Dallas CBTF items held for exact source-to-event evidence,
+and six approved Addison archive-only items awaiting visibility verification. The follow-up also
+adds Dallas Subdivision Review Committee recordings to its parent City Planning Commission feed and
 Denton Capital Improvement Advisory Committee recordings to the Planning and Zoning Commission feed.
 The full source/UID outputs and limits are in the
 [final replay report](evidence/p0-forward-rule-replay-2026-10-07.md).
 
-This is a local proposal, not a production result. The register still contains 11 open evidence
-cases, including records that already have a feed assignment but need event, archive or deployment
-proof. The 6334 Fort Worth assignments remain unchanged while the exact recording-to-agenda segment
-mapping is unknown. P0 is **not complete**: review and human merge of the rules, deployment, live
-feed/audio checks, and evidence-backed updates to the open cases remain. The full replay is not a
-proof that every historical title is a distinct episode or that every listed source copy is unique.
+PR #2112 merged the historical rules and PR #2111 added the approved Fort Worth publication notes.
+Build and Deploy run #37643318454 passed rendering, feed validation, search processing and Pages
+deployment. All 72 expected feed URLs
+returned HTTP 200. Of the 1,965 proposed placements, 1,909 appear in public RSS. The remaining 56
+have public meeting pages but no hosted audio player, so they are not materialized podcast episodes
+and follow the normal no-audio path. This does not prove the city never had a source video.
+
+For Fort Worth clip 3814, both UIDs retain their source records, chapters and audio. All four
+Council/CCPD pages show the approved note, and the CCPD RSS contains both items. Council RSS holds
+its newest 500 items beginning December 15, 2020, so it omits the July 24, 2020 recordings. Keep the
+two related cases open until the maintainer accepts the permanent pages and bounded RSS window as
+sufficient proof. The two #6334 assignments also remain unchanged pending exact segment evidence.
+
+The 680-row historical disposition is deployed and passes the P0 baseline exit: each pattern has an
+applied feed rule, archive-only outcome, explicit not-to-pursue outcome or linked evidence case. The
+case register has 10 open evidence cases; these remain tracked work, not waived findings. The
+full replay does not prove that each historical title is a distinct episode or each source copy is a
+unique recording. Public search is a separate limitation: `meta.json` reports zero search shards and
+`/search/` and `/data/search/manifest.json` return HTTP 404. Do not claim public search or its
+archive-only filter was verified.
+
+For Dallas GUID 272574, the maintainer approved the same original recording in the Bond Program and
+Public Info feeds. The existing Bond `*CBTF*` selector already includes it; issue #2115 and the L3
+contract in review/51 add a narrow exact-record entry to Public Info. Its provider title omits
+“Town Hall,” and its shared label also names a formal September 19 Task Force meeting. Keep the case
+open until both live RSS feeds show the same original UID and audio.
 
 
 P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) shipped in PR #1992, covering
@@ -1420,10 +1445,14 @@ is resolved.
 The deployment report verifies all six approved Addison Archive-only UID/GUID pairs absent from all
 ten current Addison RSS feeds and both Town Meetings browse pages, with all six direct raw pages
 returning 200. Citizen Advisory UID`63b22f80ce9500ff` remains in the Town Meetings RSS and browse
-pages. Search routes `/search/` and `/data/search/manifest.json` returned 404; live search omission
+pages; the maintainer accepted this Public Input classification for P0 on 2026-10-07. Its exact
+program-to-recording link remains unknown, and the archive listing count is not evidence of a
+missing part. Search routes `/search/` and `/data/search/manifest.json` returned 404; live search omission
 was not independently observed. The six publication dispositions are resolved, while their
-historical content/institution uncertainties remain recorded. The register now has158 resolved and
-11 open cases; see [the exact checks and response hashes](evidence/addison-archive-live-2026-10-06.json).
+historical content/institution uncertainties remain recorded. The Citizen Advisory classification
+case is also closed by the maintainer's 2026-10-07 decision; the historical binding uncertainty
+remains documented. The register now has 159 resolved and 10 open cases; see
+[the exact checks and response hashes](evidence/addison-archive-live-2026-10-06.json).
 
 Luncheon direct archive route: L3 bounded review/51 contract, maintainer authorized access fixes
 2026-10-05. Exact raw selector admission only, preserving archive-only public exclusion.

@@ -27,7 +27,9 @@
       "missing_evidence": "No missing identity evidence",
       "next_action": "Preserve raw recording and explicit exclusion evidence",
       "last_researched": "2026-10-04",
-      "current_feed_assignments": [],
+      "current_feed_assignments": [
+        "dallas-tx-bond-program-meetings"
+      ],
       "status": "resolved",
       "disposition": "Approved public-input migration; explicit ceremony/event title, PR2010 projection correction. Raw record retained; review/evidence/addison-body-policy-audit-2026-10-04.md."
     },
@@ -784,14 +786,14 @@
       "uid": "63b22f80ce9500ff",
       "provider_guid": "56029",
       "question": "Citizen Advisory historical compilation retained in Public Input",
-      "missing_evidence": "Exact historical program-to-recording binding; eleven-item archive count is not an established eleven-part recording requirement.",
-      "next_action": "Bind the ten retained compilation parts to official advisory program records; do not infer a missing part from archive listing count.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "Exact historical program-to-recording binding remains unverified; this does not block the approved Public Input disposition. The eleven-item archive count is not an established eleven-part recording requirement.",
+      "next_action": "No further P0 action. Keep the single preserved UID in Public Input; reopen only if new source evidence shows the assignment is wrong or a retained record is missing.",
+      "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Maintainer approved closing the P0 case on 2026-10-07: retain the single historical Citizen Advisory compilation in Public Input with its original UID/title/audio. Official FY2007–08 budget and Council packet evidence corroborate the advisory program and its recommendations; exact program-to-recording binding remains unknown. The provider archive listing count is not proof of a missing eleventh part. See addison-body-policy-audit-2026-10-04.md, Citizen Advisory 56029 evidence."
     },
     {
       "case_id": "addison-382950-699939eb5a53e258",
@@ -2062,9 +2064,9 @@
       "uid": "0c66fc968402fabd",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3814",
       "question": "Verify deployed publication notes for approved consecutive CCPD/Council proceedings",
-      "missing_evidence": "Human-approved publication note is implemented in open PR #2111; substantive current-head review, human merge, deployment and live note verification remain.",
-      "next_action": "After substantive current-head review and human merge of #2111, verify both participant RSS entries and raw pages show the approved note while retaining original title, source chapters, UID and audio; keep cases open until deployment proof.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "The approved note is live on both direct participant pages and in CCPD RSS. The current Council RSS has a 500-item window beginning 2020-12-15, so this 2020-07-24 recording is absent from its XML. Maintainer disposition is needed on whether the permanent Council page plus the bounded RSS window satisfies this publication check.",
+      "next_action": "Ask whether to close based on the deployed Council/CCPD pages, identical original audio, CCPD RSS note and the Council RSS age limit; otherwise retain the case as an archive-window exception. Do not change assignments or raw media.",
+      "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-crime-control-and-prevention-district"
@@ -2195,9 +2197,9 @@
       "uid": "99152cb9e61fa091",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=3814",
       "question": "Verify deployed publication notes for approved consecutive CCPD/Council proceedings",
-      "missing_evidence": "Human-approved publication note is implemented in open PR #2111; substantive current-head review, human merge, deployment and live note verification remain.",
-      "next_action": "After substantive current-head review and human merge of #2111, verify both participant RSS entries and raw pages show the approved note while retaining original title, source chapters, UID and audio; keep cases open until deployment proof.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "The approved note is live on both direct participant pages and in CCPD RSS. The current Council RSS has a 500-item window beginning 2020-12-15, so this 2020-07-24 recording is absent from its XML. Maintainer disposition is needed on whether the permanent Council page plus the bounded RSS window satisfies this publication check.",
+      "next_action": "Ask whether to close based on the deployed Council/CCPD pages, identical original audio, CCPD RSS note and the Council RSS age limit; otherwise retain the case as an archive-window exception. Do not change assignments or raw media.",
+      "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-crime-control-and-prevention-district"
@@ -2455,11 +2457,13 @@
       "source_key": "76869ed1994f",
       "uid": "aa65e2aafc90711b",
       "provider_guid": "272574",
-      "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Reconcile official CBTF archive and source chapters, prepare bounded ownership contract; no title-only closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
+      "question": "2023-09-26 Dallas CBTF/Town Hall dual-feed verification",
+      "missing_evidence": "Confirm original UID/audio in both live feeds after implementation.",
+      "next_action": "Add to Public Info in #2115; then verify both live feeds.",
+      "last_researched": "2026-10-07",
+      "current_feed_assignments": [
+        "dallas-tx-bond-program-meetings"
+      ],
       "status": "open",
       "disposition": null
     },

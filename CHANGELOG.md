@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Bound the pinned FFmpeg setup in pull-request CI.** Runtime-library setup and checksum-pinned
+  archive installation now have separate step timeouts, so a stalled package mirror or a slow
+  trickle during download fails visibly instead of leaving PR checks running indefinitely. The
+  FFmpeg version, checksum, and production audio behavior are unchanged.
+
 - **Prepared Fort Worth #3814 consecutive-proceedings note.** A feed-local, exact UID/GUID-bound
   annotation is projected to Council and CCPD RSS/raw meeting pages while preserving official
   provider metadata and whole-recording UID/audio. It does not persist into episode records or
