@@ -105,6 +105,7 @@ with workerd from wrangler 4.131.1.
 | Baseline (main @ 065a1f1f) | 21.58 | 22.62 | 27.18 | 28.22 | 2 | 17 | 4 |
 | 1. No `job_models (job_id, model)` index | 20.58 | 21.62 | 24.18 | 25.22 | 2 | 16 | 4 |
 | 2. Idle claim outcome every 10 min | 20.58 | 21.62 | 24.18 | 25.22 | 0.2 | 16 | 4 |
+| 3. No `attemptStarted` call | 17.58 | 18.62 | 21.18 | 22.22 | 0.2 | 13 | 4 (grant 5) |
 
 Baseline phase split (one model, 60 jobs, 15 bundles): enqueue 364, claim 312, attemptStarted
 240, completeBatch 318, retire 61, prune 62. Three models (12 bundles): enqueue 604, claim 410,
@@ -124,3 +125,12 @@ minutes (`EMPTY_CLAIM_REFRESH_MS`); skipped ticks are counted in memory and fold
 write, and `stats()` adds them. A claimed tick, a reaped lease or a changed reason is written at
 once. The harness's 20 idle ticks after the run (61 s apart) wrote 4 rows: about 290 rows/day on
 an idle queue instead of 2,880. Per-job lifecycle costs are unchanged.
+
+Step 3 drops the executor's per-attempt `attemptStarted` RPC (attempt row insert 2, `attempts++`
+1, accounting 1). The claim counts the attempt in the lease UPDATE it already makes, a granted
+429 retry counts its own in its transaction, and completion gives the count back when no call
+started. The executor fences locally on the `lease_expires_at` it is handed. The attempt row is
+now written once, at completion, as an insert (2 rows instead of the old upsert's 1), so
+completion rose 318 -> 378 while the attempt phase fell 240 -> 0. `/r429` now also reports a
+granted retry (`authorize_grant_w`: 5 rows, versus 4 plus the retry's own 4-row `attemptStarted`
+before). `ROWS_PER_LEASE_WORST` falls from 28 to 23.

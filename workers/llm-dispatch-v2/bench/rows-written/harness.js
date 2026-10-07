@@ -101,8 +101,9 @@ export class MeasureDO extends LLMSchedulerDO {
       phase.claim.bundles += 1; phase.claim.leased += plan.jobs.length;
       const results = [];
       for (const j of plan.jobs) {
+        // The executor makes no DO call before a provider call (the claim counts the attempt);
+        // the `attempt` phase stays in the output so older ledger rows remain comparable.
         const attemptId = crypto.randomUUID();
-        await this.attemptStarted(j.id, j.lease_token, attemptId, now + 100);
         results.push({
           job_id: j.id, lease_token: j.lease_token, attempt_id: attemptId,
           planned_at: j.not_before_at, actual_start_at: now + 100, actual_end_at: now + 5000,
@@ -166,7 +167,6 @@ export class MeasureDO extends LLMSchedulerDO {
     const claimW = this._take().w;
     const j = plan.jobs[0];
     const attemptId = crypto.randomUUID();
-    await this.attemptStarted(j.id, j.lease_token, attemptId, now + 100);
     await this.completeBatch(plan.bundle_id, plan.execution_token, [{
       job_id: j.id, lease_token: j.lease_token, attempt_id: attemptId, planned_at: j.not_before_at,
       actual_start_at: now + 100, actual_end_at: now + 5000, outcome: "retryable_error",
@@ -195,9 +195,15 @@ MeasureDO.prototype.measure429 = async function () {
   const plan = await this.claimDispatchWindow(now, 30); this._take();
   const j = plan.jobs[0];
   const a1 = crypto.randomUUID();
-  await this.attemptStarted(j.id, j.lease_token, a1, now + 100); this._take();
   await this.authorizeRetry(j.id, j.lease_token, a1, now + 2000, 5, "upstream_capacity");
-  return { authorize_retry_w: this._take().w };
+  const declined = this._take().w;
+  // A granted in-lease retry (generic 429 within the bundle window) on a second job.
+  await this.enqueueBatch([job(7778, "chapter-agenda", NEMOTRON)]); this._take();
+  const later = now + 120_000;
+  const plan2 = await this.claimDispatchWindow(later, 30); this._take();
+  const j2 = plan2.jobs[0];
+  const auth = await this.authorizeRetry(j2.id, j2.lease_token, crypto.randomUUID(), later + 100, 1, "unknown_429");
+  return { authorize_retry_w: declined, authorize_grant_w: this._take().w, granted: auth.authorized };
 };
 
 MeasureDO.prototype.measureAccounting = async function () {

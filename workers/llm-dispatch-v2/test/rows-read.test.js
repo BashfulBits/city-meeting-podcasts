@@ -143,8 +143,6 @@ async function exerciseAll(fixture) {
   const plan = await run("claimDispatchWindow", () => coordinator.claimDispatchWindow(now, 25));
   const claimed = plan.jobs[0];
   await run("pollBatch", () => coordinator.pollBatch(jobs.map((j) => j.id)));
-  await run("attemptStarted", () =>
-    coordinator.attemptStarted(claimed.id, claimed.lease_token, "att-1", now));
   await run("authorizeRetry", () =>
     coordinator.authorizeRetry(claimed.id, claimed.lease_token, "att-1", now));
   await run("completeBatch", () =>

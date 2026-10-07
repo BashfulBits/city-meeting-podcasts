@@ -786,10 +786,10 @@ function sleepUntil(targetTime) {
 
 /**
  * No route is currently confirmed to support a client-supplied provider-side idempotency key
- * (see review/44's "no binding shortcut" note and the executor's own doc comment below) -- every
- * job takes the attemptStarted-fencing path today. This function exists as the single place a
- * future per-provider opt-in would be wired in (e.g. a `supports_idempotency_key` flag compiled
- * into dispatch_limits.json's provider block), so nothing else in this file needs to change.
+ * (see review/44's "no binding shortcut" note). This function is the single place a future
+ * per-provider opt-in would be wired in (e.g. a `supports_idempotency_key` flag compiled into
+ * dispatch_limits.json's provider block); it only decides whether the job's provider
+ * idempotency key is sent.
  */
 function routeSupportsProviderIdempotency(route, dispatchLimits) {
   return Boolean(dispatchLimits.providers?.[route.provider]?.supports_idempotency_key);
@@ -835,16 +835,26 @@ function baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, outcome) 
 }
 
 /**
- * One provider call for one job, already fenced and paced by the caller. Returns exactly one of:
- * `{ skip: true }` (lease no longer current -- the DO reaped it; caller must not report anything
- * for this attempt), `{ retry429: true, actualStartAt, actualEndAt, correlationId }` (caller
- * decides whether/how to retry), or `{ result }` (a terminal AttemptResult ready for
- * completeBatch, covering success, transport failure, and every non-429 HTTP status).
+ * Whether a call starting now can finish before the DO may reap this job's lease. The DO reaps
+ * only leases past lease_expires_at, so this local check is the attempt fence: no DO round trip
+ * or billed row per attempt. validateConfig already keeps the dispatch window plus the response
+ * ceiling inside the lease, so it fails only on a misconfigured override or a stalled invocation.
  */
-async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits, job, attemptId, idempotencyKey, maxResponseMs }) {
-  if (!routeSupportsProviderIdempotency(route, dispatchLimits)) {
-    const fence = await coordinator.attemptStarted(job.id, job.lease_token, attemptId, Date.now());
-    if (!fence.fenced) return { skip: true };
+export function leaseCoversCall(job, now, maxResponseMs) {
+  const leaseExpiresAt = Number(job.lease_expires_at);
+  return !Number.isFinite(leaseExpiresAt) || now + maxResponseMs <= leaseExpiresAt;
+}
+
+/**
+ * One provider call for one job, already paced by the caller. Returns exactly one of:
+ * `{ retry429: true, actualStartAt, actualEndAt, correlationId }` (caller decides whether/how to
+ * retry) or `{ result }` (a terminal AttemptResult ready for completeBatch, covering success,
+ * transport failure, every non-429 HTTP status, and `deferred_late` when the lease can no
+ * longer cover the call -- see leaseCoversCall).
+ */
+async function attemptProviderCall({ env, b2, route, dispatchLimits, job, attemptId, idempotencyKey, maxResponseMs }) {
+  if (!leaseCoversCall(job, Date.now(), maxResponseMs)) {
+    return { result: baseAttemptResult(job, attemptId, null, null, "deferred_late") };
   }
 
   const actualStartAt = Date.now();
@@ -1073,7 +1083,6 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
     const attemptId = crypto.randomUUID();
     const outcome = await attemptProviderCall({
       env,
-      coordinator,
       b2,
       route,
       dispatchLimits,
@@ -1082,11 +1091,6 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
       idempotencyKey,
       maxResponseMs,
     });
-
-    if (outcome.skip) {
-      laneState.predecessorActualStart = Date.now();
-      return null; // lease reaped; nothing to report for this attempt
-    }
 
     if (outcome.result) {
       laneState.predecessorActualStart = outcome.result.actual_start_at;

@@ -12,6 +12,18 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **LLM dispatch: no Durable Object call before each provider call (#1844 P4, part 1).** The
+  executor no longer calls `attemptStarted`, which inserted a `started` attempt row and bumped
+  `jobs.attempts` before every provider call (four billed rows with accounting). The claim counts
+  the attempt in the UPDATE that already leases the job, a granted 429 retry counts its own, and
+  completion gives the count back for a result that never reached a provider. The executor fences
+  each call locally on the lease deadline the claim returns; the dispatch window, response
+  ceiling and lease duration already guarantee it. Measured: 20.58 → 17.58 billed rows per
+  one-model job (24.18 → 21.18 at three models); `ROWS_PER_LEASE_WORST` 28 → 23. Attempts that
+  received a 429 and were retried in the same lease no longer leave an outcome-less attempt row;
+  the 429 is still counted in `route_failures`. `attemptStarted` stays as a write-free check for
+  an executor mid-bundle during the deploy.
+
 - **LLM dispatch: idle cron ticks stop rewriting an unchanged claim outcome (#1844 P5).** An empty
   claim with the same reason as the stored last outcome is persisted at most every ten minutes.
   Skipped ticks are counted in memory, folded into the next write, and included by `/v2/stats`.

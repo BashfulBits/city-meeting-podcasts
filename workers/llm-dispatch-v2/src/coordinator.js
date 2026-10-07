@@ -506,7 +506,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
   // Effective row thresholds are clamped to the account-safe stop, leaving rows for account
   // peers and counter drift. The claim path applies an additional projection for already-active
   // work and the next bundle. Optional row-writing operations stop at the same safe boundary;
-  // in-flight completions, attempt fencing, retries, and safety pauses remain allowed.
+  // in-flight completions, retries, and safety pauses remain allowed.
   _enqueueRowStop() {
     return Math.min(
       this._envInt("DO_ROWS_ENQUEUE_STOP", 90000),
@@ -4632,7 +4632,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
           sql.exec(
             `UPDATE jobs SET state='leased', lease_token=?, lease_route_id=?, lease_expires_at=?,
-                              bundle_id=?, token_reservation=?,
+                              bundle_id=?, token_reservation=?, attempts = attempts + 1,
                               reservation_rpm_window_start=?, reservation_rpd_day_key=?,
                               reservation_tpm_window_start=?, updated_at=? WHERE id=?`,
             leaseToken,
@@ -4675,6 +4675,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
             id: job.id,
             payload_key: job.payload_key,
             lease_token: leaseToken,
+            // The executor's attempt fence: a provider call starts only if it can finish before
+            // this lease can be reaped (see attemptProviderCall in index.js).
+            lease_expires_at: leaseExpiresAt,
             route_id: route.route_id,
             // For per-lane request shaping at send time (reasoning level, output budget): the
             // lane comes from the job's own policy and costs no extra row reads or writes.
@@ -4725,43 +4728,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   /**
-   * Fence and persist an attempt record before the executor sends bytes to a provider that
-   * doesn't support a stable provider-side idempotency key (see "Claim, ordering, pacing, and
-   * execution flow" step 7). Returns { fenced: false } if this lease is no longer current (e.g.
-   * reaped by a lease-expiry sweep after a slow/hung previous tick) -- the executor must not
-   * proceed with the provider call in that case.
+   * Read-only lease check, kept only for an executor deployed before 2026-10-07 that is still
+   * finishing a bundle when this version takes over; the current executor never calls it.
+   *
+   * It used to insert a 'started' attempt row and bump jobs.attempts before every provider call:
+   * four billed rows per attempt with its accounting, ~19% of a job's lifecycle. The claim now
+   * counts the attempt in the UPDATE that already leases the job, a granted 429 retry counts its
+   * own, and the executor fences locally on the lease deadline it is handed: a call starts only
+   * if it can finish before the lease can be reaped, which the dispatch window, response ceiling
+   * and lease duration already guarantee (validateConfig).
    */
-  async attemptStarted(jobId, leaseToken, attemptId, now) {
+  async attemptStarted(jobId, leaseToken) {
     const sql = this._getSql();
-    return this._transactionSync(() => {
-      const rows = [...sql.exec(
-        "SELECT lease_token, lease_route_id, state FROM jobs WHERE id = ?",
-        jobId
-      )];
-      if (rows.length === 0 || rows[0].lease_token !== leaseToken || rows[0].state !== "leased") {
-        return { fenced: false };
-      }
-      sql.exec(
-        `INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, start_state, created_at)
-         VALUES (?, ?, ?, ?, 'started', ?)`,
-        attemptId,
-        jobId,
-        rows[0].lease_route_id,
-        now,
-        now
-      );
-      // No updated_at bump: it is indexed (idx_jobs_state_updated_id), so bumping it cost two
-      // billed rows per attempt, and nothing reads updated_at for a non-terminal job.
-      sql.exec("UPDATE jobs SET attempts = attempts + 1 WHERE id = ?", jobId);
-      return { fenced: true };
-    });
+    const rows = [...sql.exec("SELECT lease_token, state FROM jobs WHERE id = ?", jobId)];
+    return { fenced: rows.length > 0 && rows[0].lease_token === leaseToken && rows[0].state === "leased" };
   }
 
   /**
    * "Timeout and 429 behavior": a first 429 asks for authorization before any retry. Bounded by
-   * MAX_429_RETRIES (via the attempts already recorded for this job -- see attemptStarted; a
-   * future provider-idempotent route that skips attemptStarted would need its own counter, since
-   * none exists yet this is not implemented) and by the bundle's own deadline -- an authorized
+   * MAX_429_RETRIES (via jobs.attempts, counted at claim and by each granted retry) and by the
+   * bundle's own deadline -- an authorized
    * retry that wouldn't fit before the dispatch window or lease expires is declined, not granted
    * late.
    */
@@ -4985,6 +4971,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
             return { authorized: false, retry_not_before: null };
           }
 
+          // The retry is a new attempt; count it here, since the executor no longer reports
+          // attempt starts. A retry that then never starts is given back by completeBatch.
+          sql.exec("UPDATE jobs SET attempts = attempts + 1 WHERE id = ?", jobId);
           return { authorized: true, retry_not_before: retryNotBefore };
         }
       }
@@ -5061,11 +5050,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const jobRows = [...sql.exec("SELECT * FROM jobs WHERE id = ?", result.job_id)];
         const routeIdForAttempt = jobRows.length > 0 ? jobRows[0].lease_route_id : "unknown";
 
-        // attemptStarted (fencing, before the provider call -- see that method) already inserted
-        // this exact attempt_id for every non-provider-idempotent route, which is every route
-        // today. UPSERT rather than INSERT: fill in the terminal fields on that existing row when
-        // it's already there, or insert fresh for the (currently unreachable, but still-correct)
-        // provider-idempotent path that never called attemptStarted at all.
+        // The attempt row is written here, once, with its outcome (the executor no longer inserts
+        // a 'started' row before the call). UPSERT rather than INSERT: a row written by an
+        // executor deployed before 2026-10-07 for this attempt_id gets its terminal fields.
         sql.exec(
           `INSERT INTO attempts (
             attempt_id, job_id, route_id, planned_at, actual_start_at, actual_end_at,
@@ -5111,7 +5098,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
         if (jobRows.length === 0 || jobRows[0].lease_token !== result.lease_token) {
           continue; // stale/duplicate completion for an already-settled job
         }
-        const job = jobRows[0];
+        // The claim (or a granted 429 retry) counted this attempt before it started. A result
+        // that never reached a provider (deferred_late, unreadable payload, unknown route) gives
+        // it back, in the job UPDATE below, so backup-model and retry thresholds count calls.
+        const uncountedAttempt = result.actual_start_at == null ? 1 : 0;
+        const job = uncountedAttempt
+          ? { ...jobRows[0], attempts: Math.max(0, (Number(jobRows[0].attempts) || 0) - 1) }
+          : jobRows[0];
 
         // A job with configured backup_models must actually survive long enough to try them.
         // Every class-specific retry ceiling below (MAX_5XX_RETRIES, MAX_UPSTREAM_CAPACITY_RETRIES)
@@ -5266,9 +5259,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           const queueModels = this._modelsToIndex(job);
           sql.exec(
             `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
-                              lease_expires_at=NULL, bundle_id=NULL, queue_models=?, updated_at=?
+                              lease_expires_at=NULL, bundle_id=NULL, queue_models=?,
+                              attempts = MAX(0, attempts - ?), updated_at=?
              WHERE id=?`,
             JSON.stringify(queueModels),
+            uncountedAttempt,
             now,
             result.job_id
           );
@@ -5283,9 +5278,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           sql.exec(
             `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
                              lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?,
-                             queue_models=?, updated_at=? WHERE id=?`,
+                             queue_models=?, attempts = MAX(0, attempts - ?), updated_at=?
+             WHERE id=?`,
             nextTransientRetryCount,
             JSON.stringify(queueModels),
+            uncountedAttempt,
             now,
             result.job_id
           );
@@ -5300,7 +5297,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
             result.job_id
           );
         } else {
-          sql.exec("UPDATE jobs SET state=?, updated_at=? WHERE id=?", newState, now, result.job_id);
+          sql.exec(
+            "UPDATE jobs SET state=?, attempts = MAX(0, attempts - ?), updated_at=? WHERE id=?",
+            newState,
+            uncountedAttempt,
+            now,
+            result.job_id
+          );
         }
         settledCount += 1;
 

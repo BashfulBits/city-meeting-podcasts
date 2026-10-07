@@ -570,7 +570,10 @@ and same-row bookkeeping in one transaction (per-purpose ingress counters, a suc
 settlement, the claim-outcome scheduler row with its bundle/lease/queued counters) is folded into
 one statement. An empty claim whose reason matches the stored last outcome is persisted at most
 every ten minutes, its skipped ticks counted in memory and folded into the next write, so an idle
-queue costs ~0.2 billed rows per cron tick. The queued-job counter is maintained by those explicit deltas, not per-row
+queue costs ~0.2 billed rows per cron tick. The executor makes no DO call before a provider call:
+the claim counts the attempt in its lease UPDATE (a granted 429 retry counts its own; a result
+that never reached a provider gives it back), and each call starts only if it can finish before
+the claimed `lease_expires_at`, the only point at which the DO may reap the lease. The queued-job counter is maintained by those explicit deltas, not per-row
 triggers, and recounted exactly once an hour by scheduled cleanup (`recountQueuedJobs`); it is
 diagnostic only. A completed job is retired by *consumption*, never by age: after `poll_batch`
 persists its result, the client deletes the job's B2 payload/result and calls

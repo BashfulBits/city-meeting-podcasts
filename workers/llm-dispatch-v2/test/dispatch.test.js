@@ -240,32 +240,54 @@ test("claimDispatchWindow reaps a bundle whose lease expired without completeBat
   assert.equal(bundleRows[0].state, "expired");
 });
 
-test("attemptStarted fences on a matching lease and rejects a stale one", async () => {
-  const { coordinator } = makeCoordinator();
+test("a claim counts the attempt; attemptStarted is a write-free compatibility check", async () => {
+  const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1")]);
   const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
   const job = plan.jobs[0];
+  assert.equal(sql.exec("SELECT attempts FROM jobs WHERE id = 'j1'")[0].attempts, 1);
+  assert.equal(typeof job.lease_expires_at, "number");
 
-  const ok = await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", Date.now());
-  assert.equal(ok.fenced, true);
+  const rowsBefore = sql.exec("SELECT rows_written_today FROM scheduler")[0].rows_written_today;
+  assert.equal((await coordinator.attemptStarted(job.id, job.lease_token)).fenced, true);
+  assert.equal((await coordinator.attemptStarted(job.id, "wrong-lease-token")).fenced, false);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM attempts")[0].n, 0);
+  assert.equal(sql.exec("SELECT attempts FROM jobs WHERE id = 'j1'")[0].attempts, 1);
+  assert.equal(
+    sql.exec("SELECT rows_written_today FROM scheduler")[0].rows_written_today,
+    rowsBefore
+  );
+});
 
-  const stale = await coordinator.attemptStarted(job.id, "wrong-lease-token", "attempt-2", Date.now());
-  assert.equal(stale.fenced, false);
+test("a result that never reached a provider gives its claimed attempt back", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 25);
+  const job = plan.jobs[0];
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [{
+    job_id: job.id, lease_token: job.lease_token, attempt_id: "late-1",
+    planned_at: job.not_before_at, actual_start_at: null, actual_end_at: null,
+    outcome: "deferred_late",
+  }]);
+  const row = sql.exec("SELECT state, attempts FROM jobs WHERE id = 'j1'")[0];
+  assert.equal(row.state, "queued");
+  assert.equal(row.attempts, 0);
 });
 
 test("authorizeRetry authorizes a first 429 and declines a second on the same job", async () => {
-  const { coordinator } = makeCoordinator({ MAX_429_RETRIES: "1", MAX_429_BACKOFF_SECONDS: "2" });
+  const { coordinator, sql } = makeCoordinator({ MAX_429_RETRIES: "1", MAX_429_BACKOFF_SECONDS: "2" });
   await coordinator.enqueueBatch([makeJob("j1")]);
   const now = Date.now();
   const plan = await coordinator.claimDispatchWindow(now, 25);
   const job = plan.jobs[0];
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
   const first = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now);
   assert.equal(first.authorized, true);
   assert.ok(first.retry_not_before > now);
+  // The claim counted the first attempt; the granted retry counts the second.
+  assert.equal(sql.exec("SELECT attempts FROM jobs WHERE id = 'j1'")[0].attempts, 2);
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-2", now);
   const second = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-2", now);
   assert.equal(second.authorized, false);
 });
@@ -281,7 +303,6 @@ test("authorizeRetry declines a retry that would not fit before the bundle deadl
   const job = plan.jobs[0];
   sql.exec("UPDATE routes SET throttle_streak = 100 WHERE route_id = ?", job.route_id);
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
   const auth = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now);
   assert.equal(auth.authorized, false);
 });
@@ -2201,7 +2222,6 @@ test("authorizeRetry honors an explicit Retry-After floor and blocks the route",
   const plan = await coordinator.claimDispatchWindow(now, 25);
   const job = plan.jobs[0];
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
   // Upstream returns 429 with Retry-After: 5
   const auth = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now, 5);
   assert.equal(auth.authorized, true);
@@ -2230,7 +2250,6 @@ test("authorizeRetry preserves an Airforce guarantee beyond the local buffer cap
   const plan = await coordinator.claimDispatchWindow(now, 25);
   const job = plan.jobs[0];
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
   // Production Airforce response: the next answer was guaranteed only after 111 seconds.
   const auth = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now, 111);
   assert.equal(

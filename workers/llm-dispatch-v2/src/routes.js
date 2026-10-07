@@ -107,8 +107,8 @@ export function jobPolicy(job) {
  * Whether `policy.backup_models` should be folded into a job's eligible model list right now.
  *
  * Two independent triggers, mirroring `LaneConfig.backup_models`/`backup_after_attempts`
- * (citypods/compute/llm_lanes.py): (a) `job.attempts` (a durable, cross-lease dispatch counter --
- * see `attemptStarted` in coordinator.js) has reached the configured threshold without a
+ * (citypods/compute/llm_lanes.py): (a) `job.attempts` (a durable, cross-lease dispatch counter,
+ * counted by each claim and granted 429 retry in coordinator.js) has reached the configured threshold without a
  * successful response, or (b) `job.schema_retry_count` is at least 1 -- this job is itself a
  * schema-correction clone (see `schemaRetry`), which is already evidence of one confirmed
  * structural JSON-output failure on the model that produced it, a different failure class from

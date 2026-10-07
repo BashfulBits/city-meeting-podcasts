@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { LLMSchedulerDO } from "../src/index.js";
+import worker, { LLMSchedulerDO, leaseCoversCall } from "../src/index.js";
 import { createMockSqlStorage, withTestReservations } from "./helpers.js";
 
 const CATALOG = {
@@ -174,6 +174,8 @@ test("scheduled() claims a job, calls the gateway, writes the result, and comple
     assert.ok(resultBody);
     const parsed = JSON.parse(resultBody);
     assert.equal(parsed.choices[0].message.content, "hello from the model");
+    // One provider call, counted by the claim: the executor makes no per-attempt DO call.
+    assert.equal(pollRes.statuses[0].attempts, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -244,6 +246,8 @@ test("scheduled() retries once after a 429 and completes successfully", async ()
     assert.equal(pollRes.statuses[0].state, "completed");
     const resultBody = JSON.parse(store.get(pollRes.statuses[0].result_key));
     assert.equal(resultBody.choices[0].message.content, "recovered after retry");
+    // The claim counted the first call and the granted retry the second.
+    assert.equal(pollRes.statuses[0].attempts, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -350,4 +354,12 @@ test("cleanup leaves a terminal job that is still inside its retention window un
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("the executor's lease fence admits a call only if it can finish inside the lease", () => {
+  const job = { lease_expires_at: 1_000_000 };
+  assert.equal(leaseCoversCall(job, 1_000_000 - 720_000, 720_000), true);
+  assert.equal(leaseCoversCall(job, 1_000_000 - 719_999, 720_000), false);
+  // A plan from a coordinator that predates lease_expires_at in claim results is not fenced.
+  assert.equal(leaseCoversCall({}, Date.now(), 720_000), true);
 });
