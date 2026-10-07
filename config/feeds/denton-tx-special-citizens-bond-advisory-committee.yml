@@ -3,10 +3,8 @@ city: denton-tx
 provider: swagit
 source:
   list_url: https://dentontx.new.swagit.com/views/5
-  body_includes:
-    - provider_guid: '28865'
-      body: Special Citizens Bond Advisory Committee on 2019-06-06 6:00 PM
+  body: 'Special Citizens Bond Advisory Committee'
 podcast_title: 'Denton: Special Citizens Bond Advisory Committee'
-podcast_author: City of Denton, TX
+podcast_author: 'City of Denton, TX'
 podcast_email: ''
-podcast_description: Verified recording of the Denton Special Citizens Bond Advisory Committee.
+podcast_description: 'Verified recordings of the Denton Special Citizens Bond Advisory Committee.'

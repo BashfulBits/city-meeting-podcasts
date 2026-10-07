@@ -1,0 +1,40 @@
+slug: dallas-tx-bond-program-meetings
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body_exact:
+    - "2024 Bond Critical Facilities Meeting"
+    - "2024 Bond Critical Facilities Subcommittee"
+    - "2024 Bond Critical Facilities Subcommittee Meeting"
+    - "2024 Bond ECO, HOU, OHS Meeting"
+    - "2024 Bond ECONOM"
+    - "2024 Bond Flood Control & Storm Drainage Meeting"
+    - "2024 Bond Flood Protection and Storm Drainage Subcommittee Meeting"
+    - "2024 Bond Kick off"
+    - "2024 Bond Parks and Trails Meeting"
+    - "2024 Bond Parks and Trails Subcommittee Meeting"
+    - "2024 Bond Program Special Called Park and Trails Subcommittee Meeting"
+    - "2024 Bond Program: Allocation Discussion"
+    - "2024 Bond Task Force Community Bond Task Force Meeting"
+    - "2024 Bond Task Force Critical Facilities Subcommittee Meeting"
+    - "2024 Bond Task Force Flood"
+    - "2024 Capital Bond CBTF Meeting"
+    - "2024 Capital Bond CBTF and Subcommittee Chairs Meeting"
+    - "2024 Capital Bond ECONOM Meeting"
+    - "2024 Capital Bond Meeting Spanish"
+    - "2024 Capital Bond Program CBTF Meetings"
+    - "Citizens Bond Task Force: Town Hall Meeting"
+  body_any:
+    - "*Bond*"
+    - "*CBTF*"
+podcast_title: "Dallas: Bond Program Meetings"
+podcast_author: "City of Dallas, TX"
+podcast_email: ''
+podcast_description: "Bond Program Meetings recordings. Historical names are kept; recurring title patterns match future entries."
+body_exclude:
+  - Critical Facilities Subcommittee
+  - Flood Control
+  - ECONOM
+  - CBTF
+  - Community Bond Task Force

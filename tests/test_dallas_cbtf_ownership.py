@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from citypods.bodies import record_matches_body, source_body_filter, source_body_inclusions
+from citypods.bodies import (
+    is_excluded,
+    record_matches_body,
+    source_body_filter,
+    source_body_inclusions,
+)
 from citypods.config import load_city_configs
 from citypods.feeds import build_rss
 from citypods.records import record_to_episode
@@ -118,6 +123,7 @@ def test_verified_may25_cbtf_preserves_identity_and_bounded_admission():
             c.slug
             for c in cities
             if c.city_entity == "dallas-tx"
+            and not is_excluded(candidate.get("body"), c.body_exclude)
             and record_matches_body(
                 candidate, source_body_filter(c.source), source_body_inclusions(c.source)
             )

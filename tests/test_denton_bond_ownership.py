@@ -32,9 +32,9 @@ def test_actual_config_keeps_bond_committee_out_of_council():
         )
         assert record["uid"] in rss
         assert record["audio"]["url"] in rss
-        negative = dict(record, provider_guid="unrelated")
-        assert not record_matches_body(
-            negative,
+        different_guid = dict(record, provider_guid="unrelated")
+        assert record_matches_body(
+            different_guid,
             source_body_filter(committee.source),
             source_body_inclusions(committee.source),
         )

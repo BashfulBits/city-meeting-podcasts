@@ -1,4 +1,4 @@
-"""A verified Library proceeding leaves Council without changing recording identity."""
+"""A verified Council/Library joint uses a body rule without changing recording identity."""
 
 import copy
 import json
@@ -10,8 +10,8 @@ from citypods.feeds import build_rss
 from citypods.records import record_to_episode
 
 
-def test_actual_config_keeps_library_only_in_its_commission_feed():
-    """Actual selectors retain original RSS identity and reject Council leakage."""
+def test_actual_config_keeps_library_joint_in_both_participant_feeds():
+    """Exact body-label rules retain the joint in both feeds without a UID pin."""
     root = Path(__file__).resolve().parents[1]
     cities = load_city_configs(root / "config", {})
     council = next(c for c in cities if c.slug == "denton-tx-city-council")
@@ -21,7 +21,7 @@ def test_actual_config_keeps_library_only_in_its_commission_feed():
         original = copy.deepcopy(record)
         assert record_matches_body(
             record, source_body_filter(council.source), source_body_inclusions(council.source)
-        ) == (record["provider_guid"] == "13509")
+        ) == (record["body"] == "Joint Luncheon with Library Board")
         assert record_matches_body(
             record, source_body_filter(commission.source), source_body_inclusions(commission.source)
         )
@@ -30,9 +30,9 @@ def test_actual_config_keeps_library_only_in_its_commission_feed():
         )
         assert record["uid"] in rss
         assert record["audio"]["url"] in rss
-        negative = dict(record, provider_guid="unrelated")
-        assert not record_matches_body(
-            negative,
+        different_guid = dict(record, provider_guid="unrelated")
+        assert record_matches_body(
+            different_guid,
             source_body_filter(commission.source),
             source_body_inclusions(commission.source),
         )

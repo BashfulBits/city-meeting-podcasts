@@ -1,0 +1,81 @@
+slug: dallas-tx-public-info-meetings
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body_exact:
+    - Art Community Meeting
+    - Budget Listening Session for D11, D12, and D13
+    - Budget Virtual Town Hall Meeting
+    - CM West News Conference
+    - COVID Focus Group
+    - City Manager T.C. Broadnax Presentation
+    - City of Dallas FY-2020-21 Budget Press Conference
+    - City of Dallas Neighborhood Public Meeting
+    - City of Dallas Scooter Press Conference
+    - Conversations About Race
+    - D1, D3, & OHS Budget Listening Session
+    - Dallas Ebola Case News Conference
+    - Dallas Police Chief Forum
+    - Dallas Police Chief Forum (Spanish)
+    - District 10 Virtual Town Hall Meetings
+    - District 3 Virtual Town Hall Meetings
+    - District 4 OHS Budget Listening Sessions
+    - District 4 Telephone Town Hall Meeting
+    - District 4's Dallas 365 Safe Press Conference
+    - District 7 Virtual Town Hall Meetings
+    - District 8 Virtual Town Hall Meetings
+    - Districts 1 and 6 Virtual Town Hall Meetings
+    - Districts 11 and 13 Virtual Town Hall Meetings
+    - Districts 2 and 6 Virtual Town Hall Meetings
+    - Fair Park Foundation Press Conference
+    - Fentanyl Awareness Day Proclamation Press Conference
+    - Forward Dallas Neighborhood Summit Press Conference
+    - Grow South Annual Reports
+    - Home for the Holidays News Conference
+    - I-345 Panel and Public Discussion
+    - Joint Dallas Ebola Update News Conference
+    - Mayor Back to School Press Conference
+    - Mayor's Press Conference
+    - Neighborhood Public Meeting for FY 2021-22 Consolidated Plan Budget
+    - Neighborhood Public Meeting for FY 2022-23 HUD Grant Funds
+    - News Conference
+    - News Conference (Spanish)
+    - Press conference on COVID Vaccine
+    - Proposed Annual Budget for Fiscal Year 2013-2014
+    - Racial Equity Audit Report
+    - Spanish Forum on COVID-19 Vaccination
+    - State of City Address
+    - State of the Address
+    - TELE Town Hall Meetings District 1 & 6
+    - TELE Town Hall Meetings District 8
+    - TELE Town Hall Meetings District 9
+    - Virtual Neighborhood Public Hearing
+    - Virtual Town Hall Meetings
+    - Zoning Reform Meeting
+  body_any:
+    - '*Town Hall*'
+    - '*Neighborhood Public Meeting*'
+    - '*Public Forum*'
+    - '*Listening Session*'
+    - '*Community Meeting*'
+    - '*Community Update*'
+    - '*Community Conversation*'
+    - '*Public Input*'
+    - '*Public Input Session*'
+    - '*Public Information*'
+    - '*Public Information Session*'
+    - '*Public Briefing*'
+    - '*Information Session*'
+    - '*Open House*'
+    - '*Neighborhood Workshop*'
+    - '*Project Update*'
+    - 'Charter Review Commission: Community Meeting'
+    - 'Charter Review Commission: Community Meeting'
+podcast_title: 'Dallas: Public Info Meetings'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Public Info Meetings recordings. Historical names are kept; recurring title patterns
+  match future entries.
+body_exclude:
+  - Bond

@@ -389,6 +389,32 @@ Maintainer decision (2026-10-06): create or reuse a case at exact source-key/UID
 after case-by-case evidence confirms a real public recording. Keep unverified associations in the
 crosswalk; do not bulk-create cases or infer coverage/exclusion from selector gaps alone.
 
+### P0 completed local rule replay — 2026-10-07
+
+The current working-tree feed rules were replayed against 26,555 cached source entries from 42
+source namespaces. The [final report](evidence/p0-forward-rule-replay-2026-10-07.md) and its linked
+CSV/JSON outputs record every added placement, removed placement and unmatched source/UID entry.
+There are 680 historical title patterns and 2,028 source/UID listings in the frozen baseline. All
+680 now have a recorded outcome: 515 patterns/1,661 listings assigned to local feed rules, one
+archive-only pattern/listing, and 164 patterns/366 listings marked not to pursue. New bodies meet
+the five-UID cutoff except the previously approved Denton Bond Oversight Committee; approved aliases
+and additions to existing bodies are allowed below that cutoff.
+
+The replay adds 1,962 feed placements across 1,939 source/UID pairs and removes 30 incorrect Fort
+Worth City Council placements for the Minority Leaders and Citizens Council civic-program series.
+It leaves 416 source/UID entries with no feed: 408 not to pursue, two ambiguous Dallas CBTF recordings
+that remain under open source-binding cases, and six Addison archive-only items awaiting live
+visibility verification. These are catalog entries, not necessarily unique underlying videos.
+
+This local result accounts for the 680-row policy baseline but does not finish P0. The rules have not
+been reviewed, merged, or deployed, and 17 evidence cases remain open. Some open cases concern items
+already assigned to a feed; the replay count and the case count are not interchangeable. The two
+Fort Worth 6334 assignments remain untouched until exact segment-to-UID evidence is available.
+P0 exit still requires the inventory rows to link to applied coverage/exclusion or a documented
+open evidence/unavailable-source case, then live deployment checks. Do not claim an unresolved real
+recording is covered merely because its title matches a selector.
+
+
 ### P0 publication selection — inactive machinery shipped; activations separately gated
 
 The maintainer authorized writing this specification; runtime projection changes and affected feed
@@ -1416,8 +1442,9 @@ adds a subscription, not a record or audio object. Existing render fingerprints 
 metadata/selectors; offline tests and full CI/preview must verify the change before human merge.
 
 Acceptance: meaningful targeted tests, complete retained822-record ownership comparison, whole
-Ruff/format and offline suite. Explicitly report unresolved old records; no coverage-complete
-claim, no legacy remedy, no new CodeRabbit request while the classification settlement hold applies.
+Ruff/format and offline suite. Explicitly report unresolved old records; no coverage-complete claim and no legacy remedy. The
+classification settlement hold was lifted by the maintainer on 2026-10-04; follow the current
+repository-wide review timing and request rules for code changes.
 The separately proposed P2 sweep contracts remain gated; #2009 does not claim to implement them.
 
 ## Verified Addison joint subscriptions — L3 bounded slice (#2011)

@@ -127,6 +127,32 @@ Citizen Advisory remains public input with stable identity and an active
 historical evidence obligation; unknown older recordings are not silently retired.
 
 
+### P0 historical coverage rules — local final draft (2026-10-07)
+
+After PR #2106, the maintainer approved one Public Info feed per city for briefings,
+information and public-input sessions; a separate Fort Worth Speaker’s Podium feed; a Dallas bond
+program feed; new named-body feeds at the five-distinct-UID cutoff (with the previously approved
+Denton Bond Oversight exception); and reusable additions to existing feeds. Ordinary cancellations
+and entries without usable recordings stay with the existing no-recording flow.
+
+The final decision worksheet covers all **680 historical title patterns / 2,028 source-and-UID
+listings**: 515 patterns (1,661 listings) are assigned by local feed rules, one pattern/listing is
+archive-only, and 164 patterns (366 listings) are not to pursue. In a read-only replay of 26,555
+cached source records, the rules add 1,962 feed placements across 1,939 source/UID pairs and remove
+30 wrong Fort Worth City Council placements for the “Minority Leaders and Citizens Council” civic
+series. The net count is 1,932 more feed assignments. The replay leaves 416 source/UID entries
+without a feed: 408 not to pursue, two Dallas CBTF items held for exact source-to-event evidence, and
+six approved Addison archive-only items awaiting visibility verification. The full source/UID
+outputs and limits are in the [final replay report](evidence/p0-forward-rule-replay-2026-10-07.md).
+
+This is a local proposal, not a production result. The register still contains 17 open evidence
+cases, including records that already have a feed assignment but need event, archive or deployment
+proof. The 6334 Fort Worth assignments remain unchanged while the exact recording-to-agenda segment
+mapping is unknown. P0 is **not complete**: review and human merge of the rules, deployment, live
+feed/audio checks, and evidence-backed updates to the open cases remain. The full replay is not a
+proof that every historical title is a distinct episode or that every listed source copy is unique.
+
+
 P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) shipped in PR #1992, covering
 three verified Unified Development Code Advisory Committee recordings. Exact labels exclude the
 Open House; CPC duplicate identities shipped in #2003/#2010.

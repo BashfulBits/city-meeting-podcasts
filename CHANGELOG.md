@@ -12,6 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared the final P0 historical feed-rule set.** The local definitions cover all 680 reviewed
+  title patterns: 515 patterns have feed destinations (1,661 source/UID listings), one is
+  archive-only, and 164 are marked not to pursue. A read-only replay adds 1,962 feed placements,
+  removes 30 incorrect Fort Worth City Council placements, and leaves 416 source/UID entries
+  unmatched (408 not pursued, two held for exact evidence, six archive-only checks). The configs
+  remain unmerged and undeployed; the [replay report](review/evidence/p0-forward-rule-replay-2026-10-07.md)
+  records the outstanding work. This does not mark P0 complete.
+
 - **Certified October 2026 Coverage Feed Implementations.** Reconciled and certified status for
   October 2026 coverage batches across Addison UDC (PR #1992), Arlington HFC and ZBA (commit
   5ffabb6), Pflugerville BOA (PR #1993), and Dallas/Fort Worth TIF aggregates (PR #1973). Updated

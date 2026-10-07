@@ -1,0 +1,22 @@
+slug: fort-worth-tx-park-and-recreation-advisory-board
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body: Park & Recreation Advisory Board
+  body_any:
+    - Park and Recreation Advisory Board
+  body_exact:
+    - Park Advisory Board Meeting of June 24, 2020 Park Advisory Board Meeting
+      of June 24, 2020
+    - Park Board Park Board
+podcast_title: 'Fort Worth: Tx Park and Recreation Advisory Board'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: Tx Park and Recreation Advisory Board recordings for Fort
+  Worth, TX.

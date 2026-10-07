@@ -1,0 +1,19 @@
+slug: fort-worth-tx-housing-and-economic-development-committee
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body_exact:
+  - HOUSING AND ECONOMIC DEVELOPMENT COMMITTEE HOUSING AND ECONOMIC DEVELOPMENT COMMITTEE
+  - Housing and Economic Development Committee Housing and Economic Development Committee
+  - "Housing and Economic Development Committee #1 Housing and Economic Development Committee #1"
+  - "Housing and Economic Development Committee #2 Housing and Economic Development Committee #2"
+podcast_title: 'Fort Worth: Housing and Economic Development Committee'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: Housing and Economic Development Committee meetings for Fort Worth, TX.

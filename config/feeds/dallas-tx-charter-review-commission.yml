@@ -1,0 +1,15 @@
+slug: dallas-tx-charter-review-commission
+city: dallas-tx
+provider: swagit
+source:
+  list_url: https://dallastx.new.swagit.com/views/113/city-council
+  body: Charter Review Commission
+  body_exact:
+    - Charter Review Commission
+    - Charter Review Commission Inaugural Meeting
+podcast_title: 'Dallas: Charter Review Commission'
+podcast_author: City of Dallas, TX
+podcast_email: ''
+podcast_description: Dallas Charter Review Commission meetings.
+body_exclude:
+  - Community Meeting

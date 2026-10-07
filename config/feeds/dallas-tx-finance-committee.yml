@@ -9,9 +9,11 @@ source:
     - "Special Called Meeting of the Government Performance & Financial Management Committee"
     - "Council Government Performance & Financial Management"
     - "Budget, Finance & Audit"
+  body_exact:
+    - Joint Meeting of the Ad Hoc Committee on Pensions and the Finance Committee
+    - Joint Meeting of the Government Performance and Financial Management Committee and Ad Hoc
+      Committee on Pensions
   body_includes:
-    - provider_guid: "319577"
-      body: "Joint Meeting of the Government Performance and Financial Management Committee and Ad Hoc Committee on Pensions"
     - provider_guid: "205537"
       body: "Budget Engagement Meeting"
     - provider_guid: "205536"
