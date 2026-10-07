@@ -123,8 +123,9 @@ an item was classified “not to pursue.”
 
 The 10-case register is not the same count as the 413 unmatched catalog entries: some open cases are
 already assigned to a feed but still need proof, while most unmatched entries are intentionally not
-pursued. The 680-row disposition and exact replay are therefore the correct measures for policy
-coverage; deployment evidence remains the P0 finish gate.
+pursued. GUID272574 is already selected by the existing Dallas Bond `*CBTF*` rule; the approved
+Public Info addition is not yet in this replay. The 680-row disposition and exact replay are
+therefore the correct measures for policy coverage; deployment evidence remains the P0 finish gate.
 
 
 ## P0 live status — 2026-10-07

@@ -175,10 +175,10 @@ unique recording. Public search is a separate limitation: `meta.json` reports ze
 archive-only filter was verified.
 
 For Dallas GUID 272574, the maintainer approved the same original recording in the Bond Program and
-Public Info feeds. Issue #2115 and the L3 contract in review/51 use a reusable complete-title rule
-for Bond and a narrow exact-record entry for Public Info. The provider title omits “Town Hall”; its
-shared label also names a formal September 19 Task Force meeting. Keep the case open until both live
-RSS feeds show the same original UID and audio.
+Public Info feeds. The existing Bond `*CBTF*` selector already includes it; issue #2115 and the L3
+contract in review/51 add a narrow exact-record entry to Public Info. Its provider title omits
+“Town Hall,” and its shared label also names a formal September 19 Task Force meeting. Keep the case
+open until both live RSS feeds show the same original UID and audio.
 
 
 P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) shipped in PR #1992, covering

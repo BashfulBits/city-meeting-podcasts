@@ -2134,11 +2134,12 @@ support, but do not replace, official minutes. A separate unreviewed October3 re
 reports a motion/second/vote approving September26 minutes; it is only corroborating context.
 
 The maintainer approved the same recording in both the Dallas Bond Program and Dallas Public Info
-feeds. Implementation is bounded by issue #2115 and the L3 contract in review/51. Use a reusable
-exact complete-body rule in the Bond Program feed;
-the 5,353-row cached source census finds exactly two records with that label, the existing
-September19 GUID272005 and this September26 GUID272574. Keep the September19 recording in Bond
-only. For Public Info, add just the September26 source identity because its provider title omits
-“Town Hall”; applying the shared exact title there would also admit the September19 formal meeting
-without evidence it was public input. Preserve UID, title, source, chapter and audio. The open case
-now tracks live publication verification in both feeds, not the accepted destination decision.
+feeds. The existing Bond `*CBTF*` selector admits GUID 272574, so issue #2115 and its L3 contract
+leave that feed rule unchanged. The prior P0 replay applied the top-level `body_exclude` note as a
+denylist, but runtime feed routing does not apply it; this task does not change that broader
+behavior. The cached source has two records with the exact label: September 19 GUID 272005 and
+September 26 GUID 272574. Keep the former Bond-only. For Public Info, add only the September 26
+source identity because its provider title omits “Town Hall”; a shared exact-title rule would also
+admit the September 19 formal meeting without evidence it was public input. Preserve UID, title,
+source, chapter and audio. The open case now tracks live publication verification in both feeds,
+not the accepted destination decision.

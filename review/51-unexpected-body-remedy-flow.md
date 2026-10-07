@@ -2436,21 +2436,24 @@ Files: `config/feeds/dallas-tx-bond-program-meetings.yml`,
 case register. No ARCHITECTURE change: reuse the existing complete-label selector and exact source
 inclusion.
 
-In the Dallas Bond Program feed, add reusable `body_exact` label
-`2024 Capital Bond Program CBTF Meeting`. The cached 5,353-record source contains exactly two
-records with this body: existing September 19 GUID 272005 and September 26 GUID 272574.
-The first is already in the Bond feed; the new rule must add only the second. In the Dallas Public
-Info feed, add only GUID272574 with its unchanged body label. Do not add the shared exact body label
-there: it would also pull in the September 19 formal Task Force recording, which is not proven to be
-public input. This exact-record exception is needed because the provider title omits “Town Hall.”
-Normal Public Info title rules remain unchanged for future, clearly titled Town Halls.
+The current Dallas Bond Program selector already places GUID 272574 in that feed through its
+existing `body_any: "*CBTF*"` rule; do not add a redundant selector or change that broader rule in
+this task. The prior P0 replay applied the top-level `body_exclude` note when deciding whether a
+record was assigned, but the live feed-routing code does not apply that note. This task leaves that
+broader behavior unchanged. The cached source has one other record with this body, September 19 GUID
+272005, which already belongs in Bond. In the Dallas Public Info feed, add only GUID 272574 with its
+unchanged body label. Do not add the shared exact body label there: it would also pull in the
+September 19 formal Task Force recording, which is not proven to be public input. This exact-record
+exception is needed because the provider title omits “Town Hall.” Existing Public Info title rules
+stay unchanged for future, clearly titled Town Halls.
 
 Preserve UID, provider GUID, official title/date, source namespace, source chapter and audio. Add an
 unaltered original-record fixture. Tests must prove the same UID and original audio appear in both
-feeds, the September 19 recording remains only in the Bond feed, same-body/different-GUID records do
-not leak into either feed, and raw source records are unchanged. Full 5,353-record replay must add
-only UID `aa65e2aafc90711b` to the two destination feeds; every other feed holder set must remain
-unchanged. Run the full offline suite and whole-repository Ruff/format checks. Keep the case open
+feeds, the September 19 recording remains Bond-only, a different GUID with the same body is rejected
+by Public Info, and raw source records are unchanged. Full 5,353-record replay must add only UID
+`aa65e2aafc90711b` to Public Info; the Bond assignment already exists and every other feed holder
+set must remain unchanged. Run the full offline suite and whole-repository Ruff/format checks. Keep
+the case open
 until live RSS checks confirm both feeds contain the original UID/audio. No state refresh, audio
 change, title edit, or backfill.
 

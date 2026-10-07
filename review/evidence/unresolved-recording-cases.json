@@ -27,7 +27,9 @@
       "missing_evidence": "No missing identity evidence",
       "next_action": "Preserve raw recording and explicit exclusion evidence",
       "last_researched": "2026-10-04",
-      "current_feed_assignments": [],
+      "current_feed_assignments": [
+        "dallas-tx-bond-program-meetings"
+      ],
       "status": "resolved",
       "disposition": "Approved public-input migration; explicit ceremony/event title, PR2010 projection correction. Raw record retained; review/evidence/addison-body-policy-audit-2026-10-04.md."
     },
@@ -2457,9 +2459,11 @@
       "provider_guid": "272574",
       "question": "2023-09-26 Dallas CBTF/Town Hall dual-feed verification",
       "missing_evidence": "Confirm original UID/audio in both live feeds after implementation.",
-      "next_action": "Implement #2115 rules, then verify both live feeds.",
+      "next_action": "Add to Public Info in #2115; then verify both live feeds.",
       "last_researched": "2026-10-07",
-      "current_feed_assignments": [],
+      "current_feed_assignments": [
+        "dallas-tx-bond-program-meetings"
+      ],
       "status": "open",
       "disposition": null
     },
