@@ -2677,3 +2677,12 @@ test("a coordinator from before attempt_usage drops its per-attempt journal on r
     0
   );
 });
+
+test("enqueue reserves the legacy-index row cost until that index is retired", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  assert.equal(coordinator._rowsPerIngressWriteUnit(), 1.25);
+  sql.exec("CREATE UNIQUE INDEX idx_job_models_job_model ON job_models (job_id, model)");
+  assert.equal(coordinator._rowsPerIngressWriteUnit(), 2);
+  await coordinator.recountQueuedJobs(); // nothing legacy is queued, so the index is dropped
+  assert.equal(coordinator._rowsPerIngressWriteUnit(), 1.25);
+});
