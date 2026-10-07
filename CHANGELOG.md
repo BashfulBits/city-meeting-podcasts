@@ -33,6 +33,11 @@ Once 1.0 ships, entries move under semver tags.
   [replay report](review/evidence/p0-forward-rule-replay-2026-10-07.md) records the outstanding work.
   This does not mark P0 complete.
 
+- **Prepared Dallas bond Town Hall dual-feed placement (#2115).** The existing Bond Program rule
+  already selects the September 26, 2023 recording. The change adds that same original UID/audio
+  to Public Info by exact source GUID, without admitting the September 19 formal Task Force meeting.
+  Live RSS verification remains required before closing the evidence case.
+
 - **Certified October 2026 Coverage Feed Implementations.** Reconciled and certified status for
   October 2026 coverage batches across Addison UDC (PR #1992), Arlington HFC and ZBA (commit
   5ffabb6), Pflugerville BOA (PR #1993), and Dallas/Fort Worth TIF aggregates (PR #1973). Updated

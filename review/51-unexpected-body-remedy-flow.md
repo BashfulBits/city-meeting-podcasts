@@ -2453,10 +2453,11 @@ feeds, the September 19 recording remains outside Public Info with its existing 
 a different GUID with the same body is rejected by Public Info, and raw records are unchanged. Full
 5,353-record replay must add only UID
 `aa65e2aafc90711b` to Public Info; the Bond assignment already exists and every other feed holder
-set must remain unchanged. Run the full offline suite and whole-repository Ruff/format checks. Keep
-the case open
-until live RSS checks confirm both feeds contain the original UID/audio. No state refresh, audio
-change, title edit, or backfill.
+set must remain unchanged. The read-only replay is recorded in
+[`dallas-272574-replay-2026-10-07.json`](evidence/dallas-272574-replay-2026-10-07.json).
+Run the full offline suite and whole-repository Ruff/format checks. Keep the case open until live
+RSS checks confirm both feeds contain the original UID/audio. No state refresh, audio change, title
+edit, or backfill.
 
 ### #2097 verified May25 CBTF source binding — L3
 
