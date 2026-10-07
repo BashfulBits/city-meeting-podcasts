@@ -422,6 +422,35 @@ open evidence/unavailable-source case, then live deployment checks. Do not claim
 recording is covered merely because its title matches a selector.
 
 
+### P0 deployed historical-coverage check — 2026-10-07
+
+The 680-pattern rules from the 2026-10-07 replay are now deployed after merge commits in PRs
+[#2112](https://github.com/BashfulBits/city-meeting-podcasts/pull/2112) and
+[#2111](https://github.com/BashfulBits/city-meeting-podcasts/pull/2111). Build and Deploy run
+[#37643318454](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37643318454)
+passed rendering, feed validation, search processing and Pages deployment. The live check found all
+72 expected feed URLs available. Of 1,965 proposed placements, 1,909 appear in RSS. The remaining
+56 each have a public page but no hosted audio player, so they are not materialized podcast episodes
+and follow the existing no-audio path. This is not proof that no source video ever existed.
+
+The two Fort Worth 3814 UIDs retain their original titles, source records, chapter data and audio.
+Both direct pages in both participant feeds show the approved consecutive-proceedings note; CCPD
+RSS contains both items. Council RSS is limited to its newest 500 items and begins on 2020-12-15,
+after the July 24, 2020 recordings. Those two cases remain open until the maintainer accepts the
+permanent page and bounded RSS history as sufficient publication proof. No assignment is removed.
+
+The deployed root `meta.json` reports `search_shards: 0`; `/search/` and
+`/data/search/manifest.json` return 404. The job exited successfully but no public search index is
+available. Treat search availability and archive-only search-filter verification as a separate open
+site limitation; do not claim that a live search index was verified.
+
+The frozen baseline has a recorded outcome for every row: 517 title patterns assigned to feed
+rules, one archive-only, and 162 not pursued. The case register contains 169 cases: 158 resolved,
+11 open. The remaining evidence cases are recorded in
+[`unresolved-recording-cases.json`](evidence/unresolved-recording-cases.json). Under the P0 exit
+rule above, open cases remain explicit evidence work; the counts do not mean those recordings were
+reclassified or their evidence was waived.
+
 ### P0 publication selection — inactive machinery shipped; activations separately gated
 
 The maintainer authorized writing this specification; runtime projection changes and affected feed

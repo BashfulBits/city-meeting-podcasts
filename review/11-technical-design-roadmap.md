@@ -127,7 +127,7 @@ Citizen Advisory remains public input with stable identity and an active
 historical evidence obligation; unknown older recordings are not silently retired.
 
 
-### P0 historical coverage rules — local final draft (2026-10-07)
+### P0 historical coverage rules — deployed baseline (2026-10-07)
 
 After PR #2106, the maintainer approved one Public Info feed per city for briefings,
 information and public-input sessions; a separate Fort Worth Speaker’s Podium feed; a Dallas bond
@@ -141,19 +141,33 @@ archive-only, and 162 patterns (363 listings) are not to pursue. In a read-only 
 cached source records, the rules add 1,965 feed placements across 1,942 source/UID pairs and remove
 30 wrong Fort Worth City Council placements for the “Minority Leaders and Citizens Council” civic
 series. The net count is 1,935 more feed assignments. The replay leaves 413 source/UID entries
-without a feed: 405 not to pursue, two Dallas CBTF items held for exact source-to-event evidence, and
-six approved Addison archive-only items awaiting visibility verification. The follow-up also adds
-Dallas Subdivision Review Committee recordings to its parent City Planning Commission feed and
+without a feed: 405 not to pursue, two Dallas CBTF items held for exact source-to-event evidence,
+and six approved Addison archive-only items awaiting visibility verification. The follow-up also
+adds Dallas Subdivision Review Committee recordings to its parent City Planning Commission feed and
 Denton Capital Improvement Advisory Committee recordings to the Planning and Zoning Commission feed.
 The full source/UID outputs and limits are in the
 [final replay report](evidence/p0-forward-rule-replay-2026-10-07.md).
 
-This is a local proposal, not a production result. The register still contains 11 open evidence
-cases, including records that already have a feed assignment but need event, archive or deployment
-proof. The 6334 Fort Worth assignments remain unchanged while the exact recording-to-agenda segment
-mapping is unknown. P0 is **not complete**: review and human merge of the rules, deployment, live
-feed/audio checks, and evidence-backed updates to the open cases remain. The full replay is not a
-proof that every historical title is a distinct episode or that every listed source copy is unique.
+PR #2112 merged the historical rules and PR #2111 added the approved Fort Worth publication notes.
+Build and Deploy run #37643318454 passed rendering, feed validation, search processing and Pages
+deployment. All 72 expected feed URLs
+returned HTTP 200. Of the 1,965 proposed placements, 1,909 appear in public RSS. The remaining 56
+have public meeting pages but no hosted audio player, so they are not materialized podcast episodes
+and follow the normal no-audio path. This does not prove the city never had a source video.
+
+For Fort Worth clip 3814, both UIDs retain their source records, chapters and audio. All four
+Council/CCPD pages show the approved note, and the CCPD RSS contains both items. Council RSS holds
+its newest 500 items beginning December 15, 2020, so it omits the July 24, 2020 recordings. Keep the
+two related cases open until the maintainer accepts the permanent pages and bounded RSS window as
+sufficient proof. The two #6334 assignments also remain unchanged pending exact segment evidence.
+
+The 680-row historical disposition is deployed and passes the P0 baseline exit: each pattern has an
+applied feed rule, archive-only outcome, explicit not-to-pursue outcome or linked evidence case. The
+case register still has 11 open evidence cases; these remain tracked work, not waived findings. The
+full replay does not prove that each historical title is a distinct episode or each source copy is a
+unique recording. Public search is a separate limitation: `meta.json` reports zero search shards and
+`/search/` and `/data/search/manifest.json` return HTTP 404. Do not claim public search or its
+archive-only filter was verified.
 
 
 P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) shipped in PR #1992, covering

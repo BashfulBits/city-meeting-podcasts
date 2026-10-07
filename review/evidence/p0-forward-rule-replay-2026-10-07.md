@@ -97,7 +97,7 @@ Dallas bond-program meetings have their own feed. Ordinary cancellations and mee
 recordings continue through the existing no-recording flow; no UID-based cancellation special cases
 were introduced.
 
-## Does this finish P0?
+## Status at the time of the local replay
 
 **No.** The policy and local selector draft now account for all 680 inventory patterns, but this
 working-tree result is not deployed. The repository’s P0 exit rule also requires every row to link to
@@ -119,3 +119,37 @@ The 11-case register is not the same count as the 413 unmatched catalog entries:
 already assigned to a feed but still need proof, while most unmatched entries are intentionally not
 pursued. The 680-row disposition and exact replay are therefore the correct measures for policy
 coverage; deployment evidence remains the P0 finish gate.
+
+
+## P0 live status — 2026-10-07
+
+The historical rules merged in PR #2112, and Fort Worth publication notes merged in PR #2111.
+Build and Deploy run #37643318454 completed successfully. Feed rendering, generated-feed
+validation, the search job and Pages deployment all passed. This live check is separate from the cached local replay above.
+
+All 72 feeds containing proposed placements returned HTTP 200. Of 1,965 placements across 1,942
+distinct source/UID pairs, 1,909 placements were present in live RSS. The remaining 56 each had a
+public meeting page returning HTTP 200, but none of those pages contained a hosted audio player.
+They are therefore not published podcast episodes at this time, consistent with the existing
+no-audio flow; this check does not claim the city never had a source video. No feed URL failed.
+
+For Fort Worth clip 3814, both original UIDs have public pages in Council and CCPD. All four pages
+display the approved consecutive-proceedings note and the same original audio URL for each UID.
+The CCPD RSS includes both noted items. The Council RSS contains its newest 500 items, from December
+15, 2020 through September 29, 2026, so it does not include these July 24, 2020 items. The two
+Council/CCPD evidence cases remain open pending a decision on whether the permanent page plus the
+normal 500-item RSS window satisfies their publication check. No UID, title, source record, chapters
+or audio were changed.
+
+The published root `meta.json` reports `search_shards: 0`, and `/search/` plus
+`/data/search/manifest.json` return HTTP 404. The search job succeeded but did not publish a search
+index. Do not claim public catalog search or verify the archive-only search filter from this run.
+This is a separate site-search limitation; the P0 feed rules and RSS checks above remain deployed.
+
+The frozen 680-pattern disposition is now applied on the public site: 517 patterns have feed rules,
+one is archive-only, and 162 are not pursued. Eleven registered evidence cases remain open (the
+Citizen Advisory compilation; two Fort Worth 3814 publication checks; two Fort Worth 6334
+segment bindings; two Dallas CBTF bindings; and four Dallas Streets bond bindings). The register
+remains the source of truth for those proof obligations. P0 historical dispositions are deployed;
+case closure and public search availability are tracked separately and must not be inferred from
+this disposition count.
