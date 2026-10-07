@@ -2112,4 +2112,33 @@ original decoded7952.06s source and August12 encoded audio,98488660 bytes each, 
 content-addressed keys. Separate same-date PMES6336 and Community Development6337 records
 also exist. These facts narrow the gap to planned-placeholder/source-version disposition;
 they do not authorize dropping retained rows, refreshing source fields, selecting a winner
-or changing holders. Both combined-row cases remain open. No source record/audio changes.
+
+### Dallas Sep26,2023 Bond Town Hall / CBTF recording — 2026-10-07
+
+The City’s [2024 Bond Program guide](https://dallascityhall.com/departments/bond-construction-management/DCH%20Documents/BCM_2024%20Bond%20Program%20Brochue_05082023.pdf)
+lists Town Hall 2 on Tuesday September26,2023 in City Hall Council Chambers to receive public
+comments. The guide is the dated public program schedule; no separate agenda or minutes document
+for this Town Hall was located. The City’s [CBTF archive](https://dallascityhall.com/departments/bond-construction-management/2024-Bond-Dashboard/Pages/Community-Bond-Task-Force.aspx)
+lists meetings on other dates, but not September26.
+
+The retained source record in `.citypods-state/sources/76869ed1994f/episodes.json` has original UID
+`aa65e2aafc90711b`, GUID `272574`, provider label `2024 Capital Bond Program CBTF Meeting`,
+publication date September26, and original source chapter “2024 Capital Bond Program CBTF Meeting
+on September 26, 2023.” Its single Swagit source is
+https://dallastx.new.swagit.com/videos/272574 and its existing hosted audio is
+https://audio.citymeetings.fyi/swagit/76869ed1994f/aa65e2aafc90711b-1f714be9f4ff.m4a.
+The provider player returned HTTP403 during the October6 read-only check, so direct playback could
+not be verified then. Retained provider-generated captions are unreviewed/nonofficial; their
+opening/closing summarize a formal Task Force convening and public speakers at a Town Hall. They
+support, but do not replace, official minutes. A separate unreviewed October3 recording transcript
+reports a motion/second/vote approving September26 minutes; it is only corroborating context.
+
+The maintainer approved the same recording in both the Dallas Bond Program and Dallas Public Info
+feeds. Implementation is bounded by issue #2115 and the L3 contract in review/51. Use a reusable
+exact complete-body rule in the Bond Program feed;
+the 5,353-row cached source census finds exactly two records with that label, the existing
+September19 GUID272005 and this September26 GUID272574. Keep the September19 recording in Bond
+only. For Public Info, add just the September26 source identity because its provider title omits
+“Town Hall”; applying the shared exact title there would also admit the September19 formal meeting
+without evidence it was public input. Preserve UID, title, source, chapter and audio. The open case
+now tracks live publication verification in both feeds, not the accepted destination decision.

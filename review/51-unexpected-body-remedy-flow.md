@@ -445,10 +445,12 @@ available. Treat search availability and archive-only search-filter verification
 site limitation; do not claim that a live search index was verified.
 
 The frozen baseline has a recorded outcome for every row: 517 title patterns assigned to feed
-rules, one archive-only, and 162 not pursued. The case register contains 169 cases: 159 resolved,
+rules, one archive-only, and 162 not pursued. The register contains 169 cases: 159 resolved,
 10 open. The Citizen Advisory compilation is accepted in Public Input for P0; its exact historical
-program-to-recording link remains unknown, but the archive's 11-item count does not establish a
-missing part. The remaining evidence cases are recorded in
+program-to-recording link remains unknown, but an archive count of 11 does not establish a
+missing part. For Dallas GUID272574, the maintainer approved both Bond Program and Public Info;
+the remaining open work is live verification of both feeds. The other Dallas CBTF recording still
+needs exact event proof. The remaining evidence cases are recorded in
 [`unresolved-recording-cases.json`](evidence/unresolved-recording-cases.json). Under the P0 exit
 rule above, open cases remain explicit evidence work; the counts do not mean those recordings were
 reclassified or their evidence was waived.
@@ -2316,8 +2318,9 @@ No ARCHITECTURE change: existing body_exact/body_includes semantics are reused.
 Preserve five existing GUID inclusions. Add exact body_includes259822 (2024 Capital Bond
 CBTF Meeting) and272005 (2024 Capital Bond Program CBTF Meeting). Add one reusable body_exact
 alias: 2024 Capital Bond CBTF and Subcommittee Chairs Meeting, proven277589. Future GUIDs
-with that exact complete institutional alias are eligible. Do not broaden either shared
-label: unproven233037/272574 remain excluded. No Council or other selector changes.
+with that exact complete institutional alias are eligible. This earlier contract left shared
+labels233037/272574 excluded; later approval for272574 is specified in the Dallas September26
+Town Hall contract above. No Council selector changes.
 
 Retain original UID deb5a67aa9b6e8d1/259822, eeca5aeceda62d39/272005 and
 6a3caf1854bdd2cd/277589 with original audio/title/date/chapter metadata. New fixture is an
@@ -2410,6 +2413,47 @@ These bounded contracts are frozen as implemented; further changes need a new co
 conflict merge b3400313 merged before substantive new-code review. Do not count skipped
 automatic checks as review or request reviews on these closed PRs.
 
+### Dallas Sep26,2023 bond Town Hall and CBTF recording — L3, #2115
+
+The maintainer approved publishing the same original recording in the Dallas Bond Program and
+Dallas Public Info feeds. The City’s 2024 Bond Program guide schedules Town Hall 2 for September
+26, 2023, at City Hall to receive public comments. The retained source record has UID
+`aa65e2aafc90711b`, GUID `272574`, provider body `2024 Capital Bond Program CBTF Meeting`, and an
+original source chapter naming September 26. It retains one original Swagit source and hosted audio.
+The provider-generated transcript indicates the Task Force called the meeting to order and then
+heard public speakers; this transcript is not official minutes. The player returned 403 during
+research, so direct manual listening and a standalone Town Hall agenda/minutes were unavailable.
+This evidence supports the maintainer-approved dual-feed decision but must not be described as
+independent official minutes.
+
+The City’s [official program guide](https://dallascityhall.com/departments/bond-construction-management/DCH%20Documents/BCM_2024%20Bond%20Program%20Brochue_05082023.pdf)
+lists Town Hall 2 and the public-comment purpose. The [recording](https://dallastx.new.swagit.com/videos/272574)
+and cached source record are retained in the P0 audit.
+
+Files: `config/feeds/dallas-tx-bond-program-meetings.yml`,
+`config/feeds/dallas-tx-public-info-meetings.yml`, original-record fixture,
+`tests/test_dallas_cbtf_ownership.py`, this doc, review/11, CHANGELOG, ROADMAP, the P0 replay and
+case register. No ARCHITECTURE change: reuse the existing complete-label selector and exact source
+inclusion.
+
+In the Dallas Bond Program feed, add reusable `body_exact` label
+`2024 Capital Bond Program CBTF Meeting`. The cached 5,353-record source contains exactly two
+records with this body: existing September 19 GUID 272005 and September 26 GUID 272574.
+The first is already in the Bond feed; the new rule must add only the second. In the Dallas Public
+Info feed, add only GUID272574 with its unchanged body label. Do not add the shared exact body label
+there: it would also pull in the September 19 formal Task Force recording, which is not proven to be
+public input. This exact-record exception is needed because the provider title omits “Town Hall.”
+Normal Public Info title rules remain unchanged for future, clearly titled Town Halls.
+
+Preserve UID, provider GUID, official title/date, source namespace, source chapter and audio. Add an
+unaltered original-record fixture. Tests must prove the same UID and original audio appear in both
+feeds, the September 19 recording remains only in the Bond feed, same-body/different-GUID records do
+not leak into either feed, and raw source records are unchanged. Full 5,353-record replay must add
+only UID `aa65e2aafc90711b` to the two destination feeds; every other feed holder set must remain
+unchanged. Run the full offline suite and whole-repository Ruff/format checks. Keep the case open
+until live RSS checks confirm both feeds contain the original UID/audio. No state refresh, audio
+change, title edit, or backfill.
+
 ### #2097 verified May25 CBTF source binding — L3
 
 Before code: add only GUID233037/body from retained record84fcc0492e66906d to existing
@@ -2417,7 +2461,7 @@ config/feeds/dallas-tx-2024-community-bond-task-force.yml body_includes. Origina
 May25 plus independent official minutes attachment79 establish exact proceeding binding.
 Add original fixture tests/fixtures/dallas-cbtf-may25-retained.json and test in
 tests/test_dallas_cbtf_ownership.py: UID/audio/holder preservation, samebody wrongGUID
-negative, ambiguous272574 remains excluded. Full5353-record ownership replay must add
+negative, other unverified shared labels remain excluded. Full5353-record ownership replay must add
 only this UID to CBTF; all other holders unchanged. Full offline suite, whole Ruff/format.
 Update register prepared assignment/next action, keep open until deployed. Update review11,
 ROADMAP and CHANGELOG. Do not modify source records, runtime code, schemas, provider,
@@ -2426,7 +2470,8 @@ stages, dependencies, search, storage, audio, titles/dates or any other feed.
 #2097 compatibility clarification before test edits: the existing
 `test_three_verified_cbtf_proceedings_preserve_identity` negative for233037 is superseded
 by the newly verified May25 admission. Replace that obsolete negative with the same body
-and a different unverified GUID; retain the272574 negative. No broad label admission.
+and a different unverified GUID. The272574 negative is superseded by the separately approved
+September26 dual-feed contract above; no broad label admission is introduced by that exception.
 
 #2097 prepared: full5353-record/1095-label replay changes only CBTF8→9 with original
 UID84fcc0492e66906d; every other holder set unchanged.20 targeted and4984 full offline

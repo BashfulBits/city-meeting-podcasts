@@ -108,15 +108,18 @@ At the time of this local replay, the case register had 11 open cases, including
 Advisory compilation. The maintainer later accepted that compilation's Public Input classification
 for P0 on 2026-10-07; its exact historical program-to-recording link remains unknown, and the
 archive's 11-item count does not establish a missing part. The current register has 10 open cases:
-two Fort Worth 6334 clip-to-segment bindings, two Fort Worth 3814 bundle publication checks, two
-Dallas CBTF recording bindings, and four Dallas bond Streets recording bindings. The two 6334
+two Fort Worth 6334 clip-to-segment bindings, two Fort Worth 3814 bundle publication checks, one
+Dallas CBTF event binding, one Dallas dual-feed deployment check, and four Dallas bond Streets
+recording bindings. For GUID272574, the maintainer approved Bond Program plus Public Info placement;
+the exact rule and feed check are recorded in issue #2115. The two 6334
 assignments remain unchanged as the maintainer directed. Six approved Addison archive-only entries
 still need a separate visibility check, but they are not open rows in the current case register. After this
 PR is reviewed and merged by the maintainer, the remaining work is to deploy, verify the intended
 feed and archive pages with original audio, and update only those cases whose evidence has actually
-been satisfied. The two Dallas CBTF cases and the other source-binding cases remain open until their
-specific evidence is found. Do not close a case because a selector matched or because an item was
-classified “not to pursue.”
+been satisfied. One Dallas CBTF event-binding case and the other source-binding cases remain open
+until their specific evidence is found; GUID272574 now has an approved destination and remains open
+only for live verification in both feeds. Do not close a case because a selector matched or because
+an item was classified “not to pursue.”
 
 The 10-case register is not the same count as the 413 unmatched catalog entries: some open cases are
 already assigned to a feed but still need proof, while most unmatched entries are intentionally not
@@ -151,8 +154,9 @@ This is a separate site-search limitation; the P0 feed rules and RSS checks abov
 
 The frozen 680-pattern disposition is now applied on the public site: 517 patterns have feed rules,
 one is archive-only, and 162 are not pursued. Ten registered evidence cases remain open (two Fort
-Worth 3814 publication checks; two Fort Worth 6334 segment bindings; two Dallas CBTF bindings; and
-four Dallas Streets bond bindings). The Citizen Advisory compilation's Public Input classification
+Worth 3814 publication checks; two Fort Worth 6334 segment bindings; one Dallas CBTF event binding;
+one Dallas dual-feed deployment check; and four Dallas Streets bond bindings). The Citizen
+Advisory compilation's Public Input classification
 was accepted for P0 on 2026-10-07; the exact historical binding remains unknown, and no missing part
 is inferred. The register remains the source of truth for the remaining proof obligations. P0
 historical dispositions are deployed;
