@@ -192,6 +192,17 @@ const EMPTY_CLAIM_REFRESH_MS = 10 * 60 * 1000;
  * job_id-keyed deletes until none remain queued, then _retireLegacyJobModelsIndex drops it. */
 const LEGACY_JOB_MODELS_INDEX = "idx_job_models_job_model";
 
+/** One active bundle as stored in scheduler.active_bundles_json. */
+function bundleEntry(row) {
+  return {
+    execution_token: row.execution_token,
+    lease_expires_at: Number(row.lease_expires_at),
+    active_call_count: Number(row.active_call_count) || 0,
+    dispatch_window_end: Number(row.dispatch_window_end),
+    created_at: Number(row.created_at),
+  };
+}
+
 /** A stored JSON list of numbers (attempt_usage), tolerating a malformed or missing value. */
 function parseNumberList(value) {
   try {
@@ -218,7 +229,6 @@ const CURRENT_SCHEMA_TABLES = [
   "job_models",
   "routes",
   "providers",
-  "bundles",
   "attempt_usage",
   "estimates",
   "scheduler",
@@ -271,16 +281,18 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "last_claim_reason",
     "last_claim_diagnostics_json",
     "mistral_latest_migrated",
+    "active_bundles_json",
   ],
 };
 
 const CURRENT_SCHEMA_OBJECTS = [
   ["index", "idx_jobs_state_updated_id"],
-  ["index", "idx_bundles_state_created"],
   ["trigger", "trg_jobs_priority_sync"],
 ];
 
 const RETIRED_SCHEMA_OBJECTS = [
+  // Active bundles live in scheduler.active_bundles_json since 2026-10-07.
+  ["table", "bundles"],
   // One row per provider attempt until 2026-10-07; attempt_usage replaced it (see that table).
   ["table", "attempts"],
   ["index", "idx_jobs_state_updated"],
@@ -425,6 +437,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const loggedBefore = this._rowsSinceLog || 0;
     const previousNow = this._transactionNow;
     this._transactionNow = Date.now();
+    // Scheduler-row changes staged by this transaction (_stageSchedulerSet, _activeBundles); they
+    // are written by its one accounting UPDATE rather than separate billed rows.
+    this._txSchedulerSets = [];
+    this._txBundles = null;
+    this._txBundlesDirty = false;
     try {
       return this.ctx.storage.transactionSync(() => {
         const result = callback();
@@ -439,6 +456,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       throw error;
     } finally {
       this._transactionNow = previousNow;
+      this._txSchedulerSets = null;
+      this._txBundles = null;
+      this._txBundlesDirty = false;
     }
   }
 
@@ -448,21 +468,70 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
   }
 
+  /** Stage a `column = expression` change to the scheduler row for this transaction's accounting
+   * UPDATE (_persistRowCount): one billed row for every scheduler change a transaction makes. */
+  _stageSchedulerSet(assignment, ...params) {
+    if (!this._txSchedulerSets) {
+      throw new Error("scheduler changes are staged only inside _transactionSync");
+    }
+    this._txSchedulerSets.push({ assignment, params });
+  }
+
+  /**
+   * Active bundles by id, from scheduler.active_bundles_json (2026-10-07; previously a `bundles`
+   * table whose insert, index entry and delete cost three billed rows a bundle). At most
+   * MAX_ACTIVE_BUNDLES entries plus any expired lease the next claim reaps. Inside a transaction
+   * the map is loaded once, and _setActiveBundle/_deleteActiveBundle changes are written by its
+   * accounting UPDATE.
+   */
+  _activeBundles() {
+    if (this._txBundles) return this._txBundles;
+    const [row] = [...this._getSql().exec(
+      "SELECT active_bundles_json FROM scheduler WHERE id = 1"
+    )];
+    const bundles = new Map(Object.entries(parseJsonObject(row?.active_bundles_json)));
+    if (this._txSchedulerSets) this._txBundles = bundles;
+    return bundles;
+  }
+
+  _setActiveBundle(bundleId, bundle) {
+    if (!this._txSchedulerSets) throw new Error("bundles change only inside _transactionSync");
+    this._activeBundles().set(bundleId, bundle);
+    this._txBundlesDirty = true;
+  }
+
+  _deleteActiveBundle(bundleId) {
+    if (!this._txSchedulerSets) throw new Error("bundles change only inside _transactionSync");
+    if (this._activeBundles().delete(bundleId)) this._txBundlesDirty = true;
+  }
+
   _persistRowCount() {
     this._drainRowCount();
     const pending = this._rowsUnflushed || 0;
-    if (pending === 0) return; // Read-only calls and idle braked ticks remain write-free.
+    const sets = [...(this._txSchedulerSets || [])];
+    if (this._txBundlesDirty) {
+      sets.push({
+        assignment: "active_bundles_json = ?",
+        params: [JSON.stringify(Object.fromEntries(this._txBundles))],
+      });
+    }
+    // Read-only calls and idle braked ticks remain write-free.
+    if (pending === 0 && sets.length === 0) return;
     // Completions may be the first writes after midnight. Preserve this transaction's writes
     // when rolling the rest of the daily scheduler counters, and count the rollover itself.
     this._rollUtcDayIfNeeded(this._transactionNow);
     this._rowsUnflushed = pending;
     this._drainRowCount();
     const rows = this._takeUnflushedRows();
-    // scheduler has no secondary indexes: updating this singleton writes exactly one row.
-    // Use the raw handle so the accounting write is included once without recursive flushing.
+    // scheduler has no secondary indexes: updating this singleton writes exactly one row, with
+    // every staged scheduler change riding on it. Use the raw handle so the accounting write is
+    // included once without recursive flushing.
     const cursor = this.sql.exec(
-      "UPDATE scheduler SET rows_written_today = rows_written_today + ? WHERE id = 1",
-      rows + 1
+      `UPDATE scheduler SET rows_written_today = rows_written_today + ?${
+        sets.map(({ assignment }) => `, ${assignment}`).join("")
+      } WHERE id = 1`,
+      rows + 1,
+      ...sets.flatMap(({ params }) => params)
     );
     for (const _row of cursor) {} // Finalize the real runtime's billed-row cursor.
     this._rowsSinceLog = (this._rowsSinceLog || 0) + (Number(cursor.rowsWritten) || 0);
@@ -729,10 +798,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
     if (jobModels && !/WITHOUT\s+ROWID/i.test(String(jobModels.sql))) {
       missing.push("table-shape:job_models WITHOUT ROWID");
     }
-    const bundles = objects.get("table:bundles");
-    if (bundles && !/WITHOUT\s+ROWID/i.test(String(bundles.sql))) {
-      missing.push("table-shape:bundles WITHOUT ROWID");
-    }
 
     const schedulerColumns = tableColumns.get("scheduler");
     const scheduler = schedulerColumns?.has("mistral_latest_migrated")
@@ -857,33 +922,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
         token_budget_updated_at INTEGER NOT NULL DEFAULT 0
       );
 
-      CREATE TABLE IF NOT EXISTS bundles (
-        bundle_id            TEXT PRIMARY KEY,
-        execution_token      TEXT NOT NULL,
-        state                TEXT NOT NULL CHECK (state IN ('active','completed','expired')),
-        lease_expires_at     INTEGER NOT NULL,
-        active_call_count    INTEGER NOT NULL DEFAULT 0,
-        dispatch_window_end  INTEGER NOT NULL,
-        created_at           INTEGER NOT NULL
-      ) WITHOUT ROWID;
-      -- WITHOUT ROWID (2026-09-23): a rowid table stores the TEXT primary key in a separate
-      -- autoindex, so every bundle insert/delete cost one extra billed row. Bundles created
-      -- before then are rebuilt by _migrateBundlesClustered.
-
-      -- Without this, the bundles table has only its bundle_id primary key, so BOTH of
-      -- claimDispatchWindow's per-tick bundle statements (the expire-sweep UPDATE and the
-      -- active-bundle SELECT) degrade to full table scans -- and nothing ever deletes from
-      -- the bundles table, so that scan grew by one row per claimed bundle forever. Measured
-      -- against the
-      -- real coordinator at 3,200 bundles: 6,400 of a tick's 6,424 rows read (99.6%) came from
-      -- exactly those two statements, which is what exhausted the Durable Objects free tier's
-      -- 5M daily rows-read budget on 2026-08-27. With this index both become index seeks over
-      -- the 'active' rows only -- a population MAX_ACTIVE_BUNDLES already bounds -- so
-      -- lease_expires_at deliberately is NOT part of the key; created_at is, because it also
-      -- makes _pruneTerminalRecords's terminal-bundle lookup an ordered seek.
-      CREATE INDEX IF NOT EXISTS idx_bundles_state_created
-        ON bundles (state, created_at);
-
       -- Per (UTC day, lane, route) attempt usage for /v2/stats usage_today, folded from each
       -- completeBatch: one billed row per lane/route per completion instead of a row per attempt
       -- (insert, completion upsert and retention delete: ~3 billed rows per attempt). The value
@@ -929,7 +967,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         last_claim_reason                   TEXT NOT NULL DEFAULT '',
         last_claim_diagnostics_json         TEXT NOT NULL DEFAULT '{}',
         cleanup_cursor                      TEXT,
-        next_maintenance_alarm_at           INTEGER
+        next_maintenance_alarm_at           INTEGER,
+        -- Active bundles by id (see _activeBundles): at most MAX_ACTIVE_BUNDLES entries, written
+        -- by the accounting UPDATE each claim and completion already make.
+        active_bundles_json                 TEXT NOT NULL DEFAULT '{}'
       );
 
       -- One small row per purpose/day makes ingress reservations durable without turning a
@@ -988,7 +1029,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // priority trigger, whose body reads queue_models.
     this._ensureColumn("jobs", "queue_models", "TEXT");
     this._runSchemaInitStep("cluster job_models", () => this._migrateJobModelsClustered());
-    this._runSchemaInitStep("cluster bundles", () => this._migrateBundlesClustered());
     this._runSchemaInitStep("replace job priority trigger", () => {
       const [trigger] = [...sql.exec(
         "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'trg_jobs_priority_sync'"
@@ -1105,6 +1145,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
       this._runSchemaInitStep("seed daily row counter", () => this._seedRowCounter(today));
     }
     this._ensureColumn("scheduler", "mistral_latest_migrated", "INTEGER NOT NULL DEFAULT 0");
+    this._ensureColumn("scheduler", "active_bundles_json", "TEXT NOT NULL DEFAULT '{}'");
+    this._runSchemaInitStep("move active bundles into the scheduler row", () =>
+      this._migrateBundlesToScheduler()
+    );
     this._runSchemaInitStep("migrate queued Mistral model aliases", () =>
       this._ensureMigratedJobModels()
     );
@@ -1144,39 +1188,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   /**
-   * One-time rebuild of a pre-2026-09-23 rowid `bundles` table into the WITHOUT ROWID shape.
-   * Copies only active and expired bundles: a completed bundle is now deleted at completion
-   * (completeBatch), and the completed rows still on the old table were retained solely so
-   * _pruneTerminalRecords could delete them after BUNDLE_RETENTION_DAYS -- nothing reads them.
-   * Dropping them with the old table is cheaper than copying (~2 billed rows each) and then
-   * pruning (~3 each) up to seven days of history. The copy is bounded by MAX_ACTIVE_BUNDLES plus
-   * the few leases that expired inside the retention window.
+   * One-time move of the `bundles` table into scheduler.active_bundles_json (2026-10-07). Only
+   * active bundles are carried over: a completed bundle was already deleted at completion, and an
+   * expired one was kept only for retention to prune. Dropping the table bills no rows.
    */
-  _migrateBundlesClustered() {
+  _migrateBundlesToScheduler() {
     const sql = this._getSql();
-    const [row] = [...sql.exec(
-      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'bundles'"
+    const [table] = [...sql.exec(
+      "SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'bundles'"
     )];
-    if (!row || /WITHOUT\s+ROWID/i.test(String(row.sql))) return;
-    this._transactionSync(() => {
-      sql.exec(`
-        CREATE TABLE bundles_clustered (
-          bundle_id            TEXT PRIMARY KEY,
-          execution_token      TEXT NOT NULL,
-          state                TEXT NOT NULL CHECK (state IN ('active','completed','expired')),
-          lease_expires_at     INTEGER NOT NULL,
-          active_call_count    INTEGER NOT NULL DEFAULT 0,
-          dispatch_window_end  INTEGER NOT NULL,
-          created_at           INTEGER NOT NULL
-        ) WITHOUT ROWID;
-        INSERT INTO bundles_clustered
-          SELECT bundle_id, execution_token, state, lease_expires_at, active_call_count,
-                 dispatch_window_end, created_at
-          FROM bundles WHERE state IN ('active', 'expired');
-        DROP TABLE bundles;
-        ALTER TABLE bundles_clustered RENAME TO bundles;
-        CREATE INDEX IF NOT EXISTS idx_bundles_state_created ON bundles (state, created_at);
-      `);
+    if (!table) return;
+    const active = {};
+    for (const row of sql.exec("SELECT * FROM bundles WHERE state = 'active'")) {
+      active[row.bundle_id] = bundleEntry(row);
+    }
+    this.ctx.storage.transactionSync(() => {
+      sql.exec(
+        "UPDATE scheduler SET active_bundles_json = ? WHERE id = 1",
+        JSON.stringify(active)
+      );
+      sql.exec("DROP TABLE bundles");
     });
   }
 
@@ -1260,6 +1291,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["reservation_rpd_day_key", "TEXT NOT NULL DEFAULT ''"],
       ["reservation_tpm_window_start", "INTEGER NOT NULL DEFAULT 0"],
       ["queue_models", "TEXT"],
+      ["active_bundles_json", "TEXT NOT NULL DEFAULT '{}'"],
     ]);
     if (!ALLOWED_TABLES.has(table) || ALLOWED_COLUMNS.get(column) !== definition) {
       throw new Error(`_ensureColumn rejected unallowed schema mutation: ${table}.${column} ${definition}`);
@@ -1609,30 +1641,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._envInt("MAX_5XX_BACKOFF_SECONDS", 300) * 1000;
   }
 
-  /**
-   * Retention for the DO's bookkeeping tables. Neither `bundles` nor `attempt_usage` (which
-   * replaced the per-attempt `attempts` journal in 2026-10) has any B2 counterpart or client-side dependency -- they are internal scheduler history, so
-   * unlike `jobs` (whose row must outlive the client's result fetch, see purgePendingBatch)
-   * they can be aged out entirely inside the DO with no coordination. Kept long enough to stay
-   * useful for incident diagnosis, short enough that neither table grows without bound.
-   * Since 2026-09-23 a bundle is deleted when its last job settles (completeBatch), so bundle
-   * retention now applies only to bundles whose lease expired unreported.
-   */
-  _bundleRetentionMs() {
-    return this._envInt("BUNDLE_RETENTION_DAYS", 7) * 86_400_000;
-  }
-
+  /** Retention for the per-day telemetry cells (attempt_usage, route_failures). Neither has a B2
+   * counterpart or a client-side reader, so both age out entirely inside the DO. */
   _attemptRetentionMs() {
     return this._envInt("ATTEMPT_RETENTION_DAYS", 7) * 86_400_000;
   }
 
-  /** Per-tick delete budget for each table. Deletes are row WRITES, so this bounds the drain of
-   * an existing backlog (and steady-state upkeep needs only a row or two per tick). Zero on
-   * either is an emergency pause. */
-  _maxBundlePrunePerTick() {
-    return this._envInt("MAX_BUNDLE_PRUNE_PER_TICK", 50);
-  }
-
+  /** Per-tick delete budget for each telemetry table. Deletes are row WRITES, so this bounds the
+   * drain of a backlog (steady-state upkeep needs only a row or two per tick). Zero pauses it. */
   _maxAttemptPrunePerTick() {
     return this._envInt("MAX_ATTEMPT_PRUNE_PER_TICK", 50);
   }
@@ -2611,9 +2627,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       for (const [reason, count] of Object.entries(pendingEmpty?.reasons || {})) {
         claimReasonCounts[reason] = (Number(claimReasonCounts[reason]) || 0) + count;
       }
-      const activeBundles = [...sql.exec(
-        "SELECT active_call_count, lease_expires_at FROM bundles WHERE state = 'active'"
-      )];
+      const activeBundles = [...this._activeBundles().values()];
       const activeCalls = activeBundles.reduce((sum, row) => sum + (row.active_call_count || 0), 0);
 
       return {
@@ -2990,16 +3004,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
       route_failures: routeFailures,
       usage_today: this._usageToday(sql, now),
       calibration: this._calibrationStats(sql),
-      bundles: {
-        active: one("SELECT COUNT(*) AS n FROM bundles WHERE state = 'active'").n,
-        active_call_count: one(
-          "SELECT COALESCE(SUM(active_call_count), 0) AS n FROM bundles WHERE state = 'active'"
-        ).n,
-        active_expired: one(
-          "SELECT COUNT(*) AS n FROM bundles WHERE state = 'active' AND lease_expires_at <= ?",
-          now
-        ).n,
-      },
+      bundles: (() => {
+        const active = [...this._activeBundles().values()];
+        return {
+          active: active.length,
+          active_call_count: active.reduce((sum, row) => sum + (row.active_call_count || 0), 0),
+          active_expired: active.filter((row) => row.lease_expires_at <= now).length,
+        };
+      })(),
       scheduler: {
         utc_day: scheduler.utc_day ?? null,
         bundle_count_today: scheduler.bundle_count_today ?? 0,
@@ -3500,60 +3512,19 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   /**
-   * Delete one bounded batch of aged-out terminal bundles and attempt records.
+   * Delete one bounded batch of aged-out per-day telemetry cells (attempt_usage, route_failures).
+   * Bundles need no retention: a finished bundle leaves scheduler.active_bundles_json when its
+   * last job settles, and an expired one when the next claim reaps its lease.
    *
-   * A bundle is only ever removed once it is terminal ('completed'/'expired'), its lease can no
-   * longer be current, AND it is older than the retention window -- so a late completeBatch or
-   * authorizeRetry can never lose a bundle it might still legitimately settle. (Those two both
-   * already treat a missing bundle as a stale no-op, which is the correct outcome long after a
-   * lease expired, but the lease_expires_at guard means we never rely on that.)
-   *
-   * Both statements delete by primary key from an id list gathered by an indexed, LIMIT-ed
-   * subquery, rather than `DELETE ... LIMIT` (which requires a SQLite compile-time option that
-   * is not guaranteed to be enabled) or an unbounded `DELETE ... WHERE created_at < ?` (which
-   * would scan the very tables this retention exists to keep small).
+   * Each delete is by primary key from a key list gathered by a LIMIT-ed primary-key prefix seek,
+   * rather than `DELETE ... LIMIT` (which requires a SQLite compile-time option that is not
+   * guaranteed to be enabled) or an unbounded delete.
    */
   _pruneTerminalRecords(now) {
     const sql = this._getSql();
-    const bundleLimit = this._maxBundlePrunePerTick();
     const attemptLimit = this._maxAttemptPrunePerTick();
-    let bundlesDeleted = 0;
     let attemptUsageDeleted = 0;
     let routeFailuresDeleted = 0;
-
-    if (bundleLimit > 0) {
-      const cutoff = now - this._bundleRetentionMs();
-      // Query each terminal state independently so each statement can use the leading state and
-      // created_at columns of idx_bundles_state_created. A combined IN + ORDER BY would make
-      // SQLite read both state ranges into a temp B-tree before applying the LIMIT.
-      const completed = [...sql.exec(
-        `SELECT bundle_id, created_at FROM bundles
-         WHERE state = 'completed' AND created_at < ? AND lease_expires_at < ?
-         ORDER BY created_at ASC LIMIT ?`,
-        cutoff,
-        now,
-        bundleLimit
-      )];
-      const expired = [...sql.exec(
-        `SELECT bundle_id, created_at FROM bundles
-         WHERE state = 'expired' AND created_at < ? AND lease_expires_at < ?
-         ORDER BY created_at ASC LIMIT ?`,
-        cutoff,
-        now,
-        bundleLimit
-      )];
-      const ids = mergeSortedRows(
-        completed,
-        expired,
-        bundleLimit,
-        (left, right) => left.created_at - right.created_at
-      ).map((row) => row.bundle_id);
-      for (const chunk of this._chunks(ids)) {
-        const placeholders = chunk.map(() => "?").join(",");
-        sql.exec(`DELETE FROM bundles WHERE bundle_id IN (${placeholders})`, ...chunk);
-        bundlesDeleted += chunk.length;
-      }
-    }
 
     if (attemptLimit > 0) {
       const cutoff = now - this._attemptRetentionMs();
@@ -3594,7 +3565,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
     }
 
-    return { bundlesDeleted, attemptUsageDeleted, routeFailuresDeleted };
+    return { attemptUsageDeleted, routeFailuresDeleted };
   }
 
   _freshRouteLedger(catalogRoute, now) {
@@ -4010,14 +3981,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
     reasonCounts[reason] = (Number(reasonCounts[reason]) || 0) + 1;
     const emptyCount = (Number(row.claim_empty_count_today) || 0) + (pending?.empty || 0);
-    sql.exec(
-      `UPDATE scheduler SET last_claim_at=?, last_claim_result=?, last_claim_reason=?,
+    // Rides on this transaction's accounting UPDATE: the claim outcome costs no row of its own.
+    this._stageSchedulerSet(
+      `last_claim_at=?, last_claim_result=?, last_claim_reason=?,
        last_claim_diagnostics_json=?, claim_empty_count_today=?, claim_reason_counts_json=?,
        bundle_count_today = bundle_count_today + ?,
        lease_count_today = lease_count_today + ?,
-       queued_job_count = MAX(0, queued_job_count + ?),
-       rows_written_today = rows_written_today + ?
-       WHERE id=1`,
+       queued_job_count = MAX(0, queued_job_count + ?)`,
       now,
       result,
       reason,
@@ -4026,8 +3996,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       JSON.stringify(reasonCounts),
       bundlesClaimed,
       leasesClaimed,
-      queuedDelta,
-      this._takeUnflushedRows()
+      queuedDelta
     );
     this._pendingEmptyClaims = null;
     return true;
@@ -4111,9 +4080,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
       const sched = this._rollUtcDayIfNeeded(now);
       const rowsToday = this._rowsWrittenToday(sched);
-      const activeBundleCount = Number([...sql.exec(
-        "SELECT COUNT(*) AS n FROM bundles WHERE state='active'"
-      )][0]?.n) || 0;
+      const activeBundleCount = this._activeBundles().size;
       const activeLeasedJobs = Number([...sql.exec(
         "SELECT COUNT(*) AS n FROM jobs WHERE state='leased'"
       )][0]?.n) || 0;
@@ -4192,7 +4159,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // the same lease-timeout requeue this DO already does per-job on a `deferred_late`
       // completeBatch outcome, just applied at the bundle level, before that outcome can ever
       // be reported.
-      sql.exec(`UPDATE bundles SET state='expired' WHERE state='active' AND lease_expires_at < ?`, now);
+      // An expired bundle is dropped outright: nothing reads it, and a late completeBatch for it
+      // fails the execution-token check exactly as it did against an 'expired' row.
+      for (const [bundleId, bundle] of this._activeBundles()) {
+        if (bundle.lease_expires_at < now) this._deleteActiveBundle(bundleId);
+      }
       const expiredJobs = [...sql.exec(
         "SELECT * FROM jobs WHERE state='leased' AND lease_expires_at < ?",
         now
@@ -4240,12 +4211,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
           "SELECT DISTINCT bundle_id FROM jobs WHERE state='leased' AND bundle_id IS NOT NULL"
         )].map((row) => row.bundle_id)
       );
-      const activeBundleRows = [...sql.exec(
-        "SELECT bundle_id FROM bundles WHERE state='active'"
-      )];
-      for (const bundle of activeBundleRows) {
-        if (leasedBundleIds.has(bundle.bundle_id)) continue;
-        sql.exec("DELETE FROM bundles WHERE bundle_id = ? AND state='active'", bundle.bundle_id);
+      for (const bundleId of [...this._activeBundles().keys()]) {
+        if (leasedBundleIds.has(bundleId)) continue;
+        this._deleteActiveBundle(bundleId);
         diagnostics.orphan_bundles_reaped += 1;
       }
 
@@ -4276,7 +4244,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         reapedToQueued -= failed;
       }
 
-      const activeBundles = [...sql.exec("SELECT active_call_count FROM bundles WHERE state='active'")];
+      const activeBundles = [...this._activeBundles().values()];
       diagnostics.active_bundles = activeBundles.length;
       if (activeBundles.length >= maxActiveBundles) {
         return recordEmpty("active_bundle_limit", { max_active_bundles: maxActiveBundles });
@@ -4719,17 +4687,13 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
 
       const executionToken = crypto.randomUUID();
-      sql.exec(
-        `INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, active_call_count,
-                               dispatch_window_end, created_at)
-         VALUES (?, ?, 'active', ?, ?, ?, ?)`,
-        bundleId,
-        executionToken,
-        leaseExpiresAt,
-        resultJobs.length,
-        dispatchWindowEnd,
-        now
-      );
+      this._setActiveBundle(bundleId, bundleEntry({
+        execution_token: executionToken,
+        lease_expires_at: leaseExpiresAt,
+        active_call_count: resultJobs.length,
+        dispatch_window_end: dispatchWindowEnd,
+        created_at: now,
+      }));
       recordClaimed(resultJobs.length);
 
       return {
@@ -4786,14 +4750,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         return { authorized: false, retry_not_before: null };
       }
 
-      const bundleRows = [...sql.exec(
-        "SELECT dispatch_window_end, lease_expires_at FROM bundles WHERE bundle_id = ?",
-        job.bundle_id
-      )];
-      if (bundleRows.length === 0) {
+      const bundle = this._activeBundles().get(job.bundle_id);
+      if (!bundle) {
         return { authorized: false, retry_not_before: null };
       }
-      const bundle = bundleRows[0];
 
       const ledger = this._getOrCreateRouteLedger(routeId, now, {});
       const dispatchLimits = this._dispatchLimits();
@@ -5005,11 +4965,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
   async completeBatch(bundleId, executionToken, results) {
     const sql = this._getSql();
     return this._transactionSync(() => {
-      const bundleRows = [...sql.exec(
-        "SELECT execution_token FROM bundles WHERE bundle_id = ?",
-        bundleId
-      )];
-      if (bundleRows.length === 0 || bundleRows[0].execution_token !== executionToken) {
+      const bundle = this._activeBundles().get(bundleId);
+      if (!bundle || bundle.execution_token !== executionToken) {
         return; // stale completion; no-op
       }
 
@@ -5535,10 +5492,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       if (requeuedCount > 0) {
         // One scheduler write per completeBatch, not per requeued job (see the queued-counter
         // note in _initSchema).
-        sql.exec(
-          "UPDATE scheduler SET queued_job_count = queued_job_count + ? WHERE id = 1",
-          requeuedCount
-        );
+        this._stageSchedulerSet("queued_job_count = queued_job_count + ?", requeuedCount);
       }
 
       if (settledCount > 0) {
@@ -5547,11 +5501,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
           bundleId
         )];
         if ((remainingLeased[0]?.n || 0) === 0) {
-          // Deleted, not marked 'completed' (P3): nothing reads a finished bundle, and marking
-          // then pruning it later cost ~5 billed rows against the delete's 2. A late duplicate
-          // completeBatch for it now fails the execution-token check and no-ops, which is what
-          // it did in effect before -- every job's lease was already settled.
-          sql.exec("DELETE FROM bundles WHERE bundle_id = ?", bundleId);
+          // Removed, not marked 'completed' (P3): nothing reads a finished bundle. A late
+          // duplicate completeBatch for it fails the execution-token check and no-ops -- every
+          // job's lease was already settled. Written by this transaction's accounting UPDATE.
+          this._deleteActiveBundle(bundleId);
         }
       }
     });

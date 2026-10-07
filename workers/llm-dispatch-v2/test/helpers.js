@@ -155,7 +155,7 @@ export function estimateRowsRead(db, { query, params }) {
 
 /** Tables whose row count grows with traffic and so must never be fully scanned. */
 // attempt_usage is not here: it holds a few cells per (day, lane, route), bounded by retention.
-export const GROWABLE_TABLES = ["jobs", "job_models", "bundles"];
+export const GROWABLE_TABLES = ["jobs", "job_models"];
 
 /**
  * Ingress purpose reservations for tests that exercise coordinator mechanics rather than the
@@ -192,4 +192,30 @@ export function withTestReservations(env = {}) {
   return Object.hasOwn(env, "INGRESS_PURPOSE_RESERVATIONS")
     ? env
     : { ...env, INGRESS_PURPOSE_RESERVATIONS: TEST_INGRESS_RESERVATIONS };
+}
+
+/**
+ * Record an active bundle the way claimDispatchWindow does: in scheduler.active_bundles_json
+ * (there is no bundles table since 2026-10-07). The coordinator must already exist, since it
+ * creates the scheduler row.
+ */
+export function insertActiveBundle(
+  sql, bundleId, executionToken, leaseExpiresAt, dispatchWindowEnd, createdAt, activeCallCount = 0
+) {
+  const [row] = sql.exec("SELECT active_bundles_json FROM scheduler WHERE id = 1");
+  const bundles = JSON.parse(row?.active_bundles_json || "{}");
+  bundles[bundleId] = {
+    execution_token: executionToken,
+    lease_expires_at: leaseExpiresAt,
+    active_call_count: activeCallCount,
+    dispatch_window_end: dispatchWindowEnd,
+    created_at: createdAt,
+  };
+  sql.exec("UPDATE scheduler SET active_bundles_json = ? WHERE id = 1", JSON.stringify(bundles));
+}
+
+/** Active bundles by id, as the coordinator stores them. */
+export function activeBundles(sql) {
+  const [row] = sql.exec("SELECT active_bundles_json FROM scheduler WHERE id = 1");
+  return JSON.parse(row?.active_bundles_json || "{}");
 }

@@ -107,6 +107,7 @@ with workerd from wrangler 4.131.1.
 | 2. Idle claim outcome every 10 min | 20.58 | 21.62 | 24.18 | 25.22 | 0.2 | 16 | 4 |
 | 3. No `attemptStarted` call | 17.58 | 18.62 | 21.18 | 22.22 | 0.2 | 13 | 4 (grant 5) |
 | 4. Daily `attempt_usage` cells, no `attempts` rows | 16.33 | 16.40 | 19.98 | 20.07 | 0.2 | 12 | 4 (grant 5) |
+| 5. Bundles and claim outcome on the scheduler row | 15.33 | 15.40 | 19.18 | 19.27 | 0.1 | 10 | 4 (grant 5) |
 
 Baseline phase split (one model, 60 jobs, 15 bundles): enqueue 364, claim 312, attemptStarted
 240, completeBatch 318, retire 61, prune 62. Three models (12 bundles): enqueue 604, claim 410,
@@ -143,3 +144,19 @@ bench every bundle uses one route, so completion writes one usage row per bundle
 the deferred prune falls from 62 to 4. A bundle spread over several routes writes one per route.
 The old table is dropped at migration: `DROP TABLE` bills no rows under workerd, where pruning it
 would bill one per row. `ROWS_PER_LEASE_WORST` falls from 23 to 21.
+
+Step 5 drops the `bundles` table: active bundles are a map in `scheduler.active_bundles_json`,
+and every scheduler change in a transaction (claim outcome and counters, bundles, a completion's
+requeue counter) is staged and written by that transaction's single accounting UPDATE. Per bundle
+that removes the bundle insert and its index entry (2), the separate claim-outcome row (1) and the
+bundle delete (1): claim 312 -> 267 and completion 303 -> 288 over 15 bundles. A persisted idle
+outcome now costs 1 row (idle tick 0.2 -> 0.1), and a one-job requeue costs 9 + 10 instead of
+12 + 12. `ROWS_PER_BUNDLE` falls from 8 to 4 and `ROWS_PER_LEASE_WORST` from 21 to 20.
+The table is dropped at migration after its active bundles are copied, which bills one row.
+
+### Where this leaves a job (2026-10-07)
+
+A first-try one-model job now costs 15.4 billed rows end to end including retention, against
+22.6 at the start of this series (-32%) and 44.3 before the 2026-09 tiers; a three-model job
+19.3 against 28.2. At the 90,000-row safe stop that is about 5,800 one-model first-try jobs a day
+before retries and idle overhead (previously about 4,000).

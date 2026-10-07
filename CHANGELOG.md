@@ -12,6 +12,16 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **LLM dispatch: bundles and claim bookkeeping ride on one scheduler write (#1844).** The
+  `bundles` table is gone. The few active bundles live in `scheduler.active_bundles_json`, and every
+  scheduler change in a transaction (the claim outcome and counters, bundles, a completion's requeue
+  counter) is written by its one accounting UPDATE. Per bundle this removes the insert and its index
+  entry, the separate claim-outcome row and the delete. Expired bundles leave the map when the
+  next claim reaps their leases, so `BUNDLE_RETENTION_DAYS` and `MAX_BUNDLE_PRUNE_PER_TICK` are
+  retired. Measured: 16.40 → 15.40 billed rows per one-model job (20.07 → 19.27 at three models);
+  idle tick 0.2 → 0.1 rows; `ROWS_PER_BUNDLE` 8 → 4 and `ROWS_PER_LEASE_WORST` 21 → 20. Across
+  this series a first-try job fell from 22.6 to 15.4 billed rows including retention.
+
 - **LLM dispatch: per-day attempt usage instead of a row per attempt (#1844 P4, part 2).** The
   coordinator no longer journals each provider attempt in `attempts` (two billed rows at
   completion, one more when retention deleted it). Each `completeBatch` folds its calls into one

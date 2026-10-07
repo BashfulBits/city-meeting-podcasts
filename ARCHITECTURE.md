@@ -583,9 +583,11 @@ persists its result, the client deletes the job's B2 payload/result and calls
 and provider's pacing ledger in memory and writes it once per claim, and `completeBatch` folds
 same-route successes into one routes UPDATE per route, flushing a route's pending successes before
 any non-success write to it so the final backoff state matches per-job order ([PR
-#1843](https://github.com/BashfulBits/city-meeting-podcasts/pull/1843)). `bundles` is `WITHOUT
-ROWID` and a bundle row is deleted when its last job settles; `BUNDLE_RETENTION_DAYS` now prunes
-only bundles whose lease expired unreported. A job may only name routes its own lane declares — ingress
+#1843](https://github.com/BashfulBits/city-meeting-podcasts/pull/1843)). There is no
+`bundles` table (2026-10-07): the few active bundles are a map in the scheduler row
+(`active_bundles_json`), removed when a bundle's last job settles or its lease expires, and every
+scheduler change a transaction makes (claim outcome, bundles, the requeue counter) rides on that
+transaction's one accounting UPDATE. A job may only name routes its own lane declares — ingress
 rejects `model_not_in_lane` — so the block describes what actually runs, not merely what was
 intended. The registry is repository-level policy read from the committed file and has no per-run
 override: a `--site-config` chooses site content and may *narrow* a lane

@@ -14,7 +14,7 @@
  *
  * The constants below were MEASURED by `bench/rows-written/` (the real `LLMSchedulerDO` under
  * workerd), remeasured after each #1844 change (ledger in bench/rows-written/README.md): a
- * completed first-try one-model job costs ~16.4 billed rows end to end, retention included (44.3
+ * completed first-try one-model job costs ~15.4 billed rows end to end, retention included (44.3
  * before the row-write tiers). They size the ingress
  * quota and are the reference for re-measuring after a schema/index/lifecycle change.
  */
@@ -32,18 +32,20 @@ export const DO_ROWS_ACCOUNT_RESERVE = 10000;
  * scheduler, accounting) is reserved separately by enqueueBatch. A rejected job writes nothing. */
 export const ROWS_PER_INGRESS_WRITE_UNIT = 1.25;
 
-/** Fixed per-bundle cost: the bundle row + its index, the claim-outcome scheduler row, and the
- * bundle delete at completion (4.5 claim-side + 1.4 completion-side), plus one accounting
- * row in each writing transaction. */
-export const ROWS_PER_BUNDLE = 8;
+/** Fixed per-bundle cost: the claim's and the completion's accounting rows, which since
+ * 2026-10-07 also carry the claim outcome and the bundle itself (scheduler.active_bundles_json),
+ * plus the claim's route/provider ledger write. Was 8 with a bundles table (insert 2, delete 1)
+ * and a separate claim-outcome row. */
+export const ROWS_PER_BUNDLE = 4;
 
 /** One lease beyond its bundle, worst case: per-job claim 3.8 (its attempt counted in the lease
  * UPDATE), a granted in-lease 429 retry 5 (route ledger, failure counter, the retry's attempt
  * count, accounting), then a requeue completion ~10 (including its own attempt_usage cell, the
  * worst case of one route per lease), and a consumption retire 1 + accounting 1. Claim and
  * completion accounting belong to ROWS_PER_BUNDLE. Measured 2026-10-07: 28 before the executor
- * stopped calling attemptStarted, 23 after, 21 once attempts stopped being journaled per row. */
-export const ROWS_PER_LEASE_WORST = 21;
+ * stopped calling attemptStarted, 23 after, 21 once attempts stopped being journaled per row, 20
+ * once a requeue's queued-counter change rode on the accounting row. */
+export const ROWS_PER_LEASE_WORST = 20;
 
 /** One job through scheduled cleanup: the purge_pending transition of a failed or aged job (2)
  * plus confirmPurge's row delete (1), and one accounting row in each transaction (2).
@@ -52,10 +54,10 @@ export const ROWS_PER_CLEANUP_JOB = 5;
 
 export const CRON_TICKS_PER_DAY = 1440;
 
-/** An idle cron tick, averaged: an unchanged empty claim outcome is persisted (outcome +
- * accounting, 2 rows) once per EMPTY_CLAIM_REFRESH_MS (10 minutes), so ~0.2 rows per tick and
- * ~290 rows per idle day. Before 2026-10-07 every idle tick wrote 2. */
-export const ROWS_PER_IDLE_TICK = 0.2;
+/** An idle cron tick, averaged: an unchanged empty claim outcome is persisted (on the accounting
+ * row, 1 row) once per EMPTY_CLAIM_REFRESH_MS (10 minutes), so ~0.1 rows per tick and ~144 rows
+ * per idle day. Before 2026-10-07 every idle tick wrote 2. */
+export const ROWS_PER_IDLE_TICK = 0.1;
 
 /** Terminal jobs the scheduled cleanup can retire per UTC day. */
 export function cleanupCapacityPerDay({ cleanupIntervalMinutes, purgeBatchLimit }) {

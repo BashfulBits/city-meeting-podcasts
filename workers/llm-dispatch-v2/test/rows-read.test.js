@@ -20,7 +20,7 @@ import {
  * add a case here. The explicitly manual `detailedStats` path is excluded: it is never a
  * workflow dependency and intentionally trades reads for an operator's one-off diagnosis.
  *
- *   1. No statement may SCAN a growable table (jobs/job_models/bundles).
+ *   1. No statement may SCAN a growable table (jobs/job_models).
  *      `routes` and `scheduler` are exempt: both are bounded by static config, not by traffic.
  *
  *   2. Scale invariance -- the same operations against 10x the accumulated history must read
@@ -80,7 +80,6 @@ function seed(history, { liveQueued = 6 } = {}) {
   const insJob = db.prepare(
     `INSERT INTO jobs (${JOB_COLUMNS.join(",")}) VALUES (${JOB_COLUMNS.map(() => "?").join(",")})`
   );
-  const insBundle = db.prepare("INSERT INTO bundles VALUES (?,?,?,?,?,?,?)");
   const policy = JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"], allow_paid: false });
   // Every queued job records the job_models keys it is indexed under (2026-10-07); job_models
   // has no job_id index, so unindexing seeks these primary keys.
@@ -89,7 +88,6 @@ function seed(history, { liveQueued = 6 } = {}) {
   for (let i = 0; i < history; i++) {
     insJob.run(`h${i}`, `kh${i}`, "d", null, "completed", 1, policy, "tags", 500, 200,
       `payloads/h${i}.json`, `results/h${i}.json`, null, null, null, null, 1, 0, null, old, old);
-    insBundle.run(`hb${i}`, "tok", "completed", old, 0, old, old);
     // An undrained queued backlog: grows both `jobs` and its `job_models` work index, which is
     // what the per-model candidate lookup walks.
     insJob.run(`bk${i}`, `kbk${i}`, "d", null, "queued", 1, policy, "tags", 500, 200,

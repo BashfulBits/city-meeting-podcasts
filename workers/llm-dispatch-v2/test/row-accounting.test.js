@@ -149,9 +149,9 @@ test("an unchanged idle claim writes nothing until the refresh interval, then fo
   assert.equal(live.reason_counts_today.no_queued_work, 10);
   assert.equal(live.last_at, t0 + 9 * minute);
 
-  // The tick at the interval persists, carrying the skipped ticks' counts.
+  // The tick at the interval persists, carrying the skipped ticks' counts, on the accounting row.
   await f.coordinator.claimDispatchWindow(t0 + 10 * minute, 30);
-  assert.equal(f.read(), first + 2);
+  assert.equal(f.read(), first + 1);
   assert.equal(scheduler().last_claim_at, t0 + 10 * minute);
   assert.equal(scheduler().claim_empty_count_today, 11);
   assert.deepEqual(JSON.parse(scheduler().claim_reason_counts_json), { no_queued_work: 11 });

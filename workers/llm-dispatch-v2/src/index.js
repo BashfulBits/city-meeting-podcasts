@@ -276,16 +276,15 @@ export function validateConfig(env) {
   }
 
   // Retention/cleanup bounds. A zero per-tick prune cap is a deliberate emergency pause, but a
-  // zero or negative retention window would delete records the moment they turn terminal --
-  // including a bundle a late completeBatch could still legitimately settle.
-  for (const name of ["BUNDLE_RETENTION_DAYS", "ATTEMPT_RETENTION_DAYS"]) {
+  // zero or negative retention window would delete today's telemetry cells as they are written.
+  for (const name of ["ATTEMPT_RETENTION_DAYS"]) {
     if (env[name] === undefined) continue;
     const days = Number(env[name]);
     if (!Number.isInteger(days) || days < 1) {
       throw new Error(`Invalid config: ${name} must be an integer of at least 1`);
     }
   }
-  for (const name of ["MAX_BUNDLE_PRUNE_PER_TICK", "MAX_ATTEMPT_PRUNE_PER_TICK", "PURGE_BATCH_LIMIT"]) {
+  for (const name of ["MAX_ATTEMPT_PRUNE_PER_TICK", "PURGE_BATCH_LIMIT"]) {
     if (env[name] === undefined) continue;
     const value = Number(env[name]);
     if (!Number.isInteger(value) || value < 0) {

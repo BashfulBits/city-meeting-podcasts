@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
-import { createMockSqlStorage, createRecordingSqlStorage, withTestReservations } from "./helpers.js";
+import {
+  activeBundles, createMockSqlStorage, createRecordingSqlStorage, insertActiveBundle, withTestReservations,
+} from "./helpers.js";
 
 function makeCoordinator(env, { sql, storage } = createMockSqlStorage()) {
   return { coordinator: new LLMSchedulerDO({ storage }, withTestReservations(env)), sql, storage };
@@ -959,12 +961,7 @@ test("authorizeRetry throttles only the specific route_id, keeping providers iso
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   const bundleDeadline = now + 60_000;
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    bundleDeadline,
-    bundleDeadline,
-    now
-  );
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1384,10 +1381,7 @@ test("authorizeRetry with own_rpd refuses in-window retry and sets midnight bloc
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   const bundleDeadline = now + 60_000;
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    bundleDeadline, bundleDeadline, now
-  );
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1416,10 +1410,7 @@ test("authorizeRetry with own_tpm zeroes token budget and refuses in-window retr
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   const bundleDeadline = now + 60_000;
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    bundleDeadline, bundleDeadline, now
-  );
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1453,10 +1444,7 @@ test("authorizeRetry with payment_required sets the billing day cooldown, not a 
   // legitimately be less than an hour away in production.
   const now = Date.UTC(2026, 8, 14, 12, 0, 0);
   const bundleDeadline = now + 60_000;
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    bundleDeadline, bundleDeadline, now
-  );
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1486,10 +1474,7 @@ test("authorizeRetry with upstream_capacity sets cooldown and preserves healthy 
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   const bundleDeadline = now + 60_000;
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    bundleDeadline, bundleDeadline, now
-  );
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1537,10 +1522,7 @@ test("a non-consuming refund does not decrement a route window newer than the on
     routeId
   );
 
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1581,10 +1563,7 @@ test("a non-consuming refund does not decrement a route window newer than the on
 test("completeBatch requeues terminal 429 under transient retry budget instead of failing", async () => {
   const { coordinator, sql } = makeCoordinator({ MAX_5XX_RETRIES: "2" });
   const now = Date.now();
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1627,10 +1606,7 @@ test("completeBatch applies the upstream_capacity cooldown to a 2xx with no usab
   // through the whole upstream-capacity retry budget back to back (CodeRabbit, 2026-09-13).
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1665,10 +1641,7 @@ test("completeBatch applies the upstream_capacity cooldown to a 2xx with no usab
 test("an empty structured reply requeues the job, stands the route down and is counted (review/48 R10)", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1713,10 +1686,7 @@ test("an empty structured reply requeues the job, stands the route down and is c
 test("a reply cut off at its output limit requeues without cooling the route down, and is counted", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1752,10 +1722,7 @@ test("a reply cut off at its output limit requeues without cooling the route dow
 test("completeBatch success clears upstream_capacity_streak and last_failure_class", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1799,14 +1766,7 @@ test("authorizeRetry records route_failures telemetry for 429s", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
-  sql.exec(
-    `INSERT INTO bundles (
-      bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at
-    ) VALUES ('b-telem', 'tok', 'active', ?, ?, ?)`,
-    now + 60_000,
-    now + 60_000,
-    now
-  );
+  insertActiveBundle(sql, "b-telem", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1849,14 +1809,7 @@ test("completeBatch records route_failures telemetry for non-429 failures", asyn
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
-  sql.exec(
-    `INSERT INTO bundles (
-      bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at
-    ) VALUES ('b-batch-fail', 'tok', 'active', ?, ?, ?)`,
-    now + 60_000,
-    now + 60_000,
-    now
-  );
+  insertActiveBundle(sql, "b-batch-fail", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -2003,14 +1956,7 @@ test("authorizeRetry overrides untrustworthy Retry-After with observed_recovery_
     DISPATCH_LIMITS_OVERRIDE: dispatchOverride,
   });
   const now = Date.now();
-  sql.exec(
-    `INSERT INTO bundles (
-      bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at
-    ) VALUES ('b-untrust', 'tok', 'active', ?, ?, ?)`,
-    now + 60_000,
-    now + 60_000,
-    now
-  );
+  insertActiveBundle(sql, "b-untrust", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -2494,11 +2440,7 @@ test("the drain signal ignores expired leases, which a global pause never reaps"
 /** Lease `jobs` ([id, purpose, reservedOutput, route]) in a fresh bundle and complete them. */
 function completeLeased(sql, coordinator, bundleId, jobs, results) {
   const now = Date.now();
-  sql.exec(
-    `INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end,
-       created_at) VALUES (?, 'tok', 'active', ?, ?, ?)`,
-    bundleId, now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, bundleId, "tok", now + 60_000, now + 60_000, now);
   for (const [id, purpose, reserved, route] of jobs) {
     sql.exec(
       `INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, bundle_id,
@@ -2558,10 +2500,7 @@ test("a length-truncated reply settles the token bucket to its measured usage", 
   const routeId = "gemini_3_5_flash_primary"; // a real route with tpm configured
   coordinator._getOrCreateRouteLedger(routeId, now, {});
   sql.exec("UPDATE routes SET full_token_budget = 100000 WHERE route_id = ?", routeId);
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -2671,9 +2610,7 @@ test("TPD reserves and settles daily tokens to actual usage", async () => {
   const reserved = coordinator._applyProvisionalReservation({ ...catalog, ...ledger }, 2000, now);
   coordinator._writeRouteLedger(reserved);
   assert.equal(sql.exec("SELECT tpd_used FROM routes WHERE route_id=?", routeId)[0].tpd_used, 2000);
-  sql.exec(`INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at,
-    dispatch_window_end, created_at) VALUES ('tpd-b', 'tok', 'active', ?, ?, ?)`,
-    now + 60000, now + 60000, now);
+  insertActiveBundle(sql, "tpd-b", "tok", now + 60000, now + 60000, now);
   sql.exec(`INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, bundle_id,
     lease_route_id, lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
     payload_key, created_at, updated_at, token_reservation, reservation_rpd_day_key)
@@ -2690,9 +2627,7 @@ test("Orca prompt cap requeues and learns a size bound without blocking short wo
   const now = Date.now();
   const routeId = 'orcarouter_zai_glm_5_3_flash_free';
   coordinator._getOrCreateRouteLedger(routeId, now, {});
-  sql.exec(`INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at,
-    dispatch_window_end, created_at) VALUES ('cap-b', 'tok', 'active', ?, ?, ?)`,
-    now + 60000, now + 60000, now);
+  insertActiveBundle(sql, "cap-b", "tok", now + 60000, now + 60000, now);
   sql.exec(`INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, bundle_id,
     lease_route_id, lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
     payload_key, created_at, updated_at, token_reservation)
@@ -2713,9 +2648,7 @@ test("TPD feedback keeps remaining tokens and does not exhaust daily requests", 
   const now = Date.now();
   const routeId = "groq_qwen_3_8_27b_primary";
   coordinator._getOrCreateRouteLedger(routeId, now, {});
-  sql.exec(`INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at,
-    dispatch_window_end, created_at) VALUES ('tpd-feedback', 'tok', 'active', ?, ?, ?)`,
-    now + 60000, now + 60000, now);
+  insertActiveBundle(sql, "tpd-feedback", "tok", now + 60000, now + 60000, now);
   sql.exec(`INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, bundle_id,
     lease_route_id, lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
     payload_key, created_at, updated_at)
