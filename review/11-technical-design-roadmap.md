@@ -105,7 +105,7 @@ institution is identified; their individual missing-evidence notes remain. On 20
 maintainer also accepted the single Citizen Advisory compilation in Public Input as its P0
 classification. Its exact historical program-to-recording link remains unknown, but is no longer a
 blocking classification question; the archive's 11-item count does not establish a missing part.
-The register now has 160 resolved and nine open cases. The 680-row P0 baseline remains open until the
+The register now has 162 resolved and seven open cases. The 680-row P0 baseline remains open until the
 remaining source-binding evidence cases are resolved or otherwise dispositioned.
 
 Maintainer clarification (2026-10-04): specific continuing standing committees, including Council
@@ -143,8 +143,8 @@ and entries without usable recordings stay with the existing no-recording flow.
 The final decision worksheet covers all **680 historical title patterns / 2,028 source-and-UID
 listings**: the merged baseline has 517 patterns (1,664 listings) assigned by local feed rules, one
 pattern/listing archive-only, and 162 patterns (363 listings) not to pursue. The current local
-proposal in issue #2152 adds the recurring Dallas CBTF title to the Bond Program aggregate and
-revises that pattern to a feed assignment: 518 patterns (1,667 listings) assigned, one
+proposal in PR #2154, tracked by issue #2152, adds the recurring Dallas CBTF title to the Bond
+Program aggregate and revises that pattern to a feed assignment: 518 patterns (1,667 listings) assigned, one
 pattern/listing archive-only, and 161 patterns (360 listings) not to pursue. In a read-only replay
 of 26,555 cached source records, this proposal plus the merged September 26 Public Info addition
 would record 1,976 added policy placements across 1,952 source/UID pairs and remove 30 wrong Fort
@@ -152,9 +152,10 @@ Worth City Council placements for the â€œMinority Leaders and Citizens Councilâ€
 the Dallas policy placements already appear in live Bond Program RSS; removing the audit exclusion
 does not add live episodes. The net policy count would be 1,946 more feed assignments. It leaves
 411 source/UID entries without a feed: 405 not to
-pursue and six approved Addison archive-only items awaiting visibility verification. The two Dallas
-CBTF evidence cases remain open only for live RSS checks. The October 3 recording is Bond Program
-only; the September 26 recording retains its separately approved Public Info placement. Public
+pursue and six approved Addison archive-only items awaiting visibility verification. The October 3 Dallas CBTF evidence case is resolved as Bond Program only. The September 26
+recording retains its separately approved Public Info placement; its evidence case remains open until
+the merged #2116 deployment is verified. PR #2154 aligns the historical policy replay and is not
+expected to change published RSS. Public
 comment alone does not send a meeting to Public Info. The follow-up also adds Dallas Subdivision
 Review Committee recordings to its parent City Planning Commission feed and Denton Capital
 Improvement Advisory Committee recordings to the Planning and Zoning Commission feed. The full
@@ -170,13 +171,13 @@ and follow the normal no-audio path. This does not prove the city never had a so
 
 For Fort Worth clip 3814, both UIDs retain their source records, chapters and audio. All four
 Council/CCPD pages show the approved note, and the CCPD RSS contains both items. Council RSS holds
-its newest 500 items beginning December 15, 2020, so it omits the July 24, 2020 recordings. Keep the
-two related cases open until the maintainer accepts the permanent pages and bounded RSS window as
-sufficient proof. The two #6334 assignments also remain unchanged pending exact segment evidence.
+its newest 500 items beginning December 15, 2020, so it omits the July 24, 2020 recordings. The two related cases were closed after the maintainer accepted the permanent pages plus expected
+RSS window behavior as sufficient P0 proof. The two #6334 assignments remain unchanged pending exact
+segment evidence.
 
 The 680-row historical disposition baseline is deployed; the current local replay records each
 pattern as an applied feed rule, archive-only outcome, explicit not-to-pursue outcome or linked
-evidence case. The current register has nine open evidence cases; these remain tracked work, not
+evidence case. The current register has seven open evidence cases; these remain tracked work, not
 waived findings. The
 full replay does not prove that each historical title is a distinct episode or each source copy is a
 unique recording. Public search is a separate limitation: `meta.json` reports zero search shards and

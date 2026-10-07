@@ -109,7 +109,7 @@ exception. A title match alone does not prove that a historical recording is the
 At the time of this local replay, the case register had 11 open cases, including the Citizen
 Advisory compilation. The maintainer later accepted that compilation's Public Input classification
 for P0 on 2026-10-07; its exact historical program-to-recording link remains unknown, and the
-archive's 11-item count does not establish a missing part. The current register has nine open cases:
+archive's 11-item count does not establish a missing part. The current register had nine open cases before the Fort Worth #3814 check was accepted:
 two Fort Worth 6334 clip-to-segment bindings, two Fort Worth 3814 bundle publication checks, one
 Dallas dual-feed deployment check, and four Dallas bond Streets recording bindings. Six approved
 Addison archive-only entries still need a separate visibility check, but they are not open rows in
@@ -163,8 +163,9 @@ This is a separate site-search limitation; the P0 feed rules and RSS checks abov
 
 The frozen 680-pattern disposition baseline is applied on the public site. The revised local
 disposition has 518 assigned patterns, one archive-only pattern, and 161 not pursued. Nine
-registered evidence cases remain open (two Fort Worth 3814 publication checks; two Fort Worth 6334
-segment bindings; one Dallas dual-feed deployment check; and four Dallas Streets bond bindings).
+registered evidence cases remained open before the Fort Worth #3814 closure. The current register
+has seven open cases: two Fort Worth 6334 segment bindings, one Dallas dual-feed deployment check,
+and four Dallas Streets bond bindings. The two 3814 publication checks are resolved.
 The Citizen
 Advisory compilation's Public Input classification
 was accepted for P0 on 2026-10-07; the exact historical binding remains unknown, and no missing part

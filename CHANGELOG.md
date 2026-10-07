@@ -17,10 +17,12 @@ Once 1.0 ships, entries move under semver tags.
   trickle during download fails visibly instead of leaving PR checks running indefinitely. The
   FFmpeg version, checksum, and production audio behavior are unchanged.
 
-- **Prepared Fort Worth #3814 consecutive-proceedings note.** A feed-local, exact UID/GUID-bound
-  annotation is projected to Council and CCPD RSS/raw meeting pages while preserving official
-  provider metadata and whole-recording UID/audio. It does not persist into episode records or
-  alter audio processing; deployment and case closure remain pending.
+- **Fort Worth #3814 consecutive-proceedings note deployed and verified.** The exact UID/GUID-bound
+  annotation appears on both Council and CCPD pages, and CCPD RSS contains both whole-recording
+  UIDs/audio. Council RSS omits these 2020 items because its current 500-item window starts in
+  December 2020; the permanent Council pages remain available. The maintainer accepted this as the
+  expected RSS/archive behavior and the two P0 publication checks are closed. No source or audio
+  changed.
 
 - **P0 historical feed rules and Dallas CBTF follow-up.** The baseline rules merged in PR #2112 and
   passed deployment run #37643318454. The updated worksheet covers 680 title patterns: the
@@ -28,8 +30,8 @@ Once 1.0 ships, entries move under semver tags.
   archive-only, and marks 161 not to pursue. With the merged September 26 Public Info placement and
   the proposed Dallas CBTF aggregate rule, the replay has 1,976 added policy placements, removes 30 wrong
   Fort Worth Council placements, and leaves 411 source/UID entries unmatched (405 not pursued and
-  six archive-only visibility checks). Issue #2152 proposes removing the contradictory CBTF
-  exclusion from Dallas Bond Program; this aligns ten policy matches with the existing live selector
+  six archive-only visibility checks). PR #2154, tracked by issue #2152, removes the contradictory CBTF
+  exclusion from the Dallas Bond Program policy replay; this aligns ten policy matches with the existing live selector
   and does not add live RSS items or change Public Info. October 3 is already verified in Bond
   Program only; September 26 retains its separate Public Info approval, pending deployment proof.
   The P0 report records the replay and remaining checks. This does not mark P0 complete.

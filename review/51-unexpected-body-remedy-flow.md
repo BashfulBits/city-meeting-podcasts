@@ -2254,6 +2254,13 @@ publication winner, other source/holder change, or backfill. Run targeted tests,
 suite, whole `ruff check .`, and `ruff format --check .`; CodeRabbit review is required for the
 resulting code PR. Human merge only.
 
+Implemented in [PR #2111](https://github.com/BashfulBits/city-meeting-podcasts/pull/2111), merged
+2026-10-07 (merge commit `a23efe3e1c82ca42cd6270d24e05c3b7fb701251`); deployed successfully in
+Build & Deploy run [#37643318454](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37643318454).
+This contract is frozen. On 2026-10-07, the maintainer accepted the two permanent Council pages
+plus the bounded RSS window as sufficient P0 publication evidence; both #3814 register cases are
+closed.
+
 #2084 test compatibility: existing tests/test_workflows.py pins the superseded single
 build-deploy job. Update only deploy workflow job/artifact/order assertions for approved
 render→search→deploy, retaining credential scope, pinned action, permissions, refresh/render

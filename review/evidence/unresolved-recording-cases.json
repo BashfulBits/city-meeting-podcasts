@@ -2064,15 +2064,15 @@
       "uid": "0c66fc968402fabd",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3814",
       "question": "Verify deployed publication notes for approved consecutive CCPD/Council proceedings",
-      "missing_evidence": "The approved note is live on both direct participant pages and in CCPD RSS. The current Council RSS has a 500-item window beginning 2020-12-15, so this 2020-07-24 recording is absent from its XML. Maintainer disposition is needed on whether the permanent Council page plus the bounded RSS window satisfies this publication check.",
-      "next_action": "Ask whether to close based on the deployed Council/CCPD pages, identical original audio, CCPD RSS note and the Council RSS age limit; otherwise retain the case as an archive-window exception. Do not change assignments or raw media.",
+      "missing_evidence": "No remaining P0 publication evidence is missing; the Council RSS window omits these older recordings by design, and the maintainer accepted the permanent pages as sufficient.",
+      "next_action": "No further action; the maintainer-approved publication check is verified.",
       "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-crime-control-and-prevention-district"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Resolved 2026-10-07 under the maintainer-approved P0 archive policy: the two permanent participant pages return HTTP 200 and show the approved consecutive-proceedings note and the unchanged original audio; CCPD RSS includes both exact UIDs. Council RSS is a bounded 500-item window beginning 2020-12-15, so it does not include these 2020-07-24 recordings. This is an expected RSS age limit; the permanent Council page remains available. No source records, UID, title, chapters, assignments or audio changed. See review/evidence/p0-forward-rule-replay-2026-10-07.md."
     },
     {
       "case_id": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
@@ -2197,15 +2197,15 @@
       "uid": "99152cb9e61fa091",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=3814",
       "question": "Verify deployed publication notes for approved consecutive CCPD/Council proceedings",
-      "missing_evidence": "The approved note is live on both direct participant pages and in CCPD RSS. The current Council RSS has a 500-item window beginning 2020-12-15, so this 2020-07-24 recording is absent from its XML. Maintainer disposition is needed on whether the permanent Council page plus the bounded RSS window satisfies this publication check.",
-      "next_action": "Ask whether to close based on the deployed Council/CCPD pages, identical original audio, CCPD RSS note and the Council RSS age limit; otherwise retain the case as an archive-window exception. Do not change assignments or raw media.",
+      "missing_evidence": "No remaining P0 publication evidence is missing; the Council RSS window omits these older recordings by design, and the maintainer accepted the permanent pages as sufficient.",
+      "next_action": "No further action; the maintainer-approved publication check is verified.",
       "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-crime-control-and-prevention-district"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Resolved 2026-10-07 under the maintainer-approved P0 archive policy: the two permanent participant pages return HTTP 200 and show the approved consecutive-proceedings note and the unchanged original audio; CCPD RSS includes both exact UIDs. Council RSS is a bounded 500-item window beginning 2020-12-15, so it does not include these 2020-07-24 recordings. This is an expected RSS age limit; the permanent Council page remains available. No source records, UID, title, chapters, assignments or audio changed. See review/evidence/p0-forward-rule-replay-2026-10-07.md."
     },
     {
       "case_id": "fort-worth-tx-b7a9ee9eae6fafc6-ownership",
