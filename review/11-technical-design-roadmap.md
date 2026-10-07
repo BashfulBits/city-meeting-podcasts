@@ -141,26 +141,22 @@ Denton Bond Oversight exception); and reusable additions to existing feeds. Ordi
 and entries without usable recordings stay with the existing no-recording flow.
 
 The final decision worksheet covers all **680 historical title patterns / 2,028 source-and-UID
-listings**: the merged baseline has 517 patterns (1,664 listings) assigned by local feed rules, one
-pattern/listing archive-only, and 162 patterns (363 listings) not to pursue. The current local
-proposal in PR #2154, tracked by issue #2152, adds the recurring Dallas CBTF title to the Bond
-Program aggregate and revises that pattern to a feed assignment: 518 patterns (1,667 listings) assigned, one
-pattern/listing archive-only, and 161 patterns (360 listings) not to pursue. In a read-only replay
-of 26,555 cached source records, this proposal plus the merged September 26 Public Info addition
-would record 1,976 added policy placements across 1,952 source/UID pairs and remove 30 wrong Fort
-Worth City Council placements for the “Minority Leaders and Citizens Council” civic series. Ten of
-the Dallas policy placements already appear in live Bond Program RSS; removing the audit exclusion
-does not add live episodes. The net policy count would be 1,946 more feed assignments. It leaves
-411 source/UID entries without a feed: 405 not to
-pursue and six approved Addison archive-only items awaiting visibility verification. The October 3 Dallas CBTF evidence case is resolved as Bond Program only. The September 26
-recording retains its separately approved Public Info placement; its evidence case remains open until
-the merged #2116 deployment is verified. PR #2154 aligns the historical policy replay and is not
-expected to change published RSS. Public
-comment alone does not send a meeting to Public Info. The follow-up also adds Dallas Subdivision
-Review Committee recordings to its parent City Planning Commission feed and Denton Capital
-Improvement Advisory Committee recordings to the Planning and Zoning Commission feed. The full
-source/UID outputs and limits are in the
-[final replay report](evidence/p0-forward-rule-replay-2026-10-07.md).
+listings**. After PR #2154, 518 patterns (1,667 listings) are assigned by local feed rules, one
+pattern/listing is archive-only, and 161 patterns (360 listings) are not to pursue. The replay of
+26,555 cached source records currently reports 1,976 added policy placements across 1,952
+source/UID pairs, and 30 removed Fort Worth City Council placements for the “Minority Leaders and
+Citizens Council” civic series. Ten Dallas CBTF selections already appear in live Bond Program RSS.
+The maintainer has since directed that GUID 272574 remain only in Dallas Bond Program; a bounded
+correction is removing its exact Public Info inclusion. After that correction, the report should
+show 1,975 added placements, the same 1,952 source/UID pairs, 30 removed placements, and a net
+increase of 1,945 feed assignments. The unmatched count stays 411: 405 intentionally not pursued
+and six approved Addison archive-only items awaiting visibility verification. The October 3 Dallas
+CBTF recording is verified in Bond Program only. The September 26 evidence case remains open until
+the routing correction deploys and live RSS confirms Bond Program presence and Public Info and
+Task Force absence. Public comment alone does not send a meeting to Public Info. The replay also
+adds Dallas Subdivision Review Committee recordings to City Planning Commission and Denton Capital
+Improvement Advisory Committee recordings to Planning and Zoning Commission. Full outputs are in
+the [final replay report](evidence/p0-forward-rule-replay-2026-10-07.md).
 
 PR #2112 merged the historical rules and PR #2111 added the approved Fort Worth publication notes.
 Build and Deploy run #37643318454 passed rendering, feed validation, search processing and Pages
@@ -188,10 +184,11 @@ For Dallas GUID 273327, the maintainer directed Bond Program only. A live RSS ch
 original UID/audio in Bond Program and absent from Public Info and the dedicated Task Force feed;
 that case is resolved. Removing `CBTF` from the Bond Program audit exclusion aligns the P0 replay
 with the existing `*CBTF*` selector, but is expected to change no published RSS. For GUID 272574,
-the maintainer approved the same original recording in Bond Program and Public Info. PR #2116 adds
-a narrow exact-record Public Info entry; its deployment is still in progress. Its provider title
-omits “Town Hall,” and its shared label also names a formal September 19 Task Force meeting. Keep
-that case open until both live RSS feeds show the same original UID and audio.
+the maintainer later superseded the dual-feed decision and directed Bond Program only. The exact
+Public Info inclusion from PR #2116 is being removed under the L3 correction in review/51. Keep its
+case open until that correction deploys and live RSS confirms the original UID/audio in Bond Program
+and absence from Public Info and the dedicated Task Force feed. Its provider label is shared with a
+September 19 formal Task Force meeting, so no broader Public Info selector should be added.
 
 
 P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) shipped in PR #1992, covering

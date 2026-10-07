@@ -36,10 +36,10 @@ Once 1.0 ships, entries move under semver tags.
   Program only; September 26 retains its separate Public Info approval, pending deployment proof.
   The P0 report records the replay and remaining checks. This does not mark P0 complete.
 
-- **Merged Dallas bond Town Hall dual-feed placement (#2116).** The September 26, 2023 recording
-  keeps its original UID/audio in Bond Program and is also selected into Public Info by exact source
-  GUID. The separate September 19 formal Task Force meeting is not admitted to Public Info. Live RSS
-  verification remains required before closing the evidence case.
+- **Dallas bond Town Hall routing decision updated.** PR #2116 briefly added the September 26,
+  2023 recording to Public Info as well as Bond Program. The maintainer later directed Bond Program
+  only; a follow-up removes that exact Public Info entry. The original UID/audio stays unchanged.
+  Live RSS verification of the final routing remains required before closing its evidence case.
 
 - **Certified October 2026 Coverage Feed Implementations.** Reconciled and certified status for
   October 2026 coverage batches across Addison UDC (PR #1992), Arlington HFC and ZBA (commit

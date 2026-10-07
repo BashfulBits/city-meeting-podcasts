@@ -2474,49 +2474,40 @@ automatic checks as review or request reviews on these closed PRs.
 
 ### Dallas Sep26,2023 bond Town Hall and CBTF recording — L3, #2115
 
-The maintainer approved publishing the same original recording in the Dallas Bond Program and
-Dallas Public Info feeds. The City’s 2024 Bond Program guide schedules Town Hall 2 for September
-26, 2023, at City Hall to receive public comments. The retained source record has UID
-`aa65e2aafc90711b`, GUID `272574`, provider body `2024 Capital Bond Program CBTF Meeting`, and an
-original source chapter naming September 26. It retains one original Swagit source and hosted audio.
-The provider-generated transcript indicates the Task Force called the meeting to order and then
-heard public speakers; this transcript is not official minutes. The player returned 403 during
-research, so direct manual listening and a standalone Town Hall agenda/minutes were unavailable.
-This evidence supports the maintainer-approved dual-feed decision but must not be described as
-independent official minutes.
+The original implementation added the same recording to the Dallas Bond Program and Dallas Public
+Info feeds under the maintainer's then-current direction. The City’s 2024 Bond Program guide
+schedules Town Hall 2 for September 26, 2023, at City Hall to receive public comments. The retained
+source record has UID `aa65e2aafc90711b`, GUID `272574`, provider body
+`2024 Capital Bond Program CBTF Meeting`, and an original source chapter naming September 26. It
+retains one original Swagit source and hosted audio. The provider-generated transcript indicates the
+Task Force called the meeting to order and then heard public speakers; it is not official minutes.
+The player returned 403 during research, so direct listening and a standalone Town Hall
+agenda/minutes were unavailable. The official guide confirms Town Hall 2 and its public-comment
+purpose, but public comment alone does not make an event a Public Info session.
 
-The City’s [official program guide](https://dallascityhall.com/departments/bond-construction-management/DCH%20Documents/BCM_2024%20Bond%20Program%20Brochue_05082023.pdf)
-lists Town Hall 2 and the public-comment purpose. The [recording](https://dallastx.new.swagit.com/videos/272574)
-and cached source record are retained in the P0 audit.
+The maintainer later superseded the dual-feed direction: GUID 272574 belongs **only** in the Dallas
+Bond Program feed. Its existing `*CBTF*` selector already routes the recording. Remove only the
+exact GUID 272574 inclusion from Dallas Public Info; do not add or broaden a Public Info title rule.
+Keep the September 19 formal CBTF recording outside Public Info. The two records share a provider
+body label, so broadening the Public Info selector would incorrectly admit the formal meeting.
 
-Files: `config/feeds/dallas-tx-bond-program-meetings.yml`,
-`config/feeds/dallas-tx-public-info-meetings.yml`, original-record fixture,
-`tests/test_dallas_cbtf_ownership.py`, this doc, review/11, CHANGELOG, ROADMAP, the P0 replay and
-case register. No ARCHITECTURE change: reuse the existing complete-label selector and exact source
-inclusion.
+### Superseding routing correction — Bond Program only — L3, 2026-10-07
 
-The current Dallas Bond Program selector already places GUID 272574 in that feed through its
-existing `body_any: "*CBTF*"` rule; do not add a redundant selector or change that broader rule in
-this task. The prior P0 replay applied the top-level `body_exclude` note when deciding whether a
-record was assigned, but the live feed-routing code does not apply that note. This task leaves that
-broader behavior unchanged. The cached source has one other record with this body, September 19 GUID
-272005, which already belongs in Bond. In the Dallas Public Info feed, add only GUID 272574 with its
-unchanged body label. Do not add the shared exact body label there: it would also pull in the
-September 19 formal Task Force recording, which is not proven to be public input. This exact-record
-exception is needed because the provider title omits “Town Hall.” Existing Public Info title rules
-stay unchanged for future, clearly titled Town Halls.
+Before changing config or tests, this approved contract records the newer decision. Remove only the
+`provider_guid: '272574'` row from `config/feeds/dallas-tx-public-info-meetings.yml`. Keep the Bond
+Program selector, all other Public Info selectors, UID, official title/date, source namespace,
+source chapter, and audio unchanged. Update the original-fixture test to prove that the recording
+remains in Bond Program and is absent from Public Info and the dedicated Task Force feed. A
+different GUID with the same provider body must remain absent from Public Info. The September 19
+record and every other Dallas feed holder must remain unchanged.
 
-Preserve UID, provider GUID, official title/date, source namespace, source chapter and audio. Add an
-unaltered original-record fixture. Tests must prove the same UID and original audio appear in both
-feeds, the September 19 recording remains outside Public Info with its existing holders unchanged,
-a different GUID with the same body is rejected by Public Info, and raw records are unchanged. Full
-5,353-record replay must add only UID
-`aa65e2aafc90711b` to Public Info; the Bond assignment already exists and every other feed holder
-set must remain unchanged. The read-only replay is recorded in
-[`dallas-272574-replay-2026-10-07.json`](evidence/dallas-272574-replay-2026-10-07.json).
-Run the full offline suite and whole-repository Ruff/format checks. Keep the case open until live
-RSS checks confirm both feeds contain the original UID/audio. No state refresh, audio change, title
-edit, or backfill.
+Replay all 5,353 retained Dallas records. The expected result is exactly one removed Public Info
+assignment for UID `aa65e2aafc90711b`; its Bond Program assignment remains. No other holder changes.
+In the catalog-wide report, the added-placement count decreases by one, the unmatched-record count
+stays 411, and the 680 historical title-pattern dispositions do not change. Update the P0 report
+and evidence register to describe the Bond-only decision. Keep the case open until the correction
+deploys and live RSS verifies the original UID/audio in Bond Program and its absence from Public
+Info and the dedicated Task Force feed. No source refresh, title edit, audio change, or backfill.
 
 ### #2097 verified May25 CBTF source binding — L3
 
