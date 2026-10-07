@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **LLM dispatch: idle cron ticks stop rewriting an unchanged claim outcome (#1844 P5).** An empty
+  claim with the same reason as the stored last outcome is persisted at most every ten minutes.
+  Skipped ticks are counted in memory, folded into the next write, and included by `/v2/stats`.
+  An idle queue costs about 290 billed rows a day instead of 2,880. A claimed tick, a reaped
+  lease or a changed reason is still written at once. `claim.last_*` in the persisted row can lag
+  by up to ten minutes while idle; a hibernation loses only the skipped ticks' diagnostic counts.
+
 - **LLM dispatch: one billed row per model index instead of two (#1844).** `job_models` drops its
   unique `(job_id, model)` index. A queued job records its index keys in `jobs.queue_models`, and
   every unindex is a primary-key delete. Measured with `bench/rows-written`, a first-try job falls

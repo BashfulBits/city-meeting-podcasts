@@ -50,6 +50,11 @@ export const ROWS_PER_CLEANUP_JOB = 5;
 
 export const CRON_TICKS_PER_DAY = 1440;
 
+/** An idle cron tick, averaged: an unchanged empty claim outcome is persisted (outcome +
+ * accounting, 2 rows) once per EMPTY_CLAIM_REFRESH_MS (10 minutes), so ~0.2 rows per tick and
+ * ~290 rows per idle day. Before 2026-10-07 every idle tick wrote 2. */
+export const ROWS_PER_IDLE_TICK = 0.2;
+
 /** Terminal jobs the scheduled cleanup can retire per UTC day. */
 export function cleanupCapacityPerDay({ cleanupIntervalMinutes, purgeBatchLimit }) {
   return Math.floor(CRON_TICKS_PER_DAY / cleanupIntervalMinutes) * purgeBatchLimit;

@@ -104,6 +104,7 @@ with workerd from wrangler 4.131.1.
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Baseline (main @ 065a1f1f) | 21.58 | 22.62 | 27.18 | 28.22 | 2 | 17 | 4 |
 | 1. No `job_models (job_id, model)` index | 20.58 | 21.62 | 24.18 | 25.22 | 2 | 16 | 4 |
+| 2. Idle claim outcome every 10 min | 20.58 | 21.62 | 24.18 | 25.22 | 0.2 | 16 | 4 |
 
 Baseline phase split (one model, 60 jobs, 15 bundles): enqueue 364, claim 312, attemptStarted
 240, completeBatch 318, retire 61, prune 62. Three models (12 bundles): enqueue 604, claim 410,
@@ -117,3 +118,9 @@ Step 1 removes the unique `(job_id, model)` index: a queued job records its mode
 primary-key delete. Enqueue is now `4 + models` rows per job (one model 304 = 5.07/job, three
 models 424 = 7.07/job); claim deletes were already one billed row each and are unchanged.
 `ROWS_PER_INGRESS_WRITE_UNIT` falls from 2 to 1.25.
+
+Step 2 persists an empty claim whose reason matches the stored last outcome at most every ten
+minutes (`EMPTY_CLAIM_REFRESH_MS`); skipped ticks are counted in memory and folded into the next
+write, and `stats()` adds them. A claimed tick, a reaped lease or a changed reason is written at
+once. The harness's 20 idle ticks after the run (61 s apart) wrote 4 rows: about 290 rows/day on
+an idle queue instead of 2,880. Per-job lifecycle costs are unchanged.

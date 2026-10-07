@@ -182,6 +182,12 @@ const JOB_PRIORITY_SYNC_TRIGGER = `
          WHERE NEW.queue_models IS NULL AND job_id = NEW.id;
       END;`;
 
+/** An empty claim with the same reason as the persisted last outcome is written at most this
+ * often (#1844 P5). Each one cost two billed rows (the outcome and its accounting), ~2,880 rows
+ * a day on an idle queue. Skipped outcomes are counted in memory and folded into the next write;
+ * a hibernation in between loses only those diagnostic counts. */
+const EMPTY_CLAIM_REFRESH_MS = 10 * 60 * 1000;
+
 /** Queued jobs indexed before 2026-10-07 carry no queue_models; this index serves their
  * job_id-keyed deletes until none remain queued, then _retireLegacyJobModelsIndex drops it. */
 const LEGACY_JOB_MODELS_INDEX = "idx_job_models_job_model";
@@ -2587,6 +2593,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
            FROM scheduler WHERE id = 1`
       );
       const claimReasonCounts = parseJsonObject(scheduler.claim_reason_counts_json);
+      // Fold in this instance's not-yet-persisted idle repeats (EMPTY_CLAIM_REFRESH_MS).
+      const pendingEmpty = this._pendingEmptyClaimsFor(scheduler.utc_day);
+      for (const [reason, count] of Object.entries(pendingEmpty?.reasons || {})) {
+        claimReasonCounts[reason] = (Number(claimReasonCounts[reason]) || 0) + count;
+      }
       const activeBundles = [...sql.exec(
         "SELECT active_call_count, lease_expires_at FROM bundles WHERE state = 'active'"
       )];
@@ -2613,10 +2624,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
         },
         row_budget: this._rowBudgetSnapshot(scheduler),
         claim: {
-          last_at: scheduler.last_claim_at ?? null,
+          // An unchanged idle outcome is persisted every EMPTY_CLAIM_REFRESH_MS; last_at is the
+          // latest claim this instance saw, persisted or not.
+          last_at: Math.max(
+            Number(scheduler.last_claim_at) || 0, Number(pendingEmpty?.last_at) || 0
+          ) || null,
           last_result: scheduler.last_claim_result || null,
           last_reason: scheduler.last_claim_reason || null,
-          empty_count_today: scheduler.claim_empty_count_today ?? 0,
+          empty_count_today: (scheduler.claim_empty_count_today ?? 0) + (pendingEmpty?.empty || 0),
           reason_counts_today: claimReasonCounts,
         },
       };
@@ -3941,16 +3956,44 @@ export class LLMSchedulerDO extends DurableObjectBase {
     };
   }
 
+  /** Empty claims not yet persisted (EMPTY_CLAIM_REFRESH_MS), for today's scheduler row only. */
+  _pendingEmptyClaimsFor(utcDay) {
+    const pending = this._pendingEmptyClaims;
+    return pending && pending.utc_day === utcDay ? pending : null;
+  }
+
   _recordClaimOutcome(
     now, result, reason, diagnostics, bundlesClaimed = 0, leasesClaimed = 0, queuedDelta = 0
   ) {
     const sql = this._getSql();
     const row = [...sql.exec(
-      "SELECT claim_empty_count_today, claim_reason_counts_json FROM scheduler WHERE id = 1"
+      `SELECT utc_day, claim_empty_count_today, claim_reason_counts_json, last_claim_at,
+              last_claim_result, last_claim_reason
+         FROM scheduler WHERE id = 1`
     )][0] || {};
+    const pending = this._pendingEmptyClaimsFor(row.utc_day);
+    // An idle repeat changes nothing an operator acts on, so it skips the write. Anything that
+    // moves a counter (a reaped lease, a claim) or changes the reason is persisted at once.
+    if (
+      result === "empty" &&
+      queuedDelta === 0 &&
+      row.last_claim_result === "empty" &&
+      row.last_claim_reason === reason &&
+      now - (Number(row.last_claim_at) || 0) < EMPTY_CLAIM_REFRESH_MS
+    ) {
+      const next = pending || { utc_day: row.utc_day, empty: 0, reasons: {}, last_at: null };
+      next.empty += 1;
+      next.reasons[reason] = (next.reasons[reason] || 0) + 1;
+      next.last_at = now;
+      this._pendingEmptyClaims = next;
+      return false;
+    }
     const reasonCounts = parseJsonObject(row.claim_reason_counts_json);
+    for (const [pendingReason, count] of Object.entries(pending?.reasons || {})) {
+      reasonCounts[pendingReason] = (Number(reasonCounts[pendingReason]) || 0) + count;
+    }
     reasonCounts[reason] = (Number(reasonCounts[reason]) || 0) + 1;
-    const emptyCount = Number(row.claim_empty_count_today) || 0;
+    const emptyCount = (Number(row.claim_empty_count_today) || 0) + (pending?.empty || 0);
     sql.exec(
       `UPDATE scheduler SET last_claim_at=?, last_claim_result=?, last_claim_reason=?,
        last_claim_diagnostics_json=?, claim_empty_count_today=?, claim_reason_counts_json=?,
@@ -3970,6 +4013,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       queuedDelta,
       this._takeUnflushedRows()
     );
+    this._pendingEmptyClaims = null;
+    return true;
   }
 
   static EMPTY_CLAIM_RESULT = { bundle_id: null, execution_token: null, jobs: [] };
