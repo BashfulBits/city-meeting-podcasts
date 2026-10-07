@@ -466,7 +466,7 @@ test("the committed wrangler.jsonc vars plus compiled tuning pass validateConfig
   assert.equal(vars.DISPATCH_WINDOW_SECONDS, "30");
   // The configured upper bounds are ordered, the effective stops preserve the account reserve,
   // and a full day of admitted ingress fits under the enqueue threshold on its own.
-  const { DO_ROWS_WRITTEN_PLATFORM_LIMIT, ROWS_PER_INGRESS_WRITE_UNIT } = await import(
+  const { DO_ROWS_WRITTEN_PLATFORM_LIMIT, ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX } = await import(
     "../src/write_budget.js"
   );
   // The thresholds run at the coordinator's code defaults and are not declared as vars (Workers
@@ -482,7 +482,7 @@ test("the committed wrangler.jsonc vars plus compiled tuning pass validateConfig
   assert.equal(effective._maxQueuedJobs(), 20000);
   assert.ok(effective._optionalRowStop() < DO_ROWS_WRITTEN_PLATFORM_LIMIT);
   assert.ok(
-    ROWS_PER_INGRESS_WRITE_UNIT * Number(vars.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY) <=
+    ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX * Number(vars.MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY) <=
       effective._enqueueRowStop()
   );
   assert.equal(vars.ESTIMATED_CALL_DURATION_CEILING_SECONDS, "2");
@@ -510,11 +510,12 @@ test("validateConfig requires ordered daily row thresholds under the platform li
 });
 
 test("validateConfig keeps a full day of ingress under the enqueue threshold", () => {
-  // 1.25 rows per unit: 60,000 units could write 75,000 rows, past a 70,000 enqueue stop.
+  // Checked at the legacy-index ceiling of 2 rows per unit: 40,000 units could write 80,000 rows,
+  // past a 70,000 enqueue stop.
   assert.throws(
     () =>
       validateConfig(
-        createMockEnv({ MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "60000", DO_ROWS_ENQUEUE_STOP: "70000" })
+        createMockEnv({ MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "40000", DO_ROWS_ENQUEUE_STOP: "70000" })
       ),
     /past DO_ROWS_ENQUEUE_STOP/
   );

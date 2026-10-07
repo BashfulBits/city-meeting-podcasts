@@ -117,7 +117,9 @@ Step 1 removes the unique `(job_id, model)` index: a queued job records its mode
 `jobs.queue_models` (in the statement that already writes its row) and every unindex is a
 primary-key delete. Enqueue is now `4 + models` rows per job (one model 304 = 5.07/job, three
 models 424 = 7.07/job); claim deletes were already one billed row each and are unchanged.
-`ROWS_PER_INGRESS_WRITE_UNIT` falls from 2 to 1.25.
+`ROWS_PER_INGRESS_WRITE_UNIT` falls from 2 to 1.25 once the legacy index is retired; until then
+enqueue reserves `ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX` (2), since each model-index insert also
+writes that index's entry.
 
 Step 2 persists an empty claim whose reason matches the stored last outcome at most every ten
 minutes (`EMPTY_CLAIM_REFRESH_MS`); skipped ticks are counted in memory and folded into the next

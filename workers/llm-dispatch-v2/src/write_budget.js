@@ -32,6 +32,12 @@ export const DO_ROWS_ACCOUNT_RESERVE = 10000;
  * scheduler, accounting) is reserved separately by enqueueBatch. A rejected job writes nothing. */
 export const ROWS_PER_INGRESS_WRITE_UNIT = 1.25;
 
+/** The same while a coordinator still carries the legacy (job_id, model) index: every model-index
+ * insert also writes its index entry, so a job writes 4 + 2 x models rows for 3 + models units,
+ * approaching 2 per unit. enqueueBatch uses this until _retireLegacyJobModelsIndex drops the
+ * index, and validateConfig, which cannot see the schema, always does. */
+export const ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX = 2;
+
 /** Fixed per-bundle cost: the bundle row + its index, the claim-outcome scheduler row, and the
  * bundle delete at completion (4.5 claim-side + 1.4 completion-side), plus one accounting
  * row in each writing transaction. */
