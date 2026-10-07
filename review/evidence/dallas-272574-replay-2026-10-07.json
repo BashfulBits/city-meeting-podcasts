@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-07",
+  "source_key": "76869ed1994f",
+  "cached_record_count": 5353,
+  "cached_source_sha256": "c62d2b709c4e0606609bcfaaaa95c3113eb2877279050110d446d3beb2ee4eda",
+  "baseline_commit": "3bd44e4e0455803c6a9c1e015db2a68f0c9d7ac0",
+  "public_info_config_before_sha256": "607bae76219ec53e771d16f755a9adb5e3bc833cdf34c6f8d1732fb2c6590768",
+  "public_info_config_after_sha256": "d983c8f4fa95f78435ee380883c2b1d32c74b54d4ea22466cc6ac0767d02ce84",
+  "changed_feed_assignments": [
+    {
+      "uid": "aa65e2aafc90711b",
+      "added": [
+        "dallas-tx-public-info-meetings"
+      ],
+      "removed": []
+    }
+  ],
+  "verified_target_holders": [
+    "dallas-tx-bond-program-meetings",
+    "dallas-tx-public-info-meetings"
+  ],
+  "existing_sep19_uid": "eeca5aeceda62d39",
+  "sep19_public_info": "absent",
+  "method": "record_matches_body and configured exact inclusions across every Dallas feed; no network or data writes"
+}

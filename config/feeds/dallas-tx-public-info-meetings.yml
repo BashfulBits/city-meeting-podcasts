@@ -72,6 +72,9 @@ source:
     - '*Project Update*'
     - 'Charter Review Commission: Community Meeting'
     - 'Charter Review Commission: Community Meeting'
+  body_includes:
+    - provider_guid: '272574'
+      body: '2024 Capital Bond Program CBTF Meeting'
 podcast_title: 'Dallas: Public Info Meetings'
 podcast_author: City of Dallas, TX
 podcast_email: ''

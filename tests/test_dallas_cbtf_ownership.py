@@ -143,3 +143,49 @@ def test_verified_may25_cbtf_preserves_identity_and_bounded_admission():
     assert record["uid"] in rss
     assert record["audio"]["url"] in rss
     assert record == original
+
+
+def test_approved_sep26_town_hall_is_shared_with_public_info_only():
+    """The existing Bond rule and exact Public Info inclusion share one original recording."""
+    root = Path(__file__).resolve().parents[1]
+    cities = load_city_configs(root / "config", {})
+    feeds = {city.slug: city for city in cities if city.city_entity == "dallas-tx"}
+    bond = feeds["dallas-tx-bond-program-meetings"]
+    public_info = feeds["dallas-tx-public-info-meetings"]
+    town_hall = json.loads(
+        (root / "tests/fixtures/dallas-bond-public-info-town-hall.json").read_text()
+    )
+    september19 = next(
+        record
+        for record in json.loads(
+            (root / "tests/fixtures/dallas-cbtf-three-retained.json").read_text()
+        )
+        if record["provider_guid"] == "272005"
+    )
+    original_town_hall = copy.deepcopy(town_hall)
+    original_september19 = copy.deepcopy(september19)
+
+    def matches_feed(record, city):
+        return record_matches_body(
+            record,
+            source_body_filter(city.source),
+            source_body_inclusions(city.source),
+        )
+
+    assert matches_feed(town_hall, bond)
+    assert matches_feed(town_hall, public_info)
+    assert not matches_feed(september19, public_info)
+    assert matches_feed(september19, bond)
+
+    for city in (bond, public_info):
+        rss = build_rss(
+            city, [record_to_episode(town_hall)], "audio", "https://www.citymeetings.fyi"
+        )
+        assert town_hall["uid"] in rss
+        assert town_hall["audio"]["url"] in rss
+
+    same_body_other_guid = dict(town_hall, provider_guid="272005")
+    assert not matches_feed(same_body_other_guid, public_info)
+    assert matches_feed(same_body_other_guid, bond)
+    assert town_hall == original_town_hall
+    assert september19 == original_september19
