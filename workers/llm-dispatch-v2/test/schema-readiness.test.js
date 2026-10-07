@@ -34,12 +34,20 @@ test("readiness covers every column the initializer can add", () => {
   }
   const coordinator = new CaptureColumns({ storage: f.storage }, withTestReservations({}));
   for (const { table, column, definition } of coordinator.addedColumns) {
+    // SQLite refuses to drop a column a trigger body reads; set the trigger aside meanwhile.
+    const triggers = f.sql.exec(
+      "SELECT name, sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ? AND sql LIKE ?",
+      table,
+      `%${column}%`
+    ).map((row) => ({ ...row }));
+    for (const { name } of triggers) f.sql.exec(`DROP TRIGGER ${name}`);
     f.sql.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
     assert.ok(
       coordinator._inspectCurrentSchema().missing.includes(`column:${table}.${column}`),
       `startup must check ${table}.${column}`
     );
     f.sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+    for (const trigger of triggers) f.sql.exec(trigger.sql);
     if (column === "mistral_latest_migrated") {
       f.sql.exec("UPDATE scheduler SET mistral_latest_migrated = 1 WHERE id = 1");
     }

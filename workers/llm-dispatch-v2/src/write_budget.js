@@ -13,8 +13,9 @@
  * idled dispatch at roughly half the budget on a typical day (~13 rows per lease).
  *
  * The constants below were MEASURED by `bench/rows-written/` (the real `LLMSchedulerDO` under
- * workerd), remeasured 2026-10-04 after adding atomic accounting: a completed first-try job
- * costs ~21.6 billed rows end to end (44.3 before the row-write tiers). They size the ingress
+ * workerd), remeasured after each #1844 change (ledger in bench/rows-written/README.md): a
+ * completed first-try one-model job costs ~20.6 billed rows end to end (44.3 before the row-write
+ * tiers), plus ~1 more when retention later prunes its attempt row. They size the ingress
  * quota and are the reference for re-measuring after a schema/index/lifecycle change.
  */
 
@@ -24,11 +25,12 @@ export const DO_ROWS_WRITTEN_PLATFORM_LIMIT = 100000;
 /** Rows left unused for other account Durable Objects and billing-counter drift. */
 export const DO_ROWS_ACCOUNT_RESERVE = 10000;
 
-/** Rows written per ingress write unit admitted: a job writes 4 + 2 x models billed rows
- * (job row + two unique keys + state index; a clustered model-index row + its unique index each)
- * for 3 + models units -- 1.5 per unit at 1 model, 1.67 at 3, approaching 2 as models grow. 2 is
- * the ceiling at any model count. A rejected job writes nothing. */
-export const ROWS_PER_INGRESS_WRITE_UNIT = 2;
+/** Rows written per ingress write unit admitted: a job writes 4 + models billed rows (job row +
+ * two unique keys + state index; one clustered model-index row per model, with no job_id index
+ * since 2026-10-07) for 3 + models units -- 1.25 per unit at 1 model, 1.17 at 3, falling toward
+ * 1 as models grow. 1.25 is the ceiling at any model count. Per-batch bookkeeping (lane counter,
+ * scheduler, accounting) is reserved separately by enqueueBatch. A rejected job writes nothing. */
+export const ROWS_PER_INGRESS_WRITE_UNIT = 1.25;
 
 /** Fixed per-bundle cost: the bundle row + its index, the claim-outcome scheduler row, and the
  * bundle delete at completion (4.5 claim-side + 1.4 completion-side), plus one accounting

@@ -103,6 +103,7 @@ with workerd from wrangler 4.131.1.
 | Step | 1 model live | 1 model total | 3 models live | 3 models total | idle tick | requeue | in-lease 429 |
 |---|---:|---:|---:|---:|---:|---:|---:|
 | Baseline (main @ 065a1f1f) | 21.58 | 22.62 | 27.18 | 28.22 | 2 | 17 | 4 |
+| 1. No `job_models (job_id, model)` index | 20.58 | 21.62 | 24.18 | 25.22 | 2 | 16 | 4 |
 
 Baseline phase split (one model, 60 jobs, 15 bundles): enqueue 364, claim 312, attemptStarted
 240, completeBatch 318, retire 61, prune 62. Three models (12 bundles): enqueue 604, claim 410,
@@ -110,3 +111,9 @@ attemptStarted 240, completeBatch 316, retire 61, prune 62. Deletes bill one row
 table row: index entries are billed on insert but not on delete in these measurements.
 `requeue` is the `/retry` endpoint's attemptStarted + requeueing completion; `in-lease 429` is
 `/r429`'s authorizeRetry, both including their accounting row.
+
+Step 1 removes the unique `(job_id, model)` index: a queued job records its model-index keys in
+`jobs.queue_models` (in the statement that already writes its row) and every unindex is a
+primary-key delete. Enqueue is now `4 + models` rows per job (one model 304 = 5.07/job, three
+models 424 = 7.07/job); claim deletes were already one billed row each and are unchanged.
+`ROWS_PER_INGRESS_WRITE_UNIT` falls from 2 to 1.25.

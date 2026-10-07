@@ -2204,7 +2204,7 @@ test("jobs carries exactly one secondary state index; retired indexes are droppe
   assert.deepEqual(names, ["idx_jobs_state_updated_id"]);
 });
 
-test("an existing rowid job_models is rebuilt clustered, keeping rows, uniqueness and the priority trigger", async () => {
+test("an existing rowid job_models is rebuilt clustered, keeping rows, key uniqueness and the priority trigger", async () => {
   const { storage, sql } = createMockSqlStorage();
   // A pre-2026-09-23 coordinator: rowid job_models + separate scan index.
   sql.exec(`
@@ -2252,11 +2252,13 @@ test("an existing rowid job_models is rebuilt clustered, keeping rows, uniquenes
     .exec("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'job_models'")
     .map((row) => row.name)
     .filter((name) => !name.startsWith("sqlite_autoindex_"));
-  assert.deepEqual(indexes, ["idx_job_models_job_model"]);
-  // Uniqueness per job/model survives: a duplicate insert is ignored.
+  // No job_id index (2026-10-07): deletes seek the primary key from jobs.queue_models, and the
+  // one legacy row here has no queued job, so the transitional index is retired at once.
+  assert.deepEqual(indexes, []);
+  // Uniqueness per queue key survives: a duplicate insert is ignored.
   const before = sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n;
   sql.exec(
-    "INSERT OR IGNORE INTO job_models (job_id, model, priority, created_at) SELECT job_id, model, priority + 0, created_at + 1 FROM job_models"
+    "INSERT OR IGNORE INTO job_models (job_id, model, priority, created_at) SELECT job_id, model, priority, created_at FROM job_models"
   );
   assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n, before);
   // The priority-sync trigger still reaches the rebuilt table.
@@ -2274,6 +2276,66 @@ test("an existing rowid job_models is rebuilt clustered, keeping rows, uniquenes
     .map((row) => row.detail)
     .join(" | ");
   assert.ok(!plan.includes("TEMP B-TREE"), plan);
+});
+
+test("queued jobs from before queue_models keep the legacy job_id index until none remain", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const policy = JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"] });
+  // A production coordinator at deploy: the (job_id, model) index and a job queued without
+  // queue_models.
+  sql.exec(`
+    CREATE UNIQUE INDEX idx_job_models_job_model ON job_models (job_id, model);
+    INSERT INTO jobs (id, idempotency_key, request_digest, state, priority, policy_json,
+      prompt_family, input_token_estimate, max_output_token_estimate, payload_key, created_at,
+      updated_at)
+      VALUES ('legacy', 'k-legacy', 'd', 'queued', 1, '${policy}', 'tags', 10, 10, 'p', 5, 5);
+    INSERT INTO job_models (job_id, model, priority, created_at)
+      VALUES ('legacy', 'gemini/gemini-flash-lite', 1, 5);
+  `);
+  await coordinator.enqueueBatch([{
+    id: "fresh", idempotency_key: "k-fresh", request_digest: "d", policy_json: policy,
+    prompt_family: "tags", input_token_estimate: 10, max_output_token_estimate: 10,
+    payload_key: "p-fresh",
+  }]);
+  const fresh = sql.exec("SELECT queue_models FROM jobs WHERE id = 'fresh'")[0];
+  assert.equal(fresh.queue_models, JSON.stringify(["gemini/gemini-flash-lite"]));
+
+  const indexExists = () =>
+    sql.exec("SELECT 1 FROM sqlite_master WHERE name = 'idx_job_models_job_model'").length > 0;
+  await coordinator.recountQueuedJobs();
+  assert.ok(indexExists(), "a legacy job is still queued, so its delete path must stay indexed");
+
+  await coordinator.cancelBatch(["legacy"]);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id = 'legacy'")[0].n, 0);
+  await coordinator.recountQueuedJobs();
+  assert.ok(!indexExists(), "the index is retired once every queued job records queue_models");
+
+  // A recorded queue key is deleted by primary key, with no job_id index.
+  const plan = sql.exec(
+    "EXPLAIN QUERY PLAN DELETE FROM job_models WHERE model = ? AND priority = ? AND created_at = ? AND job_id = ?",
+    "m", 1, 1, "fresh"
+  ).map((row) => row.detail).join(" | ");
+  assert.match(plan, /PRIMARY KEY/);
+  await coordinator.cancelBatch(["fresh"]);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n, 0);
+});
+
+test("a direct priority edit moves a recorded queue key's rows by primary key", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([{
+    id: "promote", idempotency_key: "k-promote", request_digest: "d",
+    policy_json: JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"] }),
+    prompt_family: "tags", input_token_estimate: 10, max_output_token_estimate: 10,
+    payload_key: "p", priority: 1,
+  }]);
+  sql.exec("UPDATE jobs SET priority = 0 WHERE id = 'promote'");
+  assert.deepEqual(
+    sql.exec("SELECT priority FROM job_models WHERE job_id = 'promote'").map((row) => row.priority),
+    [0]
+  );
+  // ...and the moved rows are still found by the job's key when it is unindexed.
+  await coordinator.cancelBatch(["promote"]);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n, 0);
 });
 
 // ---------------------------------------------------------------------------------------------

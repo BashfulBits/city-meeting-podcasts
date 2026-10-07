@@ -12,6 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **LLM dispatch: one billed row per model index instead of two (#1844).** `job_models` drops its
+  unique `(job_id, model)` index. A queued job records its index keys in `jobs.queue_models`, and
+  every unindex is a primary-key delete. Measured with `bench/rows-written`, a first-try job falls
+  from 21.58 to 20.58 billed rows with one model and from 27.18 to 24.18 with three. The bench
+  now also runs multi-model lifecycles and the deferred retention prune. `ROWS_PER_INGRESS_WRITE_UNIT`
+  falls from 2 to 1.25. Production keeps the old index until no pre-change job is queued; the
+  hourly recount then drops it.
+
 - **Bound the pinned FFmpeg setup in pull-request CI.** Runtime-library setup and checksum-pinned
   archive installation now have separate step timeouts, so a stalled package mirror or a slow
   trickle during download fails visibly instead of leaving PR checks running indefinitely. The

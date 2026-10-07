@@ -163,14 +163,39 @@ function mergeSortedRows(left, right, limit, compare) {
 
 /** Keeps job_models' ordering priority in step with a direct jobs.priority edit (see the
  * comment where _initSchema installs it). Shared with _migrateJobModelsClustered, which must drop
- * and re-create it around the job_models rebuild. */
+ * and re-create it around the job_models rebuild.
+ *
+ * Seeks each of the job's index rows by full primary key, from the model list recorded on the job
+ * (queue_models), because job_models has no job_id index. The second statement covers a job
+ * queued before queue_models existed; it only matches while idx_job_models_job_model still
+ * exists to serve it (see _retireLegacyJobModelsIndex), and its constant NULL test is evaluated
+ * before any row is read otherwise. */
 const JOB_PRIORITY_SYNC_TRIGGER = `
       CREATE TRIGGER IF NOT EXISTS trg_jobs_priority_sync
       AFTER UPDATE OF priority ON jobs
       WHEN NEW.priority IS NOT OLD.priority
       BEGIN
-        UPDATE job_models SET priority = NEW.priority WHERE job_id = NEW.id;
+        UPDATE job_models SET priority = NEW.priority
+         WHERE model IN (SELECT value FROM json_each(NEW.queue_models))
+           AND priority = OLD.priority AND created_at = OLD.created_at AND job_id = NEW.id;
+        UPDATE job_models SET priority = NEW.priority
+         WHERE NEW.queue_models IS NULL AND job_id = NEW.id;
       END;`;
+
+/** Queued jobs indexed before 2026-10-07 carry no queue_models; this index serves their
+ * job_id-keyed deletes until none remain queued, then _retireLegacyJobModelsIndex drops it. */
+const LEGACY_JOB_MODELS_INDEX = "idx_job_models_job_model";
+
+/** A job's recorded job_models keys (jobs.queue_models), or null when it predates the column. */
+function parseQueueModels(value) {
+  if (value == null) return null;
+  try {
+    const models = JSON.parse(value);
+    return Array.isArray(models) ? models.filter((model) => typeof model === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 const CURRENT_SCHEMA_TABLES = [
   "jobs",
@@ -208,6 +233,7 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "buffer_updated_at",
   ],
   jobs: [
+    "queue_models",
     "token_reservation",
     "purpose",
     "schema_retry_count",
@@ -235,7 +261,6 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
 
 const CURRENT_SCHEMA_OBJECTS = [
   ["index", "idx_jobs_state_updated_id"],
-  ["index", "idx_job_models_job_model"],
   ["index", "idx_bundles_state_created"],
   ["trigger", "trg_jobs_priority_sync"],
 ];
@@ -678,6 +703,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
       if (objects.has(`${type}:${name}`)) missing.push(`retired-${type}:${name}`);
     }
 
+    const priorityTrigger = objects.get("trigger:trg_jobs_priority_sync");
+    if (priorityTrigger && !/queue_models/.test(String(priorityTrigger.sql))) {
+      missing.push("trigger-shape:trg_jobs_priority_sync queue_models");
+    }
+
     const jobModels = objects.get("table:job_models");
     if (jobModels && !/WITHOUT\s+ROWID/i.test(String(jobModels.sql))) {
       missing.push("table-shape:job_models WITHOUT ROWID");
@@ -742,6 +772,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         reservation_rpm_window_start INTEGER NOT NULL DEFAULT 0,
         reservation_rpd_day_key     TEXT NOT NULL DEFAULT '',
         reservation_tpm_window_start INTEGER NOT NULL DEFAULT 0,
+        queue_models                TEXT,
         created_at                  INTEGER NOT NULL,
         updated_at                  INTEGER NOT NULL
       );
@@ -764,9 +795,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
       -- capacity-ranked model rather than reading an arbitrary prefix of the whole queue.
       --
       -- Clustered on the admission scan order (WITHOUT ROWID), so the claim reads it directly and
-      -- an insert writes 2 billed rows (the row + the (job_id, model) index) instead of 3. The
-      -- UNIQUE index keeps one row per job/model and serves deletes by job_id. Coordinators
-      -- created before 2026-09-23 are rebuilt into this shape by _migrateJobModelsClustered.
+      -- an insert writes one billed row. There is deliberately no job_id index (2026-10-07): it
+      -- cost a billed row per job and model at enqueue. A job records the models it is indexed
+      -- under in jobs.queue_models (written by the statement that already writes its row), and
+      -- every delete seeks the full primary key from it. Coordinators created before 2026-09-23
+      -- are rebuilt into this shape by _migrateJobModelsClustered.
       CREATE TABLE IF NOT EXISTS job_models (
         job_id      TEXT NOT NULL,
         model       TEXT NOT NULL,
@@ -934,11 +967,21 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // instance; it does not retroactively add a column introduced later (rpd_window_start/
     // rpd_count, added alongside Phase 2's claimDispatchWindow) to a `routes` table an earlier
     // deploy already created. Defensive, cheap, and a no-op on a fresh instance.
+    // Before the clustering migration and the trigger replacement below: both create the
+    // priority trigger, whose body reads queue_models.
+    this._ensureColumn("jobs", "queue_models", "TEXT");
     this._runSchemaInitStep("cluster job_models", () => this._migrateJobModelsClustered());
     this._runSchemaInitStep("cluster bundles", () => this._migrateBundlesClustered());
-    this._runSchemaInitStep("create job_models unique index", () => sql.exec(
-      "CREATE UNIQUE INDEX IF NOT EXISTS idx_job_models_job_model ON job_models (job_id, model)"
-    ));
+    this._runSchemaInitStep("replace job priority trigger", () => {
+      const [trigger] = [...sql.exec(
+        "SELECT sql FROM sqlite_master WHERE type = 'trigger' AND name = 'trg_jobs_priority_sync'"
+      )];
+      if (trigger && /queue_models/.test(String(trigger.sql))) return;
+      sql.exec(`DROP TRIGGER IF EXISTS trg_jobs_priority_sync; ${JOB_PRIORITY_SYNC_TRIGGER}`);
+    });
+    this._runSchemaInitStep("retire legacy job_models index", () =>
+      this._retireLegacyJobModelsIndex()
+    );
     this._ensureColumn("routes", "rpd_window_start", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("routes", "rpd_count", "INTEGER NOT NULL DEFAULT 0");
     // Daily quotas reset on the provider's calendar day, not 24h after first use.
@@ -1199,6 +1242,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["reservation_rpm_window_start", "INTEGER NOT NULL DEFAULT 0"],
       ["reservation_rpd_day_key", "TEXT NOT NULL DEFAULT ''"],
       ["reservation_tpm_window_start", "INTEGER NOT NULL DEFAULT 0"],
+      ["queue_models", "TEXT"],
     ]);
     if (!ALLOWED_TABLES.has(table) || ALLOWED_COLUMNS.get(column) !== definition) {
       throw new Error(`_ensureColumn rejected unallowed schema mutation: ${table}.${column} ${definition}`);
@@ -2000,7 +2044,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // admission capacity, and rejecting it as daily_cap_exceeded would orphan the caller's
         // retry of a job that was, in fact, already accepted.
         const existing = [...sql.exec(
-          "SELECT id, request_digest, state FROM jobs WHERE idempotency_key = ?",
+          "SELECT id, request_digest, state, priority, created_at, queue_models FROM jobs WHERE idempotency_key = ?",
           job.idempotency_key
         )];
 
@@ -2119,6 +2163,18 @@ export class LLMSchedulerDO extends DurableObjectBase {
               continue;
             }
             if (row.state !== "queued") queuedAdded += 1;
+            // The allowed-model set can itself have changed between the old and new payload, so
+            // rebuild the index rather than trust whatever it already held (or didn't -- a
+            // completed/failed row has none, since claiming deletes it). Unindex under the OLD
+            // key before the UPDATE moves priority/created_at, so the priority trigger and the
+            // primary-key deletes both see the key the rows were written with.
+            if (row.state === "queued") this._unindexQueuedJob(row);
+            // created_at moves with the queue key: a superseded job re-enters the queue as of now,
+            // as it always did, and jobs.created_at stays the key its index rows carry.
+            const supersededJob = {
+              ...job, id: row.id, policy_json: policyJson, priority, created_at: now,
+            };
+            const queueModels = this._modelsToIndex(supersededJob);
             sql.exec(
               `UPDATE jobs SET
                  request_digest = ?, provider_idempotency_key = ?, state = 'queued',
@@ -2126,7 +2182,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
                  input_token_estimate = ?, max_output_token_estimate = ?, payload_key = ?,
                  result_key = NULL, lease_token = NULL, lease_route_id = NULL,
                  lease_expires_at = NULL, bundle_id = NULL, attempts = 0,
-                 transient_retry_count = 0, updated_at = ?
+                 transient_retry_count = 0, queue_models = ?, created_at = ?, updated_at = ?
                WHERE id = ?`,
               job.request_digest,
               providerIdempotencyKey,
@@ -2137,18 +2193,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
               job.input_token_estimate,
               job.max_output_token_estimate,
               job.payload_key,
+              JSON.stringify(queueModels),
+              now,
               now,
               row.id
             );
-            // The allowed-model set can itself have changed between the old and new payload, so
-            // rebuild the index rather than trust whatever it already held (or didn't -- a
-            // completed/failed row has none, since claiming deletes it).
-            sql.exec("DELETE FROM job_models WHERE job_id = ?", row.id);
-            this._indexQueuedJobModels(
-              { ...job, id: row.id, policy_json: policyJson, priority, created_at: now },
-              priority,
-              now
-            );
+            this._indexQueuedJobModels(supersededJob, queueModels);
             rowBudgetReserved += supersedeRows;
             // Superseding replaces a row that already existed; it is not new admission and must
             // not consume today's cap, for the same reason an idempotent replay doesn't.
@@ -2264,13 +2314,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
           continue;
         }
 
+        const queuedJob = { ...job, policy_json: policyJson, priority, created_at: now };
+        const queueModels = this._modelsToIndex(queuedJob);
         sql.exec(
           `INSERT INTO jobs (
             id, idempotency_key, request_digest, provider_idempotency_key,
             state, priority, purpose, policy_json, prompt_family,
             input_token_estimate, max_output_token_estimate,
-            payload_key, attempts, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+            payload_key, attempts, queue_models, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
           job.id,
           job.idempotency_key,
           job.request_digest,
@@ -2282,14 +2334,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
           job.input_token_estimate,
           job.max_output_token_estimate,
           job.payload_key,
+          JSON.stringify(queueModels),
           now,
           now
         );
-        this._indexQueuedJobModels(
-          { ...job, policy_json: policyJson, priority, created_at: now },
-          priority,
-          now
-        );
+        this._indexQueuedJobModels(queuedJob, queueModels);
 
         newlyInsertedCount++;
         queuedAdded += 1;
@@ -2464,13 +2513,24 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // plain dispatch attempts (backupModelsActive, routes.js) -- otherwise a schema-correction
       // clone would always start over at attempts=0 and could never surface a backup model.
       // (nextSchemaRetryCount computed above, before the write-unit charge.)
+      const queuedClone = {
+        id,
+        policy_json: source.policy_json,
+        priority: source.priority,
+        input_token_estimate: retry.corrected_input_token_estimate,
+        max_output_token_estimate: source.max_output_token_estimate,
+        attempts: source.attempts,
+        schema_retry_count: nextSchemaRetryCount,
+        created_at: now,
+      };
+      const queueModels = this._modelsToIndex(queuedClone);
       sql.exec(
         `INSERT INTO jobs (
           id, idempotency_key, request_digest, provider_idempotency_key,
           state, priority, purpose, policy_json, prompt_family,
           input_token_estimate, max_output_token_estimate,
-          payload_key, attempts, schema_retry_count, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          payload_key, attempts, schema_retry_count, queue_models, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         id,
         idempotencyKey,
         retry.corrected_request_digest,
@@ -2484,23 +2544,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         retry.corrected_payload_key,
         source.attempts,
         nextSchemaRetryCount,
+        JSON.stringify(queueModels),
         now,
         now
       );
-      this._indexQueuedJobModels(
-        {
-          id,
-          policy_json: source.policy_json,
-          priority: source.priority,
-          input_token_estimate: retry.corrected_input_token_estimate,
-          max_output_token_estimate: source.max_output_token_estimate,
-          attempts: source.attempts,
-          schema_retry_count: nextSchemaRetryCount,
-          created_at: now,
-        },
-        source.priority,
-        now
-      );
+      this._indexQueuedJobModels(queuedClone, queueModels);
       sql.exec(
         `UPDATE scheduler SET jobs_ingested_today = jobs_ingested_today + 1,
          ingress_write_units_today = ingress_write_units_today + ?,
@@ -2737,10 +2785,22 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
     // The stranding check. A queued job with no job_models row can never be selected by
     // claimDispatchWindow, so `queued` above would look healthy while nothing is claimable.
-    const unindexed = one(
-      `SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'
-         AND NOT EXISTS (SELECT 1 FROM job_models WHERE job_models.job_id = jobs.id)`
-    ).n;
+    // Without the legacy job_id index, look each queued job's rows up by the primary key its
+    // recorded queue_models implies. A NULL list after that index is retired is itself a defect
+    // and counts as unindexed.
+    const unindexed = this._hasLegacyJobModelsIndex()
+      ? one(
+        `SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'
+           AND NOT EXISTS (SELECT 1 FROM job_models WHERE job_models.job_id = jobs.id)`
+      ).n
+      : one(
+        `SELECT COUNT(*) AS n FROM jobs j WHERE j.state = 'queued'
+           AND NOT EXISTS (
+             SELECT 1 FROM json_each(j.queue_models) q
+             JOIN job_models m ON m.model = q.value AND m.priority = j.priority
+               AND m.created_at = j.created_at AND m.job_id = j.id
+           )`
+      ).n;
 
     const oldestQueued = one(
       "SELECT MIN(created_at) AS t FROM jobs WHERE state = 'queued'"
@@ -3033,7 +3093,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       for (const chunk of this._chunks(jobIds)) {
         const placeholders = chunk.map(() => "?").join(",");
         const rows = [...sql.exec(
-          `SELECT id, state FROM jobs WHERE id IN (${placeholders})`,
+          `SELECT id, state, priority, created_at, queue_models FROM jobs WHERE id IN (${placeholders})`,
           ...chunk
         )];
         for (const row of rows) {
@@ -3046,7 +3106,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             cancelled.push(row.id);
             continue;
           }
-          sql.exec("DELETE FROM job_models WHERE job_id = ?", row.id);
+          if (row.state === "queued") this._unindexQueuedJob(row);
           sql.exec(
             "UPDATE jobs SET state = 'purge_pending', updated_at = ? WHERE id = ?",
             Date.now(),
@@ -3250,22 +3310,79 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return models.length > 0 ? models : ["__unroutable__"];
   }
 
-  _indexQueuedJobModels(job, priority = job.priority, createdAt = job.created_at, models) {
+  /**
+   * Write `job`'s job_models rows under (model, job.priority, job.created_at, job.id). The caller
+   * computes `models` with _modelsToIndex BEFORE writing the job row, and records
+   * JSON.stringify(models) as jobs.queue_models in that same statement, so the list costs no
+   * extra billed row and _unindexQueuedJob can later delete by primary key.
+   */
+  _indexQueuedJobModels(job, models) {
     const sql = this._getSql();
     // Preserve one sentinel for an unrouteable policy at INDEX time. It is never present in
     // model_routes_map, so claimDispatchWindow's per-model scan never reads it -- a job here is
     // invisible to every claim regardless of live route state, not merely paused, until
     // _reconcileUnroutableJobs (below) periodically re-checks it against the current catalog.
-    for (const model of models || this._modelsToIndex(job)) {
+    for (const model of models) {
       sql.exec(
         `INSERT OR IGNORE INTO job_models (job_id, model, priority, created_at)
          VALUES (?, ?, ?, ?)`,
         job.id,
         model,
-        priority,
-        createdAt
+        job.priority,
+        job.created_at
       );
     }
+  }
+
+  /**
+   * Delete a queued job's job_models rows. `job` needs id, priority, created_at and queue_models.
+   * Each delete is a primary-key seek; job_models has no job_id index to delete by.
+   */
+  _unindexQueuedJob(job) {
+    const sql = this._getSql();
+    const models = parseQueueModels(job.queue_models);
+    if (models === null) {
+      // Queued before queue_models existed. LEGACY_JOB_MODELS_INDEX serves this until
+      // _retireLegacyJobModelsIndex sees no such job queued; after that it is only reachable
+      // through a direct Data Studio edit, and is correct (if a scan) either way.
+      sql.exec("DELETE FROM job_models WHERE job_id = ?", job.id);
+      return;
+    }
+    for (const model of models) {
+      sql.exec(
+        `DELETE FROM job_models
+         WHERE model = ? AND priority = ? AND created_at = ? AND job_id = ?`,
+        model,
+        job.priority,
+        job.created_at,
+        job.id
+      );
+    }
+  }
+
+  _hasLegacyJobModelsIndex() {
+    return [...this._getSql().exec(
+      "SELECT 1 AS present FROM sqlite_master WHERE type = 'index' AND name = ?",
+      LEGACY_JOB_MODELS_INDEX
+    )].length > 0;
+  }
+
+  /**
+   * Drop the pre-2026-10-07 (job_id, model) index once every queued job records its queue key.
+   * Jobs leased or terminal at deploy carry no index rows, and every path that requeues one
+   * records queue_models, so the set of legacy queued jobs only shrinks. Reads queued jobs by the
+   * state index until it finds one; runs at schema init and with the hourly recount.
+   */
+  _retireLegacyJobModelsIndex() {
+    if (!this._hasLegacyJobModelsIndex()) return false;
+    const sql = this._getSql();
+    const legacy = [...sql.exec(
+      "SELECT id FROM jobs WHERE state = 'queued' AND queue_models IS NULL LIMIT 1"
+    )];
+    if (legacy.length > 0) return false;
+    sql.exec(`DROP INDEX IF EXISTS ${LEGACY_JOB_MODELS_INDEX}`);
+    console.info(JSON.stringify({ event: "legacy_job_models_index_retired" }));
+    return true;
   }
 
   /** Every route configured for any of `job`'s allowed models, per the current catalog -- used
@@ -3325,16 +3442,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
     for (const job of rows) {
       const models = this._modelsForQueuedJob(job, dispatchLimits);
       if (models.length > 0) {
-        sql.exec(
-          "DELETE FROM job_models WHERE job_id = ? AND model = '__unroutable__'",
-          job.id
-        );
-        this._indexQueuedJobModels(job, job.priority, job.created_at, models);
+        this._unindexQueuedJob(job);
+        sql.exec("UPDATE jobs SET queue_models = ? WHERE id = ?", JSON.stringify(models), job.id);
+        this._indexQueuedJobModels(job, models);
         reindexedIds.push(job.id);
         continue;
       }
       sql.exec("UPDATE jobs SET state = 'failed', updated_at = ? WHERE id = ?", now, job.id);
-      sql.exec("DELETE FROM job_models WHERE job_id = ?", job.id);
+      this._unindexQueuedJob(job);
       for (const routeId of this._routesForUnroutableJob(job, dispatchLimits)) {
         this._recordRouteFailure(sql, now, routeId, "job_unroutable", null);
       }
@@ -4037,14 +4152,22 @@ export class LLMSchedulerDO extends DurableObjectBase {
             job.lease_route_id
           );
         }
-        sql.exec(
-          `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
-                            lease_expires_at=NULL, bundle_id=NULL, token_reservation=0, updated_at=?
-           WHERE state='leased' AND lease_expires_at < ?`,
-          now,
-          now
-        );
-        for (const job of expiredJobs) this._indexQueuedJobModels(job);
+        // One UPDATE per job (the same billed rows as one multi-row UPDATE): each records the
+        // queue key it is re-indexed under. Selected above in this transaction, so by id is
+        // exactly the set the old `state='leased' AND lease_expires_at < ?` UPDATE matched.
+        for (const job of expiredJobs) {
+          const queueModels = this._modelsToIndex(job);
+          sql.exec(
+            `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
+                              lease_expires_at=NULL, bundle_id=NULL, token_reservation=0,
+                              queue_models=?, updated_at=?
+             WHERE id = ?`,
+            JSON.stringify(queueModels),
+            now,
+            job.id
+          );
+          this._indexQueuedJobModels(job, queueModels);
+        }
       }
 
       // A completed/requeued bundle is normally deleted by completeBatch. If the executor
@@ -4324,7 +4447,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       for (const { job, eligibleRoutes } of oversizeJobs) {
         // Read as 'queued' inside this same transaction, so the transition is safe unconditionally.
         sql.exec("UPDATE jobs SET state = 'failed', updated_at = ? WHERE id = ?", now, job.id);
-        sql.exec("DELETE FROM job_models WHERE job_id = ?", job.id);
+        this._unindexQueuedJob(job);
         for (const route of eligibleRoutes) {
           if (Number.isFinite(hardInputCeilingLimit(route))) {
             this._recordRouteFailure(sql, now, route.route_id, "input_over_route_ceiling", null);
@@ -4489,7 +4612,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           );
           // Keep the model index queue-only: a completed historical backlog must never make a
           // later model lookup walk terminal rows before it reaches current work.
-          sql.exec("DELETE FROM job_models WHERE job_id = ?", job.id);
+          this._unindexQueuedJob(job);
 
           if (route.provider && providerCfg?.tpm) {
             let pWorking = getMergedProvider(route.provider, providerCfg);
@@ -5095,28 +5218,33 @@ export class LLMSchedulerDO extends DurableObjectBase {
         }
 
         if (result.outcome === "deferred_late") {
+          const queueModels = this._modelsToIndex(job);
           sql.exec(
             `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
-                              lease_expires_at=NULL, bundle_id=NULL, updated_at=? WHERE id=?`,
+                              lease_expires_at=NULL, bundle_id=NULL, queue_models=?, updated_at=?
+             WHERE id=?`,
+            JSON.stringify(queueModels),
             now,
             result.job_id
           );
-          this._indexQueuedJobModels(job);
+          this._indexQueuedJobModels(job, queueModels);
           requeuedCount += 1;
         } else if (shouldRequeue) {
           // Must go through this branch, not the generic UPDATE below: claiming a job deletes its
           // job_models index rows, so a requeue that only rewrites `state` leaves the job queued
           // with no index row and holding a stale lease -- claimDispatchWindow can never select it
           // again, stranding it silently.
+          const queueModels = this._modelsToIndex(job);
           sql.exec(
             `UPDATE jobs SET state='queued', lease_token=NULL, lease_route_id=NULL,
                              lease_expires_at=NULL, bundle_id=NULL, transient_retry_count=?,
-                             updated_at=? WHERE id=?`,
+                             queue_models=?, updated_at=? WHERE id=?`,
             nextTransientRetryCount,
+            JSON.stringify(queueModels),
             now,
             result.job_id
           );
-          this._indexQueuedJobModels(job);
+          this._indexQueuedJobModels(job, queueModels);
           requeuedCount += 1;
         } else if (result.outcome === "success") {
           sql.exec(
@@ -5474,6 +5602,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
     return this._transactionSync(() => {
       this._ensureQueuedJobCounter();
+      this._retireLegacyJobModelsIndex();
       const actual = [...sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state = 'queued'")][0]?.n || 0;
       sql.exec(
         "UPDATE scheduler SET queued_job_count = ? WHERE id = 1 AND queued_job_count <> ?",
@@ -5661,7 +5790,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       let purged = 0;
       for (const chunk of this._chunks(jobIds)) {
         const placeholders = chunk.map(() => "?").join(",");
-        sql.exec(`DELETE FROM job_models WHERE job_id IN (${placeholders})`, ...chunk);
+        // No job_models delete: a purge_pending job was unindexed when it left 'queued' (cancel,
+        // claim, or a failure path), and job_models has no job_id index to delete by.
         sql.exec(
           `DELETE FROM jobs WHERE id IN (${placeholders}) AND +state = 'purge_pending'`,
           ...chunk

@@ -510,11 +510,11 @@ test("validateConfig requires ordered daily row thresholds under the platform li
 });
 
 test("validateConfig keeps a full day of ingress under the enqueue threshold", () => {
-  // 2 rows per unit: 40,000 units could write 80,000 rows, past a 70,000 enqueue stop.
+  // 1.25 rows per unit: 60,000 units could write 75,000 rows, past a 70,000 enqueue stop.
   assert.throws(
     () =>
       validateConfig(
-        createMockEnv({ MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "40000", DO_ROWS_ENQUEUE_STOP: "70000" })
+        createMockEnv({ MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY: "60000", DO_ROWS_ENQUEUE_STOP: "70000" })
       ),
     /past DO_ROWS_ENQUEUE_STOP/
   );

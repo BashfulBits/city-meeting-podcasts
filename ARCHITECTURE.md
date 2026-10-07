@@ -560,8 +560,10 @@ unlimited headroom; builds and completed-result reconciliation continue.
 coordinator's schema is kept minimal on purpose (2026-09-23 row-write tiers; see CHANGELOG): `jobs`
 carries only the indexes a query uses (`idx_jobs_state_updated_id`), and nothing bumps its indexed
 `updated_at` for a non-terminal job; `job_models` is a `WITHOUT ROWID` table clustered on its
-admission scan key `(model, priority, created_at, job_id)` plus a unique `(job_id, model)` index
-(2 rows per entry, rebuilt once from the older rowid shape); `attempts` has no `created_at` index
+admission scan key `(model, priority, created_at, job_id)` with no secondary index (1 row per
+entry); a queued job records the models it is indexed under in `jobs.queue_models`, written by the
+statement that already writes its row, so every unindex is a primary-key delete (the old unique
+`(job_id, model)` index is dropped once no job queued before 2026-10-07 remains); `attempts` has no `created_at` index
 and is pruned oldest-first by rowid; token calibration writes every completion until a
 route/model/prompt-family window holds 32 samples, then a deterministic 1-in-4 sample by job id;
 and same-row bookkeeping in one transaction (per-purpose ingress counters, a success's route
