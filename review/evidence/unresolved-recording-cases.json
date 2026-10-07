@@ -2621,9 +2621,9 @@
       "uid": "2d2bc233efd9bf97",
       "provider_guid": "269407",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "The retained source record dates this episode August 10, 2023, but the official Dallas Streets and Transportation Subcommittee page currently lists August 15 as Meeting #5, not an August 10 meeting. No dated official August 10 agenda/minutes or exact official video link was located; the provider record alone is not independent proof.",
+      "next_action": "Locate the dated official agenda/minutes or an official video link that identifies this exact provider recording; preserve its existing Transportation feed assignment until then.",
+      "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
       ],
@@ -2653,9 +2653,9 @@
       "uid": "8578348e702caf35",
       "provider_guid": "277830",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "A City Manager memo dated October 27, 2023 says the 2024 Bond subcommittees were expected to reconvene and provide recommendations by October 31. It does not name an October 27 Streets meeting or bind provider GUID277830 / this UID to an official agenda or recording.",
+      "next_action": "Locate the dated official agenda/minutes or an official video link that identifies this exact provider recording; preserve its existing Transportation feed assignment until then.",
+      "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
       ],
@@ -2685,9 +2685,9 @@
       "uid": "b0471f29622b8165",
       "provider_guid": "277827",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "A City Manager memo dated October 27, 2023 says the 2024 Bond subcommittees were expected to reconvene and provide recommendations by October 31. It does not name an October 26 Streets meeting or bind provider GUID277827 / this UID to an official agenda or recording.",
+      "next_action": "Locate the dated official agenda/minutes or an official video link that identifies this exact provider recording; preserve its existing Transportation feed assignment until then.",
+      "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
       ],

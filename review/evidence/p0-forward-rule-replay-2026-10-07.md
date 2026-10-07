@@ -133,6 +133,13 @@ the measures for policy coverage; live deployment evidence remains a separate P0
 
 The official [Dallas Streets and Transportation Subcommittee page](https://dallascityhall.com/departments/bond-construction-management/Pages/Streets-and-Transportation-Subcommittee.aspx) lists Tuesday, August 22, 2023 as “Streets and Transportation Meeting #6,” matching the date and committee identity on retained provider GUID270975 / UID `16300c982b358fe9`. But the published official page’s Video button has no URL or provider GUID in its HTML. This confirms the official meeting listing, not the exact source-video binding; its case remains open and its current feed assignment is unchanged.
 
+For the other three open Dallas Streets records, the official listing currently shows August 15 as
+Meeting #5 but not an August 10 meeting. A City Manager memo dated October 27 says the bond
+subcommittees were expected to reconvene by October 31, which supports the general schedule but
+does not identify the October 26 or October 27 provider recordings. The source records remain in
+their current Transportation feed; no case is closed from this contextual evidence alone. See the
+[official memo](https://dallas.gov/government/citymanager/Documents/FY23-24%20Memos/Combined%20Friday%20Memos_%20102723.pdf).
+
 
 ## P0 live status — 2026-10-07
 
