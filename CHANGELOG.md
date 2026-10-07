@@ -35,9 +35,10 @@ Once 1.0 ships, entries move under semver tags.
   unique `(job_id, model)` index. A queued job records its index keys in `jobs.queue_models`, and
   every unindex is a primary-key delete. Measured with `bench/rows-written`, a first-try job falls
   from 21.58 to 20.58 billed rows with one model and from 27.18 to 24.18 with three. The bench
-  now also runs multi-model lifecycles and the deferred retention prune. `ROWS_PER_INGRESS_WRITE_UNIT`
-  falls from 2 to 1.25. Production keeps the old index until no pre-change job is queued; the
-  hourly recount then drops it.
+  now also runs multi-model lifecycles and the deferred retention prune. Production keeps the
+  old index until no pre-change job is queued; the hourly recount then drops it. Until then each
+  model-index insert still writes that index's entry, so enqueue reserves 2 rows per ingress unit,
+  falling to 1.25 (`ROWS_PER_INGRESS_WRITE_UNIT`) once the index is gone.
 
 - **Bound the pinned FFmpeg setup in pull-request CI.** Runtime-library setup and checksum-pinned
   archive installation now have separate step timeouts, so a stalled package mirror or a slow

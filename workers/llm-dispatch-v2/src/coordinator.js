@@ -15,6 +15,7 @@ import {
   ROWS_PER_BUNDLE,
   ROWS_PER_CLEANUP_JOB,
   ROWS_PER_INGRESS_WRITE_UNIT,
+  ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX,
   ROWS_PER_LEASE_WORST,
 } from "./write_budget.js";
 import {
@@ -1279,7 +1280,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const minutes = Math.floor((Date.now() - Date.parse(`${today}T00:00:00Z`)) / 60_000);
     const cleanupRuns = Math.floor(minutes / Math.max(1, this._envInt("CLEANUP_INTERVAL_MINUTES", 10)));
     const estimate =
-      ROWS_PER_INGRESS_WRITE_UNIT * (Number(sched.ingress_write_units_today) || 0) +
+      this._rowsPerIngressWriteUnit() * (Number(sched.ingress_write_units_today) || 0) +
       ROWS_PER_BUNDLE * (Number(sched.bundle_count_today) || 0) +
       ROWS_PER_LEASE_WORST * (Number(sched.lease_count_today) || 0) +
       ROWS_PER_CLEANUP_JOB * cleanupRuns * this._envInt("PURGE_BATCH_LIMIT", 15) +
@@ -2007,6 +2008,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return this._transactionSync(() => {
       this._ensureMigratedJobModels();
       this._ensureQueuedJobCounter();
+      const rowsPerWriteUnit = this._rowsPerIngressWriteUnit();
       const accepted = [];
       const rejected = [];
 
@@ -2306,7 +2308,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         // Re-check row headroom for every job. Checking only at batch entry allowed one
         // ENQUEUE_BATCH_MAX-sized request to start just below the stop and commit thousands of
         // jobs before the next claim observed the limit.
-        const estimatedRows = ROWS_PER_INGRESS_WRITE_UNIT * writeUnits;
+        const estimatedRows = rowsPerWriteUnit * writeUnits;
         if (!canReserveRows(estimatedRows)) {
           this._logRowBudgetStop("enqueue_batch_reservation", {
             rows_written_today: rowBudgetBase,
@@ -3373,6 +3375,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
         job.id
       );
     }
+  }
+
+  /** Billed rows to reserve per admitted ingress write unit: more while the legacy job_id index
+   * still adds an entry to every job_models insert (write_budget.js). */
+  _rowsPerIngressWriteUnit() {
+    return this._hasLegacyJobModelsIndex()
+      ? ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX
+      : ROWS_PER_INGRESS_WRITE_UNIT;
   }
 
   _hasLegacyJobModelsIndex() {
