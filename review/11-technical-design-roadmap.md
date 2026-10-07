@@ -150,8 +150,9 @@ The maintainer directed that GUID 272574 remain only in Dallas Bond Program. The
 Dallas replay found exactly one Public Info placement removed and no other Dallas feed changes. The
 catalog-wide added-placement count is 1,975, with 1,952 distinct source/UID pairs, 30 removed
 placements, and a net increase of 1,945 feed assignments. The unmatched count stays 411: 405
-intentionally not pursued and six approved Addison archive-only items awaiting visibility
-verification. The October 3 Dallas
+intentionally not pursued and six approved Addison archive-only items. The six are absent from
+regular feeds and browse pages, and their individual archive pages remain available; only search
+visibility is unverified because the public search index is unavailable. The October 3 Dallas
 CBTF recording is verified in Bond Program only. The September 26 evidence case remains open until
 the routing correction deploys and live RSS confirms Bond Program presence and Public Info and
 Task Force absence. Public comment alone does not send a meeting to Public Info. The replay also

@@ -56,7 +56,7 @@ The 411 unmatched entries break down as follows:
 | Treatment | Entries | Meaning |
 |---|---:|---|
 | Not to pursue | 405 | User-approved small or non-meeting groups; keep their raw records, do not add a feed rule |
-| Archive-only visibility check | 6 | Addison media already approved for archive-only treatment; confirm hidden from feeds/search and retained at the original archive page |
+| Approved archive-only | 6 | Addison media is absent from regular feeds and browse pages; original archive pages remain available. Search visibility cannot be checked while the public search index is unavailable. |
 | **Total** | **411** | Source/UID entries, not a guarantee of 411 distinct videos |
 
 Of the 411, 360 came from the frozen 680-pattern baseline and 51 were additional cached entries outside
@@ -173,8 +173,10 @@ or audio were changed.
 
 The published root `meta.json` reports `search_shards: 0`, and `/search/` plus
 `/data/search/manifest.json` return HTTP 404. The search job succeeded but did not publish a search
-index. Do not claim public catalog search or verify the archive-only search filter from this run.
-This is a separate site-search limitation; the P0 feed rules and RSS checks above remain deployed.
+index. The six approved Addison archive-only recordings are absent from regular feeds and browse
+pages, and their individual archive pages remain available. Their omission from search cannot be
+checked while public search is unavailable. This is a separate site-search limitation; it does not
+mean their publication dispositions are undecided.
 
 The frozen 680-pattern disposition baseline is applied on the public site. The revised local
 disposition has 518 assigned patterns, one archive-only pattern, and 161 not pursued. Nine
@@ -203,7 +205,9 @@ No other Dallas feed selection changed. The input SHA-256 and before/after confi
 Applying that one-row change to the cached-catalog replay yields 1,975 added feed placements,
 1,952 distinct source/UID pairs, 30 removed Fort Worth Council placements, and 29,379 total feed
 assignments (net +1,945 from baseline). The no-feed count remains 411: 405 intentionally not
-pursued and six approved Addison archive-only items. The 680 title-pattern outcomes do not change.
+pursued and six approved Addison archive-only items. The six are absent from feeds and browse pages,
+with their original archive pages available; search visibility remains unverified while the public
+search index is unavailable. The 680 title-pattern outcomes do not change.
 These are local rule results, not deployed verification.
 
 The September 26 case remains open until a deployment check finds the original UID/audio in Bond
