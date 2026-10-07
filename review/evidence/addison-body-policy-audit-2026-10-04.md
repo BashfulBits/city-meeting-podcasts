@@ -2138,8 +2138,9 @@ feeds. The existing Bond `*CBTF*` selector admits GUID 272574, so issue #2115 an
 leave that feed rule unchanged. The prior P0 replay applied the top-level `body_exclude` note as a
 denylist, but runtime feed routing does not apply it; this task does not change that broader
 behavior. The cached source has two records with the exact label: September 19 GUID 272005 and
-September 26 GUID 272574. Keep the former Bond-only. For Public Info, add only the September 26
-source identity because its provider title omits “Town Hall”; a shared exact-title rule would also
+September 26 GUID 272574. Keep the former out of Public Info and preserve its other existing
+holders. For Public Info, add only the September 26 source identity because its provider title omits
+“Town Hall”; a shared exact-title rule would also
 admit the September 19 formal meeting without evidence it was public input. Preserve UID, title,
 source, chapter and audio. The open case now tracks live publication verification in both feeds,
 not the accepted destination decision.

@@ -2449,8 +2449,9 @@ stay unchanged for future, clearly titled Town Halls.
 
 Preserve UID, provider GUID, official title/date, source namespace, source chapter and audio. Add an
 unaltered original-record fixture. Tests must prove the same UID and original audio appear in both
-feeds, the September 19 recording remains Bond-only, a different GUID with the same body is rejected
-by Public Info, and raw source records are unchanged. Full 5,353-record replay must add only UID
+feeds, the September 19 recording remains outside Public Info with its existing holders unchanged,
+a different GUID with the same body is rejected by Public Info, and raw records are unchanged. Full
+5,353-record replay must add only UID
 `aa65e2aafc90711b` to Public Info; the Bond assignment already exists and every other feed holder
 set must remain unchanged. Run the full offline suite and whole-repository Ruff/format checks. Keep
 the case open
