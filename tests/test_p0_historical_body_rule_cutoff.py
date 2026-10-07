@@ -61,7 +61,9 @@ def test_historical_body_rule_rows_match_their_source_scoped_feed() -> None:
     assert approved
     for row in approved:
         feed = feeds[row["maintainer_final_destination"]]
-        for source_row in replay_by_id[row["id"]]:
+        source_rows = replay_by_id[row["id"]]
+        assert source_rows, row["id"]
+        for source_row in source_rows:
             assert source_key(feed) == source_row["source_key"]
             assert _matches_feed(source_row["record_body"], feed), (
                 row["id"],
@@ -96,7 +98,9 @@ def test_not_pursued_rows_are_not_captured_by_new_body_rules() -> None:
     ]
     assert len(not_pursued) == 162
     for row in not_pursued:
-        for source_row in replay_by_id[row["id"]]:
+        source_rows = replay_by_id[row["id"]]
+        assert source_rows, row["id"]
+        for source_row in source_rows:
             for slug, feed in approved_feeds.items():
                 if source_key(feed) == source_row["source_key"]:
                     assert not _matches_feed(source_row["record_body"], feed), (
@@ -106,6 +110,15 @@ def test_not_pursued_rows_are_not_captured_by_new_body_rules() -> None:
                         slug,
                         source_row["record_body"],
                     )
+
+
+def test_frozen_p0_disposition_and_replay_csv_row_totals() -> None:
+    """Detect accidental truncation of the frozen pattern list or its source/UID replay."""
+    dispositions = _read_csv(EVIDENCE / "p0-final-disposition-2026-10-06.csv")
+    replay = _read_csv(EVIDENCE / "historical-selector-replay-2026-10-06.csv")
+
+    assert len(dispositions) == 680
+    assert len(replay) == 2028
 
 
 def test_new_body_rules_meet_the_five_uid_cutoff() -> None:

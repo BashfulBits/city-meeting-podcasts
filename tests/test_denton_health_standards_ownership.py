@@ -50,3 +50,8 @@ def test_actual_config_keeps_health_standards_only_in_its_commission_feed():
     assert record_matches_body(
         joint, source_body_filter(library.source), source_body_inclusions(library.source)
     )
+    assert not record_matches_body(
+        joint,
+        source_body_filter(commission.source),
+        source_body_inclusions(commission.source),
+    )
