@@ -125,7 +125,7 @@ def test_record_binding_mismatch_is_visible_failure(tmp_path):
 def test_committed_register_validates_and_preserves_historical_obligations():
     cases = load_cases(ROOT / "review/evidence/unresolved-recording-cases.json")
     assert len([c for c in cases if "P&Z-only" in c["question"]]) == 47
-    assert any(c["provider_guid"] == "56029" and c["status"] == "open" for c in cases)
+    assert any(c["provider_guid"] == "56029" and c["status"] == "resolved" for c in cases)
     assert len([c for c in cases if c["question"].startswith("Historical Combined")]) == 30
 
 

@@ -101,9 +101,12 @@ current Addison RSS feeds and both Town Meetings browse pages omit them; all six
 remain available. Citizen Advisory remains in the Town Meetings feed and browse pages. The two
 public search routes returned 404, so live search omission was not independently observed. These
 six publication-disposition cases are resolved without claiming their historical content or
-institution is identified; their individual missing-evidence notes remain. The register now has 158
-resolved and 11 open cases. This closes only those six approved exclusions; the 680-row P0 baseline
-remains open.
+institution is identified; their individual missing-evidence notes remain. On 2026-10-07, the
+maintainer also accepted the single Citizen Advisory compilation in Public Input as its P0
+classification. Its exact historical program-to-recording link remains unknown, but is no longer a
+blocking classification question; the archive's 11-item count does not establish a missing part.
+The register now has 159 resolved and 10 open cases. The 680-row P0 baseline remains open until the
+remaining source-binding evidence cases are resolved or otherwise dispositioned.
 
 Maintainer clarification (2026-10-04): specific continuing standing committees, including Council
 subcommittees, have dedicated feeds across cities unless evidence establishes a temporary body.
@@ -123,8 +126,10 @@ Prepared CPC coverage alone does not complete this city baseline or authorize br
 The approved public-input/briefing and BZA presentation slice is L3 in
 [review/51](51-unexpected-body-remedy-flow.md#addison-public-input-display-and-verified-routing--l3-bounded-implementation),
 tracked by #2009 and implemented with validation passed; review disposition is in PR #2010.
-Citizen Advisory remains public input with stable identity and an active
-historical evidence obligation; unknown older recordings are not silently retired.
+Citizen Advisory remains public input with stable identity. The maintainer accepted its P0
+classification on 2026-10-07; the exact historical program-to-recording link remains unknown in the
+evidence record, and no missing recording part is inferred. Unknown older recordings are not
+silently retired.
 
 
 ### P0 historical coverage rules — deployed baseline (2026-10-07)
@@ -163,7 +168,7 @@ sufficient proof. The two #6334 assignments also remain unchanged pending exact 
 
 The 680-row historical disposition is deployed and passes the P0 baseline exit: each pattern has an
 applied feed rule, archive-only outcome, explicit not-to-pursue outcome or linked evidence case. The
-case register still has 11 open evidence cases; these remain tracked work, not waived findings. The
+case register has 10 open evidence cases; these remain tracked work, not waived findings. The
 full replay does not prove that each historical title is a distinct episode or each source copy is a
 unique recording. Public search is a separate limitation: `meta.json` reports zero search shards and
 `/search/` and `/data/search/manifest.json` return HTTP 404. Do not claim public search or its
@@ -1420,10 +1425,14 @@ is resolved.
 The deployment report verifies all six approved Addison Archive-only UID/GUID pairs absent from all
 ten current Addison RSS feeds and both Town Meetings browse pages, with all six direct raw pages
 returning 200. Citizen Advisory UID`63b22f80ce9500ff` remains in the Town Meetings RSS and browse
-pages. Search routes `/search/` and `/data/search/manifest.json` returned 404; live search omission
+pages; the maintainer accepted this Public Input classification for P0 on 2026-10-07. Its exact
+program-to-recording link remains unknown, and the archive listing count is not evidence of a
+missing part. Search routes `/search/` and `/data/search/manifest.json` returned 404; live search omission
 was not independently observed. The six publication dispositions are resolved, while their
-historical content/institution uncertainties remain recorded. The register now has158 resolved and
-11 open cases; see [the exact checks and response hashes](evidence/addison-archive-live-2026-10-06.json).
+historical content/institution uncertainties remain recorded. The Citizen Advisory classification
+case is also closed by the maintainer's 2026-10-07 decision; the historical binding uncertainty
+remains documented. The register now has 159 resolved and 10 open cases; see
+[the exact checks and response hashes](evidence/addison-archive-live-2026-10-06.json).
 
 Luncheon direct archive route: L3 bounded review/51 contract, maintainer authorized access fixes
 2026-10-05. Exact raw selector admission only, preserving archive-only public exclusion.

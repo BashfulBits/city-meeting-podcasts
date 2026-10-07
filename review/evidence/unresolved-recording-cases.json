@@ -784,14 +784,14 @@
       "uid": "63b22f80ce9500ff",
       "provider_guid": "56029",
       "question": "Citizen Advisory historical compilation retained in Public Input",
-      "missing_evidence": "Exact historical program-to-recording binding; eleven-item archive count is not an established eleven-part recording requirement.",
-      "next_action": "Bind the ten retained compilation parts to official advisory program records; do not infer a missing part from archive listing count.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "Exact historical program-to-recording binding remains unverified; this does not block the approved Public Input disposition. The eleven-item archive count is not an established eleven-part recording requirement.",
+      "next_action": "No further P0 action. Keep the single preserved UID in Public Input; reopen only if new source evidence shows the assignment is wrong or a retained record is missing.",
+      "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "addison-tx-town-meetings"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Maintainer approved closing the P0 case on 2026-10-07: retain the single historical Citizen Advisory compilation in Public Input with its original UID/title/audio. Official FY2007–08 budget and Council packet evidence corroborate the advisory program and its recommendations; exact program-to-recording binding remains unknown. The provider archive listing count is not proof of a missing eleventh part. See addison-body-policy-audit-2026-10-04.md, Citizen Advisory 56029 evidence."
     },
     {
       "case_id": "addison-382950-699939eb5a53e258",

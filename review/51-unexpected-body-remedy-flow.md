@@ -445,8 +445,10 @@ available. Treat search availability and archive-only search-filter verification
 site limitation; do not claim that a live search index was verified.
 
 The frozen baseline has a recorded outcome for every row: 517 title patterns assigned to feed
-rules, one archive-only, and 162 not pursued. The case register contains 169 cases: 158 resolved,
-11 open. The remaining evidence cases are recorded in
+rules, one archive-only, and 162 not pursued. The case register contains 169 cases: 159 resolved,
+10 open. The Citizen Advisory compilation is accepted in Public Input for P0; its exact historical
+program-to-recording link remains unknown, but the archive's 11-item count does not establish a
+missing part. The remaining evidence cases are recorded in
 [`unresolved-recording-cases.json`](evidence/unresolved-recording-cases.json). Under the P0 exit
 rule above, open cases remain explicit evidence work; the counts do not mean those recordings were
 reclassified or their evidence was waived.
@@ -1711,7 +1713,9 @@ checks and response hashes are recorded in
 The public `/search/` and `/data/search/manifest.json` routes returned HTTP 404; this is recorded as
 unavailable live search verification, not as evidence about indexed content. The six publication
 dispositions are therefore resolved, with their content/institution uncertainty retained in the
-case register. No title, UID, source namespace, raw page, or audio was changed.
+case register. The Citizen Advisory classification case was also closed by the maintainer's
+2026-10-07 decision; its exact historical binding remains unknown. No title, UID, source namespace,
+raw page, or audio was changed.
 
 
 ## September 2016 Addison joint subscription — L3 bounded correction
