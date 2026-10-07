@@ -1,0 +1,30 @@
+slug: fort-worth-tx-capital-improvements-advisory-committee
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+    - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body_exact:
+    - CIAC of April 26, 2023
+    - CIAC of April 27, 2022
+    - CIAC of August 24, 2022
+    - CIAC of June 22, 2022
+    - CIAC of November 18, 2022
+    - CIAC of September 14, 2022
+    - Capital Improvement Advisory Committee on Transportation Impact Fees
+    - Capital Improvements Advisory Committee
+    - Capital Improvements Advisory Committee
+    - Capital Improvements Advisory Committee for Transportation Impact Fees
+    - Capital Improvements Advisory Committee of November 17, 2023 (CIAC)
+    - Capitol Improvements Advisory Committee (CIAC)
+    - City Plan Commission and Capital Improvements Advisory Committee (CIAC)
+podcast_title: 'Fort Worth: Capital Improvements Advisory Committee for Transportation
+  Impact Fees'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: Capital Improvements Advisory Committee for Transportation
+  Impact Fees recordings for Fort Worth, TX.

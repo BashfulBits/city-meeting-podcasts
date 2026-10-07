@@ -21,6 +21,8 @@ source:
       and Retention and Council Economic Development Committee
     - Special Economic Development
     - Special Economic Development and Housing Committee
+  body_any:
+    - "DDF Board Meeting"
 podcast_title: 'Dallas: Economic Development'
 podcast_author: City of Dallas, TX
 podcast_email: ''

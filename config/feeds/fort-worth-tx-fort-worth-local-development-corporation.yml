@@ -11,6 +11,14 @@ source:
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
   - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
   body: Fort Worth Local Development Corporation
+  body_exact:
+    - AllianceAirport Authority, Inc., Central City Local Development Corporation, and Fort Worth
+      Local Development Corporation, and AllianceAirport Authority, Inc., Central City Local
+      Development Corporation, and Fort Worth Local Development Corporation, and
+  body_any:
+    - "LDC, CCLGC, RILGC, FWHFC"
+    - "Local Development Corporation Local Development Corporation"
+    - "Local Development Corporation of March 26, 2024 Local Development Corporation of March 26, 2024"
 podcast_title: 'Fort Worth: Fort Worth Local Development Corporation'
 podcast_author: City of Fort Worth, TX
 podcast_email: ''

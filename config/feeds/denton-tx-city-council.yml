@@ -5,13 +5,13 @@ meeting_family: council
 source:
   list_url: https://dentontx.new.swagit.com/views/5
   body: "City Council"
+  body_exact:
+    - Joint Luncheon with Library Board
   body_includes:
     - provider_guid: "112591"
       body: "Denton State of the City"
     - provider_guid: "13109"
       body: "2nd Tuesday Session"
-    - provider_guid: "13509"
-      body: "Joint Luncheon with Library Board"
     - provider_guid: "13733"
       body: "Managing Gas Well Emergencies"
     - provider_guid: "13718"
