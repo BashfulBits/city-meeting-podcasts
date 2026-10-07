@@ -2573,9 +2573,9 @@
       "uid": "16300c982b358fe9",
       "provider_guid": "270975",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "The Dallas Office of Bond & Construction Management official Streets and Transportation Subcommittee page lists Tuesday, August 22, 2023, “Streets and Transportation Meeting #6,” which matches the retained provider record date/title. The page’s Video button contains no recording URL or provider GUID in its published HTML, so exact source-record binding remains unverified.",
+      "next_action": "Find an official agenda/minutes document or inspect the official video control to obtain a dated, exact provider-GUID binding; keep the current Transportation feed assignment unchanged.",
+      "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
       ],

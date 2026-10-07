@@ -129,6 +129,10 @@ and Public Info and the October 3 recording in Dallas Bond Program only. Public 
 does not automatically make it a Public Info session. The 680-row disposition and exact replay are
 the measures for policy coverage; live deployment evidence remains a separate P0 finish gate.
 
+### Dallas Streets case opened for exact source binding — 2026-10-07
+
+The official [Dallas Streets and Transportation Subcommittee page](https://dallascityhall.com/departments/bond-construction-management/Pages/Streets-and-Transportation-Subcommittee.aspx) lists Tuesday, August 22, 2023 as “Streets and Transportation Meeting #6,” matching the date and committee identity on retained provider GUID270975 / UID `16300c982b358fe9`. But the published official page’s Video button has no URL or provider GUID in its HTML. This confirms the official meeting listing, not the exact source-video binding; its case remains open and its current feed assignment is unchanged.
+
 
 ## P0 live status — 2026-10-07
 
