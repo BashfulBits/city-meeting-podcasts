@@ -7,6 +7,9 @@ source:
   body_any:
     - "Workforce-Education and Equity"
     - "Special Workforce-Education and Equity"
+  body_includes:
+    - provider_guid: "203305"
+      body: "Education Task Force"
 podcast_title: "Dallas: Council Committee on Government Efficiency"
 podcast_author: "City of Dallas, TX"
 podcast_email: ""

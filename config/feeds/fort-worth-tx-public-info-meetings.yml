@@ -122,6 +122,17 @@ source:
     - "State of the City 2025"
     - "State Of the City 2022"
     - "State of the City Address 2009"
+  body_includes:
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3130"
+      body: "2018 Neighborhood Awards - February 16, 2019 2018 Neighborhood Awards"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2230"
+      body: "Fort Worth Chamber of Commerce 133rd Annual Meeting, June 5, 2015 Fort Worth Chamber of Commerce 133rd Annual Meeting, June 5, 2015"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2234"
+      body: "Fort Worth Metropolitan Black Chamber of Commerce 35th Annual luncheon: June 19, 2015 Fort Worth Metropolitan Black Chamber of Commerce 35th Annual luncheon: June 19, 2015"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=1703"
+      body: "Juneteenth Celebration at City Hall on June 14, 2013 Juneteenth Celebration at City Hall on June 14, 2013"
+    - provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=1668"
+      body: "Bike Share Program Kick-Off of April 22, 2013 Bike Share Program Kick-Off of April 22, 2013"
 podcast_title: "Fort Worth: Public Info Meetings"
 podcast_author: "City of Fort Worth, TX"
 podcast_email: ''

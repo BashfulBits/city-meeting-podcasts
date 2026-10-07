@@ -75,6 +75,10 @@ source:
   body_includes:
     - provider_guid: '272574'
       body: '2024 Capital Bond Program CBTF Meeting'
+    - provider_guid: "341709"
+      body: "Dallas Police & Dallas Fire Rescue Chiefs Swearing in Ceremony"
+    - provider_guid: "230652"
+      body: "Juanita J. Craft Civil Rights House Ribbon Cutting"
 podcast_title: 'Dallas: Public Info Meetings'
 podcast_author: City of Dallas, TX
 podcast_email: ''
