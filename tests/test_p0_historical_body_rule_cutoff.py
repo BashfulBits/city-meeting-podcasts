@@ -94,7 +94,7 @@ def test_not_pursued_rows_are_not_captured_by_new_body_rules() -> None:
         for row in dispositions
         if row["maintainer_final_action"] == "not-to-pursue-maintainer-directed"
     ]
-    assert len(not_pursued) == 164
+    assert len(not_pursued) == 162
     for row in not_pursued:
         for source_row in replay_by_id[row["id"]]:
             for slug, feed in approved_feeds.items():

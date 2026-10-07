@@ -45,6 +45,7 @@ source_key,uid,provider_guid,title,body,feed
 3b7588310856,2c76de02262342b3,120062,"Virtual Community Meeting - All Way Crosswalk 6pm – Apr 22, 2021",Virtual Community Meeting - All Way Crosswalk 6pm,denton-tx-public-info-meetings
 3b7588310856,2cf6b634ff45845e,14324,"Public Art Committee on 2018-06-07 4:00 PM – Jun 07, 2018",Public Art Committee on 2018-06-07 4:00 PM,denton-tx-public-art-committee
 3b7588310856,2e3a1e151b77631c,71282,"Committee on the Environment on 2020-06-25 10:00 AM – Jun 25, 2020",Committee on the Environment on 2020-06-25 10:00 AM,denton-tx-committee-on-the-environment
+3b7588310856,2f30bc1402e9c833,346751,"Capital Improvement Advisory Committee on 2025-06-25 4:00 PM – Jun 25, 2025",Capital Improvement Advisory Committee on 2025-06-25 4:00 PM,denton-tx-planning-and-zoning-commission
 3b7588310856,305d48d16a54b4b5,13651,"Committee on the Environment on 2016-06-06 1:30 PM – Jun 06, 2016",Committee on the Environment on 2016-06-06 1:30 PM,denton-tx-committee-on-the-environment
 3b7588310856,32713434a5ef58d0,179856,"Virtual Community Meeting - Briercliff Park Master Plan – Sep 01, 2022",Virtual Community Meeting - Briercliff Park Master Plan,denton-tx-public-info-meetings
 3b7588310856,33379ebcf1697f92,154849,"Denton Virtual Community Meeting - 2020 Street Bundle Sector I Construction Kickoff – Feb 10, 2022",Denton Virtual Community Meeting - 2020 Street Bundle Sector I Construction Kickoff,denton-tx-public-info-meetings
@@ -1434,6 +1435,7 @@ source_key,uid,provider_guid,title,body,feed
 76869ed1994f,08132e2ae841efd8,205545,"Small Business Resource Virtual Town Hall Meeting – Mar 26, 2020",Small Business Resource Virtual Town Hall Meeting,dallas-tx-public-info-meetings
 76869ed1994f,0844b0ddb99a7012,201677,"District 7 Tele-Budget Town Hall Meeting – Aug 14, 2021",District 7 Tele-Budget Town Hall Meeting,dallas-tx-public-info-meetings
 76869ed1994f,085498f1ed328557,202404,"Ad Hoc City Council Canvassing Committee – Nov 21, 2022",Ad Hoc City Council Canvassing Committee,dallas-tx-ad-hoc-city-council-canvassing-committee
+76869ed1994f,08680fd7242d4fb6,354439,"Subdivision Review Committee – Sep 04, 2025",Subdivision Review Committee,dallas-tx-city-planning-commission
 76869ed1994f,099747c6511075e3,314383,"Workforce-Education and Equity – Sep 09, 2024",Workforce-Education and Equity,dallas-tx-council-committee-on-government-efficiency
 76869ed1994f,0a092d6ff19ba4f1,202350,"Council Ad Hoc Committee on COVID-19 Economic Recovery and Assistance – May 05, 2020",Council Ad Hoc Committee on COVID-19 Economic Recovery and Assistance,dallas-tx-council-ad-hoc-committee-on-covid-19-economic-recovery-and-assistance
 76869ed1994f,0a90bd247c5e279c,203182,"Virtual Town Hall Meetings – Aug 28, 2018",Virtual Town Hall Meetings,dallas-tx-public-info-meetings
@@ -1823,6 +1825,7 @@ source_key,uid,provider_guid,title,body,feed
 76869ed1994f,bfdb32d94b55abf9,203185,"Virtual Town Hall Meetings – Feb 05, 2019",Virtual Town Hall Meetings,dallas-tx-public-info-meetings
 76869ed1994f,c105bfc776a379bb,203419,"Automated Red Light Commission – Apr 24, 2018",Automated Red Light Commission,dallas-tx-automated-red-light-commission
 76869ed1994f,c12bc2729188a096,202317,"Legislative Ad Hoc Committee – Oct 10, 2016",Legislative Ad Hoc Committee,dallas-tx-legislative-ad-hoc-committee
+76869ed1994f,c1342ceffead3502,307221,"Subdivision Review Committee – Jun 06, 2024",Subdivision Review Committee,dallas-tx-city-planning-commission
 76869ed1994f,c241370f103e6964,202762,"Human & Social Needs Committee – May 21, 2018",Human & Social Needs Committee,dallas-tx-human-social-needs-committee
 76869ed1994f,c329f09c4ef8c615,202790,"Mobility Solutions, Infrastructure and Sustainability Committee – Oct 23, 2017","Mobility Solutions, Infrastructure and Sustainability Committee",dallas-tx-mobility-solutions-infrastructure-and-sustainability-committee
 76869ed1994f,c32b5b2ad4c913f1,202380,"Ad Hoc Committee on COVID-19 Recovery & Assistance – Sep 16, 2021",Ad Hoc Committee on COVID-19 Recovery & Assistance,dallas-tx-ad-hoc-committee-on-covid-19-recovery-assistance

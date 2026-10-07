@@ -3,8 +3,8 @@
   "current_feed_count": 224,
   "cached_source_count": 26555,
   "base_assignment_count": 27434,
-  "current_assignment_count": 29366,
-  "added_assignment_count": 1962,
+  "current_assignment_count": 29369,
+  "added_assignment_count": 1965,
   "removed_assignment_count": 30,
   "added_assignments": [
     {
@@ -374,6 +374,14 @@
       "body": "Committee on the Environment on 2020-06-25 10:00 AM",
       "title": "Committee on the Environment on 2020-06-25 10:00 AM – Jun 25, 2020",
       "feed": "denton-tx-committee-on-the-environment"
+    },
+    {
+      "source_key": "3b7588310856",
+      "uid": "2f30bc1402e9c833",
+      "provider_guid": "346751",
+      "body": "Capital Improvement Advisory Committee on 2025-06-25 4:00 PM",
+      "title": "Capital Improvement Advisory Committee on 2025-06-25 4:00 PM – Jun 25, 2025",
+      "feed": "denton-tx-planning-and-zoning-commission"
     },
     {
       "source_key": "3b7588310856",
@@ -11489,6 +11497,14 @@
     },
     {
       "source_key": "76869ed1994f",
+      "uid": "08680fd7242d4fb6",
+      "provider_guid": "354439",
+      "body": "Subdivision Review Committee",
+      "title": "Subdivision Review Committee – Sep 04, 2025",
+      "feed": "dallas-tx-city-planning-commission"
+    },
+    {
+      "source_key": "76869ed1994f",
       "uid": "099747c6511075e3",
       "provider_guid": "314383",
       "body": "Workforce-Education and Equity",
@@ -14601,6 +14617,14 @@
     },
     {
       "source_key": "76869ed1994f",
+      "uid": "c1342ceffead3502",
+      "provider_guid": "307221",
+      "body": "Subdivision Review Committee",
+      "title": "Subdivision Review Committee – Jun 06, 2024",
+      "feed": "dallas-tx-city-planning-commission"
+    },
+    {
+      "source_key": "76869ed1994f",
       "uid": "c241370f103e6964",
       "provider_guid": "202762",
       "body": "Human & Social Needs Committee",
@@ -15946,8 +15970,8 @@
       "feed": "fort-worth-tx-city-council"
     }
   ],
-  "unmatched_record_pairs": 416,
-  "unmatched_uid_strings": 416,
+  "unmatched_record_pairs": 413,
+  "unmatched_uid_strings": 413,
   "unmatched_records": [
     {
       "source_key": "3b7588310856",
@@ -15955,13 +15979,6 @@
       "provider_guid": "116744",
       "body": "Animal Shelter Advisory Committee on 2021-03-24 3:00 PM",
       "title": "Animal Shelter Advisory Committee on 2021-03-24 3:00 PM – Mar 24, 2021"
-    },
-    {
-      "source_key": "3b7588310856",
-      "uid": "2f30bc1402e9c833",
-      "provider_guid": "346751",
-      "body": "Capital Improvement Advisory Committee on 2025-06-25 4:00 PM",
-      "title": "Capital Improvement Advisory Committee on 2025-06-25 4:00 PM – Jun 25, 2025"
     },
     {
       "source_key": "3b7588310856",
@@ -18359,13 +18376,6 @@
     },
     {
       "source_key": "76869ed1994f",
-      "uid": "08680fd7242d4fb6",
-      "provider_guid": "354439",
-      "body": "Subdivision Review Committee",
-      "title": "Subdivision Review Committee – Sep 04, 2025"
-    },
-    {
-      "source_key": "76869ed1994f",
       "uid": "0a1a7588ada4beed",
       "provider_guid": "205501",
       "body": "Code Video",
@@ -18643,13 +18653,6 @@
       "provider_guid": "270529",
       "body": "Special Called Joint Meeting AD Hoc and GPFM Committee",
       "title": "Special Called Joint Meeting AD Hoc and GPFM Committee – Aug 30, 2023"
-    },
-    {
-      "source_key": "76869ed1994f",
-      "uid": "c1342ceffead3502",
-      "provider_guid": "307221",
-      "body": "Subdivision Review Committee",
-      "title": "Subdivision Review Committee – Jun 06, 2024"
     },
     {
       "source_key": "76869ed1994f",
@@ -18941,7 +18944,7 @@
     "dallas-tx-charter-review-commission": 31,
     "dallas-tx-citizen-homelessness-commission": 82,
     "dallas-tx-city-council": 360,
-    "dallas-tx-city-planning-commission": 272,
+    "dallas-tx-city-planning-commission": 274,
     "dallas-tx-civil-service": 96,
     "dallas-tx-commission-on-disabilities": 37,
     "dallas-tx-commission-on-homelessness": 11,
@@ -19005,7 +19008,7 @@
     "denton-tx-library-board": 8,
     "denton-tx-mobility-committee": 115,
     "denton-tx-parks-recreation-and-beautification-board": 19,
-    "denton-tx-planning-and-zoning-commission": 430,
+    "denton-tx-planning-and-zoning-commission": 431,
     "denton-tx-public-art-committee": 16,
     "denton-tx-public-info-meetings": 87,
     "denton-tx-public-utilities-board": 229,

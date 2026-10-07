@@ -13,6 +13,8 @@ source:
       body: City Plan Commission Forward Dallas Public Comment
   body_any:
     - CPC Bus Tour
+    # The Subdivision Review Committee is appointed by and reports to the CPC.
+    - Subdivision Review Committee
 podcast_title: 'Dallas: City Planning Commission'
 podcast_author: City of Dallas, TX
 podcast_email: ''

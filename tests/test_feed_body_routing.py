@@ -109,6 +109,23 @@ def test_verified_library_joint_has_exact_participant_feeds(feeds) -> None:
     assert not any(inc.provider_guid == "13509" for inc in source_body_inclusions(council.source))
 
 
+def test_dallas_subdivision_review_is_routed_through_its_parent_commission(feeds) -> None:
+    """The City Plan Commission's Subdivision Review Committee belongs in the CPC feed."""
+    planning = source_body_filter(feeds["dallas-tx-city-planning-commission"].source)
+    council = source_body_filter(feeds["dallas-tx-city-council"].source)
+    assert matches("Subdivision Review Committee", planning)
+    assert matches("Subdivision Review Committee – Sep 04, 2025", planning)
+    assert not matches("Subdivision Review Committee", council)
+
+
+def test_denton_ciacs_are_routed_through_planning_and_zoning(feeds) -> None:
+    """The official Denton archive lists CIAC sessions under Planning and Zoning."""
+    planning = source_body_filter(feeds["denton-tx-planning-and-zoning-commission"].source)
+    public_info = source_body_filter(feeds["denton-tx-public-info-meetings"].source)
+    assert matches("Capital Improvement Advisory Committee on 2025-06-25 4:00 PM", planning)
+    assert not matches("Capital Improvement Advisory Committee on 2025-06-25 4:00 PM", public_info)
+
+
 def test_fort_worth_development_corporation_joint_reaches_both_named_feeds(feeds) -> None:
     joint = (
         "AllianceAirport Authority, Inc., Central City Local Development Corporation, and Fort "

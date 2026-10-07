@@ -383,7 +383,7 @@ It found 14 fully selector-matched labels, one partial label and 665 labels with
 nine inventory labels to the 169-case register. This is not completion evidence: the cached inputs
 were last written October 3, and selector eligibility does not establish correct ownership or an
 approved exclusion. The missing case links and all uncovered labels remain P0 work. Do not equate
-the register's 17 open cases with the full historical backlog or close a row by count alone.
+the register's 11 open cases with the full historical backlog or close a row by count alone.
 
 Maintainer decision (2026-10-06): create or reuse a case at exact source-key/UID granularity only
 after case-by-case evidence confirms a real public recording. Keep unverified associations in the
@@ -395,21 +395,28 @@ The current working-tree feed rules were replayed against 26,555 cached source e
 source namespaces. The [final report](evidence/p0-forward-rule-replay-2026-10-07.md) and its linked
 CSV/JSON outputs record every added placement, removed placement and unmatched source/UID entry.
 There are 680 historical title patterns and 2,028 source/UID listings in the frozen baseline. All
-680 now have a recorded outcome: 515 patterns/1,661 listings assigned to local feed rules, one
-archive-only pattern/listing, and 164 patterns/366 listings marked not to pursue. New bodies meet
+680 now have a recorded outcome: 517 patterns/1,664 listings assigned to local feed rules, one
+archive-only pattern/listing, and 162 patterns/363 listings marked not to pursue. New bodies meet
 the five-UID cutoff except the previously approved Denton Bond Oversight Committee; approved aliases
-and additions to existing bodies are allowed below that cutoff.
+and additions to existing bodies are allowed below that cutoff. The Oct. 7 follow-up routes Dallas
+Subdivision Review Committee recordings to the existing City Planning Commission feed and Denton
+Capital Improvement Advisory Committee recordings to the existing Planning and Zoning Commission
+feed, based on official city descriptions of each committee's parent.
 
-The replay adds 1,962 feed placements across 1,939 source/UID pairs and removes 30 incorrect Fort
+The replay adds 1,965 feed placements across 1,942 source/UID pairs and removes 30 incorrect Fort
 Worth City Council placements for the Minority Leaders and Citizens Council civic-program series.
-It leaves 416 source/UID entries with no feed: 408 not to pursue, two ambiguous Dallas CBTF recordings
+It leaves 413 source/UID entries with no feed: 405 not to pursue, two ambiguous Dallas CBTF recordings
 that remain under open source-binding cases, and six Addison archive-only items awaiting live
-visibility verification. These are catalog entries, not necessarily unique underlying videos.
+visibility verification. These are catalog entries, not necessarily unique underlying videos. Of the
+requested follow-up titles, no existing feed represents Dallas's distinct Arts District Sign Advisory
+Committee or Building Inspection Advisory, Examining & Appeals Board; those records are still
+unassigned rather than being mixed into a different committee's feed.
 
-This local result accounts for the 680-row policy baseline but does not finish P0. The rules have not
-been reviewed, merged, or deployed, and 17 evidence cases remain open. Some open cases concern items
+This local result accounts for the 680-row policy baseline but does not finish P0. The new rules have
+not yet been merged or deployed, and 11 evidence cases remain open. Some open cases concern items
 already assigned to a feed; the replay count and the case count are not interchangeable. The two
-Fort Worth 6334 assignments remain untouched until exact segment-to-UID evidence is available.
+Fort Worth 6334 assignments remain untouched, as the maintainer directed, until exact segment-to-UID
+evidence is available.
 P0 exit still requires the inventory rows to link to applied coverage/exclusion or a documented
 open evidence/unavailable-source case, then live deployment checks. Do not claim an unresolved real
 recording is covered merely because its title matches a selector.

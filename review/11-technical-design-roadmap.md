@@ -136,16 +136,19 @@ Denton Bond Oversight exception); and reusable additions to existing feeds. Ordi
 and entries without usable recordings stay with the existing no-recording flow.
 
 The final decision worksheet covers all **680 historical title patterns / 2,028 source-and-UID
-listings**: 515 patterns (1,661 listings) are assigned by local feed rules, one pattern/listing is
-archive-only, and 164 patterns (366 listings) are not to pursue. In a read-only replay of 26,555
-cached source records, the rules add 1,962 feed placements across 1,939 source/UID pairs and remove
+listings**: 517 patterns (1,664 listings) are assigned by local feed rules, one pattern/listing is
+archive-only, and 162 patterns (363 listings) are not to pursue. In a read-only replay of 26,555
+cached source records, the rules add 1,965 feed placements across 1,942 source/UID pairs and remove
 30 wrong Fort Worth City Council placements for the “Minority Leaders and Citizens Council” civic
-series. The net count is 1,932 more feed assignments. The replay leaves 416 source/UID entries
-without a feed: 408 not to pursue, two Dallas CBTF items held for exact source-to-event evidence, and
-six approved Addison archive-only items awaiting visibility verification. The full source/UID
-outputs and limits are in the [final replay report](evidence/p0-forward-rule-replay-2026-10-07.md).
+series. The net count is 1,935 more feed assignments. The replay leaves 413 source/UID entries
+without a feed: 405 not to pursue, two Dallas CBTF items held for exact source-to-event evidence, and
+six approved Addison archive-only items awaiting visibility verification. The follow-up also adds
+Dallas Subdivision Review Committee recordings to its parent City Planning Commission feed and
+Denton Capital Improvement Advisory Committee recordings to the Planning and Zoning Commission feed.
+The full source/UID outputs and limits are in the
+[final replay report](evidence/p0-forward-rule-replay-2026-10-07.md).
 
-This is a local proposal, not a production result. The register still contains 17 open evidence
+This is a local proposal, not a production result. The register still contains 11 open evidence
 cases, including records that already have a feed assignment but need event, archive or deployment
 proof. The 6334 Fort Worth assignments remain unchanged while the exact recording-to-agenda segment
 mapping is unknown. P0 is **not complete**: review and human merge of the rules, deployment, live
