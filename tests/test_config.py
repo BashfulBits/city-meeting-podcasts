@@ -61,6 +61,73 @@ def test_loads_valid_city(tmp_path):
     assert c.lifecycle.status == "active"
 
 
+def test_publication_notes_are_strict_and_feed_local(tmp_path):
+    note = {
+        "uid": "0c66fc968402fabd",
+        "provider_guid": "https://example.test/?clip=3814",
+        "note": "Consecutive proceedings.",
+        "approval_ref": "https://example.test/issues/1",
+    }
+    _write_entity(
+        tmp_path,
+        "foo-tx.yml",
+        f"publication_notes:\n  - {yaml.safe_dump(note, default_flow_style=True).strip()}\n",
+    )
+    _write(tmp_path, "foo-tx.yml", VALID + "city: foo-tx\n")
+    inherited = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert inherited.publication_notes == []
+
+    _write(
+        tmp_path,
+        "foo-tx.yml",
+        VALID
+        + "publication_notes:\n  - "
+        + "\n    ".join(f"{key}: {value}" for key, value in note.items())
+        + "\n",
+    )
+    parsed = load_city_configs(tmp_path, DEFAULTS)[0]
+    assert parsed.publication_notes == [note]
+
+
+@pytest.mark.parametrize(
+    "entries, message",
+    [
+        ("{}", "must contain exactly"),
+        (
+            "{uid: 0c66fc968402fabd, provider_guid: g, note: n, approval_ref: a, extra: x}",
+            "must contain exactly",
+        ),
+        (
+            "{uid: 0C66FC968402FABD, provider_guid: g, note: n, approval_ref: a}",
+            "lowercase hexadecimal",
+        ),
+        (
+            "{uid: 0c66fc968402fabd, provider_guid: '', note: n, approval_ref: a}",
+            "non-empty strings",
+        ),
+    ],
+)
+def test_publication_note_parser_rejects_malformed_entries(tmp_path, entries, message):
+    body = VALID + f"publication_notes:\n  - {entries}\n"
+    _write(tmp_path, "foo-tx.yml", body)
+    with pytest.raises(ValueError, match=message):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_publication_note_parser_rejects_explicit_null(tmp_path):
+    _write(tmp_path, "foo-tx.yml", VALID + "publication_notes: null\n")
+    with pytest.raises(ValueError, match="publication_notes must be a list"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_publication_note_parser_rejects_duplicate_uids(tmp_path):
+    entry = "{uid: 0c66fc968402fabd, provider_guid: g, note: n, approval_ref: a}"
+    body = VALID + f"publication_notes:\n  - {entry}\n  - {entry}\n"
+    _write(tmp_path, "foo-tx.yml", body)
+    with pytest.raises(ValueError, match="duplicate publication note UID"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
 def test_loads_explicit_alternative_body_selectors(tmp_path):
     body = VALID.replace(
         "source:\n  feed_url: https://foo.granicus.com/ViewPublisherRSS.php?view_id=2\n",

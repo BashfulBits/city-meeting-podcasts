@@ -580,6 +580,7 @@ def feed_content_hash(
             e.hosted_audio_url,
             e.video_url,
             e.media_kind,
+            *([e.publication_note] if e.publication_note else []),
         ]
         for e in sorted(episodes, key=lambda e: e.uid or "")
     ]
@@ -640,6 +641,8 @@ def meeting_page_hash(ep: Episode) -> str:
         "timeline": timeline_digest(ep.timeline, ep.sources) if ep.timeline is not None else "",
         "sources": [dataclasses.asdict(source) for source in ep.sources],
     }
+    if ep.publication_note:
+        payload["publication_note"] = ep.publication_note
     blob = json.dumps(payload, separators=(",", ":"), sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()
 

@@ -162,3 +162,12 @@ podcast_title: "Fort Worth: City Council"
 podcast_author: "City of Fort Worth, TX"
 podcast_email: ""
 podcast_description: "City Council meetings for Fort Worth."
+publication_notes:
+  - uid: 0c66fc968402fabd
+    provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3814"
+    note: "Consecutive CCPD Board and City Council proceedings; whole recording retained."
+    approval_ref: "https://github.com/BashfulBits/city-meeting-podcasts/issues/2107"
+  - uid: 99152cb9e61fa091
+    provider_guid: "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=3814"
+    note: "Consecutive CCPD Board and City Council proceedings; whole recording retained."
+    approval_ref: "https://github.com/BashfulBits/city-meeting-podcasts/issues/2107"

@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared Fort Worth #3814 consecutive-proceedings note.** A feed-local, exact UID/GUID-bound
+  annotation is projected to Council and CCPD RSS/raw meeting pages while preserving official
+  provider metadata and whole-recording UID/audio. It does not persist into episode records or
+  alter audio processing; deployment and case closure remain pending.
+
 - **Prepared the final P0 historical feed-rule set.** The local definitions cover all 680 reviewed
   title patterns: 517 patterns have feed destinations (1,664 source/UID listings), one is
   archive-only, and 162 are marked not to pursue. A read-only replay adds 1,965 feed placements,

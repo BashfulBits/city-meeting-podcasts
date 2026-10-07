@@ -25,7 +25,7 @@ from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager as _contextmanager
 from contextlib import nullcontext as _nullcontext
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -1122,6 +1122,12 @@ def _process_city(
             # treat as a per-city error so one bad submission can't fail the whole build.
             return CityResult(city.slug, "error", detail=str(exc)), None
 
+    if render:
+        try:
+            _validate_publication_note_identities(city, episodes)
+        except ValueError as exc:
+            return CityResult(city.slug, "error", detail=str(exc)), None
+
     # Filter the shared source archive to this feed's body, then cap to the most-recent
     # max_episodes (a feed never shows more; the archive itself retains far more — issue #109).
     archived = len(episodes)
@@ -1193,6 +1199,8 @@ def _process_city(
         for record in calendar_records
         if not record.video_guid or record.video_guid not in hidden_recording_guids
     ]
+    raw_retained_eps = _project_publication_notes(city, raw_retained_eps)
+    retained_eps = _project_publication_notes(city, retained_eps)
     feed_eps = retained_eps[: city.max_episodes]
     detail = f"{archived} archived"
     if archived > len(feed_eps):
@@ -1385,6 +1393,34 @@ def _process_city(
         ),
         new_entry,
     )
+
+
+def _validate_publication_note_identities(city: City, episodes: list[Episode]) -> None:
+    """Fail closed if a configured note UID is present with a different provider identity."""
+    if not city.publication_notes:
+        return
+    configured = {entry["uid"]: entry["provider_guid"] for entry in city.publication_notes}
+    for episode in episodes:
+        expected = configured.get(episode.uid or "")
+        if expected is not None and episode.guid != expected:
+            raise ValueError(
+                f"publication note identity mismatch for UID {episode.uid}: "
+                f"expected provider GUID {expected!r}, got {episode.guid!r}"
+            )
+
+
+def _project_publication_notes(city: City, episodes: list[Episode]) -> list[Episode]:
+    """Return feed-local shallow copies carrying approved presentation-only notes."""
+    if not city.publication_notes:
+        return episodes
+    by_uid = {entry["uid"]: entry["note"] for entry in city.publication_notes}
+    guid_by_uid = {entry["uid"]: entry["provider_guid"] for entry in city.publication_notes}
+    return [
+        replace(episode, publication_note=by_uid[episode.uid])
+        if episode.uid in by_uid and episode.guid == guid_by_uid[episode.uid]
+        else episode
+        for episode in episodes
+    ]
 
 
 def _try_preload_asr_model(defaults: dict, *, lane: str | None = None) -> None:

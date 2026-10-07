@@ -1430,3 +1430,10 @@ Search publication checkpoint (#2087): the independent search job restores and s
 search output. Deferrals retain completed-source progress and overlay only complete search files
 on current rendered pages; non-search pages remain fresh. Storage remains read-only, with the
 existing 20-minute indexing ceiling and no stage-version or backfill change.
+
+The Fort Worth #3814 clarification in #2107 is a feed-local `publication_notes` config projected
+onto shallow episode copies only after exact UID/provider-GUID validation. It renders separately
+in RSS rich notes and raw meeting pages; the provider title, description, source record, UID and
+audio are unchanged. The note participates in feed/page render hashes only when present, never in
+audio hashes or persisted episode records. A present UID with a mismatched provider GUID returns
+an error before replacing public output; a not-yet-present UID remains unannotated.

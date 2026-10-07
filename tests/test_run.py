@@ -74,6 +74,25 @@ def test_content_hash_changes_with_episodes_and_fingerprint():
     assert base != feed_content_hash([_ep("g1", hosted="https://cdn/g1.m4a")], "fp0")
 
 
+def test_publication_note_changes_render_hashes_but_not_audio_or_record():
+    from citypods.records import audio_spec_hash, episode_to_record
+
+    ep = _ep("g1")
+    ep.uid = "0c66fc968402fabd"
+    before_feed = feed_content_hash([ep], "fp0")
+    before_page = meeting_page_hash(ep)
+    before_audio = audio_spec_hash(ep, max_kbps=96)
+    before_record = episode_to_record(ep)
+
+    ep.publication_note = "Consecutive proceedings."
+
+    assert feed_content_hash([ep], "fp0") != before_feed
+    assert meeting_page_hash(ep) != before_page
+    assert audio_spec_hash(ep, max_kbps=96) == before_audio
+    assert "publication_note" not in episode_to_record(ep)
+    assert episode_to_record(ep) == before_record
+
+
 def test_meeting_page_hash_tracks_transcript_and_availability_render_inputs():
     from citypods.availability import CONFIRMED_EMPTY, MediaAvailability
 
@@ -3971,6 +3990,90 @@ def test_publication_hold_preserves_prior_files_and_cache(tmp_path, previous):
     assert before == {p.relative_to(out): p.read_bytes() for p in out.rglob("*") if p.is_file()}
     if not previous:
         assert not city_dir.exists()
+
+
+def test_publication_note_projects_only_exact_uid_to_rss_and_raw_page(tmp_path):
+    from citypods.records import episode_to_record
+
+    city, pipeline = _publication_render_fixture(tmp_path)
+    note = "Consecutive CCPD Board and City Council proceedings; whole recording retained."
+    city.publication_notes = [
+        {
+            "uid": "1" * 16,
+            "provider_guid": "same",
+            "note": note,
+            "approval_ref": "https://example.gov/issues/2107",
+        }
+    ]
+    state_file = pipeline.state_dir / "sources" / run.source_key(city) / "episodes.json"
+    before_records = state_file.read_bytes()
+    output = tmp_path / "docs"
+    result, _ = run._process_city(
+        city,
+        "https://example.gov",
+        output,
+        {},
+        0,
+        False,
+        pipeline,
+        {"defaults": {"meeting_pages": True}},
+        "original",
+        no_refresh=True,
+    )
+
+    assert result.status == "built"
+    rss = (output / city.slug / "audio_feed.xml").read_text()
+    assert rss.count("<item>") == 1
+    assert "Publication note:" in rss and note in rss
+    assert "Official description" not in rss
+    noted_page = (output / city.slug / ("1" * 16) / "index.html").read_text()
+    unnoted_page = (output / city.slug / ("2" * 16) / "index.html").read_text()
+    assert "Publication note:" in noted_page and note in noted_page
+    assert "Publication note:" not in unnoted_page
+    persisted = json.loads(state_file.read_text())["episodes"]
+    assert all("publication_note" not in record for record in persisted.values())
+    assert state_file.read_bytes() == before_records
+    restored = pipeline.render_from_records(city)
+    assert all("publication_note" not in episode_to_record(ep) for ep in restored)
+
+
+def test_publication_note_identity_mismatch_preserves_public_files_and_cache(tmp_path):
+    city, pipeline = _publication_render_fixture(tmp_path)
+    city.source["body_exact"] = ["A body this archive does not contain"]
+    city.publication_notes = [
+        {
+            "uid": "1" * 16,
+            "provider_guid": "unexpected-guid",
+            "note": "Approved note.",
+            "approval_ref": "https://example.gov/issues/2107",
+        }
+    ]
+    output = tmp_path / "docs"
+    city_dir = output / city.slug
+    city_dir.mkdir(parents=True)
+    (city_dir / "audio_feed.xml").write_text("previous feed")
+    (city_dir / "index.html").write_text("previous index")
+    cache = {city.slug: {"content_hash": "previous", "meeting_pages": {"kept": "hash"}}}
+    previous_cache = json.loads(json.dumps(cache))
+    previous_files = {path: path.read_bytes() for path in city_dir.rglob("*") if path.is_file()}
+
+    result, entry = run._process_city(
+        city,
+        "https://example.gov",
+        output,
+        cache,
+        0,
+        False,
+        pipeline,
+        {},
+        "original",
+        no_refresh=True,
+    )
+
+    assert result.status == "error" and "identity mismatch" in result.detail
+    assert entry is None and cache == previous_cache
+    current_files = {path: path.read_bytes() for path in city_dir.rglob("*") if path.is_file()}
+    assert previous_files == current_files
 
 
 @pytest.mark.parametrize("pair_count,expected_count", [(3, 3), (1, 5)])
