@@ -15,14 +15,16 @@ counts.
 | Measure | Before these local rules | With these local rules | Change |
 |---|---:|---:|---:|
 | Configured feeds | 173 | 224 | +51 |
-| Feed assignments in cached catalog | 27,434 | 29,369 | +1,935 net |
-| New feed placements | — | 1,965 | 1,942 distinct source/UID pairs |
+| Feed assignments in cached catalog | 27,434 | 29,380 | +1,946 net |
+| Added policy selections vs. prior baseline | — | 1,976 | 1,952 distinct source/UID pairs |
 | Removed feed placements | — | 30 | 30 source/UID pairs |
-| Source/UID entries with no feed | — | 413 | See the disposition below |
+| Source/UID entries with no feed under the reviewed rules | — | 411 | See the disposition below |
 
 The 30 removals are Fort Worth “Minority Leaders and Citizens Council” civic-program recordings
 that had been incorrectly included in City Council. The feed rule no longer places them in Council;
-the raw source records and audio remain intact.
+the raw source records and audio remain intact. The ten Dallas CBTF policy selections do not add ten
+new live RSS items: the published Bond Program selector already routes them at runtime, and this
+change only removes a contradictory exclusion from the P0 policy replay.
 
 ## Follow-up: two existing feeds now cover three recordings
 
@@ -47,22 +49,22 @@ are not folded into these feeds: Dallas lists the **Arts District Sign Advisory 
 and the **Building Inspection Advisory, Examining & Appeals Board** is a separate [named city board](https://dallascityhall.com/government/Boards-and-Commissions/Building-Inspection-Advisory-Examining-Appeals-Boards/Pages/default.aspx).
 Neither has a matching existing feed in this checkout.
 
-The 413 unmatched entries break down as follows:
+The 411 unmatched entries break down as follows:
 
 | Treatment | Entries | Meaning |
 |---|---:|---|
 | Not to pursue | 405 | User-approved small or non-meeting groups; keep their raw records, do not add a feed rule |
-| Exact evidence still needed | 2 | Dallas Capital Bond CBTF recordings with the same ambiguous provider title; leave assignments unchanged |
 | Archive-only visibility check | 6 | Addison media already approved for archive-only treatment; confirm hidden from feeds/search and retained at the original archive page |
-| **Total** | **413** | Source/UID entries, not a guarantee of 413 distinct videos |
+| **Total** | **411** | Source/UID entries, not a guarantee of 411 distinct videos |
 
-Of the 413, 362 came from the frozen 680-pattern baseline and 51 were additional cached entries outside
+Of the 411, 360 came from the frozen 680-pattern baseline and 51 were additional cached entries outside
 that original worksheet. All 680 patterns now have a recorded user-directed outcome. In the baseline,
-517 patterns (1,664 source/UID listings) are assigned to a feed by the local rules, one pattern/listing
-is archive-only, and 162 patterns (363 listings) are not to pursue. Two of the unmatched CBTF entries
-have evidence cases open despite the current no-rule decision; their shared title is not enough to
-safely select a feed. The remaining outside-baseline entries are one-off event/test media or approved
-archive-only media.
+518 patterns (1,667 source/UID listings) are assigned to a feed by the local rules, one pattern/listing
+is archive-only, and 161 patterns (360 listings) are not to pursue. The two Dallas CBTF source records
+are now assigned to Dallas Bond Program by the approved recurring body-name rule. Only the September
+26, 2023 recording also remains in Public Info under its separate exact approval; October 3 is Bond
+Program only. Both evidence cases stay open until live RSS confirms the expected placements. The
+remaining outside-baseline entries are one-off event/test media or approved archive-only media.
 
 The source-scoped unmatched list and plain-language disposition for every row are in
 [`p0-final-unmatched-records-2026-10-07.csv`](p0-final-unmatched-records-2026-10-07.csv). Every added
@@ -81,12 +83,12 @@ cover every row:
 |---|---:|---:|
 | Public Info feed (one per city) | 201 | 464 |
 | Fort Worth Speaker’s Podium | 69 | 138 |
-| Dallas bond-program family | 17 | 30 |
+| Dallas bond-program family | 18 | 33 |
 | New named-body rules | 180 | 852 |
 | Additions to existing body feeds | 41 | 148 |
 | Already correctly assigned to an existing feed | 9 | 32 |
 | Archive-only, already handled by an approved feature | 1 | 1 |
-| Not to pursue | 162 | 363 |
+| Not to pursue | 161 | 360 |
 | **Total** | **680** | **2,028** |
 
 New named-body rules meet the five-distinct-UID cutoff, except Denton Bond Oversight Committee, which
@@ -107,25 +109,25 @@ exception. A title match alone does not prove that a historical recording is the
 At the time of this local replay, the case register had 11 open cases, including the Citizen
 Advisory compilation. The maintainer later accepted that compilation's Public Input classification
 for P0 on 2026-10-07; its exact historical program-to-recording link remains unknown, and the
-archive's 11-item count does not establish a missing part. The current register has 10 open cases:
+archive's 11-item count does not establish a missing part. The current register has nine open cases:
 two Fort Worth 6334 clip-to-segment bindings, two Fort Worth 3814 bundle publication checks, one
-Dallas CBTF event binding, one Dallas dual-feed deployment check, and four Dallas bond Streets
-recording bindings. For GUID272574, the maintainer approved Bond Program plus Public Info placement;
-the exact rule and feed check are recorded in issue #2115. The two 6334
-assignments remain unchanged as the maintainer directed. Six approved Addison archive-only entries
-still need a separate visibility check, but they are not open rows in the current case register. After this
-PR is reviewed and merged by the maintainer, the remaining work is to deploy, verify the intended
-feed and archive pages with original audio, and update only those cases whose evidence has actually
-been satisfied. One Dallas CBTF event-binding case and the other source-binding cases remain open
-until their specific evidence is found; GUID272574 now has an approved destination and remains open
-only for live verification in both feeds. Do not close a case because a selector matched or because
-an item was classified “not to pursue.”
+Dallas dual-feed deployment check, and four Dallas bond Streets recording bindings. Six approved
+Addison archive-only entries still need a separate visibility check, but they are not open rows in
+the current case register. The October 3, 2023 Dallas CBTF recording is resolved by the maintainer's
+Bond Program-only decision and a live RSS check showing the original UID/audio in Bond Program and
+its absence from Public Info and the dedicated Task Force feed; see
+[`dallas-cbtf-live-rss-2026-10-07.md`](dallas-cbtf-live-rss-2026-10-07.md). The September 26
+recording is assigned to both Bond Program and Public Info in the local rules, but its merged Public
+Info deployment is not yet verified. Keep that case open until both feeds show the same original
+UID/audio. The two 6334 assignments remain unchanged as the maintainer directed. Do not close a case
+because a selector matched or because an item was classified “not to pursue.”
 
-The 10-case register is not the same count as the 413 unmatched catalog entries: some open cases are
-already assigned to a feed but still need proof, while most unmatched entries are intentionally not
-pursued. GUID272574 is already selected by the existing Dallas Bond `*CBTF*` rule; the approved
-Public Info addition is not yet in this replay. The 680-row disposition and exact replay are
-therefore the correct measures for policy coverage; deployment evidence remains the P0 finish gate.
+The open-case register is not the same count as the 411 unmatched catalog entries: some open cases
+are already assigned to a feed but still need live proof, while most unmatched entries are
+intentionally not pursued. This replay includes the September 26 recording in Dallas Bond Program
+and Public Info and the October 3 recording in Dallas Bond Program only. Public comment at a meeting
+does not automatically make it a Public Info session. The 680-row disposition and exact replay are
+the measures for policy coverage; live deployment evidence remains a separate P0 finish gate.
 
 
 ## P0 live status — 2026-10-07
@@ -133,6 +135,12 @@ therefore the correct measures for policy coverage; deployment evidence remains 
 The historical rules merged in PR #2112, and Fort Worth publication notes merged in PR #2111.
 Build and Deploy run #37643318454 completed successfully. Feed rendering, generated-feed
 validation, the search job and Pages deployment all passed. This live check is separate from the cached local replay above.
+
+A later read-only RSS check confirmed the October3 Dallas recording (GUID273327, UID
+`6135249a278494c5`) and its original audio URL in Bond Program, and absent from Public Info and the
+dedicated Task Force feed. That case is resolved. PR #2116 adds September26 GUID272574 to Public Info,
+but its deployment was still pending at this check; that dual-feed case remains open. The full
+results are in [`dallas-cbtf-live-rss-2026-10-07.md`](dallas-cbtf-live-rss-2026-10-07.md).
 
 All 72 feeds containing proposed placements returned HTTP 200. Of 1,965 placements across 1,942
 distinct source/UID pairs, 1,909 placements were present in live RSS. The remaining 56 each had a
@@ -153,10 +161,11 @@ The published root `meta.json` reports `search_shards: 0`, and `/search/` plus
 index. Do not claim public catalog search or verify the archive-only search filter from this run.
 This is a separate site-search limitation; the P0 feed rules and RSS checks above remain deployed.
 
-The frozen 680-pattern disposition is now applied on the public site: 517 patterns have feed rules,
-one is archive-only, and 162 are not pursued. Ten registered evidence cases remain open (two Fort
-Worth 3814 publication checks; two Fort Worth 6334 segment bindings; one Dallas CBTF event binding;
-one Dallas dual-feed deployment check; and four Dallas Streets bond bindings). The Citizen
+The frozen 680-pattern disposition baseline is applied on the public site. The revised local
+disposition has 518 assigned patterns, one archive-only pattern, and 161 not pursued. Nine
+registered evidence cases remain open (two Fort Worth 3814 publication checks; two Fort Worth 6334
+segment bindings; one Dallas dual-feed deployment check; and four Dallas Streets bond bindings).
+The Citizen
 Advisory compilation's Public Input classification
 was accepted for P0 on 2026-10-07; the exact historical binding remains unknown, and no missing part
 is inferred. The register remains the source of truth for the remaining proof obligations. P0

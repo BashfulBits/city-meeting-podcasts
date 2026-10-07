@@ -22,21 +22,22 @@ Once 1.0 ships, entries move under semver tags.
   provider metadata and whole-recording UID/audio. It does not persist into episode records or
   alter audio processing; deployment and case closure remain pending.
 
-- **Prepared the final P0 historical feed-rule set.** The local definitions cover all 680 reviewed
-  title patterns: 517 patterns have feed destinations (1,664 source/UID listings), one is
-  archive-only, and 162 are marked not to pursue. A read-only replay adds 1,965 feed placements,
-  removes 30 incorrect Fort Worth City Council placements, and leaves 413 source/UID entries
-  unmatched (405 not pursued, two held for exact evidence, six archive-only checks). The rules also
-  route Dallas Subdivision Review Committee meetings to the City Planning Commission feed and
-  Denton Capital Improvement Advisory Committee meetings to the Planning and Zoning Commission
-  feed. The configs remain unmerged and undeployed; the
-  [replay report](review/evidence/p0-forward-rule-replay-2026-10-07.md) records the outstanding work.
-  This does not mark P0 complete.
+- **P0 historical feed rules and Dallas CBTF follow-up.** The baseline rules merged in PR #2112 and
+  passed deployment run #37643318454. The updated worksheet covers 680 title patterns: the
+  proposed follow-up assigns 518 patterns (1,667 source/UID listings) to feeds, leaves one
+  archive-only, and marks 161 not to pursue. With the merged September 26 Public Info placement and
+  the proposed Dallas CBTF aggregate rule, the replay has 1,976 added policy placements, removes 30 wrong
+  Fort Worth Council placements, and leaves 411 source/UID entries unmatched (405 not pursued and
+  six archive-only visibility checks). Issue #2152 proposes removing the contradictory CBTF
+  exclusion from Dallas Bond Program; this aligns ten policy matches with the existing live selector
+  and does not add live RSS items or change Public Info. October 3 is already verified in Bond
+  Program only; September 26 retains its separate Public Info approval, pending deployment proof.
+  The P0 report records the replay and remaining checks. This does not mark P0 complete.
 
-- **Prepared Dallas bond Town Hall dual-feed placement (#2115).** The existing Bond Program rule
-  already selects the September 26, 2023 recording. The change adds that same original UID/audio
-  to Public Info by exact source GUID, without admitting the September 19 formal Task Force meeting.
-  Live RSS verification remains required before closing the evidence case.
+- **Merged Dallas bond Town Hall dual-feed placement (#2116).** The September 26, 2023 recording
+  keeps its original UID/audio in Bond Program and is also selected into Public Info by exact source
+  GUID. The separate September 19 formal Task Force meeting is not admitted to Public Info. Live RSS
+  verification remains required before closing the evidence case.
 
 - **Certified October 2026 Coverage Feed Implementations.** Reconciled and certified status for
   October 2026 coverage batches across Addison UDC (PR #1992), Arlington HFC and ZBA (commit
