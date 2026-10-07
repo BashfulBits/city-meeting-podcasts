@@ -2623,12 +2623,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
                 last_claim_reason, claim_empty_count_today, claim_reason_counts_json
            FROM scheduler WHERE id = 1`
       );
-      const claimReasonCounts = parseJsonObject(scheduler.claim_reason_counts_json);
-      // Fold in this instance's not-yet-persisted idle repeats (EMPTY_CLAIM_REFRESH_MS).
-      const pendingEmpty = this._pendingEmptyClaimsFor(scheduler.utc_day);
-      for (const [reason, count] of Object.entries(pendingEmpty?.reasons || {})) {
-        claimReasonCounts[reason] = (Number(claimReasonCounts[reason]) || 0) + count;
-      }
       const activeBundles = [...this._activeBundles().values()];
       const activeCalls = activeBundles.reduce((sum, row) => sum + (row.active_call_count || 0), 0);
 
@@ -2652,17 +2646,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
         },
         row_budget: this._rowBudgetSnapshot(scheduler),
-        claim: {
-          // An unchanged idle outcome is persisted every EMPTY_CLAIM_REFRESH_MS; last_at is the
-          // latest claim this instance saw, persisted or not.
-          last_at: Math.max(
-            Number(scheduler.last_claim_at) || 0, Number(pendingEmpty?.last_at) || 0
-          ) || null,
-          last_result: scheduler.last_claim_result || null,
-          last_reason: scheduler.last_claim_reason || null,
-          empty_count_today: (scheduler.claim_empty_count_today ?? 0) + (pendingEmpty?.empty || 0),
-          reason_counts_today: claimReasonCounts,
-        },
+        claim: this._claimSnapshot(scheduler),
       };
     });
   }
@@ -2967,7 +2951,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
 
     const scheduler = one("SELECT * FROM scheduler WHERE id = 1");
-    const claimReasonCounts = parseJsonObject(scheduler.claim_reason_counts_json);
     const lastClaimDiagnostics = parseJsonObject(scheduler.last_claim_diagnostics_json);
 
     const today = new Date(now).toISOString().slice(0, 10);
@@ -3023,14 +3006,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         next_maintenance_alarm_at: scheduler.next_maintenance_alarm_at ?? null,
       },
       row_budget: this._rowBudgetSnapshot(scheduler),
-      claim: {
-        last_at: scheduler.last_claim_at ?? null,
-        last_result: scheduler.last_claim_result || null,
-        last_reason: scheduler.last_claim_reason || null,
-        empty_count_today: scheduler.claim_empty_count_today ?? 0,
-        reason_counts_today: claimReasonCounts,
-        last_diagnostics: lastClaimDiagnostics,
-      },
+      claim: { ...this._claimSnapshot(scheduler), last_diagnostics: lastClaimDiagnostics },
       in_flight: {
         by_route: Object.fromEntries(leasedByRoute),
         by_provider: Object.fromEntries(leasedByProvider),
@@ -3950,6 +3926,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
       input_ratio_effective: effective.inputRatio,
       hard_input_ceiling: Number(route.hard_input_ceiling) || null,
       hard_input_ceiling_tolerance: Number(route.hard_input_ceiling_tolerance) || 0,
+    };
+  }
+
+  /**
+   * The claim section of stats() and detailedStats(): the persisted outcome plus this instance's
+   * not-yet-persisted idle repeats (EMPTY_CLAIM_REFRESH_MS), so both responses agree. last_at is
+   * the latest claim this instance saw, persisted or not.
+   */
+  _claimSnapshot(scheduler) {
+    const reasonCounts = parseJsonObject(scheduler.claim_reason_counts_json);
+    const pending = this._pendingEmptyClaimsFor(scheduler.utc_day);
+    for (const [reason, count] of Object.entries(pending?.reasons || {})) {
+      reasonCounts[reason] = (Number(reasonCounts[reason]) || 0) + count;
+    }
+    return {
+      last_at: Math.max(Number(scheduler.last_claim_at) || 0, Number(pending?.last_at) || 0) || null,
+      last_result: scheduler.last_claim_result || null,
+      last_reason: scheduler.last_claim_reason || null,
+      empty_count_today: (Number(scheduler.claim_empty_count_today) || 0) + (pending?.empty || 0),
+      reason_counts_today: reasonCounts,
     };
   }
 

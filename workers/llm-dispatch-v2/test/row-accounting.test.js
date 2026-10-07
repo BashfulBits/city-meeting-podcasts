@@ -148,6 +148,11 @@ test("an unchanged idle claim writes nothing until the refresh interval, then fo
   assert.equal(live.empty_count_today, 10);
   assert.equal(live.reason_counts_today.no_queued_work, 10);
   assert.equal(live.last_at, t0 + 9 * minute);
+  // The detailed view agrees with the ordinary one while repeats are still buffered.
+  const detailed = (await f.coordinator.detailedStats(t0 + 9 * minute, 5)).claim;
+  assert.equal(detailed.empty_count_today, 10);
+  assert.equal(detailed.reason_counts_today.no_queued_work, 10);
+  assert.equal(detailed.last_at, t0 + 9 * minute);
 
   // The tick at the interval persists, carrying the skipped ticks' counts, on the accounting row.
   await f.coordinator.claimDispatchWindow(t0 + 10 * minute, 30);
