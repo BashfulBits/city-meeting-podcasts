@@ -466,8 +466,8 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   default. A reply that stops at its output limit (`finish_reason: length`) is never stored: it is
   `output_budget_exhausted`, retried without cooling the route, and counted. `llm-budget-monitor.yml`
   turns those counts, empty/invalid JSON, own-rate 429s and oversized inputs -- plus `usage_today`
-  (per lane/route output percentiles, reservation, slow calls, computed from existing `attempts`
-  rows at read time) -- into one rolling issue that names the lane and the config key to change.
+  (per lane/route output percentiles, reservation, slow calls, from the per-day `attempt_usage`
+  cells each completion folds its calls into) -- into one rolling issue that names the lane and the config key to change.
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-v2` is a separate Cloudflare Worker whose
   SQLite Durable Object coordinator holds the queue, the per-route/per-account pacing ledger and the
   lease state ([`review/44`](review/44-bounded-bundled-llm-dispatch.md)). Producers enqueue through
@@ -563,8 +563,9 @@ carries only the indexes a query uses (`idx_jobs_state_updated_id`), and nothing
 admission scan key `(model, priority, created_at, job_id)` with no secondary index (1 row per
 entry); a queued job records the models it is indexed under in `jobs.queue_models`, written by the
 statement that already writes its row, so every unindex is a primary-key delete (the old unique
-`(job_id, model)` index is dropped once no job queued before 2026-10-07 remains); `attempts` has no `created_at` index
-and is pruned oldest-first by rowid; token calibration writes every completion until a
+`(job_id, model)` index is dropped once no job queued before 2026-10-07 remains); there is no
+per-attempt journal: each `completeBatch` folds its calls into one `attempt_usage` row per
+(UTC day, lane, route), and a failed attempt's detail goes to Workers Logs (`attempt_outcome`); token calibration writes every completion until a
 route/model/prompt-family window holds 32 samples, then a deterministic 1-in-4 sample by job id;
 and same-row bookkeeping in one transaction (per-purpose ingress counters, a success's route
 settlement, the claim-outcome scheduler row with its bundle/lease/queued counters) is folded into

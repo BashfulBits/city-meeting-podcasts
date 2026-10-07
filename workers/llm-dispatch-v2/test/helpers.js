@@ -154,7 +154,8 @@ export function estimateRowsRead(db, { query, params }) {
 }
 
 /** Tables whose row count grows with traffic and so must never be fully scanned. */
-export const GROWABLE_TABLES = ["jobs", "job_models", "bundles", "attempts"];
+// attempt_usage is not here: it holds a few cells per (day, lane, route), bounded by retention.
+export const GROWABLE_TABLES = ["jobs", "job_models", "bundles"];
 
 /**
  * Ingress purpose reservations for tests that exercise coordinator mechanics rather than the

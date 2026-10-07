@@ -192,6 +192,16 @@ const EMPTY_CLAIM_REFRESH_MS = 10 * 60 * 1000;
  * job_id-keyed deletes until none remain queued, then _retireLegacyJobModelsIndex drops it. */
 const LEGACY_JOB_MODELS_INDEX = "idx_job_models_job_model";
 
+/** A stored JSON list of numbers (attempt_usage), tolerating a malformed or missing value. */
+function parseNumberList(value) {
+  try {
+    const list = JSON.parse(value || "[]");
+    return Array.isArray(list) ? list.map(Number).filter(Number.isFinite) : [];
+  } catch {
+    return [];
+  }
+}
+
 /** A job's recorded job_models keys (jobs.queue_models), or null when it predates the column. */
 function parseQueueModels(value) {
   if (value == null) return null;
@@ -209,7 +219,7 @@ const CURRENT_SCHEMA_TABLES = [
   "routes",
   "providers",
   "bundles",
-  "attempts",
+  "attempt_usage",
   "estimates",
   "scheduler",
   "ingress_purpose",
@@ -248,7 +258,6 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "reservation_rpd_day_key",
     "reservation_tpm_window_start",
   ],
-  attempts: ["purpose", "reserved_output_tokens", "input_token_estimate"],
   scheduler: [
     "ingress_write_units_today",
     "queued_job_count",
@@ -272,6 +281,8 @@ const CURRENT_SCHEMA_OBJECTS = [
 ];
 
 const RETIRED_SCHEMA_OBJECTS = [
+  // One row per provider attempt until 2026-10-07; attempt_usage replaced it (see that table).
+  ["table", "attempts"],
   ["index", "idx_jobs_state_updated"],
   ["index", "idx_jobs_state_priority_created"],
   ["index", "idx_jobs_purpose_state_created"],
@@ -873,26 +884,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
       CREATE INDEX IF NOT EXISTS idx_bundles_state_created
         ON bundles (state, created_at);
 
-      CREATE TABLE IF NOT EXISTS attempts (
-        attempt_id              TEXT PRIMARY KEY,
-        job_id                  TEXT NOT NULL,
-        route_id                TEXT NOT NULL,
-        planned_at              INTEGER NOT NULL,
-        actual_start_at         INTEGER,
-        actual_end_at           INTEGER,
-        observed_input_tokens   INTEGER,
-        observed_output_tokens  INTEGER,
-        input_token_estimate    INTEGER NOT NULL DEFAULT 0,
-        start_state             TEXT NOT NULL CHECK (start_state IN ('planned','started','unknown')),
-        outcome                 TEXT CHECK (outcome IN
-                                   ('success','retryable_error','terminal_error','deferred_late')),
-        provider_status_code    INTEGER,
-        gateway_correlation_id  TEXT,
-        created_at              INTEGER NOT NULL
-      );
-
-      -- No created_at index: _pruneTerminalRecords reads attempts oldest-first by rowid
-      -- (insertion order) with a bounded LIMIT, and an index here cost a billed row per attempt.
+      -- Per (UTC day, lane, route) attempt usage for /v2/stats usage_today, folded from each
+      -- completeBatch: one billed row per lane/route per completion instead of a row per attempt
+      -- (insert, completion upsert and retention delete: ~3 billed rows per attempt). The value
+      -- lists keep the day's exact percentiles up to ATTEMPT_USAGE_SAMPLE_CAP calls per cell.
+      -- Per-attempt failure detail goes to Workers Logs (the attempt_outcome event) instead.
+      CREATE TABLE IF NOT EXISTS attempt_usage (
+        utc_day                 TEXT    NOT NULL,
+        purpose                 TEXT    NOT NULL,
+        route_id                TEXT    NOT NULL,
+        calls                   INTEGER NOT NULL DEFAULT 0,
+        measured_calls          INTEGER NOT NULL DEFAULT 0,
+        measured_input_calls    INTEGER NOT NULL DEFAULT 0,
+        reserved_sum            INTEGER NOT NULL DEFAULT 0,
+        over_reservation_calls  INTEGER NOT NULL DEFAULT 0,
+        slow_calls              INTEGER NOT NULL DEFAULT 0,
+        max_duration_ms         INTEGER NOT NULL DEFAULT 0,
+        outputs_json            TEXT    NOT NULL DEFAULT '[]',
+        input_ratios_json       TEXT    NOT NULL DEFAULT '[]',
+        PRIMARY KEY (utc_day, purpose, route_id)
+      ) WITHOUT ROWID;
 
       CREATE TABLE IF NOT EXISTS estimates (
         key                     TEXT PRIMARY KEY,
@@ -1008,11 +1019,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // already-provisioned DO's existing rows get 0, same as a freshly-created job.
     this._ensureColumn("jobs", "schema_retry_count", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("jobs", "transient_retry_count", "INTEGER NOT NULL DEFAULT 0");
-    // usage_today groups attempts by lane and compares output with the reservation; a completed
-    // job's row is retired once its result is consumed, so the attempt keeps both itself.
-    this._ensureColumn("attempts", "purpose", "TEXT NOT NULL DEFAULT ''");
-    this._ensureColumn("attempts", "reserved_output_tokens", "INTEGER NOT NULL DEFAULT 0");
-    this._ensureColumn("attempts", "input_token_estimate", "INTEGER NOT NULL DEFAULT 0");
+    // The per-attempt journal (2026-10-07): attempt_usage replaces it. Dropping a table bills no
+    // rows (measured under workerd), unlike pruning a week of attempts one billed row each.
+    this._runSchemaInitStep("drop retired attempts table", () =>
+      sql.exec("DROP TABLE IF EXISTS attempts")
+    );
     // The route's own rpm/rpd/tpm window identity AT CLAIM TIME, so a non-consuming refund
     // (completeBatch) can tell whether the route's current window is still the one this
     // reservation actually counted against, or whether it has since rolled over (see
@@ -1030,7 +1041,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       "idx_jobs_state_updated",
       "idx_jobs_state_priority_created",
       "idx_jobs_purpose_state_created",
-      // attempts are pruned oldest-first by rowid (insertion order) -- see _pruneTerminalRecords.
+      // Went with the attempts table it indexed (dropped above).
       "idx_attempts_created",
     ]) {
       this._runSchemaInitStep(`drop retired index ${index}`, () =>
@@ -1599,8 +1610,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
   }
 
   /**
-   * Retention for the DO's two append-only bookkeeping tables. Neither `bundles` nor `attempts`
-   * has any B2 counterpart or client-side dependency -- they are internal scheduler history, so
+   * Retention for the DO's bookkeeping tables. Neither `bundles` nor `attempt_usage` (which
+   * replaced the per-attempt `attempts` journal in 2026-10) has any B2 counterpart or client-side dependency -- they are internal scheduler history, so
    * unlike `jobs` (whose row must outlive the client's result fetch, see purgePendingBatch)
    * they can be aged out entirely inside the DO with no coordination. Kept long enough to stay
    * useful for incident diagnosis, short enough that neither table grows without bound.
@@ -1894,8 +1905,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
   // parameter count scales with caller-supplied batch size (e.g. POLL_BATCH_MAX up to 1000) into
   // multiple queries of at most this many ids each.
   static MAX_SQL_BOUND_PARAMS = 100;
-  // _usageToday: a day's attempts are a few thousand; the cap only bounds a pathological day.
-  static USAGE_SCAN_LIMIT = 20000;
+  // attempt_usage: values kept per (day, lane, route) cell for usage_today's percentiles. A busy
+  // cell sees a few hundred calls a day; past the cap counts stay exact and percentiles describe
+  // the day's first calls. Bounds the row at roughly 20 KB.
+  static ATTEMPT_USAGE_SAMPLE_CAP = 2000;
   static CALIBRATION_STATS_LIMIT = 200;
   static FILTERED_FAILURE_LIMIT = 1000;
   // A call at or past this share of MAX_RESPONSE_SECONDS (720 s) counts as slow: 600 s.
@@ -2644,113 +2657,131 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * for recurring observation. The HTTP route requires `?detail=1` to reach this method.
    */
   /**
-   * Per (lane, route) usage for the current UTC day, computed at read time from rows the executor
-   * already writes -- `attempts` (actual input/output tokens, estimates and reservations) joined
-   * to `jobs` (legacy lane/reservation fallback) -- so this telemetry adds no row writes. Attempts
-   * carry no time index (it would cost a billed write per attempt), so today's rows are read
-   * newest-first by rowid and the scan stops at the first earlier row, capped at USAGE_SCAN_LIMIT.
+   * Per (lane, route) usage for the current UTC day, from the attempt_usage cells completeBatch
+   * folds each call into (one billed row per lane/route per completion, not one per attempt).
+   * Percentiles are exact over each cell's first ATTEMPT_USAGE_SAMPLE_CAP calls of the day;
+   * counts and sums cover every call.
    *
    * Feeds scripts/llm_budget_monitor.py: estimate drift, output far below the reservation
    * (over-reservation that wastes TPM admission), output above it (reservation too small), and
    * calls near the Worker's response ceiling (a slow route or runaway reasoning).
    */
   _usageToday(sql, now) {
-    const dayStart = Date.parse(`${new Date(now).toISOString().slice(0, 10)}T00:00:00Z`);
-    const attempts = [];
-    for (const row of sql.exec(
-      `SELECT job_id, route_id, actual_start_at, actual_end_at, observed_input_tokens,
-              observed_output_tokens, input_token_estimate, created_at, purpose,
-              reserved_output_tokens
-         FROM attempts ORDER BY rowid DESC LIMIT ?`,
-      LLMSchedulerDO.USAGE_SCAN_LIMIT
-    )) {
-      if (row.created_at < dayStart) break;
-      if (row.actual_start_at == null) continue; // planned but never sent
-      attempts.push(row);
-    }
-    const jobs = new Map();
-    // An attempt written before it carried its own lane needs the job row for `purpose`; one
-    // migrated before `input_token_estimate` existed (a zero estimate on an attempt that already
-    // has `purpose`) still needs it for the input-ratio fallback below.
-    const jobIds = [...new Set(
-      attempts.filter((row) => !row.purpose || !row.input_token_estimate).map((row) => row.job_id)
-    )];
-    for (const chunk of this._chunks(jobIds)) {
-      const placeholders = chunk.map(() => "?").join(",");
-      for (const row of sql.exec(
-        `SELECT id, purpose, policy_json, input_token_estimate, max_output_token_estimate
-           FROM jobs WHERE id IN (${placeholders})`,
-        ...chunk
-      )) {
-        jobs.set(row.id, row);
-      }
-    }
-    const byKey = new Map();
-    for (const row of attempts) {
-      const job = jobs.get(row.job_id);
-      const purpose = row.purpose || (job ? this._purposeForJob(job) : "unknown");
-      const key = `${purpose}\u0000${row.route_id}`;
-      let agg = byKey.get(key);
-      if (!agg) {
-        agg = {
-          purpose,
-          route_id: row.route_id,
-          calls: 0,
-          measured_calls: 0,
-          measured_input_calls: 0,
-          outputs: [],
-          input_ratios: [],
-          reserved_sum: 0,
-          over_reservation_calls: 0,
-          slow_calls: 0,
-          max_duration_ms: 0,
-        };
-        byKey.set(key, agg);
-      }
-      agg.calls += 1;
-      const duration = row.actual_end_at != null ? row.actual_end_at - row.actual_start_at : 0;
-      if (duration >= LLMSchedulerDO.SLOW_CALL_MS) agg.slow_calls += 1;
-      agg.max_duration_ms = Math.max(agg.max_duration_ms, duration);
-      const input = Number(row.observed_input_tokens);
-      const estimate =
-        Number(row.input_token_estimate) || Number(job?.input_token_estimate) || 0;
-      if (row.observed_input_tokens != null && estimate > 0) {
-        agg.measured_input_calls += 1;
-        agg.input_ratios.push(input / estimate);
-      }
-      // A call that returned no usage (failed before the provider answered) says nothing about
-      // output size: it is counted as a call but kept out of the percentiles and the reservation
-      // comparison, or a lane with many such failures would look over-reserved.
-      if (row.observed_output_tokens == null) continue;
-      const output = Number(row.observed_output_tokens) || 0;
-      const reserved =
-        Number(row.reserved_output_tokens) || Number(job?.max_output_token_estimate) || 0;
-      agg.measured_calls += 1;
-      agg.outputs.push(output);
-      agg.reserved_sum += reserved;
-      if (reserved && output > reserved) agg.over_reservation_calls += 1;
-    }
-    return [...byKey.values()]
-      .map(({ outputs, input_ratios, reserved_sum, ...agg }) => {
-        outputs.sort((a, b) => a - b);
-        input_ratios.sort((a, b) => a - b);
+    const today = new Date(now).toISOString().slice(0, 10);
+    return [...sql.exec("SELECT * FROM attempt_usage WHERE utc_day = ?", today)]
+      .map((row) => {
+        const outputs = parseNumberList(row.outputs_json).sort((a, b) => a - b);
+        const inputRatios = parseNumberList(row.input_ratios_json).sort((a, b) => a - b);
         const ratioAt = (p) => {
-          if (!input_ratios.length) return null;
-          const index = Math.min(input_ratios.length - 1, Math.ceil(p * input_ratios.length) - 1);
-          return input_ratios[index];
+          if (!inputRatios.length) return null;
+          const index = Math.min(inputRatios.length - 1, Math.ceil(p * inputRatios.length) - 1);
+          return inputRatios[index];
         };
+        const measuredCalls = Number(row.measured_calls) || 0;
         return {
-          ...agg,
+          purpose: row.purpose,
+          route_id: row.route_id,
+          calls: Number(row.calls) || 0,
+          measured_calls: measuredCalls,
+          measured_input_calls: Number(row.measured_input_calls) || 0,
+          over_reservation_calls: Number(row.over_reservation_calls) || 0,
+          slow_calls: Number(row.slow_calls) || 0,
+          max_duration_ms: Number(row.max_duration_ms) || 0,
           input_ratio_p50: ratioAt(0.5),
           input_ratio_p90: ratioAt(0.9),
-          input_ratio_max: input_ratios.length ? input_ratios[input_ratios.length - 1] : null,
+          input_ratio_max: inputRatios.length ? inputRatios[inputRatios.length - 1] : null,
           output_tokens_p50: outputs[Math.floor((outputs.length - 1) * 0.5)] || 0,
           output_tokens_p90: outputs[Math.floor((outputs.length - 1) * 0.9)] || 0,
           output_tokens_max: outputs[outputs.length - 1] || 0,
-          reserved_output_mean: agg.measured_calls ? Math.round(reserved_sum / agg.measured_calls) : 0,
+          reserved_output_mean: measuredCalls
+            ? Math.round((Number(row.reserved_sum) || 0) / measuredCalls)
+            : 0,
         };
       })
       .sort((a, b) => b.calls - a.calls);
+  }
+
+  /**
+   * Fold one completed attempt into its (lane, route) cell for this completeBatch. A result that
+   * never reached a provider (no actual_start_at) is not a call and is skipped, as before.
+   */
+  _foldAttemptUsage(cells, purpose, routeId, result, job) {
+    if (result.actual_start_at == null) return;
+    const key = `${purpose}\u0000${routeId}`;
+    let cell = cells.get(key);
+    if (!cell) {
+      cell = {
+        purpose, route_id: routeId, calls: 0, measured_calls: 0, measured_input_calls: 0,
+        reserved_sum: 0, over_reservation_calls: 0, slow_calls: 0, max_duration_ms: 0,
+        outputs: [], input_ratios: [],
+      };
+      cells.set(key, cell);
+    }
+    cell.calls += 1;
+    const duration = result.actual_end_at != null ? result.actual_end_at - result.actual_start_at : 0;
+    if (duration >= LLMSchedulerDO.SLOW_CALL_MS) cell.slow_calls += 1;
+    cell.max_duration_ms = Math.max(cell.max_duration_ms, duration);
+    const estimate = Number(job?.input_token_estimate) || 0;
+    if (result.observed_input_tokens != null && estimate > 0) {
+      cell.measured_input_calls += 1;
+      cell.input_ratios.push(Math.round((Number(result.observed_input_tokens) / estimate) * 1000) / 1000);
+    }
+    // A call that returned no usage (failed before the provider answered) says nothing about
+    // output size: it is counted as a call but kept out of the percentiles and the reservation
+    // comparison, or a lane with many such failures would look over-reserved.
+    if (result.observed_output_tokens == null) return;
+    const output = Number(result.observed_output_tokens) || 0;
+    const reserved =
+      Number(result.reserved_output_tokens) || Number(job?.max_output_token_estimate) || 0;
+    cell.measured_calls += 1;
+    cell.outputs.push(output);
+    cell.reserved_sum += reserved;
+    if (reserved && output > reserved) cell.over_reservation_calls += 1;
+  }
+
+  /** Merge this completeBatch's cells into today's attempt_usage rows: one billed row each. */
+  _writeAttemptUsage(cells, now) {
+    if (cells.size === 0) return;
+    const sql = this._getSql();
+    const day = new Date(now).toISOString().slice(0, 10);
+    const cap = LLMSchedulerDO.ATTEMPT_USAGE_SAMPLE_CAP;
+    const append = (stored, added) => {
+      const values = parseNumberList(stored);
+      return JSON.stringify(values.concat(added.slice(0, Math.max(0, cap - values.length))));
+    };
+    for (const cell of cells.values()) {
+      const [row] = [...sql.exec(
+        "SELECT * FROM attempt_usage WHERE utc_day = ? AND purpose = ? AND route_id = ?",
+        day,
+        cell.purpose,
+        cell.route_id
+      )];
+      sql.exec(
+        `INSERT INTO attempt_usage (
+           utc_day, purpose, route_id, calls, measured_calls, measured_input_calls, reserved_sum,
+           over_reservation_calls, slow_calls, max_duration_ms, outputs_json, input_ratios_json
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (utc_day, purpose, route_id) DO UPDATE SET
+           calls = excluded.calls, measured_calls = excluded.measured_calls,
+           measured_input_calls = excluded.measured_input_calls,
+           reserved_sum = excluded.reserved_sum,
+           over_reservation_calls = excluded.over_reservation_calls,
+           slow_calls = excluded.slow_calls, max_duration_ms = excluded.max_duration_ms,
+           outputs_json = excluded.outputs_json, input_ratios_json = excluded.input_ratios_json`,
+        day,
+        cell.purpose,
+        cell.route_id,
+        (Number(row?.calls) || 0) + cell.calls,
+        (Number(row?.measured_calls) || 0) + cell.measured_calls,
+        (Number(row?.measured_input_calls) || 0) + cell.measured_input_calls,
+        (Number(row?.reserved_sum) || 0) + cell.reserved_sum,
+        (Number(row?.over_reservation_calls) || 0) + cell.over_reservation_calls,
+        (Number(row?.slow_calls) || 0) + cell.slow_calls,
+        Math.max(Number(row?.max_duration_ms) || 0, cell.max_duration_ms),
+        append(row?.outputs_json, cell.outputs),
+        append(row?.input_ratios_json, cell.input_ratios)
+      );
+    }
   }
 
   /** Recent bounded input/output calibration cells, with no prompt or payload contents. */
@@ -3141,28 +3172,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
     });
   }
 
+  /**
+   * review/44's unknown-attempt resolution endpoint. No job ever enters 'unknown_attempt', and
+   * since 2026-10-07 the DO keeps no per-attempt journal (attempt_usage aggregates by lane and
+   * route), so no attempt id is resolvable here: every id is reported not_found. The executor's
+   * attempt_outcome log line carries per-attempt detail.
+   */
   async resolveUnknownBatch(attemptIds) {
-    if (!attemptIds || attemptIds.length === 0) {
-      return { resolved: [], not_found: [] };
-    }
-    const sql = this._getSql();
-    const foundIds = new Set();
-    for (const chunk of this._chunks(attemptIds)) {
-      const placeholders = chunk.map(() => "?").join(",");
-      const rows = [...sql.exec(
-        `SELECT attempt_id FROM attempts WHERE attempt_id IN (${placeholders})`,
-        ...chunk
-      )];
-      for (const row of rows) {
-        foundIds.add(row.attempt_id);
-      }
-    }
-    const resolved = [];
-    const not_found = [];
-    for (const attemptId of attemptIds) {
-      (foundIds.has(attemptId) ? resolved : not_found).push(attemptId);
-    }
-    return { resolved, not_found };
+    return { resolved: [], not_found: [...(attemptIds || [])] };
   }
 
   // ---------------------------------------------------------------------------------------
@@ -3501,7 +3518,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     const bundleLimit = this._maxBundlePrunePerTick();
     const attemptLimit = this._maxAttemptPrunePerTick();
     let bundlesDeleted = 0;
-    let attemptsDeleted = 0;
+    let attemptUsageDeleted = 0;
     let routeFailuresDeleted = 0;
 
     if (bundleLimit > 0) {
@@ -3540,27 +3557,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
 
     if (attemptLimit > 0) {
       const cutoff = now - this._attemptRetentionMs();
-      // Oldest-first by rowid, which is insertion order (created_at is set at insert and never
-      // changes). This needs no created_at index -- an index that cost a billed row on every
-      // attempt insert. `rowid >= 0` keeps it an INTEGER PRIMARY KEY range seek, read-bounded by
-      // the LIMIT; stop at the first row still inside the retention window.
-      const ids = [];
-      for (const row of sql.exec(
-        `SELECT attempt_id, created_at FROM attempts WHERE rowid >= 0 ORDER BY rowid ASC LIMIT ?`,
+      const cutoffDay = new Date(cutoff).toISOString().slice(0, 10);
+      // A handful of lane/route cells per day; a primary-key prefix seek by utc_day.
+      const staleUsage = [...sql.exec(
+        `SELECT utc_day, purpose, route_id FROM attempt_usage
+         WHERE utc_day < ? ORDER BY utc_day ASC LIMIT ?`,
+        cutoffDay,
         attemptLimit
-      )) {
-        if (!(row.created_at < cutoff)) break;
-        ids.push(row.attempt_id);
-      }
-      for (const chunk of this._chunks(ids)) {
-        const placeholders = chunk.map(() => "?").join(",");
-        sql.exec(`DELETE FROM attempts WHERE attempt_id IN (${placeholders})`, ...chunk);
-        attemptsDeleted += chunk.length;
+      )];
+      for (const row of staleUsage) {
+        sql.exec(
+          "DELETE FROM attempt_usage WHERE utc_day = ? AND purpose = ? AND route_id = ?",
+          row.utc_day,
+          row.purpose,
+          row.route_id
+        );
+        attemptUsageDeleted += 1;
       }
 
       // review/45 §20.7: Prune route_failures older than ATTEMPT_RETENTION_DAYS using
       // the existing _maxAttemptPrunePerTick budget idiom.
-      const cutoffDay = new Date(cutoff).toISOString().slice(0, 10);
       const staleFailures = [...sql.exec(
         `SELECT utc_day, route_id, failure_class FROM route_failures
          WHERE utc_day < ? ORDER BY utc_day ASC LIMIT ?`,
@@ -3578,7 +3594,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
     }
 
-    return { bundlesDeleted, attemptsDeleted, routeFailuresDeleted };
+    return { bundlesDeleted, attemptUsageDeleted, routeFailuresDeleted };
   }
 
   _freshRouteLedger(catalogRoute, now) {
@@ -5041,59 +5057,31 @@ export class LLMSchedulerDO extends DurableObjectBase {
         );
       };
 
+      const usageCells = new Map();
       for (const result of results || []) {
-        // Look up the job first (a plain read, no side effects) so the attempts insert below can
-        // use its already-fetched lease_route_id directly -- a route_id derived from a
-        // `(SELECT ... FROM jobs WHERE id=?)` subquery evaluates to NULL for a bogus/unknown
-        // job_id, which would throw on attempts.route_id's NOT NULL constraint and abort the
-        // whole batch's completion, not just skip this one stale/unrecognized result.
+        // Every reported call counts toward usage, including a stale/duplicate completion whose
+        // lease has moved on: the provider was still called.
         const jobRows = [...sql.exec("SELECT * FROM jobs WHERE id = ?", result.job_id)];
-        const routeIdForAttempt = jobRows.length > 0 ? jobRows[0].lease_route_id : "unknown";
-
-        // The attempt row is written here, once, with its outcome (the executor no longer inserts
-        // a 'started' row before the call). UPSERT rather than INSERT: a row written by an
-        // executor deployed before 2026-10-07 for this attempt_id gets its terminal fields.
-        sql.exec(
-          `INSERT INTO attempts (
-            attempt_id, job_id, route_id, planned_at, actual_start_at, actual_end_at,
-            observed_input_tokens, observed_output_tokens, start_state, outcome,
-            provider_status_code, gateway_correlation_id, created_at, purpose,
-            reserved_output_tokens, input_token_estimate
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(attempt_id) DO UPDATE SET
-            planned_at = excluded.planned_at,
-            actual_start_at = excluded.actual_start_at,
-            actual_end_at = excluded.actual_end_at,
-            observed_input_tokens = excluded.observed_input_tokens,
-            observed_output_tokens = excluded.observed_output_tokens,
-            start_state = excluded.start_state,
-            outcome = excluded.outcome,
-            provider_status_code = excluded.provider_status_code,
-            gateway_correlation_id = excluded.gateway_correlation_id,
-            purpose = CASE WHEN excluded.purpose <> '' THEN excluded.purpose ELSE attempts.purpose END,
-            reserved_output_tokens = excluded.reserved_output_tokens,
-            input_token_estimate = CASE WHEN excluded.input_token_estimate > 0
-              THEN excluded.input_token_estimate ELSE attempts.input_token_estimate END`,
-          result.attempt_id,
-          result.job_id,
-          routeIdForAttempt || "unknown",
-          result.planned_at ?? null,
-          result.actual_start_at ?? null,
-          result.actual_end_at ?? null,
-          result.observed_input_tokens ?? null,
-          result.observed_output_tokens ?? null,
-          result.actual_start_at != null ? "started" : "planned",
-          result.outcome,
-          result.provider_status_code ?? null,
-          result.gateway_correlation_id ?? null,
-          now,
-          // Lane and reservation live on the attempt too: usage_today reads them after the job
-          // row itself is retired (retireConsumed). Same row write, no extra cost.
-          jobRows.length > 0 ? this._purposeForJob(jobRows[0]) : "",
-          result.reserved_output_tokens ??
-            (jobRows.length > 0 ? Number(jobRows[0].max_output_token_estimate) || 0 : 0),
-          jobRows.length > 0 ? Number(jobRows[0].input_token_estimate) || 0 : 0
-        );
+        const attemptRouteId = (jobRows.length > 0 ? jobRows[0].lease_route_id : null) || "unknown";
+        const attemptPurpose = jobRows.length > 0 ? this._purposeForJob(jobRows[0]) : "unknown";
+        this._foldAttemptUsage(usageCells, attemptPurpose, attemptRouteId, result, jobRows[0]);
+        if (result.outcome !== "success") {
+          // The per-attempt record a failure used to leave in the attempts table, as a log line
+          // (Workers Logs) instead of three billed rows.
+          console.warn(JSON.stringify({
+            event: "attempt_outcome",
+            job_id: result.job_id,
+            attempt_id: result.attempt_id,
+            route_id: attemptRouteId,
+            purpose: attemptPurpose,
+            outcome: result.outcome,
+            provider_status_code: result.provider_status_code ?? null,
+            failure_class: result.failure_class ?? null,
+            gateway_correlation_id: result.gateway_correlation_id ?? null,
+            actual_start_at: result.actual_start_at ?? null,
+            actual_end_at: result.actual_end_at ?? null,
+          }));
+        }
 
         if (jobRows.length === 0 || jobRows[0].lease_token !== result.lease_token) {
           continue; // stale/duplicate completion for an already-settled job
@@ -5542,6 +5530,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
 
       for (const routeId of [...pendingSuccess.keys()]) flushSuccess(routeId);
+      this._writeAttemptUsage(usageCells, now);
 
       if (requeuedCount > 0) {
         // One scheduler write per completeBatch, not per requeued job (see the queued-counter

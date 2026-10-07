@@ -12,6 +12,16 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **LLM dispatch: per-day attempt usage instead of a row per attempt (#1844 P4, part 2).** The
+  coordinator no longer journals each provider attempt in `attempts` (two billed rows at
+  completion, one more when retention deleted it). Each `completeBatch` folds its calls into one
+  `attempt_usage` row per UTC day, lane and route, which `usage_today` reads. Counts are exact, and
+  percentiles are exact over each cell's first 2,000 calls of the day. A non-success attempt is
+  logged as an `attempt_outcome` Workers Logs event instead. `resolve-unknown-batch` now reports
+  every id `not_found` (no job ever enters `unknown_attempt`). The old table is dropped at
+  migration, which bills no rows. Measured: 18.62 → 16.40 billed rows per one-model job including
+  retention (22.22 → 20.07 at three models); `ROWS_PER_LEASE_WORST` 23 → 21.
+
 - **LLM dispatch: no Durable Object call before each provider call (#1844 P4, part 1).** The
   executor no longer calls `attemptStarted`, which inserted a `started` attempt row and bumped
   `jobs.attempts` before every provider call (four billed rows with accounting). The claim counts

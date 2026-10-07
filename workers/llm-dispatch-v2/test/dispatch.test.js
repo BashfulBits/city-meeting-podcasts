@@ -251,7 +251,6 @@ test("a claim counts the attempt; attemptStarted is a write-free compatibility c
   const rowsBefore = sql.exec("SELECT rows_written_today FROM scheduler")[0].rows_written_today;
   assert.equal((await coordinator.attemptStarted(job.id, job.lease_token)).fenced, true);
   assert.equal((await coordinator.attemptStarted(job.id, "wrong-lease-token")).fenced, false);
-  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM attempts")[0].n, 0);
   assert.equal(sql.exec("SELECT attempts FROM jobs WHERE id = 'j1'")[0].attempts, 1);
   assert.equal(
     sql.exec("SELECT rows_written_today FROM scheduler")[0].rows_written_today,
@@ -1357,7 +1356,7 @@ test("purgePendingBatch merges completed and failed rows by age without changing
   assert.equal([...sql.exec("SELECT COUNT(*) n FROM jobs WHERE state='purge_pending'")][0].n, 4);
 });
 
-test("_pruneTerminalRecords deletes aged-out terminal bundles and attempts, bounded per tick", async () => {
+test("_pruneTerminalRecords deletes aged-out terminal bundles and usage cells, bounded per tick", async () => {
   const { coordinator, sql } = makeCoordinator({
     BUNDLE_RETENTION_DAYS: "7",
     ATTEMPT_RETENTION_DAYS: "7",
@@ -1366,28 +1365,34 @@ test("_pruneTerminalRecords deletes aged-out terminal bundles and attempts, boun
   });
   const now = Date.now();
   const old = now - 30 * 86_400_000;
+  const oldDay = new Date(old).toISOString().slice(0, 10);
   for (let i = 0; i < 25; i++) {
     sql.exec("INSERT INTO bundles VALUES (?,?,'completed',?,0,?,?)", `b${i}`, "t", old, old, old);
     sql.exec(
-      "INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, start_state, created_at)" +
-        " VALUES (?,?,?,?,'started',?)",
-      `a${i}`, `j${i}`, "route-a", old, old
+      "INSERT INTO attempt_usage (utc_day, purpose, route_id, calls) VALUES (?, 'lane', ?, 1)",
+      oldDay, `route-${i}`
     );
   }
+  // Today's cell is inside the window and stays.
+  sql.exec(
+    "INSERT INTO attempt_usage (utc_day, purpose, route_id, calls) VALUES (?, 'lane', 'route-now', 1)",
+    new Date(now).toISOString().slice(0, 10)
+  );
 
   const first = coordinator._pruneTerminalRecords(now);
-  assert.deepEqual(first, { bundlesDeleted: 10, attemptsDeleted: 10, routeFailuresDeleted: 0 });
+  assert.deepEqual(first, { bundlesDeleted: 10, attemptUsageDeleted: 10, routeFailuresDeleted: 0 });
   assert.equal([...sql.exec("SELECT COUNT(*) n FROM bundles")][0].n, 15);
-  assert.equal([...sql.exec("SELECT COUNT(*) n FROM attempts")][0].n, 15);
+  assert.equal([...sql.exec("SELECT COUNT(*) n FROM attempt_usage")][0].n, 16);
 
   // Repeated ticks drain the backlog and then stop finding work.
   coordinator._pruneTerminalRecords(now);
   const third = coordinator._pruneTerminalRecords(now);
-  assert.deepEqual(third, { bundlesDeleted: 5, attemptsDeleted: 5, routeFailuresDeleted: 0 });
+  assert.deepEqual(third, { bundlesDeleted: 5, attemptUsageDeleted: 5, routeFailuresDeleted: 0 });
   assert.deepEqual(
     coordinator._pruneTerminalRecords(now),
-    { bundlesDeleted: 0, attemptsDeleted: 0, routeFailuresDeleted: 0 }
+    { bundlesDeleted: 0, attemptUsageDeleted: 0, routeFailuresDeleted: 0 }
   );
+  assert.equal([...sql.exec("SELECT route_id FROM attempt_usage")][0].route_id, "route-now");
 });
 
 test("_pruneTerminalRecords never removes an active bundle, a recent one, or one whose lease could still be current", async () => {
@@ -1418,7 +1423,7 @@ test("a zero per-tick prune cap pauses retention without affecting dispatch", as
 
   assert.deepEqual(
     coordinator._pruneTerminalRecords(now),
-    { bundlesDeleted: 0, attemptsDeleted: 0, routeFailuresDeleted: 0 }
+    { bundlesDeleted: 0, attemptUsageDeleted: 0, routeFailuresDeleted: 0 }
   );
   assert.equal([...sql.exec("SELECT COUNT(*) n FROM bundles")][0].n, 1);
 

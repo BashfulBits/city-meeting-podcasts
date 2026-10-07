@@ -788,23 +788,10 @@ test("pollBatch chunks IDs past Cloudflare's 100-bound-parameter limit", async (
   assert.equal(pollRes.statuses.length, 250);
 });
 
-test("resolveUnknownBatch reports known and unknown attempt ids, chunked past 100", async () => {
-  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
-
-  const knownIds = Array.from({ length: 5 }, (_, i) => `attempt-${i}`);
-  for (const attemptId of knownIds) {
-    sql.exec(
-      `INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, start_state, created_at)
-       VALUES (?, 'job-x', 'route-x', 0, 'planned', 0)`,
-      attemptId
-    );
-  }
-
-  const unknownIds = Array.from({ length: 150 }, (_, i) => `missing-${i}`);
-  const res = await coordinator.resolveUnknownBatch([...knownIds, ...unknownIds]);
-
-  assert.deepEqual(res.resolved.sort(), knownIds.sort());
-  assert.equal(res.not_found.length, unknownIds.length);
+test("resolveUnknownBatch reports every id not_found: the DO keeps no per-attempt journal", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const ids = Array.from({ length: 150 }, (_, i) => `attempt-${i}`);
+  assert.deepEqual(await coordinator.resolveUnknownBatch(ids), { resolved: [], not_found: ids });
 });
 
 test("enqueueBatch supersedes a completed row whose old payload was wrong, and re-queues it", async () => {
@@ -2504,29 +2491,50 @@ test("the drain signal ignores expired leases, which a global pause never reaps"
 });
 
 
-test("detailedStats reports today's usage per lane and route from existing attempt rows", async () => {
+/** Lease `jobs` ([id, purpose, reservedOutput, route]) in a fresh bundle and complete them. */
+function completeLeased(sql, coordinator, bundleId, jobs, results) {
+  const now = Date.now();
+  sql.exec(
+    `INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end,
+       created_at) VALUES (?, 'tok', 'active', ?, ?, ?)`,
+    bundleId, now + 60_000, now + 60_000, now
+  );
+  for (const [id, purpose, reserved, route] of jobs) {
+    sql.exec(
+      `INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, bundle_id,
+         lease_route_id, lease_token, prompt_family, input_token_estimate,
+         max_output_token_estimate, payload_key, created_at, updated_at, purpose)
+       VALUES (?, ?, 'd', ?, 'leased', ?, ?, ?, 'x', 100, ?, ?, ?, ?, ?)`,
+      id, `idem-${id}`, JSON.stringify({ purpose }), bundleId, route, `lt-${id}`, reserved,
+      `payloads/${id}.json`, now, now, purpose
+    );
+  }
+  return coordinator.completeBatch(bundleId, "tok", results.map((result) => ({
+    lease_token: `lt-${result.job_id}`, planned_at: now, outcome: "success",
+    provider_status_code: 200, result_key: `results/${result.job_id}.json`, ...result,
+  })));
+}
+
+test("detailedStats reports today's usage per lane and route from completed attempts", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
-  const dayStart = Date.parse(`${new Date(now).toISOString().slice(0, 10)}T00:00:00Z`);
-  const insertJob = (id, purpose, reserved) => sql.exec(
-    `INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, prompt_family,
-       input_token_estimate, max_output_token_estimate, payload_key, created_at, updated_at, purpose)
-     VALUES (?, ?, 'd', ?, 'completed', 'x', 100, ?, ?, ?, ?, ?)`,
-    id, `idem-${id}`, JSON.stringify({ purpose }), reserved, `payloads/${id}.json`, now, now, purpose
+  const yesterday = new Date(now - 86_400_000).toISOString().slice(0, 10);
+  // A cell from yesterday is excluded.
+  sql.exec(
+    "INSERT INTO attempt_usage (utc_day, purpose, route_id, calls, outputs_json) VALUES (?, 'chapter-agenda', 'route-a', 1, '[99999]')",
+    yesterday
   );
-  const insertAttempt = (id, jobId, route, output, durationMs, createdAt) => sql.exec(
-    `INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, actual_start_at, actual_end_at,
-       observed_output_tokens, start_state, outcome, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'started', 'success', ?)`,
-    id, jobId, route, createdAt, createdAt, createdAt + durationMs, output, createdAt
-  );
-  insertJob("j1", "chapter-agenda", 16384);
-  insertJob("j2", "chapter-agenda", 16384);
-  insertJob("j3", "topic-tags:tagger", 8192);
-  insertAttempt("old", "j1", "route-a", 99999, 1000, dayStart - 1000); // yesterday: excluded
-  insertAttempt("a1", "j1", "route-a", 2000, 30_000, now - 3000);
-  insertAttempt("a2", "j2", "route-a", 20000, 650_000, now - 2000); // over reservation, slow
-  insertAttempt("a3", "j3", "route-b", 500, 5_000, now - 1000);
+  const at = (offset, duration) => ({ actual_start_at: now - offset, actual_end_at: now - offset + duration });
+  await completeLeased(sql, coordinator, "b1", [
+    ["j1", "chapter-agenda", 16384, "route-a"],
+    ["j2", "chapter-agenda", 16384, "route-a"],
+    ["j3", "topic-tags:tagger", 8192, "route-b"],
+  ], [
+    { job_id: "j1", attempt_id: "a1", observed_output_tokens: 2000, ...at(3000, 30_000) },
+    // over its reservation, and slow
+    { job_id: "j2", attempt_id: "a2", observed_output_tokens: 20000, ...at(2000, 650_000) },
+    { job_id: "j3", attempt_id: "a3", observed_output_tokens: 500, ...at(1000, 5_000) },
+  ]);
 
   const usage = (await coordinator.detailedStats(now, 50)).usage_today;
   const agenda = usage.find((row) => row.purpose === "chapter-agenda");
@@ -2538,6 +2546,8 @@ test("detailedStats reports today's usage per lane and route from existing attem
   assert.equal(agenda.output_tokens_max, 20000);
   const tagger = usage.find((row) => row.purpose === "topic-tags:tagger");
   assert.deepEqual([tagger.calls, tagger.output_tokens_p90, tagger.slow_calls], [1, 500, 0]);
+  // One cell per lane/route per day, written once for the whole completion.
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM attempt_usage")[0].n, 3);
 });
 
 test("a length-truncated reply settles the token bucket to its measured usage", async () => {
@@ -2581,30 +2591,55 @@ test("a length-truncated reply settles the token bucket to its measured usage", 
   const route = sql.exec("SELECT full_token_budget FROM routes WHERE route_id = ?", routeId)[0];
   // Google TPM counts only input; output usage stays in the attempt telemetry.
   assert.equal(route.full_token_budget, 100000 + 17384 - 1000);
-  // The attempt keeps the lane and reservation for usage_today after the job row is retired.
-  const attempt = sql.exec("SELECT purpose, reserved_output_tokens FROM attempts WHERE attempt_id = 'att-long'")[0];
-  assert.deepEqual([attempt.purpose, attempt.reserved_output_tokens], ["chapter-agenda", 16384]);
+  // usage_today keeps the lane and reservation, folded at completion.
+  const cell = sql.exec("SELECT purpose, reserved_sum, over_reservation_calls FROM attempt_usage")[0];
+  assert.deepEqual(
+    [cell.purpose, cell.reserved_sum, cell.over_reservation_calls],
+    ["chapter-agenda", 16384, 1]
+  );
 });
 
 test("usage_today keeps a retired job's lane and leaves unmeasured calls out of the percentiles", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
-  const insertAttempt = (id, output, purpose, reserved) => sql.exec(
-    `INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, actual_start_at, actual_end_at,
-       observed_output_tokens, start_state, outcome, created_at, purpose, reserved_output_tokens)
-     VALUES (?, 'gone', 'route-a', ?, ?, ?, ?, 'started', 'success', ?, ?, ?)`,
-    id, now - 1000, now - 1000, now - 500, output, now - 1000, purpose, reserved
-  );
-  // No jobs row at all: the job was retired after its result was consumed.
-  insertAttempt("m1", 12000, "chapter-agenda", 16384);
-  insertAttempt("m2", null, "chapter-agenda", 16384); // failed before usage came back
-  insertAttempt("m3", null, "chapter-agenda", 16384);
+  const call = { actual_start_at: now - 1000, actual_end_at: now - 500 };
+  await completeLeased(sql, coordinator, "b-m", [
+    ["m1", "chapter-agenda", 16384, "route-a"],
+    ["m2", "chapter-agenda", 16384, "route-a"],
+    ["m3", "chapter-agenda", 16384, "route-a"],
+  ], [
+    { job_id: "m1", attempt_id: "a-m1", observed_output_tokens: 12000, ...call },
+    // failed before usage came back
+    { job_id: "m2", attempt_id: "a-m2", outcome: "terminal_error", provider_status_code: 400, ...call },
+    { job_id: "m3", attempt_id: "a-m3", outcome: "terminal_error", provider_status_code: 400, ...call },
+  ]);
+  // The jobs are retired after their results are consumed; usage was folded at completion.
+  sql.exec("DELETE FROM jobs");
   const [row] = (await coordinator.detailedStats(now, 50)).usage_today;
   assert.equal(row.purpose, "chapter-agenda");
   assert.equal(row.calls, 3);
   assert.equal(row.measured_calls, 1);
   assert.equal(row.output_tokens_p50, 12000);
   assert.equal(row.reserved_output_mean, 16384);
+});
+
+test("a usage cell keeps exact counts past its percentile sample cap", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const cap = coordinator.constructor.ATTEMPT_USAGE_SAMPLE_CAP;
+  const today = new Date().toISOString().slice(0, 10);
+  sql.exec(
+    `INSERT INTO attempt_usage (utc_day, purpose, route_id, calls, measured_calls, outputs_json)
+     VALUES (?, 'chapter-agenda', 'route-a', ?, ?, ?)`,
+    today, cap, cap, JSON.stringify(Array(cap).fill(10))
+  );
+  const now = Date.now();
+  await completeLeased(sql, coordinator, "b-cap", [["c1", "chapter-agenda", 100, "route-a"]], [
+    { job_id: "c1", attempt_id: "a-c1", observed_output_tokens: 99, actual_start_at: now, actual_end_at: now },
+  ]);
+  const cell = sql.exec("SELECT calls, measured_calls, outputs_json FROM attempt_usage")[0];
+  assert.equal(cell.calls, cap + 1);
+  assert.equal(cell.measured_calls, cap + 1);
+  assert.equal(JSON.parse(cell.outputs_json).length, cap);
 });
 
 test("detailedStats can restrict route_failures to named classes past the row limit", async () => {
@@ -2693,4 +2728,19 @@ test("TPD feedback keeps remaining tokens and does not exhaust daily requests", 
   assert.equal(ledger.tpd_used, 180000 - 341);
   assert.equal(ledger.rpd_count, 0);
   assert.equal(ledger.blocked_until, now + 323136);
+});
+
+test("a coordinator from before attempt_usage drops its per-attempt journal on recreation", () => {
+  const { storage, sql } = createMockSqlStorage();
+  makeCoordinator({}, { storage, sql });
+  sql.exec(`
+    CREATE TABLE attempts (attempt_id TEXT PRIMARY KEY, job_id TEXT, created_at INTEGER);
+    INSERT INTO attempts VALUES ('a1', 'j1', 1);
+  `);
+  const { coordinator } = makeCoordinator({}, { storage, sql });
+  assert.equal(coordinator._inspectCurrentSchema().current, true);
+  assert.equal(
+    sql.exec("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'attempts'")[0].n,
+    0
+  );
 });

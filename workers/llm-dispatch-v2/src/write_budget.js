@@ -14,8 +14,8 @@
  *
  * The constants below were MEASURED by `bench/rows-written/` (the real `LLMSchedulerDO` under
  * workerd), remeasured after each #1844 change (ledger in bench/rows-written/README.md): a
- * completed first-try one-model job costs ~17.6 billed rows end to end (44.3 before the row-write
- * tiers), plus ~1 more when retention later prunes its attempt row. They size the ingress
+ * completed first-try one-model job costs ~16.4 billed rows end to end, retention included (44.3
+ * before the row-write tiers). They size the ingress
  * quota and are the reference for re-measuring after a schema/index/lifecycle change.
  */
 
@@ -39,10 +39,11 @@ export const ROWS_PER_BUNDLE = 8;
 
 /** One lease beyond its bundle, worst case: per-job claim 3.8 (its attempt counted in the lease
  * UPDATE), a granted in-lease 429 retry 5 (route ledger, failure counter, the retry's attempt
- * count, accounting), then a requeue completion ~11, and a consumption retire 1 + accounting 1.
- * Claim and completion accounting belong to ROWS_PER_BUNDLE. Measured 2026-10-07 after the
- * executor stopped calling attemptStarted (was 28, which included two of them). */
-export const ROWS_PER_LEASE_WORST = 23;
+ * count, accounting), then a requeue completion ~10 (including its own attempt_usage cell, the
+ * worst case of one route per lease), and a consumption retire 1 + accounting 1. Claim and
+ * completion accounting belong to ROWS_PER_BUNDLE. Measured 2026-10-07: 28 before the executor
+ * stopped calling attemptStarted, 23 after, 21 once attempts stopped being journaled per row. */
+export const ROWS_PER_LEASE_WORST = 21;
 
 /** One job through scheduled cleanup: the purge_pending transition of a failed or aged job (2)
  * plus confirmPurge's row delete (1), and one accounting row in each transaction (2).
