@@ -1,0 +1,22 @@
+slug: fort-worth-tx-neighborhood-quality-and-revitalization-committee
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body_exact:
+  - Neighborhood Quality And Revitalization of August 9, 2022 Neighborhood Quality And Revitalization
+    of August 9, 2022
+  - Neighborhood Quality and Revitalization Committee Neighborhood Quality and Revitalization Committee
+  - >-
+    Mobility: Infrastructure and Transportation Committee & Neighborhood Quality and Revitalization
+    Committee Mobility: Infrastructure and Transportation Committee & Neighborhood Quality and
+    Revitalization Committee
+podcast_title: 'Fort Worth: Neighborhood Quality and Revitalization Committee'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: Neighborhood Quality and Revitalization Committee meetings for Fort Worth, TX.

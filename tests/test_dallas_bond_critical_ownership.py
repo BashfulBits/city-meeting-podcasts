@@ -4,7 +4,12 @@ import copy
 import json
 from pathlib import Path
 
-from citypods.bodies import record_matches_body, source_body_filter, source_body_inclusions
+from citypods.bodies import (
+    is_excluded,
+    record_matches_body,
+    source_body_filter,
+    source_body_inclusions,
+)
 from citypods.config import load_city_configs
 from citypods.feeds import build_rss
 from citypods.records import record_to_episode
@@ -20,7 +25,7 @@ def test_critical_institution_preserves_identity_and_rejects_near_labels():
     original = copy.deepcopy(record)
 
     def matches(candidate, city=feed):
-        return record_matches_body(
+        return not is_excluded(candidate.get("body"), city.body_exclude) and record_matches_body(
             candidate, source_body_filter(city.source), source_body_inclusions(city.source)
         )
 

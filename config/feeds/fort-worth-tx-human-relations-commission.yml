@@ -1,0 +1,20 @@
+slug: fort-worth-tx-human-relations-commission
+city: fort-worth-tx
+provider: granicus
+source:
+  feed_urls:
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=5&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=9&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=10&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=11&mode=vpodcast
+  - https://fortworthgov.granicus.com/ViewPublisherRSS.php?view_id=12&mode=vpodcast
+  body_exact:
+  - Fort Worth Human Relations Commission Fort Worth Human Relations Commission
+  - Human Relations Commission Human Relations Commission
+  - >-
+    Human Relations Commission - Mayor's Committee on Persons with Disabilities Human Relations
+    Commission - Mayor's Committee on Persons with Disabilities
+podcast_title: 'Fort Worth: Tx Human Relations Commission'
+podcast_author: City of Fort Worth, TX
+podcast_email: ''
+podcast_description: Tx Human Relations Commission recordings for Fort Worth, TX.
