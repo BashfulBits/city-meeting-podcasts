@@ -16,7 +16,14 @@ curl -s "http://127.0.0.1:8799/?name=run3&n=30&bundle=1"   # one-job bundles (pe
 curl -s "http://127.0.0.1:8799/retry?name=run4"            # a retried (requeued) attempt
 curl -s "http://127.0.0.1:8799/r429?name=run5"             # an in-lease 429 retry authorization
 curl -s "http://127.0.0.1:8799/ingress?name=run6&purpose=chapter-locator&models=gemini/gemini-3.5-flash-lite,deepseek/deepseek-v4-pro,moonshotai/kimi-k3&n=200"
+# full lifecycle of a three-model pool (claim deletes every model index row, not just one)
+curl -s "http://127.0.0.1:8799/?name=run7&n=60&retire=1&purpose=topic-tags:tagger&models=gemini/gemini-3.1-flash-lite,kilo/stepfun/step-3.7-flash:free,deepseek/deepseek-v4-flash"
 ```
+
+Every lifecycle run reports `lifecycle_w` (rows a job writes while it is live) and `total_w`,
+which adds `prune_w`: the retention prune that deletes its bookkeeping rows days later
+(`attempts`, terminal bundles), run directly past every retention window. `per_job` divides both
+by `n`.
 
 Use a fresh `name` per run (each is a new DO instance).
 
@@ -84,3 +91,22 @@ Measured with the deployment's workerd 1.20260921.1: three rejected claims each 
 rows; all four missing-column ALTERs plus accounting cost five writes once; dispatch resumed four
 jobs; the next recreation wrote zero rows. The separate accounting recreation check still measured
 71 writes and an exactly matching persisted delta.
+
+
+## Row-write reduction ledger (#1844, from 2026-10-07)
+
+Each PR in this series re-runs the commands above against a fresh object and records the result
+here before updating `src/write_budget.js`. Figures are billed rows per job at four jobs per
+bundle with consumption retirement (`retire=1`); "total" includes the deferred prune. Measured
+with workerd from wrangler 4.131.1.
+
+| Step | 1 model live | 1 model total | 3 models live | 3 models total | idle tick | requeue | in-lease 429 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Baseline (main @ 065a1f1f) | 21.58 | 22.62 | 27.18 | 28.22 | 2 | 17 | 4 |
+
+Baseline phase split (one model, 60 jobs, 15 bundles): enqueue 364, claim 312, attemptStarted
+240, completeBatch 318, retire 61, prune 62. Three models (12 bundles): enqueue 604, claim 410,
+attemptStarted 240, completeBatch 316, retire 61, prune 62. Deletes bill one row per deleted
+table row: index entries are billed on insert but not on delete in these measurements.
+`requeue` is the `/retry` endpoint's attemptStarted + requeueing completion; `in-lease 429` is
+`/r429`'s authorizeRetry, both including their accounting row.

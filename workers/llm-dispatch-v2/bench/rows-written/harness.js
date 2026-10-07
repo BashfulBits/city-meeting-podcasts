@@ -19,6 +19,21 @@ function job(i, purpose, model, models) {
   };
 }
 
+/** Lifecycle totals: `lifecycle_w` is what one job costs while it is live; `total_w` adds the
+ * deferred retention prune. Both are the per-PR comparison figures in README.md. */
+function summarize(out, n) {
+  const lifecycle = ["enqueue", "claim", "attempt", "complete", "retire", "ack"]
+    .reduce((sum, phase) => sum + (out[phase]?.w || 0), 0)
+    + (out.purge ? out.purge.purgePendingBatchW + out.purge.confirmPurgeW : 0);
+  const total = lifecycle + (out.prune_w || 0);
+  return {
+    ...out,
+    lifecycle_w: lifecycle,
+    total_w: total,
+    per_job: { lifecycle: +(lifecycle / n).toFixed(2), total: +(total / n).toFixed(2) },
+  };
+}
+
 export class MeasureDO extends LLMSchedulerDO {
   _getSql() {
     if (!this._wrapped) {
@@ -48,7 +63,20 @@ export class MeasureDO extends LLMSchedulerDO {
     return { w, r };
   }
 
-  async measure({ n = 60, purpose = "chapter-agenda", model = NEMOTRON, bundle = 0, retire = false }) {
+  /** Deferred cost of a lifecycle: the retention prune that deletes its bookkeeping rows days
+   * later (attempts, terminal bundles), run directly past every retention window. */
+  _measurePrune(now) {
+    const later = now + 30 * 24 * 3600 * 1000;
+    let w = 0;
+    for (let round = 0; round < 100; round += 1) {
+      const deleted = this._transactionSync(() => this._pruneTerminalRecords(later));
+      w += this._take().w;
+      if (Object.values(deleted).every((count) => count === 0)) break;
+    }
+    return w;
+  }
+
+  async measure({ n = 60, purpose = "chapter-agenda", model = NEMOTRON, models = null, bundle = 0, retire = false }) {
     // bundle > 0 caps jobs per bundle (bundle=1 is write_budget.js's worst-case lease).
     if (bundle > 0) this.env = { ...this.env, MAX_BUNDLE_JOBS: String(bundle) };
     this._getSql();
@@ -58,7 +86,7 @@ export class MeasureDO extends LLMSchedulerDO {
     await this.claimDispatchWindow(t0, 30);
     this._take();
 
-    const jobs = Array.from({ length: n }, (_, i) => job(i, purpose, model));
+    const jobs = Array.from({ length: n }, (_, i) => job(i, purpose, model, models));
     const enq = await this.enqueueBatch(jobs);
     out.enqueue = { ...this._take(), accepted: (enq.accepted || enq.results || []).length ?? null, raw: Object.keys(enq) };
 
@@ -96,10 +124,11 @@ export class MeasureDO extends LLMSchedulerDO {
       // Consumption-based retirement (the client's default path for a persisted completion).
       await this.retireConsumed(polled.statuses.map((s) => ({ id: s.id, result_key: s.result_key })));
       out.retire = this._take();
+      out.prune_w = this._measurePrune(now);
       let idleW = 0;
       for (let k = 0; k < 20; k += 1) { now += 61_000; await this.claimDispatchWindow(now, 30); idleW += this._take().w; }
       out.idle_tick_w = idleW / 20;
-      return out;
+      return summarize(out, n);
     }
     // The ack + scheduled-cleanup path (fallback, and every job the client never retires).
     await this.ackResults(ids);
@@ -117,12 +146,13 @@ export class MeasureDO extends LLMSchedulerDO {
       purged += pj.length;
     }
     out.purge = { purgePendingBatchW: purgeW, confirmPurgeW: confirmW, purged, rounds };
+    out.prune_w = this._measurePrune(now);
 
     // Idle ticks with an empty queue.
     let idleW = 0;
     for (let k = 0; k < 20; k += 1) { now += 61_000; await this.claimDispatchWindow(now, 30); idleW += this._take().w; }
     out.idle_tick_w = idleW / 20;
-    return out;
+    return summarize(out, n);
   }
 
   async measureRetry() {
@@ -235,8 +265,9 @@ export default {
       n: Number(url.searchParams.get("n")) }));
     const purpose = url.searchParams.get("purpose") || "chapter-agenda";
     const model = url.searchParams.get("model") || NEMOTRON;
+    const models = url.searchParams.get("models")?.split(",") || null;
     return Response.json(await stub.measure({
-      n: Number(url.searchParams.get("n") || 60), purpose, model,
+      n: Number(url.searchParams.get("n") || 60), purpose, model, models,
       bundle: Number(url.searchParams.get("bundle") || 0),
       retire: url.searchParams.get("retire") === "1",
     }));
