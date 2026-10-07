@@ -2064,15 +2064,15 @@
       "uid": "0c66fc968402fabd",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=3814",
       "question": "Verify deployed publication notes for approved consecutive CCPD/Council proceedings",
-      "missing_evidence": "The approved note is live on both direct participant pages and in CCPD RSS. The current Council RSS has a 500-item window beginning 2020-12-15, so this 2020-07-24 recording is absent from its XML. Maintainer disposition is needed on whether the permanent Council page plus the bounded RSS window satisfies this publication check.",
-      "next_action": "Ask whether to close based on the deployed Council/CCPD pages, identical original audio, CCPD RSS note and the Council RSS age limit; otherwise retain the case as an archive-window exception. Do not change assignments or raw media.",
+      "missing_evidence": "No remaining P0 publication evidence is missing; the Council RSS window omits these older recordings by design, and the maintainer accepted the permanent pages as sufficient.",
+      "next_action": "No further action; the maintainer-approved publication check is verified.",
       "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-crime-control-and-prevention-district"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Resolved 2026-10-07 under the maintainer-approved P0 archive policy: the two permanent participant pages return HTTP 200 and show the approved consecutive-proceedings note and the unchanged original audio; CCPD RSS includes both exact UIDs. Council RSS is a bounded 500-item window beginning 2020-12-15, so it does not include these 2020-07-24 recordings. This is an expected RSS age limit; the permanent Council page remains available. No source records, UID, title, chapters, assignments or audio changed. See review/evidence/p0-forward-rule-replay-2026-10-07.md."
     },
     {
       "case_id": "fort-worth-tx-0d5832dbd08e6dd8-ownership",
@@ -2197,15 +2197,15 @@
       "uid": "99152cb9e61fa091",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=11&clip_id=3814",
       "question": "Verify deployed publication notes for approved consecutive CCPD/Council proceedings",
-      "missing_evidence": "The approved note is live on both direct participant pages and in CCPD RSS. The current Council RSS has a 500-item window beginning 2020-12-15, so this 2020-07-24 recording is absent from its XML. Maintainer disposition is needed on whether the permanent Council page plus the bounded RSS window satisfies this publication check.",
-      "next_action": "Ask whether to close based on the deployed Council/CCPD pages, identical original audio, CCPD RSS note and the Council RSS age limit; otherwise retain the case as an archive-window exception. Do not change assignments or raw media.",
+      "missing_evidence": "No remaining P0 publication evidence is missing; the Council RSS window omits these older recordings by design, and the maintainer accepted the permanent pages as sufficient.",
+      "next_action": "No further action; the maintainer-approved publication check is verified.",
       "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-crime-control-and-prevention-district"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "Resolved 2026-10-07 under the maintainer-approved P0 archive policy: the two permanent participant pages return HTTP 200 and show the approved consecutive-proceedings note and the unchanged original audio; CCPD RSS includes both exact UIDs. Council RSS is a bounded 500-item window beginning 2020-12-15, so it does not include these 2020-07-24 recordings. This is an expected RSS age limit; the permanent Council page remains available. No source records, UID, title, chapters, assignments or audio changed. See review/evidence/p0-forward-rule-replay-2026-10-07.md."
     },
     {
       "case_id": "fort-worth-tx-b7a9ee9eae6fafc6-ownership",
@@ -2332,12 +2332,14 @@
       "uid": "6135249a278494c5",
       "provider_guid": "273327",
       "question": "Verify task-force, subcommittee or town-hall institution and exact recording feed coverage",
-      "missing_evidence": "Dated official proceeding and exact source recording binding; institution distinct from standing Council committees",
-      "next_action": "Reconcile official CBTF archive and source chapters, prepare bounded ownership contract; no title-only closure",
-      "last_researched": "2026-10-05",
-      "current_feed_assignments": [],
-      "status": "open",
-      "disposition": null
+      "missing_evidence": "None for the maintainer-directed placement; live feed verified. No separate official agenda was located.",
+      "next_action": "Reopen only if deployed ownership/audio changes or new official evidence contradicts this disposition.",
+      "last_researched": "2026-10-07",
+      "current_feed_assignments": [
+        "dallas-tx-bond-program-meetings"
+      ],
+      "status": "resolved",
+      "disposition": "Maintainer-directed Dallas Bond Program only. Read-only live RSS check found the exact original UID/title/audio in Bond Program and absent from Public Info and the dedicated Task Force feed; see dallas-cbtf-live-rss-2026-10-07.md. The City archive page is dated; its machine transcript is unreviewed, and no separate official agenda was located."
     },
     {
       "case_id": "dallas-tx-6a3caf1854bdd2cd-ownership",
@@ -2458,11 +2460,12 @@
       "uid": "aa65e2aafc90711b",
       "provider_guid": "272574",
       "question": "2023-09-26 Dallas CBTF/Town Hall dual-feed verification",
-      "missing_evidence": "Confirm original UID/audio in both live feeds after implementation.",
-      "next_action": "Add to Public Info in #2115; then verify both live feeds.",
+      "missing_evidence": "Confirm the original UID/audio is present in both live feeds after PR #2116 deployment.",
+      "next_action": "After the queued deployment completes, confirm the same original UID/audio appears in Dallas Bond Program and Public Info RSS.",
       "last_researched": "2026-10-07",
       "current_feed_assignments": [
-        "dallas-tx-bond-program-meetings"
+        "dallas-tx-bond-program-meetings",
+        "dallas-tx-public-info-meetings"
       ],
       "status": "open",
       "disposition": null
@@ -2570,9 +2573,9 @@
       "uid": "16300c982b358fe9",
       "provider_guid": "270975",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "The Dallas Office of Bond & Construction Management official Streets and Transportation Subcommittee page lists Tuesday, August 22, 2023, “Streets and Transportation Meeting #6,” which matches the retained provider record date/title. The page’s Video button contains no recording URL or provider GUID in its published HTML, so exact source-record binding remains unverified.",
+      "next_action": "Find an official agenda/minutes document or inspect the official video control to obtain a dated, exact provider-GUID binding; keep the current Transportation feed assignment unchanged.",
+      "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
       ],
@@ -2618,9 +2621,9 @@
       "uid": "2d2bc233efd9bf97",
       "provider_guid": "269407",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "The retained source record dates this episode August 10, 2023, but the official Dallas Streets and Transportation Subcommittee page currently lists August 15 as Meeting #5, not an August 10 meeting. No dated official August 10 agenda/minutes or exact official video link was located; the provider record alone is not independent proof.",
+      "next_action": "Locate the dated official agenda/minutes or an official video link that identifies this exact provider recording; preserve its existing Transportation feed assignment until then.",
+      "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
       ],
@@ -2650,9 +2653,9 @@
       "uid": "8578348e702caf35",
       "provider_guid": "277830",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "A City Manager memo dated October 27, 2023 says the 2024 Bond subcommittees were expected to reconvene and provide recommendations by October 31. It does not name an October 27 Streets meeting or bind provider GUID277830 / this UID to an official agenda or recording.",
+      "next_action": "Locate the dated official agenda/minutes or an official video link that identifies this exact provider recording; preserve its existing Transportation feed assignment until then.",
+      "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
       ],
@@ -2682,9 +2685,9 @@
       "uid": "b0471f29622b8165",
       "provider_guid": "277827",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "Dated official convening and exact source recording binding; independent institution proof",
-      "next_action": "Prepared reusable institution rules #2081; verify deployed ownership and preserve independent missing recording/date evidence before closure.",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "A City Manager memo dated October 27, 2023 says the 2024 Bond subcommittees were expected to reconvene and provide recommendations by October 31. It does not name an October 26 Streets meeting or bind provider GUID277827 / this UID to an official agenda or recording.",
+      "next_action": "Locate the dated official agenda/minutes or an official video link that identifies this exact provider recording; preserve its existing Transportation feed assignment until then.",
+      "last_researched": "2026-10-07",
       "current_feed_assignments": [
         "dallas-tx-transportation-and-infrastructure"
       ],

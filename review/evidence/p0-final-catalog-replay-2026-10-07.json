@@ -3,8 +3,8 @@
   "current_feed_count": 224,
   "cached_source_count": 26555,
   "base_assignment_count": 27434,
-  "current_assignment_count": 29369,
-  "added_assignment_count": 1965,
+  "current_assignment_count": 29380,
+  "added_assignment_count": 1976,
   "removed_assignment_count": 30,
   "added_assignments": [
     {
@@ -13041,6 +13041,14 @@
     },
     {
       "source_key": "76869ed1994f",
+      "uid": "6135249a278494c5",
+      "provider_guid": "273327",
+      "body": "2024 Capital Bond Program CBTF Meetings",
+      "title": "2024 Capital Bond Program CBTF Meetings – Oct 03, 2023",
+      "feed": "dallas-tx-bond-program-meetings"
+    },
+    {
+      "source_key": "76869ed1994f",
       "uid": "632ad35858cc2a26",
       "provider_guid": "319282",
       "body": "Workforce-Education and Equity",
@@ -13158,6 +13166,14 @@
       "body": "Joint Meeting of the Ad Hoc Committee on Pensions and the Finance Committee",
       "title": "Joint Meeting of the Ad Hoc Committee on Pensions and the Finance Committee – May 21, 2026",
       "feed": "dallas-tx-ad-hoc-committee-on-pensions"
+    },
+    {
+      "source_key": "76869ed1994f",
+      "uid": "6a3caf1854bdd2cd",
+      "provider_guid": "277589",
+      "body": "2024 Capital Bond CBTF and Subcommittee Chairs Meeting",
+      "title": "2024 Capital Bond CBTF and Subcommittee Chairs Meeting – Oct 24, 2023",
+      "feed": "dallas-tx-bond-program-meetings"
     },
     {
       "source_key": "76869ed1994f",
@@ -13561,6 +13577,14 @@
     },
     {
       "source_key": "76869ed1994f",
+      "uid": "84fcc0492e66906d",
+      "provider_guid": "233037",
+      "body": "2024 Capital Bond CBTF Meeting",
+      "title": "2024 Capital Bond CBTF Meeting – May 25, 2023",
+      "feed": "dallas-tx-bond-program-meetings"
+    },
+    {
+      "source_key": "76869ed1994f",
       "uid": "85015855e8e792ca",
       "provider_guid": "202390",
       "body": "Ad Hoc Committee on COVID-19 Recovery & Assistance",
@@ -13873,6 +13897,14 @@
     },
     {
       "source_key": "76869ed1994f",
+      "uid": "96c10f4f75706719",
+      "provider_guid": "246971",
+      "body": "2024 Capital Bond CBTF Meeting",
+      "title": "2024 Capital Bond CBTF Meeting – Jun 20, 2023",
+      "feed": "dallas-tx-bond-program-meetings"
+    },
+    {
+      "source_key": "76869ed1994f",
       "uid": "96f947952e98f879",
       "provider_guid": "202796",
       "body": "Mobility Solutions, Infrastructure and Sustainability Committee",
@@ -14161,11 +14193,35 @@
     },
     {
       "source_key": "76869ed1994f",
+      "uid": "aa65e2aafc90711b",
+      "provider_guid": "272574",
+      "body": "2024 Capital Bond Program CBTF Meeting",
+      "title": "2024 Capital Bond Program CBTF Meeting – Sep 26, 2023",
+      "feed": "dallas-tx-bond-program-meetings"
+    },
+    {
+      "source_key": "76869ed1994f",
+      "uid": "aa65e2aafc90711b",
+      "provider_guid": "272574",
+      "body": "2024 Capital Bond Program CBTF Meeting",
+      "title": "2024 Capital Bond Program CBTF Meeting – Sep 26, 2023",
+      "feed": "dallas-tx-public-info-meetings"
+    },
+    {
+      "source_key": "76869ed1994f",
       "uid": "aaacc04b3741aa2e",
       "provider_guid": "202761",
       "body": "Human & Social Needs Committee",
       "title": "Human & Social Needs Committee – May 07, 2018",
       "feed": "dallas-tx-human-social-needs-committee"
+    },
+    {
+      "source_key": "76869ed1994f",
+      "uid": "aaf0ad8eaabe68a5",
+      "provider_guid": "269278",
+      "body": "2024 Capital Bond CBTF Meeting",
+      "title": "2024 Capital Bond CBTF Meeting – Aug 15, 2023",
+      "feed": "dallas-tx-bond-program-meetings"
     },
     {
       "source_key": "76869ed1994f",
@@ -14521,6 +14577,14 @@
     },
     {
       "source_key": "76869ed1994f",
+      "uid": "baa19208405acb22",
+      "provider_guid": "280220",
+      "body": "2024 Bond CBTF and Subcommittee Chairs Meeting",
+      "title": "2024 Bond CBTF and Subcommittee Chairs Meeting – Nov 04, 2023",
+      "feed": "dallas-tx-bond-program-meetings"
+    },
+    {
+      "source_key": "76869ed1994f",
       "uid": "bb359976c32aa8bb",
       "provider_guid": "203218",
       "body": "Workforce, Education and Equity",
@@ -14774,6 +14838,14 @@
       "body": "Workforce-Education and Equity",
       "title": "Workforce-Education and Equity – Oct 12, 2021",
       "feed": "dallas-tx-council-committee-on-government-efficiency"
+    },
+    {
+      "source_key": "76869ed1994f",
+      "uid": "cba1e023051d7c94",
+      "provider_guid": "269916",
+      "body": "2024 Capital Bond CBTF Meeting",
+      "title": "2024 Capital Bond CBTF Meeting – Aug 22, 2023",
+      "feed": "dallas-tx-bond-program-meetings"
     },
     {
       "source_key": "76869ed1994f",
@@ -15038,6 +15110,14 @@
       "body": "Housing Policy Public Input Virtual Meeting Topic 1 of 4",
       "title": "Housing Policy Public Input Virtual Meeting Topic 1 of 4 – Jan 29, 2018",
       "feed": "dallas-tx-public-info-meetings"
+    },
+    {
+      "source_key": "76869ed1994f",
+      "uid": "deb5a67aa9b6e8d1",
+      "provider_guid": "259822",
+      "body": "2024 Capital Bond CBTF Meeting",
+      "title": "2024 Capital Bond CBTF Meeting – Jun 13, 2023",
+      "feed": "dallas-tx-bond-program-meetings"
     },
     {
       "source_key": "76869ed1994f",
@@ -15366,6 +15446,14 @@
       "body": "Mobility Solutions, Infrastructure and Sustainability Committee",
       "title": "Mobility Solutions, Infrastructure and Sustainability Committee – May 13, 2019",
       "feed": "dallas-tx-mobility-solutions-infrastructure-and-sustainability-committee"
+    },
+    {
+      "source_key": "76869ed1994f",
+      "uid": "eeca5aeceda62d39",
+      "provider_guid": "272005",
+      "body": "2024 Capital Bond Program CBTF Meeting",
+      "title": "2024 Capital Bond Program CBTF Meeting – Sep 19, 2023",
+      "feed": "dallas-tx-bond-program-meetings"
     },
     {
       "source_key": "76869ed1994f",
@@ -15970,8 +16058,8 @@
       "feed": "fort-worth-tx-city-council"
     }
   ],
-  "unmatched_record_pairs": 413,
-  "unmatched_uid_strings": 413,
+  "unmatched_record_pairs": 411,
+  "unmatched_uid_strings": 411,
   "unmatched_records": [
     {
       "source_key": "3b7588310856",
@@ -18537,13 +18625,6 @@
     },
     {
       "source_key": "76869ed1994f",
-      "uid": "6135249a278494c5",
-      "provider_guid": "273327",
-      "body": "2024 Capital Bond Program CBTF Meetings",
-      "title": "2024 Capital Bond Program CBTF Meetings – Oct 03, 2023"
-    },
-    {
-      "source_key": "76869ed1994f",
       "uid": "61ee17e46ad144c2",
       "provider_guid": "205487",
       "body": "2013 Back to School Fair",
@@ -18639,13 +18720,6 @@
       "provider_guid": "201968",
       "body": "Council Agenda",
       "title": "Council Agenda – Mar 09, 2022"
-    },
-    {
-      "source_key": "76869ed1994f",
-      "uid": "aa65e2aafc90711b",
-      "provider_guid": "272574",
-      "body": "2024 Capital Bond Program CBTF Meeting",
-      "title": "2024 Capital Bond Program CBTF Meeting – Sep 26, 2023"
     },
     {
       "source_key": "76869ed1994f",
@@ -18940,7 +19014,7 @@
     "dallas-tx-automated-red-light-commission": 11,
     "dallas-tx-bid-purchasing": 692,
     "dallas-tx-board-of-adjustments": 303,
-    "dallas-tx-bond-program-meetings": 29,
+    "dallas-tx-bond-program-meetings": 39,
     "dallas-tx-charter-review-commission": 31,
     "dallas-tx-citizen-homelessness-commission": 82,
     "dallas-tx-city-council": 360,
@@ -18973,7 +19047,7 @@
     "dallas-tx-parks-trails-environment-committee": 70,
     "dallas-tx-permit-and-license-appeal-board-hearing": 76,
     "dallas-tx-public-facility-corporation-meeting": 17,
-    "dallas-tx-public-info-meetings": 125,
+    "dallas-tx-public-info-meetings": 126,
     "dallas-tx-public-safety": 155,
     "dallas-tx-quality-of-life": 144,
     "dallas-tx-quality-of-life-arts-and-culture-committee": 104,

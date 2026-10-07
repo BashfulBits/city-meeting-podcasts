@@ -110,30 +110,43 @@ def test_three_verified_cbtf_proceedings_preserve_identity(index):
     assert record == original
 
 
-def test_verified_may25_cbtf_preserves_identity_and_bounded_admission():
-    """Original chapters plus official minutes verify one shared-label recording."""
+def test_verified_may25_cbtf_preserves_aggregate_and_task_force_coverage():
+    """The aggregate rule adds the same unchanged recording to the bond-program feed."""
     root = Path(__file__).resolve().parents[1]
     cities = load_city_configs(root / "config", {})
     record = json.loads((root / "tests/fixtures/dallas-cbtf-may25-retained.json").read_text())
     original = copy.deepcopy(record)
     task_force = next(c for c in cities if c.slug == "dallas-tx-2024-community-bond-task-force")
+    bond = next(c for c in cities if c.slug == "dallas-tx-bond-program-meetings")
+    public_info = next(c for c in cities if c.slug == "dallas-tx-public-info-meetings")
 
     def holders(candidate):
         return {
             c.slug
             for c in cities
             if c.city_entity == "dallas-tx"
-            and not is_excluded(candidate.get("body"), c.body_exclude)
             and record_matches_body(
                 candidate, source_body_filter(c.source), source_body_inclusions(c.source)
             )
+            and (
+                not is_excluded(candidate.get("body"), c.body_exclude)
+                or any(
+                    inclusion.provider_guid == candidate.get("provider_guid")
+                    for inclusion in source_body_inclusions(c.source)
+                )
+            )
         }
 
-    assert holders(record) == {task_force.slug}
-    assert not holders(dict(record, provider_guid="unverified-recording"))
-    assert not holders(
-        dict(record, provider_guid="272574", body="2024 Capital Bond Program CBTF Meeting")
+    assert holders(record) == {task_force.slug, bond.slug}
+    assert holders(dict(record, provider_guid="unverified-recording")) == {bond.slug}
+    sep26 = next(
+        row
+        for row in json.loads(
+            (root / "tests/fixtures/dallas-bond-program-cbtf-retained.json").read_text()
+        )["episodes"]
+        if row["provider_guid"] == "272574"
     )
+    assert holders(sep26) == {bond.slug, public_info.slug}
     assert record["source_chapters"] == [
         {"start": 374, "end": 8578, "title": "2024 Bond CBTF Meeting on May 25, 2023."}
     ]

@@ -2254,6 +2254,13 @@ publication winner, other source/holder change, or backfill. Run targeted tests,
 suite, whole `ruff check .`, and `ruff format --check .`; CodeRabbit review is required for the
 resulting code PR. Human merge only.
 
+Implemented in [PR #2111](https://github.com/BashfulBits/city-meeting-podcasts/pull/2111), merged
+2026-10-07 (merge commit `a23efe3e1c82ca42cd6270d24e05c3b7fb701251`); deployed successfully in
+Build & Deploy run [#37643318454](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37643318454).
+This contract is frozen. On 2026-10-07, the maintainer accepted the two permanent Council pages
+plus the bounded RSS window as sufficient P0 publication evidence; both #3814 register cases are
+closed.
+
 #2084 test compatibility: existing tests/test_workflows.py pins the superseded single
 build-deploy job. Update only deploy workflow job/artifact/order assertions for approved
 render→search→deploy, retaining credential scope, pinned action, permissions, refresh/render
@@ -2373,6 +2380,58 @@ Do not modify runtime/model/provider/schema/storage/stage/worker/workflow/other 
 records/titles/dates/chapters/audio; no splits/winner/backfill/invalidation or quota work.
 
 Prepared #2094: exact institutional feed implemented; deployment verification remains required.
+
+### Dallas CBTF meetings in the Bond Program aggregate — L3, #2152
+
+The maintainer approved the October3,2023 Dallas Community Bond Task Force recording for the
+Dallas Bond Program feed only. Public comment during an ordinary committee meeting does not by
+itself make that recording a Public Info meeting. The exact Swagit source page is the City archive
+record for GUID273327; its automated transcript is unedited and is supporting context only. The
+September29 City Manager memo says the Task Force planned to meet in early October, but does not
+name October3. Retain both limitations in the evidence record.
+
+Change only `config/feeds/dallas-tx-bond-program-meetings.yml`: remove the broad `CBTF` entry
+from that feed's `body_exclude` so the P0 policy replay agrees with its existing `*Bond*` /
+`*CBTF*` selectors. A live RSS check on October7 found the October3 recording already in Bond
+Program, with its original UID/audio, and absent from Public Info and the dedicated Task Force RSS.
+The runtime body filter does not apply `body_exclude`, so this correction is expected to change no
+published RSS items. In the P0 policy replay, ten retained Dallas CBTF or Subcommittee Chairs
+recordings become Bond Program assignments; the eight verified Task Force records keep their
+existing dedicated-feed subscriptions. This includes the October3 recording and the September19
+and September26 recordings with the same normalized `2024 Capital Bond Program CBTF Meeting`
+label. The September26 recording keeps its already approved Public Info placement from #2116;
+this contract adds no Public Info placements.
+
+Expected added Bond Program subscriptions from the complete 5,353-record Dallas source are only:
+
+| UID | City provider GUID | Existing feed holders before this change |
+|---|---:|---|
+| `6135249a278494c5` | 273327 | none |
+| `6a3caf1854bdd2cd` | 277589 | Dallas 2024 Community Bond Task Force |
+| `84fcc0492e66906d` | 233037 | Dallas 2024 Community Bond Task Force |
+| `96c10f4f75706719` | 246971 | Dallas 2024 Community Bond Task Force |
+| `aa65e2aafc90711b` | 272574 | none; Public Info is separately approved |
+| `aaf0ad8eaabe68a5` | 269278 | Dallas 2024 Community Bond Task Force |
+| `baa19208405acb22` | 280220 | Dallas 2024 Community Bond Task Force |
+| `cba1e023051d7c94` | 269916 | Dallas 2024 Community Bond Task Force |
+| `deb5a67aa9b6e8d1` | 259822 | Dallas 2024 Community Bond Task Force |
+| `eeca5aeceda62d39` | 272005 | Dallas 2024 Community Bond Task Force |
+
+Add an unaltered ten-record fixture from the retained Dallas source and focused actual-config
+tests. The tests must prove the exact ten Bond Program policy matches, original UID/title/audio
+identity, unchanged existing CBTF holders, and no Public Info rule change. Reject near labels and
+verify no other Dallas source-record holder changes. Run a full 5,353-record holder replay against
+the pre-change policy; only the ten Bond Program policy assignments may be added. Compare with
+live RSS and state clearly that no runtime publication change is expected.
+Run the full offline suite, whole-repository Ruff and format checks, and `git diff --check`.
+
+Do not change another feed/config, use UID-specific inclusion/exclusion, edit raw records or audio,
+or add a Public Info selector. No schema, provider, runtime, stage, storage, worker, workflow,
+backfill, winner, or audio-pipeline changes. GUID273327 is already verified in the live Bond Program
+RSS only, so its evidence case may close with the recorded user decision and exact UID/audio proof.
+Keep GUID272574 open until the merged #2116 deployment verifies its approved Public Info copy.
+Update the P0 replay/report and
+register with prepared assignments, but do not claim live deployment or close either case here.
 
 ### Dallas bond Flood subcommittee reusable ownership — L3, #2089
 
