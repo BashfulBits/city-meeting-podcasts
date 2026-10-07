@@ -645,6 +645,20 @@ badge policy (confirmed safe to use verbatim per its own published guidelines), 
 Casts/Castro licensing gap (no independently-verified official asset, so those fall back to a neutral,
 non-trademarked glyph), and the icon-only-controls-never-acceptable accessibility constraint.
 
+**Feed-page history, pagination, and RSS cap (maintainer direction, 2026-10-07; add to Part A).**
+The desired podcast RSS cap is 300 episodes; website history should remain reachable beyond that
+window, with a clear note that podcast apps receive only the latest 300 RSS items. Whether to keep a
+fixed recent-list size or paginate through retained meetings is now an open design choice. The
+current site has a 500-item "Recent meetings" list and one unpaginated archive page listing retained
+episodes. Compare the user experience, page size/performance, implementation cost, and whether
+pagination belongs on the main feed page, the archive, or both. This is a project choice, not an Apple
+requirement: Apple's current
+[RSS requirements](https://podcasters.apple.com/support/823-podcast-requirements) do not specify a
+300-item maximum. The current `max_episodes` setting caps both RSS and the feed-page list, so the
+redesign must split those limits without reducing historical retention or search inputs. The live
+search index is currently unpublished; its restoration is a separate dependency, not something this
+cap change can claim to fix. Detailed options and acceptance checks are in [review/32](32-frontend-design-accessibility-funding.md#feed-page-history-pagination-and-rss-cap-maintainer-direction-2026-10-07).
+
 Accessibility (Part B, independent of Part A's process) gaps found by reading the
 markup, not generic checklist advice: no `aria-live` region on three dynamic updates (search-result
 count, play-state change, copy-RSS feedback), no skip-to-content link — plus WCAG contrast ratios
