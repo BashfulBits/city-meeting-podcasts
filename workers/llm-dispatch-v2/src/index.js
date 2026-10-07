@@ -24,7 +24,7 @@ import { classifyProviderFailure } from "./classify.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
   DO_ROWS_WRITTEN_PLATFORM_LIMIT,
-  ROWS_PER_INGRESS_WRITE_UNIT,
+  ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX,
 } from "./write_budget.js";
 
 export { LLMSchedulerDO };
@@ -154,11 +154,13 @@ export function validateConfig(env) {
       `safety stop (${accountSafeStop})`
     );
   }
-  // A full day of admitted ingress must fit under the enqueue threshold on its own.
-  if (ROWS_PER_INGRESS_WRITE_UNIT * maxIngressWriteUnits > enqueueRowStop) {
+  // A full day of admitted ingress must fit under the enqueue threshold on its own. The schema is
+  // not visible here, so assume a coordinator still carrying the legacy job_id index.
+  const rowsPerUnit = ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX;
+  if (rowsPerUnit * maxIngressWriteUnits > enqueueRowStop) {
     throw new Error(
       `Invalid config: MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY (${maxIngressWriteUnits}) can write up ` +
-      `to ${ROWS_PER_INGRESS_WRITE_UNIT * maxIngressWriteUnits} rows, past DO_ROWS_ENQUEUE_STOP ` +
+      `to ${rowsPerUnit * maxIngressWriteUnits} rows, past DO_ROWS_ENQUEUE_STOP ` +
       `(${enqueueRowStop})`
     );
   }
