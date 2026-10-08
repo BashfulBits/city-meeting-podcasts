@@ -5176,7 +5176,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
             this._recordRouteFailure(
               sql,
               now,
-              job.lease_route_id || routeIdForAttempt,
+              job.lease_route_id || attemptRouteId,
               failureClass,
               result.provider_status_code
             );

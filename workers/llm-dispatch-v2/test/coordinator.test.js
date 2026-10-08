@@ -2686,3 +2686,17 @@ test("enqueue reserves the legacy-index row cost until that index is retired", a
   await coordinator.recountQueuedJobs(); // nothing legacy is queued, so the index is dropped
   assert.equal(coordinator._rowsPerIngressWriteUnit(), 1.25);
 });
+
+test("a failed attempt on a lease with no recorded route still completes", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  await completeLeased(sql, coordinator, "b-noroute", [["nr1", "chapter-agenda", 100, null]], [{
+    job_id: "nr1", attempt_id: "a-nr1", outcome: "terminal_error", provider_status_code: 400,
+    actual_start_at: now, actual_end_at: now,
+  }]);
+  assert.equal(sql.exec("SELECT state FROM jobs WHERE id = 'nr1'")[0].state, "failed");
+  assert.equal(
+    sql.exec("SELECT route_id FROM route_failures WHERE failure_class = 'request_defect'")[0].route_id,
+    "unknown"
+  );
+});
