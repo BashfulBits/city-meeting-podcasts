@@ -482,6 +482,52 @@ needs exact event proof. The remaining evidence cases are recorded in
 rule above, open cases remain explicit evidence work; the counts do not mean those recordings were
 reclassified or their evidence was waived.
 
+### P0 post-merge check — PRs #2164 and #2165 (2026-10-08)
+
+PR #2164 merged the Dallas GUID272574 Bond Program-only correction, and PR #2165 merged the
+Arlington exact-recording inclusion plus the reusable South Dallas/Fair Park title alias. Build and
+Deploy run [#37720810791](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37720810791)
+passed on merge commit `2f3e26f8`, which contains both changes. The later main build for unrelated
+PR #2167 was still running during this check.
+
+Live checks found Arlington's 2012 `Empty` UID on its permanent meeting page and archive page; both
+returned HTTP 200 and the page retained the original Granicus clip link and hosted audio URL. The
+UID is not in current Council RSS because that 2012 recording is outside the live feed's bounded
+history. Dallas GUID272574 / UID `aa65e2aafc90711b` is in Bond Program RSS with the original audio
+enclosure, and absent from Public Info RSS, matching the maintainer's final decision. A one-byte
+range request to the enclosure returned HTTP 200 (`audio/mp4`). The South Dallas/Fair Park special
+called meeting appears in that board's own RSS under its original UID. Full URLs and observations
+are in [`p0-post-merge-check-2026-10-08.md`](evidence/p0-post-merge-check-2026-10-08.md). The
+272574 register case is resolved; six evidence cases remain open.
+
+The successful feed-health audit [#37726969713](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37726969713)
+ran on commit `cb7018eb`, after #2165 and before the unrelated #2167 merge. It leaves issue
+[#1623](https://github.com/BashfulBits/city-meeting-podcasts/issues/1623) open with four affected
+feed paths and five provider rows: an Addison school ceremony (one), three cached Denton Animal
+Shelter Advisory recordings represented by the sampled title (one row in the report), two Dallas
+Building Inspection Advisory, Examining & Appeals Board recordings, and one malformed Fort Worth
+title. No Dallas Building Inspection feed is configured. Under the accepted five-distinct-UID rule,
+the Denton body (three recordings) and Dallas board (two) do not get new feeds in this P0 pass;
+preserve their source records. The ceremony is not a meeting, and the malformed Fort Worth title
+does not identify a body. These are known unmatched entries, not evidence of a successful selector
+match. The current audit still counts them as unexpected; it needs an auditable accepted-disposition
+path before it can distinguish reviewed exclusions from new errors. Do not add broad selectors to
+make the warning disappear.
+
+The 680-row worksheet has a recorded outcome for every row, but its last full replay predates #2165.
+The exact Arlington record changes from not-pursued to assigned, and the Dallas alias adds a
+reusable match. Regenerate the full replay from the same frozen inputs and record refreshed totals
+before declaring the baseline current. Live `meta.json` still reports zero search shards; `/search/`
+and `/data/search/manifest.json` return 404. The six approved Addison archive-only pages are
+available, but live search-filter behavior cannot be checked while the public search index is absent.
+Do not claim P0 archive-only search verification or overall P0 completion on this evidence.
+
+The remaining six open register cases are the two Fort Worth clip6334 UID-to-segment bindings and
+four Dallas Streets and Transportation bond recording/source bindings. Fort Worth assignments stay
+unchanged and those two cases stay open under the maintainer's decision. The four Dallas records
+remain assigned to their current feed pending dated exact-source proof. Their case details and
+source identifiers remain in [`unresolved-recording-cases.json`](evidence/unresolved-recording-cases.json).
+
 ### P0 publication selection — inactive machinery shipped; activations separately gated
 
 The maintainer authorized writing this specification; runtime projection changes and affected feed
