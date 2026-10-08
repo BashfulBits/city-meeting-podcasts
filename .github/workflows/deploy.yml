@@ -141,7 +141,8 @@ jobs:
   search:
     needs: render
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Two hours indexing plus setup, checkpoint persistence and artifact upload.
+    timeout-minutes: 150
     permissions:
       contents: read
     steps:
@@ -166,6 +167,7 @@ jobs:
           restore-keys: |
             search-checkpoint-
       - name: Build bounded search
+        shell: bash
         env:
           # Existing storage credentials are used only to read hosted sidecars.
           B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
@@ -179,7 +181,19 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
-        run: citypods search-index --context-path search-context.json >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          python - <<'PYTHON'
+          import json
+          from pathlib import Path
+
+          path = Path(".citypods-search-checkpoint/working/.search-cache.json")
+          cache = json.loads(path.read_text()) if path.exists() else {}
+          print(f"Restored checkpoint: {len(cache.get('shards', {}))} completed sources")
+          for key, partial in sorted(cache.get("partials", {}).items()):
+              count = len(partial.get("records", {}))
+              print(f"Resuming source {key}: {count} saved records")
+          PYTHON
+          citypods search-index --context-path search-context.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload completed site
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

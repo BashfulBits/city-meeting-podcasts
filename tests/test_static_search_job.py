@@ -85,11 +85,11 @@ def test_disabled_search_removes_search_without_indexing(tmp_path, monkeypatch):
     assert (output / "raw/index.html").read_text() == "raw retained"
 
 
-@pytest.mark.parametrize("budget", [0, -1, 21])
+@pytest.mark.parametrize("budget", [0, -1, 121])
 def test_budget_ceiling(tmp_path, monkeypatch, budget):
     output, args = _site(tmp_path, monkeypatch, budget=budget)
     prior = _bytes(output)
-    with pytest.raises(ValueError, match="at most 20"):
+    with pytest.raises(ValueError, match="at most 120"):
         search.build_search_site(**args)
     assert _bytes(output) == prior
 
@@ -113,7 +113,8 @@ def test_workflow_same_run_handoff_and_privileges():
     assert pages["with"]["enablement"] is False
     assert jobs["search"]["permissions"] == {"contents": "read"}
     assert jobs["deploy"]["permissions"] == {"pages": "write", "id-token": "write"}
-    assert all(job["timeout-minutes"] == 60 for job in jobs.values())
+    assert jobs["search"]["timeout-minutes"] == 150
+    assert jobs["render"]["timeout-minutes"] == jobs["deploy"]["timeout-minutes"] == 60
     handoff = next(s for s in jobs["render"]["steps"] if s.get("name") == "Upload render handoff")
     assert ".citypods-state/sources/*/episodes.json" in handoff["with"]["path"]
     assert handoff["with"]["include-hidden-files"] is True
@@ -123,11 +124,16 @@ def test_workflow_same_run_handoff_and_privileges():
     assert checkpoint["with"]["path"] == ".citypods-search-checkpoint"
     assert checkpoint["with"]["restore-keys"] == "search-checkpoint-\n"
     assert "github.run_attempt" in checkpoint["with"]["key"]
+    build = next(s for s in jobs["search"]["steps"] if s.get("name") == "Build bounded search")
+    assert build["shell"] == "bash"  # GitHub supplies pipefail for explicitly selected Bash.
+    assert "Restored checkpoint:" in build["run"]
+    assert '| tee -a "$GITHUB_STEP_SUMMARY"' in build["run"]
 
 
-def test_fresh_search_deadline_is_independent_of_render(tmp_path, monkeypatch):
-    _output, args = _site(tmp_path, monkeypatch, budget=1)
-    ticks = iter([1000, 1059, 1060])
+@pytest.mark.parametrize("budget", [1, 120])
+def test_fresh_search_deadline_is_independent_of_render(tmp_path, monkeypatch, budget):
+    _output, args = _site(tmp_path, monkeypatch, budget=budget)
+    ticks = iter([1000, 1000 + budget * 60 - 1, 1000 + budget * 60])
     monkeypatch.setattr("time.monotonic", lambda ticks=ticks: next(ticks))
 
     def deadline(_state, _cities, _staged, *_args, **kwargs):
