@@ -976,3 +976,63 @@ def test_issue_round_trips_full_method_evidence_within_github_body_limit():
     body = render_body(report, run_date="2026-10-08")
     assert len(body.encode()) < 65_536
     assert decode_state(body) == report.state
+
+
+@pytest.mark.parametrize(
+    ("remaining", "outcome", "expected_method"),
+    [
+        (1, "inconclusive", "prompt_only"),
+        (2, "inconclusive", "prompt_only"),
+        (2, "valid", "json_schema"),
+    ],
+)
+def test_deferred_schema_checks_preserve_prior_method_and_unchecked_evidence(
+    monkeypatch, remaining, outcome, expected_method
+):
+    from citypods.provider_catalog.probe import STRUCTURED_METHODS
+
+    monkeypatch.setenv("K", "test-key")
+    previous = {
+        "on": "2026-08-01",
+        "method": "prompt_only",
+        "results": {
+            "json_object": {"outcome": "empty", "completion_seconds": 10},
+            "prompt_only": {"outcome": "valid", "first_byte_seconds": 2, "completion_seconds": 15},
+        },
+    }
+
+    def verify(*args, before_attempt, **kwargs):
+        evidence = {}
+        for method in STRUCTURED_METHODS:
+            if not before_attempt():
+                break
+            evidence[method] = {"outcome": outcome, "completion_seconds": 3}
+        return evidence
+
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {"structured_checks": {"or_scarce": previous}},
+        session=FakeSession(CATALOGS),
+        providers={"openrouter"},
+        today=TODAY,
+        control=FakeControl(
+            quota={"or_scarce": {"rpd_remaining": remaining, "rpd_resets_at": "tomorrow"}}
+        ),
+        canary_fn=lambda *args: OK,
+        structured_canary_fn=verify,
+    )
+    stored = report.state["structured_checks"]["or_scarce"]
+    assert stored["method"] == expected_method
+    assert report.state["deferred"]["or_scarce"] == "tomorrow"
+    assert previous["on"] == "2026-08-01"  # the input state is not mutated
+    if remaining == 1:
+        assert stored == previous
+    else:
+        assert stored["on"] == TODAY.isoformat()
+        assert stored["results"] == {
+            **previous["results"],
+            "json_schema": {"outcome": outcome, "completion_seconds": 3},
+        }

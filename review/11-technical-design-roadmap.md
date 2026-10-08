@@ -1631,3 +1631,7 @@ close only their assignment cases. See [deployment proof](deployed-ownership-pro
 Restore four explicitly approved historical recordings to Transportation and Infrastructure
 while retaining their dedicated bond feed. Bounded contract: review/51's four-record section.
 Independent agenda/source questions stay open; verify deployment after human merge.
+
+### Search per-record resume — L3 (#2173)
+
+Approved bounded implementation in review/51; preserve20minute budget and four-hour cadence.

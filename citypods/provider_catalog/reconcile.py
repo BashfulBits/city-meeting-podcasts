@@ -536,11 +536,13 @@ def reconcile(
                     method, evidence = verify(model, api_key, route)
                     if item["scarce"] and any(e.get("status") == 429 for e in evidence.values()):
                         deferred[rid] = str((quota.get(rid) or {}).get("rpd_resets_at", ""))
-                    structured_checks[rid] = {
-                        "on": today.isoformat(),
-                        "method": method,
-                        "results": evidence,
-                    }
+                    if evidence:
+                        previous = structured_checks.get(rid) or {}
+                        structured_checks[rid] = {
+                            "on": today.isoformat(),
+                            "method": method or previous.get("method"),
+                            "results": {**(previous.get("results") or {}), **evidence},
+                        }
                     configured = resolved_method(route, routes, provider_cfgs)
                     outcome = evidence.get(configured, {}).get("outcome")
                     if outcome in {"empty", "invalid", "rejected"}:

@@ -44,7 +44,9 @@ means up to five requests per checked model, rather than one. Every request uses
 with pause renewal after the wait and during long streams. Configured-route method checks are
 charged individually to the Worker ledger; a failed charge aborts further probing instead of
 continuing with an unrecorded spend. Scarce routes require reported quota; unknown or exhausted
-quota defers the check. Partial checks and a 429 are deferred until reset. Candidate checks have no
+quota defers the check. Partial checks and a 429 are deferred until reset. A check with no method evidence leaves its
+previous record unchanged; partial results merge by method, retaining unchecked methods and
+latency. The prior preferred method is retained when the new attempt verifies no method. Candidate checks have no
 configured route ID to reserve and remain under the provider pause and spacing; their per-model
 allowance is bounded by the three-candidate run budget. The provider pause stays armed for one final
 plugin interval before resuming dispatch, so the last unregistered candidate cannot leave
