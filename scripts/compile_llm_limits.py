@@ -436,6 +436,10 @@ _WORKER_ROUTE_FIELDS = (
     "observed_recovery_seconds",
     "retry_after_trustworthy",
     "upstream_429_default",
+    # "backup" routes are ranked after every primary route in a job's pool (coordinator.js claim
+    # ordering); absent means primary. Lets a scarce account (BeatAPI's single-flight free window,
+    # review/49 section 4c) serve as spill capacity without leaving the unified model pools.
+    "tier",
     # Read by the Worker's upstreamRequestForRoute (gateway.js) to shape a schema-only structured
     # job for this route (review/48 R10). Each entry lands under its own field name in the
     # compiled catalog, so order here does not matter.
@@ -1134,6 +1138,12 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
                     f"upstream_429_default: {up_default!r}"
                 )
             route["upstream_429_default"] = str(up_default)
+
+        tier = route.get("tier")
+        if tier is not None and tier not in ("primary", "backup"):
+            raise ValueError(
+                f"route {route.get('route_id', route.get('model'))!r} has unknown tier: {tier!r}"
+            )
 
         obs_on = route.get("observed_on")
         if obs_on is not None:

@@ -4381,6 +4381,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
               // reset unless that would miss the job's deadline; v2 has no deadline concept
               // here, so it elevates as soon as free capacity runs out.)
               Number(Boolean(right.free)) - Number(Boolean(left.free)) ||
+              // Then primary before backup (`tier: "backup"`, provider_limits.yml): a backup
+              // route is spill capacity, taken only after every primary route in the pool has
+              // been tried. BeatAPI's free chat routes share one single-flight window with JEV
+              // (review/49 section 4c), so an idle one must not outrank a busy primary on raw
+              // headroom.
+              Number(right.tier !== "backup") - Number(left.tier !== "backup") ||
               (rightPlan?.score || 0) - (leftPlan?.score || 0) ||
               (rightPlan?.routeScores.get(right.route_id) || 0) -
                 (leftPlan?.routeScores.get(left.route_id) || 0)

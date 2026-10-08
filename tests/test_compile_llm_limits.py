@@ -1018,3 +1018,28 @@ def test_qwen_daily_tokens_are_compiled_with_safety_buffer():
     assert route["rpd"] == 1000
     worker = compile_llm_limits._worker_catalog(compiled)
     assert worker["routes_by_id"][route["route_id"]]["tpd"] == 180_000
+
+
+def test_route_tier_is_validated_and_beatapi_chat_routes_are_backups():
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)
+    beatapi = [r for r in worker["routes_by_id"].values() if r["provider"] == "beatapi"]
+    assert beatapi and all(r["tier"] == "backup" for r in beatapi)
+    # Every other route is primary by omission.
+    assert all(
+        r["tier"] is None for r in worker["routes_by_id"].values() if r["provider"] != "beatapi"
+    )
+
+
+def test_route_tier_rejects_unknown_values():
+    raw = {
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
+        "providers": {"example": {}},
+        "routes": [_route("example", "example/model", tier="fallback")],
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        with pytest.raises(ValueError, match="unknown tier"):
+            compile_llm_limits.compile_limits()

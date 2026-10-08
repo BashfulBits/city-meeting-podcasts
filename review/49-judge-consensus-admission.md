@@ -270,7 +270,7 @@ Qwen and the Gemini 3.8/3.7 Flash pools are not needed as adjudicators at this v
 2. **Yield to a named route** (`yields_to: [<JEV route id>]` on the BeatAPI chat routes): at claim time a yielding route is skipped while the named route has queued or due work. JEV's own route therefore always gets the account first, and the chat routes take the idle minutes.
 3. **A short output cap on the BeatAPI chat routes** (`output_context_limit` of a few thousand tokens): at the measured 140 to 235 tokens/s a borrowed slot then holds the account for well under a minute. Long locator and moments generations stay on OrcaRouter and NVIDIA.
 
-Items 1 and 3 are useful now (item 3 is config only). Item 2 needs the JEV route and so ships with P1. The BeatAPI chat routes are not adjudicators or sibling judges; JEV's window is too scarce to share with a per-entry role.
+Item 1 shipped 2026-10-08 (the BeatAPI chat routes are `tier: backup`). Item 3 was dropped: tag and moments jobs reserve 12,288 and 16,384 output tokens and the Worker only considers a route whose output limit covers the reservation, so a cap of a few thousand would have removed the routes from every current lane. With yield-to-JEV (item 2, ships with P1) JEV is never queued behind a chat call it could have taken; the remaining exposure is JEV work arriving mid-call, which waits for that call plus about 60 s. The BeatAPI chat routes are not adjudicators or sibling judges; JEV's window is too scarce to share with a per-entry role.
 
 ### 5. Route league (European-cup model)
 
@@ -658,7 +658,7 @@ Two separate decisions, each stated relative to a measured baseline rather than 
 ## Open questions (remaining)
 
 1. **Judge and adjudicator routes:** recommendation in section 4c (JEV anchor; Gemma bulk sibling plus a non-Google sibling; GLM 5.3 Flash and DeepSeek V4.1 Flash adjudicators with per-entry independence), pending the maintainer's approval.
-2. **BeatAPI chat routes as backups:** the backup tier, yield-to-JEV and output cap in section 4c; tier and cap can land before P1, yield ships with P1.
+2. **BeatAPI chat routes as backups:** backup tier shipped; yield-to-JEV ships with P1 (section 4c).
 
 ## Path to L3
 
