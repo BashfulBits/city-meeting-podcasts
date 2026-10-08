@@ -25,8 +25,9 @@ rewrite its inputs or claim that the full historical replay has been regenerated
 - Dallas Bond Program RSS returned HTTP 200 and contains UID `aa65e2aafc90711b` with its original
   enclosure URL:
   `https://audio.citymeetings.fyi/swagit/76869ed1994f/aa65e2aafc90711b-1f714be9f4ff.m4a`.
-  Dallas Public Info RSS returned HTTP 200 and does not contain that UID. A one-byte probe to the
-  enclosure endpoint returned HTTP 200 and `audio/mp4`; the probe read one byte only.
+  Dallas Public Info and dedicated Task Force RSS both returned HTTP 200 and do not contain that
+  UID. A one-byte probe to the enclosure endpoint returned HTTP 200 and `audio/mp4`; the probe read
+  one byte only.
 - Dallas South Dallas/Fair Park Opportunity Fund RSS returned HTTP 200 and contains its
   `South Dallas Fair Park Opportunity Fund Special Called Meeting` entry under the existing board
   feed. The title does not appear in the Dallas Bond Program feed.

@@ -495,7 +495,8 @@ returned HTTP 200 and the page retained the original Granicus clip link and host
 UID is not in current Council RSS because that 2012 recording is outside the live feed's bounded
 history. Dallas GUID272574 / UID `aa65e2aafc90711b` is in Bond Program RSS with the original audio
 enclosure, and absent from Public Info RSS, matching the maintainer's final decision. A one-byte
-range request to the enclosure returned HTTP 200 (`audio/mp4`). The South Dallas/Fair Park special
+range request to the enclosure returned HTTP 200 (`audio/mp4`); the UID is also absent from the
+dedicated Task Force RSS. The South Dallas/Fair Park special
 called meeting appears in that board's own RSS under its original UID. Full URLs and observations
 are in [`p0-post-merge-check-2026-10-08.md`](evidence/p0-post-merge-check-2026-10-08.md). The
 272574 register case is resolved; six evidence cases remain open.
