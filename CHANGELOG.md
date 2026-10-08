@@ -12,6 +12,18 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog verifies structured-output support (review/48 R10).** Availability pings no
+  longer qualify a candidate alone: four schema-bound checks validate completed visible JSON,
+  record method/latency evidence, and show the preferred method on the rolling issue. A configured
+  method returning empty/invalid JSON is reported with its lane's remaining pooled routes.   BeatAPI
+  (#2167) regression coverage includes reasoning-only responses, 65-second spacing across   probes
+  and before dispatch resumes, JEV exclusion and DeepSeek pool fallback. Each route-method   request
+  is charged separately; scarce routes defer when quota is unavailable or exhausted. Evidence
+  reporting uses   the same planner. Deferred method checks retain prior evidence, merging partial
+  results instead   of discarding unchecked methods and their latency. Existing candidate proofs
+  without method evidence are rechecked. No production   route, recipe, pipeline version or episode
+  artifact changes; no episode catalog backfill.
+
 - **Bounded search resumes within a source (#2173).** Private working checkpoints retain
   converted records with policy/input hashes; new or changed records do not discard unrelated
   progress. Deferred summaries identify source/record progress and distinguish no public index
@@ -19,7 +31,7 @@ Once 1.0 ships, entries move under semver tags.
   budget and four-hour deployment schedule remain unchanged. No stage-version bump, audio
   invalidation or catalog backfill; old complete search caches remain reusable.
 
-- Restore four approved Dallas bond Streets recordings to Transportation and Infrastructure
+- **Restore four approved Dallas bond Streets recordings to Transportation and Infrastructure**
   while retaining their dedicated bond feed (#2170). Raw records, UIDs and audio are unchanged;
   no stage invalidation or backfill. Independent official-evidence cases remain open.
 

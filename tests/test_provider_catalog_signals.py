@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 from citypods.provider_catalog.classify import classify
 from citypods.provider_catalog.probe import _first_event_error
@@ -126,3 +127,159 @@ def test_a_200_whose_first_event_is_an_error_is_not_proven():
     response = Response(status=200, body="data: {}", first_event_error=True)
     for rules in all_rules().values():
         assert classify(response, rules).verdict != "proven"
+
+
+@pytest.mark.parametrize(
+    ("content", "finish", "expected"),
+    [
+        ('{"answer":"ok"}', "stop", "valid"),
+        ('{"answer":"wrong"}', "stop", "invalid"),
+        ('{"answer":"ok","extra":1}', "stop", "invalid"),
+        ("not JSON", "stop", "invalid"),
+        ("", "stop", "empty"),
+        ('{"answer":"ok"}', "length", "inconclusive"),
+    ],
+)
+def test_structured_canary_requires_visible_completed_schema_valid_json(content, finish, expected):
+    from citypods.provider_catalog.probe import STRUCTURED_METHODS, structured_canary
+
+    class Stream:
+        status_code = 200
+        ok = True
+        closed = False
+
+        def iter_lines(self, **kwargs):
+            # BeatAPI's reasoning-only first event is legitimate but is not JSON evidence.
+            yield 'data: {"choices":[{"delta":{"reasoning_content":"thinking"}}]}'
+            yield "data: " + json.dumps({"choices": [{"delta": {"content": content}}]})
+            yield "data: " + json.dumps({"choices": [{"delta": {}, "finish_reason": finish}]})
+            yield "data: [DONE]"
+
+        def close(self):
+            self.closed = True
+
+    class Session:
+        def __init__(self):
+            self.requests, self.responses = [], []
+
+        def post(self, url, **kwargs):
+            self.requests.append(kwargs["json"])
+            response = Stream()
+            self.responses.append(response)
+            return response
+
+    methods = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "config/provider_limits.yml").read_text()
+    )["structured_output_methods"]
+    session = Session()
+    result = structured_canary(
+        all_rules()["beatapi"],
+        {"api_base": "https://beat.test/v1"},
+        "deepseek-v4.1-flash-free",
+        "test-key",
+        session,
+        before_attempt=lambda: True,
+        methods=methods,
+    )
+    assert tuple(result) == STRUCTURED_METHODS
+    assert {r["outcome"] for r in result.values()} == {expected}
+    assert all(r.closed for r in session.responses)
+    assert all(r["max_tokens"] > 16 for r in session.requests)
+    assert "response_format" not in session.requests[-1]
+    assert (
+        session.requests[0]["response_format"]["json_schema"]["schema"]["properties"]["answer"][
+            "maxLength"
+        ]
+        == 2
+    )
+    assert (
+        "maxLength"
+        not in session.requests[1]["response_format"]["json_schema"]["schema"]["properties"][
+            "answer"
+        ]
+    )
+    assert all("first_byte_seconds" in r and "completion_seconds" in r for r in result.values())
+
+
+def test_beatapi_plugin_excludes_jev_and_classifies_account_window_exhaustion():
+    rules = all_rules()["beatapi"]
+    assert not rules.chat_filter("jev-1.13-free", {"owned_by": "task plugin"})
+    assert rules.free_evidence("deepseek-v4.1-flash-free", {}, {})
+    assert not rules.free_evidence("deepseek-v4.1-flash", {}, {})
+    response = Response(status=429, body='{"error":{"code":"rate_limit_exceeded"}}')
+    assert classify(response, rules).verdict == "quota_exhausted"
+    assert rules.canary_interval_seconds == 65
+
+
+@pytest.mark.parametrize("status", [402, 403, 404, 410, 429])
+def test_schema_capacity_or_access_failure_stops_probing_without_a_method_verdict(status):
+    from citypods.provider_catalog.probe import structured_canary
+
+    class Failed:
+        status_code = status
+        ok = False
+        closed = False
+
+        def close(self):
+            self.closed = True
+
+    class Session:
+        calls = 0
+
+        def post(self, *args, **kwargs):
+            self.calls += 1
+            return response
+
+    response, session = Failed(), Session()
+    methods = {"json_schema": {"response_format": "json_schema", "include_schema_in_prompt": False}}
+    result = structured_canary(
+        all_rules()["beatapi"],
+        {"api_base": "https://beat.test/v1"},
+        "chat-free",
+        "test-key",
+        session,
+        before_attempt=lambda: True,
+        methods=methods,
+    )
+    assert session.calls == 1 and response.closed
+    assert result["json_schema"]["outcome"] == "inconclusive"
+    assert "completion_seconds" in result["json_schema"]
+
+
+def test_schema_timeout_is_inconclusive_and_every_response_is_closed():
+    import requests
+
+    from citypods.provider_catalog.probe import STRUCTURED_METHODS, structured_canary
+
+    class Stream:
+        status_code = 200
+        ok = True
+        closed = False
+
+        def iter_lines(self, **kwargs):
+            raise requests.Timeout()
+
+        def close(self):
+            self.closed = True
+
+    class Session:
+        def post(self, *args, **kwargs):
+            response = Stream()
+            responses.append(response)
+            return response
+
+    responses = []
+    methods = {
+        m: {"response_format": "none", "include_schema_in_prompt": True} for m in STRUCTURED_METHODS
+    }
+    result = structured_canary(
+        all_rules()["beatapi"],
+        {"api_base": "https://beat.test/v1"},
+        "chat-free",
+        "test-key",
+        Session(),
+        before_attempt=lambda: True,
+        methods=methods,
+    )
+    assert {r["outcome"] for r in result.values()} == {"inconclusive"}
+    assert len(responses) == 4 and all(r.closed for r in responses)

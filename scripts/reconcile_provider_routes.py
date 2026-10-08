@@ -40,7 +40,6 @@ from citypods.compute.llm_dispatch_pause import (  # noqa: E402
     paused,
 )
 from citypods.compute.llm_lanes import load_lanes  # noqa: E402
-from citypods.provider_catalog.classify import classify  # noqa: E402
 from citypods.provider_catalog.decisions import load_decisions  # noqa: E402
 from citypods.provider_catalog.issue import (  # noqa: E402
     decode_state,
@@ -48,7 +47,6 @@ from citypods.provider_catalog.issue import (  # noqa: E402
     render_body,
     sync_issue,
 )
-from citypods.provider_catalog.probe import account_key, canary, fetch_catalog  # noqa: E402
 from citypods.provider_catalog.quality import fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
     NoDispatchControl,
@@ -56,7 +54,6 @@ from citypods.provider_catalog.reconcile import (  # noqa: E402
     backtest_summary,
     reconcile,
 )
-from citypods.provider_catalog.registry import all_rules  # noqa: E402
 
 LIMITS_PATH = REPO_ROOT / "config" / "provider_limits.yml"
 PAUSE_SECONDS = 900
@@ -91,7 +88,8 @@ class WorkerDispatchControl:
         try:
             self.client.reserve(route_id, 1)
         except DispatchPauseError as exc:
-            print(f"warning: could not reserve {route_id}: {exc}", file=sys.stderr)
+            # A failed ledger write cannot authorize another scarce-quota method request.
+            raise DispatchPauseError(f"could not reserve {route_id}: {exc}") from exc
 
 
 def _control(no_pause: bool) -> Any:
@@ -103,39 +101,26 @@ def _control(no_pause: bool) -> Any:
 
 
 def evidence_report(limits: Mapping[str, Any], providers: set[str], control: Any) -> int:
-    session = requests.Session()
-    rules_by_name = all_rules()
-    for provider in sorted(providers or limits["providers"]):
-        rules, cfg = rules_by_name.get(provider), limits["providers"].get(provider)
-        if rules is None or cfg is None:
-            continue
-        catalog = fetch_catalog(rules, cfg, session)
-        configured = sorted(
-            {
-                (r["upstream_model"], r.get("account_id"))
-                for r in limits["routes"]
-                if r.get("provider") == provider and r.get("rpd") != 0
-            }
-        )
-        ctx = rules.prepare(session) if rules.prepare else {}
-        free = [
-            m
-            for m, rec in sorted(catalog.models.items())
-            if rules.free_evidence
-            and rules.chat_filter(m, rec)
-            and m not in {c[0] for c in configured}
-            and rules.free_evidence(m, rec, ctx)
-        ][:3]
-        print(f"## {provider}: catalog {len(catalog.models)} {catalog.error or ''}")
-        with control.paused(provider) as pause:
-            for model, account in [*configured, *((m, None) for m in free)]:
-                pause.renew()
-                result = classify(
-                    canary(rules, cfg, model, account_key(cfg, account) or "", session), rules
-                )
-                print(f"  {model:55} {result.status!s:5} {result.verdict:16} {result.reason}")
-            if getattr(pause, "contended", False):
-                print("  (contended: dispatch was not paused and drained)")
+    """Use the production planner so evidence checks obey spacing, quota and JSON verification."""
+    from citypods.provider_catalog.quality import QualityIndex
+
+    report = reconcile(
+        limits,
+        load_lanes(),
+        load_decisions(),
+        QualityIndex(),
+        {},
+        session=requests.Session(),
+        control=control,
+        today=datetime.now(UTC).date(),
+        providers=providers or None,
+    )
+    for observation in report.observations:
+        print(observation)
+    for anomaly in report.anomalies:
+        print(f"{anomaly.route_id}: {anomaly.verdict}: {anomaly.reason}")
+    for candidate in report.candidates:
+        print(f"{candidate.key}: proven; JSON method {candidate.structured_output_method}")
     return 0
 
 
