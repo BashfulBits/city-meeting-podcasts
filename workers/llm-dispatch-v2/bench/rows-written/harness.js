@@ -27,6 +27,7 @@ function writtenTable(query) {
   return match ? match[1] : "other";
 }
 
+/** Add each key's count in `source` to `target` (per-table billed-row tallies). */
 const addInto = (target, source) => {
   for (const [key, value] of Object.entries(source)) target[key] = (target[key] || 0) + value;
 };
@@ -109,12 +110,14 @@ export class MeasureDO extends LLMSchedulerDO {
 
   /** Deferred cost of a lifecycle: the retention prune that deletes its bookkeeping rows days
    * later (attempts, terminal bundles), run directly past every retention window. */
-  _measurePrune(now) {
+  _measurePrune(now, byTable = null) {
     const later = now + 30 * 24 * 3600 * 1000;
     let w = 0;
     for (let round = 0; round < 100; round += 1) {
       const deleted = this._transactionSync(() => this._pruneTerminalRecords(later));
-      w += this._take().w;
+      const taken = this._take();
+      w += taken.w;
+      if (byTable) addInto(byTable, taken.byTable);
       if (Object.values(deleted).every((count) => count === 0)) break;
     }
     return w;
@@ -348,7 +351,7 @@ MeasureDO.prototype.measurePooled = async function ({ mix = CONSENSUS_MIX } = {}
   this._take();
   await this.retireConsumed(polled.statuses.map((s) => ({ id: s.id, result_key: s.result_key })));
   record("retire");
-  phases.prune = this._measurePrune(now);
+  phases.prune = this._measurePrune(now, byTable);
 
   const lanes = mix.map((lane, laneIndex) => {
     const ids = jobs.filter((_, i) => Math.floor(Number(jobs[i].id.split("-").pop()) / 1000) === laneIndex);

@@ -192,8 +192,9 @@ Measured after step 5 (wrangler 4.131.1):
 | Projection with a one-row-per-job queue | 3,816 | 15.45 |
 | Saving | 628 (14.1%) | 2.54 |
 
-By table: jobs 2,223, job_models 1,122, routes 450, estimates 246, attempt_usage 216,
-scheduler 111, providers 40, ingress_purpose 12. Each run starts with an empty calibration
+By table, including the deferred prune (sums to the 4,444 total): jobs 2,223, job_models
+1,122, routes 450, estimates 246, attempt_usage 239, scheduler 112, providers 40,
+ingress_purpose 12. Each run starts with an empty calibration
 window, so `estimates` is written on every completion here; in production it is sampled 1-in-4
 once a window is full, which lowers the total slightly and raises the queue's share. Scaled to
 the plan's daily volume the saving is about 6,300 rows/day.
