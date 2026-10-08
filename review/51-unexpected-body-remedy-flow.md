@@ -2695,3 +2695,22 @@ assignments, not a claim of live deployment.
 
 Validation: 12 targeted tests and 5,120 offline tests passed (15 deselected); whole
 Ruff lint and format checks passed across 480 files. No pipeline version or audio backfill.
+
+### Search investigation and within-source resume proposal — L2 (2026-10-08)
+
+The latest successful published artifact still has zero advertised search shards and no
+manifest/page. A synthetic replay reproduces lost progress when interrupted inside one source;
+three bounded runs restart the same records. The actual production blocking source is not
+identified. Recommended next contract: private per-record progress, policy/hash invalidation,
+atomic public publication and explicit deferred diagnostics, retaining the20minute limit.
+Exact checkpoint schema/layout is not yet L3 or authorized for implementation. Evidence:
+[`search-index-investigation-2026-10-08.md`](evidence/search-index-investigation-2026-10-08.md).
+
+PR #2171 merged as7134a2c3 with passing CI. Its four-record dual-feed contract is frozen as
+implemented in #2171; deployment37733085421 is queued and live verification remains pending.
+CodeRabbit automatic review was skipped; the ownership-test change merged without substantive
+CodeRabbit coverage. No review request will be sent to the closed PR. Six evidence cases stay open.
+
+The refreshed frozen-source baseline is recorded in
+[`p0-current-catalog-replay-2026-10-08.md`](evidence/p0-current-catalog-replay-2026-10-08.md);
+its counts describe main before #2171 and must not be relabeled as including those four additions.

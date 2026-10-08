@@ -1631,3 +1631,11 @@ close only their assignment cases. See [deployment proof](deployed-ownership-pro
 Restore four explicitly approved historical recordings to Transportation and Infrastructure
 while retaining their dedicated bond feed. Bounded contract: review/51's four-record section.
 Independent agenda/source questions stay open; verify deployment after human merge.
+
+### P0 search completion — L2 investigation (2026-10-08)
+
+Confirmed within-source progress loss can prevent a bounded search build from ever finishing.
+Private per-record checkpoint and explicit deferral diagnostics are recommended, pending exact
+L3 contract; keep20minute ceiling. See review/51 and its dated search investigation evidence.
+The four-record Dallas Streets correction #2171 is Shipped; live deployment verification remains
+pending and its independent evidence cases stay open.
