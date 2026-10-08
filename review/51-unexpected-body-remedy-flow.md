@@ -2685,3 +2685,13 @@ Acceptance: replay all 5,353 frozen Dallas records; exactly four standing-feed a
 no other placement changes. Existing Dallas ownership tests, whole Ruff lint/format and the
 offline suite must pass. After human merge/deployment, verify both live feeds retain the four
 original audio URLs. Publication preparation does not close the evidence cases.
+
+Prepared implementation replay: all 5,353 frozen Dallas entries produce exactly the four
+authorized standing Transportation additions and no removals or other changes. The existing
+broader Bond Program placements also remain. See
+[`dallas-streets-dual-feed-replay-2026-10-08.json`](evidence/dallas-streets-dual-feed-replay-2026-10-08.json).
+All four independent evidence cases remain open; current assignments are prepared config
+assignments, not a claim of live deployment.
+
+Validation: 12 targeted tests and 5,120 offline tests passed (15 deselected); whole
+Ruff lint and format checks passed across 480 files. No pipeline version or audio backfill.

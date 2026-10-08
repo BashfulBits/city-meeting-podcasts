@@ -1,0 +1,50 @@
+{
+  "records": 5353,
+  "changes": {
+    "16300c982b358fe9": {
+      "before": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings"
+      ],
+      "after": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings",
+        "dallas-tx-transportation-and-infrastructure"
+      ]
+    },
+    "2d2bc233efd9bf97": {
+      "before": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings"
+      ],
+      "after": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings",
+        "dallas-tx-transportation-and-infrastructure"
+      ]
+    },
+    "8578348e702caf35": {
+      "before": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings"
+      ],
+      "after": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings",
+        "dallas-tx-transportation-and-infrastructure"
+      ]
+    },
+    "b0471f29622b8165": {
+      "before": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings"
+      ],
+      "after": [
+        "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
+        "dallas-tx-bond-program-meetings",
+        "dallas-tx-transportation-and-infrastructure"
+      ]
+    }
+  },
+  "other_changes": 0
+}

@@ -23,9 +23,10 @@ def test_streets_institution_rules_preserve_recordings_joints_and_exceptions():
             row, source_body_filter(config.source), source_body_inclusions(config.source)
         )
 
+    approved = {"269407", "270975", "277827", "277830"}
     for record in records:
         assert owns(bond, record)
-        assert not owns(standing, record)
+        assert owns(standing, record) == (str(record["provider_guid"]) in approved)
         future = dict(record, provider_guid="future-occurrence")
         assert owns(bond, future)
         assert not owns(standing, future)
@@ -36,7 +37,7 @@ def test_streets_institution_rules_preserve_recordings_joints_and_exceptions():
     for inclusion in standing.source["body_includes"]:
         row = dict(records[0], **inclusion)
         assert owns(standing, row)
-        assert not owns(bond, row)
+        assert owns(bond, row) == (str(inclusion["provider_guid"]) in approved)
         if inclusion["body"] not in standing.source["body_exact"]:
             assert not owns(standing, dict(row, provider_guid="unproved-exception"))
     for label in ("2024 Bond Task Force Flood", "Unrelated Transportation Event"):
@@ -49,4 +50,14 @@ def test_streets_institution_rules_preserve_recordings_joints_and_exceptions():
     for record in records:
         assert record["uid"] in rss
         assert record["audio"]["url"] in rss
+    standing_rss = build_rss(
+        standing,
+        [record_to_episode(r) for r in records if str(r["provider_guid"]) in approved],
+        "audio",
+        "https://www.citymeetings.fyi",
+    )
+    for record in records:
+        if str(record["provider_guid"]) in approved:
+            assert record["uid"] in standing_rss
+            assert record["audio"]["url"] in standing_rss
     assert records == original
