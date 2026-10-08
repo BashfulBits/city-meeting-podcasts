@@ -244,6 +244,44 @@ tags. Marginal cases are Uncertain, which the lane and the audit both exclude fr
 
 **Initial rule for P1/P2 (confirmed 2026-09-30): judge at T1, escalate to T2 when p is between 0.3 and 0.7, and let the continuous 5% sample confirm or move both the tier and the band.** T0 is a candidate first tier (12/13 under the rubric) but is not yet shown to be as good as T1 or T2 at this sample size.
 
+### 4c. Adjudicator selection and qualification (added 2026-10-08)
+
+**Status.** The "second adjudicator route" was left to the locator verdict. The verdict is in ([review/40](40-generated-agenda-chapters.md), 2026-10-02): the production locator is **DeepSeek V4 Flash** (packets up to 76,000 estimated tokens) and **Kimi K3** (larger); `chapter-agenda` is Nemotron 3 Ultra, tencent/hy3 and Gemini 3.1 Flash Lite. Those five stay protected and out of the adjudicator league. Released by the verdict: **GLM 5.3 Flash, DeepSeek V4.1 Flash, Gemini 3.5 Flash and Gemini 3.5 Flash Lite**. No adjudicator route had been decided before this; the proposal below is a recommendation for the maintainer, not a decision, and it is not final until the qualification check below has run.
+
+**Selection rules.** An adjudicator must (1) not be a protected route; (2) be a **different family from JEV, from the sibling judge and from the route that produced the subject being adjudicated** (each output already records its producing model, so this is a per-subject exclusion at dispatch, not a lane-level one); (3) have the long context and structured output the packet needs; (4) have free capacity that is verified, not assumed (token caps above); (5) not draw on BeatAPI's account window, which JEV owns (single-flight, measured 2026-10-08).
+
+**Recommendation** (AA figures are the ones recorded in `config/site_config.yml` and `provider_limits.yml`, not re-measured here):
+
+| Rank | Route | Why | Concerns to check in the qualification run |
+|---|---|---|---|
+| 1 | **GLM 5.3 Flash** (OrcaRouter, `zai/glm-5.3-flash`) | Highest recorded AA of the released set (41.8); 1M context; 800 RPD; about 5 s; `json_object` verified live. Z.ai family, so it is independent of Gemini, StepFun and DeepSeek tag producers | A moments producer, so excluded per-subject for moments; Orca's `err_free_prompt_cap` for large packets is unmeasured; whether its 800 RPD is shared with Orca's V4 Flash |
+| 2 | **DeepSeek V4.1 Flash**, NVIDIA leg only (`deepseek/deepseek-v4.1-flash`) | AA 39.5; 1M context; NVIDIA has no RPD cap (4 RPM). Locator evidence: 89.8% joint recall on the long slice, so it reads long transcripts well | Slow (about 502 s median on long packets); returns empty content to any `response_format` on NVIDIA, so it needs the `prompt_only` method; DeepSeek family overlaps tag and moment producers (per-subject exclusion applies); the BeatAPI V4.1 leg must be excluded from this pool (it spends JEV's window) |
+| 3 | **Qwen3.8-27B** (Groq) | Already measured 30/30 on the easy set; different family from both above | About 25 six-thousand-token packets a day under the 180k TPD allowance, so it is supplemental only |
+| Overflow | **Gemini 3.8 / 3.7 Flash** (AA 40.9 / 39.1) | Strong, independent free pools | About 40 RPD each and they are also the moments producers; same family as the Gemma sibling and the tag primary |
+| Not recommended | BeatAPI `gpt-6-astra`, `gpt-6.1-sol`, `deepseek-v4-pro` | Any call blocks JEV's whole account for its duration plus about 60 s; the GPT pair's serving family is unverified (response metadata says `usage_source: anthropic`), so it cannot be counted as independent | Re-evaluate only if JEV is retired or BeatAPI is topped up, which is deliberately not planned |
+| Not recommended | Nemotron 3 Ultra, hy3 | Protected `chapter-agenda` routes; Ultra's recorded AA is 22.9 | None; it stays where it is |
+
+Coverage under the per-subject exclusion: tag subjects (producers Gemini, StepFun, DeepSeek) go to GLM 5.3 Flash first, then Qwen; moment subjects (producers include Gemini, Z.ai, DeepSeek, Kimi) cannot use ranks 1 and 2 and fall to Qwen, which is too small alone. That is the main finding: **the free pool has no independent, long-context adjudicator for moments yet**. Either Nemotron 3 Super 120B (not in any lane, no AA recorded here) is added to the qualification run as a candidate, or moments adjudication accepts a same-family adjudicator and relies on the audit.
+
+**The qualification check (proves the choice instead of asserting it).** A re-runnable benchmark `adjudicator-bench` in [`evals/judge`](../evals/judge/README.md), run before any route holds an adjudicator slot and again on every candidate change. It uses only truth that does not come from any candidate:
+
+| Gold set | Source | What it tests |
+|---|---|---|
+| G1 | The 381 boundary cases in `evals/chapter-locator/manual-review-v2` (39 meetings, human-set times, agenda-item associations, concurrent chapter groups, transcript-evidence status) | Long-context reading: "does the discussion of item X begin at time T in this transcript?", with the true pairing and planted false ones (wrong item, or time shifted beyond the 60 s tolerance) |
+| G2 | `evals/chapter-agenda` gold and holdout (provider chapters against generated agenda items) | Agenda-to-transcript grounding |
+| G3 | The `evals/judge` known-truth items: 30 supported/near-miss/off-topic, 10 planted controls, the adjudicated context items | The tag and moment `validate` questions themselves (the 15 context labels are Claude's as corrected by the maintainer, and say so) |
+| G4 | **Contested slice:** items where JEV and the sibling disagreed, labelled by the blind audit | The only slice that matters for adjudication; grows each week |
+
+Protocol: identical packets and prompt for every candidate, both option orders, `reasoning_effort` and the structured-output method fixed per route, prompt frozen before scoring (tune on the 8 development meetings, score on the rest). JEV and the sibling are scored on the same items as baselines: **an adjudicator must beat the better of them on the contested slice, or adjudication adds nothing.**
+
+Metrics, in order of importance: false-accept rate (the costly error, since it admits a bad tag or clip); false-reject rate; agreement with gold on G4; **quote validity** (a deterministic check that the quoted rationale appears verbatim in the transcript, which catches persuasive but ungrounded answers); order-flip rate; invalid or empty output rate; tokens per packet and latency; packets per day under the verified RPD/TPD.
+
+Decision rule (relative, in the style of the graduation rules, not a fixed number): compare candidates pairwise on the same items (paired bootstrap or McNemar). A candidate is **qualified** if it beats the better of JEV and sibling on G4 with its interval's lower bound above that baseline's point estimate, and its false-accept rate is no worse than the best candidate's. Candidates whose intervals overlap are tied; ties are broken by verified capacity and by independence from the subject's producer. At the current 381 cases an interval is about 5 points wide, so differences under roughly 7 points cannot be separated and the check must say so instead of picking a winner.
+
+Known weaknesses of the gold, stated up front: (1) the manual-review times were **pre-filled with a median of model outputs** for 252 of 381 cases, so a candidate that contributed to the median may score above its true level; report each candidate's score with and without the cases its own output seeded. (2) G1 and G2 test boundary and grounding skills, which are close to but not identical to "is this tag supported"; G3 and G4 are the direct tests but are small now. (3) The locator holdout test split has already been spent on route comparison and is not used as a blind final test. (4) Free-tier RPD and TPD bound how often the benchmark can be re-run; it is packed 5 to 20 questions per call for that reason.
+
+Cost to run: about 381 cases x 6 candidates x 2 orders, packed, is on the order of a few hundred calls per candidate, which fits one day of free quota per route except Qwen (token-capped, so run it in slices) and the Gemini 20 RPD pools (excluded from the benchmark unless they are the overflow route being qualified).
+
 ### 5. Route league (European-cup model)
 
 Every verb (tagger, moment finder, judge, adjudicator, future additive verbs) has its own **league**:
@@ -629,7 +667,7 @@ Two separate decisions, each stated relative to a measured baseline rather than 
 
 ## Open questions (remaining)
 
-1. **Second adjudicator route:** decided after the locator verdict (expected late 2026-09-30).
+1. **Second adjudicator route:** the locator verdict is in and nothing had been decided. Recommendation in section 4c: GLM 5.3 Flash first, DeepSeek V4.1 Flash (NVIDIA leg) second, Qwen3.8 supplemental, pending the `adjudicator-bench` qualification run and the maintainer's approval. Open sub-question: moments have no independent long-context adjudicator in the free pool (section 4c).
 
 ## Path to L3
 
@@ -645,4 +683,5 @@ Status against `review/11` L3 (concrete file/function changes, test plan, sequen
 | P1 breakout | next: adds the generalized task-spec registry of section 3a and the `context_tier` field to the judgment record; needs the judgment-record schema, the `beatapi` provider entry (`rpm: 1`, `concurrency: 1`), the `structured.py` mapping and oversize-503 classification, and the JEV real-response fixtures (captured in the spike) |
 | Dispatch requirements (2026-10-08) | P1: single-model lanes get a measured output budget or a 1–2 retry ceiling for `output_budget_exhausted`; P7: cancel a retired lane's queued jobs before removing it; after P7: #2162 pooled-index reassessment. See "Dispatch requirements from the row-write reductions" |
 | P2-P7 | stay L2 until P1 shadow data exists: thresholds, league scoring and the graduation comparison need measured judge behaviour; specifying them now would invent numbers |
-| Open decisions | second adjudicator, shadow and switch-over shape, graduation wording (above) |
+| Adjudicator qualification | recommendation and `adjudicator-bench` design in section 4c; the benchmark itself is not built and no route is qualified yet |
+| Open decisions | shadow and switch-over shape, graduation wording (above) |
