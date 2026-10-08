@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **BeatAPI chat routes paused (`rpd: 0`).** The Worker reaches providers through Cloudflare AI
+  Gateway, and `beatapi` had no registered gateway provider: every BeatAPI call returned
+  `400 Invalid provider` (gateway code 2008), which the Worker classifies `request_defect`, failing
+  the job. Live status showed one used and one in-flight request when found. The routes stay in
+  their pools, paused, until a `custom-beatapi` gateway provider is registered and wired.
+
 - **Provider catalog remaining-slice contract proposal (review/48 §8).** Records the maintainer’s
   additions-first sequence, initial additions/ignore command scope and automatic proven tightening
   PRs with material-change flags. Proposes evidence/identity and config-write contracts, bounded
