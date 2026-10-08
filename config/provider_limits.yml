@@ -125,7 +125,15 @@ providers:
     # `Retry-After: 60`): a success on any one model blocks every other model for 60 s, across
     # families (DeepSeek <-> GPT) and across endpoints (`jev-1.13-free` via /v1/systemone <->
     # chat completions, both directions); a 429 does not consume the window; the same model again
-    # is blocked too. Do not top up: that moves the account off the deliberate free tier.
+    # is blocked too. Single-flight (measured 2026-10-08, three runs): while any BeatAPI call is
+    # running, a call to another model gets 429, at 62-125 s into a long call as much as at 5 s.
+    # Treat the account as one lane: one call at a time, then wait 60 s after a success before the
+    # next. Steady state accepted a call every ~61 s. Right after a call longer than 60 s the next
+    # call once succeeded at +9 s, but a 68 s call blocked callers at +17 s and +22 s, so do not
+    # rely on an early start. Input is not the constraint: all five chat models accepted 234,437
+    # tokens (no rejection; a lower bound, so no hard_input_ceiling). Output speed was 140-235
+    # tokens/s, and a 64k-token request 524'd at 125 s while an 18k one finished at 128 s.
+    # Do not top up: that moves the account off the deliberate free tier.
     # `jev-1.13-free` (the review/49 anchor judge) is on the same key and the same window, but is
     # called via POST /v1/systemone, not chat completions, so it has no route here; its transport
     # is specified in the P1 breakout, and its calls must be budgeted against these routes.
