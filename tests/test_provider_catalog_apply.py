@@ -611,3 +611,43 @@ def test_route_alias_can_preserve_an_affected_free_pool():
         },
     )
     assert plan_apply(Report(anomalies=[proof]), (decision,), conf).paid_routes == ("paid",)
+
+
+@pytest.mark.parametrize("model", ["creator/old", "creator/model[1]*?"])
+def test_paid_fulfillment_requires_literal_ack_in_planner_and_issue(model):
+    from dataclasses import asdict
+    from glob import escape
+
+    import yaml
+
+    from citypods.provider_catalog.apply import paid_fulfilled
+    from citypods.provider_catalog.decisions import Decisions
+    from citypods.provider_catalog.issue import fulfilled_choices
+
+    conf, proof, decision = paid_fixture()
+    decision = replace(decision, model=model)
+    proof = replace(proof, model=model)
+    routes = [
+        {**r, "free": False, "upstream_model": model} if r["route_id"] == "paid" else r
+        for r in conf.limits["routes"]
+    ]
+    conf = replace(conf, limits={**conf.limits, "routes": routes})
+    for pattern, expected in [("*", False), ("creator/*", False), (escape(model), True)]:
+        entry = {"provider": "host", "model_glob": pattern, "verdict": "not_entitled"}
+        conf = replace(
+            conf, texts={**conf.texts, SOURCE_PATHS[2]: yaml.safe_dump({"acknowledged": [entry]})}
+        )
+        assert paid_fulfilled(decision, conf) is expected
+        choices = fulfilled_choices(
+            render_body(
+                Report(anomalies=[proof], state={"last_full": {"anomalies": [asdict(proof)]}}),
+                run_date=TODAY.isoformat(),
+            ),
+            conf.limits,
+            conf.lanes,
+            Decisions(acknowledged=(entry,)),
+            TODAY,
+        )
+        assert ("`paid`: keep as a paid route" in choices) is expected
+        plan = plan_apply(Report(), (decision,), conf)
+        assert bool(plan.deferred) is not expected
