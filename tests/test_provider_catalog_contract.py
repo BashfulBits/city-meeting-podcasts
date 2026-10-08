@@ -16,6 +16,9 @@ from citypods.provider_catalog.registry import all_rules
 ROOT = Path(__file__).resolve().parents[1]
 CORE = ROOT / "citypods" / "provider_catalog"
 CORE_MODULES = (
+    "apply.py",
+    "config_edit.py",
+    "evidence.py",
     "classify.py",
     "decisions.py",
     "issue.py",

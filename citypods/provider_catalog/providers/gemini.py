@@ -54,6 +54,7 @@ def _chat_capable(model: str, record: Any) -> bool:
 
 
 RULES = ProviderRules(
+    model_identity=lambda model, _record: f"gemini/{model}",
     name="gemini",
     catalog=CatalogSpec(
         style="google",

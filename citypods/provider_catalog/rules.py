@@ -192,6 +192,16 @@ def default_links(model: str) -> tuple[tuple[str, str], ...]:
     )
 
 
+def namespaced_identity(suffix: str = ""):
+    """Use a plugin-authorized publisher/model ID verbatim; bare/ambiguous IDs stay unknown."""
+
+    def identify(model, _record):
+        value = model.removesuffix(suffix) if suffix else model
+        return value if re.fullmatch(r"[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.:-]+", value) else None
+
+    return identify
+
+
 @dataclass(frozen=True)
 class ProviderRules:
     """Everything the reconciler knows about one provider. See module docstring."""
@@ -220,6 +230,10 @@ class ProviderRules:
     # Minimum seconds between this provider's canaries (Airforce enforces a global 1 req/s limit;
     # back-to-back canaries there all came back 429 in the 2026-09-24 dry run).
     canary_interval_seconds: float = 0.0
+
+    # Pure plugin callbacks; unknown identity/scope fails closed when proposing config.
+    model_identity: Callable[[str, Mapping[str, Any]], str | None] = lambda _m, _r: None
+    limit_observations: Callable[[Response], tuple[tuple[str, int, str], ...]] = lambda _r: ()
 
     @property
     def observation_only(self) -> bool:

@@ -1036,3 +1036,104 @@ def test_deferred_schema_checks_preserve_prior_method_and_unchecked_evidence(
             **previous["results"],
             "json_schema": {"outcome": outcome, "completion_seconds": 3},
         }
+
+
+def test_apply_selection_uses_fresh_specific_canaries_and_carries_safe_provenance(monkeypatch):
+    from dataclasses import replace
+
+    from citypods.provider_catalog.registry import all_rules
+    from citypods.provider_catalog.rules import namespaced_identity
+
+    monkeypatch.setenv("K", "sensitive-test-token")
+    rules = all_rules()
+    plugin = replace(rules["openrouter"], model_identity=namespaced_identity(":free"))
+    monkeypatch.setattr(
+        "citypods.provider_catalog.reconcile.all_rules", lambda: {**rules, "openrouter": plugin}
+    )
+    catalog = {
+        "data": [
+            {
+                "id": name,
+                "context_length": 1000000,
+                "top_provider": {"max_completion_tokens": 32000},
+                "pricing": {"prompt": "0", "completion": "0"},
+            }
+            for name in ("creator/selected:free", "creator/other:free")
+        ]
+    }
+    calls = []
+
+    def ping(_rules, _cfg, model, _key, _session):
+        calls.append(model)
+        return OK
+
+    def methods(*_args, **kwargs):
+        assert kwargs["before_attempt"]()
+        return {"prompt_only": {"outcome": "valid", "completion_seconds": 1}}
+
+    report = reconcile(
+        LIMITS,
+        {},
+        Decisions(),
+        QualityIndex(),
+        {},
+        session=FakeSession({"https://or.test": catalog}),
+        control=FakeControl(),
+        today=TODAY,
+        providers={"openrouter"},
+        candidate_keys={"openrouter/creator/selected:free"},
+        canary_fn=ping,
+        structured_canary_fn=methods,
+    )
+    assert calls == ["creator/selected:free"]
+    assert report.state["version"] == 3
+    candidate = report.candidates[0]
+    assert candidate.evidence["catalog_complete"] is True
+    assert candidate.evidence["output_context_limit"] == 32000
+    assert candidate.evidence["model_key"] == "creator/selected"
+    assert candidate.evidence_digest
+    assert "sensitive-test-token" not in json.dumps(candidate.evidence)
+
+
+def test_temporary_free_evidence_outage_keeps_prior_candidate_as_advisory(monkeypatch):
+    from dataclasses import replace
+
+    from citypods.provider_catalog.registry import all_rules
+
+    monkeypatch.setenv("K", "key")
+    rules = all_rules()
+    plugin = replace(rules["openrouter"], free_evidence=lambda *_: None)
+    monkeypatch.setattr(
+        "citypods.provider_catalog.reconcile.all_rules", lambda: {**rules, "openrouter": plugin}
+    )
+    report = reconcile(
+        LIMITS,
+        {},
+        Decisions(),
+        QualityIndex(),
+        {
+            "canaries": {
+                "openrouter/creator/remembered:free": {
+                    "verdict": "proven",
+                    "on": TODAY.isoformat(),
+                    "method": "prompt_only",
+                    "structured_results": {"prompt_only": {"outcome": "valid"}},
+                }
+            }
+        },
+        session=FakeSession(
+            {
+                "https://or.test": {
+                    "data": [{"id": "creator/remembered:free", "context_length": 1000000}]
+                }
+            }
+        ),
+        control=FakeControl(),
+        today=TODAY,
+        providers={"openrouter"},
+        canary_fn=lambda *_: OK,
+        structured_canary_fn=lambda *_a, **_k: {},
+    )
+    candidate = next(c for c in report.candidates if c.model == "creator/remembered:free")
+    assert candidate.structured_output_method == "prompt_only"
+    assert candidate.evidence["free"] is False and candidate.evidence["contended"] is True

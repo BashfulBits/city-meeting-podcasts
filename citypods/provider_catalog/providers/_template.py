@@ -13,4 +13,7 @@
 
 from citypods.provider_catalog.rules import ProviderRules
 
+# model_identity defaults to unknown. Opt in only to an authoritative canonical publisher ID;
+# AA scores/aliases never establish serving identity. limit_observations defaults to no headers;
+# normalize only fixture-proven metrics and scopes, never treat account capacity as route capacity.
 RULES = ProviderRules(name="example")

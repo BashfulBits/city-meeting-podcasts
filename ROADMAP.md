@@ -265,7 +265,8 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > Remaining contracts are proposed in [review/48 §8](review/48-provider-catalog-reconciliation.md#8-remaining-slice-contract-proposal--2026-10-08):
 > additions/ignore first, paid/shadow follow-up, bounded rescue before removal, then limits.
 > Proven material tightening may prepare a flagged PR; merge remains a maintainer decision.
-> Remaining slices return to L2 pending contract acceptance and implementation issues.
+> Proposal accepted in #2178; additions/ignore implementation is tracked in #2179.
+> Output-bound clarification is pending; later slices retain separate issues and activation gates.
 >
 > **Added 2026-07-14 (maintainer decision): a rate-limited LLM dispatch item, numbered R10 but sequenced
 > second in the table below, right after R1.** This is deliberate, not a mistake — the maintainer asked

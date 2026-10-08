@@ -12,6 +12,15 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog Slice 2a: authorized additions/ignore PR preparation (#2179).** `/apply` reads
+  current rolling issue selections, rechecks selected candidates under provider pauses and budgets,
+  and prepares one managed PR with narrow YAML edits, both compilers and in-job contract tests.
+  V3 issue state binds catalog/route evidence to logical identity and lanes; legacy proofs remain
+  advisory. Missing identity, compiler-required context bounds, stale proofs or quota defer only
+  the affected addition. Paid/shadow choices remain gated for Slice 2b. Shared account capacity is
+  not copied into independent route limits; paused BeatAPI routes and backup tiers are preserved.
+  No route changes in this PR, live probes, pipeline/recipe version bumps or artifact backfill.
+
 - **BeatAPI chat routes paused (`rpd: 0`).** The Worker reaches providers through Cloudflare AI
   Gateway, and `beatapi` had no registered gateway provider: every BeatAPI call returned
   `400 Invalid provider` (gateway code 2008), which the Worker classifies `request_defect`, failing

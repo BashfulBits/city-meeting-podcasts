@@ -26,7 +26,14 @@ from citypods.review_issues import (
 
 ISSUE_TITLE = "Provider catalog: pending decisions"
 ISSUE_LABEL = "provider-catalog"
-MARKER = "<!-- citypods:provider-catalog v=2 -->"
+MARKER = "<!-- citypods:provider-catalog v=3 -->"
+LEGACY_MARKERS = tuple(f"<!-- citypods:provider-catalog v={v} -->" for v in (1, 2))
+
+
+def is_catalog_issue(body: str) -> bool:
+    return any(marker in body for marker in (MARKER, *LEGACY_MARKERS))
+
+
 _STATE_RE = re.compile(r"<!-- citypods:provider-catalog-state ([A-Za-z0-9+/=]+) -->")
 # Leave room for the state marker after the bounded human-readable part.
 _HUMAN_BODY_LIMIT = 52_000
@@ -162,7 +169,9 @@ def render_body(report: Report, *, run_date: str, previous_body: str = "") -> st
                 "Tick what you want, then comment `/apply` to get one curated PR with exactly "
                 "those changes (review/48 Slice 2). Ticks are kept across weekly updates. A free "
                 "route that became paid is never removed automatically: remove it, or keep it as "
-                "a paid route.",
+                "a paid route. Additions/ignore are available now; paid-route choices require "
+                "Slice 2b. Unavailable proofs remain ticked. An open PR does not fulfill a "
+                "selection until it is merged.",
                 "",
                 _render_decision_block(choices, checked),
             ]
@@ -207,7 +216,7 @@ def find_issue(run: Runner = _gh) -> dict[str, Any] | None:
         or "[]"
     )
     for issue in listed:
-        if MARKER in (issue.get("body") or ""):
+        if is_catalog_issue(issue.get("body") or ""):
             return issue
     return None
 
