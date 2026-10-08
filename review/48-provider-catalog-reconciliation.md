@@ -519,11 +519,12 @@ shadow lanes and falling qualification. Never promote a primary through this com
 
 ### 8.5 Slice 3a: structural terminal reasons and bounded rescue
 
-Next implementation issue: [#2190](https://github.com/BashfulBits/city-meeting-podcasts/issues/2190).
+Implementation issue: [#2190](https://github.com/BashfulBits/city-meeting-podcasts/issues/2190);
+PR [#2191](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191) is stacked on #2189.
 Merge Slice 2b first; deployment/canary remain prerequisites for Slice 3b activation.
 
-**Implementation checkpoint (2026-10-08, #2190; incomplete):** bounded catalog rescue, nullable
-terminal metadata, audit-before-delete structural recovery, producer generation guards and
+**Implementation checkpoint (2026-10-08, #2190; PR #2191, awaiting review/merge):** bounded catalog
+rescue, nullable terminal metadata, audit-before-delete structural recovery, producer guards and
 retained-subject rebatching are implemented locally. Python recognizes only the two specified
 reasons with a nonempty catalog identity; generic/legacy failures retain existing semantics.
 The terminal fence compares backend/ref against both snapshot and current stored record.
@@ -575,7 +576,9 @@ ordinary fallback thresholds.
 is ready, with at least one hour between manual requests. Check repository-wide recent requests
 before posting, including other sessions. Slice 2b #2189 was requested at 2026-10-08 14:14:23 UTC
 ([request](https://github.com/BashfulBits/city-meeting-podcasts/pull/2189#issuecomment-6061804491));
-the next request cannot precede 15:14:23 UTC, and a later request elsewhere moves that floor.
+Slice 3a #2191 was requested at 2026-10-08 18:17:44 UTC
+([request](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191#issuecomment-6066258476));
+the next request cannot precede 19:17:44 UTC, and a later request elsewhere moves that floor.
 
 The deployed coordinator already has `_modelsForQueuedJob()` and
 `_reconcileUnroutableJobs()`. Extend them; do not introduce a second full-queue reconciler.
