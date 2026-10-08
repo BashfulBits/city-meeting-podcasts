@@ -273,6 +273,7 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > Slice 2b is tracked in #2187: paid decisions, including the approved
 > disabled-shadow runtime fix shipped in #2188. Paid decisions are in implementation; legacy
 > R5 promotion is explicitly superseded by review/53 graduation (maintainer decision 2026-10-08).
+> Bounded structural rescue is next (#2190); deployment/canary must precede removal automation.
 > Later slices retain separate issues and activation gates.
 >
 > **Added 2026-07-14 (maintainer decision): a rate-limited LLM dispatch item, numbered R10 but sequenced

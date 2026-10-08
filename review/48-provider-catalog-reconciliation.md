@@ -519,6 +519,9 @@ shadow lanes and falling qualification. Never promote a primary through this com
 
 ### 8.5 Slice 3a: structural terminal reasons and bounded rescue
 
+Next implementation issue: [#2190](https://github.com/BashfulBits/city-meeting-podcasts/issues/2190).
+Merge Slice 2b first; deployment/canary remain prerequisites for Slice 3b activation.
+
 The deployed coordinator already has `_modelsForQueuedJob()` and
 `_reconcileUnroutableJobs()`. Extend them; do not introduce a second full-queue reconciler.
 Structural eligibility uses the full dispatch catalog and the job's policy/context/output bounds.
