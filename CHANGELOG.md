@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog adaptive context calibration design (review/48 §8.10).** Accepts separately
+  reviewed conservative output caps and sequences calibration after bounded rate maintenance.
+  Records provider-reported token-count feedback, 50% exploration, bracket refinement and 10%
+  boundary revalidation, with trusted bounded history and explicit config review. Slice 5 remains
+  L2 pending exact budgets and implementation contracts. Design only: no live probes, runtime caps,
+  deployments, pipeline versions or stored artifacts change.
+
 - **BeatAPI chat routes back on, through `custom-beatapi`.** The maintainer registered a
   `custom-beatapi` AI Gateway provider (base `https://api.beatapi.io/v1`); the `beatapi` provider
   now sets `ai_gateway_slug: custom-beatapi` and `ai_gateway_chat_path: /chat/completions`, and the
