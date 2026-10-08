@@ -3,8 +3,8 @@
   "current_feed_count": 224,
   "cached_source_count": 26555,
   "base_assignment_count": 27434,
-  "current_assignment_count": 29380,
-  "added_assignment_count": 1976,
+  "current_assignment_count": 29379,
+  "added_assignment_count": 1975,
   "removed_assignment_count": 30,
   "added_assignments": [
     {
@@ -14201,14 +14201,6 @@
     },
     {
       "source_key": "76869ed1994f",
-      "uid": "aa65e2aafc90711b",
-      "provider_guid": "272574",
-      "body": "2024 Capital Bond Program CBTF Meeting",
-      "title": "2024 Capital Bond Program CBTF Meeting – Sep 26, 2023",
-      "feed": "dallas-tx-public-info-meetings"
-    },
-    {
-      "source_key": "76869ed1994f",
       "uid": "aaacc04b3741aa2e",
       "provider_guid": "202761",
       "body": "Human & Social Needs Committee",
@@ -19047,7 +19039,7 @@
     "dallas-tx-parks-trails-environment-committee": 70,
     "dallas-tx-permit-and-license-appeal-board-hearing": 76,
     "dallas-tx-public-facility-corporation-meeting": 17,
-    "dallas-tx-public-info-meetings": 126,
+    "dallas-tx-public-info-meetings": 125,
     "dallas-tx-public-safety": 155,
     "dallas-tx-quality-of-life": 144,
     "dallas-tx-quality-of-life-arts-and-culture-committee": 104,

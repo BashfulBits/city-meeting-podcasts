@@ -73,21 +73,20 @@ Once 1.0 ships, entries move under semver tags.
   changed.
 
 - **P0 historical feed rules and Dallas CBTF follow-up.** The baseline rules merged in PR #2112 and
-  passed deployment run #37643318454. The updated worksheet covers 680 title patterns: the
-  proposed follow-up assigns 518 patterns (1,667 source/UID listings) to feeds, leaves one
-  archive-only, and marks 161 not to pursue. With the merged September 26 Public Info placement and
-  the proposed Dallas CBTF aggregate rule, the replay has 1,976 added policy placements, removes 30 wrong
-  Fort Worth Council placements, and leaves 411 source/UID entries unmatched (405 not pursued and
-  six archive-only visibility checks). PR #2154, tracked by issue #2152, removes the contradictory CBTF
-  exclusion from the Dallas Bond Program policy replay; this aligns ten policy matches with the existing live selector
-  and does not add live RSS items or change Public Info. October 3 is already verified in Bond
-  Program only; September 26 retains its separate Public Info approval, pending deployment proof.
+  passed deployment run #37643318454. The updated worksheet covers 680 title patterns: 518 patterns (1,667 source/UID listings) are
+  assigned to feeds, one is archive-only, and 161 are not pursued. The current local replay has
+  1,975 added placements across 1,952 source/UID pairs, 30 removed wrong Fort Worth Council
+  placements, and 411 source/UID entries without a feed (405 not pursued and six archive-only). PR
+  #2154 removes the contradictory CBTF exclusion from Dallas Bond Program policy. The maintainer later
+  directed GUID 272574 to Bond Program only; this correction removes its exact Public Info entry.
+  October 3 is verified Bond-only. September 26 stays open until the corrected output is deployed and
+  checked.
   The P0 report records the replay and remaining checks. This does not mark P0 complete.
 
-- **Merged Dallas bond Town Hall dual-feed placement (#2116).** The September 26, 2023 recording
-  keeps its original UID/audio in Bond Program and is also selected into Public Info by exact source
-  GUID. The separate September 19 formal Task Force meeting is not admitted to Public Info. Live RSS
-  verification remains required before closing the evidence case.
+- **Dallas bond Town Hall routing decision updated.** PR #2116 briefly added the September 26,
+  2023 recording to Public Info as well as Bond Program. The maintainer later directed Bond Program
+  only; a follow-up removes that exact Public Info entry. The original UID/audio stays unchanged.
+  Live RSS verification of the final routing remains required before closing its evidence case.
 
 - **Certified October 2026 Coverage Feed Implementations.** Reconciled and certified status for
   October 2026 coverage batches across Addison UDC (PR #1992), Arlington HFC and ZBA (commit

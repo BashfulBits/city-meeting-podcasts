@@ -30,3 +30,13 @@ The same check found stable UID `aa65e2aafc90711b` and original audio
 Bond Program RSS, but not in Public Info RSS. PR #2116 has merged; its deployment was still queued
 behind another build at this check. The approved dual-feed case remains open until a later live check
 finds this exact UID/audio in both feeds.
+
+## September 26, 2023 — post-#2116 deployment check, 2026-10-07 20:25 UTC
+
+Build and Deploy run [#37672877235](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37672877235)
+completed successfully for the #2116 merge. A fresh read-only request to each of the three feeds found
+UID `aa65e2aafc90711b` and its original audio in both Bond Program and Public Info; it was absent from
+the dedicated Task Force feed. This reflects the then-merged dual-feed rule, which the maintainer
+later superseded with Bond Program only. The corrective change is not merged or deployed yet. Keep
+the case open; after the correction deploys, verify Bond Program present and Public Info/Task Force
+absent before closing it. No source record or audio was changed by this check.

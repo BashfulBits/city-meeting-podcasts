@@ -67,7 +67,7 @@ def test_dallas_cbtf_records_route_to_bond_program_without_public_info_expansion
     } == expected_task_force_guids
 
     by_guid = {row["provider_guid"]: row for row in rows}
-    assert record_matches_body(
+    assert not record_matches_body(
         by_guid["272574"],
         source_body_filter(public_info.source),
         source_body_inclusions(public_info.source),
@@ -87,3 +87,13 @@ def test_dallas_cbtf_records_route_to_bond_program_without_public_info_expansion
     for row in rows:
         assert row["uid"] in xml
         assert row["audio"]["url"] in xml
+
+    public_info_rows = [row for row in rows if _owns(public_info, row)]
+    public_info_xml = build_rss(
+        public_info,
+        [record_to_episode(row) for row in public_info_rows],
+        "audio",
+        "https://www.citymeetings.fyi",
+    )
+    assert by_guid["272574"]["uid"] not in public_info_xml
+    assert by_guid["272574"]["audio"]["url"] not in public_info_xml
