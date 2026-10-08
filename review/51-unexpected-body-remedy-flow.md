@@ -2770,6 +2770,8 @@ ceiling in earlier contracts; the four-hour schedule and single-deployment concu
 Change only citypods/search.py budget default/validation, config/site_config.yml search budget,
 .github/workflows/deploy.yml search job timeout (150 minutes, including setup and persistence)
 and search command output via tee so record/source progress is visible in logs and summary.
+Before indexing, report restored completed-source and partial-record counts from the private
+working cache. Use explicit Bash so the tee pipeline preserves indexer failure status.
 Update tests/test_static_search_job.py ceiling coverage and two-hour deadline acceptance; run
 actual resume regressions, full offline suite and whole Ruff/format. Update review/11 and changelog.
 No provider, audio, source identity, storage permission, index schema or publication-policy change.
