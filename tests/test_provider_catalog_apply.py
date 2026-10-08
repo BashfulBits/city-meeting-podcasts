@@ -140,9 +140,14 @@ def test_existing_physical_route_never_gets_duplicated():
         "free": True,
     }
     result = plan_apply(
-        Report(), (Decision("host", "creator/new", "add", ("lane",)),), config((existing,))
+        Report(),
+        (Decision("host", "creator/new", "add", ("lane",)),),
+        replace(
+            config((existing,)),
+            lanes={"lane": replace(config().lanes["lane"], backup_models=("creator/new",))},
+        ),
     )
-    assert not result.routes and result.backups == (("lane", "creator/new"),)
+    assert not result.routes and not result.backups and not result.deferred
 
 
 @pytest.mark.parametrize(
@@ -327,3 +332,22 @@ def test_unknown_compiler_required_bound_defers_only_that_candidate(field):
     result = plan(proof, Decision("host", "creator/new", "add", evidence=proof))
     assert result.deferred and not result.routes
     assert "compiler requires" in result.deferred[0]
+
+
+def test_old_selection_cannot_place_an_already_configured_task_plugin_in_a_chat_lane():
+    limits = config().limits
+    limits["providers"]["beatapi"] = {"accounts": [{"id": "primary"}]}
+    limits["routes"] = [
+        {
+            "provider": "beatapi",
+            "upstream_model": "jev-1.13-free",
+            "model": "task/jev",
+            "free": True,
+        }
+    ]
+    result = plan_apply(
+        Report(),
+        (Decision("beatapi", "jev-1.13-free", "add", ("lane",)),),
+        replace(config(), limits=limits),
+    )
+    assert result.deferred and not result.routes and not result.backups

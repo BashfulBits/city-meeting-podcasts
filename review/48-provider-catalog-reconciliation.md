@@ -622,7 +622,10 @@ The additions/ignore command is prepared with v3 evidence/digests, pure plugin i
 selected-candidate fresh rechecks, exact command/current-issue authorization, additive YAML edits,
 both compilers and in-job tests, and one managed additions branch/PR. Observation and apply share
 `provider-catalog-writers` concurrency. Legacy issue markers/state remain readable; old proofs cannot
-authorize additions. Deferred/rejected selections remain ticked until fulfilled on main.
+authorize additions. Deferred/rejected selections remain ticked until fulfilled on main. If a concurrent change adds the route without the selected backup,
+the old choice and its advisory provenance survive weekly rewrites; apply defers the missing lane
+placement for review instead of using that stale choice as new admission evidence. An already
+fulfilled route/backup selection is a no-op. A pending selected choice keeps the rolling issue open.
 
 The current compiler requires both input and output context bounds. Additions with either absent
 are deferred without guessing a limit; other valid additions/ignores can still form a PR. The

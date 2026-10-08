@@ -228,9 +228,19 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
         if bad_lanes:
             rejected.append(f"{decision.key}: no longer eligible for {', '.join(bad_lanes)}")
             continue
+        missing_backups = tuple(
+            (lane, model_key)
+            for lane in decision.lanes
+            if model_key not in config.lanes[lane].backup_models
+        )
+        if physical and missing_backups:
+            # Once another change adds the route, an old candidate checkbox is not fresh lane
+            # admission evidence. It could now refer to a task plugin or changed eligibility.
+            deferred.append(f"{decision.key}: route now configured; review missing lane placement")
+            continue
         if not physical:
             routes.append(tuple(route.items()))
-        backups.extend((lane, model_key) for lane in decision.lanes)
+        backups.extend(missing_backups)
         applied.append(f"{decision.key}: add ({', '.join(decision.lanes) or 'route only'})")
     return EditPlan(
         config.base_commit,

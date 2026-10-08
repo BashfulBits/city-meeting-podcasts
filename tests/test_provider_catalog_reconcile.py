@@ -12,7 +12,7 @@ from datetime import date
 
 import pytest
 
-from citypods.compute.llm_lanes import parse_lanes
+from citypods.compute.llm_lanes import LaneConfig, parse_lanes
 from citypods.provider_catalog.decisions import Decisions
 from citypods.provider_catalog.issue import (
     MARKER,
@@ -1137,3 +1137,88 @@ def test_temporary_free_evidence_outage_keeps_prior_candidate_as_advisory(monkey
     candidate = next(c for c in report.candidates if c.model == "creator/remembered:free")
     assert candidate.structured_output_method == "prompt_only"
     assert candidate.evidence["free"] is False and candidate.evidence["contended"] is True
+
+
+def test_selected_lane_choice_survives_route_added_on_main_until_lane_is_fulfilled():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.issue import fulfilled_choices
+    from citypods.provider_catalog.reconcile import Candidate, Report
+    from citypods.review_issues import checked_decisions
+
+    candidate = Candidate(
+        "host",
+        "creator/new",
+        30,
+        False,
+        100000,
+        (),
+        ("lane",),
+        "2026-10-08",
+        structured_output_method="prompt_only",
+    )
+    old = Report(candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}})
+    prior = render_body(old, run_date="2026-10-08").replace(
+        "- [ ] `host/creator/new`: add as backup to `lane`",
+        "- [x] `host/creator/new`: add as backup to `lane`",
+    )
+    limits = {
+        "routes": [
+            {
+                "provider": "host",
+                "upstream_model": "creator/new",
+                "model": "creator/new",
+                "free": True,
+            }
+        ]
+    }
+    lanes = {"lane": LaneConfig("lane", ("primary",), 1, 1, 10)}
+    fulfilled = fulfilled_choices(prior, limits, lanes, Decisions(), TODAY)
+    choice = "`host/creator/new`: add as backup to `lane`"
+    assert choice not in fulfilled
+    new = render_body(Report(), run_date="2026-10-09", previous_body=prior, fulfilled=fulfilled)
+    assert checked_decisions(new, (choice,)) == (choice,)
+    assert decode_state(new)["last_full"]["candidates"][0]["model"] == candidate.model
+    assert "Pending prior selections" in new
+    # Another weekly run still retains the choice and its advisory provenance.
+    again = render_body(Report(), run_date="2026-10-10", previous_body=new, fulfilled=fulfilled)
+    assert checked_decisions(again, (choice,)) == (choice,)
+    from dataclasses import replace
+
+    lanes["lane"] = replace(lanes["lane"], backup_models=("creator/new",))
+    fulfilled = fulfilled_choices(again, limits, lanes, Decisions(), TODAY)
+    final = render_body(Report(), run_date="2026-10-11", previous_body=again, fulfilled=fulfilled)
+    assert not checked_decisions(final, (choice,))
+    assert not decode_state(final).get("last_full", {}).get("candidates")
+
+
+def test_pending_selected_choice_keeps_the_rolling_issue_open():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.reconcile import Candidate, Report
+
+    candidate = Candidate(
+        "host",
+        "creator/new",
+        None,
+        None,
+        10000,
+        (),
+        (),
+        "2026-10-08",
+        structured_output_method="prompt_only",
+    )
+    old = Report(candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}})
+    prior = render_body(old, run_date="2026-10-08").replace(
+        "- [ ] `host/creator/new`: add route only", "- [x] `host/creator/new`: add route only"
+    )
+    calls = []
+
+    def runner(args):
+        calls.append(args)
+        if args[:2] == ["issue", "list"]:
+            return json.dumps([{"number": 1, "state": "OPEN", "body": prior}])
+        return ""
+
+    assert sync_issue(Report(), run_date="2026-10-09", run=runner) == "updated #1"
+    assert not any(args[:2] == ["issue", "close"] for args in calls)
