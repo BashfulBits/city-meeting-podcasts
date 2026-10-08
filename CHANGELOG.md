@@ -12,6 +12,17 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog verifies structured-output support (review/48 R10).** Availability pings no
+  longer qualify a candidate alone: four schema-bound checks validate completed visible JSON,
+  record method/latency evidence, and show the preferred method on the rolling issue. A configured
+  method returning empty/invalid JSON is reported with its lane's remaining pooled routes.
+  BeatAPI (#2167) regression coverage includes reasoning-only responses, 65-second spacing across
+  probes and before dispatch resumes, JEV exclusion and DeepSeek pool fallback. Each route-method
+  request is charged
+  separately; scarce routes defer when quota is unavailable or exhausted. Evidence reporting uses
+  the same planner. Existing candidate proofs without method evidence are rechecked. No production
+  route, recipe, pipeline version or episode artifact changes; no episode catalog backfill.
+
 - **BeatAPI registered: free chat models routed, JEV catalogued (#1967).** `config/provider_limits.yml`
   gains a `beatapi` provider (`BEATAPI_API_KEY`) and five free chat routes (`deepseek-v4-flash-0731`,
   `deepseek-v4.1-flash`, `deepseek-v4-pro`, `gpt-6-astra`, `gpt-6.1-sol`). The DeepSeek routes pool

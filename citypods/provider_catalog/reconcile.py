@@ -20,7 +20,14 @@ import requests
 from citypods.compute.llm_lanes import LaneConfig
 from citypods.provider_catalog.classify import Classification, classify
 from citypods.provider_catalog.decisions import Decisions
-from citypods.provider_catalog.probe import account_key, canary, fetch_catalog
+from citypods.provider_catalog.probe import (
+    CANARY_TIMEOUT_SECONDS,
+    STRUCTURED_METHODS,
+    account_key,
+    canary,
+    fetch_catalog,
+    structured_canary,
+)
 from citypods.provider_catalog.quality import QualityIndex
 from citypods.provider_catalog.registry import all_rules
 from citypods.provider_catalog.rules import ProviderRules, Response
@@ -104,6 +111,8 @@ class Candidate:
     # Every other eligible lane, with how far below that lane's weakest scored model this one is
     # (capacity backups are often weaker by design); shown, not offered as a checkbox.
     other_lanes: tuple[tuple[str, float], ...] = ()
+    structured_output_method: str | None = None
+    structured_output_verified_on: str | None = None
 
     @property
     def key(self) -> str:
@@ -145,6 +154,29 @@ def _route_model_keys(route: Mapping[str, Any]) -> set[str]:
     keys = {str(route.get("model") or ""), str(route.get("model_key") or "")}
     keys.update(str(m) for m in route.get("also_serves") or [])
     return keys - {""}
+
+
+def resolved_method(route: Mapping[str, Any], routes, providers) -> str:
+    """Resolve the method actually compiled for this physical route, including pooled models.
+
+    The compiler contract test compares this against compile_llm_limits' resolver. Source YAML
+    uses model_key for a pool; compiled routes put that identity in model.
+    """
+    if route.get("structured_output_method"):
+        return str(route["structured_output_method"])
+    model = route.get("model_key") or route.get("model")
+    methods = {
+        other["structured_output_method"]
+        for other in routes
+        if (other.get("model_key") or other.get("model")) == model
+        and other.get("structured_output_method")
+        and other.get("structured_output_verified_on")
+    }
+    if len(methods) == 1:
+        return next(iter(methods))
+    return (providers.get(route.get("provider")) or {}).get(
+        "structured_output_method", "prompt_only"
+    )
 
 
 def lane_incumbent_scores(
@@ -280,9 +312,12 @@ def reconcile(
     due_only: bool = False,
     canary_fn: CanaryFn = canary,
     sleep: Callable[[float], None] = time.sleep,
+    structured_canary_fn: Callable[..., dict[str, dict[str, Any]]] = structured_canary,
 ) -> Report:
     report = Report(floor=quality.floor)
-    canary_memory: dict[str, dict[str, str]] = dict(previous_state.get("canaries") or {})
+    rechecked_routes: set[str] = set()
+    structured_checks = dict(previous_state.get("structured_checks") or {})
+    canary_memory: dict[str, dict[str, Any]] = dict(previous_state.get("canaries") or {})
     route_checks: dict[str, str] = dict(previous_state.get("route_checks") or {})
     deferred: dict[str, str] = dict(previous_state.get("deferred") or {})
     known_anomalies = set(previous_state.get("anomalies") or [])
@@ -366,6 +401,7 @@ def reconcile(
                     and age is not None
                     and age < CANARY_MEMORY_DAYS
                     and memory.get("verdict") in DEFINITIVE_VERDICTS
+                    and (memory.get("verdict") != "proven" or memory.get("method"))
                 )
                 if remembered:
                     if memory.get("verdict") == "proven":
@@ -382,6 +418,7 @@ def reconcile(
                                 report.floor,
                                 incumbents,
                                 memory["on"],
+                                method=memory.get("method"),
                             )
                         )
                     continue
@@ -404,21 +441,80 @@ def reconcile(
             continue
 
         with control.paused(provider) as pause:
-            quota = control.route_quota(provider)
+            quota = {k: dict(v) for k, v in control.route_quota(provider).items()}
             if pause.contended:
                 report.observations.append(
                     f"{provider}: probes ran without a drained dispatch pause; capacity signals "
                     "may reflect production traffic"
                 )
             first_probe = True
+
+            def verify(
+                model: str,
+                key: str,
+                route: Mapping[str, Any] | None = None,
+                *,
+                quota=quota,
+                rules=rules,
+                cfg=cfg,
+                provider=provider,
+            ):
+                def before_attempt():
+                    nonlocal first_probe
+                    if route is not None:
+                        rid = str(route["route_id"])
+                        remaining = (quota.get(rid) or {}).get("rpd_remaining")
+                        if route.get("rpd") is not None and 0 < float(route["rpd"]) <= SCARCE_RPD:
+                            if remaining is None or remaining <= 0:
+                                deferred[rid] = str((quota.get(rid) or {}).get("rpd_resets_at", ""))
+                                return False
+                    if not first_probe and rules.canary_interval_seconds:
+                        sleep(rules.canary_interval_seconds)
+                    pause.renew()  # renew AFTER spacing, immediately before the request
+                    first_probe = False
+                    if route is not None:
+                        control.reserve(rid)
+                        if remaining is not None:
+                            quota[rid] = {**quota[rid], "rpd_remaining": remaining - 1}
+                    return True
+
+                evidence = structured_canary_fn(
+                    rules,
+                    cfg,
+                    model,
+                    key,
+                    session,
+                    before_attempt=before_attempt,
+                    methods=limits.get("structured_output_methods") or {},
+                    renew_pause=pause.renew,
+                )
+                working = [
+                    m for m in STRUCTURED_METHODS if evidence.get(m, {}).get("outcome") == "valid"
+                ]
+                report.observations.append(f"{provider}/{model}: structured output {evidence}")
+                if any(
+                    e.get("completion_seconds", 0) >= CANARY_TIMEOUT_SECONDS
+                    for e in evidence.values()
+                ):
+                    report.observations.append(
+                        f"{provider}/{model}: canary reached the Worker response ceiling; "
+                        "task usability is unverified"
+                    )
+                return (working[0] if working else None), evidence
+
             for item in health:
                 pause.renew()
                 route = item["route"]
                 rid = str(route["route_id"])
                 model = str(route["upstream_model"])
-                if item["scarce"] and (quota.get(rid) or {}).get("rpd_remaining") == 0:
+                if item["scarce"] and (
+                    (quota.get(rid) or {}).get("rpd_remaining") is None
+                    or (quota.get(rid) or {}).get("rpd_remaining") <= 0
+                ):
                     deferred[rid] = str((quota.get(rid) or {}).get("rpd_resets_at", ""))
-                    report.observations.append(f"{rid}: daily quota spent; check deferred to reset")
+                    report.observations.append(
+                        f"{rid}: daily quota unavailable or spent; check deferred to reset"
+                    )
                     continue
                 api_key = account_key(cfg, route.get("account_id"))
                 if not api_key:
@@ -426,11 +522,47 @@ def reconcile(
                     continue
                 if not first_probe and rules.canary_interval_seconds:
                     sleep(rules.canary_interval_seconds)
+                pause.renew()
                 first_probe = False
                 result = classify(canary_fn(rules, cfg, model, api_key, session), rules)
+                rechecked_routes.add(rid)
                 control.reserve(rid)
-                route_checks[rid] = today.isoformat()
+                if (quota.get(rid) or {}).get("rpd_remaining") is not None:
+                    quota[rid]["rpd_remaining"] -= 1
                 deferred.pop(rid, None)
+                if item["scarce"] and result.verdict == "quota_exhausted":
+                    deferred[rid] = str((quota.get(rid) or {}).get("rpd_resets_at", ""))
+                if result.verdict == "proven":
+                    method, evidence = verify(model, api_key, route)
+                    if item["scarce"] and any(e.get("status") == 429 for e in evidence.values()):
+                        deferred[rid] = str((quota.get(rid) or {}).get("rpd_resets_at", ""))
+                    structured_checks[rid] = {
+                        "on": today.isoformat(),
+                        "method": method,
+                        "results": evidence,
+                    }
+                    configured = resolved_method(route, routes, provider_cfgs)
+                    outcome = evidence.get(configured, {}).get("outcome")
+                    if outcome in {"empty", "invalid", "rejected"}:
+                        anomaly = Anomaly(
+                            provider,
+                            rid,
+                            model,
+                            "structured_output_invalid",
+                            f"structured_output_invalid: {configured} ({outcome}); "
+                            f"verified alternative: {method}",
+                            False,
+                            lane_usage=lane_usage(route, lanes, routes),
+                        )
+                        anomaly.new = anomaly.key not in known_anomalies
+                        acknowledged = decisions.acknowledgement(provider, model, anomaly.verdict)
+                        if acknowledged:
+                            report.observations.append(
+                                f"{rid}: {anomaly.reason} -- acknowledged: {acknowledged['reason']}"
+                            )
+                        else:
+                            report.anomalies.append(anomaly)
+                route_checks[rid] = today.isoformat()
                 absent = (
                     not catalog.error and rules.catalog_is_complete and model not in catalog.models
                 )
@@ -446,15 +578,26 @@ def reconcile(
                     usage=lane_usage(route, lanes, routes),
                 )
             api_key = account_key(cfg)
+            if not api_key:
+                report.observations.append(f"{provider}: no API key; candidates not checked")
+                continue
             for model, record, score, _retry in candidates:
                 pause.renew()
                 if not first_probe and rules.canary_interval_seconds:
                     sleep(rules.canary_interval_seconds)
+                pause.renew()
                 first_probe = False
                 result = classify(canary_fn(rules, cfg, model, api_key or "", session), rules)
+                method, _evidence = None, {}
+                if result.verdict == "proven":
+                    method, _evidence = verify(model, api_key or "")
+                    if method is None:
+                        result = Classification("inconclusive", result.status, "JSON not verified")
                 canary_memory[f"{provider}/{model}"] = {
                     "verdict": result.verdict,
                     "on": today.isoformat(),
+                    "method": method,
+                    "structured_results": _evidence,
                 }
                 if result.verdict == "proven":
                     report.candidates.append(
@@ -467,12 +610,19 @@ def reconcile(
                             report.floor,
                             incumbents,
                             today.isoformat(),
+                            method=method,
                         )
                     )
                 else:
                     report.observations.append(
                         f"{provider}/{model}: free-marked but {result.verdict} ({result.reason})"
                     )
+
+            # Unconfigured candidates have no route ledger entry. Keep the account paused until
+            # its final probe's window has cleared, so resumed dispatch does not hit that window.
+            if not first_probe and rules.canary_interval_seconds:
+                sleep(rules.canary_interval_seconds)
+                pause.renew()
 
     # Forget canary memory that has aged out so the state marker stays bounded.
     canary_memory = {
@@ -481,9 +631,14 @@ def reconcile(
         if (_days_since(value.get("on"), today) or 0) < CANARY_MEMORY_DAYS
     }
     if due_only:
-        _merge_into_last_full(report, previous_state.get("last_full") or {}, route_checks)
+        _merge_into_last_full(report, previous_state.get("last_full") or {}, rechecked_routes)
     report.state = {
-        "version": 1,
+        "version": 2,
+        "structured_checks": {
+            rid: evidence
+            for rid, evidence in structured_checks.items()
+            if any(r.get("route_id") == rid for r in routes)
+        },
         "canaries": canary_memory,
         "route_checks": route_checks,
         "deferred": deferred,
@@ -498,16 +653,14 @@ def reconcile(
 
 
 def _merge_into_last_full(
-    report: Report, last_full: Mapping[str, Any], route_checks: Mapping[str, str]
+    report: Report, last_full: Mapping[str, Any], rechecked_routes: set[str]
 ) -> None:
     """A due-only run re-checks a few deferred routes; everything else carries over unchanged.
 
     Anomalies for routes this run re-checked are replaced by this run's result; candidates and
     observations from the last full run are kept, so the issue never loses them.
     """
-    rechecked = {a.route_id for a in report.anomalies} | {
-        rid for rid in route_checks if any(rid in o for o in report.observations)
-    }
+    rechecked = {a.route_id for a in report.anomalies} | rechecked_routes
     carried = [
         Anomaly(
             **{
@@ -531,6 +684,7 @@ def _merge_into_last_full(
             }
         )
         for c in last_full.get("candidates") or []
+        if c.get("structured_output_method")
     ]
     report.anomalies = carried + report.anomalies
     report.candidates = candidates + report.candidates
@@ -546,6 +700,7 @@ def _candidate(
     floor: float | None,
     incumbents: Mapping[str, list[float]],
     proven_on: str,
+    method: str | None = None,
 ) -> Candidate:
     return Candidate(
         provider=provider,
@@ -556,6 +711,8 @@ def _candidate(
         links=rules.research_links(model),
         lanes=suggest_lanes(score, incumbents),
         proven_on=proven_on,
+        structured_output_method=method,
+        structured_output_verified_on=proven_on if method else None,
         other_lanes=other_lanes(score, incumbents),
     )
 

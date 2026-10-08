@@ -12,6 +12,7 @@ import base64
 import json
 import re
 import subprocess
+import zlib
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -38,14 +39,22 @@ def decode_state(body: str) -> dict[str, Any]:
     if not match:
         return {}
     try:
-        state = json.loads(base64.b64decode(match.group(1)))
-    except (ValueError, TypeError):
+        raw = base64.b64decode(match.group(1))
+        if not raw.startswith(b"{"):
+            decoder = zlib.decompressobj()
+            raw = decoder.decompress(raw, 1_000_000)
+            if not decoder.eof:
+                return {}
+        state = json.loads(raw)
+    except (ValueError, TypeError, zlib.error):
         return {}
     return state if isinstance(state, dict) else {}
 
 
 def _encode_state(state: Mapping[str, Any]) -> str:
-    raw = base64.b64encode(json.dumps(state, sort_keys=True).encode()).decode()
+    raw = base64.b64encode(
+        zlib.compress(json.dumps(state, sort_keys=True, separators=(",", ":")).encode())
+    ).decode()
     return f"<!-- citypods:provider-catalog-state {raw} -->"
 
 
@@ -96,8 +105,9 @@ def render_body(report: Report, *, run_date: str, previous_body: str = "") -> st
         lines += [
             "Free-marked models that completed a canary on our account and are not configured.",
             "",
-            "| Model | AA index | Context | Proven | Other lanes (gap to weakest) | Research |",
-            "|---|---|---|---|---|---|",
+            "| Model | AA index | Context | JSON method | Proven | "
+            "Other lanes (gap to weakest) | Research |",
+            "|---|---|---|---|---|---|---|",
         ]
         for c in report.candidates:
             links = " · ".join(f"[{label}]({url})" for label, url in c.links)
@@ -105,7 +115,8 @@ def render_body(report: Report, *, run_date: str, previous_body: str = "") -> st
             others = ", ".join(f"{lane} (-{gap:g})" for lane, gap in c.other_lanes) or "-"
             lines.append(
                 f"| `{c.key}` | {_score_cell(c.score, c.below_floor)} | {context} | "
-                f"{c.proven_on} | {others} | {links} |"
+                f"{c.structured_output_method or 'unverified'} | {c.proven_on} | "
+                f"{others} | {links} |"
             )
         lines += [
             "",
@@ -160,14 +171,16 @@ def render_body(report: Report, *, run_date: str, previous_body: str = "") -> st
     observations = "\n".join(
         ["", summary, "", *[f"- {o}" for o in report.observations], "", "</details>", ""]
     )
-    room = _HUMAN_BODY_LIMIT - len(decisions.encode("utf-8"))
+    state_marker = _encode_state(report.state)
+    room = min(_HUMAN_BODY_LIMIT, 65_000 - len(state_marker.encode("utf-8")))
+    room -= len(decisions.encode("utf-8"))
     if len(observations.encode("utf-8")) > room // 2:
         observations = f"\n{summary}\n\nOmitted: the issue body limit was reached.\n\n</details>\n"
     report_text, _ = bounded_body(
         "\n".join(lines) + "\n", limit=max(0, room - len(observations.encode("utf-8")))
     )
     human = report_text.rstrip("\n") + "\n" + decisions + "\n" + observations
-    return f"{human}\n{_encode_state(report.state)}\n"
+    return f"{human}\n{state_marker}\n"
 
 
 def _gh(args: Sequence[str]) -> str:

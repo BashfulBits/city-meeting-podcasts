@@ -1,6 +1,6 @@
 # review/48 — Provider catalog reconciliation
 
-**Maturity: Slice 1 shipped (observe and propose) · PR C and Slices 2–4 L3 dev-ready · redesigned 2026-09-24**
+**Maturity: Slice 1 and PR C shipped · R10 catalog verification in implementation · Slices 2–4 L3**
 
 Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
 `scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
@@ -9,6 +9,64 @@ Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
 This supersedes the first design in PR #1841. Its free-evidence rules, Artificial Analysis matching
 and comment-preserving route edits were kept; its always-open issue, digest-branch PRs, unreachable
 auto-added routes, HTML scraper and hand-kept alias tables were not.
+
+## Implementation checkpoint — 2026-10-08
+
+PR C shipped in [#1854](https://github.com/BashfulBits/city-meeting-podcasts/pull/1854). The Worker
+and Python direct path already shape requests per route and reject empty structured responses. The
+remaining R10 gap was the catalog: its first-event availability ping could prove service without
+proving JSON support. The maintainer approved completing this verification before Slice 2 on
+2026-10-08. This checkpoint describes the implementation under review; it does not mark Slices 2–4
+shipped.
+
+BeatAPI registration shipped in
+[#2167](https://github.com/BashfulBits/city-meeting-podcasts/pull/2167). Its DeepSeek routes pool
+with NVIDIA/OrcaRouter through `model_key`; the model's other routes must remain visible in anomaly
+lane-impact reporting. BeatAPI's five free chat routes share a successful request/minute account
+window with JEV. Its plugin excludes JEV's `owned_by: task plugin` catalog entry from chat
+discovery, and spaces probes by 65 seconds. The first reasoning event is only availability evidence,
+never structured-output evidence. Advertised GPT names do not verify the serving family; catalog
+JSON support does not establish judge-family independence (review/49).
+
+The catalog now follows a successful availability ping with four schema-bound streaming checks,
+using `structured_output_methods` and the same Python renderer as direct calls. Each asks for
+`{"answer":"ok"}`; strict vs relaxed checks exercise a string-length bound. Visible content must
+parse to that exact object after `finish_reason: stop`. Reasoning-only, malformed, extra-field,
+wrong-value and truncated replies do not qualify a candidate. A completed empty/invalid reply or
+HTTP 400 rejection of the resolved configured method is a `structured_output_invalid` anomaly;
+transport failures, timeouts and capacity/access errors remain inconclusive. Access/capacity errors
+stop the remaining method checks. A working alternative is reported without editing route config.
+
+Checks allow 4,096 total completion tokens, including reasoning, with a 720-second read timeout and
+elapsed-time checks against the Worker response ceiling, and cap streamed event data at 64 KiB. The
+old four-token ping remains a cheap availability check, but cannot establish method support. This
+means up to five requests per checked model, rather than one. Every request uses plugin spacing,
+with pause renewal after the wait and during long streams. Configured-route method checks are
+charged individually to the Worker ledger; a failed charge aborts further probing instead of
+continuing with an unrecorded spend. Scarce routes require reported quota; unknown or exhausted
+quota defers the check. Partial checks and a 429 are deferred until reset. Candidate checks have no
+configured route ID to reserve and remain under the provider pause and spacing; their per-model
+allowance is bounded by the three-candidate run budget. The provider pause stays armed for one final
+plugin interval before resuming dispatch, so the last unregistered candidate cannot leave
+BeatAPI/JEV inside a spent account window.
+
+The issue shows a candidate's preferred method (first valid method in R10 order) and verification
+date. The version-2 state marker retains per-method outcomes and first-event/completion latency. Its
+base64 payload is compressed to keep that evidence within GitHub's issue-body limit; the decoder
+still accepts older uncompressed JSON markers, and rendering reserves the measured marker size
+before bounding human-readable observations. Version-1 candidate `proven` memories without a
+verified method are rechecked; retirement memories remain valid. Daily merges discard legacy
+candidate proofs without a method and clear recovered route anomalies using the set of routes
+actually rechecked. Configured methods are resolved using the same route/model/provider fallback as
+the compiler, with a contract test covering the actual configuration. `--evidence-report` uses the
+same planner, so it cannot bypass BeatAPI spacing or scarce quota handling. No production route,
+recipe, pipeline version or stored episode artifact changes; no catalog backfill or deployment is
+required for the offline tests. Live verification remains a separate maintainer-run step.
+
+Acceptance coverage: both shared shaping suites; reasoning-only and malformed/full-stream response
+cases; all four request shapes; scarce quota accounting and partial deferral; BeatAPI's 65-second
+spacing across health and method/candidate checks; JEV exclusion; and pooled-route lane rescue
+reporting. Slices 2–4 remain the next implementation work after this verification change.
 
 ## 1. Why
 
@@ -187,7 +245,7 @@ alias skip, the context floor, the definitive-only memory, the Airforce spacing 
 
 ## 6. Design and delivery
 
-**PR C — per-route structured-output shaping (ahead of Slices 2–4, like the pause PR).**
+**PR C — per-route structured-output shaping (shipped in #1854).**
 Implements R10 on today's routes, before the catalog automates them.
 - *Config:* `structured_output_profiles` in `config/provider_limits.yml` become the four R10
   methods; `structured_output_method` + `structured_output_verified_on` may be set on a route,
@@ -205,8 +263,8 @@ Implements R10 on today's routes, before the catalog automates them.
   schema mode is retired from the direct path.
 - *Tests:* the shared shaping fixture (both suites); a Worker test that an empty structured 200
   retries on another route and is counted; a compile test that every route resolves a method.
-- *Rollout:* mark NVIDIA `deepseek-v4.1-flash` `prompt_only`, re-run its agenda benchmark
-  (`evals/chapter-agenda/`), and return it to the r6-moments / council pools. The other
+- *Original rollout plan (superseded by the latency evidence in §4):* mark NVIDIA `deepseek-v4.1-flash` `prompt_only`, re-run its agenda benchmark
+  (`evals/chapter-agenda/`). The measured latency keeps it out of production pools. The other
   configured routes keep their current method until the Slice 1 canary verifies them.
 
 **Slice 1 — observe and propose (shipped).**

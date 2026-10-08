@@ -216,6 +216,16 @@ catalog, health-checks one live route per configured upstream model, and canarie
 free-marked candidates per provider, each provider inside a drained v2 dispatch pause. Each
 provider is a plugin (`providers/<name>.py`: free evidence, response signals, research links) that
 contract tests keep in step with `config/provider_limits.yml`; lanes come only from `load_lanes()`.
+A successful availability ping is followed by four schema-method checks using the shared Python
+request renderer. Only completed visible schema-valid JSON verifies a method; reasoning alone does
+not. Checks allow 4,096 completion tokens including reasoning, with a 720-second read timeout and
+elapsed-time checks. Plugin spacing covers every request, including BeatAPI's shared account window;
+configured-route method checks are charged individually, and scarce routes defer when quota is
+unknown or spent. The compressed, backwards-readable issue state stores method outcomes and latency;
+legacy candidate proofs without a method are rechecked. An invalid resolved method is an anomaly
+showing the lane's remaining pooled routes. The pause also holds through a final provider interval
+before resuming dispatch, protecting shared account capacity spent by unregistered candidates. The
+evidence-report command uses the same planner.
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane
 checkboxes, unacknowledged anomalies, collapsed observations) that closes when nothing is
 actionable. Quality uses the paginated `/api/v2/language/models/free` endpoint with the existing
