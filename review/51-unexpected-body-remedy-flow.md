@@ -2674,7 +2674,9 @@ feed's existing `source.body_includes`. These are approved historical exceptions
 that future bond meetings automatically belong to the standing Council committee.
 
 Allowed files: that feed YAML, the four existing register entries, this doc, review/11,
-CHANGELOG and a dated evidence report. Keep cases open and separate missing independent
+CHANGELOG, `tests/test_dallas_bond_streets_ownership.py`, and a dated evidence report.
+Update that test’s exclusive standing-feed assertions for the four approved GUIDs only;
+retain future-GUID negative coverage and assert both RSS feeds keep original audio. Keep cases open and separate missing independent
 official-recording proof from publication authorization. Preserve all raw records, UIDs,
 audio, existing feed selectors and dedicated bond placements. No runtime, workflow, schema,
 source refresh, duplicate selection, or production writes.
