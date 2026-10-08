@@ -21,6 +21,14 @@ Once 1.0 ships, entries move under semver tags.
   not copied into independent route limits; paused BeatAPI routes and backup tiers are preserved.
   No route changes in this PR, live probes, pipeline/recipe version bumps or artifact backfill.
 
+- **review/53: judge stack build spec for tags and moments.** One development-ready PR series
+  (review/49 P1 to P5 and P7): a `systemone` Worker transport for JEV, `yields_to` for BeatAPI chat
+  routes, judge lanes (anchor, sibling, adjudicator) reserved for 800 meetings a day, shadow judging
+  of both tags and moments, adjudication with a calibration sample and quote check, the weekly blind
+  audit, a calibration report, per-task graduation PRs, and retirement of the R5 pre-labeler,
+  packet, benchmark and tournament flows and the R6 judge, human calibration and review workflow.
+  review/49 records the approved judge and adjudicator split. Design only.
+  
 - **Provider catalog adaptive context calibration design (review/48 §8.10).** Accepts separately
   reviewed conservative output caps and sequences calibration after bounded rate maintenance.
   Records provider-reported token-count feedback, 50% exploration, bracket refinement and 10%
