@@ -108,13 +108,11 @@ MAX_5XX_RETRIES: 1
 MAX_5XX_BACKOFF_SECONDS: 300
 MAX_ROUTE_BUFFER_SECONDS: 120
 COMPLETED_RETENTION_DAYS: 38
-# Retention for the DO's two append-only bookkeeping tables. Neither has a B2 counterpart
-# or a client-side reader, so both age out entirely inside the DO. Before this existed
-# nothing ever deleted from either, and `bundles` was full-scanned twice per cron tick --
-# the 2026-08-27 rows-read overage. Zero on either per-tick cap is an emergency pause.
-BUNDLE_RETENTION_DAYS: 7
+# Retention for the DO's per-day telemetry cells, `attempt_usage` and `route_failures` (the
+# per-attempt `attempts` journal they replaced, and the `bundles` table now held in the scheduler
+# row, were retired on 2026-10-07). Neither has a B2 counterpart or a client-side reader, so both
+# age out entirely inside the DO. Zero on the per-tick cap is an emergency pause.
 ATTEMPT_RETENTION_DAYS: 7
-MAX_BUNDLE_PRUNE_PER_TICK: 50
 MAX_ATTEMPT_PRUNE_PER_TICK: 50
 # Terminal-job + B2 object cleanup (purgePendingBatch/confirmPurge). Runs on the cron tick
 # whose UTC minute is a multiple of this, not every minute, since each purged job costs up to

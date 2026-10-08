@@ -118,7 +118,6 @@ def test_verified_may25_cbtf_preserves_aggregate_and_task_force_coverage():
     original = copy.deepcopy(record)
     task_force = next(c for c in cities if c.slug == "dallas-tx-2024-community-bond-task-force")
     bond = next(c for c in cities if c.slug == "dallas-tx-bond-program-meetings")
-    public_info = next(c for c in cities if c.slug == "dallas-tx-public-info-meetings")
 
     def holders(candidate):
         return {
@@ -146,7 +145,7 @@ def test_verified_may25_cbtf_preserves_aggregate_and_task_force_coverage():
         )["episodes"]
         if row["provider_guid"] == "272574"
     )
-    assert holders(sep26) == {bond.slug, public_info.slug}
+    assert holders(sep26) == {bond.slug}
     assert record["source_chapters"] == [
         {"start": 374, "end": 8578, "title": "2024 Bond CBTF Meeting on May 25, 2023."}
     ]
@@ -158,8 +157,8 @@ def test_verified_may25_cbtf_preserves_aggregate_and_task_force_coverage():
     assert record == original
 
 
-def test_approved_sep26_town_hall_is_shared_with_public_info_only():
-    """The existing Bond rule and exact Public Info inclusion share one original recording."""
+def test_sep26_town_hall_remains_bond_only():
+    """Keep the recording in Bond without treating public comment as Public Info."""
     root = Path(__file__).resolve().parents[1]
     cities = load_city_configs(root / "config", {})
     feeds = {city.slug: city for city in cities if city.city_entity == "dallas-tx"}
@@ -187,16 +186,23 @@ def test_approved_sep26_town_hall_is_shared_with_public_info_only():
         )
 
     assert matches_feed(town_hall, bond)
-    assert matches_feed(town_hall, public_info)
+    assert not matches_feed(town_hall, public_info)
     assert not matches_feed(september19, public_info)
     assert matches_feed(september19, bond)
 
-    for city in (bond, public_info):
-        rss = build_rss(
-            city, [record_to_episode(town_hall)], "audio", "https://www.citymeetings.fyi"
-        )
-        assert town_hall["uid"] in rss
-        assert town_hall["audio"]["url"] in rss
+    bond_rss = build_rss(
+        bond, [record_to_episode(town_hall)], "audio", "https://www.citymeetings.fyi"
+    )
+    public_info_rss = build_rss(
+        public_info,
+        [record_to_episode(town_hall)] if matches_feed(town_hall, public_info) else [],
+        "audio",
+        "https://www.citymeetings.fyi",
+    )
+    assert town_hall["uid"] in bond_rss
+    assert town_hall["audio"]["url"] in bond_rss
+    assert town_hall["uid"] not in public_info_rss
+    assert town_hall["audio"]["url"] not in public_info_rss
 
     same_body_other_guid = dict(town_hall, provider_guid="272005")
     assert not matches_feed(same_body_other_guid, public_info)

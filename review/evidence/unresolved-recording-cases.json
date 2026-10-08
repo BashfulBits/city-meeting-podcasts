@@ -2459,13 +2459,12 @@
       "source_key": "76869ed1994f",
       "uid": "aa65e2aafc90711b",
       "provider_guid": "272574",
-      "question": "2023-09-26 Dallas CBTF/Town Hall dual-feed verification",
-      "missing_evidence": "Confirm the original UID/audio is present in both live feeds after PR #2116 deployment.",
-      "next_action": "After the queued deployment completes, confirm the same original UID/audio appears in Dallas Bond Program and Public Info RSS.",
+      "question": "Verify the maintainer-directed Dallas Bond Program-only routing after deployment",
+      "missing_evidence": "Confirm the original UID/audio is present in Bond Program RSS and absent from Public Info and the dedicated Task Force feed after the exact Public Info inclusion is removed.",
+      "next_action": "After the correction deploys, check all three live RSS feeds for the original UID/audio; keep the case open until Bond Program is present and Public Info/Task Force are absent.",
       "last_researched": "2026-10-07",
       "current_feed_assignments": [
-        "dallas-tx-bond-program-meetings",
-        "dallas-tx-public-info-meetings"
+        "dallas-tx-bond-program-meetings"
       ],
       "status": "open",
       "disposition": null

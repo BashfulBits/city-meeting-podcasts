@@ -33,10 +33,10 @@ Addison's approved Public Input/Briefings and combined Appeals presentation is b
 in the bounded #2009 slice; existing URLs and historical Citizen Advisory identity remain.
 Known historical ambiguity is tracked independently of new-body discovery.
 
-Dallas GUID 272574's September 26, 2023 Bond Town Hall is approved for both the Bond Program and
-Public Info feeds. The existing Bond `*CBTF*` rule already selects it; issue #2115 adds the exact
-Public Info source inclusion and keeps the case open until both live feeds retain the original
-UID/audio.
+Dallas GUID 272574's September 26, 2023 Bond Town Hall is now directed to Bond Program only.
+The existing Bond `*CBTF*` rule already selects it. A bounded correction removes the exact Public
+Info inclusion added by #2116; keep the case open until the correction deploys and live RSS verifies
+Bond Program presence with Public Info and Task Force absence.
 
 Approved policy templates and cross-city regression cases will serve both onboarding and
 maintenance, resolving known rules before model calls while requiring verified local identity.

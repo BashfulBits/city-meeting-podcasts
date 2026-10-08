@@ -16,7 +16,14 @@ curl -s "http://127.0.0.1:8799/?name=run3&n=30&bundle=1"   # one-job bundles (pe
 curl -s "http://127.0.0.1:8799/retry?name=run4"            # a retried (requeued) attempt
 curl -s "http://127.0.0.1:8799/r429?name=run5"             # an in-lease 429 retry authorization
 curl -s "http://127.0.0.1:8799/ingress?name=run6&purpose=chapter-locator&models=gemini/gemini-3.5-flash-lite,deepseek/deepseek-v4-pro,moonshotai/kimi-k3&n=200"
+# full lifecycle of a three-model pool (claim deletes every model index row, not just one)
+curl -s "http://127.0.0.1:8799/?name=run7&n=60&retire=1&purpose=topic-tags:tagger&models=gemini/gemini-3.1-flash-lite,kilo/stepfun/step-3.7-flash:free,deepseek/deepseek-v4-flash"
 ```
+
+Every lifecycle run reports `lifecycle_w` (rows a job writes while it is live) and `total_w`,
+which adds `prune_w`: the retention prune that deletes its bookkeeping rows days later
+(`attempts`, terminal bundles), run directly past every retention window. `per_job` divides both
+by `n`.
 
 Use a fresh `name` per run (each is a new DO instance).
 
@@ -84,3 +91,74 @@ Measured with the deployment's workerd 1.20260921.1: three rejected claims each 
 rows; all four missing-column ALTERs plus accounting cost five writes once; dispatch resumed four
 jobs; the next recreation wrote zero rows. The separate accounting recreation check still measured
 71 writes and an exactly matching persisted delta.
+
+
+## Row-write reduction ledger (#1844, from 2026-10-07)
+
+Each PR in this series re-runs the commands above against a fresh object and records the result
+here before updating `src/write_budget.js`. Figures are billed rows per job at four jobs per
+bundle with consumption retirement (`retire=1`); "total" includes the deferred prune. Measured
+with workerd from wrangler 4.131.1.
+
+| Step | 1 model live | 1 model total | 3 models live | 3 models total | idle tick | requeue | in-lease 429 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Baseline (main @ 065a1f1f) | 21.58 | 22.62 | 27.18 | 28.22 | 2 | 17 | 4 |
+| 1. No `job_models (job_id, model)` index | 20.58 | 21.62 | 24.18 | 25.22 | 2 | 16 | 4 |
+| 2. Idle claim outcome every 10 min | 20.58 | 21.62 | 24.18 | 25.22 | 0.2 | 16 | 4 |
+| 3. No `attemptStarted` call | 17.58 | 18.62 | 21.18 | 22.22 | 0.2 | 13 | 4 (grant 5) |
+| 4. Daily `attempt_usage` cells, no `attempts` rows | 16.33 | 16.40 | 19.98 | 20.07 | 0.2 | 12 | 4 (grant 5) |
+| 5. Bundles and claim outcome on the scheduler row | 15.33 | 15.40 | 19.18 | 19.27 | 0.1 | 10 | 4 (grant 5) |
+
+Baseline phase split (one model, 60 jobs, 15 bundles): enqueue 364, claim 312, attemptStarted
+240, completeBatch 318, retire 61, prune 62. Three models (12 bundles): enqueue 604, claim 410,
+attemptStarted 240, completeBatch 316, retire 61, prune 62. Deletes bill one row per deleted
+table row: index entries are billed on insert but not on delete in these measurements.
+`requeue` is the `/retry` endpoint's attemptStarted + requeueing completion; `in-lease 429` is
+`/r429`'s authorizeRetry, both including their accounting row.
+
+Step 1 removes the unique `(job_id, model)` index: a queued job records its model-index keys in
+`jobs.queue_models` (in the statement that already writes its row) and every unindex is a
+primary-key delete. Enqueue is now `4 + models` rows per job (one model 304 = 5.07/job, three
+models 424 = 7.07/job); claim deletes were already one billed row each and are unchanged.
+`ROWS_PER_INGRESS_WRITE_UNIT` falls from 2 to 1.25 once the legacy index is retired; until then
+enqueue reserves `ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX` (2), since each model-index insert also
+writes that index's entry.
+
+Step 2 persists an empty claim whose reason matches the stored last outcome at most every ten
+minutes (`EMPTY_CLAIM_REFRESH_MS`); skipped ticks are counted in memory and folded into the next
+write, and `stats()` adds them. A claimed tick, a reaped lease or a changed reason is written at
+once. The harness's 20 idle ticks after the run (61 s apart) wrote 4 rows: about 290 rows/day on
+an idle queue instead of 2,880. Per-job lifecycle costs are unchanged.
+
+Step 3 drops the executor's per-attempt `attemptStarted` RPC (attempt row insert 2, `attempts++`
+1, accounting 1). The claim counts the attempt in the lease UPDATE it already makes, a granted
+429 retry counts its own in its transaction, and completion gives the count back when no call
+started. The executor fences locally on the `lease_expires_at` it is handed. The attempt row is
+now written once, at completion, as an insert (2 rows instead of the old upsert's 1), so
+completion rose 318 -> 378 while the attempt phase fell 240 -> 0. `/r429` now also reports a
+granted retry (`authorize_grant_w`: 5 rows, versus 4 plus the retry's own 4-row `attemptStarted`
+before). `ROWS_PER_LEASE_WORST` falls from 28 to 23.
+
+Step 4 removes the per-attempt `attempts` journal (insert 2 rows at completion, retention delete 1
+later). Each `completeBatch` folds its calls into one `attempt_usage` row per (UTC day, lane,
+route), which `usage_today` reads; failed attempts are logged (`attempt_outcome`) instead. In this
+bench every bundle uses one route, so completion writes one usage row per bundle (378 -> 303) and
+the deferred prune falls from 62 to 4. A bundle spread over several routes writes one per route.
+The old table is dropped at migration: `DROP TABLE` bills no rows under workerd, where pruning it
+would bill one per row. `ROWS_PER_LEASE_WORST` falls from 23 to 21.
+
+Step 5 drops the `bundles` table: active bundles are a map in `scheduler.active_bundles_json`,
+and every scheduler change in a transaction (claim outcome and counters, bundles, a completion's
+requeue counter) is staged and written by that transaction's single accounting UPDATE. Per bundle
+that removes the bundle insert and its index entry (2), the separate claim-outcome row (1) and the
+bundle delete (1): claim 312 -> 267 and completion 303 -> 288 over 15 bundles. A persisted idle
+outcome now costs 1 row (idle tick 0.2 -> 0.1), and a one-job requeue costs 9 + 10 instead of
+12 + 12. `ROWS_PER_BUNDLE` falls from 8 to 4 and `ROWS_PER_LEASE_WORST` from 21 to 20.
+The table is dropped at migration after its active bundles are copied, which bills one row.
+
+### Where this leaves a job (2026-10-07)
+
+A first-try one-model job now costs 15.4 billed rows end to end including retention, against
+22.6 at the start of this series (-32%) and 44.3 before the 2026-09 tiers; a three-model job
+19.3 against 28.2. At the 90,000-row safe stop that is about 5,800 one-model first-try jobs a day
+before retries and idle overhead (previously about 4,000).

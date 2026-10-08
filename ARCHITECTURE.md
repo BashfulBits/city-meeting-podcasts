@@ -466,8 +466,8 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   default. A reply that stops at its output limit (`finish_reason: length`) is never stored: it is
   `output_budget_exhausted`, retried without cooling the route, and counted. `llm-budget-monitor.yml`
   turns those counts, empty/invalid JSON, own-rate 429s and oversized inputs -- plus `usage_today`
-  (per lane/route output percentiles, reservation, slow calls, computed from existing `attempts`
-  rows at read time) -- into one rolling issue that names the lane and the config key to change.
+  (per lane/route output percentiles, reservation, slow calls, from the per-day `attempt_usage`
+  cells each completion folds its calls into) -- into one rolling issue that names the lane and the config key to change.
 - **Rate-limited LLM dispatch** → `workers/llm-dispatch-v2` is a separate Cloudflare Worker whose
   SQLite Durable Object coordinator holds the queue, the per-route/per-account pacing ledger and the
   lease state ([`review/44`](review/44-bounded-bundled-llm-dispatch.md)). Producers enqueue through
@@ -560,13 +560,21 @@ unlimited headroom; builds and completed-result reconciliation continue.
 coordinator's schema is kept minimal on purpose (2026-09-23 row-write tiers; see CHANGELOG): `jobs`
 carries only the indexes a query uses (`idx_jobs_state_updated_id`), and nothing bumps its indexed
 `updated_at` for a non-terminal job; `job_models` is a `WITHOUT ROWID` table clustered on its
-admission scan key `(model, priority, created_at, job_id)` plus a unique `(job_id, model)` index
-(2 rows per entry, rebuilt once from the older rowid shape); `attempts` has no `created_at` index
-and is pruned oldest-first by rowid; token calibration writes every completion until a
+admission scan key `(model, priority, created_at, job_id)` with no secondary index (1 row per
+entry); a queued job records the models it is indexed under in `jobs.queue_models`, written by the
+statement that already writes its row, so every unindex is a primary-key delete (the old unique
+`(job_id, model)` index is dropped once no job queued before 2026-10-07 remains); there is no
+per-attempt journal: each `completeBatch` folds its calls into one `attempt_usage` row per
+(UTC day, lane, route), and a failed attempt's detail goes to Workers Logs (`attempt_outcome`); token calibration writes every completion until a
 route/model/prompt-family window holds 32 samples, then a deterministic 1-in-4 sample by job id;
 and same-row bookkeeping in one transaction (per-purpose ingress counters, a success's route
 settlement, the claim-outcome scheduler row with its bundle/lease/queued counters) is folded into
-one statement. The queued-job counter is maintained by those explicit deltas, not per-row
+one statement. An empty claim whose reason matches the stored last outcome is persisted at most
+every ten minutes, its skipped ticks counted in memory and folded into the next write, so an idle
+queue costs ~0.2 billed rows per cron tick. The executor makes no DO call before a provider call:
+the claim counts the attempt in its lease UPDATE (a granted 429 retry counts its own; a result
+that never reached a provider gives it back), and each call starts only if it can finish before
+the claimed `lease_expires_at`, the only point at which the DO may reap the lease. The queued-job counter is maintained by those explicit deltas, not per-row
 triggers, and recounted exactly once an hour by scheduled cleanup (`recountQueuedJobs`); it is
 diagnostic only. A completed job is retired by *consumption*, never by age: after `poll_batch`
 persists its result, the client deletes the job's B2 payload/result and calls
@@ -575,9 +583,11 @@ persists its result, the client deletes the job's B2 payload/result and calls
 and provider's pacing ledger in memory and writes it once per claim, and `completeBatch` folds
 same-route successes into one routes UPDATE per route, flushing a route's pending successes before
 any non-success write to it so the final backoff state matches per-job order ([PR
-#1843](https://github.com/BashfulBits/city-meeting-podcasts/pull/1843)). `bundles` is `WITHOUT
-ROWID` and a bundle row is deleted when its last job settles; `BUNDLE_RETENTION_DAYS` now prunes
-only bundles whose lease expired unreported. A job may only name routes its own lane declares — ingress
+#1843](https://github.com/BashfulBits/city-meeting-podcasts/pull/1843)). There is no
+`bundles` table (2026-10-07): the few active bundles are a map in the scheduler row
+(`active_bundles_json`), removed when a bundle's last job settles or its lease expires, and every
+scheduler change a transaction makes (claim outcome, bundles, the requeue counter) rides on that
+transaction's one accounting UPDATE. A job may only name routes its own lane declares — ingress
 rejects `model_not_in_lane` — so the block describes what actually runs, not merely what was
 intended. The registry is repository-level policy read from the committed file and has no per-run
 override: a `--site-config` chooses site content and may *narrow* a lane

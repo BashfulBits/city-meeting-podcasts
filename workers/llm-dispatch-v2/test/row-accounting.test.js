@@ -126,3 +126,52 @@ test("legacy counter seeding includes both idle-tick writes", (t) => {
   const [row] = [...sql.exec("SELECT rows_written_today FROM scheduler")];
   assert.ok(row.rows_written_today >= 2 * 12 * 60, `seeded ${row.rows_written_today}`);
 });
+
+test("an unchanged idle claim writes nothing until the refresh interval, then folds its count", async () => {
+  const f = fixture();
+  const t0 = Date.UTC(2026, 9, 7, 12, 0, 0);
+  const minute = 60_000;
+  const scheduler = () => [...f.sql.exec(
+    "SELECT last_claim_at, last_claim_reason, claim_empty_count_today, claim_reason_counts_json FROM scheduler WHERE id = 1"
+  )][0];
+  await f.coordinator.claimDispatchWindow(t0, 30);
+  const first = f.read();
+  assert.equal(scheduler().last_claim_reason, "no_queued_work");
+  assert.equal(scheduler().claim_empty_count_today, 1);
+
+  // Nine more idle ticks inside the interval: no billed row at all.
+  for (let i = 1; i <= 9; i++) await f.coordinator.claimDispatchWindow(t0 + i * minute, 30);
+  assert.equal(f.read(), first);
+  assert.equal(scheduler().last_claim_at, t0);
+  // Stats still reports every tick this instance saw.
+  const live = (await f.coordinator.stats(t0 + 9 * minute)).claim;
+  assert.equal(live.empty_count_today, 10);
+  assert.equal(live.reason_counts_today.no_queued_work, 10);
+  assert.equal(live.last_at, t0 + 9 * minute);
+  // The detailed view agrees with the ordinary one while repeats are still buffered.
+  const detailed = (await f.coordinator.detailedStats(t0 + 9 * minute, 5)).claim;
+  assert.equal(detailed.empty_count_today, 10);
+  assert.equal(detailed.reason_counts_today.no_queued_work, 10);
+  assert.equal(detailed.last_at, t0 + 9 * minute);
+
+  // The tick at the interval persists, carrying the skipped ticks' counts, on the accounting row.
+  await f.coordinator.claimDispatchWindow(t0 + 10 * minute, 30);
+  assert.equal(f.read(), first + 1);
+  assert.equal(scheduler().last_claim_at, t0 + 10 * minute);
+  assert.equal(scheduler().claim_empty_count_today, 11);
+  assert.deepEqual(JSON.parse(scheduler().claim_reason_counts_json), { no_queued_work: 11 });
+});
+
+test("an idle claim whose reason changes is persisted at once", async () => {
+  const f = fixture();
+  const t0 = Date.UTC(2026, 9, 7, 12, 0, 0);
+  await f.coordinator.claimDispatchWindow(t0, 30);
+  // Exhaust today's lease cap directly: the next tick's empty reason becomes daily_lease_limit.
+  f.sql.exec("UPDATE scheduler SET lease_count_today = 1000000 WHERE id = 1");
+  const before = f.read();
+  await f.coordinator.claimDispatchWindow(t0 + 60_000, 30);
+  const reason = [...f.sql.exec("SELECT last_claim_reason FROM scheduler WHERE id = 1")][0]
+    .last_claim_reason;
+  assert.equal(reason, "daily_lease_limit");
+  assert.ok(f.read() > before, "a changed reason is a persisted outcome");
+});

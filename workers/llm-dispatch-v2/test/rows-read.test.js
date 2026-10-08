@@ -20,7 +20,7 @@ import {
  * add a case here. The explicitly manual `detailedStats` path is excluded: it is never a
  * workflow dependency and intentionally trades reads for an operator's one-off diagnosis.
  *
- *   1. No statement may SCAN a growable table (jobs/job_models/bundles/attempts).
+ *   1. No statement may SCAN a growable table (jobs/job_models).
  *      `routes` and `scheduler` are exempt: both are bounded by static config, not by traffic.
  *
  *   2. Scale invariance -- the same operations against 10x the accumulated history must read
@@ -75,32 +75,28 @@ function seed(history, { liveQueued = 6 } = {}) {
     "id", "idempotency_key", "request_digest", "provider_idempotency_key", "state", "priority",
     "policy_json", "prompt_family", "input_token_estimate", "max_output_token_estimate",
     "payload_key", "result_key", "lease_token", "lease_route_id", "lease_expires_at",
-    "bundle_id", "attempts", "transient_retry_count", "created_at", "updated_at",
+    "bundle_id", "attempts", "transient_retry_count", "queue_models", "created_at", "updated_at",
   ];
   const insJob = db.prepare(
     `INSERT INTO jobs (${JOB_COLUMNS.join(",")}) VALUES (${JOB_COLUMNS.map(() => "?").join(",")})`
   );
-  const insBundle = db.prepare("INSERT INTO bundles VALUES (?,?,?,?,?,?,?)");
-  const insAttempt = db.prepare(
-    "INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, start_state, created_at)" +
-      " VALUES (?,?,?,?,'started',?)"
-  );
   const policy = JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"], allow_paid: false });
+  // Every queued job records the job_models keys it is indexed under (2026-10-07); job_models
+  // has no job_id index, so unindexing seeks these primary keys.
+  const queueModels = JSON.stringify(["gemini/gemini-flash-lite"]);
   const insJobModel = db.prepare("INSERT INTO job_models VALUES (?,?,?,?)");
   for (let i = 0; i < history; i++) {
     insJob.run(`h${i}`, `kh${i}`, "d", null, "completed", 1, policy, "tags", 500, 200,
-      `payloads/h${i}.json`, `results/h${i}.json`, null, null, null, null, 1, 0, old, old);
-    insBundle.run(`hb${i}`, "tok", "completed", old, 0, old, old);
-    insAttempt.run(`ha${i}`, `h${i}`, "route-a", old, old);
+      `payloads/h${i}.json`, `results/h${i}.json`, null, null, null, null, 1, 0, null, old, old);
     // An undrained queued backlog: grows both `jobs` and its `job_models` work index, which is
     // what the per-model candidate lookup walks.
     insJob.run(`bk${i}`, `kbk${i}`, "d", null, "queued", 1, policy, "tags", 500, 200,
-      `payloads/bk${i}.json`, null, null, null, null, null, 0, 0, old + i, old + i);
+      `payloads/bk${i}.json`, null, null, null, null, null, 0, 0, queueModels, old + i, old + i);
     insJobModel.run(`bk${i}`, "gemini/gemini-flash-lite", 1, old + i);
     // An acked-but-not-yet-purged backlog (18k rows in production on 2026-09-24): statements
     // that look jobs up by id and also filter on state must not walk this by the state index.
     insJob.run(`pp${i}`, `kpp${i}`, "d", null, "purge_pending", 1, policy, "tags", 500, 200,
-      `payloads/pp${i}.json`, `results/pp${i}.json`, null, null, null, null, 1, 0, old, now);
+      `payloads/pp${i}.json`, `results/pp${i}.json`, null, null, null, null, 1, 0, null, old, now);
   }
   db.exec("COMMIT");
   // Seed uses raw SQL to create historical rows, so it deliberately bypasses the production
@@ -140,8 +136,6 @@ async function exerciseAll(fixture) {
   const plan = await run("claimDispatchWindow", () => coordinator.claimDispatchWindow(now, 25));
   const claimed = plan.jobs[0];
   await run("pollBatch", () => coordinator.pollBatch(jobs.map((j) => j.id)));
-  await run("attemptStarted", () =>
-    coordinator.attemptStarted(claimed.id, claimed.lease_token, "att-1", now));
   await run("authorizeRetry", () =>
     coordinator.authorizeRetry(claimed.id, claimed.lease_token, "att-1", now));
   await run("completeBatch", () =>

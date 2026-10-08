@@ -24,7 +24,7 @@ import { classifyProviderFailure } from "./classify.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
   DO_ROWS_WRITTEN_PLATFORM_LIMIT,
-  ROWS_PER_INGRESS_WRITE_UNIT,
+  ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX,
 } from "./write_budget.js";
 
 export { LLMSchedulerDO };
@@ -154,11 +154,13 @@ export function validateConfig(env) {
       `safety stop (${accountSafeStop})`
     );
   }
-  // A full day of admitted ingress must fit under the enqueue threshold on its own.
-  if (ROWS_PER_INGRESS_WRITE_UNIT * maxIngressWriteUnits > enqueueRowStop) {
+  // A full day of admitted ingress must fit under the enqueue threshold on its own. The schema is
+  // not visible here, so assume a coordinator still carrying the legacy job_id index.
+  const rowsPerUnit = ROWS_PER_INGRESS_WRITE_UNIT_LEGACY_INDEX;
+  if (rowsPerUnit * maxIngressWriteUnits > enqueueRowStop) {
     throw new Error(
       `Invalid config: MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY (${maxIngressWriteUnits}) can write up ` +
-      `to ${ROWS_PER_INGRESS_WRITE_UNIT * maxIngressWriteUnits} rows, past DO_ROWS_ENQUEUE_STOP ` +
+      `to ${rowsPerUnit * maxIngressWriteUnits} rows, past DO_ROWS_ENQUEUE_STOP ` +
       `(${enqueueRowStop})`
     );
   }
@@ -276,16 +278,15 @@ export function validateConfig(env) {
   }
 
   // Retention/cleanup bounds. A zero per-tick prune cap is a deliberate emergency pause, but a
-  // zero or negative retention window would delete records the moment they turn terminal --
-  // including a bundle a late completeBatch could still legitimately settle.
-  for (const name of ["BUNDLE_RETENTION_DAYS", "ATTEMPT_RETENTION_DAYS"]) {
+  // zero or negative retention window would delete today's telemetry cells as they are written.
+  for (const name of ["ATTEMPT_RETENTION_DAYS"]) {
     if (env[name] === undefined) continue;
     const days = Number(env[name]);
     if (!Number.isInteger(days) || days < 1) {
       throw new Error(`Invalid config: ${name} must be an integer of at least 1`);
     }
   }
-  for (const name of ["MAX_BUNDLE_PRUNE_PER_TICK", "MAX_ATTEMPT_PRUNE_PER_TICK", "PURGE_BATCH_LIMIT"]) {
+  for (const name of ["MAX_ATTEMPT_PRUNE_PER_TICK", "PURGE_BATCH_LIMIT"]) {
     if (env[name] === undefined) continue;
     const value = Number(env[name]);
     if (!Number.isInteger(value) || value < 0) {
@@ -786,10 +787,10 @@ function sleepUntil(targetTime) {
 
 /**
  * No route is currently confirmed to support a client-supplied provider-side idempotency key
- * (see review/44's "no binding shortcut" note and the executor's own doc comment below) -- every
- * job takes the attemptStarted-fencing path today. This function exists as the single place a
- * future per-provider opt-in would be wired in (e.g. a `supports_idempotency_key` flag compiled
- * into dispatch_limits.json's provider block), so nothing else in this file needs to change.
+ * (see review/44's "no binding shortcut" note). This function is the single place a future
+ * per-provider opt-in would be wired in (e.g. a `supports_idempotency_key` flag compiled into
+ * dispatch_limits.json's provider block); it only decides whether the job's provider
+ * idempotency key is sent.
  */
 function routeSupportsProviderIdempotency(route, dispatchLimits) {
   return Boolean(dispatchLimits.providers?.[route.provider]?.supports_idempotency_key);
@@ -835,16 +836,38 @@ function baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, outcome) 
 }
 
 /**
- * One provider call for one job, already fenced and paced by the caller. Returns exactly one of:
- * `{ skip: true }` (lease no longer current -- the DO reaped it; caller must not report anything
- * for this attempt), `{ retry429: true, actualStartAt, actualEndAt, correlationId }` (caller
- * decides whether/how to retry), or `{ result }` (a terminal AttemptResult ready for
- * completeBatch, covering success, transport failure, and every non-429 HTTP status).
+ * Whether a call starting now can finish before the DO may reap this job's lease. The DO reaps
+ * only leases past lease_expires_at, so this local check is the attempt fence: no DO round trip
+ * or billed row per attempt. validateConfig already keeps the dispatch window plus the response
+ * ceiling inside the lease, so it fails only on a misconfigured override or a stalled invocation.
  */
-async function attemptProviderCall({ env, coordinator, b2, route, dispatchLimits, job, attemptId, idempotencyKey, maxResponseMs }) {
-  if (!routeSupportsProviderIdempotency(route, dispatchLimits)) {
-    const fence = await coordinator.attemptStarted(job.id, job.lease_token, attemptId, Date.now());
-    if (!fence.fenced) return { skip: true };
+export function leaseCoversCall(job, now, maxResponseMs) {
+  const leaseExpiresAt = Number(job.lease_expires_at);
+  // No deadline means no fence: decline rather than risk a call the DO may already have reaped.
+  return Number.isFinite(leaseExpiresAt) && now + maxResponseMs <= leaseExpiresAt;
+}
+
+/**
+ * The lease deadline for each claimed job. A coordinator deployed before 2026-10-07 returns no
+ * lease_expires_at; it set the lease to `claimNow` (the `now` this executor passed to the claim)
+ * plus LEASE_DURATION_SECONDS, so that exact value is reconstructed rather than left unfenced.
+ */
+export function withLeaseDeadlines(jobs, claimNow, leaseDurationMs) {
+  return jobs.map((job) => (Number.isFinite(Number(job.lease_expires_at))
+    ? job
+    : { ...job, lease_expires_at: claimNow + leaseDurationMs }));
+}
+
+/**
+ * One provider call for one job, already paced by the caller. Returns exactly one of:
+ * `{ retry429: true, actualStartAt, actualEndAt, correlationId }` (caller decides whether/how to
+ * retry) or `{ result }` (a terminal AttemptResult ready for completeBatch, covering success,
+ * transport failure, every non-429 HTTP status, and `deferred_late` when the lease can no
+ * longer cover the call -- see leaseCoversCall).
+ */
+async function attemptProviderCall({ env, b2, route, dispatchLimits, job, attemptId, idempotencyKey, maxResponseMs }) {
+  if (!leaseCoversCall(job, Date.now(), maxResponseMs)) {
+    return { result: baseAttemptResult(job, attemptId, null, null, "deferred_late") };
   }
 
   const actualStartAt = Date.now();
@@ -1073,7 +1096,6 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
     const attemptId = crypto.randomUUID();
     const outcome = await attemptProviderCall({
       env,
-      coordinator,
       b2,
       route,
       dispatchLimits,
@@ -1082,11 +1104,6 @@ async function dispatchOneJob({ env, coordinator, b2, dispatchLimits, job, laneS
       idempotencyKey,
       maxResponseMs,
     });
-
-    if (outcome.skip) {
-      laneState.predecessorActualStart = Date.now();
-      return null; // lease reaped; nothing to report for this attempt
-    }
 
     if (outcome.result) {
       laneState.predecessorActualStart = outcome.result.actual_start_at;
@@ -1141,7 +1158,8 @@ async function runScheduledDispatch(env) {
   const dispatchLimits = env.DISPATCH_LIMITS_OVERRIDE || DISPATCH_LIMITS;
   const dispatchWindowSeconds = Number(env.DISPATCH_WINDOW_SECONDS || 25);
 
-  const plan = await coordinator.claimDispatchWindow(Date.now(), dispatchWindowSeconds);
+  const claimNow = Date.now();
+  const plan = await coordinator.claimDispatchWindow(claimNow, dispatchWindowSeconds);
   if (!plan.jobs || plan.jobs.length === 0) {
     // Keep empty cron ticks explainable in Workers Logs. The DO also persists this snapshot for
     // /v2/stats, but the log puts the reason next to the scheduled invocation that observed it.
@@ -1158,7 +1176,8 @@ async function runScheduledDispatch(env) {
   const maxResponseMs = Number(env.MAX_RESPONSE_SECONDS || 720) * 1000;
 
   const lanes = new Map();
-  for (const job of plan.jobs) {
+  const leaseDurationMs = Number(env.LEASE_DURATION_SECONDS || 840) * 1000;
+  for (const job of withLeaseDeadlines(plan.jobs, claimNow, leaseDurationMs)) {
     if (!lanes.has(job.route_id)) lanes.set(job.route_id, []);
     lanes.get(job.route_id).push(job);
   }
