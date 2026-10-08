@@ -1062,6 +1062,9 @@ CUSTOM_PROVIDER_GATEWAY_PATHS = {
     "nvidia": "/chat/completions",
     "airforce": "/chat/completions",
     "orcarouter": "/chat/completions",
+    # custom-beatapi is registered at `https://api.beatapi.io/v1` (2026-10-08); a chat completion
+    # through it returned 200 live. JEV's `/systemone` will join the same base in P1.
+    "beatapi": "/chat/completions",
     # Registered as `https://api.kilo.ai/api/gateway/v1` -- Kilo serves that path too, so the
     # caller path stays bare under either gateway join behavior.
     "kilo": "/chat/completions",
