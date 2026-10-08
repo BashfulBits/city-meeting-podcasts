@@ -19,7 +19,9 @@ Once 1.0 ships, entries move under semver tags.
   record. Bounded queued-job rescue unlocks declared backups when primaries cannot structurally
   run; temporary pauses/quotas do not trigger failure. Structural recovery audits before deleting
   a matching handle, preserves retry/schema-correction counts and gates repeat submissions on a
-  new fitting route generation. Prelabeler work rebatches retained subjects against current bounds.
+  new fitting route generation. Prelabeler work rebatches retained subjects against current bounds;
+  even a singleton must fit the combined reservation before dispatch. Batch preparation reuses
+  recovery context/marker reads; immutable catalog digests are cached before serialization.
   Rescue reuses the existing queue index and persists bounded progress atomically, including
   across quota outages and DO recreation. Coordinated client/Worker activation remains a gate;
   removal automation stays gated on deployment and recovery canary.

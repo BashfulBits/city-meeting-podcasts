@@ -2947,3 +2947,27 @@ test("rescue keeps its checkpoint at the write stop and resumes after recreation
   assert.equal(sql.exec("SELECT catalog_rescue_complete FROM scheduler")[0].catalog_rescue_complete, 1);
   assert.ok(sql.exec("SELECT rows_written_today FROM scheduler")[0].rows_written_today < 100);
 });
+
+
+test("immutable catalog digest cache avoids enumeration while mutable overrides remain checked", async t => {
+  const { default: limits } = await import("../src/dispatch_limits.json", { with: { type: "json" } });
+  const { coordinator } = makeCoordinator({});
+  const digest = await coordinator._structuralCatalogDigest(limits);
+  const entries = Object.entries;
+  let enumerations = 0;
+  t.mock.method(Object, "entries", value => {
+    if ([limits.model_aliases, limits.model_routes_map, limits.routes_by_id].includes(value)) {
+      enumerations += 1;
+    }
+    return entries(value);
+  });
+  for (let i = 0; i < 20; i += 1) assert.equal(await coordinator._structuralCatalogDigest(limits), digest);
+  assert.equal(enumerations, 0);
+  const override = rescueCatalog();
+  const first = await coordinator._structuralCatalogDigest(override);
+  override.routes_by_id.p.output_context_limit += 1;
+  assert.notEqual(await coordinator._structuralCatalogDigest(override), first);
+  // Switching through an override cannot invalidate the immutable import's identity cache.
+  assert.equal(await coordinator._structuralCatalogDigest(limits), digest);
+  assert.equal(enumerations, 0);
+});

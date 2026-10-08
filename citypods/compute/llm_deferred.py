@@ -329,14 +329,19 @@ def structural_recovery_context(
 
 
 def terminal_recovery_generation(
-    storage, recipe_hash: str, context: Mapping[str, Any]
+    storage,
+    recipe_hash: str,
+    context: Mapping[str, Any],
+    *,
+    marker: Mapping[str, Any] | None = None,
 ) -> str | None:
     """A new fitting generation, or None when this recipe remains structurally blocked.
 
     Typed legacy failures carry an empty eligible baseline. A fresh proven generation gets its
     own idempotency namespace; another failure records that generation and blocks unchanged replay.
     """
-    marker = _read_json(storage, deferred_failure_key(recipe_hash))
+    if marker is None:
+        marker = _read_json(storage, deferred_failure_key(recipe_hash))
     if not isinstance(marker, Mapping) or marker.get("status") != "structural_blocked":
         return None
     prior = marker.get("recovery_context")
@@ -352,15 +357,24 @@ def terminal_recovery_generation(
 
 
 def terminal_failure_retry_allowed(
-    storage, recipe_hash: str, *, recovery_context: Mapping[str, Any] | None = None
+    storage,
+    recipe_hash: str,
+    *,
+    recovery_context: Mapping[str, Any] | None = None,
+    marker_snapshot: dict[str, Any] | None = None,
 ) -> bool:
     """Whether another fresh submission is allowed for this recipe lineage.
 
     The marker is deliberately separate from the canonical deferred record so a failed handle no
     longer looks pending to the sweep or to ``look_up_deferred``.  Malformed old records are
-    ignored rather than blocking work.
+    ignored rather than blocking work. An optional snapshot lets batch preparation reuse this
+    marker read for its idempotency generation instead of fetching it again.
     """
     data = _read_json(storage, deferred_failure_key(recipe_hash))
+    if marker_snapshot is not None:
+        marker_snapshot.clear()
+        if isinstance(data, Mapping):
+            marker_snapshot.update(data)
     if not isinstance(data, Mapping):
         return True
     if data.get("status") == "exhausted":
@@ -373,7 +387,7 @@ def terminal_failure_retry_allowed(
             return False
         return bool(
             recovery_context
-            and terminal_recovery_generation(storage, recipe_hash, recovery_context)
+            and terminal_recovery_generation(storage, recipe_hash, recovery_context, marker=data)
         )
     try:
         return int(data.get("failure_count", 0)) < MAX_TERMINAL_FAILURE_RETRIES

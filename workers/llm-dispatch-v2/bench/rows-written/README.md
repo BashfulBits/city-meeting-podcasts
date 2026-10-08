@@ -185,3 +185,39 @@ retention. The tested three-model pool costs 19.97 (60 jobs, 12 bundles; the mod
 usage example above). Retry costs 9 claim writes plus 10 attempt/requeue writes. An accounting
 check recorded 66 actual writes and a persisted delta of 66. Ingress/lifecycle reservation
 constants and configured budgets remain unchanged.
+
+### Review-round digest CPU check (2026-10-08, #2191)
+
+Three local Node v26.8.2 runs of 1,000 warm digest calls measured 41.416–55.059 ms total CPU
+with serialize/compare on each call, versus 0.048–0.106 ms with the immutable-catalog identity
+cache (medians 42.043 and 0.065 ms). These are local `process.cpuUsage` measurements of the real
+digest function and compiled catalog, not deployed Worker invocation `cpuTime` or production P50.
+The first hash is warmed before measurement; clearing only the identity cache models the previous
+serialize/compare path while retaining its serialized-value/hash cache. Mutable overrides continue
+through that path. The real-workerd rescue/rollback measurement remains 82 writes and 104 reads;
+recreation remains zero writes and 22 reads.
+
+Reproduce from `workers/llm-dispatch-v2` with the repository's Node runtime:
+
+```bash
+node --input-type=module <<'JS'
+import { LLMSchedulerDO } from './src/coordinator.js';
+import catalog from './src/dispatch_limits.json' with { type: 'json' };
+const state = {};
+const digest = LLMSchedulerDO.prototype._structuralCatalogDigest.bind(state);
+await digest(catalog);
+for (let run = 0; run < 3; run++) {
+  const measure = async bypass => {
+    const start = process.cpuUsage();
+    for (let i = 0; i < 1000; i++) {
+      if (bypass) state._staticCatalogDigest = null;
+      await digest(catalog);
+    }
+    const used = process.cpuUsage(start);
+    return (used.user + used.system) / 1000;
+  };
+  console.log({ serialize_compare_cpu_ms: await measure(true),
+    identity_cache_cpu_ms: await measure(false) });
+}
+JS
+```

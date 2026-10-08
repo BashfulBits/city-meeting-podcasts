@@ -3429,6 +3429,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /** Hash only configured identity and structural admission fields, independent of live ledger.
    * Runs before the SQL transaction; the same immutable catalog is used throughout the pass. */
   async _structuralCatalogDigest(catalog) {
+    // Production's compiled import cannot change within this isolate. Overrides may mutate.
+    if (catalog === DISPATCH_LIMITS && this._staticCatalogDigest) return this._staticCatalogDigest;
     const fields = ["provider", "account_id", "upstream_model", "free", "input_context_limit",
       "output_context_limit", "hard_input_ceiling", "hard_input_ceiling_tolerance", "input_token_ratio", "tpm"];
     const serialized = JSON.stringify({
@@ -3438,11 +3440,15 @@ export class LLMSchedulerDO extends DurableObjectBase {
       routes: Object.entries(catalog.routes_by_id || {}).sort(([a], [b]) => a.localeCompare(b))
         .map(([id, route]) => [id, fields.map(field => route[field] ?? null)]),
     });
-    if (this._catalogDigestSource === serialized) return this._catalogDigestValue;
+    if (this._catalogDigestSource === serialized) {
+      if (catalog === DISPATCH_LIMITS) this._staticCatalogDigest = this._catalogDigestValue;
+      return this._catalogDigestValue;
+    }
     const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(serialized));
     const digest = [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, "0")).join("");
     this._catalogDigestSource = serialized;
     this._catalogDigestValue = digest;
+    if (catalog === DISPATCH_LIMITS) this._staticCatalogDigest = digest;
     return digest;
   }
 

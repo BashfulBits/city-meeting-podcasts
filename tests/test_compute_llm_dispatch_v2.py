@@ -2301,3 +2301,100 @@ def test_structural_generation_retry_uses_new_idempotency_and_cannot_loop(monkey
     )
     assert isinstance(backend.enqueue_batch([job])[0], LLMBackendError)
     assert session.post.call_count == 2
+
+
+def test_enqueue_builds_each_recovery_context_once_and_reads_marker_once():
+    from citypods.compute.llm_deferred import deferred_failure_key
+
+    class CountingStorage(MockStorage):
+        def __init__(self):
+            super().__init__()
+            self.marker_reads = 0
+
+        def get_file(self, key, local_path):
+            if key.startswith("state/llm_deferred_failures/"):
+                self.marker_reads += 1
+            return super().get_file(key, local_path)
+
+    storage = CountingStorage()
+    session = MagicMock()
+    session.post.side_effect = _accept_all
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://dispatch-v2.example.com"
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    backend._structural_recovery_context = MagicMock(wraps=backend._structural_recovery_context)
+    jobs = [
+        InferenceJob(
+            task="tag",
+            recipe_hash=f"ordinary-{i}",
+            inputs={
+                "messages": [{"role": "user", "content": "hi"}],
+                "structured_output": "dispatch-v2-test-pong",
+            },
+        )
+        for i in range(3)
+    ]
+    assert all(isinstance(result, JobHandle) for result in backend.enqueue_batch(jobs))
+    assert backend._structural_recovery_context.call_count == 3
+    assert storage.marker_reads == 3
+    # A structurally blocked lineage with a new fitting generation also reuses the one read.
+    recovery_job = InferenceJob(
+        task="tag",
+        recipe_hash="new-generation",
+        inputs={"messages": [{"role": "user", "content": "hi"}]},
+    )
+    storage.files[deferred_failure_key(recovery_job.recipe_hash)] = json.dumps(
+        {
+            "status": "structural_blocked",
+            "failure_count": 0,
+            "recovery_context": {"route_generations": {}},
+        }
+    ).encode()
+    assert isinstance(backend.enqueue_batch([recovery_job])[0], JobHandle)
+    assert backend._structural_recovery_context.call_count == 4
+    assert storage.marker_reads == 4
+    assert ":recovery:" in session.post.call_args.kwargs["json"]["jobs"][0]["idempotency_key"]
+
+
+def test_recovery_context_is_bound_to_the_accepted_duplicate_payload():
+    from citypods.compute.llm_deferred import deferred_key
+
+    storage = MockStorage()
+    session = MagicMock()
+
+    def accept_first(url, json=None, **kwargs):
+        first, second = json["jobs"]
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "accepted": [{"id": first["id"], "submitted_id": first["id"]}],
+                "rejected": [{"id": second["id"], "reason": "idempotency_conflict"}],
+            },
+        )
+
+    session.post.side_effect = accept_first
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://dispatch-v2.example.com"
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    jobs = [
+        InferenceJob(
+            task="tag",
+            recipe_hash="duplicate-recipe",
+            inputs={"messages": [{"role": "user", "content": content}]},
+        )
+        for content in ("original accepted input", "conflicting replacement")
+    ]
+    accepted, rejected = backend.enqueue_batch(jobs)
+    assert isinstance(accepted, JobHandle)
+    assert isinstance(rejected, LLMBackendError)
+    record = json.loads(storage.files[deferred_key("duplicate-recipe")])
+    submitted = session.post.call_args.kwargs["json"]["jobs"][0]
+    assert record["recovery_context"]["input_identity"] == submitted["request_digest"]

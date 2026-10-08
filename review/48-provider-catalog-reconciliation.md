@@ -531,9 +531,14 @@ The terminal fence compares backend/ref against both snapshot and current stored
 Structural failures preserve retry/schema-correction counts and remain blocked until an eligible
 physical route generation changes or task-specific rebatching produces a different recipe.
 Recovery estimates and input identities include the same structured schema as queue submission.
-Offline validation passes: 5,279 Python tests (16 live tests deselected), 400 Worker tests,
+Offline validation passes: 5,284 Python tests (16 live tests deselected), 401 Worker tests,
 whole-repository Ruff checks/format checks and diff whitespace checks. Local workerd verifies
 billed-row reservations; the existing index preserves lifecycle write costs. No deployment occurred.
+The review round also enforces combined reservations before dispatch for singleton prelabeler
+batches, retains recovery contexts by job index and reuses the gate's marker read for generation
+checks. The production catalog digest returns from an identity cache before serialization;
+mutable overrides still serialize/compare so in-place changes restart rescue. Local CPU evidence
+is in the existing benchmark README; it does not claim production invocation CPU savings.
 
 **Maintainer decision (2026-10-08): reuse the existing queue index.** The proposed `(state, id)`
 index measured 21 writes and 65 reads to build over 20 retained jobs, plus recurring lifecycle
@@ -578,7 +583,11 @@ before posting, including other sessions. Slice 2b #2189 was requested at 2026-1
 ([request](https://github.com/BashfulBits/city-meeting-podcasts/pull/2189#issuecomment-6061804491));
 Slice 3a #2191 was requested at 2026-10-08 18:17:44 UTC
 ([request](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191#issuecomment-6066258476));
-the next request cannot precede 19:17:44 UTC, and a later request elsewhere moves that floor.
+That review was canceled after a bookkeeping push changed the head. A fresh full review on the
+unchanged head was requested at 2026-10-08 19:18:38 UTC
+([request](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191#issuecomment-6067299806));
+it completed at 19:27:38 UTC with three valid findings, fixed in one batch. The next manual
+request cannot precede 20:18:38 UTC, and a later request elsewhere moves that floor.
 
 The deployed coordinator already has `_modelsForQueuedJob()` and
 `_reconcileUnroutableJobs()`. Extend them; do not introduce a second full-queue reconciler.

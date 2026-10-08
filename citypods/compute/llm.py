@@ -1961,6 +1961,8 @@ class LiteLLMBackend(Backend):
         # Only an in-flight row refuses a changed payload (idempotency_conflict); the handle is
         # kept for that case so the running attempt finishes and is polled normally.
         prior_pending: dict[int, JobHandle] = {}
+        recovery_contexts: dict[int, dict[str, Any]] = {}
+        recovery_generations: dict[int, str] = {}
         for i, job in enumerate(jobs):
             cached = look_up_deferred(self.storage, job.recipe_hash)
             if isinstance(cached, JobResult):
@@ -1969,16 +1971,25 @@ class LiteLLMBackend(Backend):
             else:
                 if isinstance(cached, JobHandle):
                     prior_pending[i] = cached
+                context = recovery_contexts[i] = self._structural_recovery_context(job)
+                marker: dict[str, Any] = {}
                 if not terminal_failure_retry_allowed(
                     self.storage,
                     job.recipe_hash,
-                    recovery_context=self._structural_recovery_context(job),
+                    recovery_context=context,
+                    marker_snapshot=marker,
                 ):
                     out[i] = LLMBackendError(
                         "LLM recipe awaits structural recovery or retry review"
                     )
                     telemetry_outcomes.append((job, "rejected", "terminal_recovery_blocked"))
                     continue
+                if marker.get("status") == "structural_blocked":
+                    generation = terminal_recovery_generation(
+                        self.storage, job.recipe_hash, context, marker=marker
+                    )
+                    if generation:
+                        recovery_generations[i] = generation
                 uncached_indices.append(i)
 
         if not uncached_indices:
@@ -2082,9 +2093,7 @@ class LiteLLMBackend(Backend):
             canonical_payload_str = json.dumps(payload, sort_keys=True)
             request_digest = hashlib.sha256(canonical_payload_str.encode("utf-8")).hexdigest()
             idempotency_key = f"{job.recipe_hash}:durable-queue-v2" if job.recipe_hash else job_id
-            generation = terminal_recovery_generation(
-                self.storage, job.recipe_hash, self._structural_recovery_context(job)
-            )
+            generation = recovery_generations.get(idx)
             if generation:
                 idempotency_key += f":recovery:{generation}"
 
@@ -2293,7 +2302,7 @@ class LiteLLMBackend(Backend):
         rejected_count = 0
         unknown_count = 0
         rejection_reasons: dict[str, int] = {}
-        deferred_writes: list[tuple[str, JobHandle]] = []
+        deferred_writes: list[tuple[int, JobHandle]] = []
         for idx, job, structured_name, logical_model, job_id in job_meta:
             if job_id in accepted_by_submitted_id:
                 canonical_id = accepted_by_submitted_id[job_id]
@@ -2312,7 +2321,7 @@ class LiteLLMBackend(Backend):
                     structured_output=structured_name,
                     model=logical_model,
                 )
-                deferred_writes.append((job.recipe_hash, handle))
+                deferred_writes.append((idx, handle))
                 out[idx] = handle
             else:
                 reason = rejected_by_id.get(job_id, "unknown")
@@ -2338,7 +2347,7 @@ class LiteLLMBackend(Backend):
                             max_tokens_mode=_job_max_tokens_mode(job),
                         ),
                     )
-                    deferred_writes.append((job.recipe_hash, handle))
+                    deferred_writes.append((idx, handle))
                     out[idx] = handle
                 elif reason == "idempotency_conflict" and idx in prior_pending:
                     # In flight under its previous payload (e.g. across a payload-shape change):
@@ -2362,15 +2371,14 @@ class LiteLLMBackend(Backend):
                     telemetry_outcomes.append((job, "rejected", reason))
                     out[idx] = LLMBackendError(f"LLM dispatch v2 rejected job {job_id}: {reason}")
 
-        recovery_jobs = {job.recipe_hash: job for _, job, _, _, _ in job_meta}
-
-        def _persist_deferred(item: tuple[str, JobHandle]) -> None:
-            recipe_hash, handle = item
+        def _persist_deferred(item: tuple[int, JobHandle]) -> None:
+            idx, handle = item
+            recipe_hash = jobs[idx].recipe_hash
             write_deferred(
                 storage,
                 recipe_hash,
                 handle,
-                recovery_context=self._structural_recovery_context(recovery_jobs[recipe_hash]),
+                recovery_context=recovery_contexts[idx],
             )
 
         persist_started = time.monotonic()

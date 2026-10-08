@@ -1756,6 +1756,7 @@ def llm_prelabel_candidates(
         if (
             input_tokens_estimate > input_context_limit
             or output_token_budget < required_output_tokens
+            or not limits.fits_reservation(input_tokens_estimate, len(batch_context))
         ):
             pending = True
             payload_too_large = True
