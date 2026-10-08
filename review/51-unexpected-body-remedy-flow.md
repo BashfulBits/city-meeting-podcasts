@@ -2695,3 +2695,25 @@ assignments, not a claim of live deployment.
 
 Validation: 12 targeted tests and 5,120 offline tests passed (15 deselected); whole
 Ruff lint and format checks passed across 480 files. No pipeline version or audio backfill.
+
+### Within-source search resume — L3 (#2173, 2026-10-08)
+
+Maintainer approved the per-record progress fix and clearer reporting. Named files:
+citypods/search.py, tests/test_search.py, tests/test_static_search_job.py, ARCHITECTURE.md,
+CHANGELOG.md, review/11 and this section. Keep workflow/cadence/config20minute ceiling unchanged.
+No provider/dependency/raw-record/audio/storage-write/public search schema changes.
+
+Private `.search-cache.json` adds partial source entries keyed by source with version/hash and
+processed UID-to-document mappings (null means processed with no public document). Existing
+_shard_hash binds complete record inputs, candidate config, archive and publication selection.
+Reuse only matching version/hash partials; discard stale partials. Save mutable partial state
+on normal stop through the wrapper's existing working checkpoint persistence. Complete sources
+remove their partial entry. Public manifest/page publish only after all sources finish.
+Report interrupted source, processed/total records and completed/total sources in returned
+summary; distinguish no prior index from retained complete index. Keep complete return string
+compatibility. Cheap cache hits/bookkeeping precede stop admission.
+
+Tests: repeated bounded runs finish one large source without reconverting completed records;
+changed source/config/archive policies invalidate partials; a stopped build with no prior index
+reports that accurately; prior complete bytes survive deferral/errors. Whole Ruff and offline
+suite plus current-head substantive review before human merge. No pipeline bump/backfill.
