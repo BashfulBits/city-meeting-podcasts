@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
 import { zonedDateKey } from "../src/pacing.js";
-import { createMockSqlStorage, withTestReservations } from "./helpers.js";
+import { ROWS_PER_BUNDLE, ROWS_PER_LEASE_WORST } from "../src/write_budget.js";
+import {
+  activeBundles, createMockSqlStorage, insertActiveBundle, withTestReservations,
+} from "./helpers.js";
 
 const TEST_CATALOG = {
   model_aliases: {},
@@ -236,36 +239,57 @@ test("claimDispatchWindow reaps a bundle whose lease expired without completeBat
   assert.equal(recovered.jobs.length, 1);
   assert.equal(recovered.jobs[0].id, "j1");
 
-  const bundleRows = [...sql.exec("SELECT state FROM bundles WHERE bundle_id = ?", stuck.bundle_id)];
-  assert.equal(bundleRows[0].state, "expired");
+  // The expired bundle is gone; only the recovering claim's bundle is active.
+  assert.deepEqual(Object.keys(activeBundles(sql)), [recovered.bundle_id]);
 });
 
-test("attemptStarted fences on a matching lease and rejects a stale one", async () => {
-  const { coordinator } = makeCoordinator();
+test("a claim counts the attempt; attemptStarted is a write-free compatibility check", async () => {
+  const { coordinator, sql } = makeCoordinator();
   await coordinator.enqueueBatch([makeJob("j1")]);
   const plan = await coordinator.claimDispatchWindow(Date.now(), 25);
   const job = plan.jobs[0];
+  assert.equal(sql.exec("SELECT attempts FROM jobs WHERE id = 'j1'")[0].attempts, 1);
+  assert.equal(typeof job.lease_expires_at, "number");
 
-  const ok = await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", Date.now());
-  assert.equal(ok.fenced, true);
+  const rowsBefore = sql.exec("SELECT rows_written_today FROM scheduler")[0].rows_written_today;
+  assert.equal((await coordinator.attemptStarted(job.id, job.lease_token)).fenced, true);
+  assert.equal((await coordinator.attemptStarted(job.id, "wrong-lease-token")).fenced, false);
+  assert.equal(sql.exec("SELECT attempts FROM jobs WHERE id = 'j1'")[0].attempts, 1);
+  assert.equal(
+    sql.exec("SELECT rows_written_today FROM scheduler")[0].rows_written_today,
+    rowsBefore
+  );
+});
 
-  const stale = await coordinator.attemptStarted(job.id, "wrong-lease-token", "attempt-2", Date.now());
-  assert.equal(stale.fenced, false);
+test("a result that never reached a provider gives its claimed attempt back", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  await coordinator.enqueueBatch([makeJob("j1")]);
+  const now = Date.now();
+  const plan = await coordinator.claimDispatchWindow(now, 25);
+  const job = plan.jobs[0];
+  await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [{
+    job_id: job.id, lease_token: job.lease_token, attempt_id: "late-1",
+    planned_at: job.not_before_at, actual_start_at: null, actual_end_at: null,
+    outcome: "deferred_late",
+  }]);
+  const row = sql.exec("SELECT state, attempts FROM jobs WHERE id = 'j1'")[0];
+  assert.equal(row.state, "queued");
+  assert.equal(row.attempts, 0);
 });
 
 test("authorizeRetry authorizes a first 429 and declines a second on the same job", async () => {
-  const { coordinator } = makeCoordinator({ MAX_429_RETRIES: "1", MAX_429_BACKOFF_SECONDS: "2" });
+  const { coordinator, sql } = makeCoordinator({ MAX_429_RETRIES: "1", MAX_429_BACKOFF_SECONDS: "2" });
   await coordinator.enqueueBatch([makeJob("j1")]);
   const now = Date.now();
   const plan = await coordinator.claimDispatchWindow(now, 25);
   const job = plan.jobs[0];
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
   const first = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now);
   assert.equal(first.authorized, true);
   assert.ok(first.retry_not_before > now);
+  // The claim counted the first attempt; the granted retry counts the second.
+  assert.equal(sql.exec("SELECT attempts FROM jobs WHERE id = 'j1'")[0].attempts, 2);
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-2", now);
   const second = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-2", now);
   assert.equal(second.authorized, false);
 });
@@ -281,7 +305,6 @@ test("authorizeRetry declines a retry that would not fit before the bundle deadl
   const job = plan.jobs[0];
   sql.exec("UPDATE routes SET throttle_streak = 100 WHERE route_id = ?", job.route_id);
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
   const auth = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now);
   assert.equal(auth.authorized, false);
 });
@@ -320,8 +343,7 @@ test("completeBatch settles a successful job and is a no-op for a stale executio
   assert.equal(rows[0].result_key, "results/j1/lt1.json");
 
   // Every leased job in the bundle settled, so the bundle row is deleted rather than kept.
-  const bundleRows = [...sql.exec("SELECT state FROM bundles WHERE bundle_id=?", plan.bundle_id)];
-  assert.equal(bundleRows.length, 0);
+  assert.equal(activeBundles(sql)[plan.bundle_id], undefined);
 });
 
 test("completeBatch requeues a deferred_late job without touching its attempt count", async () => {
@@ -894,7 +916,7 @@ test("claim looks past queue-head jobs too large for every route with capacity",
   // The uncapped leg is out of capacity (blocked) for this tick.
   await coordinator.claimDispatchWindow(Date.now(), 30); // creates both route ledgers
   sql.exec("UPDATE jobs SET state = 'queued', lease_token = NULL WHERE state = 'leased'");
-  sql.exec("DELETE FROM bundles");
+  sql.exec("UPDATE scheduler SET active_bundles_json = '{}' WHERE id = 1");
   sql.exec("UPDATE routes SET blocked_until = ? WHERE route_id = 'gemma-uncapped'", Date.now() + 3_600_000);
   sql.exec("DELETE FROM job_models");
   for (const row of sql.exec("SELECT id, priority, created_at FROM jobs WHERE state = 'queued'")) {
@@ -1106,7 +1128,7 @@ test("an oversized job fails only once its uncapped route has spent its daily qu
   await coordinator.enqueueBatch([gemmaJob("big", 7500)]);
   await coordinator.claimDispatchWindow(now, 30); // creates both route ledgers
   sql.exec("UPDATE jobs SET state = 'queued', lease_token = NULL WHERE state = 'leased'");
-  sql.exec("DELETE FROM bundles");
+  sql.exec("UPDATE scheduler SET active_bundles_json = '{}' WHERE id = 1");
   sql.exec("DELETE FROM job_models");
   for (const row of sql.exec("SELECT id, priority, created_at FROM jobs WHERE state = 'queued'")) {
     sql.exec(
@@ -1141,12 +1163,12 @@ test("claims stop at MAX_LEASES_PER_UTC_DAY and resume on the next UTC day", asy
   assert.ok(first.jobs.length <= 3 && first.jobs.length > 0);
   let leased = first.jobs.length;
   // Settle the first bundle so concurrency never masks the lease cap.
-  sql.exec("UPDATE bundles SET state = 'completed'");
+  sql.exec("UPDATE scheduler SET active_bundles_json = '{}' WHERE id = 1");
   sql.exec("UPDATE jobs SET state = 'completed' WHERE state = 'leased'");
   for (let t = 1; t < 5 && leased < 3; t += 1) {
     const plan = await coordinator.claimDispatchWindow(day + t * 61_000, 30);
     leased += plan.jobs.length;
-    sql.exec("UPDATE bundles SET state = 'completed'");
+    sql.exec("UPDATE scheduler SET active_bundles_json = '{}' WHERE id = 1");
     sql.exec("UPDATE jobs SET state = 'completed' WHERE state = 'leased'");
   }
   assert.equal(leased, 3, "never more leases than the daily cap");
@@ -1256,150 +1278,75 @@ test("confirmNeverAccepted reports which preassigned ids the DO has no record of
 // --------------------------------------------------------------------------------------------
 // Rows-read regression guards (2026-08-27 Durable Objects free-tier overage).
 //
-// The incident's cause was structural: `bundles` had no index on `state`, so claimDispatchWindow
-// full-scanned it twice per cron tick, and nothing ever deleted from it -- measured at 6,400 of a
-// tick's 6,424 rows read. These tests pin the query plans, so a dropped index or a reshaped
-// predicate fails here rather than as a silent production quota burn.
+// The incident's cause was structural: a `bundles` table with no state index was full-scanned
+// twice per cron tick and never pruned. Since 2026-10-07 the active bundles are a small map in
+// the scheduler row, so a claim reads one singleton row for them however many bundles have run.
 // --------------------------------------------------------------------------------------------
 
-/** Plan details for `query`, as one string. */
-function planOf(sql, query, ...params) {
-  return [...sql.exec(`EXPLAIN QUERY PLAN ${query}`, ...params)].map((r) => r.detail).join("; ");
-}
-
-test("claimDispatchWindow's two per-tick bundles statements are index seeks, never table scans", async () => {
-  const { coordinator, sql } = makeCoordinator();
+test("a claim keeps active bundles in the scheduler row, bounded by MAX_ACTIVE_BUNDLES", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_ACTIVE_BUNDLES: "2", MAX_BUNDLE_JOBS: "1" });
+  await coordinator.enqueueBatch(Array.from({ length: 3 }, (_, i) => makeJob(`active-${i}`)));
   const now = Date.now();
-  // A large terminal-bundle history is exactly the production shape that made these scans fatal.
-  for (let i = 0; i < 500; i++) {
-    sql.exec(
-      "INSERT INTO bundles VALUES (?,?,'completed',?,0,?,?)",
-      `b${i}`, "tok", now - 9e8, now - 9e8, now - 9e8
-    );
-  }
-
-  const expireSweep = planOf(
-    sql,
-    "UPDATE bundles SET state='expired' WHERE state='active' AND lease_expires_at < ?",
-    now
+  const first = await coordinator.claimDispatchWindow(now, 25);
+  const second = await coordinator.claimDispatchWindow(now + 61_000, 25);
+  assert.deepEqual(Object.keys(activeBundles(sql)).sort(), [first.bundle_id, second.bundle_id].sort());
+  const third = await coordinator.claimDispatchWindow(now + 122_000, 25);
+  assert.equal(third.claim_reason, "active_bundle_limit");
+  assert.equal(
+    sql.exec("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'bundles'")[0].n,
+    0
   );
-  const activeRead = planOf(sql, "SELECT active_call_count FROM bundles WHERE state='active'");
-
-  for (const plan of [expireSweep, activeRead]) {
-    assert.match(plan, /SEARCH bundles USING (COVERING )?INDEX idx_bundles_state_created/);
-    assert.doesNotMatch(plan, /SCAN/);
-  }
-
-  // And the claim still works with that history present.
-  await coordinator.enqueueBatch([makeJob("j1")]);
-  const plan = await coordinator.claimDispatchWindow(now, 25);
-  assert.equal(plan.jobs.length, 1);
 });
 
-test("purgePendingBatch's terminal-job lookups are bounded per-state index seeks", async () => {
-  const { sql } = makeCoordinator();
-  for (const state of ["completed", "failed"]) {
-    const plan = planOf(
-      sql,
-      `SELECT id, payload_key, result_key, updated_at FROM jobs
-       WHERE state = '${state}' AND updated_at < ?
-       ORDER BY updated_at ASC, id ASC LIMIT ?`,
-      Date.now(),
-      10
-    );
-    assert.match(plan, /SEARCH jobs USING INDEX idx_jobs_state_updated_id/);
-    assert.doesNotMatch(plan, /SCAN|TEMP B-TREE/);
-  }
-});
-
-test("purgePendingBatch merges completed and failed rows by age without changing its limit", async () => {
-  const { coordinator, sql } = makeCoordinator({ COMPLETED_RETENTION_DAYS: "1" });
-  const ids = ["completed-old", "failed-old", "completed-mid", "failed-mid", "recent"];
-  await coordinator.enqueueBatch(ids.map((id) => makeJob(id)));
-  const now = Date.now();
-  const updates = [
-    ["completed-old", "completed", now - 5 * 86_400_000],
-    ["failed-old", "failed", now - 4 * 86_400_000],
-    ["completed-mid", "completed", now - 3 * 86_400_000],
-    ["failed-mid", "failed", now - 2 * 86_400_000],
-    ["recent", "completed", now - 12 * 60 * 60 * 1000],
-  ];
-  for (const [id, state, updatedAt] of updates) {
-    sql.exec("UPDATE jobs SET state=?, updated_at=? WHERE id=?", state, updatedAt, id);
-  }
-
-  const pending = await coordinator.purgePendingBatch(4);
-  assert.deepEqual(
-    pending.jobs.map((job) => job.id),
-    ["completed-old", "failed-old", "completed-mid", "failed-mid"]
-  );
-  assert.equal([...sql.exec("SELECT COUNT(*) n FROM jobs WHERE state='purge_pending'")][0].n, 4);
-});
-
-test("_pruneTerminalRecords deletes aged-out terminal bundles and attempts, bounded per tick", async () => {
+test("_pruneTerminalRecords deletes aged-out usage cells, bounded per tick", async () => {
   const { coordinator, sql } = makeCoordinator({
-    BUNDLE_RETENTION_DAYS: "7",
     ATTEMPT_RETENTION_DAYS: "7",
-    MAX_BUNDLE_PRUNE_PER_TICK: "10",
     MAX_ATTEMPT_PRUNE_PER_TICK: "10",
   });
   const now = Date.now();
-  const old = now - 30 * 86_400_000;
+  const oldDay = new Date(now - 30 * 86_400_000).toISOString().slice(0, 10);
   for (let i = 0; i < 25; i++) {
-    sql.exec("INSERT INTO bundles VALUES (?,?,'completed',?,0,?,?)", `b${i}`, "t", old, old, old);
     sql.exec(
-      "INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, start_state, created_at)" +
-        " VALUES (?,?,?,?,'started',?)",
-      `a${i}`, `j${i}`, "route-a", old, old
+      "INSERT INTO attempt_usage (utc_day, purpose, route_id, calls) VALUES (?, 'lane', ?, 1)",
+      oldDay, `route-${i}`
     );
   }
+  // Today's cell is inside the window and stays.
+  sql.exec(
+    "INSERT INTO attempt_usage (utc_day, purpose, route_id, calls) VALUES (?, 'lane', 'route-now', 1)",
+    new Date(now).toISOString().slice(0, 10)
+  );
 
-  const first = coordinator._pruneTerminalRecords(now);
-  assert.deepEqual(first, { bundlesDeleted: 10, attemptsDeleted: 10, routeFailuresDeleted: 0 });
-  assert.equal([...sql.exec("SELECT COUNT(*) n FROM bundles")][0].n, 15);
-  assert.equal([...sql.exec("SELECT COUNT(*) n FROM attempts")][0].n, 15);
+  assert.deepEqual(
+    coordinator._pruneTerminalRecords(now),
+    { attemptUsageDeleted: 10, routeFailuresDeleted: 0 }
+  );
+  assert.equal([...sql.exec("SELECT COUNT(*) n FROM attempt_usage")][0].n, 16);
 
   // Repeated ticks drain the backlog and then stop finding work.
   coordinator._pruneTerminalRecords(now);
-  const third = coordinator._pruneTerminalRecords(now);
-  assert.deepEqual(third, { bundlesDeleted: 5, attemptsDeleted: 5, routeFailuresDeleted: 0 });
   assert.deepEqual(
     coordinator._pruneTerminalRecords(now),
-    { bundlesDeleted: 0, attemptsDeleted: 0, routeFailuresDeleted: 0 }
+    { attemptUsageDeleted: 5, routeFailuresDeleted: 0 }
   );
-});
-
-test("_pruneTerminalRecords never removes an active bundle, a recent one, or one whose lease could still be current", async () => {
-  const { coordinator, sql } = makeCoordinator({ BUNDLE_RETENTION_DAYS: "7" });
-  const now = Date.now();
-  const old = now - 30 * 86_400_000;
-  // (a) still active; (b) terminal but inside the retention window; (c) terminal and old, but its
-  // lease has not expired yet -- a late completeBatch could still legitimately settle it.
-  sql.exec("INSERT INTO bundles VALUES ('active-1','t','active',?,1,?,?)", now + 6e5, now, old);
-  sql.exec("INSERT INTO bundles VALUES ('recent-1','t','completed',?,0,?,?)", now, now, now - 1000);
-  sql.exec("INSERT INTO bundles VALUES ('leased-1','t','completed',?,0,?,?)", now + 6e5, now, old);
-  sql.exec("INSERT INTO bundles VALUES ('stale-1','t','completed',?,0,?,?)", old, old, old);
-
-  const result = coordinator._pruneTerminalRecords(now);
-  assert.equal(result.bundlesDeleted, 1);
-  const remaining = [...sql.exec("SELECT bundle_id FROM bundles ORDER BY bundle_id")].map((r) => r.bundle_id);
-  assert.deepEqual(remaining, ["active-1", "leased-1", "recent-1"]);
+  assert.deepEqual(
+    coordinator._pruneTerminalRecords(now),
+    { attemptUsageDeleted: 0, routeFailuresDeleted: 0 }
+  );
+  assert.equal([...sql.exec("SELECT route_id FROM attempt_usage")][0].route_id, "route-now");
 });
 
 test("a zero per-tick prune cap pauses retention without affecting dispatch", async () => {
-  const { coordinator, sql } = makeCoordinator({
-    MAX_BUNDLE_PRUNE_PER_TICK: "0",
-    MAX_ATTEMPT_PRUNE_PER_TICK: "0",
-  });
+  const { coordinator, sql } = makeCoordinator({ MAX_ATTEMPT_PRUNE_PER_TICK: "0" });
   const now = Date.now();
-  const old = now - 30 * 86_400_000;
-  sql.exec("INSERT INTO bundles VALUES ('stale-1','t','completed',?,0,?,?)", old, old, old);
-
+  sql.exec(
+    "INSERT INTO attempt_usage (utc_day, purpose, route_id, calls) VALUES ('2020-01-01', 'lane', 'r', 1)"
+  );
   assert.deepEqual(
     coordinator._pruneTerminalRecords(now),
-    { bundlesDeleted: 0, attemptsDeleted: 0, routeFailuresDeleted: 0 }
+    { attemptUsageDeleted: 0, routeFailuresDeleted: 0 }
   );
-  assert.equal([...sql.exec("SELECT COUNT(*) n FROM bundles")][0].n, 1);
+  assert.equal([...sql.exec("SELECT COUNT(*) n FROM attempt_usage")][0].n, 1);
 
   await coordinator.enqueueBatch([makeJob("j1")]);
   assert.equal((await coordinator.claimDispatchWindow(now, 25)).jobs.length, 1);
@@ -2201,7 +2148,6 @@ test("authorizeRetry honors an explicit Retry-After floor and blocks the route",
   const plan = await coordinator.claimDispatchWindow(now, 25);
   const job = plan.jobs[0];
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
   // Upstream returns 429 with Retry-After: 5
   const auth = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now, 5);
   assert.equal(auth.authorized, true);
@@ -2230,7 +2176,6 @@ test("authorizeRetry preserves an Airforce guarantee beyond the local buffer cap
   const plan = await coordinator.claimDispatchWindow(now, 25);
   const job = plan.jobs[0];
 
-  await coordinator.attemptStarted(job.id, job.lease_token, "attempt-1", now);
   // Production Airforce response: the next answer was guaranteed only after 111 seconds.
   const auth = await coordinator.authorizeRetry(job.id, job.lease_token, "attempt-1", now, 111);
   assert.equal(
@@ -2592,8 +2537,10 @@ test("a failure after a same-route success in one batch keeps its block", async 
   assert.equal(route.last_provider_status, 503);
 });
 
-test("a legacy rowid bundles table is rebuilt WITHOUT ROWID, keeping only open bundles", () => {
+test("a bundles table moves into the scheduler row, keeping only active bundles", () => {
   const { sql, storage } = createMockSqlStorage();
+  // A coordinator from before 2026-10-07 (any bundles shape), with one open bundle.
+  new LLMSchedulerDO({ storage }, withTestReservations({ DISPATCH_LIMITS_OVERRIDE: TEST_CATALOG }));
   sql.exec(`
     CREATE TABLE bundles (
       bundle_id TEXT PRIMARY KEY, execution_token TEXT NOT NULL,
@@ -2601,7 +2548,8 @@ test("a legacy rowid bundles table is rebuilt WITHOUT ROWID, keeping only open b
       lease_expires_at INTEGER NOT NULL, active_call_count INTEGER NOT NULL DEFAULT 0,
       dispatch_window_end INTEGER NOT NULL, created_at INTEGER NOT NULL
     );
-    INSERT INTO bundles VALUES ('b-active','t','active',9,1,9,1);
+    CREATE INDEX idx_bundles_state_created ON bundles (state, created_at);
+    INSERT INTO bundles VALUES ('b-active','t','active',9,1,8,1);
     INSERT INTO bundles VALUES ('b-expired','t','expired',9,0,9,2);
     INSERT INTO bundles VALUES ('b-done','t','completed',9,0,9,3);
   `);
@@ -2609,15 +2557,17 @@ test("a legacy rowid bundles table is rebuilt WITHOUT ROWID, keeping only open b
     { storage },
     withTestReservations({ DISPATCH_LIMITS_OVERRIDE: TEST_CATALOG })
   );
-  coordinator._getSql();
-  const [table] = [...sql.exec("SELECT sql FROM sqlite_master WHERE name = 'bundles'")];
-  assert.match(table.sql, /WITHOUT ROWID/i);
-  const ids = [...sql.exec("SELECT bundle_id FROM bundles ORDER BY bundle_id")].map((r) => r.bundle_id);
-  assert.deepEqual(ids, ["b-active", "b-expired"]);
-  const [index] = [...sql.exec(
-    "SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_bundles_state_created'"
-  )];
-  assert.ok(index);
+  assert.equal(coordinator._inspectCurrentSchema().current, true);
+  assert.deepEqual(activeBundles(sql), {
+    "b-active": {
+      execution_token: "t", lease_expires_at: 9, active_call_count: 1, dispatch_window_end: 8,
+      created_at: 1,
+    },
+  });
+  assert.equal(
+    sql.exec("SELECT COUNT(*) AS n FROM sqlite_master WHERE name LIKE '%bundles%'")[0].n,
+    0
+  );
 });
 
 // ---- Daily DO row thresholds -------------------------------------------------------------
@@ -2770,8 +2720,11 @@ test("a mid-day deploy seeds the new row counter from today's recorded work, nev
   );
   const coordinator = new LLMSchedulerDO({ storage }, env);
   const { rows_written_today: seeded } = [...sql.exec("SELECT rows_written_today FROM scheduler")][0];
-  // 2 x 5,000 ingress + 6 x 400 bundles + 24 x 1,000 leases, before cleanup and idle ticks.
-  assert.ok(seeded >= 10_000 + 2_400 + 24_000, `seeded ${seeded}`);
+  // Today's recorded work at the measured worst-case costs, before the cleanup and idle-tick
+  // allowance (which scales with minutes since UTC midnight, so it is no floor of its own).
+  const floor = coordinator._rowsPerIngressWriteUnit() * 5000 +
+    ROWS_PER_BUNDLE * 400 + ROWS_PER_LEASE_WORST * 1000;
+  assert.ok(seeded >= floor, `seeded ${seeded} < ${floor}`);
   assert.ok(coordinator._readRowsWrittenToday() >= seeded);
   // A later construction (column present) leaves the running count alone.
   sql.exec("UPDATE scheduler SET rows_written_today = 5 WHERE id = 1");

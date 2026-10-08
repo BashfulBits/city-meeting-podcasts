@@ -12,6 +12,54 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **LLM dispatch: bundles and claim bookkeeping ride on one scheduler write (#1844).** The
+  `bundles` table is gone. The few active bundles live in `scheduler.active_bundles_json`, and every
+  scheduler change in a transaction (the claim outcome and counters, bundles, a completion's requeue
+  counter) is written by its one accounting UPDATE. Per bundle this removes the insert and its index
+  entry, the separate claim-outcome row and the delete. Expired bundles leave the map when the
+  next claim reaps their leases, so `BUNDLE_RETENTION_DAYS` and `MAX_BUNDLE_PRUNE_PER_TICK` are
+  retired. Measured: 16.40 → 15.40 billed rows per one-model job (20.07 → 19.27 at three models);
+  idle tick 0.2 → 0.1 rows; `ROWS_PER_BUNDLE` 8 → 4 and `ROWS_PER_LEASE_WORST` 21 → 20. Across
+  this series a first-try job fell from 22.6 to 15.4 billed rows including retention.
+
+- **LLM dispatch: per-day attempt usage instead of a row per attempt (#1844 P4, part 2).** The
+  coordinator no longer journals each provider attempt in `attempts` (two billed rows at
+  completion, one more when retention deleted it). Each `completeBatch` folds its calls into one
+  `attempt_usage` row per UTC day, lane and route, which `usage_today` reads. Counts are exact, and
+  percentiles are exact over each cell's first 2,000 calls of the day. A non-success attempt is
+  logged as an `attempt_outcome` Workers Logs event instead. `resolve-unknown-batch` now reports
+  every id `not_found` (no job ever enters `unknown_attempt`). The old table is dropped at
+  migration, which bills no rows. Measured: 18.62 → 16.40 billed rows per one-model job including
+  retention (22.22 → 20.07 at three models); `ROWS_PER_LEASE_WORST` 23 → 21.
+
+- **LLM dispatch: no Durable Object call before each provider call (#1844 P4, part 1).** The
+  executor no longer calls `attemptStarted`, which inserted a `started` attempt row and bumped
+  `jobs.attempts` before every provider call (four billed rows with accounting). The claim counts
+  the attempt in the UPDATE that already leases the job, a granted 429 retry counts its own, and
+  completion gives the count back for a result that never reached a provider. The executor fences
+  each call locally on the lease deadline the claim returns; the dispatch window, response
+  ceiling and lease duration already guarantee it. Measured: 20.58 → 17.58 billed rows per
+  one-model job (24.18 → 21.18 at three models); `ROWS_PER_LEASE_WORST` 28 → 23. Attempts that
+  received a 429 and were retried in the same lease no longer leave an outcome-less attempt row;
+  the 429 is still counted in `route_failures`. `attemptStarted` stays as a write-free check for
+  an executor mid-bundle during the deploy.
+
+- **LLM dispatch: idle cron ticks stop rewriting an unchanged claim outcome (#1844 P5).** An empty
+  claim with the same reason as the stored last outcome is persisted at most every ten minutes.
+  Skipped ticks are counted in memory, folded into the next write, and included by `/v2/stats`.
+  An idle queue costs about 290 billed rows a day instead of 2,880. A claimed tick, a reaped
+  lease or a changed reason is still written at once. `claim.last_*` in the persisted row can lag
+  by up to ten minutes while idle; a hibernation loses only the skipped ticks' diagnostic counts.
+
+- **LLM dispatch: one billed row per model index instead of two (#1844).** `job_models` drops its
+  unique `(job_id, model)` index. A queued job records its index keys in `jobs.queue_models`, and
+  every unindex is a primary-key delete. Measured with `bench/rows-written`, a first-try job falls
+  from 21.58 to 20.58 billed rows with one model and from 27.18 to 24.18 with three. The bench
+  now also runs multi-model lifecycles and the deferred retention prune. Production keeps the
+  old index until no pre-change job is queued; the hourly recount then drops it. Until then each
+  model-index insert still writes that index's entry, so enqueue reserves 2 rows per ingress unit,
+  falling to 1.25 (`ROWS_PER_INGRESS_WRITE_UNIT`) once the index is gone.
+
 - **Bound the pinned FFmpeg setup in pull-request CI.** Runtime-library setup and checksum-pinned
   archive installation now have separate step timeouts, so a stalled package mirror or a slow
   trickle during download fails visibly instead of leaving PR checks running indefinitely. The

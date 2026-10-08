@@ -4,7 +4,6 @@
   "_readme": "Do not edit by hand. Defaults for non-secret Worker tuning; a Cloudflare variable of the same name overrides a value here (src/tuning.js).",
   "values": {
     "ATTEMPT_RETENTION_DAYS": 7,
-    "BUNDLE_RETENTION_DAYS": 7,
     "CLEANUP_INTERVAL_MINUTES": 10,
     "COMPLETED_RETENTION_DAYS": 38,
     "CRON_EXECUTION_LIMIT_SECONDS": 900,
@@ -22,7 +21,6 @@
     "MAX_ATTEMPT_PRUNE_PER_TICK": 50,
     "MAX_BUNDLES_PER_UTC_DAY": 1400,
     "MAX_BUNDLE_JOBS": 5,
-    "MAX_BUNDLE_PRUNE_PER_TICK": 50,
     "MAX_CANDIDATE_LOOKAHEAD": 32,
     "MAX_CONCURRENT_ROUTE_LANES": 5,
     "MAX_INGRESS_WRITE_UNITS_PER_UTC_DAY": 25600,

@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
-import { createMockSqlStorage, createRecordingSqlStorage, withTestReservations } from "./helpers.js";
+import {
+  activeBundles, createMockSqlStorage, createRecordingSqlStorage, insertActiveBundle, withTestReservations,
+} from "./helpers.js";
 
 function makeCoordinator(env, { sql, storage } = createMockSqlStorage()) {
   return { coordinator: new LLMSchedulerDO({ storage }, withTestReservations(env)), sql, storage };
@@ -788,23 +790,10 @@ test("pollBatch chunks IDs past Cloudflare's 100-bound-parameter limit", async (
   assert.equal(pollRes.statuses.length, 250);
 });
 
-test("resolveUnknownBatch reports known and unknown attempt ids, chunked past 100", async () => {
-  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
-
-  const knownIds = Array.from({ length: 5 }, (_, i) => `attempt-${i}`);
-  for (const attemptId of knownIds) {
-    sql.exec(
-      `INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, start_state, created_at)
-       VALUES (?, 'job-x', 'route-x', 0, 'planned', 0)`,
-      attemptId
-    );
-  }
-
-  const unknownIds = Array.from({ length: 150 }, (_, i) => `missing-${i}`);
-  const res = await coordinator.resolveUnknownBatch([...knownIds, ...unknownIds]);
-
-  assert.deepEqual(res.resolved.sort(), knownIds.sort());
-  assert.equal(res.not_found.length, unknownIds.length);
+test("resolveUnknownBatch reports every id not_found: the DO keeps no per-attempt journal", async () => {
+  const { coordinator } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const ids = Array.from({ length: 150 }, (_, i) => `attempt-${i}`);
+  assert.deepEqual(await coordinator.resolveUnknownBatch(ids), { resolved: [], not_found: ids });
 });
 
 test("enqueueBatch supersedes a completed row whose old payload was wrong, and re-queues it", async () => {
@@ -972,12 +961,7 @@ test("authorizeRetry throttles only the specific route_id, keeping providers iso
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   const bundleDeadline = now + 60_000;
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    bundleDeadline,
-    bundleDeadline,
-    now
-  );
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1397,10 +1381,7 @@ test("authorizeRetry with own_rpd refuses in-window retry and sets midnight bloc
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   const bundleDeadline = now + 60_000;
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    bundleDeadline, bundleDeadline, now
-  );
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1429,10 +1410,7 @@ test("authorizeRetry with own_tpm zeroes token budget and refuses in-window retr
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   const bundleDeadline = now + 60_000;
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    bundleDeadline, bundleDeadline, now
-  );
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1466,10 +1444,7 @@ test("authorizeRetry with payment_required sets the billing day cooldown, not a 
   // legitimately be less than an hour away in production.
   const now = Date.UTC(2026, 8, 14, 12, 0, 0);
   const bundleDeadline = now + 60_000;
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    bundleDeadline, bundleDeadline, now
-  );
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1499,10 +1474,7 @@ test("authorizeRetry with upstream_capacity sets cooldown and preserves healthy 
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   const bundleDeadline = now + 60_000;
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    bundleDeadline, bundleDeadline, now
-  );
+  insertActiveBundle(sql, "b1", "tok", bundleDeadline, bundleDeadline, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1550,10 +1522,7 @@ test("a non-consuming refund does not decrement a route window newer than the on
     routeId
   );
 
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1594,10 +1563,7 @@ test("a non-consuming refund does not decrement a route window newer than the on
 test("completeBatch requeues terminal 429 under transient retry budget instead of failing", async () => {
   const { coordinator, sql } = makeCoordinator({ MAX_5XX_RETRIES: "2" });
   const now = Date.now();
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1640,10 +1606,7 @@ test("completeBatch applies the upstream_capacity cooldown to a 2xx with no usab
   // through the whole upstream-capacity retry budget back to back (CodeRabbit, 2026-09-13).
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1678,10 +1641,7 @@ test("completeBatch applies the upstream_capacity cooldown to a 2xx with no usab
 test("an empty structured reply requeues the job, stands the route down and is counted (review/48 R10)", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1726,10 +1686,7 @@ test("an empty structured reply requeues the job, stands the route down and is c
 test("a reply cut off at its output limit requeues without cooling the route down, and is counted", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1765,10 +1722,7 @@ test("a reply cut off at its output limit requeues without cooling the route dow
 test("completeBatch success clears upstream_capacity_streak and last_failure_class", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1812,14 +1766,7 @@ test("authorizeRetry records route_failures telemetry for 429s", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
-  sql.exec(
-    `INSERT INTO bundles (
-      bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at
-    ) VALUES ('b-telem', 'tok', 'active', ?, ?, ?)`,
-    now + 60_000,
-    now + 60_000,
-    now
-  );
+  insertActiveBundle(sql, "b-telem", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -1862,14 +1809,7 @@ test("completeBatch records route_failures telemetry for non-429 failures", asyn
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
   const today = new Date(now).toISOString().slice(0, 10);
-  sql.exec(
-    `INSERT INTO bundles (
-      bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at
-    ) VALUES ('b-batch-fail', 'tok', 'active', ?, ?, ?)`,
-    now + 60_000,
-    now + 60_000,
-    now
-  );
+  insertActiveBundle(sql, "b-batch-fail", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -2016,14 +1956,7 @@ test("authorizeRetry overrides untrustworthy Retry-After with observed_recovery_
     DISPATCH_LIMITS_OVERRIDE: dispatchOverride,
   });
   const now = Date.now();
-  sql.exec(
-    `INSERT INTO bundles (
-      bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at
-    ) VALUES ('b-untrust', 'tok', 'active', ?, ?, ?)`,
-    now + 60_000,
-    now + 60_000,
-    now
-  );
+  insertActiveBundle(sql, "b-untrust", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -2204,7 +2137,7 @@ test("jobs carries exactly one secondary state index; retired indexes are droppe
   assert.deepEqual(names, ["idx_jobs_state_updated_id"]);
 });
 
-test("an existing rowid job_models is rebuilt clustered, keeping rows, uniqueness and the priority trigger", async () => {
+test("an existing rowid job_models is rebuilt clustered, keeping rows, key uniqueness and the priority trigger", async () => {
   const { storage, sql } = createMockSqlStorage();
   // A pre-2026-09-23 coordinator: rowid job_models + separate scan index.
   sql.exec(`
@@ -2252,11 +2185,13 @@ test("an existing rowid job_models is rebuilt clustered, keeping rows, uniquenes
     .exec("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'job_models'")
     .map((row) => row.name)
     .filter((name) => !name.startsWith("sqlite_autoindex_"));
-  assert.deepEqual(indexes, ["idx_job_models_job_model"]);
-  // Uniqueness per job/model survives: a duplicate insert is ignored.
+  // No job_id index (2026-10-07): deletes seek the primary key from jobs.queue_models, and the
+  // one legacy row here has no queued job, so the transitional index is retired at once.
+  assert.deepEqual(indexes, []);
+  // Uniqueness per queue key survives: a duplicate insert is ignored.
   const before = sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n;
   sql.exec(
-    "INSERT OR IGNORE INTO job_models (job_id, model, priority, created_at) SELECT job_id, model, priority + 0, created_at + 1 FROM job_models"
+    "INSERT OR IGNORE INTO job_models (job_id, model, priority, created_at) SELECT job_id, model, priority, created_at FROM job_models"
   );
   assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n, before);
   // The priority-sync trigger still reaches the rebuilt table.
@@ -2274,6 +2209,66 @@ test("an existing rowid job_models is rebuilt clustered, keeping rows, uniquenes
     .map((row) => row.detail)
     .join(" | ");
   assert.ok(!plan.includes("TEMP B-TREE"), plan);
+});
+
+test("queued jobs from before queue_models keep the legacy job_id index until none remain", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  const policy = JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"] });
+  // A production coordinator at deploy: the (job_id, model) index and a job queued without
+  // queue_models.
+  sql.exec(`
+    CREATE UNIQUE INDEX idx_job_models_job_model ON job_models (job_id, model);
+    INSERT INTO jobs (id, idempotency_key, request_digest, state, priority, policy_json,
+      prompt_family, input_token_estimate, max_output_token_estimate, payload_key, created_at,
+      updated_at)
+      VALUES ('legacy', 'k-legacy', 'd', 'queued', 1, '${policy}', 'tags', 10, 10, 'p', 5, 5);
+    INSERT INTO job_models (job_id, model, priority, created_at)
+      VALUES ('legacy', 'gemini/gemini-flash-lite', 1, 5);
+  `);
+  await coordinator.enqueueBatch([{
+    id: "fresh", idempotency_key: "k-fresh", request_digest: "d", policy_json: policy,
+    prompt_family: "tags", input_token_estimate: 10, max_output_token_estimate: 10,
+    payload_key: "p-fresh",
+  }]);
+  const fresh = sql.exec("SELECT queue_models FROM jobs WHERE id = 'fresh'")[0];
+  assert.equal(fresh.queue_models, JSON.stringify(["gemini/gemini-flash-lite"]));
+
+  const indexExists = () =>
+    sql.exec("SELECT 1 FROM sqlite_master WHERE name = 'idx_job_models_job_model'").length > 0;
+  await coordinator.recountQueuedJobs();
+  assert.ok(indexExists(), "a legacy job is still queued, so its delete path must stay indexed");
+
+  await coordinator.cancelBatch(["legacy"]);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id = 'legacy'")[0].n, 0);
+  await coordinator.recountQueuedJobs();
+  assert.ok(!indexExists(), "the index is retired once every queued job records queue_models");
+
+  // A recorded queue key is deleted by primary key, with no job_id index.
+  const plan = sql.exec(
+    "EXPLAIN QUERY PLAN DELETE FROM job_models WHERE model = ? AND priority = ? AND created_at = ? AND job_id = ?",
+    "m", 1, 1, "fresh"
+  ).map((row) => row.detail).join(" | ");
+  assert.match(plan, /PRIMARY KEY/);
+  await coordinator.cancelBatch(["fresh"]);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n, 0);
+});
+
+test("a direct priority edit moves a recorded queue key's rows by primary key", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  await coordinator.enqueueBatch([{
+    id: "promote", idempotency_key: "k-promote", request_digest: "d",
+    policy_json: JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"] }),
+    prompt_family: "tags", input_token_estimate: 10, max_output_token_estimate: 10,
+    payload_key: "p", priority: 1,
+  }]);
+  sql.exec("UPDATE jobs SET priority = 0 WHERE id = 'promote'");
+  assert.deepEqual(
+    sql.exec("SELECT priority FROM job_models WHERE job_id = 'promote'").map((row) => row.priority),
+    [0]
+  );
+  // ...and the moved rows are still found by the job's key when it is unindexed.
+  await coordinator.cancelBatch(["promote"]);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models")[0].n, 0);
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -2442,29 +2437,46 @@ test("the drain signal ignores expired leases, which a global pause never reaps"
 });
 
 
-test("detailedStats reports today's usage per lane and route from existing attempt rows", async () => {
+/** Lease `jobs` ([id, purpose, reservedOutput, route]) in a fresh bundle and complete them. */
+function completeLeased(sql, coordinator, bundleId, jobs, results) {
+  const now = Date.now();
+  insertActiveBundle(sql, bundleId, "tok", now + 60_000, now + 60_000, now);
+  for (const [id, purpose, reserved, route] of jobs) {
+    sql.exec(
+      `INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, bundle_id,
+         lease_route_id, lease_token, prompt_family, input_token_estimate,
+         max_output_token_estimate, payload_key, created_at, updated_at, purpose)
+       VALUES (?, ?, 'd', ?, 'leased', ?, ?, ?, 'x', 100, ?, ?, ?, ?, ?)`,
+      id, `idem-${id}`, JSON.stringify({ purpose }), bundleId, route, `lt-${id}`, reserved,
+      `payloads/${id}.json`, now, now, purpose
+    );
+  }
+  return coordinator.completeBatch(bundleId, "tok", results.map((result) => ({
+    lease_token: `lt-${result.job_id}`, planned_at: now, outcome: "success",
+    provider_status_code: 200, result_key: `results/${result.job_id}.json`, ...result,
+  })));
+}
+
+test("detailedStats reports today's usage per lane and route from completed attempts", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
-  const dayStart = Date.parse(`${new Date(now).toISOString().slice(0, 10)}T00:00:00Z`);
-  const insertJob = (id, purpose, reserved) => sql.exec(
-    `INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, prompt_family,
-       input_token_estimate, max_output_token_estimate, payload_key, created_at, updated_at, purpose)
-     VALUES (?, ?, 'd', ?, 'completed', 'x', 100, ?, ?, ?, ?, ?)`,
-    id, `idem-${id}`, JSON.stringify({ purpose }), reserved, `payloads/${id}.json`, now, now, purpose
+  const yesterday = new Date(now - 86_400_000).toISOString().slice(0, 10);
+  // A cell from yesterday is excluded.
+  sql.exec(
+    "INSERT INTO attempt_usage (utc_day, purpose, route_id, calls, outputs_json) VALUES (?, 'chapter-agenda', 'route-a', 1, '[99999]')",
+    yesterday
   );
-  const insertAttempt = (id, jobId, route, output, durationMs, createdAt) => sql.exec(
-    `INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, actual_start_at, actual_end_at,
-       observed_output_tokens, start_state, outcome, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'started', 'success', ?)`,
-    id, jobId, route, createdAt, createdAt, createdAt + durationMs, output, createdAt
-  );
-  insertJob("j1", "chapter-agenda", 16384);
-  insertJob("j2", "chapter-agenda", 16384);
-  insertJob("j3", "topic-tags:tagger", 8192);
-  insertAttempt("old", "j1", "route-a", 99999, 1000, dayStart - 1000); // yesterday: excluded
-  insertAttempt("a1", "j1", "route-a", 2000, 30_000, now - 3000);
-  insertAttempt("a2", "j2", "route-a", 20000, 650_000, now - 2000); // over reservation, slow
-  insertAttempt("a3", "j3", "route-b", 500, 5_000, now - 1000);
+  const at = (offset, duration) => ({ actual_start_at: now - offset, actual_end_at: now - offset + duration });
+  await completeLeased(sql, coordinator, "b1", [
+    ["j1", "chapter-agenda", 16384, "route-a"],
+    ["j2", "chapter-agenda", 16384, "route-a"],
+    ["j3", "topic-tags:tagger", 8192, "route-b"],
+  ], [
+    { job_id: "j1", attempt_id: "a1", observed_output_tokens: 2000, ...at(3000, 30_000) },
+    // over its reservation, and slow
+    { job_id: "j2", attempt_id: "a2", observed_output_tokens: 20000, ...at(2000, 650_000) },
+    { job_id: "j3", attempt_id: "a3", observed_output_tokens: 500, ...at(1000, 5_000) },
+  ]);
 
   const usage = (await coordinator.detailedStats(now, 50)).usage_today;
   const agenda = usage.find((row) => row.purpose === "chapter-agenda");
@@ -2476,6 +2488,8 @@ test("detailedStats reports today's usage per lane and route from existing attem
   assert.equal(agenda.output_tokens_max, 20000);
   const tagger = usage.find((row) => row.purpose === "topic-tags:tagger");
   assert.deepEqual([tagger.calls, tagger.output_tokens_p90, tagger.slow_calls], [1, 500, 0]);
+  // One cell per lane/route per day, written once for the whole completion.
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM attempt_usage")[0].n, 3);
 });
 
 test("a length-truncated reply settles the token bucket to its measured usage", async () => {
@@ -2486,10 +2500,7 @@ test("a length-truncated reply settles the token bucket to its measured usage", 
   const routeId = "gemini_3_5_flash_primary"; // a real route with tpm configured
   coordinator._getOrCreateRouteLedger(routeId, now, {});
   sql.exec("UPDATE routes SET full_token_budget = 100000 WHERE route_id = ?", routeId);
-  sql.exec(
-    "INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at, dispatch_window_end, created_at) VALUES ('b1', 'tok', 'active', ?, ?, ?)",
-    now + 60_000, now + 60_000, now
-  );
+  insertActiveBundle(sql, "b1", "tok", now + 60_000, now + 60_000, now);
   sql.exec(
     `INSERT INTO jobs (
       id, idempotency_key, request_digest, policy_json, state, bundle_id, lease_route_id,
@@ -2519,30 +2530,55 @@ test("a length-truncated reply settles the token bucket to its measured usage", 
   const route = sql.exec("SELECT full_token_budget FROM routes WHERE route_id = ?", routeId)[0];
   // Google TPM counts only input; output usage stays in the attempt telemetry.
   assert.equal(route.full_token_budget, 100000 + 17384 - 1000);
-  // The attempt keeps the lane and reservation for usage_today after the job row is retired.
-  const attempt = sql.exec("SELECT purpose, reserved_output_tokens FROM attempts WHERE attempt_id = 'att-long'")[0];
-  assert.deepEqual([attempt.purpose, attempt.reserved_output_tokens], ["chapter-agenda", 16384]);
+  // usage_today keeps the lane and reservation, folded at completion.
+  const cell = sql.exec("SELECT purpose, reserved_sum, over_reservation_calls FROM attempt_usage")[0];
+  assert.deepEqual(
+    [cell.purpose, cell.reserved_sum, cell.over_reservation_calls],
+    ["chapter-agenda", 16384, 1]
+  );
 });
 
 test("usage_today keeps a retired job's lane and leaves unmeasured calls out of the percentiles", async () => {
   const { coordinator, sql } = makeCoordinator();
   const now = Date.now();
-  const insertAttempt = (id, output, purpose, reserved) => sql.exec(
-    `INSERT INTO attempts (attempt_id, job_id, route_id, planned_at, actual_start_at, actual_end_at,
-       observed_output_tokens, start_state, outcome, created_at, purpose, reserved_output_tokens)
-     VALUES (?, 'gone', 'route-a', ?, ?, ?, ?, 'started', 'success', ?, ?, ?)`,
-    id, now - 1000, now - 1000, now - 500, output, now - 1000, purpose, reserved
-  );
-  // No jobs row at all: the job was retired after its result was consumed.
-  insertAttempt("m1", 12000, "chapter-agenda", 16384);
-  insertAttempt("m2", null, "chapter-agenda", 16384); // failed before usage came back
-  insertAttempt("m3", null, "chapter-agenda", 16384);
+  const call = { actual_start_at: now - 1000, actual_end_at: now - 500 };
+  await completeLeased(sql, coordinator, "b-m", [
+    ["m1", "chapter-agenda", 16384, "route-a"],
+    ["m2", "chapter-agenda", 16384, "route-a"],
+    ["m3", "chapter-agenda", 16384, "route-a"],
+  ], [
+    { job_id: "m1", attempt_id: "a-m1", observed_output_tokens: 12000, ...call },
+    // failed before usage came back
+    { job_id: "m2", attempt_id: "a-m2", outcome: "terminal_error", provider_status_code: 400, ...call },
+    { job_id: "m3", attempt_id: "a-m3", outcome: "terminal_error", provider_status_code: 400, ...call },
+  ]);
+  // The jobs are retired after their results are consumed; usage was folded at completion.
+  sql.exec("DELETE FROM jobs");
   const [row] = (await coordinator.detailedStats(now, 50)).usage_today;
   assert.equal(row.purpose, "chapter-agenda");
   assert.equal(row.calls, 3);
   assert.equal(row.measured_calls, 1);
   assert.equal(row.output_tokens_p50, 12000);
   assert.equal(row.reserved_output_mean, 16384);
+});
+
+test("a usage cell keeps exact counts past its percentile sample cap", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const cap = coordinator.constructor.ATTEMPT_USAGE_SAMPLE_CAP;
+  const today = new Date().toISOString().slice(0, 10);
+  sql.exec(
+    `INSERT INTO attempt_usage (utc_day, purpose, route_id, calls, measured_calls, outputs_json)
+     VALUES (?, 'chapter-agenda', 'route-a', ?, ?, ?)`,
+    today, cap, cap, JSON.stringify(Array(cap).fill(10))
+  );
+  const now = Date.now();
+  await completeLeased(sql, coordinator, "b-cap", [["c1", "chapter-agenda", 100, "route-a"]], [
+    { job_id: "c1", attempt_id: "a-c1", observed_output_tokens: 99, actual_start_at: now, actual_end_at: now },
+  ]);
+  const cell = sql.exec("SELECT calls, measured_calls, outputs_json FROM attempt_usage")[0];
+  assert.equal(cell.calls, cap + 1);
+  assert.equal(cell.measured_calls, cap + 1);
+  assert.equal(JSON.parse(cell.outputs_json).length, cap);
 });
 
 test("detailedStats can restrict route_failures to named classes past the row limit", async () => {
@@ -2574,9 +2610,7 @@ test("TPD reserves and settles daily tokens to actual usage", async () => {
   const reserved = coordinator._applyProvisionalReservation({ ...catalog, ...ledger }, 2000, now);
   coordinator._writeRouteLedger(reserved);
   assert.equal(sql.exec("SELECT tpd_used FROM routes WHERE route_id=?", routeId)[0].tpd_used, 2000);
-  sql.exec(`INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at,
-    dispatch_window_end, created_at) VALUES ('tpd-b', 'tok', 'active', ?, ?, ?)`,
-    now + 60000, now + 60000, now);
+  insertActiveBundle(sql, "tpd-b", "tok", now + 60000, now + 60000, now);
   sql.exec(`INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, bundle_id,
     lease_route_id, lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
     payload_key, created_at, updated_at, token_reservation, reservation_rpd_day_key)
@@ -2593,9 +2627,7 @@ test("Orca prompt cap requeues and learns a size bound without blocking short wo
   const now = Date.now();
   const routeId = 'orcarouter_zai_glm_5_3_flash_free';
   coordinator._getOrCreateRouteLedger(routeId, now, {});
-  sql.exec(`INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at,
-    dispatch_window_end, created_at) VALUES ('cap-b', 'tok', 'active', ?, ?, ?)`,
-    now + 60000, now + 60000, now);
+  insertActiveBundle(sql, "cap-b", "tok", now + 60000, now + 60000, now);
   sql.exec(`INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, bundle_id,
     lease_route_id, lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
     payload_key, created_at, updated_at, token_reservation)
@@ -2616,9 +2648,7 @@ test("TPD feedback keeps remaining tokens and does not exhaust daily requests", 
   const now = Date.now();
   const routeId = "groq_qwen_3_8_27b_primary";
   coordinator._getOrCreateRouteLedger(routeId, now, {});
-  sql.exec(`INSERT INTO bundles (bundle_id, execution_token, state, lease_expires_at,
-    dispatch_window_end, created_at) VALUES ('tpd-feedback', 'tok', 'active', ?, ?, ?)`,
-    now + 60000, now + 60000, now);
+  insertActiveBundle(sql, "tpd-feedback", "tok", now + 60000, now + 60000, now);
   sql.exec(`INSERT INTO jobs (id, idempotency_key, request_digest, policy_json, state, bundle_id,
     lease_route_id, lease_token, prompt_family, input_token_estimate, max_output_token_estimate,
     payload_key, created_at, updated_at)
@@ -2631,4 +2661,42 @@ test("TPD feedback keeps remaining tokens and does not exhaust daily requests", 
   assert.equal(ledger.tpd_used, 180000 - 341);
   assert.equal(ledger.rpd_count, 0);
   assert.equal(ledger.blocked_until, now + 323136);
+});
+
+test("a coordinator from before attempt_usage drops its per-attempt journal on recreation", () => {
+  const { storage, sql } = createMockSqlStorage();
+  makeCoordinator({}, { storage, sql });
+  sql.exec(`
+    CREATE TABLE attempts (attempt_id TEXT PRIMARY KEY, job_id TEXT, created_at INTEGER);
+    INSERT INTO attempts VALUES ('a1', 'j1', 1);
+  `);
+  const { coordinator } = makeCoordinator({}, { storage, sql });
+  assert.equal(coordinator._inspectCurrentSchema().current, true);
+  assert.equal(
+    sql.exec("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'attempts'")[0].n,
+    0
+  );
+});
+
+test("enqueue reserves the legacy-index row cost until that index is retired", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  assert.equal(coordinator._rowsPerIngressWriteUnit(), 1.25);
+  sql.exec("CREATE UNIQUE INDEX idx_job_models_job_model ON job_models (job_id, model)");
+  assert.equal(coordinator._rowsPerIngressWriteUnit(), 2);
+  await coordinator.recountQueuedJobs(); // nothing legacy is queued, so the index is dropped
+  assert.equal(coordinator._rowsPerIngressWriteUnit(), 1.25);
+});
+
+test("a failed attempt on a lease with no recorded route still completes", async () => {
+  const { coordinator, sql } = makeCoordinator();
+  const now = Date.now();
+  await completeLeased(sql, coordinator, "b-noroute", [["nr1", "chapter-agenda", 100, null]], [{
+    job_id: "nr1", attempt_id: "a-nr1", outcome: "terminal_error", provider_status_code: 400,
+    actual_start_at: now, actual_end_at: now,
+  }]);
+  assert.equal(sql.exec("SELECT state FROM jobs WHERE id = 'nr1'")[0].state, "failed");
+  assert.equal(
+    sql.exec("SELECT route_id FROM route_failures WHERE failure_class = 'request_defect'")[0].route_id,
+    "unknown"
+  );
 });
