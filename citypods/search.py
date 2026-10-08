@@ -526,6 +526,7 @@ def build_search_index(
         return None
     search_dir.mkdir(parents=True, exist_ok=True)
     cache_shards = cache.setdefault("shards", {}) if cache is not None else {}
+    partials = cache.setdefault("partials", {}) if cache is not None else {}
     artifact_cache: dict[str, bytes] = {}
     manifest: list[dict[str, Any]] = []
     wanted_names = {"manifest.json"}
@@ -553,15 +554,66 @@ def build_search_index(
             and isinstance(cached.get("manifest"), dict)
         ):
             manifest.append(cached["manifest"])
+            partials.pop(src_key, None)
             continue
 
-        if stop is not None and stop():
-            return None
+        partial_hash = _shard_hash(
+            {},
+            candidates,
+            base_url,
+            selection=plan,
+            archive_hash=archive_policy_hash(archive_index, src_key),
+        )
+        partial = partials.get(src_key)
+        if (
+            not isinstance(partial, dict)
+            or partial.get("version") != SEARCH_CACHE_VERSION
+            or partial.get("hash") != partial_hash
+            or not isinstance(partial.get("records"), dict)
+        ):
+            partial = {"version": SEARCH_CACHE_VERSION, "hash": partial_hash, "records": {}}
+            partials[src_key] = partial
+        processed = partial["records"]
         documents: list[dict[str, Any]] = []
-        for record in plan.public_items:
-            if is_archive_only(archive_index, src_key, record):
+        public_records = [
+            record
+            for record in plan.public_items
+            if not is_archive_only(archive_index, src_key, record)
+        ]
+        record_hashes = {
+            str(record["uid"]): _shard_hash(
+                {str(record["uid"]): record},
+                candidates,
+                base_url,
+                selection=plan,
+                archive_hash=archive_policy_hash(archive_index, src_key),
+            )
+            for record in public_records
+        }
+        for uid in list(processed):
+            item = processed[uid]
+            if (
+                uid not in record_hashes
+                or not isinstance(item, dict)
+                or item.get("hash") != record_hashes[uid]
+            ):
+                del processed[uid]
+        for record in public_records:
+            uid = str(record["uid"])
+            if uid in processed:
+                document = processed[uid]["document"]
+                if document:
+                    documents.append(document)
                 continue
             if stop is not None and stop():
+                if cache is not None:
+                    cache["last_deferred"] = {
+                        "source_key": src_key,
+                        "processed_records": len(processed),
+                        "total_records": len(public_records),
+                        "completed_sources": len(manifest),
+                        "total_sources": len(representatives),
+                    }
                 return None
             document = _record_to_document(
                 _city_for_record(
@@ -572,6 +624,7 @@ def build_search_index(
                 storage=storage,
                 artifact_cache=artifact_cache,
             )
+            processed[uid] = {"hash": record_hashes[uid], "document": document}
             if document:
                 documents.append(document)
         documents.sort(key=lambda document: (document["date"], document["uid"]), reverse=True)
@@ -623,6 +676,7 @@ def build_search_index(
         }
         manifest.append(entry)
         cache_shards[src_key] = {"version": SEARCH_CACHE_VERSION, "hash": digest, "manifest": entry}
+        partials.pop(src_key, None)
 
     # Cached docs survive deploys.  Remove deleted-source shards and their cache entries so neither
     # browser search nor the next cache hit can serve a retired feed.
@@ -633,6 +687,11 @@ def build_search_index(
         if src_key not in representatives:
             del cache_shards[src_key]
 
+    for src_key in list(partials):
+        if src_key not in representatives:
+            del partials[src_key]
+    if cache is not None:
+        cache.pop("last_deferred", None)
     manifest.sort(key=lambda shard: (shard["city_label"].casefold(), shard["source_key"]))
     manifest_payload = {
         "schema_version": SEARCH_SCHEMA_VERSION,
@@ -736,7 +795,7 @@ def build_search_site(
             if not (complete / "search/index.html").is_file():
                 raise ValueError("missing complete search page")
         except (OSError, ValueError, KeyError, TypeError):
-            return "deferred: retaining complete prior site"
+            return "deferred: no complete search index available"
         # Re-render navigation with current feed information, retaining all fresh non-search pages.
         navigation = render_index(
             cities, config, resolved_base, context["feed_info"], search_enabled=True
@@ -776,7 +835,15 @@ def build_search_site(
                 cache_path.write_text(json.dumps(cache, sort_keys=True) + "\n")
                 save_checkpoint(staged, "working")
                 if built is None:
-                    return prior_publication()
+                    status = prior_publication()
+                    progress = cache.get("last_deferred")
+                    if isinstance(progress, dict):
+                        status += (
+                            f"; source {progress['source_key']}: "
+                            f"{progress['processed_records']}/{progress['total_records']} records; "
+                            f"{progress['completed_sources']}/{progress['total_sources']} sources"
+                        )
+                    return status
                 manifest = built
                 page = staged / "search" / "index.html"
                 page.parent.mkdir(parents=True, exist_ok=True)

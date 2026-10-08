@@ -586,3 +586,78 @@ def test_archive_identity_conflict_holds_index_before_any_output_write(tmp_path)
     )
     assert not (tmp_path / "docs").exists()
     assert cache == {}
+
+
+def test_partial_source_resumes_and_only_changed_records_restart(tmp_path, monkeypatch):
+    city = _city()
+    records = {f"u{i}": episode_to_record(_episode(f"u{i}")) for i in range(5)}
+    _save(tmp_path, city, records)
+    cache = {}
+    calls = []
+    original = search_mod._record_to_document
+
+    def convert(city, record, **kwargs):
+        calls.append(record["uid"])
+        return original(city, record, **kwargs)
+
+    monkeypatch.setattr(search_mod, "_record_to_document", convert)
+
+    def run(limit):
+        start = len(calls)
+        return build_search_index(
+            tmp_path / "state",
+            [city],
+            tmp_path / "docs",
+            "https://site.test",
+            cache=cache,
+            stop=lambda: len(calls) - start >= limit,
+        )
+
+    assert run(2) is None
+    assert calls == ["u0", "u1"]
+    # Simulate durable JSON restoration between jobs.
+    cache = json.loads(json.dumps(cache))
+    records["u0"]["title"] = "Changed title"
+    _save(tmp_path, city, records)
+    assert run(2) is None
+    assert calls == ["u0", "u1", "u0", "u2"]
+    assert run(2) is not None
+    assert calls == ["u0", "u1", "u0", "u2", "u3", "u4"]
+    assert not cache["partials"]
+    shard = _shard(tmp_path, source_key(city))
+    assert len(shard["documents"]) == 5
+    assert next(d for d in shard["documents"] if d["uid"] == "u0")["title"] == "Changed title"
+
+
+def test_partial_source_invalidates_on_view_and_archive_policy_changes(tmp_path, monkeypatch):
+    city = _city()
+    records = {f"u{i}": episode_to_record(_episode(f"u{i}")) for i in range(3)}
+    _save(tmp_path, city, records)
+    cache = {}
+    calls = []
+    original = search_mod._record_to_document
+
+    def convert(city, record, **kwargs):
+        calls.append(record["uid"])
+        return original(city, record, **kwargs)
+
+    monkeypatch.setattr(search_mod, "_record_to_document", convert)
+
+    def run():
+        start = len(calls)
+        return build_search_index(
+            tmp_path / "state",
+            [city],
+            tmp_path / "docs",
+            "https://site.test",
+            cache=cache,
+            stop=lambda: len(calls) - start >= 1,
+        )
+
+    assert run() is None
+    city.podcast_title = "Changed feed title"
+    assert run() is None
+    assert calls == ["u0", "u0"]
+    monkeypatch.setattr(search_mod, "archive_policy_hash", lambda *_: "changed-archive-policy")
+    assert run() is None
+    assert calls == ["u0", "u0", "u0"]

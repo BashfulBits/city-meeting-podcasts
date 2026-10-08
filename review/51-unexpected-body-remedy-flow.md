@@ -2695,3 +2695,43 @@ assignments, not a claim of live deployment.
 
 Validation: 12 targeted tests and 5,120 offline tests passed (15 deselected); whole
 Ruff lint and format checks passed across 480 files. No pipeline version or audio backfill.
+
+### Within-source search resume — L3 (#2173, 2026-10-08)
+
+Maintainer approved the per-record progress fix and clearer reporting. Named files:
+citypods/search.py, tests/test_search.py, tests/test_static_search_job.py, ARCHITECTURE.md,
+CHANGELOG.md, review/11 and this section. Keep workflow/cadence/config20minute ceiling unchanged.
+No provider/dependency/raw-record/audio/storage-write/public search schema changes.
+
+Private `.search-cache.json` adds partial source entries keyed by source with version/hash and
+processed UID-to-document mappings (null means processed with no public document). Existing
+_shard_hash binds complete record inputs, candidate config, archive and publication selection.
+Reuse only matching version/hash partials; discard stale partials. Save mutable partial state
+on normal stop through the wrapper's existing working checkpoint persistence. Complete sources
+remove their partial entry. Public manifest/page publish only after all sources finish.
+Report interrupted source, processed/total records and completed/total sources in returned
+summary; distinguish no prior index from retained complete index. Keep complete return string
+compatibility. Cheap cache hits/bookkeeping precede stop admission.
+
+Tests: repeated bounded runs finish one large source without reconverting completed records;
+changed source/config/archive policies invalidate partials; a stopped build with no prior index
+reports that accurately; prior complete bytes survive deferral/errors. Whole Ruff and offline
+suite plus current-head substantive review before human merge. No pipeline bump/backfill.
+
+L3 refinement before final checkpoint implementation: store each processed UID's input hash
+and document (null for excluded/no document). Partial source hash covers config/base URL/
+archive/publication policy with empty record inputs; per-record hashes cover exact durable
+record inputs. New/changed recordings therefore reprocess only affected records, while
+policy changes invalidate the entire partial source. Drop removed/nonpublic cached UIDs.
+This prevents routine additions during the four-hour cadence from discarding all progress.
+
+Implemented working-cache progress uses per-record hashes to preserve unchanged converted
+records across routine input additions. Old complete source caches remain usable; no search
+output schema/version change or audio/stage invalidation. Targeted search/job tests pass39.
+The deploy workflow runs every four hours, on relevant main pushes, or manual dispatch, with
+single-deployment concurrency. The20minute ceiling is an approved operational bound, not a
+measured optimum. Keep it and cadence unchanged until progress summaries establish actual
+completion/deferral rates; do not increase the limit to hide restart behavior.
+
+Validation:39 targeted and5,123 offline tests passed (15 deselected); whole Ruff/format
+passed480 files. Runtime review and deployed repeated-run completion remain required.

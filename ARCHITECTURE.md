@@ -1449,3 +1449,14 @@ in RSS rich notes and raw meeting pages; the provider title, description, source
 audio are unchanged. The note participates in feed/page render hashes only when present, never in
 audio hashes or persisted episode records. A present UID with a mismatched provider GUID returns
 an error before replacing public output; a not-yet-present UID remains unannotated.
+
+### Bounded search within-source checkpoint (#2173)
+
+The existing private working search cache retains processed UID documents (including null
+results), each tied to exact durable record inputs. Source-level policy hashes bind feed
+configuration, base URL, archive policy and publication selection. Routine additions or record
+changes reprocess only affected records; policy changes invalidate partial source progress.
+Completed sources remove partial entries. The wrapper persists working cache on graceful
+deferral, while public manifest/page publication still requires a complete build. The action
+summary reports interrupted source, records and completed sources and explicitly distinguishes
+a missing complete index from retained complete publication. Storage stays read-only.
