@@ -391,7 +391,11 @@ def discard_terminal_failure(
     if entry is None or not isinstance(entry.data, Mapping):
         return 0
     # Do not delete a newer record a producer may have written after this snapshot was loaded.
-    if _read_json(storage, entry.key) != entry.data:
+    if (
+        entry.data.get("ref") != handle.ref
+        or entry.data.get("backend") != handle.backend
+        or _read_json(storage, entry.key) != entry.data
+    ):
         entry.deleted = False
         return 0
     now = now or datetime.now(UTC)

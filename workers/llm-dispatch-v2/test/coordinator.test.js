@@ -755,6 +755,8 @@ test("terminalFeed is keyset paginated and cancelBatch removes queued work from 
       state: "completed",
       result_key: "results/complete.json",
       updated_at: 100,
+      terminal_reason: null,
+      terminal_catalog_digest: null,
     },
   ]);
   assert.deepEqual(await coordinator.terminalFeed(terminal.cursor, 1), {
@@ -2699,4 +2701,48 @@ test("a failed attempt on a lease with no recorded route still completes", async
     sql.exec("SELECT route_id FROM route_failures WHERE failure_class = 'request_defect'")[0].route_id,
     "unknown"
   );
+});
+
+
+test("structural terminal fields are additive and legacy failed rows stay generic", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  for (const id of ["retired", "oversized", "legacy"]) {
+    await coordinator.enqueueBatch([{
+      id, idempotency_key: id, request_digest: id, policy_json: "{}", prompt_family: "tags",
+      input_token_estimate: 1, max_output_token_estimate: 1, payload_key: `payloads/${id}.json`,
+    }]);
+  }
+  sql.exec("UPDATE jobs SET state='failed', updated_at=100");
+  sql.exec("UPDATE jobs SET terminal_reason='route_retired', terminal_catalog_digest='catalog' WHERE id='retired'");
+  sql.exec("UPDATE jobs SET terminal_reason='unadmissible', terminal_catalog_digest='catalog' WHERE id='oversized'");
+  const { statuses } = await coordinator.pollBatch(["retired", "oversized", "legacy"]);
+  const { terminals } = await coordinator.terminalFeed(null);
+  for (const rows of [statuses, terminals]) {
+    assert.equal(rows.find(row => row.id === "retired").terminal_reason, "route_retired");
+    assert.equal(rows.find(row => row.id === "oversized").terminal_reason, "unadmissible");
+    assert.equal(rows.find(row => row.id === "legacy").terminal_reason, null);
+    assert.equal(rows.find(row => row.id === "legacy").terminal_catalog_digest, null);
+    assert.equal(rows.find(row => row.id === "retired").terminal_catalog_digest, "catalog");
+  }
+  assert.ok(statuses.every(row => row.error === "job_failed"));
+});
+
+test("terminal metadata migration preserves existing failed jobs without guessing reasons", async () => {
+  const { coordinator, sql, storage } = makeCoordinator();
+  await coordinator.enqueueBatch([{
+    id: "old-failure", idempotency_key: "old-failure", request_digest: "digest",
+    policy_json: "{}", prompt_family: "tags", input_token_estimate: 1,
+    max_output_token_estimate: 1, payload_key: "old-payload",
+  }]);
+  sql.exec("UPDATE jobs SET state='failed' WHERE id='old-failure'");
+  sql.exec("ALTER TABLE jobs DROP COLUMN terminal_reason");
+  sql.exec("ALTER TABLE jobs DROP COLUMN terminal_catalog_digest");
+  const rebooted = new LLMSchedulerDO({ storage }, withTestReservations({}));
+  const { statuses } = await rebooted.pollBatch(["old-failure"]);
+  assert.equal(statuses[0].state, "failed");
+  assert.equal(statuses[0].error, "job_failed");
+  assert.equal(statuses[0].terminal_reason, null);
+  assert.equal(statuses[0].terminal_catalog_digest, null);
+  assert.equal(sql.exec("SELECT payload_key FROM jobs WHERE id='old-failure'")[0].payload_key,
+    "old-payload");
 });

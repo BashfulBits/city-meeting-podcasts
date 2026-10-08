@@ -867,6 +867,58 @@ def test_poll_batch_returns_terminal_error_for_failed_job():
     assert "sensitive provider response body" not in str(results["j1"])
 
 
+@pytest.mark.parametrize("reason", ["route_retired", "unadmissible"])
+def test_poll_and_single_reconcile_preserve_structural_terminal_metadata(reason):
+    session = MagicMock()
+    session.post.return_value = _mock_response(
+        status_code=200,
+        json_data={
+            "statuses": [
+                {
+                    "id": "retired",
+                    "state": "failed",
+                    "terminal_reason": reason,
+                    "terminal_catalog_digest": "catalog-v2",
+                }
+            ],
+        },
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://dispatch-v2.example.com"
+        ),
+        http_session=session,
+        storage=MockStorage(),
+    )
+    handle = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="retired")
+    result = backend.poll_batch([handle])[handle.ref]
+    assert isinstance(result, LLMDispatchTerminalError)
+    assert result.structural
+    assert result.terminal_reason == reason
+    assert result.terminal_catalog_digest == "catalog-v2"
+    with pytest.raises(LLMDispatchTerminalError) as exc:
+        backend.reconcile(handle)
+    assert exc.value.terminal_reason == reason
+    assert exc.value.terminal_catalog_digest == "catalog-v2"
+
+
+@pytest.mark.parametrize(
+    ("reason", "digest"),
+    [
+        (None, None),
+        ("future_reason", "digest"),
+        ("route_retired", None),
+        ("unadmissible", ""),
+        (["route_retired"], {}),
+    ],
+)
+def test_incomplete_or_unknown_terminal_metadata_remains_generic(reason, digest):
+    error = LLMDispatchTerminalError(
+        "terminal", terminal_reason=reason, terminal_catalog_digest=digest
+    )
+    assert not error.structural
+
+
 def test_poll_batch_missing_result_bytes_stays_pending_not_cached_empty():
     # A completed state whose result_key isn't (yet) readable from storage must NOT be cached as
     # an empty JobResult -- write_deferred never downgrades a completed record, so an empty

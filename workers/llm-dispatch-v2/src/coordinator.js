@@ -260,6 +260,8 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "buffer_updated_at",
   ],
   jobs: [
+    "terminal_reason",
+    "terminal_catalog_digest",
     "queue_models",
     "token_reservation",
     "purpose",
@@ -844,6 +846,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         max_output_token_estimate   INTEGER NOT NULL,
         payload_key                 TEXT NOT NULL,
         result_key                  TEXT,
+        terminal_reason             TEXT,
+        terminal_catalog_digest     TEXT,
         lease_token                 TEXT,
         lease_route_id              TEXT,
         lease_expires_at            INTEGER,
@@ -1026,6 +1030,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // instance; it does not retroactively add a column introduced later (rpd_window_start/
     // rpd_count, added alongside Phase 2's claimDispatchWindow) to a `routes` table an earlier
     // deploy already created. Defensive, cheap, and a no-op on a fresh instance.
+    this._ensureColumn("jobs", "terminal_reason", "TEXT");
+    this._ensureColumn("jobs", "terminal_catalog_digest", "TEXT");
     // Before the clustering migration and the trigger replacement below: both create the
     // priority trigger, whose body reads queue_models.
     this._ensureColumn("jobs", "queue_models", "TEXT");
@@ -1291,6 +1297,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["reservation_rpm_window_start", "INTEGER NOT NULL DEFAULT 0"],
       ["reservation_rpd_day_key", "TEXT NOT NULL DEFAULT ''"],
       ["reservation_tpm_window_start", "INTEGER NOT NULL DEFAULT 0"],
+      ["terminal_reason", "TEXT"],
+      ["terminal_catalog_digest", "TEXT"],
       ["queue_models", "TEXT"],
       ["active_bundles_json", "TEXT NOT NULL DEFAULT '{}'"],
     ]);
@@ -3032,7 +3040,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     for (const chunk of this._chunks(ids)) {
       const placeholders = chunk.map(() => "?").join(",");
       const rows = [...sql.exec(
-        `SELECT id, state, result_key, payload_key, attempts, lease_route_id FROM jobs
+        `SELECT id, state, result_key, payload_key, attempts, lease_route_id,
+                terminal_reason, terminal_catalog_digest FROM jobs
          WHERE id IN (${placeholders})`,
         ...chunk
       )];
@@ -3045,6 +3054,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // delete exactly the B2 objects THIS row references before retireConsumed.
           payload_key: row.state === "completed" ? row.payload_key : null,
           error: row.state === "failed" ? "job_failed" : null,
+          terminal_reason: row.state === "failed" ? row.terminal_reason : null,
+          terminal_catalog_digest: row.state === "failed" ? row.terminal_catalog_digest : null,
           attempts: row.attempts,
           model:
             row.state === "completed"
@@ -3074,7 +3085,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // range seek with NO temp B-tree, whereas `state IN ('completed', 'failed') ORDER BY updated_at`
     // forces SQLite to scan and sort the entire terminal history in memory.
     const completedRows = [...sql.exec(
-      `SELECT id, state, result_key, updated_at FROM jobs
+      `SELECT id, state, result_key, updated_at, terminal_reason, terminal_catalog_digest FROM jobs
        WHERE state = 'completed' AND (updated_at, id) > (?, ?)
        ORDER BY state ASC, updated_at ASC, id ASC LIMIT ?`,
       afterUpdatedAt,
@@ -3082,7 +3093,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       limit
     )];
     const failedRows = [...sql.exec(
-      `SELECT id, state, result_key, updated_at FROM jobs
+      `SELECT id, state, result_key, updated_at, terminal_reason, terminal_catalog_digest FROM jobs
        WHERE state = 'failed' AND (updated_at, id) > (?, ?)
        ORDER BY state ASC, updated_at ASC, id ASC LIMIT ?`,
       afterUpdatedAt,
@@ -3102,6 +3113,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         state: row.state,
         result_key: row.result_key,
         updated_at: row.updated_at,
+        terminal_reason: row.state === "failed" ? row.terminal_reason : null,
+        terminal_catalog_digest: row.state === "failed" ? row.terminal_catalog_digest : null,
       })),
       cursor: last
         ? { updated_at: last.updated_at, id: last.id }

@@ -273,6 +273,32 @@ class LLMStructuredOutputError(LLMBackendError):
 class LLMDispatchTerminalError(LLMBackendError):
     """The dispatch Worker recorded a terminal failure for this one request."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        terminal_reason: str | None = None,
+        terminal_catalog_digest: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        # Unknown future reasons retain generic failure semantics. A structural disposition
+        # requires both recognized metadata and a nonempty catalog identity.
+        self.terminal_reason = (
+            terminal_reason
+            if isinstance(terminal_reason, str)
+            and terminal_reason in {"route_retired", "unadmissible"}
+            else None
+        )
+        self.terminal_catalog_digest = (
+            terminal_catalog_digest
+            if isinstance(terminal_catalog_digest, str) and terminal_catalog_digest.strip()
+            else None
+        )
+
+    @property
+    def structural(self) -> bool:
+        return self.terminal_reason is not None and self.terminal_catalog_digest is not None
+
 
 class LLMUpstreamPassthroughError(LLMDispatchTerminalError):
     """A stored "completed" result is actually a provider/gateway error object, not a completion.
@@ -2502,7 +2528,9 @@ class LiteLLMBackend(Backend):
                 payload_keys[h.ref] = st.get("payload_key")
             elif state == "failed":
                 results[h.ref] = LLMDispatchTerminalError(
-                    f"LLM dispatch v2 job {h.ref} failed permanently"
+                    f"LLM dispatch v2 job {h.ref} failed permanently",
+                    terminal_reason=st.get("terminal_reason"),
+                    terminal_catalog_digest=st.get("terminal_catalog_digest"),
                 )
             else:
                 results[h.ref] = None

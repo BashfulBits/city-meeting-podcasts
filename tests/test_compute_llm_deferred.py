@@ -1039,3 +1039,15 @@ def test_a_capsule_written_before_those_fields_existed_keeps_the_old_defaults():
     )
     assert decoded.deferred_request.timeout is None
     assert decoded.deferred_request.max_tokens_mode is None
+
+
+def test_terminal_failure_from_old_handle_cannot_delete_new_snapshot_record():
+    storage = MemStorage()
+    old = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="old")
+    newer = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="new")
+    write_deferred(storage, "r1", newer, now=NOW)
+    snapshot = load_deferred_snapshot(storage)
+    assert discard_terminal_failure(storage, snapshot, old, RuntimeError("failed"), now=NOW) == 0
+    assert look_up_deferred(storage, "r1") == newer
+    assert not storage.exists(deferred_failure_key("r1"))
+    assert list(snapshot.pending()) == [newer]

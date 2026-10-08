@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog Slice 3a protocol preparation (#2190, implementation in progress).**
+  Dispatch failed-job poll/feed responses carry nullable structural reason/catalog fields;
+  legacy failures remain generic. Python preserves recognized metadata, and deferred terminal
+  cleanup fences the responding handle against the snapshot's backend/ref and current stored
+  record. Rescue, structural recovery and rebatching are not activated by this checkpoint.
+  No pipeline version bump or successful-artifact invalidation.
+
 - **Provider catalog Slice 2b: explicit keep-paid PR preparation (#2187).** `/apply` rechecks
   selected physical routes under existing pauses/quotas and requires unchanged route evidence plus
   fresh `not_entitled` proof. Narrow edits set `free: false` and acknowledge the exact upstream;

@@ -522,6 +522,25 @@ shadow lanes and falling qualification. Never promote a primary through this com
 Next implementation issue: [#2190](https://github.com/BashfulBits/city-meeting-podcasts/issues/2190).
 Merge Slice 2b first; deployment/canary remain prerequisites for Slice 3b activation.
 
+**Implementation checkpoint (2026-10-08, #2190; incomplete):** nullable terminal reason/catalog
+fields and additive poll/feed transport are prepared; Python recognizes only the two specified
+reasons with a nonempty catalog identity. Generic/legacy failures retain existing semantics. The
+terminal discard fence compares the caller's backend/ref as well as the snapshot and stored record,
+so an old response cannot delete a newer handle already present when the snapshot was loaded.
+Bounded rescue, structural audit/producer guards and retained-subject rebatching remain outstanding.
+
+**Pending maintainer decision:** `modelsForJob` activates stored backups only after provider attempts
+or schema correction. A retired/undersized primary can prevent every attempt, leaving a viable
+backup unreachable. Decide whether structural recovery may unlock already-declared backups while
+retaining paid/free policy, or should block the job for producer regeneration instead. Do not alter
+this runtime policy until the choice is recorded here.
+
+**Review pacing (maintainer instruction 2026-10-08):** request CodeRabbit when each implementation PR
+is ready, with at least one hour between manual requests. Check repository-wide recent requests
+before posting, including other sessions. Slice 2b #2189 was requested at 2026-10-08 14:14:23 UTC
+([request](https://github.com/BashfulBits/city-meeting-podcasts/pull/2189#issuecomment-6061804491));
+the next request cannot precede 15:14:23 UTC, and a later request elsewhere moves that floor.
+
 The deployed coordinator already has `_modelsForQueuedJob()` and
 `_reconcileUnroutableJobs()`. Extend them; do not introduce a second full-queue reconciler.
 Structural eligibility uses the full dispatch catalog and the job's policy/context/output bounds.
