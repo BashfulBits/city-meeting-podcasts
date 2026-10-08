@@ -1,6 +1,6 @@
 # review/48 — Provider catalog reconciliation
 
-**Maturity: Slice 1 and PR C shipped · R10 catalog verification in implementation · Slices 2–4 L3**
+**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slices 2–4 contract proposal (L2)**
 
 Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
 `scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
@@ -16,8 +16,8 @@ PR C shipped in [#1854](https://github.com/BashfulBits/city-meeting-podcasts/pul
 and Python direct path already shape requests per route and reject empty structured responses. The
 remaining R10 gap was the catalog: its first-event availability ping could prove service without
 proving JSON support. The maintainer approved completing this verification before Slice 2 on
-2026-10-08. This checkpoint describes the implementation under review; it does not mark Slices 2–4
-shipped.
+2026-10-08. Catalog verification shipped in [#2169](https://github.com/BashfulBits/city-meeting-podcasts/pull/2169).
+This checkpoint does not mark Slices 2–4 shipped; their remaining contracts are proposed in §8.
 
 BeatAPI registration shipped in
 [#2167](https://github.com/BashfulBits/city-meeting-podcasts/pull/2167). Its DeepSeek routes pool
@@ -85,7 +85,7 @@ asks a human only for real decisions.
 | G1 | Keep LLM config current with providers: routes, context limits and rate limits. |
 | G2 | Automate discovery and retirement: read `/models`, prove each model with a canary, screen quality, check limits. |
 | G3 | Never strand jobs when a route is removed; affected jobs are reassigned automatically. |
-| G4 | Humans decide additions (issue checkboxes + `/apply` → curated PR); removals and small, conservative limit changes are automatic PRs. |
+| G4 | Humans decide additions (issue checkboxes + `/apply` → curated PR); removals and proven conservative tightening are automatic PRs (material-change policy: §8.1). |
 | G5 | Extensible: providers and LLM lanes are added or removed without touching the reconciler core. |
 | G6 | Every structured request reaches its route in a form that route answers with JSON; a route that stops doing so fails loudly, never with silent empty replies. |
 
@@ -279,14 +279,14 @@ memory, scarce-route checks, deferrals, known anomalies, the last full report fo
 merges). Ticked boxes survive weekly rewrites. Workflow: weekly full run + daily due-only run,
 `issues: write` only.
 
-**Slice 2 — `/apply` → curated additions PR.** `provider-catalog-commands.yml` on `issue_comment`
+**Slice 2 — `/apply` → curated additions PR (contract proposal: §8.2–8.4).** `provider-catalog-commands.yml` on `issue_comment`
 (`author_association` prefilter + `require_repository_write`), reading `checked_decisions` and
 re-verifying candidate digests. Writes route blocks (comment-preserving append; limits from catalog,
 canary headers, else rpm 1 / concurrency 1), lane `backup_models`, and `ignored` decisions; runs
 both compilers and the lane/limit tests in-job (GITHUB_TOKEN PRs do not trigger CI); fixed branch
 `automation/provider-catalog-additions` rebuilt from main with list/edit/create.
 
-**Slice 3 — automatic removals, lane repair, job rescue.** Remove a route only when the model is
+**Slice 3 — automatic removals, lane repair, job rescue (contract proposal: §8.5–8.6).** Remove a route only when the model is
 absent from a complete catalog and its canary is `retired`/`not_served`. A free route that becomes
 paid (`not_entitled`) is **never** removed automatically, even when no lane uses it: it stays a
 notify-only anomaly for a maintainer decision (maintainer decision 2026-09-24). Same PR repairs lanes
@@ -303,7 +303,7 @@ deferred sweep does not count `route_retired` toward the retry cap, and the prod
 under the current lane. The lane↔route CI guard (#1849) blocks any removal that would strand a
 lane.
 
-**Slice 4 — bounded limit maintenance.** Record header-reported limits and a bounded rate-probe
+**Slice 4 — bounded limit maintenance (contract proposal: §8.7).** Record header-reported limits and a bounded rate-probe
 pass under the pause. Effective value = the maximum of the last 6 observations within 90 days.
 Within ±20%: nothing. Below by >20% with ≥3 consecutive low readings: automatic tightening PR.
 Above by >20%: an issue checkbox. Any swing >50% or an observed 0: flagged as a material change.
@@ -341,3 +341,274 @@ shown side by side.
   job forced to NVIDIA `deepseek-v4.1-flash` completes with valid JSON, and a route configured with
   a failing method shows `structured_output_empty` in `/v2/stats?detail=1` and the job completes on
   another route.
+
+## 8. Remaining-slice contract proposal — 2026-10-08
+
+**Status: L2 proposal for Slices 2–4; implementation resumes after contract acceptance and issue
+creation.** The earlier L3 label overstated readiness: candidate provenance, YAML writes, terminal
+recovery and scoped limit observations lacked executable contracts. This section proposes those
+contracts against current `main`; it supersedes conflicting shorthand in §6. It does not freeze the
+whole breakout or claim the remaining slices shipped.
+
+### 8.1 Maintainer decisions and delivery gates
+
+The maintainer selected these priorities in chat on 2026-10-08:
+
+1. Slice 2 additions/ignore first; then Slice 3 rescue/removal; then Slice 4 limits.
+2. Split Slice 2: 2a handles additions/ignore; 2b completes paid-route decisions and shadow support.
+   Unsupported choices remain visible but cannot be applied by 2a. They are still committed scope.
+3. Proven tightening may prepare a PR even for a decrease greater than 50%; flag the material
+   change prominently. Increases still require a maintainer choice. Zero never becomes a limit.
+
+Decision 3 extends G4's earlier “small” automatic changes. It saves a decision round when repeated
+credible evidence proves a large capacity loss; the risk is a misleading measurement lowering
+throughput. Three independent observations, scope validation and human PR review contain that
+risk. Automation prepares PRs; it does not merge them or deploy changes.
+
+Proposed merge order: **2a → 2b → 3a recovery → 3b removal → 4**. The rescue deployment is a hard
+prerequisite for removal automation. Split 2b can proceed separately from 3a after 2a; it must not
+silently disappear from the delivery list. No live probe is required to write or test these slices.
+Paused live evidence and post-deploy recovery validation are activation gates, not coding blockers.
+Each slice gets a separate issue and scoped implementation PR after this proposal is accepted.
+
+### 8.2 Shared evidence and identity contract
+
+Add `citypods/provider_catalog/evidence.py` with immutable `CatalogEvidence`, `RouteEvidence` and
+`LimitObservation` records, `catalog_digest()` and `candidate_digest()`. Serialize canonical JSON
+(sorted keys, stable ordering, SHA-256); never include credentials, raw response bodies or prompts.
+
+- Catalog evidence identifies provider, UTC observation time, completeness, upstream IDs and the
+  normalized fields used for free eligibility, context and identity. Pagination order does not
+  change the digest; changed eligibility or limits does. Missing pages are incomplete evidence.
+- Route evidence identifies exact provider/upstream ID, account alias, availability verdict,
+  verified structured method/date, latency and safe scoped limit observations. A candidate digest
+  binds this evidence to catalog digest, proposed logical model key and eligible lane identities.
+- Issue state advances from v2 to v3 with these optional records. Continue decoding v1/v2; those
+  records remain advisory and require fresh evidence before config writes. Partial/deferred checks
+  retain existing evidence exactly as #2169 does; deferral is never a new affirmative proof.
+- Extend `ProviderRules` in `rules.py` with pure `model_identity` and `limit_observations` callbacks;
+  defaults return no identity/observations. Plugins normalize provider-specific fields and headers.
+  The core must not branch on provider names. Unknown scope is displayed but cannot change config.
+- Quality matching in `quality.py` remains informational. Its publisher aliases/AA score cannot
+  establish serving identity, shared quotas, or judge independence. Reuse an existing pool only
+  for an exact configured upstream identity or a unique plugin-proven canonical identity. Otherwise
+  report `identity_required` and request a manual mapping; no inferred brand-name pooling.
+- An addition requires a positive catalog context bound and a verified structured method. Missing
+  hard ceilings remain unset: a successful long request is only a lower bound. Missing catalog
+  context requires a separately reviewed config/evidence change before `/apply`; never invent a
+  context value. RPM/concurrency may fall back to 1 within existing provider caps. Do not invent
+  TPM/RPD/output ceilings or copy provider/account capacity into independent route capacity.
+
+Use `issue.py`, `reconcile.py` and `probe.py` to carry these records from the actual planner. Safe
+headers must be captured before classification discards them. Availability and method verification
+have separate freshness: on apply, refetch the complete catalog and rerun selected candidates under
+R3/R6 budgets. Require unchanged candidate identity/free evidence/context and a fresh working method.
+If quota or the run budget prevents proof, defer that selection and explain why; retain its checkbox.
+A partial apply may propose other proven selections, but never silently mark deferred ones applied.
+
+### 8.3 Slice 2a: authorized commands and precise config edits
+
+New files: `citypods/provider_catalog/config_edit.py`, `citypods/provider_catalog/apply.py`,
+`scripts/provider_catalog_commands.py`, `.github/workflows/provider-catalog-commands.yml`.
+
+`process_event(event, permission)` accepts exactly `/apply` on the rolling non-PR issue with the
+catalog marker. Reuse `require_repository_write` and the existing remedy command workflow's trusted
+base checkout/permission check pattern. Fetch the current issue through GitHub before parsing
+`checked_decisions`; webhook bodies, checkbox text and embedded state are untrusted data. Reject
+unknown IDs, conflicting ignore/add choices, duplicate lanes and unsupported 2b choices. No issue
+value supplies executable code, URLs, checkout refs, filesystem paths or workflow arguments.
+
+`plan_apply(report, decisions, config)` returns an immutable edit plan plus deferred/rejected
+selections. The run refetches and re-verifies as §8.2 specifies, then binds the plan to the current
+main commit and config hashes. Recheck the base before push; rebuild and revalidate on changed main.
+Only already-configured providers/accounts/endpoints can be used. Apply never adds credentials.
+
+`apply_config_edits(texts, plan)` uses narrow line-span edits and a parsed semantic before/after
+assertion, following the approach of `feed_yaml_edit.py` without changing that feed-only module.
+Preserve comments/order and fail closed on duplicate keys, unsupported YAML shapes, collisions or
+unexpected semantic differences. The exact write set is:
+
+- `config/provider_limits.yml`: append the selected route to the identified pool or append a new
+  logical model block; route IDs are provider plus upstream identity with a collision check.
+  Write the verified method/date and evidenced limits; never overwrite existing route properties.
+- `config/site_config.yml`: append selected model keys to `llm_lanes.<lane>.backup_models` only for
+  registry-eligible lanes. Preserve primary, existing backup order and unrelated defaults.
+- `config/provider_catalog_decisions.yml`: append ignored provider/upstream identities and optional
+  revisit date. An ignore alone creates a decisions-only PR; it never modifies routing.
+- Compiler outputs only: `citypods/compute/llm_routes.json`,
+  `workers/llm-dispatch-v2/src/dispatch_limits.json` and
+  `workers/llm-dispatch-v2/src/ingress_reservations.json`.
+
+Run `scripts/compile_llm_limits.py` and `scripts/compile_llm_lanes.py`, then the lane/limit/catalog
+contract tests in the workflow before push. Its contents/pull-requests write token is scoped to this
+job; catalog observation keeps read-only contents. Use one concurrency group for catalog writers.
+Rebuild `automation/provider-catalog-additions` from current main, and list/edit/create one PR;
+force-with-lease only against the fetched automation branch. Never replace a human-owned branch.
+Repeated apply produces no duplicate route, lane entry, ignore entry or PR. Keep decisions ticked
+until main actually contains them; explain open-PR versus merged state on the issue. A token-created
+PR must have these in-job checks because ordinary PR CI may not be triggered.
+
+### 8.4 Slice 2b: paid decisions and shadow exit
+
+Extend the same planner/editor/command files; do not add a second command surface. A paid anomaly's
+explicit remove choice uses the Slice 3 removal planner only after rescue is deployed. “Keep paid”
+sets that existing route's `free: false` and writes an acknowledged decision; it does not add paid
+lane eligibility or change any lane's `allow_paid` policy. Require a fresh `not_entitled` observation
+and show lanes that lose free eligibility. Reject a change that empties a lane's usable pool.
+
+For shadow exit, read current mirrored-review calibration through `citypods/llm_evaluation.py` and
+current `EvaluationConfig`; recompute all §6 thresholds at apply time. Treat issue counts as display
+only. Append the shadow model as a production backup, remove the exact shadow lane configuration
+from `config/site_config.yml`, and retain calibration/history. Reject missing/changed parent or
+shadow lanes and falling qualification. Never promote a primary through this command. Tests extend
+`tests/test_llm_evaluation.py`, `tests/test_llm_lanes.py` and the new apply/editor tests.
+
+### 8.5 Slice 3a: structural terminal reasons and bounded rescue
+
+The deployed coordinator already has `_modelsForQueuedJob()` and
+`_reconcileUnroutableJobs()`. Extend them; do not introduce a second full-queue reconciler.
+Structural eligibility uses the full dispatch catalog and the job's policy/context/output bounds.
+Pause, cooldown, temporarily exhausted quota and slow providers cannot produce structural failure.
+
+Add nullable `jobs.terminal_reason` and `jobs.terminal_catalog_digest`; expose them additively through
+`pollBatch()` and `terminalFeed()` while retaining `error: job_failed` for old clients. Reasons are
+`route_retired` (none of the eligible logical models has a configured route) and `unadmissible`
+(routes exist but none fits structural bounds). Ordinary failures retain their current semantics.
+The digest hashes sorted dispatch route identities and structural admission fields, not transient
+ledger state. Old failed rows remain generic; never retroactively relabel them by guesswork.
+
+Persist `catalog_digest`, `catalog_rescue_cursor` and `catalog_rescue_complete` on the existing
+scheduler row. On first deploy or changed digest, scan queued jobs by an indexed `(state, id)` keyset
+in bounded pages, including old model indexes and `__unroutable__`. Budget both row reads and worst
+case writes before processing; use the existing per-tick rescue ceiling and lifecycle accounting.
+Reindex still-admissible jobs; mark only structural failures terminal and unindex them atomically.
+Fold cursor changes into the existing scheduler accounting write. Restart the cursor when the digest
+changes mid-pass; new enqueues get current structural checks. Never inspect/alter leased jobs during
+this pass. Completion/requeue paths must recheck against current structural eligibility.
+
+Update `workers/llm-dispatch-v2/src/coordinator.js` and its existing schema/accounting helpers only
+as needed for these columns/indexes. Include index updates in billed-row accounting and maintain
+current configured budgets; if the existing budget cannot fit the worst case, defer the page. Consume
+SQL cursors synchronously inside the existing transaction, with no network await between writes
+([Cloudflare SQLite storage contract](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)).
+No new DO, alarm, polling endpoint or raised concurrency/write-budget knob is needed.
+
+In `citypods/compute/llm.py`, extend `LLMDispatchTerminalError`, single/batch polling and terminal
+feed decoding to retain these reason/digest fields. In `llm_deferred.py::discard_terminal_failure`,
+add an explicit structural disposition that writes an audit before removing the matching handle,
+preserves existing failure counts/schema-correction state and does not increment the failure cap.
+`scripts/llm_deferred_sweep.py::recover_terminal` selects it only for these typed structural reasons.
+Keep equality fencing so an old terminal response cannot delete a newer deferred handle.
+
+A recovery audit records terminal digest, original recipe/input identity and recovery disposition.
+Resubmit `route_retired` only when current lane membership offers a new eligible route generation;
+do not repeatedly enqueue the same impossible recipe under the same catalog digest. For oversized
+prelabeler work, `citypods/tags.py::prelabeler_batch_limits` regenerates batches from retained subjects
+using current limits/learned ratio. Other callers retain a recoverable blocked disposition until an
+eligible route or task-specific split plan exists; do not split agenda/moments inputs by guesswork.
+No successful episode artifact is invalidated and no pipeline version is bumped. Recovery targets
+structurally failed deferred work; already-completed recipes remain reusable.
+
+### 8.6 Slice 3b: removals and lane repair
+
+New `citypods/provider_catalog/retire.py::plan_retirements()` shares the evidence/editor contracts.
+Require fresh absence from a complete catalog **and** a definitive retired/not-served probe for the
+exact route/account; generic 404, timeout, 429, structured-output failure and account-tier failures
+are insufficient. With multiple configured accounts, require matching retirement evidence for all
+accounts serving that route; a single key cannot retire a pooled service for everyone.
+
+Prepare one removal PR on `automation/provider-catalog-removals`, rebuilt and checked like additions.
+Remove only affected route blocks. Keep logical models with any surviving route. Drop a model from
+lane backups only when no policy-eligible route remains; promote the first surviving backup for a
+removed primary and label `needs:human-verification`. If any lane would become empty, reject that
+route removal and escalate with pool alternatives; do not manufacture a replacement. Run the
+lane↔route guard and both compilers before push. Paid transitions remain explicit 2b decisions.
+
+Primary changes affect newly generated recipe identities after maintainer merge; they do not rewrite
+stored inputs or invalidate completed artifacts. Old terminal handles follow 3a's fenced recovery.
+Removal automation stays disabled until 3a is deployed and a bounded recovery canary verifies the
+old sentinel/no-route indexes, no retry-cap increment and no repeating enqueue loop.
+
+### 8.7 Slice 4: scoped observations, thresholds and budget
+
+New `citypods/provider_catalog/limits.py` provides `merge_observations()`, `effective_limit()` and
+`plan_limit_changes()`. `LimitObservation` contains metric, positive value, UTC time, provider,
+account alias, optional route ID, scope (`route` or `provider_account`), source and trusted run ID.
+Header limits, documented ceilings and observed throughput remain different evidence kinds;
+throughput is a lower bound and cannot assert a hard ceiling or justify an increase by itself.
+Unknown/mixed scopes, zero, malformed values and expired observations are non-actionable.
+
+Store bounded advisory histories in v3 rolling issue state: at most six distinct successful runs per
+scope/metric within 90 days. Each scheduled main-branch run also uploads a versioned JSON evidence
+artifact with 90-day requested retention. Before automation, retrieve referenced artifacts and
+verify workflow identity, successful conclusion, default-branch provenance and payload digests.
+Edited issue markers cannot forge evidence. Missing/expired artifacts defer change; unavailable
+retention never becomes a reason to weaken this check. Add `actions: read` only to evidence consumers.
+
+For each comparable scope/metric, take the maximum valid value across the bounded window. Three
+consecutive independent runs below the configured value by more than 20%, and an effective maximum
+also below by more than 20%, permit a tightening PR. Within ±20% do nothing; above +20% offer an
+explicit increase checkbox handled by 2b. Greater-than-50% tightening still prepares a PR, marked
+material as the maintainer chose; an observed zero creates an anomaly only. Never auto-change
+concurrency, context/output ceilings or paid/free classification from rate observations.
+Provider/account observations may update existing provider caps only when all configured accounts
+have compatible evidence; otherwise report the mismatch. Preserve aggregate caps and never assign
+shared account capacity separately to each route. Compiler/schema extensions need a later design
+if an observed scope cannot be represented by the existing config.
+
+Reuse `citypods/llm_rate_probe.py::RateProbeRunner` budget checks. Maintenance enables only phase 0
+and a small phase-1 sample: at most three rate requests per provider per run, at most 900 seconds
+including drain/spacing, and the existing candidate/method probes consume the same total allowance
+when combined. If scheduled R10 verification already spends that allowance, skip rate samples.
+Disable input/output/endurance/agreement phases 2–4. Reserve every configured-route request, renew
+pause, and honor reset/cooldown; unknown/exhausted scarce quota defers. Never exceed a documented
+provider ceiling to “discover” capacity. Without an exclusive Worker pause, observations are
+contended and cannot support automatic tightening.
+
+Early re-probe proposal: ≥3 `own_rpm`, `own_tpm` or `unknown_429` failures for the same route in the
+last 24 hours schedules one paused check, no more often than daily; quota exhaustion still defers
+until reset. Counters schedule observation only, never establish a limit. Prepare one
+`automation/provider-catalog-limits` PR using the shared writer/checks; multiple automation writers
+are serialized and rebuild from main, so open PR conflicts are refreshed rather than overwritten.
+
+### 8.8 BeatAPI regression and boundaries
+
+#2167 is merged; tests must use current config rather than its earlier context placeholders.
+BeatAPI currently uses `prompt_only`, provider RPM/concurrency 1 and a successful-call account window
+shared with JEV. Its measured large-input success is a lower bound, not a hard ceiling. Long calls
+occupy that window until completion; elapsed 60 seconds alone does not permit another concurrent
+call. Keep 65-second probe spacing and final cooldown before dispatch resumes. Do not top up the
+account or change its free-tier policy. JEV transport belongs to review/49 and stays outside chat
+addition/removal; catalog knowledge does not establish GPT serving-family independence.
+
+Pin offline fixtures for catalog/header scope and documented BeatAPI error shapes before allowing
+those signals to write config. Add coverage for shared BeatAPI/JEV capacity, reasoning-only method
+failure, partial quota deferral preserving evidence, JEV exclusion and surviving NVIDIA/OrcaRouter
+pool routes. A BeatAPI-only retirement must not remove a shared logical model or strand its lanes.
+Unknown headers and serving identity require a human mapping/evidence follow-up.
+
+Allowed supporting changes: existing catalog modules/plugins/template, the named new modules and
+command workflow, reconcile script/workflow, the specified config/compiler outputs, Python deferred
+paths, prelabeler batching and Worker coordinator/test helpers. No meeting adapters, city/feed
+configs, audio/ASR stages, dependencies, credentials, review/49 transport or Worker deployment knobs
+may change. An additional required file or behavior must be named in this contract before coding.
+
+### 8.9 Acceptance matrix and promotion to L3
+
+| Slice | Required offline acceptance |
+|---|---|
+| Shared/2a | New `tests/test_provider_catalog_evidence.py`, `test_provider_catalog_apply.py`, `test_provider_catalog_config_edit.py`: deterministic digests; incomplete/stale/deferred evidence; ambiguous identity; unknown limits; unauthorized/spoofed commands; YAML comments/semantic fencing; idempotent branch/PR updates; concurrent main change; mixed applied/deferred choices. Extend existing catalog contract/reconcile, compiler, lane and workflow tests. |
+| 2b | Paid route policy/empty-lane guard; unsupported commands before activation; shadow thresholds/current calibration and history retention; primary untouched. Extend evaluation and apply tests. |
+| 3a | Worker coordinator/protocol/row-accounting/rows-read tests: old sentinel/model indexes; bounded resumable pages; digest change/restart; temporary quota/pause; leased-job fencing; fitting pooled alternative; structural reason compatibility and measured worst-case billing. Python dispatch-v2/deferred/sweep tests: preserved counts, audit-before-delete, stale handle fence, generation loop guard. Tag tests prove rebatching retains every subject; unsplittable tasks stay recoverable. |
+| 3b | New `tests/test_provider_catalog_retire.py`: incomplete catalogs, multi-account disagreement, non-retirement signals, surviving pools, backup repair, primary review flag, empty-lane rejection and current-main rebuild. |
+| 4 | New `tests/test_provider_catalog_limits.py` plus rate-probe/workflow tests: six/90-day window, independent-run requirement, stale maximum, 20%/50% boundaries, zero/mixed scopes, artifact spoof/expiry, shared account cap, scarce quota, pause failure and exact request/time ceilings. |
+
+Each implementation runs whole-repo Ruff checks/format, the complete offline Python suite and Worker
+`npm test` when Worker code changes. Config PR preparation also runs both compilers and targeted
+catalog/lane/limit tests in-job. Test fixtures never require provider keys or quota.
+
+Before promoting a slice to L3: accept its proposed technical choices, create its implementation
+issue, resolve any code/file mismatch, and copy its activation gate into that issue. Remaining
+review questions are technical acceptance of identity fallback, the trusted-artifact history and
+structural recovery lineage; priority, initial command scope and material-tightening policy are
+already decided above. No automatic removal or limit maintenance is enabled by this docs PR.

@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog remaining-slice contract proposal (review/48 §8).** Records the maintainer’s
+  additions-first sequence, initial additions/ignore command scope and automatic proven tightening
+  PRs with material-change flags. Proposes evidence/identity and config-write contracts, bounded
+  structural job recovery, removal gates and scoped limit histories, including BeatAPI’s shared
+  JEV window. Corrects #2169 verification to shipped; remaining slices await contract acceptance
+  and implementation issues. Design only; no route, deployment, recipe or artifact changes.
+
 - **review/49: judge and adjudicator routes (section 4c).** With the locator verdict in, JEV stays
   the anchor; Gemma 4 31B/26B is the bulk sibling judge, with Nemotron 3 Super or Qwen3.8 for
   Gemini-produced entries; GLM 5.3 Flash and DeepSeek V4.1 Flash (NVIDIA) are the adjudicators.
