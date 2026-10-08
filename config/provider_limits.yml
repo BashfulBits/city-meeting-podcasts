@@ -139,6 +139,12 @@ providers:
     # is specified in the P1 breakout, and its calls must be budgeted against these routes.
     api_base: https://api.beatapi.io/v1
     chat_path: /chat/completions
+    # Registered AI Gateway custom provider (base URL https://api.beatapi.io/v1). The Worker calls
+    # every provider through the gateway; with no slug it used `beatapi`, which the gateway
+    # rejects as 400 "Invalid provider" (code 2008). Verified 2026-10-08: /models and a chat
+    # completion both return 200 through this slug.
+    ai_gateway_slug: custom-beatapi
+    ai_gateway_chat_path: /chat/completions
     reset_timezone: UTC
     rpm: 1
     concurrency: 1
@@ -1317,10 +1323,6 @@ routes:
   # rate-limit headers. Context limits are UNMEASURED conservative placeholders (BeatAPI publishes
   # none); run llm-rate-probe.yml phase 2 for this provider and author hard_input_ceiling from it.
   # The DeepSeek ids join the existing logical models rather than forming BeatAPI-only ones.
-  # PAUSED (rpd: 0, 2026-10-08): the Worker reaches providers through Cloudflare AI Gateway, and
-  # `beatapi` has no registered gateway provider, so every call returned 400 "Invalid provider"
-  # (code 2008), classified request_defect, failing the job. Re-enable after a `custom-beatapi`
-  # gateway provider is registered and this provider's ai_gateway_slug points at it.
   # `tier: backup` (2026-10-08): ranked after every primary route in its pool, so these legs take
   # spill work only. They keep their full output limit: tag and moments jobs reserve 12-16k output
   # tokens and a smaller limit would drop the routes from those lanes. Yielding to JEV while it
@@ -1337,7 +1339,7 @@ routes:
     output_context_limit: 16384
     account_id: primary
     rpm: 1
-    rpd: 0
+    rpd: 1000
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1356,7 +1358,7 @@ routes:
     output_context_limit: 16384
     account_id: primary
     rpm: 1
-    rpd: 0
+    rpd: 1000
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1375,7 +1377,7 @@ routes:
     output_context_limit: 16384
     account_id: primary
     rpm: 1
-    rpd: 0
+    rpd: 1000
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1394,7 +1396,7 @@ routes:
     output_context_limit: 16384
     account_id: primary
     rpm: 1
-    rpd: 0
+    rpd: 1000
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1413,7 +1415,7 @@ routes:
     output_context_limit: 16384
     account_id: primary
     rpm: 1
-    rpd: 0
+    rpd: 1000
     concurrency: 1
     free: true
     input_per_token: 0.0
