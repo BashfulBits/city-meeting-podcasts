@@ -12,14 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
-- **review/49: adjudicator recommendation and qualification check (section 4c).** With the locator
-  verdict in, GLM 5.3 Flash and DeepSeek V4.1 Flash (NVIDIA leg) are proposed as the first two
-  adjudicators, Qwen3.8 as supplemental, with a per-subject family-independence rule and a note
-  that moments have no independent long-context adjudicator in the free pool yet. A new
-  `adjudicator-bench` design scores candidates against human-verified truth (locator manual review,
-  agenda gold, known-truth items and the audited contested slice) against JEV and the sibling as
-  baselines. Design only; the benchmark is not built and no route is qualified.
-
+- **review/49: judge and adjudicator routes (section 4c).** With the locator verdict in, JEV stays
+  the anchor; Gemma 4 31B/26B is the bulk sibling judge, with Nemotron 3 Super or Qwen3.8 for
+  Gemini-produced entries; GLM 5.3 Flash and DeepSeek V4.1 Flash (NVIDIA) are the adjudicators.
+  Independence is chosen per entry against its producer and sibling judge, so it covers moments and
+  future verbs. Qualification uses the section 4 probes and audit agreement plus a deterministic
+  quote check, not a separate benchmark. BeatAPI chat routes become backups: a route backup tier,
+  yield-to-JEV at claim time, and a short output cap. Design only.
 - **Bounded search resumes within a source (#2173).** Private working checkpoints retain
   converted records with policy/input hashes; new or changed records do not discard unrelated
   progress. Deferred summaries identify source/record progress and distinguish no public index
