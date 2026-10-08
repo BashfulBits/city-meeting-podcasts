@@ -64,7 +64,10 @@ class FakeOutcome:
 
 class FakeControl:
     def __init__(self, quota=None, contended=False):
-        self.quota, self.contended = quota or {}, contended
+        self.quota, self.contended = (
+            ({"or_scarce": {"rpd_remaining": 20}} if quota is None else quota),
+            contended,
+        )
         self.paused_providers, self.reserved = [], []
 
     @contextmanager
@@ -201,6 +204,7 @@ def _run(monkeypatch, *, canaries=None, state=None, decisions=NO_DECISIONS, cont
         session=FakeSession(CATALOGS),
         control=control,
         today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
         canary_fn=canary_fn,
         **kw,
     )
@@ -459,6 +463,7 @@ def _run_with(monkeypatch, limits, catalogs, state=None):
         session=FakeSession(catalogs),
         control=FakeControl(),
         today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
         canary_fn=canary_fn,
         sleep=sleeps.append,
     )
@@ -539,7 +544,7 @@ def test_provider_canary_spacing_is_honoured(monkeypatch):
     }
     _, sent, sleeps = _run_with(monkeypatch, limits, catalogs)
     assert {"one", "two", "three"} <= set(sent)
-    assert sleeps.count(1.5) == 2  # between the three Airforce probes, never before the first
+    assert sleeps.count(1.5) == 3  # two probe gaps, then cooldown before resuming dispatch
 
 
 def test_lane_offer_uses_the_weakest_member_and_lists_the_rest():
@@ -628,6 +633,7 @@ def test_a_free_route_turned_paid_is_a_decision_with_its_lane_impact(monkeypatch
         session=FakeSession(CATALOGS),
         control=FakeControl(quota={"or_scarce": {"rpd_remaining": 5}}),
         today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
         canary_fn=lambda rules, cfg, model, key, session: (
             paid
             if model == "google/gem-scarce:free"
@@ -664,6 +670,7 @@ def test_a_due_only_run_calls_only_providers_with_deferred_checks(monkeypatch):
         session=RecordingSession(CATALOGS),
         control=FakeControl(quota={"or_scarce": {"rpd_remaining": 3}}),
         today=TODAY,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "valid"}},
         canary_fn=lambda *args: OK,
         due_only=True,
     )
@@ -703,3 +710,329 @@ def test_the_decision_block_survives_a_truncated_body(monkeypatch):
         line.split("] ", 1)[1] for line in body.splitlines() if line.startswith("- [")
     }
     assert decode_state(body) == json.loads(json.dumps(report.state))
+
+
+def test_beatapi_spacing_covers_health_and_every_schema_attempt(monkeypatch):
+    from citypods.provider_catalog.probe import STRUCTURED_METHODS
+
+    monkeypatch.setenv("K", "test-key")
+    events = []
+    route = {
+        "route_id": "beat_flash",
+        "provider": "beatapi",
+        "account_id": "p",
+        "model": "deepseek/deepseek-v4.1-flash",
+        "upstream_model": "deepseek-v4.1-flash-free",
+    }
+    limits = {
+        "providers": {
+            "beatapi": {
+                "api_base": "https://beat.test/v1",
+                "accounts": [{"id": "p", "api_key_env": "K"}],
+            }
+        },
+        "routes": [route],
+    }
+    catalog = {
+        "https://beat.test": {
+            "data": [
+                {"id": "deepseek-v4.1-flash-free"},
+                {"id": "new-chat-free"},
+                {"id": "jev-1.13-free", "owned_by": "task plugin"},
+                {"id": "paid-chat"},
+            ]
+        }
+    }
+
+    class Control(FakeControl):
+        @contextmanager
+        def paused(self, provider):
+            class Pause:
+                contended = False
+
+                def renew(self):
+                    events.append("renew")
+
+            yield Pause()
+
+        def reserve(self, rid):
+            events.append("reserve")
+            super().reserve(rid)
+
+    def ping(rules, cfg, model, key, session):
+        events.append(model)
+        return OK  # first event may be reasoning-only; schema verification is still required
+
+    def verify(*args, before_attempt, **kwargs):
+        result = {}
+        for method in STRUCTURED_METHODS:
+            assert before_attempt()
+            events.append(method)
+            result[method] = {"outcome": "valid" if method == "prompt_only" else "empty"}
+        return result
+
+    control = Control()
+    report = reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(catalog),
+        control=control,
+        today=TODAY,
+        canary_fn=ping,
+        structured_canary_fn=verify,
+        sleep=lambda seconds: events.append(seconds),
+    )
+    assert events.count(65.0) == 10  # nine probe gaps plus cooldown before resuming dispatch
+    assert control.reserved == ["beat_flash"] * 5
+    assert "jev-1.13-free" not in events and "paid-chat" not in events
+    [candidate] = report.candidates
+    assert candidate.model == "new-chat-free"
+    assert candidate.structured_output_method == "prompt_only"
+    assert candidate.structured_output_verified_on == TODAY.isoformat()
+    assert events[-2:] == [65.0, "renew"]
+    for index, event in enumerate(events):
+        if event == 65.0:
+            assert events[index + 1] == "renew"
+
+
+def test_unverified_json_candidate_is_not_proven_or_remembered(monkeypatch):
+    monkeypatch.setenv("K", "test-key")
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        canary_fn=lambda *args: OK,
+        structured_canary_fn=lambda *args, **kwargs: {"json_schema": {"outcome": "empty"}},
+    )
+    assert not report.candidates
+    assert report.state["canaries"]["groq/meta-llama/llama-new"]["verdict"] == "inconclusive"
+
+
+def test_scarce_schema_attempts_cannot_exceed_remaining_quota(monkeypatch):
+    from citypods.provider_catalog.probe import STRUCTURED_METHODS
+
+    monkeypatch.setenv("K", "test-key")
+    attempted = []
+
+    def verify(rules, cfg, model, key, session, *, before_attempt, **kwargs):
+        result = {}
+        for method in STRUCTURED_METHODS:
+            if not before_attempt():
+                break
+            attempted.append((model, method))
+            result[method] = {"outcome": "valid"}
+        return result
+
+    control = FakeControl(quota={"or_scarce": {"rpd_remaining": 2, "rpd_resets_at": "tomorrow"}})
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=control,
+        today=TODAY,
+        canary_fn=lambda *args: OK,
+        structured_canary_fn=verify,
+    )
+    assert [m for model, m in attempted if model == "google/gem-scarce:free"] == ["json_schema"]
+    assert control.reserved.count("or_scarce") == 2
+    assert report.state["deferred"]["or_scarce"] == "tomorrow"
+
+
+def test_structured_failure_reports_the_pooled_route_that_still_serves_lane(monkeypatch):
+    monkeypatch.setenv("K", "test-key")
+    routes = [
+        {
+            "route_id": "nv_flash",
+            "provider": "nvidia",
+            "model": "meta/llama-keep",
+            "upstream_model": "deepseek-ai/deepseek-v4.1-flash",
+            "account_id": "p",
+            "structured_output_method": "json_schema",
+        },
+        {
+            "route_id": "beat_flash",
+            "provider": "beatapi",
+            "model_key": "meta/llama-keep",
+            "upstream_model": "deepseek-v4.1-flash-free",
+            "account_id": "p",
+            "structured_output_method": "json_schema",
+        },
+    ]
+    cfg = {"api_base": "https://catalog.test/v1", "accounts": [{"id": "p", "api_key_env": "K"}]}
+    report = reconcile(
+        {"providers": {"nvidia": cfg, "beatapi": cfg}, "routes": routes},
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession({}),
+        control=FakeControl(),
+        today=TODAY,
+        canary_fn=lambda *args: OK,
+        structured_canary_fn=lambda *args, **kwargs: {
+            "json_schema": {"outcome": "empty"},
+            "prompt_only": {"outcome": "valid"},
+        },
+        providers={"beatapi"},
+        sleep=lambda seconds: None,
+    )
+    [anomaly] = [a for a in report.anomalies if "structured_output_invalid" in a.reason]
+    assert anomaly.route_id == "beat_flash"
+    assert anomaly.lane_usage == (
+        ("fixed", ("meta/llama-keep (its other routes)",)),
+        ("tagger", ("meta/llama-keep (its other routes)",)),
+    )
+
+
+def test_due_only_clears_a_recovered_method_anomaly_and_discards_legacy_candidate_proofs(
+    monkeypatch,
+):
+    first, _, _ = _run(monkeypatch)
+    state = first.state
+    for candidate in state["last_full"]["candidates"]:
+        candidate.pop("structured_output_method")
+    state["last_full"]["anomalies"] = [
+        {
+            "provider": "openrouter",
+            "route_id": "or_scarce",
+            "model": "google/gem-scarce:free",
+            "verdict": "structured_output_invalid",
+            "reason": "empty",
+            "absent_from_catalog": False,
+        }
+    ]
+    state["deferred"] = {"or_scarce": "reset"}
+    report, sent, _ = _run(monkeypatch, state=state, due_only=True)
+    assert "google/gem-scarce:free" in sent
+    assert not report.anomalies and not report.candidates
+
+
+def test_legacy_proven_memory_without_a_json_method_is_rechecked(monkeypatch):
+    first, _, _ = _run(monkeypatch)
+    state = first.state
+    for memory in state["canaries"].values():
+        memory.pop("method")
+    report, sent, _ = _run(monkeypatch, state=state)
+    assert "meta-llama/llama-new" in sent
+    assert all(c.structured_output_method == "json_schema" for c in report.candidates)
+
+
+def test_failed_worker_ledger_charge_aborts_instead_of_continuing_to_probe():
+    from citypods.compute.llm_dispatch_pause import DispatchPauseError
+    from scripts.reconcile_provider_routes import WorkerDispatchControl
+
+    class Client:
+        def reserve(self, route_id, requests_made):
+            raise DispatchPauseError("ledger unavailable")
+
+    with pytest.raises(DispatchPauseError, match="could not reserve scarce"):
+        WorkerDispatchControl(Client()).reserve("scarce")
+
+
+def test_state_decoder_accepts_legacy_json_and_rejects_corrupt_compressed_markers():
+    import base64
+
+    state = {"version": 1, "canaries": {"provider/model": {"verdict": "proven"}}}
+    raw = base64.b64encode(json.dumps(state).encode()).decode()
+    assert decode_state(f"<!-- citypods:provider-catalog-state {raw} -->") == state
+    raw = base64.b64encode(b"corrupt compressed data").decode()
+    assert decode_state(f"<!-- citypods:provider-catalog-state {raw} -->") == {}
+
+
+def test_issue_round_trips_full_method_evidence_within_github_body_limit():
+    from citypods.provider_catalog.reconcile import Report
+
+    checks = {
+        f"route_{i}": {
+            "on": "2026-10-08",
+            "method": "json_schema",
+            "results": {
+                method: {
+                    "outcome": "valid",
+                    "status": 200,
+                    "first_byte_seconds": i / 10,
+                    "completion_seconds": i / 5,
+                }
+                for method in ("json_schema", "json_schema_relaxed", "json_object", "prompt_only")
+            },
+        }
+        for i in range(100)
+    }
+    report = Report(
+        observations=[f"route_{i}: {evidence}" for i, evidence in enumerate(checks.values())],
+        state={"version": 2, "structured_checks": checks},
+    )
+    body = render_body(report, run_date="2026-10-08")
+    assert len(body.encode()) < 65_536
+    assert decode_state(body) == report.state
+
+
+@pytest.mark.parametrize(
+    ("remaining", "outcome", "expected_method"),
+    [
+        (1, "inconclusive", "prompt_only"),
+        (2, "inconclusive", "prompt_only"),
+        (2, "valid", "json_schema"),
+    ],
+)
+def test_deferred_schema_checks_preserve_prior_method_and_unchecked_evidence(
+    monkeypatch, remaining, outcome, expected_method
+):
+    from citypods.provider_catalog.probe import STRUCTURED_METHODS
+
+    monkeypatch.setenv("K", "test-key")
+    previous = {
+        "on": "2026-08-01",
+        "method": "prompt_only",
+        "results": {
+            "json_object": {"outcome": "empty", "completion_seconds": 10},
+            "prompt_only": {"outcome": "valid", "first_byte_seconds": 2, "completion_seconds": 15},
+        },
+    }
+
+    def verify(*args, before_attempt, **kwargs):
+        evidence = {}
+        for method in STRUCTURED_METHODS:
+            if not before_attempt():
+                break
+            evidence[method] = {"outcome": outcome, "completion_seconds": 3}
+        return evidence
+
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {"structured_checks": {"or_scarce": previous}},
+        session=FakeSession(CATALOGS),
+        providers={"openrouter"},
+        today=TODAY,
+        control=FakeControl(
+            quota={"or_scarce": {"rpd_remaining": remaining, "rpd_resets_at": "tomorrow"}}
+        ),
+        canary_fn=lambda *args: OK,
+        structured_canary_fn=verify,
+    )
+    stored = report.state["structured_checks"]["or_scarce"]
+    assert stored["method"] == expected_method
+    assert report.state["deferred"]["or_scarce"] == "tomorrow"
+    assert previous["on"] == "2026-08-01"  # the input state is not mutated
+    if remaining == 1:
+        assert stored == previous
+    else:
+        assert stored["on"] == TODAY.isoformat()
+        assert stored["results"] == {
+            **previous["results"],
+            "json_schema": {"outcome": outcome, "completion_seconds": 3},
+        }

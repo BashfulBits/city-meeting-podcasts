@@ -216,6 +216,16 @@ catalog, health-checks one live route per configured upstream model, and canarie
 free-marked candidates per provider, each provider inside a drained v2 dispatch pause. Each
 provider is a plugin (`providers/<name>.py`: free evidence, response signals, research links) that
 contract tests keep in step with `config/provider_limits.yml`; lanes come only from `load_lanes()`.
+A successful availability ping is followed by four schema-method checks using the shared Python
+request renderer. Only completed visible schema-valid JSON verifies a method; reasoning alone does
+not. Checks allow 4,096 completion tokens including reasoning, with a 720-second read timeout and
+elapsed-time checks. Plugin spacing covers every request, including BeatAPI's shared account window;
+configured-route method checks are charged individually, and scarce routes defer when quota is
+unknown or spent. The compressed, backwards-readable issue state stores method outcomes and latency;
+legacy candidate proofs without a method are rechecked. An invalid resolved method is an anomaly
+showing the lane's remaining pooled routes. The pause also holds through a final provider interval
+before resuming dispatch, protecting shared account capacity spent by unregistered candidates. The
+evidence-report command uses the same planner.
 Results go to one rolling issue (proven candidates with Artificial Analysis scores and lane
 checkboxes, unacknowledged anomalies, collapsed observations) that closes when nothing is
 actionable. Quality uses the paginated `/api/v2/language/models/free` endpoint with the existing
@@ -1449,3 +1459,14 @@ in RSS rich notes and raw meeting pages; the provider title, description, source
 audio are unchanged. The note participates in feed/page render hashes only when present, never in
 audio hashes or persisted episode records. A present UID with a mismatched provider GUID returns
 an error before replacing public output; a not-yet-present UID remains unannotated.
+
+### Bounded search within-source checkpoint (#2173)
+
+The existing private working search cache retains processed UID documents (including null
+results), each tied to exact durable record inputs. Source-level policy hashes bind feed
+configuration, base URL, archive policy and publication selection. Routine additions or record
+changes reprocess only affected records; policy changes invalidate partial source progress.
+Completed sources remove partial entries. The wrapper persists working cache on graceful
+deferral, while public manifest/page publication still requires a complete build. The action
+summary reports interrupted source, records and completed sources and explicitly distinguishes
+a missing complete index from retained complete publication. Storage stays read-only.
