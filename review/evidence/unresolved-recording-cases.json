@@ -2460,14 +2460,14 @@
       "uid": "aa65e2aafc90711b",
       "provider_guid": "272574",
       "question": "Verify the maintainer-directed Dallas Bond Program-only routing after deployment",
-      "missing_evidence": "Confirm the original UID/audio is present in Bond Program RSS and absent from Public Info and the dedicated Task Force feed after the exact Public Info inclusion is removed.",
-      "next_action": "After the correction deploys, check all three live RSS feeds for the original UID/audio; keep the case open until Bond Program is present and Public Info/Task Force are absent.",
-      "last_researched": "2026-10-07",
+      "missing_evidence": "None for the approved feed placement; the original UID and enclosure are in Bond Program RSS and absent from Public Info and the dedicated Task Force RSS.",
+      "next_action": "Reopen only if a later selector or deployment changes this verified assignment.",
+      "last_researched": "2026-10-08",
       "current_feed_assignments": [
         "dallas-tx-bond-program-meetings"
       ],
-      "status": "open",
-      "disposition": null
+      "status": "resolved",
+      "disposition": "After PRs #2164 and #2165, live Dallas Bond Program RSS contains this original UID and its original audio enclosure; Dallas Public Info and dedicated Task Force RSS do not. The enclosure endpoint returned HTTP 200 audio/mp4 to a one-byte range request. See review/evidence/p0-post-merge-check-2026-10-08.md."
     },
     {
       "case_id": "dallas-tx-aaf0ad8eaabe68a5-ownership",
