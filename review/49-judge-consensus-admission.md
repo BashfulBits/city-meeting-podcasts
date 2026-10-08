@@ -4,7 +4,7 @@
 The gap to L3 is listed in "Path to L3" at the bottom; this doc is not yet in `review/11`.**
 
 **Document map.** This document is the umbrella design: why, what, decisions, capacity and evidence. Each implementation phase gets its own build spec
-(one agent can be handed one short, exact document): [review/50](50-p0-llm-verb-backlog-trend.md) is P0 (L3, shipped); [review/53](53-p1-judgment-ledger-shadow.md) is P1 (L3); P2 onward are specified when their predecessors have produced data. The pilots live in the eval lane
+(one agent can be handed one short, exact document): [review/50](50-p0-llm-verb-backlog-trend.md) is P0 (L3, shipped); [review/53](53-judge-stack-tags-and-moments.md) specifies P1 to P5 and P7 (L3) as one PR series ending with tags and moments both admitted by the stack and the R5/R6 flows retired; P6 (leagues) follows. The pilots live in the eval lane
 [`evals/judge`](../evals/judge/README.md) and are re-run, not re-described here.
 
 ## Goal (from the maintainer)
@@ -672,8 +672,8 @@ Status against `review/11` L3 (concrete file/function changes, test plan, sequen
 | Eval lane | [`evals/judge`](../evals/judge/README.md) with `scripts/eval_judge.py` (PR #1966): bundling, question types, context ladder, adjudicator; re-runnable |
 | Facts gathered | catalog scan complete; rule vs LLM candidate counts measured; JEV limits, `choice`, packing and question-bundled evidence verified; Qwen limits, thinking mode and a 30/30 quality check; `gh` attach and CI token behaviour; Worker variable and secret audit (PR 1965 implements the cleanup) |
 | BeatAPI provider registration | [#1967](https://github.com/BashfulBits/city-meeting-podcasts/issues/1967): secret, discovery plugin, contract tests; prerequisite for P1 |
-| P1 breakout | **L3: [review/53](53-p1-judgment-ledger-shadow.md)**: task-spec registry (tags scheduled, moments registered), judgment record with `context_tier` stored on candidates, JEV `systemone` Worker transport and route, `yields_to` for BeatAPI chat routes, shadow `judge` lane |
+| P1 to P5, P7 | **L3: [review/53](53-judge-stack-tags-and-moments.md)**: eleven PRs from the `systemone` transport through shadow judging of tags and moments, adjudication, audit, calibration, per-task graduation and retirement of the R5/R6 flows; reservations sized for 800 meetings/day |
 | Dispatch requirements (2026-10-08) | P1: single-model lanes get a measured output budget or a 1–2 retry ceiling for `output_budget_exhausted`; P7: cancel a retired lane's queued jobs before removing it; after P7: #2162 pooled-index reassessment. See "Dispatch requirements from the row-write reductions" |
-| P2-P7 | stay L2 until P1 shadow data exists: thresholds, league scoring and the graduation comparison need measured judge behaviour; specifying them now would invent numbers |
+| P6 | route leagues stay L2 until the judge lanes have run with authority; review/53 already carries `active`/`eligible` pools for them |
 | Judge and adjudicator routes | recommendation in section 4c; qualified the section 4 way (audit-grown probes, stability, audit agreement, quote check), no separate benchmark |
 | Open decisions | shadow and switch-over shape, graduation wording (above) |
