@@ -105,12 +105,36 @@ def _append(text, path, values):
     return text[:index] + payload + "\n" + text[index:]
 
 
+def _set_route_free(text, route_id):
+    routes = _node(text, ("routes",))
+    if not isinstance(routes, SequenceNode) or routes.flow_style:
+        raise ValueError("paid edits require a block route sequence")
+    matches = [
+        n
+        for n in routes.value
+        if isinstance(n, MappingNode)
+        and any(k.value == "route_id" and v.value == route_id for k, v in n.value)
+    ]
+    if len(matches) != 1 or matches[0].flow_style:
+        raise ValueError("paid route missing or unsupported")
+    node = next((v for k, v in matches[0].value if k.value == "free"), None)
+    if not isinstance(node, ScalarNode) or not node.tag.endswith(":bool"):
+        raise ValueError("paid route requires an explicit boolean free field")
+    return text[: node.start_mark.index] + "false" + text[node.end_mark.index :]
+
+
 def apply_config_edits(texts, plan: EditPlan):
     if any(digest(texts[p]) != stamp for p, stamp in plan.config_hashes):
         raise ValueError("config changed since planning")
     expected = {p: copy.deepcopy(load_config(texts[p])) for p in SOURCE_PATHS}
     output = dict(texts)
     limits, site, decisions = (expected[p] for p in SOURCE_PATHS)
+    for rid in plan.paid_routes:
+        matches = [r for r in limits["routes"] if r.get("route_id") == rid]
+        if len(matches) != 1 or not isinstance(matches[0].get("free"), bool):
+            raise ValueError("paid route missing or unsupported")
+        matches[0]["free"] = False
+        output[SOURCE_PATHS[0]] = _set_route_free(output[SOURCE_PATHS[0]], rid)
     additions = []
     for pairs in plan.routes:
         route = dict(pairs)
@@ -145,6 +169,31 @@ def apply_config_edits(texts, plan: EditPlan):
         decisions.setdefault("ignored", []).append(entry)
         additions.append(entry)
     output[SOURCE_PATHS[2]] = _append(output[SOURCE_PATHS[2]], ("ignored",), additions)
+    additions = []
+    if (
+        plan.acknowledged
+        and "acknowledged" in decisions
+        and not isinstance(decisions["acknowledged"], list)
+    ):
+        raise ValueError("acknowledged must be a list")
+    for provider, model_glob, stamp in plan.acknowledged:
+        if any(
+            x.get("provider") == provider
+            and x.get("model_glob") == model_glob
+            and x.get("verdict") == "not_entitled"
+            for x in decisions.get("acknowledged") or []
+        ):
+            continue
+        entry = {
+            "provider": provider,
+            "model_glob": model_glob,
+            "verdict": "not_entitled",
+            "reason": "Maintainer /apply keep-paid selection",
+            "decided_on": stamp,
+        }
+        decisions.setdefault("acknowledged", []).append(entry)
+        additions.append(entry)
+    output[SOURCE_PATHS[2]] = _append(output[SOURCE_PATHS[2]], ("acknowledged",), additions)
     for path in SOURCE_PATHS:
         if load_config(output[path]) != expected[path]:
             raise ValueError(f"unexpected semantic change in {path}")

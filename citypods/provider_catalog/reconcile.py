@@ -26,6 +26,7 @@ from citypods.provider_catalog.evidence import (
     RouteEvidence,
     candidate_digest,
     catalog_digest,
+    digest,
     logical_identity,
     positive_bound,
 )
@@ -143,6 +144,9 @@ class Anomaly:
     # Each lane whose models this route serves, with the lane's other models (or this model's
     # other routes) that still have a live route -- what keeps the lane working without it.
     lane_usage: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    observed_on: str | None = None
+    config_digest: str | None = None
+    contended: bool = True
 
     @property
     def key(self) -> str:
@@ -317,6 +321,7 @@ def reconcile(
     providers: set[str] | None = None,
     due_only: bool = False,
     candidate_keys: set[str] | None = None,
+    route_ids: set[str] | None = None,
     canary_fn: CanaryFn = canary,
     sleep: Callable[[float], None] = time.sleep,
     structured_canary_fn: Callable[..., dict[str, dict[str, Any]]] = structured_canary,
@@ -477,16 +482,20 @@ def reconcile(
         # --- configured-route health: one live route per upstream model -------------------------
         health: list[dict[str, Any]] = []
         seen_models: set[str] = set()
-        for route in [] if candidate_keys is not None else provider_routes:
+        health_routes = provider_routes if candidate_keys is None or route_ids else []
+        for route in health_routes:
+            rid = str(route["route_id"])
+            if route_ids is not None and rid not in route_ids:
+                continue
             model = str(route.get("upstream_model") or "")
-            if route.get("rpd") == 0 or model in seen_models:
+            if route.get("rpd") == 0 or (route_ids is None and model in seen_models):
                 continue
             seen_models.add(model)
             scarce = route.get("rpd") is not None and 0 < float(route["rpd"]) <= SCARCE_RPD
             rid = str(route["route_id"])
             if due_only and rid not in deferred:
                 continue
-            if scarce and not due_only:
+            if scarce and not due_only and route_ids is None:
                 since = _days_since(route_checks.get(rid), today)
                 if since is not None and since < SCARCE_CHECK_DAYS:
                     continue
@@ -688,7 +697,7 @@ def reconcile(
                 )
                 _record_health(
                     report,
-                    decisions,
+                    Decisions() if route_ids is not None else decisions,
                     provider,
                     rid,
                     model,
@@ -696,6 +705,9 @@ def reconcile(
                     absent,
                     known_anomalies,
                     usage=lane_usage(route, lanes, routes),
+                    observed_on=today.isoformat(),
+                    config_digest=digest(route),
+                    contended=pause.contended,
                 )
             api_key = account_key(cfg)
             if not api_key:
@@ -849,6 +861,9 @@ def _record_health(
     known: set[str],
     *,
     usage: tuple[tuple[str, tuple[str, ...]], ...] = (),
+    observed_on: str | None = None,
+    config_digest: str | None = None,
+    contended: bool = True,
 ) -> None:
     where = " (absent from catalog)" if absent else ""
     if result.verdict not in ANOMALY_VERDICTS:
@@ -862,7 +877,16 @@ def _record_health(
         )
         return
     anomaly = Anomaly(
-        provider, route_id, model, result.verdict, result.reason, absent, lane_usage=usage
+        provider,
+        route_id,
+        model,
+        result.verdict,
+        result.reason,
+        absent,
+        lane_usage=usage,
+        observed_on=observed_on,
+        config_digest=config_digest,
+        contended=contended,
     )
     anomaly.new = anomaly.key not in known
     report.anomalies.append(anomaly)

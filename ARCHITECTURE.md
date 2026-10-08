@@ -240,15 +240,21 @@ workflow separately exercises this client and requires usable reference-model sc
 credentials and API/schema failures fail the job. Reconciliation changes no config.
 `provider-catalog-commands.yml` handles exact `/apply` comments from repository writers on the
 current rolling issue. Its trusted main checkout refetches the issue and re-verifies only selected
-new routes, preserving provider pauses/spacing and the three-candidate budget. V3 evidence records
+new routes and keep-paid physical routes, preserving provider pauses/spacing and the
+three-candidate budget. Keep-paid requires an unchanged reviewed route and fresh uncontended
+`not_entitled` evidence, retains a free primary pool, and writes only `free: false` plus an
+exact upstream acknowledgement. Shared-identity acknowledgement hazards defer for review. V3
+evidence records
 bind catalog content, free eligibility, context bounds, plugin-proven logical identity and verified
 JSON methods; old markers/state remain readable but cannot authorize a new route. Missing evidence
 or identity defers that selection. A narrow YAML editor appends routes, lane backups or ignore
-records and asserts the exact parsed delta; it never promotes primaries or re-enables paused routes.
+records, or updates the selected free scalar/acknowledgement, and asserts the exact parsed delta;
+it never promotes primaries or re-enables paused routes.
 Both compilers and catalog/lane/limit tests run before publication to the bot-owned fixed additions
 branch. Main changes trigger a bounded rebuild; branch replacement uses a lease. Observation and
-apply serialize through one writer lock. Human PR merge remains the activation step; paid/shadow,
-removals and limit changes belong to later slices. See [review/48](review/48-provider-catalog-reconciliation.md).
+apply serialize through one writer lock. Human PR merge remains the activation step. Removals and
+limit changes belong to later slices; legacy R5 shadow promotion is superseded by review/53
+graduation. See [review/48](review/48-provider-catalog-reconciliation.md).
 
 | Area | Modules |
 |---|---|

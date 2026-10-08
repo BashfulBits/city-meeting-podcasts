@@ -159,3 +159,35 @@ def test_real_additive_route_compiles_offline(tmp_path, monkeypatch):
     compiled = compile_llm_limits.compile_limits()
     assert compiled["routes_by_id"]["catalog_test_new"]["structured_output_method"] == "prompt_only"
     assert compiled["model_routes_map"][route["model"]] == ["catalog_test_new"]
+
+
+def test_paid_edit_changes_only_free_scalar_and_appends_acknowledgement():
+    texts = source()
+    texts[SOURCE_PATHS[0]] = texts[SOURCE_PATHS[0]].replace(
+        "    model: old", "    model: old\n    free: true # preserve paid comment\n    rpm: 7"
+    )
+    plan = replace(
+        edit_plan(texts),
+        routes=(),
+        backups=(),
+        ignored=(),
+        paid_routes=("old",),
+        acknowledged=(("host", "creator/old", "2026-10-08"),),
+    )
+    output = apply_config_edits(texts, plan)
+    assert output[SOURCE_PATHS[0]] == texts[SOURCE_PATHS[0]].replace("free: true", "free: false")
+    assert output[SOURCE_PATHS[1]] == texts[SOURCE_PATHS[1]]
+    assert load_config(output[SOURCE_PATHS[2]])["acknowledged"][0]["verdict"] == "not_entitled"
+    again = replace(plan, config_hashes=tuple((p, digest(output[p])) for p in SOURCE_PATHS))
+    assert apply_config_edits(output, again) == output
+
+
+@pytest.mark.parametrize("field", ["", "    free: null\n", "    free: 'true'\n"])
+def test_paid_edit_rejects_missing_or_nonboolean_field(field):
+    texts = source()
+    texts[SOURCE_PATHS[0]] = texts[SOURCE_PATHS[0]].replace(
+        "    model: old", field + "    model: old"
+    )
+    plan = replace(edit_plan(texts), routes=(), backups=(), ignored=(), paid_routes=("old",))
+    with pytest.raises(ValueError, match="paid route"):
+        apply_config_edits(texts, plan)

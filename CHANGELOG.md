@@ -12,6 +12,15 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog Slice 2b: explicit keep-paid PR preparation (#2187).** `/apply` rechecks
+  selected physical routes under existing pauses/quotas and requires unchanged route evidence plus
+  fresh `not_entitled` proof. Narrow edits set `free: false` and acknowledge the exact upstream;
+  guards preserve free primary pools across a batch and defer acknowledgements that would hide
+  another free account route. Paid selections survive outages until fulfilled on main; fulfilled
+  choices are no-ops. Removal remains gated on deployed rescue, and legacy shadow promotion is
+  superseded by review/53 graduation (maintainer decision 2026-10-08). No live calls, runtime config
+  edits, deployment, pipeline bumps or stored-artifact invalidation in this implementation PR.
+
 - **Provider catalog Slice 2b preparation: disabled shadow lane can be retired (#2187).**
   Builds resolve the prelabeler shadow lane and its dispatch cap only when shadow execution is
   enabled; disabled shadow work is excluded from ingress preflight. Removing that lane after

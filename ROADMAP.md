@@ -266,12 +266,13 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > additions/ignore first, paid/shadow follow-up, bounded rescue before removal, then bounded rate
 > limits and adaptive context calibration (Slice 5, L2; review/48 §8.10).
 > Proven material tightening may prepare a flagged PR; merge remains a maintainer decision.
-> Remaining contracts accepted in #2178; additions/ignore implementation is in PR #2182 (#2179).
+> Remaining contracts accepted in #2178; additions/ignore shipped in PR #2182 (#2179).
 > Separately reviewed conservative output caps are accepted; automatic additions still require
 > evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
 > Its exact budgets and implementation contract remain gated on L3 review.
-> Slice 2b is tracked in #2187: paid decisions and qualified shadow exit, including the approved
-> disabled-shadow runtime fix. Calibration data-source clarification remains pending.
+> Slice 2b is tracked in #2187: paid decisions, including the approved
+> disabled-shadow runtime fix shipped in #2188. Paid decisions are in implementation; legacy
+> R5 promotion is explicitly superseded by review/53 graduation (maintainer decision 2026-10-08).
 > Later slices retain separate issues and activation gates.
 >
 > **Added 2026-07-14 (maintainer decision): a rate-limited LLM dispatch item, numbered R10 but sequenced

@@ -31,6 +31,7 @@ from citypods.provider_catalog.apply import (  # noqa: E402
     PR_MARKER,
     SOURCE_PATHS,
     ApplyConfig,
+    paid_fulfilled,
     parse_decisions,
     plan_apply,
     proposal_body,
@@ -86,11 +87,14 @@ def prepare(body, base_commit):
     # Ignores spend no provider quota. Already-configured selections require no new-route proof.
     configured = {f"{r['provider']}/{r['upstream_model']}" for r in limits.get("routes") or []}
     selected -= configured
+    paid = {
+        d.route_id for d in decisions if d.action == "keep_paid" and not paid_fulfilled(d, config)
+    }
     report = Report()
-    if selected:
+    if selected or paid:
         control = _control(False)
         if isinstance(control, NoDispatchControl):
-            raise ValueError("additions require a configured exclusive dispatch pause")
+            raise ValueError("route changes require a configured exclusive dispatch pause")
         session = requests.Session()
         report = reconcile(
             limits,
@@ -101,8 +105,9 @@ def prepare(body, base_commit):
             session=session,
             control=control,
             today=config.today,
-            providers={d.provider for d in decisions if d.key in selected},
+            providers={d.provider for d in decisions if d.key in selected or d.route_id in paid},
             candidate_keys=selected,
+            route_ids=paid,
         )
     plan = plan_apply(report, decisions, config)
     output = apply_config_edits(texts, plan)
@@ -123,6 +128,7 @@ def validate(run_fn=run):
             "tests/test_llm_lanes.py",
             "tests/test_compile_llm_limits.py",
             "tests/test_provider_catalog_contract.py",
+            "tests/test_provider_catalog_reconcile.py",
             "tests/test_provider_catalog_apply.py",
             "tests/test_provider_catalog_config_edit.py",
             "tests/test_provider_catalog_evidence.py",
@@ -174,7 +180,14 @@ def publish(plan, *, run_fn=run):
         return "Selections already present on main; no PR needed."
     run_fn(["git", "config", "user.name", "github-actions[bot]"])
     run_fn(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"])
-    run_fn(["git", "commit", "-m", f"Provider catalog selected additions/ignore\n\n{PR_MARKER}"])
+    run_fn(
+        [
+            "git",
+            "commit",
+            "-m",
+            f"Provider catalog selected additions/ignore/paid decisions\n\n{PR_MARKER}",
+        ]
+    )
     # Recheck immediately before pushing, including the long compiler/test period.
     run_fn(["git", "fetch", "origin", "main"])
     if run_fn(["git", "rev-parse", "origin/main"]) != plan.base_commit:
@@ -192,7 +205,18 @@ def publish(plan, *, run_fn=run):
         path = Path(folder) / "body.md"
         path.write_text(proposal_body(plan))
         if prs:
-            run_fn(["gh", "pr", "edit", str(prs[0]["number"]), "--body-file", str(path)])
+            run_fn(
+                [
+                    "gh",
+                    "pr",
+                    "edit",
+                    str(prs[0]["number"]),
+                    "--title",
+                    "Provider catalog: selected additions, ignores and paid decisions",
+                    "--body-file",
+                    str(path),
+                ]
+            )
             return run_fn(
                 ["gh", "pr", "view", str(prs[0]["number"]), "--json", "url", "--jq", ".url"]
             )
@@ -206,7 +230,7 @@ def publish(plan, *, run_fn=run):
                 "--head",
                 BRANCH,
                 "--title",
-                "Provider catalog: selected additions and ignores",
+                "Provider catalog: selected additions, ignores and paid decisions",
                 "--body-file",
                 str(path),
             ]

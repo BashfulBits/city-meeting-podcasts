@@ -1222,3 +1222,107 @@ def test_pending_selected_choice_keeps_the_rolling_issue_open():
 
     assert sync_issue(Report(), run_date="2026-10-09", run=runner) == "updated #1"
     assert not any(args[:2] == ["issue", "close"] for args in calls)
+
+
+def test_selected_paid_health_is_fresh_scoped_and_not_suppressed_by_ack(monkeypatch):
+    from citypods.provider_catalog.evidence import digest
+
+    monkeypatch.setenv("K", "test-key")
+    sent = []
+    decisions = Decisions(
+        acknowledged=(
+            {
+                "provider": "openrouter",
+                "model_glob": "*",
+                "verdict": "not_entitled",
+                "reason": "old",
+            },
+        )
+    )
+    paid = Response(status=403, body='{"error":{"message":"only available on agentic harnesses"}}')
+    report = reconcile(
+        LIMITS,
+        {},
+        decisions,
+        QUALITY,
+        {"route_checks": {"or_scarce": TODAY.isoformat()}},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        candidate_keys=set(),
+        route_ids={"or_scarce"},
+        canary_fn=lambda rules, cfg, model, key, session: sent.append(model) or paid,
+    )
+    assert sent == ["google/gem-scarce:free"]
+    [proof] = report.anomalies
+    route = next(r for r in LIMITS["routes"] if r["route_id"] == "or_scarce")
+    assert proof.observed_on == TODAY.isoformat() and proof.config_digest == digest(route)
+    assert not proof.contended and not report.candidates
+
+
+@pytest.mark.parametrize(
+    "quota,contended",
+    [
+        ({}, False),
+        ({"or_scarce": {"rpd_remaining": 0}}, False),
+        ({"or_scarce": {"rpd_remaining": 2}}, True),
+    ],
+)
+def test_paid_health_cannot_claim_uncontended_proof_without_quota_or_pause(
+    monkeypatch, quota, contended
+):
+    monkeypatch.setenv("K", "test-key")
+    paid = Response(status=403, body='{"error":{"message":"only available on agentic harnesses"}}')
+    report = reconcile(
+        LIMITS,
+        {},
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(quota=quota, contended=contended),
+        today=TODAY,
+        candidate_keys=set(),
+        route_ids={"or_scarce"},
+        canary_fn=lambda *args: paid,
+    )
+    assert all(a.contended for a in report.anomalies)
+
+
+def test_pending_paid_selection_survives_outage_until_main_fulfills_it():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.issue import fulfilled_choices
+    from citypods.provider_catalog.reconcile import Anomaly, Report
+
+    anomaly = Anomaly("host", "route", "creator/old", "not_entitled", "paid", False)
+    report = Report(anomalies=[anomaly], state={"last_full": {"anomalies": [asdict(anomaly)]}})
+    body = render_body(report, run_date=TODAY.isoformat()).replace(
+        "- [ ] `route`: keep as a paid route", "- [x] `route`: keep as a paid route"
+    )
+    rewritten = render_body(Report(), run_date=TODAY.isoformat(), previous_body=body)
+    assert "- [x] `route`: keep as a paid route" in rewritten
+    assert decode_state(rewritten)["last_full"]["anomalies"][0]["route_id"] == "route"
+    route = {
+        "route_id": "route",
+        "provider": "host",
+        "upstream_model": "creator/old",
+        "free": False,
+    }
+    acks = Decisions(
+        acknowledged=(
+            {
+                "provider": "host",
+                "model_glob": "creator/old",
+                "verdict": "not_entitled",
+                "reason": "kept",
+            },
+        )
+    )
+    fulfilled = fulfilled_choices(rewritten, {"routes": [route]}, {}, acks, TODAY)
+    assert fulfilled == {"`route`: keep as a paid route"}
+    assert not fulfilled_choices(rewritten, {"routes": [route]}, {}, NO_DECISIONS, TODAY)
+    final = render_body(
+        Report(), run_date=TODAY.isoformat(), previous_body=rewritten, fulfilled=fulfilled
+    )
+    assert "- [x] `route`: keep as a paid route" not in final

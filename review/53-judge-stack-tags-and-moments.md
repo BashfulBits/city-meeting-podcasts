@@ -34,6 +34,14 @@ are the authority; nothing re-enters shadow except a prompt or rubric change, wh
 calibration cell for that question only. The judge lanes are production lanes from the start and
 are reserved accordingly.
 
+**review/48 scope reconciliation, maintainer decision 2026-10-08:** this series owns graduation.
+The legacy R5 mirrored-human-review promotion automation in
+[review/48 §8.4](48-provider-catalog-reconciliation.md#84-slice-2b-paid-decisions-legacy-shadow-exit-superseded)
+is superseded, avoiding new automation/storage access for the pre-labelers that PR11 retires.
+Review/48 Slice 2b finishes with paid-route decisions. Its disabled-shadow build prerequisite
+shipped in #2188 and supports PR11's lane retirement; it does not graduate the judge stack or
+archive any review state. Graduation and archival remain this design's responsibility.
+
 ## Decisions this spec relies on (all recorded in review/49)
 
 | Decision | Source |

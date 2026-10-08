@@ -6,6 +6,8 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
+from fnmatch import fnmatchcase
+from glob import escape
 from typing import Any
 
 from citypods.compute.llm_lanes import LaneConfig
@@ -37,6 +39,8 @@ class Decision:
     evidence: RouteEvidence | None = None
     candidate_digest: str | None = None
     offered_lanes: tuple[str, ...] = ()
+    route_id: str | None = None
+    route_digest: str | None = None
 
     @property
     def key(self):
@@ -53,6 +57,8 @@ class EditPlan:
     applied: tuple[str, ...] = ()
     deferred: tuple[str, ...] = ()
     rejected: tuple[str, ...] = ()
+    paid_routes: tuple[str, ...] = ()
+    acknowledged: tuple[tuple[str, str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -107,23 +113,151 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
                 candidate.lanes,
             )
         )
-    # Keep later decision types visible, but reject them until their slice is implemented.
-    if any(not any(x.startswith(f"`{c.key}`: ") for c in snapshot.candidates) for x in checked):
-        raise ValueError("paid-route/shadow/limit decisions require Slice 2b")
+    for anomaly in snapshot.anomalies:
+        if anomaly.verdict != "not_entitled":
+            continue
+        selected = [x for x in checked if x.startswith(f"`{anomaly.route_id}`: ")]
+        if len(selected) > 1:
+            raise ValueError(f"{anomaly.route_id}: conflicting paid-route decisions")
+        if selected:
+            result.append(
+                Decision(
+                    anomaly.provider,
+                    anomaly.model,
+                    "keep_paid" if selected[0].endswith("keep as a paid route") else "remove",
+                    route_id=anomaly.route_id,
+                    route_digest=anomaly.config_digest,
+                )
+            )
     if not result:
-        raise ValueError("select at least one additions/ignore decision")
+        raise ValueError("select at least one supported decision")
     return tuple(result)
+
+
+def paid_fulfilled(decision: Decision, config: ApplyConfig) -> bool:
+    from citypods.provider_catalog.config_edit import load_config
+
+    route = next(
+        (r for r in config.limits.get("routes") or [] if r.get("route_id") == decision.route_id),
+        None,
+    )
+    entries = load_config(config.texts[SOURCE_PATHS[2]]).get("acknowledged") or []
+    return bool(
+        route
+        and route.get("provider") == decision.provider
+        and route.get("upstream_model") == decision.model
+        and route.get("free") is False
+        and any(
+            a.get("provider") == decision.provider
+            and fnmatchcase(decision.model, str(a.get("model_glob") or ""))
+            and a.get("verdict") == "not_entitled"
+            for a in entries
+        )
+    )
 
 
 def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyConfig) -> EditPlan:
     candidates = {c.key: c for c in report.candidates}
     routes, backups, ignored, applied, deferred, rejected = [], [], [], [], [], []
     existing = list(config.limits.get("routes") or [])
+    paid_routes, acknowledged = [], []
+    anomalies = {a.route_id: a for a in report.anomalies}
     providers = config.limits.get("providers") or {}
     for decision in decisions:
         provider = providers.get(decision.provider)
         if not provider or not any(a.get("id") for a in provider.get("accounts") or []):
             rejected.append(f"{decision.key}: provider/account no longer configured")
+            continue
+        if decision.action == "remove":
+            deferred.append(f"{decision.route_id}: removal requires deployed Slice 3 rescue")
+            continue
+        if decision.action == "keep_paid":
+            matches = [r for r in existing if r.get("route_id") == decision.route_id]
+            if len(matches) != 1:
+                rejected.append(f"{decision.route_id}: route missing or ambiguous")
+                continue
+            route = matches[0]
+            if (
+                route.get("provider") != decision.provider
+                or route.get("upstream_model") != decision.model
+            ):
+                deferred.append(f"{decision.route_id}: route identity changed; refresh the issue")
+                continue
+            if not isinstance(route.get("free"), bool):
+                rejected.append(f"{decision.route_id}: explicit boolean free field required")
+                continue
+            model_glob = escape(decision.model)
+            if paid_fulfilled(decision, config):
+                applied.append(f"{decision.route_id}: keep paid already fulfilled")
+                continue
+            proof = anomalies.get(decision.route_id)
+            if (
+                not proof
+                or proof.verdict != "not_entitled"
+                or proof.contended
+                or proof.observed_on != config.today.isoformat()
+                or proof.config_digest != digest(route)
+                or decision.route_digest != digest(route)
+                or proof.provider != decision.provider
+                or proof.model != decision.model
+                or route.get("rpd") == 0
+            ):
+                deferred.append(
+                    f"{decision.route_id}: fresh paused unchanged not_entitled proof required"
+                )
+                continue
+            if any(
+                r.get("provider") == decision.provider
+                and r.get("upstream_model") == decision.model
+                and r.get("route_id") != decision.route_id
+                and r.get("free") is True
+                for r in existing
+            ):
+                deferred.append(
+                    f"{decision.route_id}: acknowledgement covers other free routes; "
+                    "review manually"
+                )
+                continue
+            # Evaluate the complete proposed paid batch, preserving a free primary pool.
+            proposed = set(paid_routes) | {decision.route_id}
+            losing = []
+            for purpose, lane in config.lanes.items():
+
+                def serves(r, lane=lane):
+                    return set(lane.models) & {
+                        str(r.get("model") or ""),
+                        str(r.get("model_key") or ""),
+                        *map(str, r.get("also_serves") or []),
+                    }
+
+                before = [
+                    r for r in existing if r.get("free") is True and r.get("rpd") != 0 and serves(r)
+                ]
+                if not any(r.get("route_id") == decision.route_id for r in before):
+                    continue
+                if not any(r.get("route_id") not in proposed for r in before):
+                    losing.append(purpose)
+            if losing:
+                rejected.append(
+                    f"{decision.route_id}: would empty free lane pool: {', '.join(losing)}"
+                )
+                continue
+            impacted = [
+                purpose
+                for purpose, lane in config.lanes.items()
+                if set((*lane.models, *lane.backup_models))
+                & {
+                    str(route.get("model") or ""),
+                    str(route.get("model_key") or ""),
+                    *map(str, route.get("also_serves") or []),
+                }
+            ]
+            paid_routes.append(decision.route_id)
+            acknowledged.append((decision.provider, model_glob, config.today.isoformat()))
+            applied.append(
+                f"{decision.route_id}: keep paid; loses free eligibility in "
+                f"{', '.join(impacted) or 'no lanes'}"
+            )
             continue
         if decision.action == "ignore":
             ignored.append((decision.provider, decision.model, config.today.isoformat()))
@@ -251,6 +385,8 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
         tuple(applied),
         tuple(deferred),
         tuple(rejected),
+        tuple(paid_routes),
+        tuple(acknowledged),
     )
 
 

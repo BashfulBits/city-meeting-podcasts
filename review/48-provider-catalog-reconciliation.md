@@ -1,6 +1,6 @@
 # review/48 — Provider catalog reconciliation
 
-**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a implementation (#2179); remaining slices contract proposal (L2)**
+**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a shipped (#2182) · shadow shutdown shipped (#2188) · Slice 2b paid decisions in implementation (#2187); later slices retain gates**
 
 Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
 `scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
@@ -310,7 +310,7 @@ Above by >20%: an issue checkbox. Any swing >50% or an observed 0: flagged as a 
 The Worker's `route_failures` (sustained `own_rpm`/`own_tpm`/`unknown_429`) triggers an early
 re-probe of a scarce route.
 
-**Shadow exit (maintainer decision 2026-09-24).** A shadow evaluator lane (today
+**Historical shadow exit (2026-09-24; superseded for R5 on 2026-10-08 by §8.4 and review/53).** A shadow evaluator lane (today
 `topic-tags:prelabeler-shadow`, gemma-4-26b-a4b-it shadowing the gemma-4-31b-it pre-labeler) runs
 the production prompt on the same subjects, never affects display, and earns its own calibration
 row: human reviews of the production evaluator are mirrored onto it through the subject's truth
@@ -344,8 +344,8 @@ shown side by side.
 
 ## 8. Remaining-slice contract proposal — 2026-10-08
 
-**Status: accepted proposal in #2178; Slice 2a implementation tracked in
-[#2179](https://github.com/BashfulBits/city-meeting-podcasts/issues/2179).** The maintainer requested
+**Status: accepted proposal in #2178; Slice 2a shipped in #2182 (#2179); Slice 2b tracked in
+[#2187](https://github.com/BashfulBits/city-meeting-podcasts/issues/2187).** The maintainer requested
 implementation after merging the proposal on 2026-10-08. The remaining slices retain their separate
 issue and activation gates. The earlier L3 label overstated readiness: candidate provenance, YAML writes, terminal
 recovery and scoped limit observations lacked executable contracts. This section proposes those
@@ -358,7 +358,8 @@ The maintainer selected these priorities in chat on 2026-10-08:
 
 1. Slice 2 additions/ignore first; then Slice 3 rescue/removal; then Slice 4 limits.
 2. Split Slice 2: 2a handles additions/ignore; 2b completes paid-route decisions and shadow support.
-   Unsupported choices remain visible but cannot be applied by 2a. They are still committed scope.
+   Unsupported choices remain visible but cannot be applied by 2a. The R5 shadow portion was
+   subsequently superseded by decision 6 below.
 3. Proven tightening may prepare a PR even for a decrease greater than 50%; flag the material
    change prominently. Increases still require a maintainer choice. Zero never becomes a limit.
 4. Missing catalog output bounds may use a separately reviewed conservative cap. Automatic
@@ -366,6 +367,12 @@ The maintainer selected these priorities in chat on 2026-10-08:
 5. Add adaptive input/output context calibration **after** bounded rate maintenance (Slice 5).
    Repeated probes should expand successful lower bounds and refine real size-rejection brackets,
    using provider-reported token counts rather than treating local estimates as exact.
+6. Let review/53 own graduation. Defer the legacy R5 human-review shadow-promotion automation
+   from Slice 2b; its pre-labelers and calibration will be retired by review/53 PR11. This narrows
+   the earlier accepted paid/shadow scope deliberately: avoid building soon-retired automation and
+   avoid adding storage access for obsolete evidence. Paid decisions complete Slice 2b; existing
+   review history stays untouched until review/53's archival step. The #2188 shutdown fix remains
+   a useful retirement prerequisite. Do not substitute judge graduation into `/apply` here.
 
 Decision 3 extends G4's earlier “small” automatic changes. It saves a decision round when repeated
 credible evidence proves a large capacity loss; the risk is a misleading measurement lowering
@@ -373,8 +380,10 @@ throughput. Three independent observations, scope validation and human PR review
 risk. Automation prepares PRs; it does not merge them or deploy changes.
 
 Proposed merge order: **2a → 2b → 3a recovery → 3b removal → 4 → 5 calibration**.
-The rescue deployment is a hard prerequisite for removal automation. Split 2b can proceed separately from 3a after 2a; it must not
-silently disappear from the delivery list. No live probe is required to write or test these slices.
+The rescue deployment is a hard prerequisite for removal automation. Split 2b can proceed
+separately from 3a after 2a; paid decisions remain in the delivery list. The legacy shadow portion
+is explicitly superseded by decision 6, not silently dropped. No live probe is required to write
+or test these slices.
 Paused live evidence and post-deploy recovery validation are activation gates, not coding blockers.
 Each slice gets a separate issue and scoped implementation PR after this proposal is accepted.
 
@@ -455,7 +464,7 @@ Repeated apply produces no duplicate route, lane entry, ignore entry or PR. Keep
 until main actually contains them; explain open-PR versus merged state on the issue. A token-created
 PR must have these in-job checks because ordinary PR CI may not be triggered.
 
-### 8.4 Slice 2b: paid decisions and shadow exit
+### 8.4 Slice 2b: paid decisions; legacy shadow exit superseded
 
 Extend the same planner/editor/command files; do not add a second command surface. A paid anomaly's
 explicit remove choice uses the Slice 3 removal planner only after rescue is deployed. “Keep paid”
@@ -469,9 +478,38 @@ Extend `citypods/run.py`'s dispatch-cap and StageContext construction to resolve
 only when enabled; exclude disabled shadow work from ingress preflight,
 and add an end-to-end regression in `tests/test_run.py` for an absent disabled shadow lane;
 an enabled missing shadow lane must still fail loudly. This permits the exact shadow-lane removal
-below without breaking builds. The authoritative calibration workflow data source remains a
-maintainer clarification before promotion is implemented; catalog workflows currently load none.
+below without breaking builds. The fix shipped in #2188. Legacy promotion was subsequently
+superseded by review/53; no human-calibration storage loader is needed in the catalog workflows.
 
+**Paid-decision implementation checkpoint (#2187), 2026-10-08:** extend `Decision` with the
+physical route ID and reviewed route digest, and `Anomaly` with optional observation date,
+route-config digest and pause contention. Legacy anomalies remain advisory. `reconcile(...,
+route_ids=...)` freshly checks only selected active physical routes, including separate accounts
+for the same upstream, without using previous scarce-check dates or acknowledgements to hide the
+result. Existing pause, quota, reservation and spacing behavior remains authoritative.
+
+`parse_decisions()` rejects conflicting paid choices; `plan_apply()` requires unchanged reviewed
+and live route digests plus current-day uncontended `not_entitled` proof. It changes only the
+selected route's `free` scalar and appends an existing-schema acknowledgement with a literal,
+glob-escaped upstream model. Because acknowledgements apply across a provider/upstream identity,
+a selection that would conceal another configured free route for that identity defers to manual
+review. Pool checks include all previously accepted paid changes in the same plan, require an
+unpaused free route for an affected lane's primary model set, and do not rely on delayed backups or
+paid eligibility to establish free admission. Report affected primary/backup lanes; preserve their
+model lists, primary, backup order, `allow_paid` policies, quotas and gateway properties.
+
+The editor preserves scalar comments and asserts the exact semantic delta. Repeated fulfilled
+keep-paid choices spend no quota and write nothing. Selected paid decisions survive weekly outages
+until main contains both the paid classification and acknowledgement; open PRs are not fulfillment.
+Explicit remove selections remain deferred until deployed Slice 3 rescue and the removal planner.
+No live provider calls or config changes occur during this implementation's offline validation.
+
+The shadow shutdown prerequisite shipped in #2188. The maintainer chose review/53 graduation
+on 2026-10-08 (decision 6). That design's PR11 retires this R5 pre-labeler and archives its human
+calibration; this implementation enables no legacy promotion or judge-stack path. Supporting docs
+include a cross-link in `review/53-judge-stack-tags-and-moments.md` so the scope change is durable.
+
+**Historical shadow contract, superseded by review/53 (not Slice 2b implementation scope):**
 For shadow exit, read current mirrored-review calibration through `citypods/llm_evaluation.py` and
 current `EvaluationConfig`; recompute all §6 thresholds at apply time. Treat issue counts as display
 only. Append the shadow model as a production backup, remove the exact shadow lane configuration
@@ -615,7 +653,7 @@ may change. An additional required file or behavior must be named in this contra
 | Slice | Required offline acceptance |
 |---|---|
 | Shared/2a | New `tests/test_provider_catalog_evidence.py`, `test_provider_catalog_apply.py`, `test_provider_catalog_config_edit.py`: deterministic digests; incomplete/stale/deferred evidence; ambiguous identity; unknown limits; unauthorized/spoofed commands; YAML comments/semantic fencing; idempotent branch/PR updates; concurrent main change; mixed applied/deferred choices. Extend existing catalog contract/reconcile, compiler, lane and workflow tests. |
-| 2b | Paid route policy/empty-lane guard; unsupported commands before activation; shadow thresholds/current calibration and history retention; primary untouched. Extend evaluation and apply tests. |
+| 2b | Paid route policy/free-pool guard across a batch; fresh selected-account proof; shared-upstream acknowledgement deferral; literal glob matching; pending/fulfilled decisions; removal gate; primary and policies untouched. Extend apply/editor/reconcile tests. Disabled-shadow runtime regression shipped in #2188; legacy promotion is superseded by review/53. |
 | 3a | Worker coordinator/protocol/row-accounting/rows-read tests: old sentinel/model indexes; bounded resumable pages; digest change/restart; temporary quota/pause; leased-job fencing; fitting pooled alternative; structural reason compatibility and measured worst-case billing. Python dispatch-v2/deferred/sweep tests: preserved counts, audit-before-delete, stale handle fence, generation loop guard. Tag tests prove rebatching retains every subject; unsplittable tasks stay recoverable. |
 | 3b | New `tests/test_provider_catalog_retire.py`: incomplete catalogs, multi-account disagreement, non-retirement signals, surviving pools, backup repair, primary review flag, empty-lane rejection and current-main rebuild. |
 | 4 | New `tests/test_provider_catalog_limits.py` plus rate-probe/workflow tests: six/90-day window, independent-run requirement, stale maximum, 20%/50% boundaries, zero/mixed scopes, artifact spoof/expiry, shared account cap, scarce quota, pause failure and exact request/time ceilings. |
@@ -629,13 +667,13 @@ issue, resolve any code/file mismatch, and copy its activation gate into that is
 review questions are technical acceptance of identity fallback, the trusted-artifact history and
 structural recovery lineage; priority, initial command scope and material-tightening policy are
 already decided above. #2178 and the subsequent implementation request accept the original
-remaining-slice technical choices; Slice 2a is prepared in PR #2182 (#2179). Slice 5 remains L2
+remaining-slice technical choices; Slice 2a shipped in PR #2182 (#2179). Slice 5 remains L2
 under §8.10. No automatic removal or limit maintenance is enabled by this docs PR.
 
 
-### Slice 2a implementation checkpoint — 2026-10-08 (#2179)
+### Slice 2a implementation checkpoint — implemented in PR #2182, 2026-10-08 (#2179)
 
-The additions/ignore command is prepared with v3 evidence/digests, pure plugin identity callbacks,
+The additions/ignore command shipped with v3 evidence/digests, pure plugin identity callbacks,
 selected-candidate fresh rechecks, exact command/current-issue authorization, additive YAML edits,
 both compilers and in-job tests, and one managed additions branch/PR. Observation and apply share
 `provider-catalog-writers` concurrency. Legacy issue markers/state remain readable; old proofs cannot
