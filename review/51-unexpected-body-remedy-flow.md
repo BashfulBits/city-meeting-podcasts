@@ -2717,3 +2717,10 @@ Tests: repeated bounded runs finish one large source without reconverting comple
 changed source/config/archive policies invalidate partials; a stopped build with no prior index
 reports that accurately; prior complete bytes survive deferral/errors. Whole Ruff and offline
 suite plus current-head substantive review before human merge. No pipeline bump/backfill.
+
+L3 refinement before final checkpoint implementation: store each processed UID's input hash
+and document (null for excluded/no document). Partial source hash covers config/base URL/
+archive/publication policy with empty record inputs; per-record hashes cover exact durable
+record inputs. New/changed recordings therefore reprocess only affected records, while
+policy changes invalidate the entire partial source. Drop removed/nonpublic cached UIDs.
+This prevents routine additions during the four-hour cadence from discarding all progress.
