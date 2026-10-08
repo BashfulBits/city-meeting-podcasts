@@ -21,6 +21,7 @@ from citypods.provider_catalog.rules import (
     ProviderRules,
     Signal,
     body_matches,
+    namespaced_identity,
 )
 
 NGC_SEARCH = "https://api.ngc.nvidia.com/v2/search/catalog/resources/ENDPOINT"
@@ -87,6 +88,7 @@ def _links(model: str) -> tuple[tuple[str, str], ...]:
 
 
 RULES = ProviderRules(
+    model_identity=namespaced_identity(""),
     name="nvidia",
     free_evidence=free_endpoint_label,
     prepare=build_catalog_labels,

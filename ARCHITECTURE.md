@@ -232,7 +232,18 @@ actionable. Quality uses the paginated `/api/v2/language/models/free` endpoint w
 `ARTIFICIAL_ANALYSIS_API_KEY`; creator names are normalized to publisher identities. A failed page
 leaves the whole run unscored rather than exposing a partial catalog. The weekly endpoint-contract
 workflow separately exercises this client and requires usable reference-model scores; missing
-credentials and API/schema failures fail the job. Reconciliation changes no config. See [review/48](review/48-provider-catalog-reconciliation.md).
+credentials and API/schema failures fail the job. Reconciliation changes no config.
+`provider-catalog-commands.yml` handles exact `/apply` comments from repository writers on the
+current rolling issue. Its trusted main checkout refetches the issue and re-verifies only selected
+new routes, preserving provider pauses/spacing and the three-candidate budget. V3 evidence records
+bind catalog content, free eligibility, context bounds, plugin-proven logical identity and verified
+JSON methods; old markers/state remain readable but cannot authorize a new route. Missing evidence
+or identity defers that selection. A narrow YAML editor appends routes, lane backups or ignore
+records and asserts the exact parsed delta; it never promotes primaries or re-enables paused routes.
+Both compilers and catalog/lane/limit tests run before publication to the bot-owned fixed additions
+branch. Main changes trigger a bounded rebuild; branch replacement uses a lease. Observation and
+apply serialize through one writer lock. Human PR merge remains the activation step; paid/shadow,
+removals and limit changes belong to later slices. See [review/48](review/48-provider-catalog-reconciliation.md).
 
 | Area | Modules |
 |---|---|

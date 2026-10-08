@@ -16,7 +16,7 @@ import zlib
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
-from citypods.provider_catalog.reconcile import Report
+from citypods.provider_catalog.reconcile import Report, _merge_into_last_full
 from citypods.review_issues import (
     DECISION_BLOCK_END,
     DECISION_BLOCK_START,
@@ -26,7 +26,14 @@ from citypods.review_issues import (
 
 ISSUE_TITLE = "Provider catalog: pending decisions"
 ISSUE_LABEL = "provider-catalog"
-MARKER = "<!-- citypods:provider-catalog v=2 -->"
+MARKER = "<!-- citypods:provider-catalog v=3 -->"
+LEGACY_MARKERS = tuple(f"<!-- citypods:provider-catalog v={v} -->" for v in (1, 2))
+
+
+def is_catalog_issue(body: str) -> bool:
+    return any(marker in body for marker in (MARKER, *LEGACY_MARKERS))
+
+
 _STATE_RE = re.compile(r"<!-- citypods:provider-catalog-state ([A-Za-z0-9+/=]+) -->")
 # Leave room for the state marker after the bounded human-readable part.
 _HUMAN_BODY_LIMIT = 52_000
@@ -88,8 +95,60 @@ def _score_cell(score: float | None, below_floor: bool | None) -> str:
     return f"{score:g}" + (" (below floor)" if below_floor else "")
 
 
-def render_body(report: Report, *, run_date: str, previous_body: str = "") -> str:
-    choices = decision_choices(report)
+def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str]:
+    """Fulfillment is read from main's config, never an open PR or issue state assertion."""
+    snapshot = Report()
+    try:
+        _merge_into_last_full(snapshot, decode_state(previous_body).get("last_full") or {}, set())
+    except (TypeError, ValueError, KeyError):
+        return set()
+    fulfilled = set()
+    for candidate in snapshot.candidates:
+        prefix = f"`{candidate.key}`: "
+        if decisions.is_ignored(candidate.provider, candidate.model, today):
+            fulfilled.update(c for c in decision_choices(snapshot) if c.startswith(prefix))
+            continue
+        pools = {
+            str(r.get("model_key") or r["model"])
+            for r in limits.get("routes") or []
+            if r.get("provider") == candidate.provider
+            and r.get("upstream_model") == candidate.model
+            and r.get("free") is True
+            and r.get("rpd") != 0
+        }
+        if len(pools) != 1:
+            continue
+        model_key = next(iter(pools))
+        fulfilled.add(prefix + "add route only")
+        fulfilled.update(
+            prefix + f"add as backup to `{lane}`"
+            for lane in candidate.lanes
+            if lane in lanes and model_key in lanes[lane].backup_models
+        )
+    return fulfilled
+
+
+def render_body(
+    report: Report, *, run_date: str, previous_body: str = "", fulfilled: set[str] | None = None
+) -> str:
+    fulfilled = fulfilled or set()
+    choices = tuple(c for c in decision_choices(report) if c not in fulfilled)
+    prior = Report()
+    try:
+        _merge_into_last_full(prior, decode_state(previous_body).get("last_full") or {}, set())
+    except (TypeError, ValueError, KeyError):
+        prior = Report()
+    prior_choices = decision_choices(prior)
+    selected = set(checked_decisions(previous_body, prior_choices + choices)) - fulfilled
+    pending = [
+        c
+        for c in prior.candidates
+        if c.key not in {current.key for current in report.candidates}
+        and any(choice.startswith(f"`{c.key}`: ") for choice in selected)
+    ]
+    if pending:
+        pending_choices = decision_choices(Report(candidates=pending))
+        choices += tuple(c for c in pending_choices if c not in choices and c not in fulfilled)
     checked = set(checked_decisions(previous_body, choices)) if previous_body else set()
     floor = f"{report.floor:g}" if report.floor is not None else "unavailable"
     lines = [
@@ -127,6 +186,13 @@ def render_body(report: Report, *, run_date: str, previous_body: str = "") -> st
         ]
     else:
         lines.append("None this week.")
+    if pending:
+        names = ", ".join(f"`{c.key}`" for c in pending)
+        lines += [
+            "",
+            f"Pending prior selections: {names}. Their previous proofs are advisory; "
+            "selected decisions stay below until fulfilled on main or changed by a maintainer.",
+        ]
     lines += ["", f"## Configured-route anomalies ({len(report.anomalies)})", ""]
     if report.anomalies:
         for a in report.anomalies:
@@ -162,7 +228,9 @@ def render_body(report: Report, *, run_date: str, previous_body: str = "") -> st
                 "Tick what you want, then comment `/apply` to get one curated PR with exactly "
                 "those changes (review/48 Slice 2). Ticks are kept across weekly updates. A free "
                 "route that became paid is never removed automatically: remove it, or keep it as "
-                "a paid route.",
+                "a paid route. Additions/ignore are available now; paid-route choices require "
+                "Slice 2b. Unavailable proofs remain ticked. An open PR does not fulfill a "
+                "selection until it is merged.",
                 "",
                 _render_decision_block(choices, checked),
             ]
@@ -171,7 +239,13 @@ def render_body(report: Report, *, run_date: str, previous_body: str = "") -> st
     observations = "\n".join(
         ["", summary, "", *[f"- {o}" for o in report.observations], "", "</details>", ""]
     )
-    state_marker = _encode_state(report.state)
+    state = dict(report.state)
+    if pending:
+        from dataclasses import asdict
+
+        state["last_full"] = dict(state.get("last_full") or {})
+        state["last_full"]["candidates"] = [asdict(c) for c in (*report.candidates, *pending)]
+    state_marker = _encode_state(state)
     room = min(_HUMAN_BODY_LIMIT, 65_000 - len(state_marker.encode("utf-8")))
     room -= len(decisions.encode("utf-8"))
     if len(observations.encode("utf-8")) > room // 2:
@@ -207,17 +281,45 @@ def find_issue(run: Runner = _gh) -> dict[str, Any] | None:
         or "[]"
     )
     for issue in listed:
-        if MARKER in (issue.get("body") or ""):
+        if is_catalog_issue(issue.get("body") or ""):
             return issue
     return None
 
 
-def sync_issue(report: Report, *, run_date: str, run: Runner = _gh) -> str:
+def _report_from_body(body):
+    report = Report()
+    try:
+        _merge_into_last_full(report, decode_state(body).get("last_full") or {}, set())
+    except (TypeError, ValueError, KeyError):
+        pass
+    return report
+
+
+def sync_issue(
+    report: Report,
+    *,
+    run_date: str,
+    run: Runner = _gh,
+    limits=None,
+    lanes=None,
+    decisions=None,
+    today=None,
+) -> str:
     """Create, update, close or reopen the managed issue. Returns a one-line action summary."""
     existing = find_issue(run)
-    body = render_body(report, run_date=run_date, previous_body=(existing or {}).get("body") or "")
+    previous_body = (existing or {}).get("body") or ""
+    fulfilled = (
+        fulfilled_choices(previous_body, limits, lanes, decisions, today)
+        if limits is not None and lanes is not None and decisions is not None
+        else set()
+    )
+    body = render_body(report, run_date=run_date, previous_body=previous_body, fulfilled=fulfilled)
+    # Selected pending choices remain actionable even when discovery no longer lists the route.
+    actionable = report.actionable or bool(
+        checked_decisions(body, decision_choices(_report_from_body(body)))
+    )
     if existing is None:
-        if not report.actionable:
+        if not actionable:
             return "no issue: nothing actionable"
         run(
             [
@@ -238,10 +340,10 @@ def sync_issue(report: Report, *, run_date: str, run: Runner = _gh) -> str:
     number = str(existing["number"])
     run(["issue", "edit", number, "--body", body])
     is_open = str(existing.get("state", "")).upper() == "OPEN"
-    if report.actionable and not is_open:
+    if actionable and not is_open:
         run(["issue", "reopen", number])
         return f"reopened #{number}"
-    if not report.actionable and is_open:
+    if not actionable and is_open:
         run(["issue", "close", number, "--comment", "Nothing actionable this week."])
         return f"closed #{number}"
     return f"updated #{number}"

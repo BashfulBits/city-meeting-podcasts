@@ -205,7 +205,16 @@ def main(argv: list[str] | None = None) -> int:
         f"{len(report.anomalies)} anomaly(ies), {len(report.observations)} observation(s)"
     )
     if args.sync_issues:
-        print(sync_issue(report, run_date=today.isoformat()))
+        print(
+            sync_issue(
+                report,
+                run_date=today.isoformat(),
+                limits=limits,
+                lanes=load_lanes(),
+                decisions=load_decisions(),
+                today=today,
+            )
+        )
     else:
         print(render_body(report, run_date=today.isoformat()))
     return 0

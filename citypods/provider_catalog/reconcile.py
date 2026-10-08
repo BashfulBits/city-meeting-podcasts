@@ -20,6 +20,15 @@ import requests
 from citypods.compute.llm_lanes import LaneConfig
 from citypods.provider_catalog.classify import Classification, classify
 from citypods.provider_catalog.decisions import Decisions
+from citypods.provider_catalog.evidence import (
+    CatalogEvidence,
+    LimitObservation,
+    RouteEvidence,
+    candidate_digest,
+    catalog_digest,
+    logical_identity,
+    positive_bound,
+)
 from citypods.provider_catalog.probe import (
     CANARY_TIMEOUT_SECONDS,
     STRUCTURED_METHODS,
@@ -113,6 +122,9 @@ class Candidate:
     other_lanes: tuple[tuple[str, float], ...] = ()
     structured_output_method: str | None = None
     structured_output_verified_on: str | None = None
+
+    evidence: dict[str, Any] | None = None
+    evidence_digest: str | None = None
 
     @property
     def key(self) -> str:
@@ -277,13 +289,7 @@ def lane_usage(
 
 
 def _context_limit(record: Mapping[str, Any]) -> int | None:
-    for key in _CONTEXT_KEYS:
-        value = record.get(key)
-        if isinstance(value, int) and value > 0:
-            return value
-        if isinstance(value, str) and value.isdigit() and int(value) > 0:
-            return int(value)
-    return None
+    return positive_bound(record, _CONTEXT_KEYS)
 
 
 def _days_since(stamp: str | None, today: date) -> int | None:
@@ -310,6 +316,7 @@ def reconcile(
     today: date,
     providers: set[str] | None = None,
     due_only: bool = False,
+    candidate_keys: set[str] | None = None,
     canary_fn: CanaryFn = canary,
     sleep: Callable[[float], None] = time.sleep,
     structured_canary_fn: Callable[..., dict[str, dict[str, Any]]] = structured_canary,
@@ -336,6 +343,7 @@ def reconcile(
         default=0,
     )
     provider_cfgs = limits.get("providers") or {}
+    catalogs = dict(previous_state.get("catalogs") or {})
     selected = sorted(providers or provider_cfgs)
     for provider in selected:
         rules = all_rules().get(provider)
@@ -360,10 +368,116 @@ def reconcile(
                 f"{provider}: free-evidence source unavailable: {ctx['error']}"
             )
 
+        catalog_evidence = CatalogEvidence(
+            provider,
+            today.isoformat(),
+            not catalog.error and rules.catalog_is_complete,
+            tuple(
+                (
+                    model,
+                    rules.chat_filter(model, record),
+                    rules.free_evidence(model, record, ctx) if rules.free_evidence else False,
+                    _context_limit(record),
+                    positive_bound(
+                        record,
+                        (
+                            "outputTokenLimit",
+                            "max_output_tokens",
+                            "max_completion_tokens",
+                            "top_provider.max_completion_tokens",
+                            "output_context_limit",
+                        ),
+                    ),
+                    logical_identity(provider, model, rules, record, routes),
+                )
+                for model, record in catalog.models.items()
+            ),
+        )
+        catalogs[provider] = asdict(catalog_evidence)
+
+        def evidenced_candidate(
+            model,
+            record,
+            score,
+            proven_on,
+            method,
+            response=None,
+            method_results=None,
+            contended=False,
+            *,
+            provider=provider,
+            rules=rules,
+            cfg=cfg,
+            ctx=ctx,
+            catalog_evidence=catalog_evidence,
+        ):
+            candidate = _candidate(
+                provider,
+                model,
+                record,
+                score,
+                rules,
+                report.floor,
+                incumbents,
+                proven_on,
+                method=method,
+            )
+            accounts = cfg.get("accounts") or []
+            account_id = str(accounts[0].get("id") or "") if accounts else ""
+            observations = (
+                tuple(
+                    LimitObservation(
+                        metric, value, today.isoformat(), provider, account_id, scope=scope
+                    )
+                    for metric, value, scope in rules.limit_observations(response)
+                )
+                if response
+                else ()
+            )
+            candidate.evidence = RouteEvidence(
+                provider,
+                model,
+                account_id,
+                proven_on,
+                catalog_digest(catalog_evidence),
+                catalog_evidence.complete,
+                rules.free_evidence(model, record, ctx) is True if rules.free_evidence else False,
+                candidate.context_limit,
+                positive_bound(
+                    record,
+                    (
+                        "outputTokenLimit",
+                        "max_output_tokens",
+                        "max_completion_tokens",
+                        "top_provider.max_completion_tokens",
+                        "output_context_limit",
+                    ),
+                ),
+                logical_identity(provider, model, rules, record, routes),
+                "proven",
+                method,
+                proven_on if method else None,
+                observations,
+                tuple(
+                    (
+                        m,
+                        e.get("outcome", "inconclusive"),
+                        e.get("first_byte_seconds"),
+                        e.get("completion_seconds"),
+                    )
+                    for m, e in (method_results or {}).items()
+                ),
+                contended,
+            ).to_dict()
+            candidate.evidence_digest = candidate_digest(
+                RouteEvidence.from_dict(candidate.evidence), candidate.lanes
+            )
+            return candidate
+
         # --- configured-route health: one live route per upstream model -------------------------
         health: list[dict[str, Any]] = []
         seen_models: set[str] = set()
-        for route in provider_routes:
+        for route in [] if candidate_keys is not None else provider_routes:
             model = str(route.get("upstream_model") or "")
             if route.get("rpd") == 0 or model in seen_models:
                 continue
@@ -384,6 +498,8 @@ def reconcile(
         configured_identities = {_identity(m, rules.free_suffix): m for m in configured_models if m}
         if not due_only and not rules.observation_only and not catalog.error:
             for model, record in sorted(catalog.models.items()):
+                if candidate_keys is not None and f"{provider}/{model}" not in candidate_keys:
+                    continue
                 if model in configured_models or not rules.chat_filter(model, record):
                     continue
                 if decisions.is_ignored(provider, model, today):
@@ -394,10 +510,14 @@ def reconcile(
                 context = _context_limit(record)
                 if context is not None and context < min_context:
                     continue
+                free = rules.free_evidence(model, record, ctx) if rules.free_evidence else False
+                if free is False:
+                    continue
                 memory = canary_memory.get(f"{provider}/{model}")
                 age = _days_since(memory.get("on") if memory else None, today)
                 remembered = (
-                    memory
+                    candidate_keys is None
+                    and memory
                     and age is not None
                     and age < CANARY_MEMORY_DAYS
                     and memory.get("verdict") in DEFINITIVE_VERDICTS
@@ -409,16 +529,14 @@ def reconcile(
                             model, creator=rules.creator, free_suffix=rules.free_suffix
                         )
                         report.candidates.append(
-                            _candidate(
-                                provider,
+                            evidenced_candidate(
                                 model,
                                 record,
                                 score,
-                                rules,
-                                report.floor,
-                                incumbents,
                                 memory["on"],
-                                method=memory.get("method"),
+                                memory.get("method"),
+                                method_results=memory.get("structured_results"),
+                                contended=True,
                             )
                         )
                     continue
@@ -589,7 +707,8 @@ def reconcile(
                     sleep(rules.canary_interval_seconds)
                 pause.renew()
                 first_probe = False
-                result = classify(canary_fn(rules, cfg, model, api_key or "", session), rules)
+                response = canary_fn(rules, cfg, model, api_key or "", session)
+                result = classify(response, rules)
                 method, _evidence = None, {}
                 if result.verdict == "proven":
                     method, _evidence = verify(model, api_key or "")
@@ -603,16 +722,15 @@ def reconcile(
                 }
                 if result.verdict == "proven":
                     report.candidates.append(
-                        _candidate(
-                            provider,
+                        evidenced_candidate(
                             model,
                             record,
                             score,
-                            rules,
-                            report.floor,
-                            incumbents,
                             today.isoformat(),
-                            method=method,
+                            method,
+                            response,
+                            _evidence,
+                            pause.contended,
                         )
                     )
                 else:
@@ -635,7 +753,8 @@ def reconcile(
     if due_only:
         _merge_into_last_full(report, previous_state.get("last_full") or {}, rechecked_routes)
     report.state = {
-        "version": 2,
+        "version": 3,
+        "catalogs": catalogs,
         "structured_checks": {
             rid: evidence
             for rid, evidence in structured_checks.items()

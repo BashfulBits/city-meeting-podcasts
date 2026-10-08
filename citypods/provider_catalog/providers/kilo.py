@@ -6,10 +6,12 @@ from citypods.provider_catalog.rules import (
     ProviderRules,
     all_free,
     id_suffix,
+    namespaced_identity,
     zero_price,
 )
 
 RULES = ProviderRules(
+    model_identity=namespaced_identity(":free"),
     name="kilo",
     free_evidence=all_free(id_suffix(":free"), zero_price("prompt", "completion")),
     free_suffix=":free",

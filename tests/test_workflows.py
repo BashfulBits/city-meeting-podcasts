@@ -1753,3 +1753,28 @@ def test_workflow_step_level_timeouts_and_ordering(
         f"expected {step_timeout}"
     )
     assert step["timeout-minutes"] < job["timeout-minutes"]
+
+
+def test_provider_catalog_commands_use_trusted_base_permissions_and_shared_lock():
+    wf, job = _job("provider-catalog-commands.yml", "apply")
+    observe, _ = _job("provider-catalog-reconcile.yml", "reconcile")
+    assert _on(wf)["issue_comment"]["types"] == ["created"]
+    assert wf["permissions"] == {}
+    assert job["permissions"] == {"contents": "write", "pull-requests": "write", "issues": "write"}
+    assert wf["concurrency"] == observe["concurrency"]
+    condition = job["if"]
+    assert "pull_request == null" in condition and "body == '/apply'" in condition
+    assert "author_association" in condition
+    checkout = job["steps"][0]
+    assert checkout["with"] == {"ref": "main", "persist-credentials": False}
+    step = job["steps"][_step_index(job, "provider_catalog_commands.py")]
+    assert "collaborators/$ACTOR/permission" in step["run"]
+    assert "--body-file provider-catalog-command.md" in step["run"]
+    assert "github.event.comment.body" not in step["run"]
+    assert all("${{ github.event" not in s.get("run", "") for s in job["steps"])
+    for provider in yaml.safe_load((REPO_ROOT / "config/provider_limits.yml").read_text())[
+        "providers"
+    ].values():
+        for account in provider.get("accounts", [])[:1]:
+            name = account["api_key_env"]
+            assert step["env"].get(name) == f"${{{{ secrets.{name} }}}}"

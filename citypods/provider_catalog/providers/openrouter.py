@@ -12,6 +12,7 @@ from citypods.provider_catalog.rules import (
     all_free,
     body_contains,
     id_suffix,
+    namespaced_identity,
     zero_price,
 )
 
@@ -24,6 +25,7 @@ def _links(model: str) -> tuple[tuple[str, str], ...]:
 
 
 RULES = ProviderRules(
+    model_identity=namespaced_identity(":free"),
     name="openrouter",
     free_evidence=all_free(id_suffix(":free"), zero_price("prompt", "completion")),
     free_suffix=":free",

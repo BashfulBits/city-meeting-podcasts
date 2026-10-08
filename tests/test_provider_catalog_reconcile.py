@@ -12,7 +12,7 @@ from datetime import date
 
 import pytest
 
-from citypods.compute.llm_lanes import parse_lanes
+from citypods.compute.llm_lanes import LaneConfig, parse_lanes
 from citypods.provider_catalog.decisions import Decisions
 from citypods.provider_catalog.issue import (
     MARKER,
@@ -1036,3 +1036,189 @@ def test_deferred_schema_checks_preserve_prior_method_and_unchecked_evidence(
             **previous["results"],
             "json_schema": {"outcome": outcome, "completion_seconds": 3},
         }
+
+
+def test_apply_selection_uses_fresh_specific_canaries_and_carries_safe_provenance(monkeypatch):
+    from dataclasses import replace
+
+    from citypods.provider_catalog.registry import all_rules
+    from citypods.provider_catalog.rules import namespaced_identity
+
+    monkeypatch.setenv("K", "sensitive-test-token")
+    rules = all_rules()
+    plugin = replace(rules["openrouter"], model_identity=namespaced_identity(":free"))
+    monkeypatch.setattr(
+        "citypods.provider_catalog.reconcile.all_rules", lambda: {**rules, "openrouter": plugin}
+    )
+    catalog = {
+        "data": [
+            {
+                "id": name,
+                "context_length": 1000000,
+                "top_provider": {"max_completion_tokens": 32000},
+                "pricing": {"prompt": "0", "completion": "0"},
+            }
+            for name in ("creator/selected:free", "creator/other:free")
+        ]
+    }
+    calls = []
+
+    def ping(_rules, _cfg, model, _key, _session):
+        calls.append(model)
+        return OK
+
+    def methods(*_args, **kwargs):
+        assert kwargs["before_attempt"]()
+        return {"prompt_only": {"outcome": "valid", "completion_seconds": 1}}
+
+    report = reconcile(
+        LIMITS,
+        {},
+        Decisions(),
+        QualityIndex(),
+        {},
+        session=FakeSession({"https://or.test": catalog}),
+        control=FakeControl(),
+        today=TODAY,
+        providers={"openrouter"},
+        candidate_keys={"openrouter/creator/selected:free"},
+        canary_fn=ping,
+        structured_canary_fn=methods,
+    )
+    assert calls == ["creator/selected:free"]
+    assert report.state["version"] == 3
+    candidate = report.candidates[0]
+    assert candidate.evidence["catalog_complete"] is True
+    assert candidate.evidence["output_context_limit"] == 32000
+    assert candidate.evidence["model_key"] == "creator/selected"
+    assert candidate.evidence_digest
+    assert "sensitive-test-token" not in json.dumps(candidate.evidence)
+
+
+def test_temporary_free_evidence_outage_keeps_prior_candidate_as_advisory(monkeypatch):
+    from dataclasses import replace
+
+    from citypods.provider_catalog.registry import all_rules
+
+    monkeypatch.setenv("K", "key")
+    rules = all_rules()
+    plugin = replace(rules["openrouter"], free_evidence=lambda *_: None)
+    monkeypatch.setattr(
+        "citypods.provider_catalog.reconcile.all_rules", lambda: {**rules, "openrouter": plugin}
+    )
+    report = reconcile(
+        LIMITS,
+        {},
+        Decisions(),
+        QualityIndex(),
+        {
+            "canaries": {
+                "openrouter/creator/remembered:free": {
+                    "verdict": "proven",
+                    "on": TODAY.isoformat(),
+                    "method": "prompt_only",
+                    "structured_results": {"prompt_only": {"outcome": "valid"}},
+                }
+            }
+        },
+        session=FakeSession(
+            {
+                "https://or.test": {
+                    "data": [{"id": "creator/remembered:free", "context_length": 1000000}]
+                }
+            }
+        ),
+        control=FakeControl(),
+        today=TODAY,
+        providers={"openrouter"},
+        canary_fn=lambda *_: OK,
+        structured_canary_fn=lambda *_a, **_k: {},
+    )
+    candidate = next(c for c in report.candidates if c.model == "creator/remembered:free")
+    assert candidate.structured_output_method == "prompt_only"
+    assert candidate.evidence["free"] is False and candidate.evidence["contended"] is True
+
+
+def test_selected_lane_choice_survives_route_added_on_main_until_lane_is_fulfilled():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.issue import fulfilled_choices
+    from citypods.provider_catalog.reconcile import Candidate, Report
+    from citypods.review_issues import checked_decisions
+
+    candidate = Candidate(
+        "host",
+        "creator/new",
+        30,
+        False,
+        100000,
+        (),
+        ("lane",),
+        "2026-10-08",
+        structured_output_method="prompt_only",
+    )
+    old = Report(candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}})
+    prior = render_body(old, run_date="2026-10-08").replace(
+        "- [ ] `host/creator/new`: add as backup to `lane`",
+        "- [x] `host/creator/new`: add as backup to `lane`",
+    )
+    limits = {
+        "routes": [
+            {
+                "provider": "host",
+                "upstream_model": "creator/new",
+                "model": "creator/new",
+                "free": True,
+            }
+        ]
+    }
+    lanes = {"lane": LaneConfig("lane", ("primary",), 1, 1, 10)}
+    fulfilled = fulfilled_choices(prior, limits, lanes, Decisions(), TODAY)
+    choice = "`host/creator/new`: add as backup to `lane`"
+    assert choice not in fulfilled
+    new = render_body(Report(), run_date="2026-10-09", previous_body=prior, fulfilled=fulfilled)
+    assert checked_decisions(new, (choice,)) == (choice,)
+    assert decode_state(new)["last_full"]["candidates"][0]["model"] == candidate.model
+    assert "Pending prior selections" in new
+    # Another weekly run still retains the choice and its advisory provenance.
+    again = render_body(Report(), run_date="2026-10-10", previous_body=new, fulfilled=fulfilled)
+    assert checked_decisions(again, (choice,)) == (choice,)
+    from dataclasses import replace
+
+    lanes["lane"] = replace(lanes["lane"], backup_models=("creator/new",))
+    fulfilled = fulfilled_choices(again, limits, lanes, Decisions(), TODAY)
+    final = render_body(Report(), run_date="2026-10-11", previous_body=again, fulfilled=fulfilled)
+    assert not checked_decisions(final, (choice,))
+    assert not decode_state(final).get("last_full", {}).get("candidates")
+
+
+def test_pending_selected_choice_keeps_the_rolling_issue_open():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.reconcile import Candidate, Report
+
+    candidate = Candidate(
+        "host",
+        "creator/new",
+        None,
+        None,
+        10000,
+        (),
+        (),
+        "2026-10-08",
+        structured_output_method="prompt_only",
+    )
+    old = Report(candidates=[candidate], state={"last_full": {"candidates": [asdict(candidate)]}})
+    prior = render_body(old, run_date="2026-10-08").replace(
+        "- [ ] `host/creator/new`: add route only", "- [x] `host/creator/new`: add route only"
+    )
+    calls = []
+
+    def runner(args):
+        calls.append(args)
+        if args[:2] == ["issue", "list"]:
+            return json.dumps([{"number": 1, "state": "OPEN", "body": prior}])
+        return ""
+
+    assert sync_issue(Report(), run_date="2026-10-09", run=runner) == "updated #1"
+    assert not any(args[:2] == ["issue", "close"] for args in calls)

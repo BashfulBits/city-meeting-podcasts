@@ -1,23 +1,8 @@
-name: Provider catalog reconciliation
+name: Provider catalog commands
 
-# review/48 Slice 1: observe and propose only. Lists every provider's catalog, health-checks the
-# configured free routes and canaries a few free-marked candidates -- each provider inside a v2
-# dispatch pause so production traffic cannot distort the results -- then updates ONE rolling
-# issue. It never edits config, opens PRs, merges or deploys.
 on:
-  schedule:
-    - cron: "17 10 * * 1" # weekly full run
-    # Daily: only health checks deferred because a scarce daily quota (e.g. Gemini's 20/day) was
-    # spent. 08:20 UTC is just after Pacific midnight in both PDT (07:00) and PST (08:00), when
-    # Google's quotas reset. A run with nothing deferred makes no provider calls.
-    - cron: "20 8 * * *"
-  workflow_dispatch:
-    inputs:
-      due_only:
-        description: "Only re-run checks deferred until a daily-quota reset"
-        required: false
-        default: false
-        type: boolean
+  issue_comment:
+    types: [created]
 
 permissions: {}
 
@@ -26,27 +11,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  reconcile:
+  apply:
+    if: >-
+      ${{ github.event.issue.pull_request == null && github.event.comment.body == '/apply' &&
+        contains(github.event.issue.body, '<!-- citypods:provider-catalog v=') &&
+        contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
+          github.event.comment.author_association) }}
     runs-on: ubuntu-latest
-    # NVIDIA's first bytes can take several minutes and every provider waits for its in-flight
-    # work to drain before probing; a typical run takes 10-20 minutes.
     timeout-minutes: 120
     permissions:
-      contents: read
+      contents: write
+      pull-requests: write
       issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          ref: main
           persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
           cache: pip
-      - run: pip install -e ".[llm]" -c constraints/prod.txt
-      - name: Reconcile provider catalogs
+      - uses: ./.github/actions/setup-gh-cli
+      - run: pip install -e ".[dev,llm]" -c constraints/dev.txt
+      - name: Apply authorized current selections
         env:
           GH_TOKEN: ${{ github.token }}
-          DUE_ONLY: ${{ github.event.schedule == '20 8 * * *' || inputs.due_only == true }}
+          EVENT_PATH: ${{ github.event_path }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ACTOR: ${{ github.event.comment.user.login }}
+          REPOSITORY: ${{ github.repository }}
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
           LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
           ARTIFICIAL_ANALYSIS_API_KEY: ${{ secrets.ARTIFICIAL_ANALYSIS_API_KEY }}
@@ -64,8 +58,15 @@ jobs:
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
         run: |
-          args=(--sync-issues)
-          if [ "$DUE_ONLY" = "true" ]; then
-            args+=(--due-only)
+          if ! gh api "repos/$REPOSITORY/collaborators/$ACTOR/permission" > actor-permission.json; then
+            echo '{"permission":"none"}' > actor-permission.json
           fi
-          python scripts/reconcile_provider_routes.py "${args[@]}"
+          gh auth setup-git
+          set +e
+          python scripts/provider_catalog_commands.py --event "$EVENT_PATH" \
+            --permission actor-permission.json --out provider-catalog-command.json
+          code=$?
+          set -e
+          jq -r '.comment' provider-catalog-command.json > provider-catalog-command.md
+          gh issue comment "$ISSUE_NUMBER" --body-file provider-catalog-command.md
+          exit "$code"

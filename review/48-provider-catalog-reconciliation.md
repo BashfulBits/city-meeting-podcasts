@@ -1,6 +1,6 @@
 # review/48 — Provider catalog reconciliation
 
-**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slices 2–4 contract proposal (L2)**
+**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a implementation (#2179); remaining slices contract proposal (L2)**
 
 Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
 `scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
@@ -344,8 +344,10 @@ shown side by side.
 
 ## 8. Remaining-slice contract proposal — 2026-10-08
 
-**Status: L2 proposal for Slices 2–4; implementation resumes after contract acceptance and issue
-creation.** The earlier L3 label overstated readiness: candidate provenance, YAML writes, terminal
+**Status: accepted proposal in #2178; Slice 2a implementation tracked in
+[#2179](https://github.com/BashfulBits/city-meeting-podcasts/issues/2179).** The maintainer requested
+implementation after merging the proposal on 2026-10-08. The remaining slices retain their separate
+issue and activation gates. The earlier L3 label overstated readiness: candidate provenance, YAML writes, terminal
 recovery and scoped limit observations lacked executable contracts. This section proposes those
 contracts against current `main`; it supersedes conflicting shorthand in §6. It does not freeze the
 whole breakout or claim the remaining slices shipped.
@@ -621,6 +623,31 @@ already decided above. #2178 and the subsequent implementation request accept th
 remaining-slice technical choices; Slice 2a is prepared in PR #2182 (#2179). Slice 5 remains L2
 under §8.10. No automatic removal or limit maintenance is enabled by this docs PR.
 
+
+### Slice 2a implementation checkpoint — 2026-10-08 (#2179)
+
+The additions/ignore command is prepared with v3 evidence/digests, pure plugin identity callbacks,
+selected-candidate fresh rechecks, exact command/current-issue authorization, additive YAML edits,
+both compilers and in-job tests, and one managed additions branch/PR. Observation and apply share
+`provider-catalog-writers` concurrency. Legacy issue markers/state remain readable; old proofs cannot
+authorize additions. Deferred/rejected selections remain ticked until fulfilled on main. If a concurrent change adds the route without the selected backup,
+the old choice and its advisory provenance survive weekly rewrites; apply defers the missing lane
+placement for review instead of using that stale choice as new admission evidence. An already
+fulfilled route/backup selection is a no-op. A pending selected choice keeps the rolling issue open.
+
+The current compiler requires both input and output context bounds. Additions with either absent
+are deferred without guessing a limit; other valid additions/ignores can still form a PR. The
+maintainer accepted separately reviewed conservative output caps in #2186; automatic additions
+continue to require evidenced bounds. No cap override is implemented. Initial identity opt-in covers
+publisher-qualified NVIDIA/OpenRouter/Kilo IDs and native Gemini IDs; other plugins leave unknown
+identities for a manual mapping. AA matching is never used for pooling.
+
+#2180 temporarily paused BeatAPI chat routes with `rpd: 0`; #2181 restored them through the
+registered `custom-beatapi` gateway slug. Apply preserves existing gateway config and backup tiers;
+an explicitly paused physical route remains deferred and cannot be re-enabled by this command.
+JEV stays outside chat addition.
+There are no runtime config changes, live probes, pipeline/recipe bumps or episode artifact backfill
+in this implementation. Paid/shadow, retirement, recovery and limit changes remain later slices.
 
 ### 8.10 Slice 5: adaptive context calibration — accepted direction, L2
 
