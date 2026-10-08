@@ -1592,6 +1592,99 @@ test("a job allowing paid still takes the free route when the paid one has more 
   );
 });
 
+// A backup-tier route (BeatAPI's single-flight free chat legs, review/49 section 4c) listed first
+// and given more headroom than the primary it pools with: the capacity ranking alone would pick
+// it. Backup is spill capacity, so the primary must win while it has any capacity left, and the
+// backup must still serve once the primary is spent.
+const PRIMARY_VS_BACKUP_CATALOG = {
+  model_aliases: {},
+  model_routes_map: { "deepseek/deepseek-v4-flash": ["backup-idle", "primary-small"] },
+  routes_by_id: {
+    "backup-idle": {
+      provider: "beatapi",
+      upstream_model: "deepseek-v4-flash-0731-free",
+      rpm: 1000,
+      rpd: 100000,
+      free: true,
+      tier: "backup",
+      input_context_limit: 1000000,
+      output_context_limit: 100000,
+    },
+    "primary-small": {
+      provider: "orcarouter",
+      upstream_model: "deepseek/deepseek-v4-flash-free",
+      rpm: 1000,
+      rpd: 2,
+      free: true,
+      input_context_limit: 1000000,
+      output_context_limit: 100000,
+    },
+  },
+};
+
+test("a backup-tier route is used only after the pool's primary routes run out", async () => {
+  const { sql, storage } = createMockSqlStorage();
+  const env = {
+    MAX_JOBS_PER_UTC_DAY: "10000",
+    MAX_BUNDLE_JOBS: "1",
+    MAX_JOBS_PER_ROUTE_PER_BUNDLE: "1",
+    MAX_CONCURRENT_ROUTE_LANES: "5",
+    MAX_ACTIVE_BUNDLES: "2",
+    MAX_IN_FLIGHT_LLM_CALLS: "8",
+    MAX_BUNDLES_PER_UTC_DAY: "1000",
+    MAX_QUEUE_WAIT_SECONDS: "3600",
+    LEASE_DURATION_SECONDS: "840",
+    MAX_429_RETRIES: "1",
+    MAX_429_BACKOFF_SECONDS: "5",
+    ESTIMATED_CALL_DURATION_CEILING_SECONDS: "5",
+    DISPATCH_LIMITS_OVERRIDE: PRIMARY_VS_BACKUP_CATALOG,
+  };
+  const coordinator = new LLMSchedulerDO({ storage }, withTestReservations(env));
+  const job = (id) => ({
+    id,
+    idempotency_key: `key-${id}`,
+    request_digest: `digest-${id}`,
+    policy_json: JSON.stringify({ allowed_models: ["deepseek/deepseek-v4-flash"] }),
+    prompt_family: "tags",
+    input_token_estimate: 500,
+    max_output_token_estimate: 200,
+    payload_key: `payloads/${id}/request.json`,
+  });
+  const runOne = async (id, at) => {
+    await coordinator.enqueueBatch([job(id)]);
+    const plan = await coordinator.claimDispatchWindow(at, 25);
+    assert.equal(plan.jobs.length, 1, id);
+    await coordinator.completeBatch(plan.bundle_id, plan.execution_token, [
+      {
+        job_id: id,
+        lease_token: plan.jobs[0].lease_token,
+        attempt_id: `${id}-attempt`,
+        planned_at: plan.jobs[0].not_before_at,
+        actual_start_at: at,
+        actual_end_at: at + 500,
+        observed_input_tokens: 500,
+        observed_output_tokens: 200,
+        outcome: "success",
+        provider_status_code: 200,
+        result_key: `results/${id}.json`,
+      },
+    ]);
+    return plan.jobs[0].route_id;
+  };
+
+  const t0 = Date.now();
+  // Untouched, both score full capacity; the backup is listed first, so only the tier term
+  // keeps it from winning the tie.
+  assert.equal(await runOne("first", t0), "primary-small");
+  // The primary is now half spent and scores strictly below the idle backup: precedence, not a
+  // tie-break, must still choose the primary.
+  const consumed = [...sql.exec("SELECT rpd_count FROM routes WHERE route_id=?", "primary-small")];
+  assert.ok((consumed[0]?.rpd_count || 0) > 0, "the primary must have spent capacity");
+  assert.equal(await runOne("second", t0 + 60_000), "primary-small");
+  // Primary's daily quota is spent: the backup now serves instead of the job waiting.
+  assert.equal(await runOne("third", t0 + 120_000), "backup-idle");
+});
+
 test("a 402-requeued job is claimable again, not stranded queued-without-index", async () => {
   // Claiming a job deletes its job_models index rows. A requeue that only rewrites `state` leaves
   // the job queued with a stale lease and no index row, so claimDispatchWindow can never select it

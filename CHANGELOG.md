@@ -12,6 +12,16 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **LLM dispatch: backup-tier routes; BeatAPI chat legs demoted to backup.** A route may declare
+  `tier: backup` in `config/provider_limits.yml` (validated at compile, carried into the Worker
+  catalog). The Worker ranks backup routes after every primary route in a job's pool, after the
+  existing free-before-paid term and ahead of capacity, so an idle backup no longer outranks a
+  partly used primary. The five BeatAPI free chat routes are backups: they stay in the unified
+  DeepSeek and GPT pools as spill capacity without taking work while OrcaRouter or NVIDIA can.
+  Their output limit is unchanged, because tag and moments jobs reserve 12-16k output tokens and
+  a lower limit would remove the routes from those lanes. Yield-to-JEV ships with the JEV route
+  (review/49 P1).
+
 - **review/49: judge and adjudicator routes (section 4c).** With the locator verdict in, JEV stays
   the anchor; Gemma 4 31B/26B is the bulk sibling judge, with Nemotron 3 Super or Qwen3.8 for
   Gemini-produced entries; GLM 5.3 Flash and DeepSeek V4.1 Flash (NVIDIA) are the adjudicators.

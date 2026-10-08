@@ -1317,11 +1317,16 @@ routes:
   # rate-limit headers. Context limits are UNMEASURED conservative placeholders (BeatAPI publishes
   # none); run llm-rate-probe.yml phase 2 for this provider and author hard_input_ceiling from it.
   # The DeepSeek ids join the existing logical models rather than forming BeatAPI-only ones.
+  # `tier: backup` (2026-10-08): ranked after every primary route in its pool, so these legs take
+  # spill work only. They keep their full output limit: tag and moments jobs reserve 12-16k output
+  # tokens and a smaller limit would drop the routes from those lanes. Yielding to JEV while it
+  # has queued work ships with the JEV route (review/49 P1).
   # ==========================================
   - route_id: beatapi_deepseek_v4_flash_free
     model: beatapi/deepseek-v4-flash
     model_key: deepseek/deepseek-v4-flash
     provider: beatapi
+    tier: backup
     upstream_model: deepseek-v4-flash-0731-free
     # The 0731 revision of V4 Flash; pools with OrcaRouter's `deepseek-v4-flash-free`. Reasoning model: spends output tokens on reasoning_content.
     input_context_limit: 128000
@@ -1340,6 +1345,7 @@ routes:
     model: beatapi/deepseek-v4.1-flash
     model_key: deepseek/deepseek-v4.1-flash
     provider: beatapi
+    tier: backup
     upstream_model: deepseek-v4.1-flash-free
     # Pools with NVIDIA's deepseek-v4.1-flash. Reasoning model.
     input_context_limit: 128000
@@ -1358,6 +1364,7 @@ routes:
     model: beatapi/deepseek-v4-pro
     model_key: deepseek/deepseek-v4-pro
     provider: beatapi
+    tier: backup
     upstream_model: deepseek-v4-pro-free
     # No other route serves V4 Pro today (NVIDIA retired v4-pro-0813). Reasoning model.
     input_context_limit: 128000
@@ -1376,6 +1383,7 @@ routes:
     model: beatapi/gpt-6-astra
     model_key: openai/gpt-6-astra
     provider: beatapi
+    tier: backup
     upstream_model: gpt-6-astra-free
     # Response metadata says usage_source=anthropic / billing source claude_messages, so the serving family is unverified; do not treat it as an independent OpenAI family for judge selection.
     input_context_limit: 128000
@@ -1394,6 +1402,7 @@ routes:
     model: beatapi/gpt-6.1-sol
     model_key: openai/gpt-6.1-sol
     provider: beatapi
+    tier: backup
     upstream_model: gpt-6.1-sol-free
     # Same metadata caveat as gpt-6-astra-free.
     input_context_limit: 128000
