@@ -631,7 +631,9 @@ conservative output caps is pending. No cap override is implemented. Initial ide
 publisher-qualified NVIDIA/OpenRouter/Kilo IDs and native Gemini IDs; other plugins leave unknown
 identities for a manual mapping. AA matching is never used for pooling.
 
-#2180 paused BeatAPI chat routes with `rpd: 0` pending its AI Gateway provider. Apply treats paused
-physical routes as deferred and preserves their backup tiers; it cannot re-enable them or alter JEV.
+#2180 temporarily paused BeatAPI chat routes with `rpd: 0`; #2181 restored them through the
+registered `custom-beatapi` gateway slug. Apply preserves existing gateway config and backup tiers;
+an explicitly paused physical route remains deferred and cannot be re-enabled by this command.
+JEV stays outside chat addition.
 There are no runtime config changes, live probes, pipeline/recipe bumps or episode artifact backfill
 in this implementation. Paid/shadow, retirement, recovery and limit changes remain later slices.

@@ -972,7 +972,10 @@ leaves it at its `False` default.
 Each route contributes two generated fields (`ai_gateway_slug`, `ai_gateway_chat_path`, compiled
 from `config/provider_limits.yml`). The slug names the gateway's provider segment — Cloudflare
 requires a `custom-` prefix for custom providers, hence `custom-zai`, `custom-opencode`, and
-`custom-airforce`. For OpenAI-compatible providers, **LiteLLM appends `/chat/completions`
+`custom-airforce`. A provider with no `ai_gateway_slug` uses its own name as the slug, which only works for a
+provider the gateway supports natively: `beatapi` was rejected with `400 Invalid provider` (code
+2008) until `custom-beatapi` was registered (2026-10-08). Direct probes and the catalog reconciler
+bypass the gateway, so only `tests/live/test_ai_gateway_contract.py` sees this class of fault. For OpenAI-compatible providers, **LiteLLM appends `/chat/completions`
 itself**, so only the part *before* that suffix belongs in `api_base`. Gemini is distinct: LiteLLM
 routes `gemini/...` models through its native Google AI Studio adapter (`VertexLLM`), which
 appends `/models/{model}:{endpoint}` rather than `/chat/completions`, so its direct gateway path

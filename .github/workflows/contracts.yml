@@ -139,6 +139,7 @@ jobs:
           NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
           SAMBANOVA_API_KEY: ${{ secrets.SAMBANOVA_API_KEY }}
           SILICONFLOW_API_KEY: ${{ secrets.SILICONFLOW_API_KEY }}
+          BEATAPI_API_KEY: ${{ secrets.BEATAPI_API_KEY }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
           KILO_API_KEY: ${{ secrets.KILO_API_KEY }}
           OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}

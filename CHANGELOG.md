@@ -21,6 +21,13 @@ Once 1.0 ships, entries move under semver tags.
   not copied into independent route limits; paused BeatAPI routes and backup tiers are preserved.
   No route changes in this PR, live probes, pipeline/recipe version bumps or artifact backfill.
 
+- **BeatAPI chat routes back on, through `custom-beatapi`.** The maintainer registered a
+  `custom-beatapi` AI Gateway provider (base `https://api.beatapi.io/v1`); the `beatapi` provider
+  now sets `ai_gateway_slug: custom-beatapi` and `ai_gateway_chat_path: /chat/completions`, and the
+  five chat routes are unpaused (still `tier: backup`). Verified live: `/models` and a chat
+  completion return 200 through the slug. BeatAPI joins the weekly live gateway contract probe and
+  the recorded custom-provider registrations.
+
 - **BeatAPI chat routes paused (`rpd: 0`).** The Worker reaches providers through Cloudflare AI
   Gateway, and `beatapi` had no registered gateway provider: every BeatAPI call returned
   `400 Invalid provider` (gateway code 2008), which the Worker classifies `request_defect`, failing

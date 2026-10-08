@@ -255,9 +255,7 @@ test("the compiled catalog has one pool per DeepSeek version (2026-09-24)", () =
   };
   assert.deepEqual(
     routesEligibleFor(job, DISPATCH_LIMITS).map((route) => route.route_id),
-    // The BeatAPI leg stays in the pool but is paused (rpd: 0) until its AI Gateway provider
-    // is registered, and a paused route is never eligible.
-    ["nvidia_deepseek_v4_1_flash_free"]
+    ["nvidia_deepseek_v4_1_flash_free", "beatapi_deepseek_v4_1_flash_free"]
   );
 });
 
