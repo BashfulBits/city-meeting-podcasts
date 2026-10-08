@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog Slice 2b preparation: disabled shadow lane can be retired (#2187).**
+  Builds resolve the prelabeler shadow lane and its dispatch cap only when shadow execution is
+  enabled; disabled shadow work is excluded from ingress preflight. Removing that lane after
+  promotion no longer breaks builds. An enabled missing lane still fails loudly. Paid decisions
+  and shadow promotion remain pending implementation; no lane/config changes, live calls,
+  pipeline version bumps or stored-artifact invalidation occur in this preparation.
+
 - **Provider catalog Slice 2a: authorized additions/ignore PR preparation (#2179).** `/apply` reads
   current rolling issue selections, rechecks selected candidates under provider pauses and budgets,
   and prepares one managed PR with narrow YAML edits, both compilers and in-job contract tests.

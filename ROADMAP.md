@@ -270,6 +270,8 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > Separately reviewed conservative output caps are accepted; automatic additions still require
 > evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
 > Its exact budgets and implementation contract remain gated on L3 review.
+> Slice 2b is tracked in #2187: paid decisions and qualified shadow exit, including the approved
+> disabled-shadow runtime fix. Calibration data-source clarification remains pending.
 > Later slices retain separate issues and activation gates.
 >
 > **Added 2026-07-14 (maintainer decision): a rate-limited LLM dispatch item, numbered R10 but sequenced
