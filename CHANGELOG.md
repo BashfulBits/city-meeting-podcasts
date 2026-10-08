@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Bounded search resumes within a source (#2173).** Private working checkpoints retain
+  converted records with policy/input hashes; new or changed records do not discard unrelated
+  progress. Deferred summaries identify source/record progress and distinguish no public index
+  from a retained complete index. Public search remains atomically published. The 20-minute
+  budget and four-hour deployment schedule remain unchanged. No stage-version bump, audio
+  invalidation or catalog backfill; old complete search caches remain reusable.
+
 - Restore four approved Dallas bond Streets recordings to Transportation and Infrastructure
   while retaining their dedicated bond feed (#2170). Raw records, UIDs and audio are unchanged;
   no stage invalidation or backfill. Independent official-evidence cases remain open.

@@ -2724,3 +2724,14 @@ archive/publication policy with empty record inputs; per-record hashes cover exa
 record inputs. New/changed recordings therefore reprocess only affected records, while
 policy changes invalidate the entire partial source. Drop removed/nonpublic cached UIDs.
 This prevents routine additions during the four-hour cadence from discarding all progress.
+
+Implemented working-cache progress uses per-record hashes to preserve unchanged converted
+records across routine input additions. Old complete source caches remain usable; no search
+output schema/version change or audio/stage invalidation. Targeted search/job tests pass39.
+The deploy workflow runs every four hours, on relevant main pushes, or manual dispatch, with
+single-deployment concurrency. The20minute ceiling is an approved operational bound, not a
+measured optimum. Keep it and cadence unchanged until progress summaries establish actual
+completion/deferral rates; do not increase the limit to hide restart behavior.
+
+Validation:39 targeted and5,123 offline tests passed (15 deselected); whole Ruff/format
+passed480 files. Runtime review and deployed repeated-run completion remain required.

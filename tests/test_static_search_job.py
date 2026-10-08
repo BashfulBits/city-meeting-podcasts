@@ -209,6 +209,7 @@ def test_actual_second_source_stop_discards_first_staged_shard(tmp_path, monkeyp
         for n in range(2)
     ]
     monkeypatch.setattr("citypods.config.load_city_configs", lambda *_: cities)
+    _seed_records(args, cities)
     ticks = iter([0, 1, 1200])
     monkeypatch.setattr("time.monotonic", lambda ticks=ticks: next(ticks))
     assert search.build_search_site(**args).startswith("deferred")
@@ -283,6 +284,7 @@ def test_actual_multiple_budgets_resume_completed_sources(tmp_path, monkeypatch)
         for n in range(3)
     ]
     monkeypatch.setattr("citypods.config.load_city_configs", lambda *_: cities)
+    _seed_records(args, cities)
     # Each budget permits one uncached source. Cache hits must precede deadline admission.
     for completed_count in (1, 2, 3):
         ticks = iter([0, 1, 1200])
@@ -293,3 +295,30 @@ def test_actual_multiple_budgets_resume_completed_sources(tmp_path, monkeypatch)
         assert result == "complete" if completed_count == 3 else result.startswith("deferred")
     assert len(json.loads((output / "data/search/manifest.json").read_text())["shards"]) == 3
     assert (output / "raw/index.html").read_text() == "raw retained"
+
+
+def _seed_records(args, cities):
+    from datetime import UTC, datetime
+
+    from citypods.models import Episode
+    from citypods.records import episode_to_record, save_records, source_key
+
+    for city in cities:
+        record = episode_to_record(
+            Episode(
+                guid="g1",
+                uid="u1",
+                title="Council",
+                published=datetime(2026, 1, 1, tzinfo=UTC),
+                video_url="https://example.test/video",
+            )
+        )
+        save_records(args["state_dir"], source_key(city), {"u1": record})
+
+
+def test_deferral_without_complete_index_is_explicit(tmp_path, monkeypatch):
+    output, args = _site(tmp_path, monkeypatch)
+    before = _bytes(output)
+    monkeypatch.setattr(search, "build_search_index", lambda *_a, **_k: None)
+    assert search.build_search_site(**args) == "deferred: no complete search index available"
+    assert _bytes(output) == before
