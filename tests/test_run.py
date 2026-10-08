@@ -4304,3 +4304,30 @@ def test_archive_only_identity_conflict_is_a_city_error_without_writes(tmp_path)
     assert "GUID mismatch" in result.detail
     assert entry is None
     assert (target / "audio_feed.xml").read_text() == "previous output"
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_build_only_requires_shadow_lane_when_enabled(
+    tmp_path, fake_provider, monkeypatch, enabled
+):
+    from citypods.compute.llm_lanes import UnregisteredLaneError
+
+    cities = _setup(tmp_path)
+    with (tmp_path / "site_config.yml").open("a") as config:
+        config.write(f"tagging:\n  prelabeler:\n    shadow_enabled: {str(enabled).lower()}\n")
+    original_lane_for = run.lane_for
+    lookups = []
+
+    def without_shadow(purpose):
+        lookups.append(purpose)
+        if purpose == "topic-tags:prelabeler-shadow":
+            raise UnregisteredLaneError(purpose)
+        return original_lane_for(purpose)
+
+    monkeypatch.setattr(run, "lane_for", without_shadow)
+    if enabled:
+        with pytest.raises(UnregisteredLaneError, match="prelabeler-shadow"):
+            _build(tmp_path, cities)
+    else:
+        assert _build(tmp_path, cities)
+        assert "topic-tags:prelabeler-shadow" not in lookups

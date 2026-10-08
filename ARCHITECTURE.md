@@ -208,6 +208,11 @@ Audio and every other workflow that fetches these providers without adding stora
 > input and output budgets. Per-batch token/byte estimates and input digests remain persisted for
 > audit. A single chapter that cannot fit remains deferred rather than being silently truncated.
 
+Disabled prelabeler shadow execution does not require a shadow lane in the registry: build setup
+skips its model/cap lookup and ingress preflight when `tagging.prelabeler.shadow_enabled` is false.
+An enabled shadow still requires its registered lane. This permits review/48's future promotion PR
+to disable execution and retire the lane together while retaining calibration history.
+
 ### Provider catalog reconciliation
 
 `citypods/provider_catalog/` (driven by `scripts/reconcile_provider_routes.py` and

@@ -463,6 +463,15 @@ sets that existing route's `free: false` and writes an acknowledged decision; it
 lane eligibility or change any lane's `allow_paid` policy. Require a fresh `not_entitled` observation
 and show lanes that lose free eligibility. Reject a change that empties a lane's usable pool.
 
+**Slice 2b preparation (#2187), 2026-10-08:** the maintainer approved a narrow shutdown
+extension after a code mismatch: promotion also sets `tagging.prelabeler.shadow_enabled: false`.
+Extend `citypods/run.py`'s dispatch-cap and StageContext construction to resolve the shadow lane
+only when enabled; exclude disabled shadow work from ingress preflight,
+and add an end-to-end regression in `tests/test_run.py` for an absent disabled shadow lane;
+an enabled missing shadow lane must still fail loudly. This permits the exact shadow-lane removal
+below without breaking builds. The authoritative calibration workflow data source remains a
+maintainer clarification before promotion is implemented; catalog workflows currently load none.
+
 For shadow exit, read current mirrored-review calibration through `citypods/llm_evaluation.py` and
 current `EvaluationConfig`; recompute all §6 thresholds at apply time. Treat issue counts as display
 only. Append the shadow model as a production backup, remove the exact shadow lane configuration

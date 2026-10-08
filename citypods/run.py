@@ -2930,9 +2930,10 @@ def _build_impl(
     # files that can disagree.
     tag_max_dispatches = lane_for("topic-tags:tagger").max_dispatches_per_run
     tag_prelabeler_max_dispatches = lane_for("topic-tags:prelabeler").max_dispatches_per_run
-    tag_prelabeler_shadow_max_dispatches = lane_for(
-        "topic-tags:prelabeler-shadow"
-    ).max_dispatches_per_run
+    shadow_enabled = bool((tagging_config.get("prelabeler") or {}).get("shadow_enabled", False))
+    tag_prelabeler_shadow_max_dispatches = (
+        lane_for("topic-tags:prelabeler-shadow").max_dispatches_per_run if shadow_enabled else 0
+    )
     chapter_agenda_max_dispatches = lane_for("chapter-agenda").max_dispatches_per_run
     chapter_locator_max_dispatches = lane_for("chapter-locator").max_dispatches_per_run
     # Extraction and candidate/panel judging share the stage counter. Both lane allowances
@@ -2954,7 +2955,7 @@ def _build_impl(
             {
                 "topic-tags:tagger": tagging_config.get("enabled"),
                 "topic-tags:prelabeler": tagging_config.get("enabled"),
-                "topic-tags:prelabeler-shadow": tagging_config.get("enabled"),
+                "topic-tags:prelabeler-shadow": tagging_config.get("enabled") and shadow_enabled,
                 "chapter-agenda": True,
                 "chapter-locator": True,
                 "r6-moments": moments_config.get("enabled"),
@@ -3378,7 +3379,11 @@ def _build_impl(
             "prelabeler": {
                 **(tagging_config.get("prelabeler") or {}),
                 "model": lane_for("topic-tags:prelabeler").primary_model,
-                "shadow_model": lane_for("topic-tags:prelabeler-shadow").primary_model,
+                "shadow_model": (
+                    lane_for("topic-tags:prelabeler-shadow").primary_model
+                    if (tagging_config.get("prelabeler") or {}).get("shadow_enabled", False)
+                    else None
+                ),
             },
         },
         moment_evaluation_state_path=state_dir
