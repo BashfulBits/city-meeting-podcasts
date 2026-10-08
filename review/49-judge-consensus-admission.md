@@ -524,6 +524,44 @@ could later be reused by swapping its scoring input from judge consensus to hold
 Deny list for league eligibility = the protected rows above (agenda, locator targets, onboarding, audit-remedy) plus any model flagged
 special-purpose in the provider catalog.
 
+### Dispatch requirements from the row-write reductions (2026-10-08)
+
+The #1844 Durable Object row-write stack (PRs #2155–#2160) deployed on 2026-10-08. Its first
+production logs surfaced two things the judge refactor should settle, rather than patching today's
+`r6-judge` lane, which this plan replaces.
+
+1. **Single-model lanes must not retry an output-limit cut-off on the same model.**
+   - **Observed:** in the first minutes after deploy, `r6-judge` jobs pinned to `gemma_4_26b` were
+     requeued every minute with `output_budget_exhausted` (reply stopped at its output limit) and
+     `structured_output_empty`.
+   - **Why it repeats:** both classes draw on the upstream retry budget, `MAX_UPSTREAM_CAPACITY_RETRIES`
+     (8) plus `backup_after_attempts`. Each cycle is a claim plus a requeueing completion, about 13
+     billed rows and one provider call. That budget exists so a job can move to another route or
+     model. A job pinned to one model (the JEV anchor and every `per_model` judge lane) has nowhere to
+     move, so the same cut-off recurs.
+   - **Requirement (P1 lane definition):** for each single-model judge lane, either:
+     - size the output budget to the model's reasoning plus the answer, measured from P1 shadow
+       replies; or
+     - give `output_budget_exhausted` on a job with one eligible model a small retry ceiling (1–2,
+       a coordinator change in `completeBatch`) and fail it to the producer, which re-packs or
+       re-sizes.
+
+   The same applies to `structured_output_empty` when it is persistent for a model, not transient.
+2. **Retiring a lane cancels its queued backlog.**
+   - **The problem:** P7 retires lanes (`topic-tags:prelabeler`, `-shadow`, `tournament:*`,
+     `r5-benchmark:*`, the legacy `r6-judge` panel). Their queued jobs would otherwise sit in the
+     coordinator indefinitely, unclaimable once the lane's routes or reservations are gone.
+   - **What it blocks:** jobs queued before #2155 also hold the legacy `(job_id, model)` index in
+     place. It is dropped only when no such job remains queued, and until then enqueue reserves 2
+     billed rows per ingress unit instead of 1.25.
+   - **Requirement (P7 checklist):** before removing a lane's `llm_lanes` entry, cancel its queued
+     jobs (`/v2/jobs:cancel-batch`, `LiteLLMBackend.cancel_batch`), then confirm in
+     `/v2/stats?detail=1` that its queued count is 0.
+3. **Reassess the pooled queue index on the final lanes.** #2162 parks a one-queue-row-per-job
+   design until these lanes are live. Once P7 leaves the final pools and volumes, run #2162's
+   `/pooled` bench with that mix and apply its thresholds. Multi-model pools (sibling, adjudicator,
+   moments) are what it saves on; pinned lanes gain nothing.
+
 ## Governance
 
 Route promotions/demotions are opened as config PRs for the maintainer to merge, never auto-merged.
@@ -602,5 +640,6 @@ Status against `review/11` L3 (concrete file/function changes, test plan, sequen
 | Facts gathered | catalog scan complete; rule vs LLM candidate counts measured; JEV limits, `choice`, packing and question-bundled evidence verified; Qwen limits, thinking mode and a 30/30 quality check; `gh` attach and CI token behaviour; Worker variable and secret audit (PR 1965 implements the cleanup) |
 | BeatAPI provider registration | [#1967](https://github.com/BashfulBits/city-meeting-podcasts/issues/1967): secret, discovery plugin, contract tests; prerequisite for P1 |
 | P1 breakout | next: adds the generalized task-spec registry of section 3a and the `context_tier` field to the judgment record; needs the judgment-record schema, the `beatapi` provider entry (`rpm: 1`, `concurrency: 1`), the `structured.py` mapping and oversize-503 classification, and the JEV real-response fixtures (captured in the spike) |
+| Dispatch requirements (2026-10-08) | P1: single-model lanes get a measured output budget or a 1–2 retry ceiling for `output_budget_exhausted`; P7: cancel a retired lane's queued jobs before removing it; after P7: #2162 pooled-index reassessment. See "Dispatch requirements from the row-write reductions" |
 | P2-P7 | stay L2 until P1 shadow data exists: thresholds, league scoring and the graduation comparison need measured judge behaviour; specifying them now would invent numbers |
 | Open decisions | second adjudicator, shadow and switch-over shape, graduation wording (above) |
