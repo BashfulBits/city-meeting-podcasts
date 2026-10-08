@@ -1632,6 +1632,14 @@ Restore four explicitly approved historical recordings to Transportation and Inf
 while retaining their dedicated bond feed. Bounded contract: review/51's four-record section.
 Independent agenda/source questions stay open; verify deployment after human merge.
 
-### Search per-record resume — L3 (#2173)
+### P0 search completion — historical investigation (2026-10-08)
 
-Approved bounded implementation in review/51; preserve20minute budget and four-hour cadence.
+Confirmed within-source progress loss can prevent a bounded search build from ever finishing.
+The investigation led to the per-record checkpoint fix in #2174; keep20minute ceiling. See review/51 and its dated search investigation evidence.
+The four-record Dallas Streets correction #2171 is Shipped; live deployment verification remains
+pending and its independent evidence cases stay open.
+
+### Search per-record resume — Shipped (#2174, issue #2173)
+
+Implemented in #2174; preserve20minute budget and four-hour cadence. Production verification
+is pending behind the existing deployment queue.
