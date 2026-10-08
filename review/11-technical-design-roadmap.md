@@ -1625,3 +1625,9 @@ a source-version discrepancy, not an approved split or winner.
 Implemented in PR #2099 through #2096 and PR #2100. These bounded contracts are
 frozen; #2100 merged before substantive review. Seven deployed RSS/audio checks
 close only their assignment cases. See [deployment proof](deployed-ownership-proof-2026-10-06.md).
+
+### P0 Dallas Streets dual-feed correction — L3 (#2170)
+
+Restore four explicitly approved historical recordings to Transportation and Infrastructure
+while retaining their dedicated bond feed. Bounded contract: review/51's four-record section.
+Independent agenda/source questions stay open; verify deployment after human merge.

@@ -2664,3 +2664,34 @@ Implemented in PR #2099 through parent #2096 and PR #2100. Their bounded contrac
 are frozen. #2100 was human-merged before substantive CodeRabbit coverage; this remains
 an explicit review gap. Seven verified deployed RSS/audio assignments are documented in
 [deployment proof](deployed-ownership-proof-2026-10-06.md); search and content obligations remain.
+
+### Four Dallas Streets dual-feed placements — L3 (issue #2170, 2026-10-08)
+
+The maintainer explicitly authorized restoring these four recordings to both their existing
+bond Streets subcommittee feed and the standing Transportation and Infrastructure feed.
+Add only GUID269407/270975/277827/277830 with their exact retained body labels to the latter
+feed's existing `source.body_includes`. These are approved historical exceptions, not evidence
+that future bond meetings automatically belong to the standing Council committee.
+
+Allowed files: that feed YAML, the four existing register entries, this doc, review/11,
+CHANGELOG, `tests/test_dallas_bond_streets_ownership.py`, and a dated evidence report.
+Update that test’s exclusive standing-feed assertions for the four approved GUIDs only;
+retain future-GUID negative coverage and assert both RSS feeds keep original audio. Keep cases open and separate missing independent
+official-recording proof from publication authorization. Preserve all raw records, UIDs,
+audio, existing feed selectors and dedicated bond placements. No runtime, workflow, schema,
+source refresh, duplicate selection, or production writes.
+
+Acceptance: replay all 5,353 frozen Dallas records; exactly four standing-feed additions and
+no other placement changes. Existing Dallas ownership tests, whole Ruff lint/format and the
+offline suite must pass. After human merge/deployment, verify both live feeds retain the four
+original audio URLs. Publication preparation does not close the evidence cases.
+
+Prepared implementation replay: all 5,353 frozen Dallas entries produce exactly the four
+authorized standing Transportation additions and no removals or other changes. The existing
+broader Bond Program placements also remain. See
+[`dallas-streets-dual-feed-replay-2026-10-08.json`](evidence/dallas-streets-dual-feed-replay-2026-10-08.json).
+All four independent evidence cases remain open; current assignments are prepared config
+assignments, not a claim of live deployment.
+
+Validation: 12 targeted tests and 5,120 offline tests passed (15 deselected); whole
+Ruff lint and format checks passed across 480 files. No pipeline version or audio backfill.
