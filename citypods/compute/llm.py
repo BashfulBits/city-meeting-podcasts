@@ -1541,7 +1541,7 @@ class LiteLLMBackend(Backend):
                 route=route,
                 retry_after_seconds=int(retry_after) if retry_after is not None else None,
             )
-            now = datetime.now(UTC)
+            now = self._now()
             if classification.failure_class == "own_rpd":
                 tz = route.quota.reset_timezone or "UTC"
                 until = _next_local_midnight(tz, now)

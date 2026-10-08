@@ -361,14 +361,19 @@ The maintainer selected these priorities in chat on 2026-10-08:
    Unsupported choices remain visible but cannot be applied by 2a. They are still committed scope.
 3. Proven tightening may prepare a PR even for a decrease greater than 50%; flag the material
    change prominently. Increases still require a maintainer choice. Zero never becomes a limit.
+4. Missing catalog output bounds may use a separately reviewed conservative cap. Automatic
+   additions still defer missing required bounds; a tiny canary cannot establish an output ceiling.
+5. Add adaptive input/output context calibration **after** bounded rate maintenance (Slice 5).
+   Repeated probes should expand successful lower bounds and refine real size-rejection brackets,
+   using provider-reported token counts rather than treating local estimates as exact.
 
 Decision 3 extends G4's earlier “small” automatic changes. It saves a decision round when repeated
 credible evidence proves a large capacity loss; the risk is a misleading measurement lowering
 throughput. Three independent observations, scope validation and human PR review contain that
 risk. Automation prepares PRs; it does not merge them or deploy changes.
 
-Proposed merge order: **2a → 2b → 3a recovery → 3b removal → 4**. The rescue deployment is a hard
-prerequisite for removal automation. Split 2b can proceed separately from 3a after 2a; it must not
+Proposed merge order: **2a → 2b → 3a recovery → 3b removal → 4 → 5 calibration**.
+The rescue deployment is a hard prerequisite for removal automation. Split 2b can proceed separately from 3a after 2a; it must not
 silently disappear from the delivery list. No live probe is required to write or test these slices.
 Paused live evidence and post-deploy recovery validation are activation gates, not coding blockers.
 Each slice gets a separate issue and scoped implementation PR after this proposal is accepted.
@@ -562,7 +567,8 @@ Reuse `citypods/llm_rate_probe.py::RateProbeRunner` budget checks. Maintenance e
 and a small phase-1 sample: at most three rate requests per provider per run, at most 900 seconds
 including drain/spacing, and the existing candidate/method probes consume the same total allowance
 when combined. If scheduled R10 verification already spends that allowance, skip rate samples.
-Disable input/output/endurance/agreement phases 2–4. Reserve every configured-route request, renew
+Disable input/output/endurance/agreement phases 2–4 in Slice 4; Slice 5 (§8.10) has a separate
+activation gate and must not enable those existing phases wholesale. Reserve every configured-route request, renew
 pause, and honor reset/cooldown; unknown/exhausted scarce quota defers. Never exceed a documented
 provider ceiling to “discover” capacity. Without an exclusive Worker pause, observations are
 contended and cannot support automatic tightening.
@@ -613,8 +619,10 @@ Before promoting a slice to L3: accept its proposed technical choices, create it
 issue, resolve any code/file mismatch, and copy its activation gate into that issue. Remaining
 review questions are technical acceptance of identity fallback, the trusted-artifact history and
 structural recovery lineage; priority, initial command scope and material-tightening policy are
-already decided above. #2178 and the subsequent implementation request accept the proposed technical
-choices; no automatic removal or limit maintenance is enabled by Slice 2a.
+already decided above. #2178 and the subsequent implementation request accept the original
+remaining-slice technical choices; Slice 2a is prepared in PR #2182 (#2179). Slice 5 remains L2
+under §8.10. No automatic removal or limit maintenance is enabled by this docs PR.
+
 
 ### Slice 2a implementation checkpoint — 2026-10-08 (#2179)
 
@@ -629,8 +637,8 @@ fulfilled route/backup selection is a no-op. A pending selected choice keeps the
 
 The current compiler requires both input and output context bounds. Additions with either absent
 are deferred without guessing a limit; other valid additions/ignores can still form a PR. The
-maintainer clarification of whether to require catalog output bounds or permit separately reviewed
-conservative output caps is pending. No cap override is implemented. Initial identity opt-in covers
+maintainer accepted separately reviewed conservative output caps in #2186; automatic additions
+continue to require evidenced bounds. No cap override is implemented. Initial identity opt-in covers
 publisher-qualified NVIDIA/OpenRouter/Kilo IDs and native Gemini IDs; other plugins leave unknown
 identities for a manual mapping. AA matching is never used for pooling.
 
@@ -640,3 +648,124 @@ an explicitly paused physical route remains deferred and cannot be re-enabled by
 JEV stays outside chat addition.
 There are no runtime config changes, live probes, pipeline/recipe bumps or episode artifact backfill
 in this implementation. Paid/shadow, retirement, recovery and limit changes remain later slices.
+
+### 8.10 Slice 5: adaptive context calibration — accepted direction, L2
+
+**Maintainer decision, 2026-10-08:** accept separately reviewed conservative output caps when
+catalog bounds are absent, and sequence adaptive context calibration after Slice 4. This explicitly
+extends §8.7's rate-only maintenance scope; it does not enable context probes or override current
+Slice 2a admission checks. Missing input bounds still need their own evidence/review. No runtime
+config, deployment or stored episode artifact changes are part of this design update.
+
+The goal is gradual refinement of usable input and output bounds, not a promise to discover a
+provider's true maximum within three scans. Three successful 50% expansions reach about 3.4 times
+the starting value; quota, token uncertainty, truncation and changing provider behavior may require
+more scans or leave a boundary unresolved. Configured admission caps and experimental measurements
+remain separate. A locally chosen cap must not permanently fence exploration, but documented
+provider ceilings, shared account quotas and reviewed probe budgets remain hard guards.
+
+#### Evidence and token-count feedback
+
+Extend the existing evidence/limit-history path with typed context observations. Keep input,
+output and combined input-plus-output window distinct; fix a small output reservation during input
+calibration and a small input during output calibration, recording both. Provider-specific pure
+parsers belong in the catalog plugins with offline fixtures, not generic number extraction from
+arbitrary error text. The provider/gateway counts tokens; the model's generated claims do not count
+as telemetry. Parse successful usage, documented size-error fields and documented error messages.
+
+Each observation records local token estimate and estimator identity/version, requested output
+reservation, provider-reported input/output/total counts with their documented counting basis,
+explicit reported ceiling if present, finish reason and size-error classification. Record whether
+reasoning tokens are included, excluded or unknown; do not add reasoning counts twice or equate
+visible text with total output. Keep requested, reported, estimated and inferred values distinct.
+Reject boolean, negative, contradictory, malformed or unscoped values; zero output is not proof of
+capacity. Preserve safe parsed fields and provenance, never credentials, prompts or raw responses.
+
+Provider-reported counts override estimates for that observation when their scope/basis is known.
+They feed back into the next prompt construction: retain observed estimate/count pairs for the
+same route, tokenizer/estimator and probe fixture; use a conservative observed mapping to approach
+the next target, and update it after each response. This mapping is an estimate, not a universal
+conversion ratio or proof for arbitrary production text. Use varied representative offline fixtures
+and a documented uncertainty margin before translating measured bounds into admission caps.
+
+A rejection can report both an actual request size and an allowed ceiling; store each separately.
+A rejected request of 15,300 provider tokens does not prove a ceiling of 15,299. For a combined
+window error, interpret the documented input/output reservation semantics before deriving any
+input bound. Only compare brackets in a common counting basis with the same fixed reservation.
+Unknown basis or irreconcilable counts make the observation advisory and prevent cap changes.
+Where the provider supplies no actual count, retain the estimated observation but do not present it
+as an exact provider-token boundary. A provider estimate correction must not silently reinterpret
+old observations or overwrite the production estimator; that integration requires an explicit plan.
+
+#### Search policy and proof strength
+
+Maintain separate input/output search states with nullable highest verified success and lowest
+definitive size rejection. Parameter acceptance, processed input and generated output are separate
+evidence kinds. A 200 response with a large `max_tokens` but tiny actual output proves parameter
+acceptance only: it cannot establish that output capacity. Silent parameter clamping, early EOS,
+reasoning-only responses and silent input truncation must not masquerade as boundary proof.
+Input probes require provider-counted input and a fixture checking processing near the tail;
+output capacity requires actual provider-counted generation and interpretable termination.
+Tail checks are supporting evidence; a failed content check alone is not a size rejection.
+
+- With no rejection bracket, target 150% of the highest verified success in the same basis,
+  bounded by the approved budget and documented ceilings. With no verified success, start from the
+  reviewed conservative cap and establish a baseline first. Do not grow from parameter acceptance
+  when the desired evidence is actual generated output.
+- Once a definitive size rejection brackets a success, choose a midpoint within that bracket.
+  Update bounds using the provider's actual counts; if estimate correction lands outside the
+  intended interval or repeats a size, replan rather than claim progress. Stop at an agreed
+  uncertainty/resolution threshold or when the per-run budget is exhausted; resume next scan.
+- On a later boundary-revalidation scan, try roughly 110% of the last verified successful size,
+  subject to documented ceilings and budget. Preserve the historical rejected bound; fresh success
+  above it invalidates that active bracket and resumes exploration. Fresh failures refine it.
+- Quota/rate errors, timeouts, gateway failures, policy refusal, invalid request shape and unrelated
+  errors never tighten a context bracket. A size-like status alone is insufficient. Confirm a
+  definitive rejection under a valid pause/quota before using it for a cap proposal; conflicting
+  outcomes leave the boundary unresolved.
+
+There is no implied exact maximum: report successful lower bounds and rejected upper bounds with
+basis, age and uncertainty. Input success near a combined window with a one-token output reservation
+cannot justify allowing that same input alongside a large production output reservation.
+
+#### Durable state, config review and activation gate
+
+Reuse §8.7's bounded rolling-issue advisory state and trusted successful-main Actions artifacts.
+Bind state to provider, account alias, physical route, upstream model, gateway path, catalog digest,
+probe fixture/version and counting basis. Carry search bounds, evidence kinds, estimate/count pairs,
+last outcomes and trusted run references; a single `maximum_found` boolean is insufficient. Preserve
+verified aggregate search state across artifact expiry only through a fresh successful-main artifact
+that carries authenticated evidence lineage. Expired or missing proof without that lineage requires
+revalidation. Changes to identity, gateway, basis or fixture require revalidation rather than mixing
+old measurements into a new bracket. Bound both state size and lineage; do not accumulate an
+unbounded per-probe log or treat edited issue markers as trusted evidence.
+
+Separately reviewed caps are ordinary config PR decisions with rationale, evidence basis and an
+uncertainty margin. Calibration may propose increases or reductions for explicit maintainer review;
+it never automatically raises or lowers context/output caps. Slice 4's rate-tightening thresholds
+and six-observation maximum are not a context search algorithm. Keep context search summaries
+separate from rate aggregates while reusing their provenance checks. Current `/apply` additions
+remain dependent on evidenced required bounds until a later explicit contract implements reviewed
+cap handling. No unchecked cap override is introduced here.
+
+Before L3, create a separate Slice 5 issue and specify exact file/function/schema changes, provider
+parser fixtures, prompt construction/counting basis, uncertainty/resolution policy and integration
+with production admission estimates. Expected extension points are catalog evidence/plugins,
+`limits.py`, `probe.py`, issue state, reconcile/workflow and the existing rate-probe budget helpers;
+this L2 direction does not authorize arbitrary new modules or reuse `run_phase_2` unchanged.
+
+Also specify numerical per-request and per-run input/output/token-cost, request-count and elapsed
+budgets, scan cadence/fair rotation, confirmation allowance and trusted history retention. Existing
+Slice 4 request/time ceilings are not permission for large output generation. Reuse exclusive
+pauses, reservation/renewal, quota checks, spacing and cooldown; share the allowance with discovery
+and rate probes and defer when exhausted. BeatAPI/JEV share their successful-call account window;
+long output calls occupy that window until completion. No top-ups, paid calls, credentials or
+production ceiling changes are authorized by this design. Live activation requires the reviewed
+budget and a scoped canary after offline acceptance; no provider calls occur for this docs PR.
+
+Required offline acceptance: underestimated/overestimated input and output counts; provider usage
+versus size-error feedback; mixed/unknown token bases; reasoning counts; shared context reservations;
+clamping, early EOS and truncation; malformed/contradictory parser fields; 50% exploration, midpoint
+refinement and 10% revalidation; estimate correction outside brackets; transient failures preserving
+bounds; expired/spoofed provenance; route/gateway changes; resume across scans; quota/pause/time/token
+ceilings; and explicit reviewed config proposals with production caps unchanged until merge.

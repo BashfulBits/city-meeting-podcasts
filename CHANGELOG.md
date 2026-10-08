@@ -21,6 +21,17 @@ Once 1.0 ships, entries move under semver tags.
   not copied into independent route limits; paused BeatAPI routes and backup tiers are preserved.
   No route changes in this PR, live probes, pipeline/recipe version bumps or artifact backfill.
 
+- **Provider catalog adaptive context calibration design (review/48 §8.10).** Accepts separately
+  reviewed conservative output caps and sequences calibration after bounded rate maintenance.
+  Records provider-reported token-count feedback, 50% exploration, bracket refinement and 10%
+  boundary revalidation, with trusted bounded history and explicit config review. Slice 5 remains
+  L2 pending exact budgets and implementation contracts. Design only: no live probes, runtime caps,
+  deployments, pipeline versions or stored artifacts change.
+
+- **Allow static search indexing 120 minutes per run**, with a 150-minute search job timeout.
+  Preserve record checkpoints and the four-hour cadence; expose completion/deferred progress
+  in Actions logs as well as the job summary. No audio or stored-artifact invalidation.
+
 - **BeatAPI chat routes back on, through `custom-beatapi`.** The maintainer registered a
   `custom-beatapi` AI Gateway provider (base `https://api.beatapi.io/v1`); the `beatapi` provider
   now sets `ai_gateway_slug: custom-beatapi` and `ai_gateway_chat_path: /chat/completions`, and the
@@ -58,7 +69,7 @@ Once 1.0 ships, entries move under semver tags.
   future verbs. Qualification uses the section 4 probes and audit agreement plus a deterministic
   quote check, not a separate benchmark. BeatAPI chat routes become backups: a route backup tier,
   yield-to-JEV at claim time, and a short output cap. Design only.
-  
+
 - **Provider catalog verifies structured-output support (review/48 R10).** Availability pings no
   longer qualify a candidate alone: four schema-bound checks validate completed visible JSON,
   record method/latency evidence, and show the preferred method on the rolling issue. A configured
@@ -101,7 +112,7 @@ Once 1.0 ships, entries move under semver tags.
   cached catalog but no configured feed; keep them out of feeds for this P0 pass and revisit if
   more recordings enter the catalog. `review/51` records four proposed unmatched-item outcomes for
   later maintainer review. Original source records and media are retained.
-  
+
 - **LLM dispatch: bundles and claim bookkeeping ride on one scheduler write (#1844).** The
   `bundles` table is gone. The few active bundles live in `scheduler.active_bundles_json`, and every
   scheduler change in a transaction (the claim outcome and counters, bundles, a completion's requeue
@@ -443,7 +454,7 @@ Phase R (Research-Tool Surface)._
   aliases to one TIF subscription per city; boundary selectors cover historical variants without
   matching multifamily/Beautiful. Archive records, episode UIDs and pipeline versions are unchanged.
   Broader eligibility may schedule historical work under existing budgets; no forced backfill.
-  
+
 - **CI Renovate validator pinned to 44.125.1.** The unversioned npm install began resolving
   Renovate 44.132.1, whose `@yarnpkg/core@4.9.2` dependency publishes an npm-incompatible Yarn
   `patch:` URL. The verified pin restores configuration validation on Node 24; Renovate tracks
