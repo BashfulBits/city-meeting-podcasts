@@ -4,7 +4,7 @@
 The gap to L3 is listed in "Path to L3" at the bottom; this doc is not yet in `review/11`.**
 
 **Document map.** This document is the umbrella design: why, what, decisions, capacity and evidence. Each implementation phase gets its own build spec
-(one agent can be handed one short, exact document): [review/50](50-p0-llm-verb-backlog-trend.md) is P0 (L3); P1 onward are specified when their predecessors have produced data. The pilots live in the eval lane
+(one agent can be handed one short, exact document): [review/50](50-p0-llm-verb-backlog-trend.md) is P0 (L3, shipped); [review/53](53-judge-stack-tags-and-moments.md) specifies P1 to P5 and P7 (L3) as one PR series ending with tags and moments both admitted by the stack and the R5/R6 flows retired; P6 (leagues) follows. The pilots live in the eval lane
 [`evals/judge`](../evals/judge/README.md) and are re-run, not re-described here.
 
 ## Goal (from the maintainer)
@@ -653,11 +653,12 @@ Two separate decisions, each stated relative to a measured baseline rather than 
 - Audit audio is a link to the meeting page at `#t=`; no clip uploads, no PAT.
 - The mobile check of the `#t=` link is deferred to the website redesign.
 - Approved 2026-09-30: the worked shadow and switch-over example (a tag is visible only once judged good), the two relative graduation rules, and the initial context rule (judge at T1, escalate to T2 when p is 0.3 to 0.7).
+- Approved 2026-10-08: the judge and adjudicator split of section 4c (JEV anchor; Gemma 4 31B/26B bulk sibling; Nemotron 3 Super as the non-Google sibling; GLM 5.3 Flash and DeepSeek V4.1 Flash adjudicators; independence per entry).
 - The 15 adjudicated context labels are Claude's and were shown to the maintainer for a sanity check; they are replaced over time by audit-verified labels, not by a separate labeling exercise.
 
 ## Open questions (remaining)
 
-1. **Judge and adjudicator routes:** recommendation in section 4c (JEV anchor; Gemma bulk sibling plus a non-Google sibling; GLM 5.3 Flash and DeepSeek V4.1 Flash adjudicators with per-entry independence), pending the maintainer's approval.
+1. **Judge and adjudicator routes:** approved 2026-10-08 (section 4c).
 2. **BeatAPI chat routes as backups:** backup tier shipped; yield-to-JEV ships with P1 (section 4c).
 
 ## Path to L3
@@ -671,8 +672,8 @@ Status against `review/11` L3 (concrete file/function changes, test plan, sequen
 | Eval lane | [`evals/judge`](../evals/judge/README.md) with `scripts/eval_judge.py` (PR #1966): bundling, question types, context ladder, adjudicator; re-runnable |
 | Facts gathered | catalog scan complete; rule vs LLM candidate counts measured; JEV limits, `choice`, packing and question-bundled evidence verified; Qwen limits, thinking mode and a 30/30 quality check; `gh` attach and CI token behaviour; Worker variable and secret audit (PR 1965 implements the cleanup) |
 | BeatAPI provider registration | [#1967](https://github.com/BashfulBits/city-meeting-podcasts/issues/1967): secret, discovery plugin, contract tests; prerequisite for P1 |
-| P1 breakout | next: adds the generalized task-spec registry of section 3a and the `context_tier` field to the judgment record; needs the judgment-record schema, the `beatapi` provider entry (`rpm: 1`, `concurrency: 1`), the `structured.py` mapping and oversize-503 classification, and the JEV real-response fixtures (captured in the spike) |
+| P1 to P5, P7 | **L3: [review/53](53-judge-stack-tags-and-moments.md)**: eleven PRs from the `systemone` transport through shadow judging of tags and moments, adjudication, audit, calibration, per-task graduation and retirement of the R5/R6 flows; reservations sized for 800 meetings/day |
 | Dispatch requirements (2026-10-08) | P1: single-model lanes get a measured output budget or a 1–2 retry ceiling for `output_budget_exhausted`; P7: cancel a retired lane's queued jobs before removing it; after P7: #2162 pooled-index reassessment. See "Dispatch requirements from the row-write reductions" |
-| P2-P7 | stay L2 until P1 shadow data exists: thresholds, league scoring and the graduation comparison need measured judge behaviour; specifying them now would invent numbers |
+| P6 | route leagues stay L2 until the judge lanes have run with authority; review/53 already carries `active`/`eligible` pools for them |
 | Judge and adjudicator routes | recommendation in section 4c; qualified the section 4 way (audit-grown probes, stability, audit agreement, quote check), no separate benchmark |
 | Open decisions | shadow and switch-over shape, graduation wording (above) |
