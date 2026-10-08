@@ -12,6 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Triaged the five unexpected-feed rows.** Arlington’s verified Council recording gets an exact
+  source-ID addition; Dallas’s South Dallas/Fair Park special-called title gets a reusable board
+  rule. Addison’s school dedication and Fort Worth’s unreadable provider label get no meeting-feed
+  rule. Denton’s standing Animal Shelter Advisory Committee has three recorded entries in the
+  cached catalog but no configured feed; keep them out of feeds for this P0 pass and revisit if
+  more recordings enter the catalog. `review/51` records four proposed unmatched-item outcomes for
+  later maintainer review. Original source records and media are retained.
+  
 - **LLM dispatch: bundles and claim bookkeeping ride on one scheduler write (#1844).** The
   `bundles` table is gone. The few active bundles live in `scheduler.active_bundles_json`, and every
   scheduler change in a transaction (the claim outcome and counters, bundles, a completion's requeue

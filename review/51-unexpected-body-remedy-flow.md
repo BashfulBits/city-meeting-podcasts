@@ -168,6 +168,33 @@ issue must retain its decision and reason. Concurrent runs use the repository's 
 conventions; a stale run cannot overwrite a newer disposition. Cheap idempotent bookkeeping is not
 subject to the expensive-work stop gate. Exclusions affect selection, never archive retention.
 
+### Proposed unmatched-meeting dispositions — for maintainer review
+
+This is a workflow proposal, not an approved ledger schema or final policy. When a title does not
+match a feed, a reviewer should be able to distinguish these outcomes:
+
+1. **Do not include in the catalog.** The item is not useful city-government meeting content, is
+   promotional or ceremonial, or has no usable recording. Keep the original provider record and
+   explain why it is not being tracked. The existing no-recording flow remains responsible for
+   ordinary cancellations and unavailable recordings.
+2. **Keep watching.** Evidence shows a real public body or recurring meeting series, but the
+   recordings in the catalog are not yet enough to justify a feed. Preserve the unmatched entries
+   and revisit this decision when another recording appears. This is not a feed assignment or a
+   claim that an unrecorded meeting has audio.
+3. **Add a rule to an existing feed.** Evidence identifies the meeting as the same body already
+   served by a configured feed. Add a reusable, source-scoped title rule when possible and test
+   positive examples plus similar titles that should remain out. Use a one-recording exception
+   only when the exact event is proven and no safe title rule can express it.
+4. **Propose a new feed.** Evidence establishes a distinct public body or recurring series, through
+   official records, multiple matching recordings, or both. The reviewer proposes the feed and
+   rule for human decision; detection must not create the feed automatically.
+
+The maintainer asked that reviewers be able to choose between “do not include” and “keep watching,”
+and still have explicit choices for an existing-feed rule or a proposed new feed. The exact evidence
+requirements, recording-count threshold, storage fields, and interaction with the current
+five-distinct-UID P0 cutoff remain for a later decision. Do not treat this proposal as authorization
+to create a feed or change the P1/P2 implementation contract.
+
 ## 3. Model admission, independent judgment and escalation
 
 AA is an admission baseline, not proof of project accuracy. Use the same AA Intelligence Index
