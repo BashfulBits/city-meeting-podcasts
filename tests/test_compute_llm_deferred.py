@@ -1051,3 +1051,85 @@ def test_terminal_failure_from_old_handle_cannot_delete_new_snapshot_record():
     assert look_up_deferred(storage, "r1") == newer
     assert not storage.exists(deferred_failure_key("r1"))
     assert list(snapshot.pending()) == [newer]
+
+
+@pytest.mark.parametrize("reason", ["route_retired", "unadmissible"])
+def test_structural_audit_preserves_retry_and_schema_state_and_blocks_unchanged_generation(reason):
+    from citypods.compute.llm import LLMDispatchTerminalError
+
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="r-structural", backend="llm-dispatch-v2", ref="j1")
+    context = {"route_generations": {"old": "old-gen"}, "input_identity": "input-sha"}
+    write_deferred(storage, handle.recipe_hash, handle, now=NOW, recovery_context=context)
+    _write_json(
+        storage,
+        deferred_failure_key(handle.recipe_hash),
+        b'{"failure_count": 2, "schema_correction_attempted": true}',
+    )
+    snapshot = load_deferred_snapshot(storage, now=NOW)
+    error = LLMDispatchTerminalError(
+        "unusable", terminal_reason=reason, terminal_catalog_digest="catalog-sha"
+    )
+    assert discard_terminal_failure(storage, snapshot, handle, error, structural=True, now=NOW) == 2
+    audit = _read_json(storage, deferred_failure_key(handle.recipe_hash))
+    assert audit["failure_count"] == 2
+    assert audit["schema_correction_attempted"]
+    assert audit["terminal_catalog_digest"] == "catalog-sha"
+    assert audit["input_identity"] == "input-sha"
+    assert audit["original_ref"] == "j1"
+    assert look_up_deferred(storage, handle.recipe_hash) is None
+    assert not terminal_failure_retry_allowed(storage, handle.recipe_hash, recovery_context=context)
+    assert not terminal_failure_retry_allowed(storage, handle.recipe_hash)
+    new = {"route_generations": {"new": "new-gen"}}
+    assert terminal_failure_retry_allowed(storage, handle.recipe_hash, recovery_context=new)
+    assert not terminal_failure_retry_allowed(
+        storage, handle.recipe_hash, recovery_context={"route_generations": {}}
+    )
+
+
+def test_structural_audit_failure_leaves_handle_and_snapshot_recoverable(monkeypatch):
+    from citypods.compute.llm import LLMDispatchTerminalError
+
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="j1")
+    write_deferred(storage, "r1", handle, now=NOW)
+    snapshot = load_deferred_snapshot(storage, now=NOW)
+    original = llm_deferred._write_json
+
+    def fail_marker(storage, key, body):
+        if key == deferred_failure_key("r1"):
+            raise OSError("audit unavailable")
+        return original(storage, key, body)
+
+    monkeypatch.setattr(llm_deferred, "_write_json", fail_marker)
+    error = LLMDispatchTerminalError(
+        "unusable", terminal_reason="route_retired", terminal_catalog_digest="catalog"
+    )
+    with pytest.raises(OSError, match="audit unavailable"):
+        discard_terminal_failure(storage, snapshot, handle, error, structural=True, now=NOW)
+    assert look_up_deferred(storage, "r1") == handle
+    assert list(snapshot.pending()) == [handle]
+
+
+def test_structural_submission_fence_outlives_audit_ttl_until_recipe_completes():
+    from citypods.compute.llm import LLMDispatchTerminalError
+
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="j1")
+    write_deferred(storage, "r1", handle, now=NOW)
+    error = LLMDispatchTerminalError(
+        "oversized", terminal_reason="unadmissible", terminal_catalog_digest="catalog"
+    )
+    discard_terminal_failure(
+        storage,
+        snapshot_deferred_handles(storage, [handle]),
+        handle,
+        error,
+        structural=True,
+        now=NOW,
+    )
+    later = NOW + timedelta(days=DEFAULT_FAILURE_MARKER_TTL_DAYS + 1)
+    assert llm_deferred.prune_expired_failure_markers(storage, now=later) == 0
+    assert storage.exists(deferred_failure_key("r1"))
+    write_deferred(storage, "r1", JobResult(task="tag", recipe_hash="r1", output={}), now=later)
+    assert llm_deferred.prune_expired_failure_markers(storage, now=later) == 1

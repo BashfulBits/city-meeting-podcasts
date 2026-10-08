@@ -1528,3 +1528,67 @@ def test_prelabeler_batch_limits_reject_a_route_with_no_input_budget():
     )
     with pytest.raises(ValueError, match="no input budget"):
         prelabeler_batch_limits(starved)
+
+
+def test_rebatching_with_current_output_limits_retains_every_subject(monkeypatch):
+    import json
+    from dataclasses import replace
+
+    from citypods.compute.base import JobHandle
+    from citypods.compute.llm_policy import ROUTES
+    from citypods.tags import (
+        PRELABELER_OUTPUT_TOKEN_OVERHEAD,
+        PRELABELER_OUTPUT_TOKENS_PER_ITEM,
+        llm_prelabel_candidates,
+    )
+
+    model = "google/gemma-4-31b-it"
+    route = replace(
+        ROUTES[model],
+        input_context_limit=16384,
+        hard_input_ceiling=None,
+        output_context_limit=PRELABELER_OUTPUT_TOKEN_OVERHEAD
+        + 2 * PRELABELER_OUTPUT_TOKENS_PER_ITEM,
+    )
+    monkeypatch.setattr("citypods.tags.prelabeler_sizing_route", lambda *args, **kwargs: route)
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["example"], "rules": {"include": ["x"]}}],
+        }
+    )
+    candidates = [
+        {
+            "candidate_id": f"s-{i}",
+            "id": "housing",
+            "scope": "episode",
+            "evidence": [{"where": "agenda", "quote": "housing"}],
+        }
+        for i in range(13)
+    ]
+    jobs = []
+
+    class Backend:
+        storage = None
+
+        def run_inference(self, job):
+            jobs.append(job)
+            return JobHandle(task=job.task, recipe_hash=job.recipe_hash, backend="x", ref="r")
+
+    _, pending, reason = llm_prelabel_candidates(
+        Backend(),
+        candidates=candidates,
+        taxonomy=taxonomy,
+        chapters=[],
+        recipe_hash="retained-subjects",
+        model=model,
+    )
+    assert pending and reason is None
+    subjects = []
+    for job in jobs:
+        batch = json.loads(job.inputs["messages"][-1]["content"])["candidates"]
+        assert len(batch) <= 2
+        assert job.inputs["max_tokens"] <= route.output_context_limit
+        subjects.extend(c["candidate_id"] for c in batch)
+    assert subjects == [c["candidate_id"] for c in candidates]

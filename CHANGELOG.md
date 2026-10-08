@@ -12,11 +12,17 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
-- **Provider catalog Slice 3a protocol preparation (#2190, implementation in progress).**
+- **Provider catalog Slice 3a structural rescue (#2190, implementation in progress).**
   Dispatch failed-job poll/feed responses carry nullable structural reason/catalog fields;
   legacy failures remain generic. Python preserves recognized metadata, and deferred terminal
   cleanup fences the responding handle against the snapshot's backend/ref and current stored
-  record. Rescue, structural recovery and rebatching are not activated by this checkpoint.
+  record. Bounded queued-job rescue unlocks declared backups when primaries cannot structurally
+  run; temporary pauses/quotas do not trigger failure. Structural recovery audits before deleting
+  a matching handle, preserves retry/schema-correction counts and gates repeat submissions on a
+  new fitting route generation. Prelabeler work rebatches retained subjects against current bounds.
+  Rescue reuses the existing queue index and persists bounded progress atomically, including
+  across quota outages and DO recreation. Coordinated client/Worker activation remains a gate;
+  removal automation stays gated on deployment and recovery canary.
   No pipeline version bump or successful-artifact invalidation.
 
 - **Provider catalog Slice 2b: explicit keep-paid PR preparation (#2187).** `/apply` rechecks

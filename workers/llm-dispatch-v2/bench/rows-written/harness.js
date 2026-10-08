@@ -257,11 +257,85 @@ MeasureDO.prototype.measureSchema = async function () {
   };
 };
 
+// Existing local-only benchmark surface: verify structural rescue's billing reservation.
+MeasureDO.prototype.measureRescue = async function (legacy = false, outage = false, n = 20) {
+  const route = { free: true, input_context_limit: 10000, output_context_limit: 1000 };
+  const catalog = { model_routes_map: { [NEMOTRON]: ["retired"] },
+    routes_by_id: { retired: route } };
+  this.env = { ...this.env, DISPATCH_LIMITS_OVERRIDE: catalog, MAX_ACTIVE_BUNDLES: "0" };
+  await this.claimDispatchWindow(Date.now(), 30);
+  await this.enqueueBatch(Array.from({ length: n }, (_, i) => job(i, "chapter-agenda", NEMOTRON)));
+  this._take();
+  if (legacy) {
+    this.sql.exec("CREATE UNIQUE INDEX idx_job_models_job_model ON job_models (job_id, model)");
+    this.sql.exec("UPDATE jobs SET queue_models=NULL");
+  }
+  catalog.routes_by_id.retired = { ...route, input_context_limit: 100 };
+  const digest = await this._structuralCatalogDigest(catalog);
+  this._take();
+  let runner = this;
+  let recovery = null;
+  if (outage) {
+    const snapshot = () => JSON.stringify({
+      jobs: [...this.sql.exec("SELECT id, state, queue_models FROM jobs ORDER BY id")],
+      models: [...this.sql.exec("SELECT * FROM job_models ORDER BY job_id, model")],
+      scheduler: [...this.sql.exec("SELECT * FROM scheduler")],
+    });
+    const before = snapshot();
+    let aborted = false;
+    try {
+      this._transactionSync(() => {
+        this._reconcileUnroutableJobs(this._getSql(), Date.now(), catalog, digest);
+        throw new Error("simulated row-write outage before checkpoint commit");
+      });
+    } catch (error) {
+      if (!String(error).includes("simulated row-write outage")) throw error;
+      aborted = true;
+    }
+    if (!aborted || snapshot() !== before) throw new Error("rescue rollback changed persisted state");
+    this._take();
+    runner = new MeasureDO(this.ctx, this.env);
+    recovery = { rolled_back: true, recreation: runner._take() };
+  }
+  const page = () => {
+    const result = runner._transactionSync(() => {
+      const result = runner._reconcileUnroutableJobs(runner._getSql(), Date.now(), catalog, digest);
+      runner._stageSchedulerSet("queued_job_count=MAX(0, queued_job_count-?)", result.failed);
+      return result;
+    });
+    return { ...result, ...runner._take() };
+  };
+  const first = page();
+  let scale = null;
+  if (n > 20) {
+    const pages = [first];
+    for (let i = 0; i < Math.ceil(n / 20) + 1; i += 1) {
+      const [state] = [...runner.sql.exec("SELECT catalog_rescue_complete FROM scheduler")];
+      if (state.catalog_rescue_complete) break;
+      runner._take();
+      pages.push(page());
+    }
+    scale = { pages: pages.length, failed: pages.reduce((sum, result) => sum + result.failed, 0),
+      max_page_reads: Math.max(...pages.map(result => result.r)),
+      max_page_writes: Math.max(...pages.map(result => result.w)),
+      complete: [...runner.sql.exec("SELECT catalog_rescue_complete FROM scheduler")][0].catalog_rescue_complete };
+  }
+  return { ...first, reserved_writes: legacy ? 221 : 181,
+    ...(scale ? { scale } : {}),
+    ...(recovery ? { recovery } : {}) };
+};
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const name = url.searchParams.get("name") || crypto.randomUUID();
     const stub = env.M.get(env.M.idFromName(name));
+    if (url.searchParams.get("rescue") === "1") {
+      return Response.json(await stub.measureRescue(
+        url.searchParams.get("legacy") === "1", url.searchParams.get("outage") === "1",
+        Number(url.searchParams.get("n") || 20)
+      ));
+    }
     if (url.pathname === "/schema") return Response.json(await stub.measureSchema());
     if (url.pathname === "/accounting") return Response.json(await stub.measureAccounting());
     if (url.pathname === "/retry") return Response.json(await stub.measureRetry());

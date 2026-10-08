@@ -43,7 +43,9 @@ from citypods.compute.llm_budget import (
 )
 from citypods.compute.llm_deferred import (
     look_up_deferred,
+    structural_recovery_context,
     terminal_failure_retry_allowed,
+    terminal_recovery_generation,
     write_deferred,
 )
 from citypods.compute.llm_failure_class import (
@@ -1383,11 +1385,13 @@ class LiteLLMBackend(Backend):
         existing = look_up_deferred(self.storage, job.recipe_hash)
         if existing is not None:
             return existing
-        if not terminal_failure_retry_allowed(self.storage, job.recipe_hash):
+        if not terminal_failure_retry_allowed(
+            self.storage, job.recipe_hash, recovery_context=self._structural_recovery_context(job)
+        ):
             raise LLMBackendError(
-                "LLM terminal failure retry limit reached for this recipe; "
+                "LLM terminal retry limit or structural recovery gate blocks this recipe; "
                 "change the input/recipe, clear its failure marker after investigating, "
-                "or wait for the marker's audit retention to expire"
+                "or wait for an eligible route generation"
             )
 
         messages = _messages(job)
@@ -1397,6 +1401,26 @@ class LiteLLMBackend(Backend):
         # the sweep (or a later call) can pick up exactly where this one left off.
         write_deferred(self.storage, job.recipe_hash, result)
         return result
+
+    def _structural_recovery_context(self, job: InferenceJob) -> dict[str, Any]:
+        policy = job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+        policy = policy or LLMRequestPolicy(allowed_models=(self.config.model,))
+        messages = _messages(job)
+        structured = self._response_model(job)
+        response_model = structured[1] if structured else None
+        allowed = policy.allowed_models or (self.config.model,)
+        payload = self._payload(
+            job, response_model, resolved_model=canonical_model(allowed[0]), schema_only=True
+        )
+        input_estimate = estimate_tokens(payload.get("messages", messages))
+        if payload.get("structured_output"):
+            input_estimate += math.ceil(len(json.dumps(payload["structured_output"])) / 4)
+        return structural_recovery_context(
+            policy,
+            input_estimate=input_estimate,
+            output_budget=self._output_token_budget(job),
+            input_identity=hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest(),
+        )
 
     def run_immediate(self, job: InferenceJob) -> JobResult:
         """Direct, same-process inference with quota accounting and no durable result registry.
@@ -1945,6 +1969,16 @@ class LiteLLMBackend(Backend):
             else:
                 if isinstance(cached, JobHandle):
                     prior_pending[i] = cached
+                if not terminal_failure_retry_allowed(
+                    self.storage,
+                    job.recipe_hash,
+                    recovery_context=self._structural_recovery_context(job),
+                ):
+                    out[i] = LLMBackendError(
+                        "LLM recipe awaits structural recovery or retry review"
+                    )
+                    telemetry_outcomes.append((job, "rejected", "terminal_recovery_blocked"))
+                    continue
                 uncached_indices.append(i)
 
         if not uncached_indices:
@@ -2048,6 +2082,11 @@ class LiteLLMBackend(Backend):
             canonical_payload_str = json.dumps(payload, sort_keys=True)
             request_digest = hashlib.sha256(canonical_payload_str.encode("utf-8")).hexdigest()
             idempotency_key = f"{job.recipe_hash}:durable-queue-v2" if job.recipe_hash else job_id
+            generation = terminal_recovery_generation(
+                self.storage, job.recipe_hash, self._structural_recovery_context(job)
+            )
+            if generation:
+                idempotency_key += f":recovery:{generation}"
 
             if storage is not None:
                 # Unconditional PUT (no if_none_match/if_match): job_id is a fresh UUID for
@@ -2323,9 +2362,16 @@ class LiteLLMBackend(Backend):
                     telemetry_outcomes.append((job, "rejected", reason))
                     out[idx] = LLMBackendError(f"LLM dispatch v2 rejected job {job_id}: {reason}")
 
+        recovery_jobs = {job.recipe_hash: job for _, job, _, _, _ in job_meta}
+
         def _persist_deferred(item: tuple[str, JobHandle]) -> None:
             recipe_hash, handle = item
-            write_deferred(storage, recipe_hash, handle)
+            write_deferred(
+                storage,
+                recipe_hash,
+                handle,
+                recovery_context=self._structural_recovery_context(recovery_jobs[recipe_hash]),
+            )
 
         persist_started = time.monotonic()
         if deferred_writes:
@@ -3123,7 +3169,13 @@ class BatchingDispatchBackend:
                 else:
                     _observe_locked("prior_pending")
             return existing
-        if not terminal_failure_retry_allowed(self._backend.storage, job.recipe_hash):
+        recovery_context_for = getattr(self._backend, "_structural_recovery_context", None)
+        recovery_context = recovery_context_for(job) if callable(recovery_context_for) else None
+        if not terminal_failure_retry_allowed(
+            self._backend.storage,
+            job.recipe_hash,
+            recovery_context=recovery_context,
+        ):
             # Preserve the wrapped backend's specific terminal-failure error message.
             return self._backend.run_inference(job)
 

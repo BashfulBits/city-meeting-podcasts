@@ -2227,17 +2227,14 @@ def test_queue_input_estimate_includes_response_schema():
         http_session=session,
         storage=storage,
     )
-    backend.enqueue_batch(
-        [
-            InferenceJob(
-                task="tag",
-                inputs={
-                    "messages": [{"role": "user", "content": "hello"}],
-                    "structured_output": "dispatch-v2-test-pong",
-                },
-            )
-        ]
+    job = InferenceJob(
+        task="tag",
+        inputs={
+            "messages": [{"role": "user", "content": "hello"}],
+            "structured_output": "dispatch-v2-test-pong",
+        },
     )
+    backend.enqueue_batch([job])
     payload_key = next(key for key in storage.files if key.startswith("payloads/"))
     payload = json.loads(storage.files[payload_key])
     submitted = session.post.call_args.kwargs["json"]["jobs"][0]
@@ -2245,3 +2242,62 @@ def test_queue_input_estimate_includes_response_schema():
         estimate_tokens(payload["messages"])
         + math.ceil(len(json.dumps(payload["structured_output"])) / 4)
     )
+    context = backend._structural_recovery_context(job)
+    assert context["input_estimate"] == submitted["input_token_estimate"]
+    assert context["input_identity"] == submitted["request_digest"]
+
+
+def test_structural_generation_retry_uses_new_idempotency_and_cannot_loop(monkeypatch):
+    from dataclasses import replace
+
+    from citypods.compute import llm_deferred
+    from citypods.compute.llm_deferred import (
+        discard_terminal_failure,
+        snapshot_deferred_handles,
+    )
+    from citypods.compute.llm_policy import ROUTES
+
+    model = "gemini/gemini-3.1-flash-lite"
+    old_route = replace(ROUTES[model], route_id="old-route")
+    monkeypatch.setattr(llm_deferred, "ROUTE_CANDIDATES", {model: (old_route,)})
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.side_effect = _accept_all
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model=model, dispatch_v2_url="https://dispatch-v2.example.com"),
+        http_session=session,
+        storage=storage,
+    )
+    job = InferenceJob(
+        task="tag",
+        recipe_hash="structural-recipe",
+        inputs={
+            "messages": [{"role": "user", "content": "classify a short meeting"}],
+            "llm_policy": LLMRequestPolicy(allowed_models=(model,), queue_only=True),
+            "max_tokens": 100,
+        },
+    )
+    first = backend.enqueue_batch([job])[0]
+    assert isinstance(first, JobHandle)
+    error = LLMDispatchTerminalError(
+        "retired", terminal_reason="route_retired", terminal_catalog_digest="same-worker-catalog"
+    )
+    discard_terminal_failure(
+        storage, snapshot_deferred_handles(storage, [first]), first, error, structural=True
+    )
+    assert isinstance(backend.enqueue_batch([job])[0], LLMBackendError)
+    assert session.post.call_count == 1
+    new_route = replace(old_route, route_id="new-route")
+    monkeypatch.setattr(llm_deferred, "ROUTE_CANDIDATES", {model: (new_route,)})
+    second = backend.enqueue_batch([job])[0]
+    assert isinstance(second, JobHandle)
+    assert second.ref != first.ref
+    sent = session.post.call_args.kwargs["json"]["jobs"][0]
+    assert ":recovery:" in sent["idempotency_key"]
+    # Even if the deployed Worker still reports the old digest, this local generation gets
+    # only one fresh submission; the next terminal audit captures it and closes the loop.
+    discard_terminal_failure(
+        storage, snapshot_deferred_handles(storage, [second]), second, error, structural=True
+    )
+    assert isinstance(backend.enqueue_batch([job])[0], LLMBackendError)
+    assert session.post.call_count == 2

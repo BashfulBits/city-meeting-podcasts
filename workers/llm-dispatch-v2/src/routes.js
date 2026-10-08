@@ -123,13 +123,26 @@ export function backupModelsActive(job, policy) {
   return attempts >= threshold || schemaRetryCount >= 1;
 }
 
-/** Every model a job may currently be dispatched to: `allowed_models`, plus `backup_models` once
- * `backupModelsActive` says so. */
-export function modelsForJob(job, policy) {
+/** Every model a job may use. Structural fallback uses the full configured catalog, never
+ * admission's pause-filtered catalog or live quota/health state. Omitting the catalog retains
+ * the original attempts/schema-only behavior for callers that cannot establish structural fit. */
+export function modelsForJob(job, policy, structuralCatalog = null) {
   const allowedModels = Array.isArray(policy?.allowed_models) ? policy.allowed_models : [];
-  if (!backupModelsActive(job, policy)) return allowedModels;
   const backupModels = Array.isArray(policy?.backup_models) ? policy.backup_models : [];
-  return [...allowedModels, ...backupModels];
+  if (backupModelsActive(job, policy)) return [...allowedModels, ...backupModels];
+  const threshold = policy?.backup_after_attempts;
+  if (!structuralCatalog || backupModels.length === 0 ||
+      !Number.isInteger(threshold) || threshold <= 0) return allowedModels;
+  const primaryFits = allowedModels.some(rawModel => {
+    if (typeof rawModel !== "string" || !rawModel.trim()) return false;
+    const canonical = canonicalModelName(rawModel.trim(), structuralCatalog);
+    return (structuralCatalog.model_routes_map?.[canonical] || []).some(routeId => {
+      const route = structuralCatalog.routes_by_id?.[routeId];
+      return route && (policy.allow_paid || route.free) &&
+        routeFitsContext(route, job.input_token_estimate || 0, job.max_output_token_estimate || 0);
+    });
+  });
+  return primaryFits ? allowedModels : [...allowedModels, ...backupModels];
 }
 
 /**
@@ -144,9 +157,9 @@ export function modelsForJob(job, policy) {
  * preference among otherwise-equal candidates. This intentionally does not replicate v1's
  * rankRoutes(): v1 ranks against its own R2-based ledger, which v2 does not share.
  */
-export function routesEligibleFor(job, dispatchLimits) {
+export function routesEligibleFor(job, dispatchLimits, structuralCatalog = dispatchLimits) {
   const policy = jobPolicy(job);
-  const modelsToConsider = modelsForJob(job, policy);
+  const modelsToConsider = modelsForJob(job, policy, structuralCatalog);
   const allowPaid = Boolean(policy?.allow_paid);
   const inputTokens = job.input_token_estimate || 0;
   const outputTokens = job.max_output_token_estimate || 0;
