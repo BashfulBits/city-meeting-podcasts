@@ -262,9 +262,10 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > Everything from the old R2 onward shifts down by two (R2→R4, R3→R5, R4→R6, R5→R7, R6→R8, R7→R9).
 
 > **R10 catalog follow-up (2026-10-08):** review/48 schema verification shipped in #2169.
-> Remaining contracts are proposed in [review/48 §8](review/48-provider-catalog-reconciliation.md#8-remaining-slice-contract-proposal--2026-10-08):
-> additions/ignore first, paid/shadow follow-up, bounded rescue before removal, then bounded rate
+> Remaining contracts were initially proposed in [review/48 §8](review/48-provider-catalog-reconciliation.md#8-remaining-slice-contract-proposal--2026-10-08):
+> initially additions/ignore, paid/shadow follow-up, bounded rescue before removal, then bounded rate
 > limits and adaptive context calibration (Slice 5, L2; review/48 §8.10).
+> The accepted and revised scope is recorded below; the original shadow follow-up is historical.
 > Proven material tightening may prepare a flagged PR; merge remains a maintainer decision.
 > Remaining contracts accepted in #2178; additions/ignore shipped in PR #2182 (#2179).
 > Separately reviewed conservative output caps are accepted; automatic additions still require

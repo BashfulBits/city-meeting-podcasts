@@ -6,7 +6,6 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import date
-from fnmatch import fnmatchcase
 from glob import escape
 from typing import Any
 
@@ -149,7 +148,7 @@ def paid_fulfilled(decision: Decision, config: ApplyConfig) -> bool:
         and route.get("free") is False
         and any(
             a.get("provider") == decision.provider
-            and fnmatchcase(decision.model, str(a.get("model_glob") or ""))
+            and a.get("model_glob") == escape(decision.model)
             and a.get("verdict") == "not_entitled"
             for a in entries
         )

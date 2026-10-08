@@ -14,6 +14,7 @@ import re
 import subprocess
 import zlib
 from collections.abc import Callable, Mapping, Sequence
+from glob import escape
 from typing import Any
 
 from citypods.provider_catalog.reconcile import Report, _merge_into_last_full
@@ -136,7 +137,12 @@ def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str
             and route.get("provider") == anomaly.provider
             and route.get("upstream_model") == anomaly.model
             and route.get("free") is False
-            and decisions.acknowledgement(anomaly.provider, anomaly.model, PAID_ROUTE_VERDICT)
+            and any(
+                entry.get("provider") == anomaly.provider
+                and entry.get("model_glob") == escape(anomaly.model)
+                and entry.get("verdict") == PAID_ROUTE_VERDICT
+                for entry in decisions.acknowledged
+            )
         ):
             fulfilled.add(f"`{anomaly.route_id}`: keep as a paid route")
     return fulfilled
