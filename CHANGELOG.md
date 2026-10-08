@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **review/53: P1 build spec (judgment ledger and shadow judging).** Development-ready spec for
+  review/49 P1: a task-spec registry (tags scheduled, moments registered and tested), a judgment
+  record with context tier stored append-only on each candidate, JEV through a new `systemone`
+  Worker transport and route, `yields_to` so BeatAPI chat routes step aside for JEV, per-entry
+  family independence, and a zero-reservation shadow `judge` lane. review/49 records the approved
+  judge and adjudicator split. Design only.
+
 - **BeatAPI chat routes back on, through `custom-beatapi`.** The maintainer registered a
   `custom-beatapi` AI Gateway provider (base `https://api.beatapi.io/v1`); the `beatapi` provider
   now sets `ai_gateway_slug: custom-beatapi` and `ai_gateway_chat_path: /chat/completions`, and the
