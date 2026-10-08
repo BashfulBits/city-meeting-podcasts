@@ -74,3 +74,41 @@ def test_the_branching_check_would_catch_a_provider_special_case():
     names = "|".join(map(re.escape, all_rules()))
     probe = re.compile(rf"(?:provider|name)\s*(?:==|!=)\s*[\"']({names})[\"']")
     assert probe.search('if provider == "gemini":')
+
+
+def test_catalog_method_resolution_matches_compiler_including_beatapi_pools():
+    from citypods.provider_catalog.reconcile import resolved_method
+    from scripts.compile_llm_limits import _resolve_structured_output_methods
+
+    limits = yaml.safe_load((ROOT / "config/provider_limits.yml").read_text())
+    # The compiler resolves after normalizing model_key to model.
+    normalized = [
+        {**route, "model": route.get("model_key", route["model"])} for route in limits["routes"]
+    ]
+    compiled = _resolve_structured_output_methods(normalized, limits["providers"])
+    for route in limits["routes"]:
+        assert (
+            resolved_method(route, limits["routes"], limits["providers"])
+            == compiled[route["route_id"]][0]
+        )
+
+
+def test_beatapi_inherits_verified_method_from_same_logical_model_only():
+    from citypods.provider_catalog.reconcile import resolved_method
+
+    nvidia = {
+        "model": "deepseek/v4.1",
+        "structured_output_method": "prompt_only",
+        "structured_output_verified_on": "2026-09-24",
+    }
+    beatapi = {"model": "beatapi/v4.1", "model_key": "deepseek/v4.1", "provider": "beatapi"}
+    providers = {"beatapi": {"structured_output_method": "json_object"}}
+    assert resolved_method(beatapi, [nvidia, beatapi], providers) == "prompt_only"
+    unrelated = {**beatapi, "model_key": "deepseek/v4"}
+    assert resolved_method(unrelated, [nvidia, unrelated], providers) == "json_object"
+    verified = {
+        **beatapi,
+        "structured_output_method": "json_schema",
+        "structured_output_verified_on": "2026-10-08",
+    }
+    assert resolved_method(verified, [nvidia, verified], providers) == "json_schema"

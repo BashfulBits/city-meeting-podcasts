@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
+import time
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
 import requests
 
+from citypods.compute.structured_shaping import shape_structured_request
 from citypods.provider_catalog.rules import ProviderRules, Response
 
 # The Worker's own response ceiling (wrangler.jsonc MAX_RESPONSE_SECONDS): a canary is never
@@ -175,3 +177,132 @@ def canary(
         return Response(status=None, transport_error=type(exc).__name__)
     finally:
         response.close()
+
+
+STRUCTURED_METHODS = ("json_schema", "json_schema_relaxed", "json_object", "prompt_only")
+CANARY_SCHEMA = {
+    "type": "object",
+    "properties": {"answer": {"type": "string", "minLength": 2, "maxLength": 2}},
+    "required": ["answer"],
+    "additionalProperties": False,
+}
+# Includes reasoning tokens: four tokens cannot establish that a reasoning model returns JSON.
+STRUCTURED_CANARY_MAX_TOKENS = 4096
+
+
+def structured_canary(
+    rules: ProviderRules,
+    provider_cfg: Mapping[str, Any],
+    model: str,
+    api_key: str,
+    session: requests.Session,
+    *,
+    before_attempt: Callable[[], bool],
+    methods: Mapping[str, Mapping[str, Any]],
+    renew_pause: Callable[[], None] = lambda: None,
+) -> dict[str, dict[str, Any]]:
+    """Verify all four shapes; the caller spaces, renews and charges every request.
+
+    Only visible content counts. Reasoning, malformed JSON, a truncated reply and a schema
+    mismatch cannot establish support. Results contain no provider text or credentials.
+    """
+    results = {}
+    for method in STRUCTURED_METHODS:
+        if not before_attempt():
+            break
+        spec = methods[method]
+        messages, response_format = shape_structured_request(
+            [{"role": "user", "content": 'Return {"answer":"ok"}.'}],
+            name="CatalogCanary",
+            schema=CANARY_SCHEMA,
+            response_format=spec["response_format"],
+            include_schema_in_prompt=spec["include_schema_in_prompt"],
+            strip_keys=spec.get("strip_schema_keys", ()),
+        )
+        payload = {
+            "model": model,
+            "messages": messages,
+            "max_tokens": STRUCTURED_CANARY_MAX_TOKENS,
+            "stream": True,
+        }
+        if response_format is not None:
+            payload["response_format"] = response_format
+        started = time.monotonic()
+        result: dict[str, Any] = {"outcome": "inconclusive"}
+        response = None
+        try:
+            response = session.post(
+                chat_url(rules, provider_cfg),
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=(20, CANARY_TIMEOUT_SECONDS),
+                stream=True,
+            )
+            result["status"] = response.status_code
+            if not response.ok:
+                # Capacity failures are not evidence against a method. Stop instead of spending
+                # the same exhausted account's quota on the remaining methods.
+                if response.status_code in (402, 403, 404, 410, 429):
+                    results[method] = result
+                    break
+                if response.status_code == 400:
+                    result["outcome"] = "rejected"
+                results[method] = result
+                continue
+            content, size, finished, error = [], 0, False, False
+            next_renewal = started + 60
+            for line in response.iter_lines(decode_unicode=True):
+                now = time.monotonic()
+                if now - started > CANARY_TIMEOUT_SECONDS:
+                    error = True
+                    break
+                if now >= next_renewal:
+                    renew_pause()
+                    next_renewal = now + 60
+                if isinstance(line, bytes):
+                    line = line.decode("utf-8", errors="replace")
+                if not line or not line.startswith("data:"):
+                    continue
+                if "first_byte_seconds" not in result:
+                    result["first_byte_seconds"] = round(time.monotonic() - started, 3)
+                data = line[5:].strip()
+                if data == "[DONE]":
+                    break
+                size += len(data.encode("utf-8"))
+                if size > _MAX_FIRST_EVENT_BYTES:
+                    break
+                event = json.loads(data)
+                if not isinstance(event, dict) or event.get("error"):
+                    error = True
+                    break
+                for choice in event.get("choices") or []:
+                    if choice.get("index", 0) != 0:
+                        continue
+                    delta = choice.get("delta") or {}
+                    if isinstance(delta.get("content"), str):
+                        content.append(delta["content"])
+                    if choice.get("finish_reason") == "stop":
+                        finished = True
+                    elif choice.get("finish_reason"):
+                        error = True
+                if finished or error:
+                    break
+            if finished and not error:
+                text = "".join(content)
+                if not text:
+                    result["outcome"] = "empty"
+                else:
+                    try:
+                        valid = json.loads(text) == {"answer": "ok"}
+                    except ValueError:
+                        valid = False
+                    result["outcome"] = "valid" if valid else "invalid"
+        except (requests.RequestException, ValueError, TypeError, AttributeError):
+            # Neither timeout nor a malformed transport body establishes lack of support.
+            pass
+        finally:
+            result["completion_seconds"] = round(time.monotonic() - started, 3)
+            if response is not None:
+                response.close()
+        results[method] = result
+    return results
