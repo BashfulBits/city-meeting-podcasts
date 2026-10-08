@@ -432,9 +432,9 @@ defaults:
   source_refresh_ttl_hours: 0
   source_refresh_full_refresh_days: 7
   search: true                           # static browser search; false removes its public output
-  # Search-sidecar reads are restartable. Keep the render-only deployment bounded; a stopped build
-  # retains the last complete manifest and tries again on the next render (0 = no time cap).
-  search_index_budget_minutes: 20
+  # Search-sidecar reads resume from saved progress. Allow two hours per four-hour deployment;
+  # a stopped build retains the last complete index and resumes on the next run.
+  search_index_budget_minutes: 120
   podcast_language: "en-us"
   podcast_category: "Government"
   # Retention is body-aware even where several body feeds share one provider source.

@@ -2761,3 +2761,26 @@ coverage gap explicitly; do not request review on the closed PR. Its pending dep
 37734949438 was canceled by newer queued main runs; production verification is still pending.
 A manual current-main deployment is requested to exercise the fix. No workflow cadence,
 time-limit, source record or runtime edits accompany this conflict resolution.
+
+### Search two-hour budget and progress visibility — L3, 2026-10-08
+
+Maintainer explicitly approves increasing search work from 20 to 120 minutes and manually
+starting the workflow after validating checkpoint resume. This supersedes the frozen 20-minute
+ceiling in earlier contracts; the four-hour schedule and single-deployment concurrency stay.
+Change only citypods/search.py budget default/validation, config/site_config.yml search budget,
+.github/workflows/deploy.yml search job timeout (150 minutes, including setup and persistence)
+and search command output via tee so record/source progress is visible in logs and summary.
+Before indexing, report restored completed-source and partial-record counts from the private
+working cache. Use explicit Bash so the tee pipeline preserves indexer failure status.
+Update tests/test_static_search_job.py ceiling coverage and two-hour deadline acceptance; run
+actual resume regressions, full offline suite and whole Ruff/format. Update review/11 and changelog.
+No provider, audio, source identity, storage permission, index schema or publication-policy change.
+Existing production evidence: run37744496856 restored37741127403 checkpoint and saved
+211027488 bytes versus180143080 previously. Size growth supports retained work, but is not a
+meeting completion count. Existing actual multi-budget regression must prove completed records
+are reused without repeating sidecar reads; subsequent workflow logs expose exact deferred counts.
+Manual branch dispatch is authorized; human merges remain required for main/scheduled adoption.
+
+Validation: actual source/record resume regressions pass; 40 targeted search tests and
+5,158 full offline tests pass (16 deselected). Whole Ruff and format checks pass. Workflow
+startup diagnostics read only completed-source and partial-record counts from the private cache.
