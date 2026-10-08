@@ -173,24 +173,26 @@ its newest 500 items beginning December 15, 2020, so it omits the July 24, 2020 
 RSS window behavior as sufficient P0 proof. The two #6334 assignments remain unchanged pending exact
 segment evidence.
 
-The 680-row historical disposition baseline is deployed; the current local replay records each
-pattern as an applied feed rule, archive-only outcome, explicit not-to-pursue outcome or linked
-evidence case. The current register has seven open evidence cases; these remain tracked work, not
-waived findings. The
-full replay does not prove that each historical title is a distinct episode or each source copy is a
-unique recording. Public search is a separate limitation: `meta.json` reports zero search shards and
-`/search/` and `/data/search/manifest.json` return HTTP 404. Do not claim public search or its
-archive-only filter was verified.
+The 680-row historical disposition baseline is deployed; the last full replay records each pattern
+as an applied feed rule, archive-only outcome, explicit not-to-pursue outcome or linked evidence
+case. **PR #2165 shipped** Arlington's exact 2012 `Empty` recording to Council and a reusable Dallas
+South Dallas/Fair Park Special Called title alias. The frozen replay totals above
+predate those changes; rerun the full replay before citing current counts. The current register has
+six open evidence cases; these remain tracked work, not waived findings. The full replay does not
+prove that each historical title is a distinct episode or each source copy is a unique recording.
+Public search is a separate limitation: `meta.json` reports zero search shards and `/search/` and
+`/data/search/manifest.json` return HTTP 404. Do not claim public search or its archive-only filter
+was verified.
 
 For Dallas GUID 273327, the maintainer directed Bond Program only. A live RSS check found its
 original UID/audio in Bond Program and absent from Public Info and the dedicated Task Force feed;
 that case is resolved. Removing `CBTF` from the Bond Program audit exclusion aligns the P0 replay
 with the existing `*CBTF*` selector, but is expected to change no published RSS. For GUID 272574,
-the maintainer later superseded the dual-feed decision and directed Bond Program only. The exact
-Public Info inclusion from PR #2116 is being removed under the L3 correction in review/51. Keep its
-case open until that correction deploys and live RSS confirms the original UID/audio in Bond Program
-and absence from Public Info and the dedicated Task Force feed. Its provider label is shared with a
-September 19 formal Task Force meeting, so no broader Public Info selector should be added.
+the maintainer superseded the dual-feed decision and directed Bond Program only. PR #2164 removed
+the Public Info assignment; the successful deployment after PR #2165 and live RSS checks confirm
+the original UID/enclosure in Bond Program and absent from Public Info. That case is resolved. The
+September 26 title remains out of Public Info; public comment alone does not qualify a meeting for
+that feed. See the [post-merge P0 check](evidence/p0-post-merge-check-2026-10-08.md).
 
 
 P0's [Addison UDC batch](addison-udc-coverage-2026-10.md) shipped in PR #1992, covering
@@ -1623,3 +1625,9 @@ a source-version discrepancy, not an approved split or winner.
 Implemented in PR #2099 through #2096 and PR #2100. These bounded contracts are
 frozen; #2100 merged before substantive review. Seven deployed RSS/audio checks
 close only their assignment cases. See [deployment proof](deployed-ownership-proof-2026-10-06.md).
+
+### P0 Dallas Streets dual-feed correction — L3 (#2170)
+
+Restore four explicitly approved historical recordings to Transportation and Infrastructure
+while retaining their dedicated bond feed. Bounded contract: review/51's four-record section.
+Independent agenda/source questions stay open; verify deployment after human merge.

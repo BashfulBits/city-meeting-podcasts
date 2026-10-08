@@ -22,6 +22,10 @@ Once 1.0 ships, entries move under semver tags.
   separately; scarce routes defer when quota is unavailable or exhausted. Evidence reporting uses
   the same planner. Existing candidate proofs without method evidence are rechecked. No production
   route, recipe, pipeline version or episode artifact changes; no episode catalog backfill.
+  
+- **Restore four approved Dallas bond Streets recordings to Transportation and Infrastructure**
+  while retaining their dedicated bond feed (#2170). Raw records, UIDs and audio are unchanged;
+  no stage invalidation or backfill. Independent official-evidence cases remain open.
 
 - **BeatAPI registered: free chat models routed, JEV catalogued (#1967).** `config/provider_limits.yml`
   gains a `beatapi` provider (`BEATAPI_API_KEY`) and five free chat routes (`deepseek-v4-flash-0731`,
