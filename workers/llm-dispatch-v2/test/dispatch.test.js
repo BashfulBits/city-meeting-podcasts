@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { LLMSchedulerDO } from "../src/coordinator.js";
 import { zonedDateKey } from "../src/pacing.js";
+import { ROWS_PER_BUNDLE, ROWS_PER_LEASE_WORST } from "../src/write_budget.js";
 import { createMockSqlStorage, withTestReservations } from "./helpers.js";
 
 const TEST_CATALOG = {
@@ -2794,8 +2795,11 @@ test("a mid-day deploy seeds the new row counter from today's recorded work, nev
   );
   const coordinator = new LLMSchedulerDO({ storage }, env);
   const { rows_written_today: seeded } = [...sql.exec("SELECT rows_written_today FROM scheduler")][0];
-  // 2 x 5,000 ingress + 6 x 400 bundles + 24 x 1,000 leases, before cleanup and idle ticks.
-  assert.ok(seeded >= 10_000 + 2_400 + 24_000, `seeded ${seeded}`);
+  // Today's recorded work at the measured worst-case costs, before the cleanup and idle-tick
+  // allowance (which scales with minutes since UTC midnight, so it is no floor of its own).
+  const floor = coordinator._rowsPerIngressWriteUnit() * 5000 +
+    ROWS_PER_BUNDLE * 400 + ROWS_PER_LEASE_WORST * 1000;
+  assert.ok(seeded >= floor, `seeded ${seeded} < ${floor}`);
   assert.ok(coordinator._readRowsWrittenToday() >= seeded);
   // A later construction (column present) leaves the running count alone.
   sql.exec("UPDATE scheduler SET rows_written_today = 5 WHERE id = 1");
