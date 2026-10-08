@@ -10,6 +10,7 @@ LiteLLM and multi-provider routes:
 | **SambaNova** | `SAMBANOVA_API_KEY` | [cloud.sambanova.ai](https://cloud.sambanova.ai) | Direct & Dispatch | Llama 3.3 70B & Qwen 2.5 72B (20 RPM / 1,000 Free RPD) |
 | **Z.AI (Zhipu AI)** | `ZAI_API_KEY` | [z.ai](https://z.ai) | Direct & Dispatch | GLM-4.7-Flash & GLM-4.5-Flash (15 RPM / 500 Free RPD) |
 | **SiliconFlow** | `SILICONFLOW_API_KEY` | [cloud.siliconflow.com](https://cloud.siliconflow.com) (**global site — not `.cn`**, see note below) | Direct & Dispatch | **Paid only for us:** DeepSeek-V4-Flash ($0.049/M promo) & Qwen 2.5 72B ($0.07/M). No free route — the routes stop working at a zero balance |
+| **BeatAPI (JEV)** | `BEATAPI_API_KEY` | [beatapi.io](https://beatapi.io) | Dispatch (five free chat routes; `jev-1.13-free` judge route comes with P1) | Only the six `-free` ids are free (DeepSeek V4 Flash 0731, V4.1 Flash, V4 Pro, GPT-6 Astra, GPT-6.1 Sol, JEV); all share **one account-wide limit of 1 successful request/min**, JEV included. All other models are paid credits, so never top up. JEV is called via `POST /v1/systemone` (64k input tokens), not chat completions. Store the key stripped (a trailing newline reads as `invalid_api_key`) |
 | **DeepSeek Direct** | `DEEPSEEK_API_KEY` | [platform.deepseek.com](https://platform.deepseek.com) | Direct & Dispatch | DeepSeek-V4-Flash ($0.14/M base, $0.0028 cache, $0.07 off-peak), DeepSeek-V4-Pro |
 | **OpenRouter** | `OPENROUTER_API_KEY` | [openrouter.ai](https://openrouter.ai) | Direct & Dispatch | Curated Gemma 4, Nemotron 550B/120B free endpoints and frontier models |
 | **Kilo Code** | `KILO_API_KEY` | [app.kilo.ai](https://app.kilo.ai) | Direct & Dispatch | StepFun Step-3.7-Flash & NVIDIA Nemotron-3-Ultra 550B (20 RPM / 200 Free RPD) |
@@ -64,4 +65,4 @@ Account and secret checklist (performed by the maintainer, never pasted into cha
    (`GEMINI_API_KEY`, `GEMINI_API_KEY_SECONDARY`, `GROQ_API_KEY`, `SAMBANOVA_API_KEY`,
    `ZAI_API_KEY`,
    `SILICONFLOW_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`, `KILO_API_KEY`, `OPENCODE_API_KEY`,
-   `NVIDIA_API_KEY`, `ORCAROUTER_API_KEY`) that this deployment dispatches to.
+   `NVIDIA_API_KEY`, `ORCAROUTER_API_KEY`, `BEATAPI_API_KEY`) that this deployment dispatches to.

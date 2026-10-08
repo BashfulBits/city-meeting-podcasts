@@ -302,6 +302,7 @@ body `{model, state, questions}`. Verified live (3 successful calls, about a min
 - **Packing works:** 14 evidence windows with one `noul` question each in one call (11,579 input tokens, 330 output tokens, 2.2 s): the window
   containing the planted fact scored 0.96, the other thirteen scored 0.02–0.03.
 - Latency 0.7–2.2 s, so one call per minute is the real limit, not response time.
+- **The free limit is shared with BeatAPI's free chat models (measured 2026-10-07).** `jev-1.13-free` and the five `-free` chat models (`deepseek-v4-flash-0731`, `deepseek-v4-pro`, `deepseek-v4.1-flash`, `gpt-6-astra`, `gpt-6.1-sol`) sit in one account-wide window of 1 successful request per minute: a success on any of them (JEV or chat, either order) makes every other one return `429 rate_limit_exceeded` with `Retry-After: 60`. So the roughly 1,440 calls a day are one budget, not 1,440 for JEV plus 1,440 per chat model; any BeatAPI chat route spends JEV capacity. The chat routes are registered in `provider_limits.yml` at the provider level (`rpm: 1`, `concurrency: 1`) for exactly this reason.
 - **Input limits (maintainer rule, verified 2026-09-30 with random common words at about 1.01 tokens/word):** the total input is capped near
   64k tokens, and the **state plus the single largest question** must stay under about 32k. Tested: state 28k + 10 questions of about 2.5k each
   (53,576 input tokens) succeeded with 10 answers; state 28k + 14 questions (62,296 tokens) succeeded with 14 answers in 1.8 s; state 28k + 16
@@ -325,6 +326,8 @@ body `{model, state, questions}`. Verified live (3 successful calls, about a min
   `tests/test_llm_dispatch_worker_limits.py` derives the secret list from each provider account's `api_key_env` in `provider_limits.yml`).
   There is no `wrangler.toml` in the repo. `BEATAPI_API_KEY` joins that count when the `beatapi` provider entry is added (now 39 vars + 21 secrets = 60; 61 after
   BeatAPI, against a limit of 64 with 2 headroom, leaving one spare slot). Add the name to the closing "Secrets" comment in the same change.
+
+**Superseded (2026-10-07):** PR #1965 compiled the numeric tunables out of Cloudflare vars and removed the orphan and inert accounts. With `beatapi` registered the Worker carries 1 var + 20 derived secrets (21 of 64), so the 63-of-64 pressure below no longer applies and the survey is kept as history only.
 
 **Worker variable survey (2026-09-30, deployed list supplied by the maintainer).** The deployed Worker has **39 variables + 24 secrets = 63 of the 64-item
 free-plan limit**, not the 61 the test predicts: the 39 variables match `wrangler.jsonc` exactly, but three deployed secrets are invisible to

@@ -679,6 +679,8 @@ may serve several logical pools via `also_serves` (one `route_id`, one ledger â€
 `deepseek-v4.1-flash` is the only route in `deepseek/deepseek-v4.1-flash` and `deepseek/deepseek-v4-pro`
 and pools with OrcaRouter in `deepseek/deepseek-v4-flash`); the compiled Worker catalog records each
 route's primary `model` so labels and calibration keys never depend on which pool lists it first.
+BeatAPI's free chat routes (2026-10-07) join the DeepSeek pools by `model_key` and share one account-wide
+1-request-a-minute window with its `jev-1.13-free` judge, so the limit is declared on the `beatapi` provider.
 Static catalog quotas are candidate capacity:
 production routing records observed RPM, burst tolerance, input ceilings, and recovery timing
 via automated probes (`citypods/llm_rate_probe.py`). Rate-limit and capacity errors are classified
