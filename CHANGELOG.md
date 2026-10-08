@@ -12,6 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **review/49: judge and adjudicator routes (section 4c).** With the locator verdict in, JEV stays
+  the anchor; Gemma 4 31B/26B is the bulk sibling judge, with Nemotron 3 Super or Qwen3.8 for
+  Gemini-produced entries; GLM 5.3 Flash and DeepSeek V4.1 Flash (NVIDIA) are the adjudicators.
+  Independence is chosen per entry against its producer and sibling judge, so it covers moments and
+  future verbs. Qualification uses the section 4 probes and audit agreement plus a deterministic
+  quote check, not a separate benchmark. BeatAPI chat routes become backups: a route backup tier,
+  yield-to-JEV at claim time, and a short output cap. Design only.
+  
 - **Provider catalog verifies structured-output support (review/48 R10).** Availability pings no
   longer qualify a candidate alone: four schema-bound checks validate completed visible JSON,
   record method/latency evidence, and show the preferred method on the rolling issue. A configured

@@ -244,6 +244,34 @@ tags. Marginal cases are Uncertain, which the lane and the audit both exclude fr
 
 **Initial rule for P1/P2 (confirmed 2026-09-30): judge at T1, escalate to T2 when p is between 0.3 and 0.7, and let the continuous 5% sample confirm or move both the tier and the band.** T0 is a candidate first tier (12/13 under the rubric) but is not yet shown to be as good as T1 or T2 at this sample size.
 
+### 4c. Judge and adjudicator routes (added 2026-10-08)
+
+**Status.** The "second adjudicator route" was left to the locator verdict, which is now in ([review/40](40-generated-agenda-chapters.md), 2026-10-02): the production locator is DeepSeek V4 Flash (packets up to 76,000 estimated tokens) and Kimi K3 (larger); `chapter-agenda` is Nemotron 3 Ultra, tencent/hy3 and Gemini 3.1 Flash Lite. Those stay protected. The verdict released GLM 5.3 Flash, DeepSeek V4.1 Flash, Gemini 3.5 Flash and Gemini 3.5 Flash Lite. No adjudicator had been chosen before this; the split below is a recommendation for the maintainer.
+
+**Independence is per entry, not per lane.** Every LLM output records the model that produced it. When JEV and the sibling disagree on an entry, the adjudicator is picked from the adjudicator slots whose family differs from (a) that entry's producer and (b) the sibling judge that scored it. JEV is TypeSafe's own model, so it never collides. Two adjudicators from two different families therefore always leave at least one eligible adjudicator for any entry from any verb, provided neither sibling judge shares a family with them. Rule candidates have no producing model, so either adjudicator is eligible. This works for `r6-moments`, tags and future verbs without a per-lane list.
+
+**Where the load is.** At 500 episodes/day the capacity table above has the sibling judge at about 470 calls/day packed per episode (about 230 packed across episodes) against a 600 RPD target, and the adjudicator at 60 to 120 packets/day. Throughput is a judge problem; the adjudicator only sees the contested residual.
+
+| Role | Route | Why | To verify before relying on it |
+|---|---|---|---|
+| Anchor judge | **JEV** (`jev-1.13-free`, BeatAPI) | Pinned (section 2) | Single-flight account shared with BeatAPI's chat routes (below) |
+| Sibling slot A, bulk | **Gemma 4 31B / 26B** (AI Studio, both projects) | Four 14,400 RPD pools at 30 RPM; the binding limit is about 16k tokens/minute and a 14,400-token ceiling, which fits T1 packets (about 25 items) and small T2 packets. Takes every rule candidate (99% of candidates today) and every entry not produced by a Google model | Daily token cap unrecorded; shares quota with the R5 pre-labeler lanes until P7 retires them; recorded AA is low (16.7 for 26B), which the probes and stability checks measure |
+| Sibling slot B, independent of Google | **Nemotron 3 Super 120B** (OpenRouter 200 RPD + NVIDIA leg) or **Qwen3.8-27B** (Groq) | Only needed for Gemini-produced LLM entries (tagger primary, moments primaries): a few dozen packets a day. Qwen's 200k TPD (about 25 six-thousand-token packets) makes Nemotron Super the steadier default; the league can trial both | Nemotron Super has no AA or judging record here; Qwen's TPD is shared with the existing `r6-judge` lane during migration |
+| Adjudicator 1 | **GLM 5.3 Flash** (OrcaRouter) | Highest recorded AA of the released routes (41.8), 1M context, 800 RPD, about 5 s, `json_object` verified | Orca's per-request free prompt cap (`err_free_prompt_cap`) at the adjudicator packet size; whether its 800 RPD is shared with Orca's other free models |
+| Adjudicator 2 | **DeepSeek V4.1 Flash**, NVIDIA leg | AA 39.5, 1M context, no RPD cap at 4 RPM; read long locator packets well (89.8% joint recall on the long slice) | Slow on long packets (about 502 s median); needs the `prompt_only` method on NVIDIA; the BeatAPI V4.1 leg must not serve adjudication (below) |
+
+Qwen and the Gemini 3.8/3.7 Flash pools are not needed as adjudicators at this volume; they remain league challengers.
+
+**Qualification follows the spec, not a bench.** Section 4 deliberately has no frozen per-task test set: the reference is a small `gold.json` grown from clear-cut weekly audit items, reported but non-gating until it has about 20 items, with stability probes and audit agreement doing the ranking until then. Adjudicators are scored the same way, plus two additions that fit that model: (1) a deterministic **quote check**, in the section 4.1 family: the adjudicator's quoted rationale must appear verbatim in the evidence it was given, or the answer counts as unsupported; (2) the adjudicator league's score is agreement with the audited contested items, and **an adjudicator that does not beat the better of JEV and the sibling on those items adds nothing** and is relegated. No new benchmark is built; locator and agenda gold stay with their own lanes.
+
+**BeatAPI chat routes: supplemental, never ahead of JEV.** PR #2167 put BeatAPI legs in the `deepseek/deepseek-v4-flash` and `v4.1-flash` pools that chapter-locator, tagger spill and moments use. BeatAPI's free tier is one single-flight window for the whole account (section 7): any call blocks every other model, JEV included, for its whole duration and about 60 s after. Today the Worker has no route priority. Routes are ranked free before paid, then by remaining capacity, and an idle BeatAPI leg scores as fully available, so it is preferred over a partly used OrcaRouter or NVIDIA leg about once a minute. Before JEV runs (P1), add three things so the chat routes become backups that use only time JEV is not using:
+
+1. **A backup tier on routes** (`tier: backup` in `provider_limits.yml`, compiled into the Worker catalog): one extra sort term after free-before-paid, so a backup route is chosen only when no primary route in the job's pool has capacity. This keeps the unified model pools and needs no per-provider branch.
+2. **Yield to a named route** (`yields_to: [<JEV route id>]` on the BeatAPI chat routes): at claim time a yielding route is skipped while the named route has queued or due work. JEV's own route therefore always gets the account first, and the chat routes take the idle minutes.
+3. **A short output cap on the BeatAPI chat routes** (`output_context_limit` of a few thousand tokens): at the measured 140 to 235 tokens/s a borrowed slot then holds the account for well under a minute. Long locator and moments generations stay on OrcaRouter and NVIDIA.
+
+Items 1 and 3 are useful now (item 3 is config only). Item 2 needs the JEV route and so ships with P1. The BeatAPI chat routes are not adjudicators or sibling judges; JEV's window is too scarce to share with a per-entry role.
+
 ### 5. Route league (European-cup model)
 
 Every verb (tagger, moment finder, judge, adjudicator, future additive verbs) has its own **league**:
@@ -629,7 +657,8 @@ Two separate decisions, each stated relative to a measured baseline rather than 
 
 ## Open questions (remaining)
 
-1. **Second adjudicator route:** decided after the locator verdict (expected late 2026-09-30).
+1. **Judge and adjudicator routes:** recommendation in section 4c (JEV anchor; Gemma bulk sibling plus a non-Google sibling; GLM 5.3 Flash and DeepSeek V4.1 Flash adjudicators with per-entry independence), pending the maintainer's approval.
+2. **BeatAPI chat routes as backups:** the backup tier, yield-to-JEV and output cap in section 4c; tier and cap can land before P1, yield ships with P1.
 
 ## Path to L3
 
@@ -645,4 +674,5 @@ Status against `review/11` L3 (concrete file/function changes, test plan, sequen
 | P1 breakout | next: adds the generalized task-spec registry of section 3a and the `context_tier` field to the judgment record; needs the judgment-record schema, the `beatapi` provider entry (`rpm: 1`, `concurrency: 1`), the `structured.py` mapping and oversize-503 classification, and the JEV real-response fixtures (captured in the spike) |
 | Dispatch requirements (2026-10-08) | P1: single-model lanes get a measured output budget or a 1–2 retry ceiling for `output_budget_exhausted`; P7: cancel a retired lane's queued jobs before removing it; after P7: #2162 pooled-index reassessment. See "Dispatch requirements from the row-write reductions" |
 | P2-P7 | stay L2 until P1 shadow data exists: thresholds, league scoring and the graduation comparison need measured judge behaviour; specifying them now would invent numbers |
-| Open decisions | second adjudicator, shadow and switch-over shape, graduation wording (above) |
+| Judge and adjudicator routes | recommendation in section 4c; qualified the section 4 way (audit-grown probes, stability, audit agreement, quote check), no separate benchmark |
+| Open decisions | shadow and switch-over shape, graduation wording (above) |
