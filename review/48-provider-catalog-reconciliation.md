@@ -519,8 +519,75 @@ shadow lanes and falling qualification. Never promote a primary through this com
 
 ### 8.5 Slice 3a: structural terminal reasons and bounded rescue
 
-Next implementation issue: [#2190](https://github.com/BashfulBits/city-meeting-podcasts/issues/2190).
+Implementation issue: [#2190](https://github.com/BashfulBits/city-meeting-podcasts/issues/2190);
+PR [#2191](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191) is stacked on #2189.
 Merge Slice 2b first; deployment/canary remain prerequisites for Slice 3b activation.
+
+**Implementation checkpoint (2026-10-08, #2190; PR #2191, awaiting review/merge):** bounded catalog
+rescue, nullable terminal metadata, audit-before-delete structural recovery, producer guards and
+retained-subject rebatching are implemented locally. Python recognizes only the two specified
+reasons with a nonempty catalog identity; generic/legacy failures retain existing semantics.
+The terminal fence compares backend/ref against both snapshot and current stored record.
+Structural failures preserve retry/schema-correction counts and remain blocked until an eligible
+physical route generation changes or task-specific rebatching produces a different recipe.
+Recovery estimates and input identities include the same structured schema as queue submission.
+Offline validation passes: 5,284 Python tests (16 live tests deselected), 401 Worker tests,
+whole-repository Ruff checks/format checks and diff whitespace checks. Local workerd verifies
+billed-row reservations; the existing index preserves lifecycle write costs. No deployment occurred.
+The review round also enforces combined reservations before dispatch for singleton prelabeler
+batches, retains recovery contexts by job index and reuses the gate's marker read for generation
+checks. The production catalog digest returns from an identity cache before serialization;
+mutable overrides still serialize/compare so in-place changes restart rescue. Local CPU evidence
+is in the existing benchmark README; it does not claim production invocation CPU savings.
+
+**Maintainer decision (2026-10-08): reuse the existing queue index.** The proposed `(state, id)`
+index measured 21 writes and 65 reads to build over 20 retained jobs, plus recurring lifecycle
+writes. Reuse `(state, updated_at, id)` instead, avoiding that unbounded migration and ongoing cost.
+Persist JSON `{after: [updated_at, id], through: [updated_at, id]}` in the planned TEXT cursor.
+Capture the last queued key as a fixed upper endpoint at pass start; each page seeks strictly after
+its committed cursor and no later than that endpoint. Model-index repair leaves `updated_at`
+unchanged. New arrivals and requeues get current eligibility checks independently, so ongoing
+traffic cannot extend this pass forever. Missing/legacy/malformed cursors restart a bounded pass;
+a changed catalog digest also restarts it. No additional jobs index or raised budget is needed.
+
+**Outage invariant (maintainer request 2026-10-08):** job/index mutations, queued-count changes,
+catalog identity and cursor advancement commit in the existing single transaction. A write-budget
+stop leaves the whole page unprocessed. Failure during mutation or checkpoint persistence rolls
+back the page; in-memory staged progress is cleared, and DO recreation resumes the last committed
+cursor. If the platform rejects reads/writes until its quota resets, leave progress intact and
+resume when storage is available. Test both failure locations, repeated unavailability, recreation,
+UTC budget rollover, equal timestamps and fixed endpoints under new traffic. Verify rollback with
+the existing local workerd benchmark as well as the Node SQLite tests; never exhaust live quota
+for testing. A rolled-back page may be safely replayed; a committed page remains committed even
+if the caller loses its response.
+
+**Rollout gate:** the Worker deploys automatically from main, independently of Python consumers.
+Verify that the Python sweep/producers carrying structural recovery semantics are in use before
+activating rescue in the deployed coordinator. Old clients retain `job_failed` compatibility but
+would count structural failures as generic retries. Slice 3b remains disabled until deployment and
+the recovery canary confirm bounded progress, preserved failure counts and no unchanged-recipe loop.
+
+**Maintainer decision (2026-10-08):** when none of a job's active models has a
+policy-eligible structurally fitting route, immediately unlock its already-declared backups.
+Retain paid/free policy and lane model allowlists; do not add models, rewrite attempt counts or
+activate backups for temporary pause/cooldown/quota exhaustion. Keep the usual attempt/schema
+activation when the primary remains structurally usable. Extend the existing pure route helpers
+in `workers/llm-dispatch-v2/src/routes.js` and their route/coordinator tests so indexing and actual
+claim selection use the same rule. Test against the full catalog even when claim admission uses
+a pause-filtered catalog. This resolves the primary-cannot-attempt deadlock without changing
+ordinary fallback thresholds.
+
+**Review pacing (maintainer instruction 2026-10-08):** request CodeRabbit when each implementation PR
+is ready, with at least one hour between manual requests. Check repository-wide recent requests
+before posting, including other sessions. Slice 2b #2189 was requested at 2026-10-08 14:14:23 UTC
+([request](https://github.com/BashfulBits/city-meeting-podcasts/pull/2189#issuecomment-6061804491));
+Slice 3a #2191 was requested at 2026-10-08 18:17:44 UTC
+([request](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191#issuecomment-6066258476));
+That review was canceled after a bookkeeping push changed the head. A fresh full review on the
+unchanged head was requested at 2026-10-08 19:18:38 UTC
+([request](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191#issuecomment-6067299806));
+it completed at 19:27:38 UTC with three valid findings, fixed in one batch. The next manual
+request cannot precede 20:18:38 UTC, and a later request elsewhere moves that floor.
 
 The deployed coordinator already has `_modelsForQueuedJob()` and
 `_reconcileUnroutableJobs()`. Extend them; do not introduce a second full-queue reconciler.
@@ -535,8 +602,9 @@ The digest hashes sorted dispatch route identities and structural admission fiel
 ledger state. Old failed rows remain generic; never retroactively relabel them by guesswork.
 
 Persist `catalog_digest`, `catalog_rescue_cursor` and `catalog_rescue_complete` on the existing
-scheduler row. On first deploy or changed digest, scan queued jobs by an indexed `(state, id)` keyset
-in bounded pages, including old model indexes and `__unroutable__`. Budget both row reads and worst
+scheduler row. On first deploy or changed digest, scan queued jobs with the existing
+`(state, updated_at, id)` index and bounded time/ID keyset pages through a fixed upper endpoint,
+including old model indexes and `__unroutable__`. Budget both row reads and worst
 case writes before processing; use the existing per-tick rescue ceiling and lifecycle accounting.
 Reindex still-admissible jobs; mark only structural failures terminal and unindex them atomically.
 Fold cursor changes into the existing scheduler accounting write. Restart the cursor when the digest
@@ -544,7 +612,7 @@ changes mid-pass; new enqueues get current structural checks. Never inspect/alte
 this pass. Completion/requeue paths must recheck against current structural eligibility.
 
 Update `workers/llm-dispatch-v2/src/coordinator.js` and its existing schema/accounting helpers only
-as needed for these columns/indexes. Include index updates in billed-row accounting and maintain
+as needed for these columns and existing indexes. Include index updates in billed-row accounting and maintain
 current configured budgets; if the existing budget cannot fit the worst case, defer the page. Consume
 SQL cursors synchronously inside the existing transaction, with no network await between writes
 ([Cloudflare SQLite storage contract](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)).
@@ -657,7 +725,7 @@ may change. An additional required file or behavior must be named in this contra
 |---|---|
 | Shared/2a | New `tests/test_provider_catalog_evidence.py`, `test_provider_catalog_apply.py`, `test_provider_catalog_config_edit.py`: deterministic digests; incomplete/stale/deferred evidence; ambiguous identity; unknown limits; unauthorized/spoofed commands; YAML comments/semantic fencing; idempotent branch/PR updates; concurrent main change; mixed applied/deferred choices. Extend existing catalog contract/reconcile, compiler, lane and workflow tests. |
 | 2b | Paid route policy/free-pool guard across a batch; fresh selected-account proof; shared-upstream acknowledgement deferral; literal glob matching; pending/fulfilled decisions; removal gate; primary and policies untouched. Extend apply/editor/reconcile tests. Disabled-shadow runtime regression shipped in #2188; legacy promotion is superseded by review/53. |
-| 3a | Worker coordinator/protocol/row-accounting/rows-read tests: old sentinel/model indexes; bounded resumable pages; digest change/restart; temporary quota/pause; leased-job fencing; fitting pooled alternative; structural reason compatibility and measured worst-case billing. Python dispatch-v2/deferred/sweep tests: preserved counts, audit-before-delete, stale handle fence, generation loop guard. Tag tests prove rebatching retains every subject; unsplittable tasks stay recoverable. |
+| 3a | Worker coordinator/protocol/row-accounting/rows-read tests: old sentinel/model indexes; bounded time/ID pages with fixed endpoints; transaction failure/quota outage/recreation/UTC rollover; digest change/restart; temporary quota/pause; leased-job fencing; fitting pooled alternative; structural reason compatibility and measured worst-case billing. Python dispatch-v2/deferred/sweep tests: preserved counts, audit-before-delete, stale handle fence, generation loop guard. Tag tests prove rebatching retains every subject; unsplittable tasks stay recoverable. |
 | 3b | New `tests/test_provider_catalog_retire.py`: incomplete catalogs, multi-account disagreement, non-retirement signals, surviving pools, backup repair, primary review flag, empty-lane rejection and current-main rebuild. |
 | 4 | New `tests/test_provider_catalog_limits.py` plus rate-probe/workflow tests: six/90-day window, independent-run requirement, stale maximum, 20%/50% boundaries, zero/mixed scopes, artifact spoof/expiry, shared account cap, scarce quota, pause failure and exact request/time ceilings. |
 

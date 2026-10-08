@@ -867,6 +867,58 @@ def test_poll_batch_returns_terminal_error_for_failed_job():
     assert "sensitive provider response body" not in str(results["j1"])
 
 
+@pytest.mark.parametrize("reason", ["route_retired", "unadmissible"])
+def test_poll_and_single_reconcile_preserve_structural_terminal_metadata(reason):
+    session = MagicMock()
+    session.post.return_value = _mock_response(
+        status_code=200,
+        json_data={
+            "statuses": [
+                {
+                    "id": "retired",
+                    "state": "failed",
+                    "terminal_reason": reason,
+                    "terminal_catalog_digest": "catalog-v2",
+                }
+            ],
+        },
+    )
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://dispatch-v2.example.com"
+        ),
+        http_session=session,
+        storage=MockStorage(),
+    )
+    handle = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="retired")
+    result = backend.poll_batch([handle])[handle.ref]
+    assert isinstance(result, LLMDispatchTerminalError)
+    assert result.structural
+    assert result.terminal_reason == reason
+    assert result.terminal_catalog_digest == "catalog-v2"
+    with pytest.raises(LLMDispatchTerminalError) as exc:
+        backend.reconcile(handle)
+    assert exc.value.terminal_reason == reason
+    assert exc.value.terminal_catalog_digest == "catalog-v2"
+
+
+@pytest.mark.parametrize(
+    ("reason", "digest"),
+    [
+        (None, None),
+        ("future_reason", "digest"),
+        ("route_retired", None),
+        ("unadmissible", ""),
+        (["route_retired"], {}),
+    ],
+)
+def test_incomplete_or_unknown_terminal_metadata_remains_generic(reason, digest):
+    error = LLMDispatchTerminalError(
+        "terminal", terminal_reason=reason, terminal_catalog_digest=digest
+    )
+    assert not error.structural
+
+
 def test_poll_batch_missing_result_bytes_stays_pending_not_cached_empty():
     # A completed state whose result_key isn't (yet) readable from storage must NOT be cached as
     # an empty JobResult -- write_deferred never downgrades a completed record, so an empty
@@ -2175,17 +2227,14 @@ def test_queue_input_estimate_includes_response_schema():
         http_session=session,
         storage=storage,
     )
-    backend.enqueue_batch(
-        [
-            InferenceJob(
-                task="tag",
-                inputs={
-                    "messages": [{"role": "user", "content": "hello"}],
-                    "structured_output": "dispatch-v2-test-pong",
-                },
-            )
-        ]
+    job = InferenceJob(
+        task="tag",
+        inputs={
+            "messages": [{"role": "user", "content": "hello"}],
+            "structured_output": "dispatch-v2-test-pong",
+        },
     )
+    backend.enqueue_batch([job])
     payload_key = next(key for key in storage.files if key.startswith("payloads/"))
     payload = json.loads(storage.files[payload_key])
     submitted = session.post.call_args.kwargs["json"]["jobs"][0]
@@ -2193,3 +2242,159 @@ def test_queue_input_estimate_includes_response_schema():
         estimate_tokens(payload["messages"])
         + math.ceil(len(json.dumps(payload["structured_output"])) / 4)
     )
+    context = backend._structural_recovery_context(job)
+    assert context["input_estimate"] == submitted["input_token_estimate"]
+    assert context["input_identity"] == submitted["request_digest"]
+
+
+def test_structural_generation_retry_uses_new_idempotency_and_cannot_loop(monkeypatch):
+    from dataclasses import replace
+
+    from citypods.compute import llm_deferred
+    from citypods.compute.llm_deferred import (
+        discard_terminal_failure,
+        snapshot_deferred_handles,
+    )
+    from citypods.compute.llm_policy import ROUTES
+
+    model = "gemini/gemini-3.1-flash-lite"
+    old_route = replace(ROUTES[model], route_id="old-route")
+    monkeypatch.setattr(llm_deferred, "ROUTE_CANDIDATES", {model: (old_route,)})
+    storage = MockStorage()
+    session = MagicMock()
+    session.post.side_effect = _accept_all
+    backend = LiteLLMBackend(
+        LLMBackendConfig(model=model, dispatch_v2_url="https://dispatch-v2.example.com"),
+        http_session=session,
+        storage=storage,
+    )
+    job = InferenceJob(
+        task="tag",
+        recipe_hash="structural-recipe",
+        inputs={
+            "messages": [{"role": "user", "content": "classify a short meeting"}],
+            "llm_policy": LLMRequestPolicy(allowed_models=(model,), queue_only=True),
+            "max_tokens": 100,
+        },
+    )
+    first = backend.enqueue_batch([job])[0]
+    assert isinstance(first, JobHandle)
+    error = LLMDispatchTerminalError(
+        "retired", terminal_reason="route_retired", terminal_catalog_digest="same-worker-catalog"
+    )
+    discard_terminal_failure(
+        storage, snapshot_deferred_handles(storage, [first]), first, error, structural=True
+    )
+    assert isinstance(backend.enqueue_batch([job])[0], LLMBackendError)
+    assert session.post.call_count == 1
+    new_route = replace(old_route, route_id="new-route")
+    monkeypatch.setattr(llm_deferred, "ROUTE_CANDIDATES", {model: (new_route,)})
+    second = backend.enqueue_batch([job])[0]
+    assert isinstance(second, JobHandle)
+    assert second.ref != first.ref
+    sent = session.post.call_args.kwargs["json"]["jobs"][0]
+    assert ":recovery:" in sent["idempotency_key"]
+    # Even if the deployed Worker still reports the old digest, this local generation gets
+    # only one fresh submission; the next terminal audit captures it and closes the loop.
+    discard_terminal_failure(
+        storage, snapshot_deferred_handles(storage, [second]), second, error, structural=True
+    )
+    assert isinstance(backend.enqueue_batch([job])[0], LLMBackendError)
+    assert session.post.call_count == 2
+
+
+def test_enqueue_builds_each_recovery_context_once_and_reads_marker_once():
+    from citypods.compute.llm_deferred import deferred_failure_key
+
+    class CountingStorage(MockStorage):
+        def __init__(self):
+            super().__init__()
+            self.marker_reads = 0
+
+        def get_file(self, key, local_path):
+            if key.startswith("state/llm_deferred_failures/"):
+                self.marker_reads += 1
+            return super().get_file(key, local_path)
+
+    storage = CountingStorage()
+    session = MagicMock()
+    session.post.side_effect = _accept_all
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://dispatch-v2.example.com"
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    backend._structural_recovery_context = MagicMock(wraps=backend._structural_recovery_context)
+    jobs = [
+        InferenceJob(
+            task="tag",
+            recipe_hash=f"ordinary-{i}",
+            inputs={
+                "messages": [{"role": "user", "content": "hi"}],
+                "structured_output": "dispatch-v2-test-pong",
+            },
+        )
+        for i in range(3)
+    ]
+    assert all(isinstance(result, JobHandle) for result in backend.enqueue_batch(jobs))
+    assert backend._structural_recovery_context.call_count == 3
+    assert storage.marker_reads == 3
+    # A structurally blocked lineage with a new fitting generation also reuses the one read.
+    recovery_job = InferenceJob(
+        task="tag",
+        recipe_hash="new-generation",
+        inputs={"messages": [{"role": "user", "content": "hi"}]},
+    )
+    storage.files[deferred_failure_key(recovery_job.recipe_hash)] = json.dumps(
+        {
+            "status": "structural_blocked",
+            "failure_count": 0,
+            "recovery_context": {"route_generations": {}},
+        }
+    ).encode()
+    assert isinstance(backend.enqueue_batch([recovery_job])[0], JobHandle)
+    assert backend._structural_recovery_context.call_count == 4
+    assert storage.marker_reads == 4
+    assert ":recovery:" in session.post.call_args.kwargs["json"]["jobs"][0]["idempotency_key"]
+
+
+def test_recovery_context_is_bound_to_the_accepted_duplicate_payload():
+    from citypods.compute.llm_deferred import deferred_key
+
+    storage = MockStorage()
+    session = MagicMock()
+
+    def accept_first(url, json=None, **kwargs):
+        first, second = json["jobs"]
+        return _mock_response(
+            status_code=200,
+            json_data={
+                "accepted": [{"id": first["id"], "submitted_id": first["id"]}],
+                "rejected": [{"id": second["id"], "reason": "idempotency_conflict"}],
+            },
+        )
+
+    session.post.side_effect = accept_first
+    backend = LiteLLMBackend(
+        LLMBackendConfig(
+            model="gemini/gemini-3-flash-preview", dispatch_v2_url="https://dispatch-v2.example.com"
+        ),
+        http_session=session,
+        storage=storage,
+    )
+    jobs = [
+        InferenceJob(
+            task="tag",
+            recipe_hash="duplicate-recipe",
+            inputs={"messages": [{"role": "user", "content": content}]},
+        )
+        for content in ("original accepted input", "conflicting replacement")
+    ]
+    accepted, rejected = backend.enqueue_batch(jobs)
+    assert isinstance(accepted, JobHandle)
+    assert isinstance(rejected, LLMBackendError)
+    record = json.loads(storage.files[deferred_key("duplicate-recipe")])
+    submitted = session.post.call_args.kwargs["json"]["jobs"][0]
+    assert record["recovery_context"]["input_identity"] == submitted["request_digest"]

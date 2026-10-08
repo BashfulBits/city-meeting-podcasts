@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from datetime import UTC, datetime
 
+import pytest
+
 from citypods.models import Episode
 from citypods.tags import (
     TAG_LLM_SCHEMA_VERSION,
@@ -1528,3 +1530,124 @@ def test_prelabeler_batch_limits_reject_a_route_with_no_input_budget():
     )
     with pytest.raises(ValueError, match="no input budget"):
         prelabeler_batch_limits(starved)
+
+
+def test_rebatching_with_current_output_limits_retains_every_subject(monkeypatch):
+    import json
+    from dataclasses import replace
+
+    from citypods.compute.base import JobHandle
+    from citypods.compute.llm_policy import ROUTES
+    from citypods.tags import (
+        PRELABELER_OUTPUT_TOKEN_OVERHEAD,
+        PRELABELER_OUTPUT_TOKENS_PER_ITEM,
+        llm_prelabel_candidates,
+    )
+
+    model = "google/gemma-4-31b-it"
+    route = replace(
+        ROUTES[model],
+        input_context_limit=16384,
+        hard_input_ceiling=None,
+        output_context_limit=PRELABELER_OUTPUT_TOKEN_OVERHEAD
+        + 2 * PRELABELER_OUTPUT_TOKENS_PER_ITEM,
+    )
+    monkeypatch.setattr("citypods.tags.prelabeler_sizing_route", lambda *args, **kwargs: route)
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["example"], "rules": {"include": ["x"]}}],
+        }
+    )
+    candidates = [
+        {
+            "candidate_id": f"s-{i}",
+            "id": "housing",
+            "scope": "episode",
+            "evidence": [{"where": "agenda", "quote": "housing"}],
+        }
+        for i in range(13)
+    ]
+    jobs = []
+
+    class Backend:
+        storage = None
+
+        def run_inference(self, job):
+            jobs.append(job)
+            return JobHandle(task=job.task, recipe_hash=job.recipe_hash, backend="x", ref="r")
+
+    _, pending, reason = llm_prelabel_candidates(
+        Backend(),
+        candidates=candidates,
+        taxonomy=taxonomy,
+        chapters=[],
+        recipe_hash="retained-subjects",
+        model=model,
+    )
+    assert pending and reason is None
+    subjects = []
+    for job in jobs:
+        batch = json.loads(job.inputs["messages"][-1]["content"])["candidates"]
+        assert len(batch) <= 2
+        assert job.inputs["max_tokens"] <= route.output_context_limit
+        subjects.extend(c["candidate_id"] for c in batch)
+    assert subjects == [c["candidate_id"] for c in candidates]
+
+
+@pytest.mark.parametrize(
+    "context,ratio,tpm,estimate",
+    [(4096, 1.0, None, 3800), (8192, 2.0, None, 4000), (16384, 1.0, 4000, 3800)],
+)
+def test_single_prelabeler_subject_defers_when_full_reservation_cannot_fit(
+    monkeypatch, context, ratio, tpm, estimate
+):
+    from dataclasses import replace
+
+    from citypods.compute.llm_policy import ROUTES, QuotaPolicy
+    from citypods.tags import llm_prelabel_candidates
+
+    model = "google/gemma-4-31b-it"
+    route = replace(
+        ROUTES[model],
+        input_context_limit=context,
+        output_context_limit=1024,
+        hard_input_ceiling=None,
+        input_token_ratio=ratio,
+        quota=QuotaPolicy(tpm=tpm),
+    )
+    monkeypatch.setattr("citypods.tags.prelabeler_sizing_route", lambda *args, **kwargs: route)
+    monkeypatch.setattr("citypods.compute.llm_policy.estimate_tokens", lambda _: estimate)
+    taxonomy = taxonomy_from_dict(
+        {
+            "version": 1,
+            "source_refs": {"example": "https://example.test"},
+            "tags": [{"id": "housing", "source_refs": ["example"], "rules": {"include": ["x"]}}],
+        }
+    )
+
+    class Backend:
+        storage = None
+
+        def run_inference(self, job):
+            raise AssertionError("oversized singleton must not be submitted")
+
+    result, pending, reason = llm_prelabel_candidates(
+        Backend(),
+        candidates=[
+            {
+                "candidate_id": "one",
+                "id": "housing",
+                "scope": "episode",
+                "evidence": [{"where": "agenda", "quote": "housing"}],
+            }
+        ],
+        taxonomy=taxonomy,
+        chapters=[],
+        recipe_hash="singleton",
+        model=model,
+    )
+    assert result == {}
+    assert pending
+    assert reason == "payload-too-large"

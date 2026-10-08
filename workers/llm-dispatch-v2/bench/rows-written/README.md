@@ -162,3 +162,62 @@ A first-try one-model job now costs 15.4 billed rows end to end including retent
 22.6 at the start of this series (-32%) and 44.3 before the 2026-09 tiers; a three-model job
 19.3 against 28.2. At the 90,000-row safe stop that is about 5,800 one-model first-try jobs a day
 before retries and idle overhead (previously about 4,000).
+
+### Slice 3a existing-index rescue measurements (2026-10-08, #2190)
+
+Reuse of `(state, updated_at, id)` avoids the proposed extra `(state, id)` index. The rejected
+index measured 21 writes and 65 reads to build over 20 retained jobs, and added three lifecycle
+writes per first-try job. The maintainer approved reuse rather than that unbounded migration.
+
+A 20-job structural failure page now bills 82 writes and 104 reads with the current model index,
+or 82 writes and 123 reads with the legacy model index. Conservative page reservations are 181
+and 221 writes respectively, including scheduler progress. Run the existing local-only harness
+with `?rescue=1` or `?rescue=1&legacy=1`. Add `&outage=1` to inject a transaction failure, verify
+persisted jobs/indexes/scheduler are unchanged, recreate the coordinator and replay the page.
+This simulates an outage locally; it does not exhaust production quota.
+The outage run confirmed rollback of all persisted state, zero writes on coordinator recreation
+(22 reads), and a successful replay costing the same 82 writes and 104 reads.
+With `?rescue=1&n=1000`, all 1,000 jobs were processed in 51 pages including the final empty
+page. No page exceeded 104 reads or 82 writes, confirming bounded seeks even when timestamps tie.
+
+A first-try one-model job remains 15.40 writes (60 jobs, 15 bundles) including retirement and
+retention. The tested three-model pool costs 19.97 (60 jobs, 12 bundles; the model list from the
+usage example above). Retry costs 9 claim writes plus 10 attempt/requeue writes. An accounting
+check recorded 66 actual writes and a persisted delta of 66. Ingress/lifecycle reservation
+constants and configured budgets remain unchanged.
+
+### Review-round digest CPU check (2026-10-08, #2191)
+
+Three local Node v26.8.2 runs of 1,000 warm digest calls measured 41.416–55.059 ms total CPU
+with serialize/compare on each call, versus 0.048–0.106 ms with the immutable-catalog identity
+cache (medians 42.043 and 0.065 ms). These are local `process.cpuUsage` measurements of the real
+digest function and compiled catalog, not deployed Worker invocation `cpuTime` or production P50.
+The first hash is warmed before measurement; clearing only the identity cache models the previous
+serialize/compare path while retaining its serialized-value/hash cache. Mutable overrides continue
+through that path. The real-workerd rescue/rollback measurement remains 82 writes and 104 reads;
+recreation remains zero writes and 22 reads.
+
+Reproduce from `workers/llm-dispatch-v2` with the repository's Node runtime:
+
+```bash
+node --input-type=module <<'JS'
+import { LLMSchedulerDO } from './src/coordinator.js';
+import catalog from './src/dispatch_limits.json' with { type: 'json' };
+const state = {};
+const digest = LLMSchedulerDO.prototype._structuralCatalogDigest.bind(state);
+await digest(catalog);
+for (let run = 0; run < 3; run++) {
+  const measure = async bypass => {
+    const start = process.cpuUsage();
+    for (let i = 0; i < 1000; i++) {
+      if (bypass) state._staticCatalogDigest = null;
+      await digest(catalog);
+    }
+    const used = process.cpuUsage(start);
+    return (used.user + used.system) / 1000;
+  };
+  console.log({ serialize_compare_cpu_ms: await measure(true),
+    identity_cache_cpu_ms: await measure(false) });
+}
+JS
+```

@@ -278,3 +278,63 @@ test("a pooled model repeated as a backup adds no duplicate routes once backups 
   assert.deepEqual(ids(12), ids(0));
   assert.equal(new Set(ids(12)).size, ids(12).length);
 });
+
+function structuralFixture() {
+  const catalog = {
+    model_aliases: { alias: "primary" },
+    model_routes_map: { primary: ["p"], backup: ["b"] },
+    routes_by_id: {
+      p: { route_id: "p", free: true, input_context_limit: 1000, output_context_limit: 500 },
+      b: { route_id: "b", free: true, input_context_limit: 10000, output_context_limit: 500 },
+    },
+  };
+  const policy = {
+    allowed_models: ["alias"], backup_models: ["backup"], backup_after_attempts: 12,
+    allow_paid: false,
+  };
+  const job = {
+    policy_json: policy, attempts: 0, schema_retry_count: 0,
+    input_token_estimate: 1500, max_output_token_estimate: 100,
+  };
+  return { catalog, policy, job };
+}
+
+for (const cause of ["input", "combined", "output", "missing", "paid"]) {
+  test(`structurally unusable primary unlocks its declared backup: ${cause}`, () => {
+    const { catalog, policy, job } = structuralFixture();
+    if (cause === "combined") job.input_token_estimate = 950;
+    if (cause === "output") {
+      job.input_token_estimate = 100;
+      catalog.routes_by_id.p.output_context_limit = 50;
+    }
+    if (cause === "missing") delete catalog.model_routes_map.primary;
+    if (cause === "paid") {
+      job.input_token_estimate = 100;
+      catalog.routes_by_id.p.free = false;
+    }
+    assert.deepEqual(modelsForJob(job, policy, catalog), ["alias", "backup"]);
+    assert.deepEqual(routesEligibleFor(job, catalog).map(route => route.route_id), ["b"]);
+    assert.equal(job.attempts, 0);
+    assert.deepEqual(policy.allowed_models, ["alias"]);
+  });
+}
+
+test("structural backup activation retains paid permission and every primary alternative", () => {
+  const { catalog, policy, job } = structuralFixture();
+  catalog.routes_by_id.b.free = false;
+  assert.deepEqual(routesEligibleFor(job, catalog), []);
+  policy.allow_paid = true;
+  assert.deepEqual(routesEligibleFor(job, catalog).map(route => route.route_id), ["b"]);
+  catalog.model_routes_map.primary.push("alternate");
+  catalog.routes_by_id.alternate = { ...catalog.routes_by_id.b, route_id: "alternate", free: true };
+  assert.deepEqual(modelsForJob(job, policy, catalog), ["alias"]);
+});
+
+test("paused or quota-exhausted primary never triggers structural backup activation", () => {
+  const { catalog, policy, job } = structuralFixture();
+  job.input_token_estimate = 100;
+  Object.assign(catalog.routes_by_id.p, { rpd: 0, tpm: 1, blocked_until: Date.now() + 100000 });
+  assert.deepEqual(modelsForJob(job, policy, catalog), ["alias"]);
+  const pausedAdmission = { ...catalog, model_routes_map: { backup: ["b"] } };
+  assert.deepEqual(routesEligibleFor(job, pausedAdmission, catalog), []);
+});

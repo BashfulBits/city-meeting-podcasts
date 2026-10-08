@@ -36,7 +36,6 @@ import {
   routeHasCapacityFor,
   FULL_TOKEN_BUDGET_WINDOWS,
   paymentRequiredBackoffUntil,
-  dailyQuotaReadyAt,
   zonedDateKey,
   routeResetTimezone,
   nextZonedMidnightMs,
@@ -260,6 +259,8 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "buffer_updated_at",
   ],
   jobs: [
+    "terminal_reason",
+    "terminal_catalog_digest",
     "queue_models",
     "token_reservation",
     "purpose",
@@ -283,6 +284,9 @@ const CURRENT_SCHEMA_ADDED_COLUMNS = {
     "last_claim_diagnostics_json",
     "mistral_latest_migrated",
     "active_bundles_json",
+    "catalog_digest",
+    "catalog_rescue_cursor",
+    "catalog_rescue_complete",
   ],
 };
 
@@ -844,6 +848,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         max_output_token_estimate   INTEGER NOT NULL,
         payload_key                 TEXT NOT NULL,
         result_key                  TEXT,
+        terminal_reason             TEXT,
+        terminal_catalog_digest     TEXT,
         lease_token                 TEXT,
         lease_route_id              TEXT,
         lease_expires_at            INTEGER,
@@ -859,7 +865,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
         created_at                  INTEGER NOT NULL,
         updated_at                  INTEGER NOT NULL
       );
-      -- The ONE state index on jobs. Every state-filtered query seeks on it: purgePendingBatch
+      -- The terminal-history state index on jobs. Every state-filtered query seeks on it: purgePendingBatch
       -- and terminalFeed by (state, updated_at[, id]) -- an (state, priority, created_at) index
       -- forced them to read EVERY completed/failed row (60,189 -> 367 VDBE ops at 6,000 terminal
       -- jobs, the 2026-08-27 rows-read overage) -- and the queued/leased lookups by state alone.
@@ -967,6 +973,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         last_claim_result                   TEXT NOT NULL DEFAULT '',
         last_claim_reason                   TEXT NOT NULL DEFAULT '',
         last_claim_diagnostics_json         TEXT NOT NULL DEFAULT '{}',
+        catalog_digest                      TEXT,
+        catalog_rescue_cursor               TEXT,
+        catalog_rescue_complete             INTEGER NOT NULL DEFAULT 0,
         cleanup_cursor                      TEXT,
         next_maintenance_alarm_at           INTEGER,
         -- Active bundles by id (see _activeBundles): at most MAX_ACTIVE_BUNDLES entries, written
@@ -1026,6 +1035,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // instance; it does not retroactively add a column introduced later (rpd_window_start/
     // rpd_count, added alongside Phase 2's claimDispatchWindow) to a `routes` table an earlier
     // deploy already created. Defensive, cheap, and a no-op on a fresh instance.
+    this._ensureColumn("jobs", "terminal_reason", "TEXT");
+    this._ensureColumn("jobs", "terminal_catalog_digest", "TEXT");
     // Before the clustering migration and the trigger replacement below: both create the
     // priority trigger, whose body reads queue_models.
     this._ensureColumn("jobs", "queue_models", "TEXT");
@@ -1089,6 +1100,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
         sql.exec(`DROP INDEX IF EXISTS ${index}`)
       );
     }
+    this._ensureColumn("scheduler", "catalog_digest", "TEXT");
+    this._ensureColumn("scheduler", "catalog_rescue_cursor", "TEXT");
+    this._ensureColumn("scheduler", "catalog_rescue_complete", "INTEGER NOT NULL DEFAULT 0");
     this._ensureColumn("scheduler", "ingress_write_units_today", "INTEGER NOT NULL DEFAULT 0");
     // A recurring producer snapshot needs the queue depth, but COUNT(*) over a retained queue
     // makes that diagnostic proportional to backlog. These two columns turn it into a singleton
@@ -1291,6 +1305,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
       ["reservation_rpm_window_start", "INTEGER NOT NULL DEFAULT 0"],
       ["reservation_rpd_day_key", "TEXT NOT NULL DEFAULT ''"],
       ["reservation_tpm_window_start", "INTEGER NOT NULL DEFAULT 0"],
+      ["catalog_digest", "TEXT"],
+      ["catalog_rescue_cursor", "TEXT"],
+      ["catalog_rescue_complete", "INTEGER NOT NULL DEFAULT 0"],
+      ["terminal_reason", "TEXT"],
+      ["terminal_catalog_digest", "TEXT"],
       ["queue_models", "TEXT"],
       ["active_bundles_json", "TEXT NOT NULL DEFAULT '{}'"],
     ]);
@@ -1530,32 +1549,20 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return live > 0;
   }
 
-  /**
-   * True when no route in `eligibleRoutes` can take `job` today: it is over every ceilinged
-   * route's `hard_input_ceiling` even with that route's tolerance, at the same learned input ratio
-   * the claim's capacity check uses, and every uncapped route has spent its daily quota
-   * (`uncappedRouteSpent`). A merely blocked or cooling uncapped route still counts as able to
-   * take the job, so a short cooldown never fails work that route would serve minutes later.
-   */
-  _exceedsEveryLiveCeiling(job, eligibleRoutes, uncappedRouteSpent, calibrationCache) {
+  /** A structural learned-ceiling rejection, independent of pause or spent daily quota.
+   * Every policy-permitted configured alternative is considered, including temporarily paused
+   * routes. An uncapped fitting route prevents failure even when it must wait until tomorrow. */
+  _exceedsEveryLiveCeiling(job, eligibleRoutes, calibrationCache) {
     if (!eligibleRoutes || eligibleRoutes.length === 0) return false;
-    let ceilinged = 0;
     for (const route of eligibleRoutes) {
       if (Number(route.prompt_cap_estimate) > 0 &&
-          Number(job.input_token_estimate) > Number(route.prompt_cap_estimate)) {
-        ceilinged += 1;
-        continue;
-      }
+          Number(job.input_token_estimate) > Number(route.prompt_cap_estimate)) continue;
       const limit = hardInputCeilingLimit(route, { tolerant: true });
-      if (!Number.isFinite(limit)) {
-        if (!uncappedRouteSpent(route)) return false;
-        continue;
-      }
+      if (!Number.isFinite(limit)) return false;
       const { inputRatio } = this._calibration(route, job.prompt_family, calibrationCache);
       if (scaledInputTokens(job.input_token_estimate, inputRatio) <= limit) return false;
-      ceilinged += 1;
     }
-    return ceilinged > 0;
+    return true;
   }
 
   _maxJobsPerRoutePerBundle() {
@@ -2217,7 +2224,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
                  request_digest = ?, provider_idempotency_key = ?, state = 'queued',
                  priority = ?, purpose = ?, policy_json = ?, prompt_family = ?,
                  input_token_estimate = ?, max_output_token_estimate = ?, payload_key = ?,
-                 result_key = NULL, lease_token = NULL, lease_route_id = NULL,
+                 result_key = NULL, terminal_reason = NULL, terminal_catalog_digest = NULL,
+                 lease_token = NULL, lease_route_id = NULL,
                  lease_expires_at = NULL, bundle_id = NULL, attempts = 0,
                  transient_retry_count = 0, queue_models = ?, created_at = ?, updated_at = ?
                WHERE id = ?`,
@@ -3032,7 +3040,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     for (const chunk of this._chunks(ids)) {
       const placeholders = chunk.map(() => "?").join(",");
       const rows = [...sql.exec(
-        `SELECT id, state, result_key, payload_key, attempts, lease_route_id FROM jobs
+        `SELECT id, state, result_key, payload_key, attempts, lease_route_id,
+                terminal_reason, terminal_catalog_digest FROM jobs
          WHERE id IN (${placeholders})`,
         ...chunk
       )];
@@ -3045,6 +3054,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // delete exactly the B2 objects THIS row references before retireConsumed.
           payload_key: row.state === "completed" ? row.payload_key : null,
           error: row.state === "failed" ? "job_failed" : null,
+          terminal_reason: row.state === "failed" ? row.terminal_reason : null,
+          terminal_catalog_digest: row.state === "failed" ? row.terminal_catalog_digest : null,
           attempts: row.attempts,
           model:
             row.state === "completed"
@@ -3074,7 +3085,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     // range seek with NO temp B-tree, whereas `state IN ('completed', 'failed') ORDER BY updated_at`
     // forces SQLite to scan and sort the entire terminal history in memory.
     const completedRows = [...sql.exec(
-      `SELECT id, state, result_key, updated_at FROM jobs
+      `SELECT id, state, result_key, updated_at, terminal_reason, terminal_catalog_digest FROM jobs
        WHERE state = 'completed' AND (updated_at, id) > (?, ?)
        ORDER BY state ASC, updated_at ASC, id ASC LIMIT ?`,
       afterUpdatedAt,
@@ -3082,7 +3093,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       limit
     )];
     const failedRows = [...sql.exec(
-      `SELECT id, state, result_key, updated_at FROM jobs
+      `SELECT id, state, result_key, updated_at, terminal_reason, terminal_catalog_digest FROM jobs
        WHERE state = 'failed' AND (updated_at, id) > (?, ?)
        ORDER BY state ASC, updated_at ASC, id ASC LIMIT ?`,
       afterUpdatedAt,
@@ -3102,6 +3113,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         state: row.state,
         result_key: row.result_key,
         updated_at: row.updated_at,
+        terminal_reason: row.state === "failed" ? row.terminal_reason : null,
+        terminal_catalog_digest: row.state === "failed" ? row.terminal_catalog_digest : null,
       })),
       cursor: last
         ? { updated_at: last.updated_at, id: last.id }
@@ -3269,28 +3282,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
     };
   }
 
-  /**
-   * Canonical model groups a job may use. Persist every explicit allowed model, even when it has
-   * no configured route yet, so a later catalog addition makes an already-queued job searchable
-   * without rewriting it. This follows aliases only: v2 does not expand config/model_routing (that
-   * quota-exhaustion overflow map is Python-scheduler-only). It does expand a job's own
-   * `policy_json.backup_models` once `modelsForJob`/`backupModelsActive` (routes.js) say the job's
-   * `attempts`/`schema_retry_count` warrant it -- that's a per-job failure-count signal carried on
-   * the job itself, not a config-driven route substitution.
-   *
-   * Omits a model whose *every* currently configured route is structurally too small for this
-   * job's own token estimates (routesEligibleFor's combined input/output context-limit check,
-   * evaluated here independent of any live RPM/RPD/TPM/blocked_until state, which fluctuates and
-   * must never exclude a job from the index). Without this, a handful of oversized jobs land at
-   * the head of that model's bounded per-claim candidate window (MAX_JOBS_PER_MODEL_CLAIM) and
-   * stay there
-   * forever -- routesEligibleFor always returns empty for them, so claimDispatchWindow re-reads
-   * the exact same unclaimed rows every tick and a smaller, perfectly dispatchable job queued
-   * behind them is never even read, let alone claimed. A model with no configured route at all is
-   * kept (can't be size-checked against a limit that doesn't exist); a job with no route left
-   * under any of its allowed models falls through to _indexQueuedJobModels's own
-   * "__unroutable__" sentinel, exactly like a malformed/unknown-model policy already does.
-   */
+  /** Canonical models with a policy-eligible configured route that fits the job's structural
+   * bounds. Full-catalog checks ignore live pause/cooldown/quota state. Missing routes are omitted
+   * so old and new impossible work gets a typed structural terminal disposition. Already-declared
+   * backups activate immediately only when no active primary structurally fits (review/48 §8.5). */
   _modelsForQueuedJob(job, dispatchLimits = this._dispatchLimits()) {
     let policy;
     try {
@@ -3298,9 +3293,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
     } catch {
       return [];
     }
-    // modelsForJob folds in policy.backup_models once the job's attempts/schema_retry_count cross
-    // its configured threshold (backupModelsActive) -- see routes.js.
-    const allowedModels = modelsForJob(job, policy);
+    // The full catalog also permits structural fallback without fabricating provider attempts.
+    const allowedModels = modelsForJob(job, policy, dispatchLimits);
     const allowPaid = Boolean(policy?.allow_paid);
     const inputTokens = job.input_token_estimate || 0;
     const outputTokens = job.max_output_token_estimate || 0;
@@ -3312,10 +3306,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
       const canonical = canonicalModelName(rawModel.trim(), dispatchLimits);
       const routeIds = routesByModel[canonical];
-      if (!Array.isArray(routeIds) || routeIds.length === 0) {
-        models.add(canonical);
-        continue;
-      }
+      if (!Array.isArray(routeIds) || routeIds.length === 0) continue;
       const fitsSomeConfiguredRoute = routeIds.some((routeId) => {
         const route = catalog[routeId];
         if (!route) return false;
@@ -3427,7 +3418,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
     }
     const routesByModel = dispatchLimits?.model_routes_map || {};
     const routeIds = new Set();
-    for (const rawModel of modelsForJob(job, policy)) {
+    for (const rawModel of modelsForJob(job, policy, dispatchLimits)) {
       if (typeof rawModel !== "string" || rawModel.trim() === "") continue;
       const canonical = canonicalModelName(rawModel.trim(), dispatchLimits);
       for (const routeId of routesByModel[canonical] || []) routeIds.add(routeId);
@@ -3435,66 +3426,119 @@ export class LLMSchedulerDO extends DurableObjectBase {
     return [...routeIds];
   }
 
-  /**
-   * Bounded per-tick sweep of jobs indexed under the `__unroutable__` sentinel (see
-   * `_modelsToIndex`). That sentinel is assigned once, at enqueue time, against the catalog as it
-   * stood then -- never revisited afterwards -- so a job stays invisible to every claim forever
-   * even once a later catalog change (a bigger route added, a route's ceiling relaxed) would let
-   * it fit. Re-runs the exact same `_modelsForQueuedJob` check enqueue used, against today's
-   * catalog: a job that now fits is reindexed under its real model(s); one that still doesn't is
-   * failed, so it stops holding this bounded scan's row budget on every future tick, and its
-   * rejection is recorded per candidate route (`job_unroutable`) for the budget monitor -- mirrors
-   * how the claim loop's own oversize-ceiling failure (`input_over_route_ceiling`) is recorded.
-   * A job here was never claimed and never reserved capacity, so there is nothing to release.
-   *
-   * `dispatchLimits` must be the FULL catalog (`this._dispatchLimits()`), never the pause-filtered
-   * one `claimDispatchWindow` admits against (`_claimDispatchLimits`): that one drops a paused
-   * route's id from `model_routes_map` entirely, and this is a structural size-fit check, not an
-   * admission decision -- a route that is merely cooling down still structurally fits the job
-   * once it un-pauses, and must not be misread as absent.
-   */
-  _reconcileUnroutableJobs(sql, now, dispatchLimits) {
-    const limit = this._maxUnroutableReconcilePerTick();
-    if (limit <= 0) return { reindexed: 0, failed: 0 };
-    // ORDER BY matches (model, priority, created_at) -- the clustered table's own key prefix
-    // under the model = ? equality filter -- so this is an index-order walk, not a sort; ordering
-    // by created_at alone would mix the two priority buckets and force a temp B-tree (caught by
-    // rows-read.test.js's "no full scan" guard).
-    const rows = [...sql.exec(
-      `SELECT jobs.* FROM job_models
-       JOIN jobs ON jobs.id = job_models.job_id
-       WHERE job_models.model = '__unroutable__' AND jobs.state = 'queued'
-       ORDER BY job_models.priority ASC, job_models.created_at ASC LIMIT ?`,
-      limit
-    )];
-    const reindexedIds = [];
-    const failedIds = [];
-    for (const job of rows) {
-      const models = this._modelsForQueuedJob(job, dispatchLimits);
-      if (models.length > 0) {
-        this._unindexQueuedJob(job);
-        sql.exec("UPDATE jobs SET queue_models = ? WHERE id = ?", JSON.stringify(models), job.id);
-        this._indexQueuedJobModels(job, models);
-        reindexedIds.push(job.id);
-        continue;
-      }
-      sql.exec("UPDATE jobs SET state = 'failed', updated_at = ? WHERE id = ?", now, job.id);
-      this._unindexQueuedJob(job);
-      for (const routeId of this._routesForUnroutableJob(job, dispatchLimits)) {
-        this._recordRouteFailure(sql, now, routeId, "job_unroutable", null);
-      }
-      failedIds.push(job.id);
+  /** Hash only configured identity and structural admission fields, independent of live ledger.
+   * Runs before the SQL transaction; the same immutable catalog is used throughout the pass. */
+  async _structuralCatalogDigest(catalog) {
+    // Production's compiled import cannot change within this isolate. Overrides may mutate.
+    if (catalog === DISPATCH_LIMITS && this._staticCatalogDigest) return this._staticCatalogDigest;
+    const fields = ["provider", "account_id", "upstream_model", "free", "input_context_limit",
+      "output_context_limit", "hard_input_ceiling", "hard_input_ceiling_tolerance", "input_token_ratio", "tpm"];
+    const serialized = JSON.stringify({
+      aliases: Object.entries(catalog.model_aliases || {}).sort(([a], [b]) => a.localeCompare(b)),
+      models: Object.entries(catalog.model_routes_map || {}).sort(([a], [b]) => a.localeCompare(b))
+        .map(([model, ids]) => [model, [...ids].sort()]),
+      routes: Object.entries(catalog.routes_by_id || {}).sort(([a], [b]) => a.localeCompare(b))
+        .map(([id, route]) => [id, fields.map(field => route[field] ?? null)]),
+    });
+    if (this._catalogDigestSource === serialized) {
+      if (catalog === DISPATCH_LIMITS) this._staticCatalogDigest = this._catalogDigestValue;
+      return this._catalogDigestValue;
     }
-    if (reindexedIds.length > 0 || failedIds.length > 0) {
-      console.warn(
-        JSON.stringify({
-          event: "reconcile_unroutable_jobs",
-          reindexed: reindexedIds,
-          failed: failedIds,
-        })
+    const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(serialized));
+    const digest = [...new Uint8Array(hash)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+    this._catalogDigestSource = serialized;
+    this._catalogDigestValue = digest;
+    if (catalog === DISPATCH_LIMITS) this._staticCatalogDigest = digest;
+    return digest;
+  }
+
+  /** One bounded rescue pass, including legacy model indexes, on first deploy/catalog change.
+   * Between passes only the existing sentinel is checked, catching impossible new/requeued work.
+   * The keyset and sentinel queries each read at most the existing per-tick ceiling. SQL cursors
+   * are consumed synchronously; all mutations and progress ride on lifecycle accounting. */
+  _reconcileUnroutableJobs(sql, now, dispatchLimits, digest, rowStop = this._enqueueRowStop()) {
+    const limit = this._maxUnroutableReconcilePerTick();
+    this._drainRowCount();
+    const written = this._readRowsWrittenToday();
+    if (limit <= 0 || written + 1 >= rowStop) return { reindexed: 0, failed: 0 };
+    const [scheduler] = [...sql.exec(
+      "SELECT catalog_digest, catalog_rescue_cursor, catalog_rescue_complete FROM scheduler WHERE id=1"
+    )];
+    const changed = scheduler.catalog_digest !== digest;
+    const scanning = changed || !scheduler.catalog_rescue_complete;
+    // Reuse the terminal-history index. A fixed upper key makes each pass finite while new
+    // arrivals/requeues are indexed under the current catalog. Repair does not alter updated_at.
+    let cursor = null;
+    if (scanning && !changed && scheduler.catalog_rescue_cursor) {
+      try {
+        const parsed = JSON.parse(scheduler.catalog_rescue_cursor);
+        const validKey = key => Array.isArray(key) && key.length === 2 &&
+          Number.isSafeInteger(key[0]) && typeof key[1] === "string";
+        if (validKey(parsed.after) && validKey(parsed.through)) cursor = parsed;
+      } catch { /* A legacy/malformed cursor starts a fresh bounded pass. */ }
+    }
+    if (scanning && !cursor) {
+      const [last] = [...sql.exec(
+        `SELECT updated_at, id FROM jobs WHERE state='queued'
+         ORDER BY updated_at DESC, id DESC LIMIT ?`, 1
+      )];
+      cursor = { after: [-1, ""], through: last ? [last.updated_at, last.id] : [-1, ""] };
+    }
+    const rows = scanning ? [...sql.exec(
+      `SELECT * FROM jobs WHERE state='queued' AND (updated_at, id) > (?, ?)
+       AND (updated_at, id) <= (?, ?) ORDER BY updated_at, id LIMIT ?`,
+      ...cursor.after, ...cursor.through, limit
+    )] : [...sql.exec(
+      `SELECT jobs.* FROM job_models JOIN jobs ON jobs.id=job_models.job_id
+       WHERE job_models.model='__unroutable__' AND jobs.state='queued'
+       ORDER BY job_models.priority, job_models.created_at LIMIT ?`, limit
+    )];
+    const plans = rows.map(job => {
+      const models = this._modelsForQueuedJob(job, dispatchLimits);
+      const routes = this._routesForUnroutableJob(job, dispatchLimits);
+      const oldModels = parseQueueModels(job.queue_models);
+      const same = models.length > 0 && oldModels && JSON.stringify([...oldModels].sort()) ===
+        JSON.stringify([...models].sort());
+      // Reserve both index versions, job state/index writes and per-route failure cells. Legacy
+      // indexes have at most one row per declared model plus the sentinel, served by job_id.
+      const policy = jobPolicy(job);
+      const oldCount = oldModels?.length ??
+        ((policy.allowed_models?.length || 0) + (policy.backup_models?.length || 0) + 1);
+      const writes = same ? 0 : 5 + 2 * oldCount + 2 * models.length + 2 * routes.length;
+      return { job, models, routes, same, writes };
+    });
+    const worstWrites = 1 + plans.reduce((sum, plan) => sum + plan.writes, 0);
+    if (written + worstWrites >= rowStop) return { reindexed: 0, failed: 0 };
+    let reindexed = 0;
+    let failed = 0;
+    for (const { job, models, routes, same } of plans) {
+      if (same) continue;
+      this._unindexQueuedJob(job);
+      if (models.length > 0) {
+        sql.exec("UPDATE jobs SET queue_models=? WHERE id=?", JSON.stringify(models), job.id);
+        this._indexQueuedJobModels(job, models);
+        reindexed += 1;
+      } else {
+        sql.exec(
+          `UPDATE jobs SET state='failed', terminal_reason=?, terminal_catalog_digest=?,
+           updated_at=? WHERE id=? AND state='queued'`,
+          routes.length ? "unadmissible" : "route_retired", digest, now, job.id
+        );
+        for (const routeId of routes) {
+          this._recordRouteFailure(sql, now, routeId, "job_unroutable", null);
+        }
+        failed += 1;
+      }
+    }
+    if (scanning) {
+      const last = rows.at(-1);
+      if (last) cursor.after = [last.updated_at, last.id];
+      this._stageSchedulerSet(
+        "catalog_digest=?, catalog_rescue_cursor=?, catalog_rescue_complete=?",
+        digest, JSON.stringify(cursor), rows.length < limit ? 1 : 0
       );
     }
-    return { reindexed: reindexedIds.length, failed: failedIds.length };
+    return { reindexed, failed };
   }
 
   /**
@@ -4013,6 +4057,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
   /** review/44 Unit 4: fenced, capacity-ranked admission and pacing in one SQLite transaction. */
   async claimDispatchWindow(now, windowSeconds) {
     const sql = this._getSql();
+    const structuralCatalog = this._dispatchLimits();
+    const structuralDigest = await this._structuralCatalogDigest(structuralCatalog);
     // A global pause ends the tick before any statement runs -- not even the day roll or the
     // lease reaper -- so a paused deployment writes zero rows per tick. Expired leases are simply
     // reaped by the first tick after the pause ends.
@@ -4241,7 +4287,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
         const { reindexed, failed } = this._reconcileUnroutableJobs(
           sql,
           now,
-          this._dispatchLimits()
+          structuralCatalog,
+          structuralDigest,
+          Math.min(this._enqueueRowStop(), accountSafeStop -
+            inFlightReserveRows - nextBundleReserveRows)
         );
         diagnostics.unroutable_reindexed = reindexed;
         diagnostics.unroutable_failed = failed;
@@ -4303,7 +4352,6 @@ export class LLMSchedulerDO extends DurableObjectBase {
       };
 
       const calibrationCache = new Map();
-      const uncappedRouteSpent = (route) => dailyQuotaReadyAt(getMergedRoute(route), now) > now;
       const capacityOptions = (route, job) => {
         const providerCfg = dispatchLimits.providers?.[route.provider];
         const providerLedger = route.provider
@@ -4368,7 +4416,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           // model alphabetically (usually Gemini) claims the whole bundle and a later Llama
           // alternate is never considered, even when fewer than maxBundleJobs are available.
           // Stable sort preserves the caller's allowed_models order when live capacity ties.
-          const eligibleRoutes = routesEligibleFor(job, dispatchLimits).sort((left, right) => {
+          const eligibleRoutes = routesEligibleFor(job, dispatchLimits, this._dispatchLimits()).sort((left, right) => {
             const leftPlan = modelPlansByModel.get(left.model);
             const rightPlan = modelPlansByModel.get(right.model);
             return (
@@ -4468,7 +4516,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
             !drainJobIds.has(job.id) &&
             !oversizeJobIds.has(job.id) &&
             this._exceedsEveryLiveCeiling(
-              job, eligibleRoutes.map(getMergedRoute), uncappedRouteSpent, calibrationCache
+              job, this._routesForUnroutableJob(job, structuralCatalog)
+                .map(routeId => ({ ...structuralCatalog.routes_by_id[routeId], route_id: routeId }))
+                .filter(route => route.route_id && (jobPolicy(job).allow_paid || route.free) &&
+                  routeFitsContext(route, job.input_token_estimate, job.max_output_token_estimate))
+                .map(getMergedRoute), calibrationCache
             )
           ) {
             // A job indexed under several models can be read once per model; fail it once.
@@ -4487,7 +4539,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // splits it into batches that fit.
       for (const { job, eligibleRoutes } of oversizeJobs) {
         // Read as 'queued' inside this same transaction, so the transition is safe unconditionally.
-        sql.exec("UPDATE jobs SET state = 'failed', updated_at = ? WHERE id = ?", now, job.id);
+        sql.exec(
+          `UPDATE jobs SET state='failed', terminal_reason='unadmissible',
+           terminal_catalog_digest=?, updated_at=? WHERE id=?`, structuralDigest, now, job.id
+        );
         this._unindexQueuedJob(job);
         for (const route of eligibleRoutes) {
           if (Number.isFinite(hardInputCeilingLimit(route))) {

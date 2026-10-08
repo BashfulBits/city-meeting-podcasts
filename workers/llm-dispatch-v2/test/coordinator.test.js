@@ -146,7 +146,7 @@ test("queued counter tracks enqueue, claim, requeue and cancel without triggers"
   );
 });
 
-test("enqueueBatch indexes every canonical allowed model without model_routing", async () => {
+test("enqueueBatch indexes fitting canonical models without inventing routes or model_routing", async () => {
   const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
   await coordinator.enqueueBatch([
     {
@@ -170,9 +170,7 @@ test("enqueueBatch indexes every canonical allowed model without model_routing",
 
   const models = [...sql.exec("SELECT model FROM job_models WHERE job_id='multi' ORDER BY model")];
   assert.deepEqual(models.map((row) => row.model), [
-    "future/provider-model",
     "gemini/gemini-3.1-flash-lite",
-    "mistral/mistral-small-2603",
   ]);
 });
 
@@ -572,6 +570,13 @@ test("schemaRetry charges ingress for the backup-model index rows its own clone 
   const { coordinator, sql } = makeCoordinator({
     MAX_JOBS_PER_UTC_DAY: "100",
     INGRESS_PURPOSE_RESERVATIONS: LANE_WITH_BACKUP_THRESHOLD,
+    DISPATCH_LIMITS_OVERRIDE: {
+      model_routes_map: { "primary/model": ["p"], "backup/model": ["b"] },
+      routes_by_id: {
+        p: { free: true, input_context_limit: 10000, output_context_limit: 1000 },
+        b: { free: true, input_context_limit: 10000, output_context_limit: 1000 },
+      },
+    },
   });
   await coordinator.enqueueBatch([backupPolicyJob("source", 12)]);
   sql.exec("UPDATE jobs SET state = 'completed' WHERE id = 'source'");
@@ -755,6 +760,8 @@ test("terminalFeed is keyset paginated and cancelBatch removes queued work from 
       state: "completed",
       result_key: "results/complete.json",
       updated_at: 100,
+      terminal_reason: null,
+      terminal_catalog_digest: null,
     },
   ]);
   assert.deepEqual(await coordinator.terminalFeed(terminal.cursor, 1), {
@@ -2119,7 +2126,7 @@ test("stats() names accounts whose secret is not set in this deployment", async 
   assert.deepEqual(stats.unconfigured_accounts, ["p:tertiary (ABSENT_KEY)"]);
 });
 
-test("jobs carries exactly one secondary state index; retired indexes are dropped on startup", () => {
+test("jobs carries only the terminal-history state index; retired indexes are dropped", () => {
   // Every index on jobs is a billed DO row on each insert and state change (write_budget.js /
   // bench/rows-written). Adding one back must be a deliberate, re-measured decision.
   const { storage, sql } = createMockSqlStorage();
@@ -2213,7 +2220,7 @@ test("an existing rowid job_models is rebuilt clustered, keeping rows, key uniqu
 
 test("queued jobs from before queue_models keep the legacy job_id index until none remain", async () => {
   const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
-  const policy = JSON.stringify({ allowed_models: ["gemini/gemini-flash-lite"] });
+  const policy = JSON.stringify({ allowed_models: ["gemini/gemini-3.1-flash-lite"] });
   // A production coordinator at deploy: the (job_id, model) index and a job queued without
   // queue_models.
   sql.exec(`
@@ -2223,7 +2230,7 @@ test("queued jobs from before queue_models keep the legacy job_id index until no
       updated_at)
       VALUES ('legacy', 'k-legacy', 'd', 'queued', 1, '${policy}', 'tags', 10, 10, 'p', 5, 5);
     INSERT INTO job_models (job_id, model, priority, created_at)
-      VALUES ('legacy', 'gemini/gemini-flash-lite', 1, 5);
+      VALUES ('legacy', 'gemini/gemini-3.1-flash-lite', 1, 5);
   `);
   await coordinator.enqueueBatch([{
     id: "fresh", idempotency_key: "k-fresh", request_digest: "d", policy_json: policy,
@@ -2231,7 +2238,7 @@ test("queued jobs from before queue_models keep the legacy job_id index until no
     payload_key: "p-fresh",
   }]);
   const fresh = sql.exec("SELECT queue_models FROM jobs WHERE id = 'fresh'")[0];
-  assert.equal(fresh.queue_models, JSON.stringify(["gemini/gemini-flash-lite"]));
+  assert.equal(fresh.queue_models, JSON.stringify(["gemini/gemini-3.1-flash-lite"]));
 
   const indexExists = () =>
     sql.exec("SELECT 1 FROM sqlite_master WHERE name = 'idx_job_models_job_model'").length > 0;
@@ -2699,4 +2706,268 @@ test("a failed attempt on a lease with no recorded route still completes", async
     sql.exec("SELECT route_id FROM route_failures WHERE failure_class = 'request_defect'")[0].route_id,
     "unknown"
   );
+});
+
+
+test("structural terminal fields are additive and legacy failed rows stay generic", async () => {
+  const { coordinator, sql } = makeCoordinator({ MAX_JOBS_PER_UTC_DAY: "100" });
+  for (const id of ["retired", "oversized", "legacy"]) {
+    await coordinator.enqueueBatch([{
+      id, idempotency_key: id, request_digest: id, policy_json: "{}", prompt_family: "tags",
+      input_token_estimate: 1, max_output_token_estimate: 1, payload_key: `payloads/${id}.json`,
+    }]);
+  }
+  sql.exec("UPDATE jobs SET state='failed', updated_at=100");
+  sql.exec("UPDATE jobs SET terminal_reason='route_retired', terminal_catalog_digest='catalog' WHERE id='retired'");
+  sql.exec("UPDATE jobs SET terminal_reason='unadmissible', terminal_catalog_digest='catalog' WHERE id='oversized'");
+  const { statuses } = await coordinator.pollBatch(["retired", "oversized", "legacy"]);
+  const { terminals } = await coordinator.terminalFeed(null);
+  for (const rows of [statuses, terminals]) {
+    assert.equal(rows.find(row => row.id === "retired").terminal_reason, "route_retired");
+    assert.equal(rows.find(row => row.id === "oversized").terminal_reason, "unadmissible");
+    assert.equal(rows.find(row => row.id === "legacy").terminal_reason, null);
+    assert.equal(rows.find(row => row.id === "legacy").terminal_catalog_digest, null);
+    assert.equal(rows.find(row => row.id === "retired").terminal_catalog_digest, "catalog");
+  }
+  assert.ok(statuses.every(row => row.error === "job_failed"));
+});
+
+test("terminal metadata migration preserves existing failed jobs without guessing reasons", async () => {
+  const { coordinator, sql, storage } = makeCoordinator();
+  await coordinator.enqueueBatch([{
+    id: "old-failure", idempotency_key: "old-failure", request_digest: "digest",
+    policy_json: "{}", prompt_family: "tags", input_token_estimate: 1,
+    max_output_token_estimate: 1, payload_key: "old-payload",
+  }]);
+  sql.exec("UPDATE jobs SET state='failed' WHERE id='old-failure'");
+  sql.exec("ALTER TABLE jobs DROP COLUMN terminal_reason");
+  sql.exec("ALTER TABLE jobs DROP COLUMN terminal_catalog_digest");
+  const rebooted = new LLMSchedulerDO({ storage }, withTestReservations({}));
+  const { statuses } = await rebooted.pollBatch(["old-failure"]);
+  assert.equal(statuses[0].state, "failed");
+  assert.equal(statuses[0].error, "job_failed");
+  assert.equal(statuses[0].terminal_reason, null);
+  assert.equal(statuses[0].terminal_catalog_digest, null);
+  assert.equal(sql.exec("SELECT payload_key FROM jobs WHERE id='old-failure'")[0].payload_key,
+    "old-payload");
+});
+
+function rescueCatalog() {
+  return {
+    model_aliases: {}, model_routes_map: { primary: ["p"], backup: ["b"] },
+    routes_by_id: {
+      p: { provider: "test", free: true, input_context_limit: 10000, output_context_limit: 1000 },
+      b: { provider: "test", free: true, input_context_limit: 10000, output_context_limit: 1000 },
+    },
+  };
+}
+
+function rescueJob(id, policy = { allowed_models: ["primary"], allow_paid: false }) {
+  return {
+    id, idempotency_key: id, request_digest: id, policy_json: JSON.stringify(policy),
+    prompt_family: "tags", input_token_estimate: 100, max_output_token_estimate: 100,
+    payload_key: `payloads/${id}.json`,
+  };
+}
+
+test("catalog rescue is bounded, resumes by time/id and terminalizes old retired model indexes", async () => {
+  const catalog = rescueCatalog();
+  const { coordinator, sql } = makeCoordinator({
+    DISPATCH_LIMITS_OVERRIDE: catalog, MAX_UNROUTABLE_RECONCILE_PER_TICK: "2",
+    MAX_ACTIVE_BUNDLES: "0",
+  });
+  await coordinator.enqueueBatch(["a", "b", "c", "d", "leased"].map(id => rescueJob(id)));
+  sql.exec("UPDATE jobs SET state='leased', lease_expires_at=? WHERE id='leased'", Date.now() + 600000);
+  delete catalog.model_routes_map.primary;
+  await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state='failed'")[0].n, 2);
+  assert.equal(JSON.parse(sql.exec("SELECT catalog_rescue_cursor FROM scheduler")[0].catalog_rescue_cursor).after[1], "b");
+  await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state='failed'")[0].n, 4);
+  await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(sql.exec("SELECT catalog_rescue_complete FROM scheduler")[0].catalog_rescue_complete, 1);
+  assert.equal(sql.exec("SELECT state FROM jobs WHERE id='leased'")[0].state, "leased");
+  const rows = sql.exec("SELECT terminal_reason, terminal_catalog_digest FROM jobs WHERE state='failed'");
+  assert.ok(rows.every(row => row.terminal_reason === "route_retired"));
+  assert.ok(rows.every(row => /^[a-f0-9]{64}$/.test(row.terminal_catalog_digest)));
+  assert.equal(sql.exec("SELECT COUNT(*) AS n FROM job_models WHERE job_id != 'leased'")[0].n, 0);
+});
+
+test("catalog rescue reindexes declared backups without changing provider attempt counters", async () => {
+  const catalog = rescueCatalog();
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog, MAX_ACTIVE_BUNDLES: "0" });
+  await coordinator.enqueueBatch([rescueJob("old-primary", {
+    allowed_models: ["primary"], backup_models: ["backup"], backup_after_attempts: 12,
+    allow_paid: false,
+  })]);
+  delete catalog.model_routes_map.primary;
+  await coordinator.claimDispatchWindow(Date.now(), 30);
+  const row = sql.exec("SELECT state, attempts, schema_retry_count, queue_models FROM jobs")[0];
+  assert.equal(row.state, "queued");
+  assert.equal(row.attempts, 0);
+  assert.equal(row.schema_retry_count, 0);
+  assert.deepEqual(JSON.parse(row.queue_models), ["backup"]);
+});
+
+test("catalog change restarts an unfinished rescue pass and transient fields do not change digest", async () => {
+  const catalog = rescueCatalog();
+  const { coordinator, sql } = makeCoordinator({
+    DISPATCH_LIMITS_OVERRIDE: catalog, MAX_ACTIVE_BUNDLES: "0",
+    MAX_UNROUTABLE_RECONCILE_PER_TICK: "1",
+  });
+  await coordinator.enqueueBatch([rescueJob("a"), rescueJob("b")]);
+  await coordinator.claimDispatchWindow(Date.now(), 30);
+  const digest = sql.exec("SELECT catalog_digest FROM scheduler")[0].catalog_digest;
+  Object.assign(catalog.routes_by_id.p, { rpd: 0, blocked_until: Date.now() + 100000, rpm: 1 });
+  assert.equal(await coordinator._structuralCatalogDigest(catalog), digest);
+  catalog.routes_by_id.p.input_context_limit = 100;
+  await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(JSON.parse(sql.exec("SELECT catalog_rescue_cursor FROM scheduler")[0].catalog_rescue_cursor).after[1], "a");
+  assert.equal(sql.exec("SELECT terminal_reason FROM jobs WHERE id='a'")[0].terminal_reason, "unadmissible");
+  assert.equal(sql.exec("SELECT state FROM jobs WHERE id='b'")[0].state, "queued");
+});
+
+test("rescue defers a whole page when its worst-case writes do not fit", async () => {
+  const catalog = rescueCatalog();
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog, MAX_ACTIVE_BUNDLES: "0" });
+  await coordinator.enqueueBatch([rescueJob("a")]);
+  delete catalog.model_routes_map.primary;
+  sql.exec("UPDATE scheduler SET rows_written_today=89995");
+  await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(sql.exec("SELECT state FROM jobs")[0].state, "queued");
+  assert.equal(sql.exec("SELECT catalog_rescue_cursor FROM scheduler")[0].catalog_rescue_cursor, null);
+  sql.exec("UPDATE scheduler SET rows_written_today=0");
+  await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(sql.exec("SELECT terminal_reason FROM jobs")[0].terminal_reason, "route_retired");
+});
+
+test("sentinel work enqueued after a completed catalog pass still becomes terminal", async () => {
+  const catalog = rescueCatalog();
+  const { coordinator, sql } = makeCoordinator({ DISPATCH_LIMITS_OVERRIDE: catalog, MAX_ACTIVE_BUNDLES: "0" });
+  await coordinator.claimDispatchWindow(Date.now(), 30);
+  await coordinator.enqueueBatch([rescueJob("new-oversized", { allowed_models: ["missing"] })]);
+  await coordinator.claimDispatchWindow(Date.now(), 30);
+  assert.equal(sql.exec("SELECT terminal_reason FROM jobs")[0].terminal_reason, "route_retired");
+});
+
+
+test("rescue resumes after recreation in time/id order and finishes despite new arrivals", async () => {
+  const catalog = rescueCatalog();
+  const env = { DISPATCH_LIMITS_OVERRIDE: catalog, MAX_ACTIVE_BUNDLES: "0",
+    MAX_UNROUTABLE_RECONCILE_PER_TICK: "1" };
+  const { coordinator, sql, storage } = makeCoordinator(env);
+  const policy = { allowed_models: ["primary"], backup_models: ["backup"],
+    backup_after_attempts: 12, allow_paid: false };
+  await coordinator.enqueueBatch(["a", "b", "c"].map(id => rescueJob(id, policy)));
+  sql.exec("UPDATE jobs SET updated_at=CASE id WHEN 'a' THEN 30 WHEN 'b' THEN 10 ELSE 20 END");
+  delete catalog.model_routes_map.primary;
+  await coordinator.claimDispatchWindow(Date.now(), 30);
+  const first = JSON.parse(sql.exec("SELECT catalog_rescue_cursor FROM scheduler")[0].catalog_rescue_cursor);
+  assert.deepEqual(first, { after: [10, "b"], through: [30, "a"] });
+  assert.equal(sql.exec("SELECT updated_at FROM jobs WHERE id='b'")[0].updated_at, 10);
+  assert.deepEqual(JSON.parse(sql.exec("SELECT queue_models FROM jobs WHERE id='b'")[0].queue_models), ["backup"]);
+  await coordinator.enqueueBatch([rescueJob("new", policy)]);
+  const restarted = makeCoordinator(env, { sql, storage }).coordinator;
+  await restarted.claimDispatchWindow(Date.now(), 30);
+  const second = JSON.parse(sql.exec("SELECT catalog_rescue_cursor FROM scheduler")[0].catalog_rescue_cursor);
+  assert.deepEqual(second, { after: [20, "c"], through: [30, "a"] });
+  await restarted.claimDispatchWindow(Date.now(), 30);
+  await restarted.claimDispatchWindow(Date.now(), 30);
+  assert.equal(sql.exec("SELECT catalog_rescue_complete FROM scheduler")[0].catalog_rescue_complete, 1);
+  assert.ok(sql.exec("SELECT queue_models FROM jobs").every(row => row.queue_models === '["backup"]'));
+  const plan = sql.exec(`EXPLAIN QUERY PLAN SELECT * FROM jobs WHERE state='queued'
+    AND (updated_at, id) > (?, ?) AND (updated_at, id) <= (?, ?)
+    ORDER BY updated_at, id LIMIT ?`, 10, "b", 30, "a", 1);
+  assert.ok(plan.some(row => /SEARCH jobs USING INDEX idx_jobs_state_updated_id/.test(row.detail)));
+  assert.ok(plan.every(row => !/SCAN jobs|TEMP B-TREE/.test(row.detail)));
+});
+
+for (const failureAt of ["mutation", "checkpoint"]) {
+  test(`rescue rolls back ${failureAt} quota outage and resumes its committed page after restart`, async () => {
+    const catalog = rescueCatalog();
+    const env = { DISPATCH_LIMITS_OVERRIDE: catalog, MAX_ACTIVE_BUNDLES: "0",
+      MAX_UNROUTABLE_RECONCILE_PER_TICK: "2" };
+    const { coordinator, sql, storage } = makeCoordinator(env);
+    await coordinator.enqueueBatch(["a", "b", "c", "d"].map(id => rescueJob(id)));
+    delete catalog.model_routes_map.primary;
+    await coordinator.claimDispatchWindow(Date.now(), 30);
+    const before = sql.exec("SELECT * FROM scheduler")[0];
+    const jobsBefore = sql.exec("SELECT * FROM jobs ORDER BY id");
+    const indexesBefore = sql.exec("SELECT * FROM job_models ORDER BY job_id");
+    const exec = sql.exec.bind(sql);
+    let mutations = 0;
+    sql.exec = (query, ...params) => {
+      if (failureAt === "mutation" && /UPDATE jobs SET state='failed'/.test(query) && ++mutations === 2) {
+        throw new Error("Durable Object row writes exceeded");
+      }
+      if (failureAt === "checkpoint" && /UPDATE scheduler SET rows_written_today =/.test(query) &&
+          /catalog_rescue_cursor/.test(query)) throw new Error("Durable Object row writes exceeded");
+      return exec(query, ...params);
+    };
+    await assert.rejects(coordinator.claimDispatchWindow(Date.now(), 30), /row writes exceeded/);
+    sql.exec = exec;
+    assert.deepEqual(sql.exec("SELECT * FROM jobs ORDER BY id"), jobsBefore);
+    assert.deepEqual(sql.exec("SELECT * FROM job_models ORDER BY job_id"), indexesBefore);
+    assert.deepEqual(sql.exec("SELECT * FROM scheduler")[0], before);
+    assert.equal(coordinator._txSchedulerSets, null);
+    // While the account remains unavailable even a read fails; no cursor may advance in memory.
+    sql.exec = () => { throw new Error("Durable Object row writes exceeded"); };
+    await assert.rejects(coordinator.claimDispatchWindow(Date.now(), 30), /row writes exceeded/);
+    sql.exec = exec;
+    const restarted = makeCoordinator(env, { sql, storage }).coordinator;
+    await restarted.claimDispatchWindow(Date.now(), 30);
+    await restarted.claimDispatchWindow(Date.now(), 30);
+    assert.equal(sql.exec("SELECT COUNT(*) AS n FROM jobs WHERE state='failed'")[0].n, 4);
+    assert.equal(sql.exec("SELECT queued_job_count, catalog_rescue_complete FROM scheduler")[0].queued_job_count, 0);
+    assert.equal(sql.exec("SELECT catalog_rescue_complete FROM scheduler")[0].catalog_rescue_complete, 1);
+  });
+}
+
+
+test("rescue keeps its checkpoint at the write stop and resumes after recreation and UTC reset", async t => {
+  let now = Date.UTC(2026, 9, 8, 23, 59);
+  t.mock.method(Date, "now", () => now);
+  const catalog = rescueCatalog();
+  const env = { DISPATCH_LIMITS_OVERRIDE: catalog, MAX_ACTIVE_BUNDLES: "0",
+    MAX_UNROUTABLE_RECONCILE_PER_TICK: "1" };
+  const { coordinator, sql, storage } = makeCoordinator(env);
+  await coordinator.enqueueBatch(["a", "b"].map(id => rescueJob(id)));
+  delete catalog.model_routes_map.primary;
+  await coordinator.claimDispatchWindow(now, 30);
+  const checkpoint = sql.exec("SELECT catalog_rescue_cursor FROM scheduler")[0].catalog_rescue_cursor;
+  sql.exec("UPDATE scheduler SET rows_written_today=89995");
+  await coordinator.claimDispatchWindow(now, 30);
+  assert.equal(sql.exec("SELECT catalog_rescue_cursor FROM scheduler")[0].catalog_rescue_cursor, checkpoint);
+  assert.equal(sql.exec("SELECT state FROM jobs WHERE id='b'")[0].state, "queued");
+  now += 120000;
+  const restarted = makeCoordinator(env, { sql, storage }).coordinator;
+  await restarted.claimDispatchWindow(now, 30);
+  await restarted.claimDispatchWindow(now, 30);
+  assert.equal(sql.exec("SELECT state FROM jobs WHERE id='b'")[0].state, "failed");
+  assert.equal(sql.exec("SELECT catalog_rescue_complete FROM scheduler")[0].catalog_rescue_complete, 1);
+  assert.ok(sql.exec("SELECT rows_written_today FROM scheduler")[0].rows_written_today < 100);
+});
+
+
+test("immutable catalog digest cache avoids enumeration while mutable overrides remain checked", async t => {
+  const { default: limits } = await import("../src/dispatch_limits.json", { with: { type: "json" } });
+  const { coordinator } = makeCoordinator({});
+  const digest = await coordinator._structuralCatalogDigest(limits);
+  const entries = Object.entries;
+  let enumerations = 0;
+  t.mock.method(Object, "entries", value => {
+    if ([limits.model_aliases, limits.model_routes_map, limits.routes_by_id].includes(value)) {
+      enumerations += 1;
+    }
+    return entries(value);
+  });
+  for (let i = 0; i < 20; i += 1) assert.equal(await coordinator._structuralCatalogDigest(limits), digest);
+  assert.equal(enumerations, 0);
+  const override = rescueCatalog();
+  const first = await coordinator._structuralCatalogDigest(override);
+  override.routes_by_id.p.output_context_limit += 1;
+  assert.notEqual(await coordinator._structuralCatalogDigest(override), first);
+  // Switching through an override cannot invalidate the immutable import's identity cache.
+  assert.equal(await coordinator._structuralCatalogDigest(limits), digest);
+  assert.equal(enumerations, 0);
 });

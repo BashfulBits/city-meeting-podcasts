@@ -15,7 +15,9 @@ meantime -- no need to hold onto or explicitly reconcile a handle itself.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import math
 import tempfile
 import time
 import uuid
@@ -28,7 +30,12 @@ from pathlib import Path
 from typing import Any
 
 from citypods.compute.base import JobHandle, JobResult
-from citypods.compute.llm_policy import DeferredLLMRequest, LLMRequestPolicy
+from citypods.compute.llm_policy import (
+    ROUTE_CANDIDATES,
+    DeferredLLMRequest,
+    LLMRequestPolicy,
+    canonical_model,
+)
 from citypods.storage.base import StorageReadUnavailable
 
 DEFERRED_PREFIX = "state/llm_deferred/"
@@ -268,18 +275,120 @@ def _deferred_record_lock(storage, recipe_hash: str):
         lease.release()
 
 
-def terminal_failure_retry_allowed(storage, recipe_hash: str) -> bool:
+def structural_recovery_context(
+    policy: LLMRequestPolicy,
+    *,
+    input_estimate: int,
+    output_budget: int,
+    input_identity: str,
+) -> dict[str, Any]:
+    """Capture routing/input identity without copying prompt text into recovery audits.
+
+    Only structurally fitting, policy-permitted route generations can authorize a resubmission.
+    Quota balances and pauses are deliberately absent from this lineage fingerprint.
+    """
+    models = tuple(dict.fromkeys((policy.allowed_models or ()) + policy.backup_models))
+    generations = {}
+    for model in models:
+        for route in ROUTE_CANDIDATES.get(canonical_model(model), ()):
+            if not policy.allow_paid and not route.free:
+                continue
+            if route.experimental and not policy.allow_experimental:
+                continue
+            scaled = math.ceil(max(0, input_estimate) * route.input_token_ratio)
+            if scaled + output_budget > route.input_context_limit:
+                continue
+            if output_budget > route.output_context_limit:
+                continue
+            if route.hard_input_ceiling and scaled > route.hard_input_ceiling:
+                continue
+            if route.provider == "gemini" and route.quota.tpm and scaled > route.quota.tpm:
+                continue
+            identity = {
+                "route_id": route.route_id,
+                "model": route.model,
+                "provider": route.provider,
+                "account_id": route.account_id,
+                "upstream_model": route.upstream_model,
+                "free": route.free,
+                "context": route.input_context_limit,
+                "output": route.output_context_limit,
+                "ceiling": route.hard_input_ceiling,
+                "ratio": route.input_token_ratio,
+            }
+            digest = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+            generations[route.route_id or route.model] = digest
+    return {
+        "models": list(models),
+        "allow_paid": policy.allow_paid,
+        "input_estimate": input_estimate,
+        "output_budget": output_budget,
+        "input_identity": input_identity,
+        "route_generations": generations,
+    }
+
+
+def terminal_recovery_generation(
+    storage,
+    recipe_hash: str,
+    context: Mapping[str, Any],
+    *,
+    marker: Mapping[str, Any] | None = None,
+) -> str | None:
+    """A new fitting generation, or None when this recipe remains structurally blocked.
+
+    Typed legacy failures carry an empty eligible baseline. A fresh proven generation gets its
+    own idempotency namespace; another failure records that generation and blocks unchanged replay.
+    """
+    if marker is None:
+        marker = _read_json(storage, deferred_failure_key(recipe_hash))
+    if not isinstance(marker, Mapping) or marker.get("status") != "structural_blocked":
+        return None
+    prior = marker.get("recovery_context")
+    if not isinstance(prior, Mapping):
+        return None
+    previous = prior.get("route_generations")
+    current = context.get("route_generations")
+    if not isinstance(previous, Mapping) or not isinstance(current, Mapping):
+        return None
+    if not any(previous.get(route) != generation for route, generation in current.items()):
+        return None
+    return hashlib.sha256(json.dumps(current, sort_keys=True).encode()).hexdigest()
+
+
+def terminal_failure_retry_allowed(
+    storage,
+    recipe_hash: str,
+    *,
+    recovery_context: Mapping[str, Any] | None = None,
+    marker_snapshot: dict[str, Any] | None = None,
+) -> bool:
     """Whether another fresh submission is allowed for this recipe lineage.
 
     The marker is deliberately separate from the canonical deferred record so a failed handle no
     longer looks pending to the sweep or to ``look_up_deferred``.  Malformed old records are
-    ignored rather than blocking work.
+    ignored rather than blocking work. An optional snapshot lets batch preparation reuse this
+    marker read for its idempotency generation instead of fetching it again.
     """
     data = _read_json(storage, deferred_failure_key(recipe_hash))
+    if marker_snapshot is not None:
+        marker_snapshot.clear()
+        if isinstance(data, Mapping):
+            marker_snapshot.update(data)
     if not isinstance(data, Mapping):
         return True
     if data.get("status") == "exhausted":
         return False
+    if data.get("status") == "structural_blocked":
+        try:
+            if int(data.get("failure_count", 0)) >= MAX_TERMINAL_FAILURE_RETRIES:
+                return False
+        except (TypeError, ValueError):
+            return False
+        return bool(
+            recovery_context
+            and terminal_recovery_generation(storage, recipe_hash, recovery_context, marker=data)
+        )
     try:
         return int(data.get("failure_count", 0)) < MAX_TERMINAL_FAILURE_RETRIES
     except (TypeError, ValueError):
@@ -338,6 +447,14 @@ def prune_expired_failure_markers(
             last_failed_at = last_failed_at.replace(tzinfo=UTC)
         if current <= last_failed_at + timedelta(days=ttl_days):
             continue
+        if data.get("status") == "structural_blocked":
+            try:
+                completed = look_up_deferred(storage, str(data.get("recipe_hash") or ""))
+            except StorageReadUnavailable:
+                continue
+            if not isinstance(completed, JobResult):
+                # This marker is still an active submission fence, not merely expired history.
+                continue
         try:
             storage.delete(key)
         except Exception:  # noqa: BLE001 -- maintenance cleanup remains best-effort
@@ -379,6 +496,36 @@ def discard_terminal_failure(
     error: BaseException,
     *,
     exhausted: bool = False,
+    structural: bool = False,
+    now: datetime | None = None,
+) -> int:
+    """Fence audit/delete against producers using the same per-recipe maintenance lease."""
+    with _deferred_record_lock(storage, handle.recipe_hash):
+        try:
+            return _discard_terminal_failure_locked(
+                storage,
+                snapshot,
+                handle,
+                error,
+                exhausted=exhausted,
+                structural=structural,
+                now=now,
+            )
+        except Exception:
+            for entry in snapshot.entries:
+                if isinstance(entry.decoded, JobHandle) and entry.decoded == handle:
+                    entry.deleted = False
+            raise
+
+
+def _discard_terminal_failure_locked(
+    storage,
+    snapshot: DeferredSnapshot,
+    handle: JobHandle,
+    error: BaseException,
+    *,
+    exhausted: bool = False,
+    structural: bool = False,
     now: datetime | None = None,
 ) -> int:
     """Persist one bounded audit marker and remove a terminally bad pending handle.
@@ -391,7 +538,11 @@ def discard_terminal_failure(
     if entry is None or not isinstance(entry.data, Mapping):
         return 0
     # Do not delete a newer record a producer may have written after this snapshot was loaded.
-    if _read_json(storage, entry.key) != entry.data:
+    if (
+        entry.data.get("ref") != handle.ref
+        or entry.data.get("backend") != handle.backend
+        or _read_json(storage, entry.key) != entry.data
+    ):
         entry.deleted = False
         return 0
     now = now or datetime.now(UTC)
@@ -400,7 +551,13 @@ def discard_terminal_failure(
         prior_count = int(prior.get("failure_count", 0)) if isinstance(prior, Mapping) else 0
     except (TypeError, ValueError):
         prior_count = 0
-    count = max(0, prior_count) + 1
+    if structural and not (
+        getattr(error, "terminal_reason", None) in {"route_retired", "unadmissible"}
+        and getattr(error, "terminal_catalog_digest", None)
+    ):
+        entry.deleted = False
+        raise ValueError("structural recovery requires typed reason and catalog identity")
+    count = max(0, prior_count) + (0 if structural else 1)
     # Adapter exceptions intentionally omit model output/provider bodies.  Cap the stored reason
     # anyway: this is durable operational metadata, not a transcript/error dump.
     reason = str(error).replace("\n", " ")[:500]
@@ -423,6 +580,23 @@ def discard_terminal_failure(
             "exhausted" if exhausted or count >= MAX_TERMINAL_FAILURE_RETRIES else "retryable"
         ),
     }
+    if structural:
+        recovery = entry.data.get("recovery_context")
+        if not isinstance(recovery, Mapping):
+            # A typed structural terminal proves no route fitted the original request. This
+            # empty eligible baseline does not guess a legacy handle's missing routing policy.
+            recovery = {"route_generations": {}, "input_identity": handle.recipe_hash}
+        marker.update(
+            {
+                "status": "structural_blocked",
+                "terminal_reason": error.terminal_reason,
+                "terminal_catalog_digest": error.terminal_catalog_digest,
+                "original_ref": handle.ref,
+                "recovery_disposition": "await_eligible_generation_or_rebatch",
+                "recovery_context": dict(recovery),
+                "input_identity": recovery.get("input_identity") or handle.recipe_hash,
+            }
+        )
     # Audit first: a storage interruption can leave a stale handle to retry, but cannot make the
     # terminal failure disappear without a record of why it was removed.
     _write_json(
@@ -613,7 +787,12 @@ def _read_json(storage, key: str, *, deadline_at: datetime | None = None) -> Any
 
 
 def write_deferred(
-    storage, recipe_hash: str, result: JobResult | JobHandle, *, now: datetime | None = None
+    storage,
+    recipe_hash: str,
+    result: JobResult | JobHandle,
+    *,
+    now: datetime | None = None,
+    recovery_context: Mapping[str, Any] | None = None,
 ) -> None:
     """Persist a handle's pending state, or a completed result, to the registry.
 
@@ -634,6 +813,12 @@ def write_deferred(
         ):
             return
         record = _record_for(result)
+        if isinstance(result, JobHandle):
+            if recovery_context is not None:
+                record["recovery_context"] = dict(recovery_context)
+            elif isinstance(existing_raw, Mapping) and existing_raw.get("ref") == result.ref:
+                if isinstance(existing_raw.get("recovery_context"), Mapping):
+                    record["recovery_context"] = existing_raw["recovery_context"]
         created_at = existing_raw.get("created_at") if isinstance(existing_raw, Mapping) else None
         record["created_at"] = (
             created_at if isinstance(created_at, str) and created_at else now.isoformat()
@@ -1233,7 +1418,9 @@ __all__ = [
     "repair_deferred_index",
     "record_schema_correction",
     "schema_correction_attempted",
+    "structural_recovery_context",
     "terminal_failure_retry_allowed",
+    "terminal_recovery_generation",
     "write_deferred",
     "write_v2_terminal_cursor",
 ]

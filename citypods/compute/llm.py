@@ -43,7 +43,9 @@ from citypods.compute.llm_budget import (
 )
 from citypods.compute.llm_deferred import (
     look_up_deferred,
+    structural_recovery_context,
     terminal_failure_retry_allowed,
+    terminal_recovery_generation,
     write_deferred,
 )
 from citypods.compute.llm_failure_class import (
@@ -272,6 +274,32 @@ class LLMStructuredOutputError(LLMBackendError):
 
 class LLMDispatchTerminalError(LLMBackendError):
     """The dispatch Worker recorded a terminal failure for this one request."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        terminal_reason: str | None = None,
+        terminal_catalog_digest: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        # Unknown future reasons retain generic failure semantics. A structural disposition
+        # requires both recognized metadata and a nonempty catalog identity.
+        self.terminal_reason = (
+            terminal_reason
+            if isinstance(terminal_reason, str)
+            and terminal_reason in {"route_retired", "unadmissible"}
+            else None
+        )
+        self.terminal_catalog_digest = (
+            terminal_catalog_digest
+            if isinstance(terminal_catalog_digest, str) and terminal_catalog_digest.strip()
+            else None
+        )
+
+    @property
+    def structural(self) -> bool:
+        return self.terminal_reason is not None and self.terminal_catalog_digest is not None
 
 
 class LLMUpstreamPassthroughError(LLMDispatchTerminalError):
@@ -1357,11 +1385,13 @@ class LiteLLMBackend(Backend):
         existing = look_up_deferred(self.storage, job.recipe_hash)
         if existing is not None:
             return existing
-        if not terminal_failure_retry_allowed(self.storage, job.recipe_hash):
+        if not terminal_failure_retry_allowed(
+            self.storage, job.recipe_hash, recovery_context=self._structural_recovery_context(job)
+        ):
             raise LLMBackendError(
-                "LLM terminal failure retry limit reached for this recipe; "
+                "LLM terminal retry limit or structural recovery gate blocks this recipe; "
                 "change the input/recipe, clear its failure marker after investigating, "
-                "or wait for the marker's audit retention to expire"
+                "or wait for an eligible route generation"
             )
 
         messages = _messages(job)
@@ -1371,6 +1401,26 @@ class LiteLLMBackend(Backend):
         # the sweep (or a later call) can pick up exactly where this one left off.
         write_deferred(self.storage, job.recipe_hash, result)
         return result
+
+    def _structural_recovery_context(self, job: InferenceJob) -> dict[str, Any]:
+        policy = job.inputs.get("llm_policy") if isinstance(job.inputs, Mapping) else None
+        policy = policy or LLMRequestPolicy(allowed_models=(self.config.model,))
+        messages = _messages(job)
+        structured = self._response_model(job)
+        response_model = structured[1] if structured else None
+        allowed = policy.allowed_models or (self.config.model,)
+        payload = self._payload(
+            job, response_model, resolved_model=canonical_model(allowed[0]), schema_only=True
+        )
+        input_estimate = estimate_tokens(payload.get("messages", messages))
+        if payload.get("structured_output"):
+            input_estimate += math.ceil(len(json.dumps(payload["structured_output"])) / 4)
+        return structural_recovery_context(
+            policy,
+            input_estimate=input_estimate,
+            output_budget=self._output_token_budget(job),
+            input_identity=hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest(),
+        )
 
     def run_immediate(self, job: InferenceJob) -> JobResult:
         """Direct, same-process inference with quota accounting and no durable result registry.
@@ -1911,6 +1961,8 @@ class LiteLLMBackend(Backend):
         # Only an in-flight row refuses a changed payload (idempotency_conflict); the handle is
         # kept for that case so the running attempt finishes and is polled normally.
         prior_pending: dict[int, JobHandle] = {}
+        recovery_contexts: dict[int, dict[str, Any]] = {}
+        recovery_generations: dict[int, str] = {}
         for i, job in enumerate(jobs):
             cached = look_up_deferred(self.storage, job.recipe_hash)
             if isinstance(cached, JobResult):
@@ -1919,6 +1971,25 @@ class LiteLLMBackend(Backend):
             else:
                 if isinstance(cached, JobHandle):
                     prior_pending[i] = cached
+                context = recovery_contexts[i] = self._structural_recovery_context(job)
+                marker: dict[str, Any] = {}
+                if not terminal_failure_retry_allowed(
+                    self.storage,
+                    job.recipe_hash,
+                    recovery_context=context,
+                    marker_snapshot=marker,
+                ):
+                    out[i] = LLMBackendError(
+                        "LLM recipe awaits structural recovery or retry review"
+                    )
+                    telemetry_outcomes.append((job, "rejected", "terminal_recovery_blocked"))
+                    continue
+                if marker.get("status") == "structural_blocked":
+                    generation = terminal_recovery_generation(
+                        self.storage, job.recipe_hash, context, marker=marker
+                    )
+                    if generation:
+                        recovery_generations[i] = generation
                 uncached_indices.append(i)
 
         if not uncached_indices:
@@ -2022,6 +2093,9 @@ class LiteLLMBackend(Backend):
             canonical_payload_str = json.dumps(payload, sort_keys=True)
             request_digest = hashlib.sha256(canonical_payload_str.encode("utf-8")).hexdigest()
             idempotency_key = f"{job.recipe_hash}:durable-queue-v2" if job.recipe_hash else job_id
+            generation = recovery_generations.get(idx)
+            if generation:
+                idempotency_key += f":recovery:{generation}"
 
             if storage is not None:
                 # Unconditional PUT (no if_none_match/if_match): job_id is a fresh UUID for
@@ -2228,7 +2302,7 @@ class LiteLLMBackend(Backend):
         rejected_count = 0
         unknown_count = 0
         rejection_reasons: dict[str, int] = {}
-        deferred_writes: list[tuple[str, JobHandle]] = []
+        deferred_writes: list[tuple[int, JobHandle]] = []
         for idx, job, structured_name, logical_model, job_id in job_meta:
             if job_id in accepted_by_submitted_id:
                 canonical_id = accepted_by_submitted_id[job_id]
@@ -2247,7 +2321,7 @@ class LiteLLMBackend(Backend):
                     structured_output=structured_name,
                     model=logical_model,
                 )
-                deferred_writes.append((job.recipe_hash, handle))
+                deferred_writes.append((idx, handle))
                 out[idx] = handle
             else:
                 reason = rejected_by_id.get(job_id, "unknown")
@@ -2273,7 +2347,7 @@ class LiteLLMBackend(Backend):
                             max_tokens_mode=_job_max_tokens_mode(job),
                         ),
                     )
-                    deferred_writes.append((job.recipe_hash, handle))
+                    deferred_writes.append((idx, handle))
                     out[idx] = handle
                 elif reason == "idempotency_conflict" and idx in prior_pending:
                     # In flight under its previous payload (e.g. across a payload-shape change):
@@ -2297,9 +2371,15 @@ class LiteLLMBackend(Backend):
                     telemetry_outcomes.append((job, "rejected", reason))
                     out[idx] = LLMBackendError(f"LLM dispatch v2 rejected job {job_id}: {reason}")
 
-        def _persist_deferred(item: tuple[str, JobHandle]) -> None:
-            recipe_hash, handle = item
-            write_deferred(storage, recipe_hash, handle)
+        def _persist_deferred(item: tuple[int, JobHandle]) -> None:
+            idx, handle = item
+            recipe_hash = jobs[idx].recipe_hash
+            write_deferred(
+                storage,
+                recipe_hash,
+                handle,
+                recovery_context=recovery_contexts[idx],
+            )
 
         persist_started = time.monotonic()
         if deferred_writes:
@@ -2502,7 +2582,9 @@ class LiteLLMBackend(Backend):
                 payload_keys[h.ref] = st.get("payload_key")
             elif state == "failed":
                 results[h.ref] = LLMDispatchTerminalError(
-                    f"LLM dispatch v2 job {h.ref} failed permanently"
+                    f"LLM dispatch v2 job {h.ref} failed permanently",
+                    terminal_reason=st.get("terminal_reason"),
+                    terminal_catalog_digest=st.get("terminal_catalog_digest"),
                 )
             else:
                 results[h.ref] = None
@@ -3095,7 +3177,13 @@ class BatchingDispatchBackend:
                 else:
                     _observe_locked("prior_pending")
             return existing
-        if not terminal_failure_retry_allowed(self._backend.storage, job.recipe_hash):
+        recovery_context_for = getattr(self._backend, "_structural_recovery_context", None)
+        recovery_context = recovery_context_for(job) if callable(recovery_context_for) else None
+        if not terminal_failure_retry_allowed(
+            self._backend.storage,
+            job.recipe_hash,
+            recovery_context=recovery_context,
+        ):
             # Preserve the wrapped backend's specific terminal-failure error message.
             return self._backend.run_inference(job)
 

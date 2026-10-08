@@ -1091,7 +1091,7 @@ test("an oversized job fails even when the model's live uncapped route cannot fi
   assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'big'")][0].state, "failed");
 });
 
-test("an oversized job fails only once its uncapped route has spent its daily quota", async () => {
+test("an oversized job stays queued while a fitting uncapped route has spent daily quota", async () => {
   const catalog = {
     ...CEILING_CATALOG,
     model_routes_map: { "google/gemma-4-31b-it": ["gemma-ai-studio", "gemma-uncapped"] },
@@ -1151,8 +1151,8 @@ test("an oversized job fails only once its uncapped route has spent its daily qu
     zonedDateKey(now + 2000, "UTC")
   );
   const spent = await coordinator.claimDispatchWindow(now + 2000, 30);
-  assert.equal(spent.claim_diagnostics.oversize_failed_jobs, 1);
-  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'big'")][0].state, "failed");
+  assert.equal(spent.claim_diagnostics.oversize_failed_jobs, 0);
+  assert.equal([...sql.exec("SELECT state FROM jobs WHERE id = 'big'")][0].state, "queued");
 });
 
 test("claims stop at MAX_LEASES_PER_UTC_DAY and resume on the next UTC day", async () => {

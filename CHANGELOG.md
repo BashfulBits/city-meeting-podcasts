@@ -12,6 +12,21 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog Slice 3a structural rescue (#2190, implementation in progress).**
+  Dispatch failed-job poll/feed responses carry nullable structural reason/catalog fields;
+  legacy failures remain generic. Python preserves recognized metadata, and deferred terminal
+  cleanup fences the responding handle against the snapshot's backend/ref and current stored
+  record. Bounded queued-job rescue unlocks declared backups when primaries cannot structurally
+  run; temporary pauses/quotas do not trigger failure. Structural recovery audits before deleting
+  a matching handle, preserves retry/schema-correction counts and gates repeat submissions on a
+  new fitting route generation. Prelabeler work rebatches retained subjects against current bounds;
+  even a singleton must fit the combined reservation before dispatch. Batch preparation reuses
+  recovery context/marker reads; immutable catalog digests are cached before serialization.
+  Rescue reuses the existing queue index and persists bounded progress atomically, including
+  across quota outages and DO recreation. Coordinated client/Worker activation remains a gate;
+  removal automation stays gated on deployment and recovery canary.
+  No pipeline version bump or successful-artifact invalidation.
+
 - **Provider catalog Slice 2b: explicit keep-paid PR preparation (#2187).** `/apply` rechecks
   selected physical routes under existing pauses/quotas and requires unchanged route evidence plus
   fresh `not_entitled` proof. Narrow edits set `free: false` and acknowledge the exact upstream;
