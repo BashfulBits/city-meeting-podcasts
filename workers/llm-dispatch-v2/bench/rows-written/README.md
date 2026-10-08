@@ -18,6 +18,9 @@ curl -s "http://127.0.0.1:8799/r429?name=run5"             # an in-lease 429 ret
 curl -s "http://127.0.0.1:8799/ingress?name=run6&purpose=chapter-locator&models=gemini/gemini-3.5-flash-lite,deepseek/deepseek-v4-pro,moonshotai/kimi-k3&n=200"
 # full lifecycle of a three-model pool (claim deletes every model index row, not just one)
 curl -s "http://127.0.0.1:8799/?name=run7&n=60&retire=1&purpose=topic-tags:tagger&models=gemini/gemini-3.1-flash-lite,kilo/stepfun/step-3.7-flash:free,deepseek/deepseek-v4-flash"
+# mixed-lane workload (review/49 packed consensus at 1/10 volume): per-table rows and the
+# one-row-per-job queue projection; pass ?mix=<JSON array of {lane,purpose,n,models}> to override
+curl -s "http://127.0.0.1:8799/pooled?name=run8"
 ```
 
 Every lifecycle run reports `lifecycle_w` (rows a job writes while it is live) and `total_w`,
@@ -162,3 +165,39 @@ A first-try one-model job now costs 15.4 billed rows end to end including retent
 22.6 at the start of this series (-32%) and 44.3 before the 2026-09 tiers; a three-model job
 19.3 against 28.2. At the 90,000-row safe stop that is about 5,800 one-model first-try jobs a day
 before retries and idle overhead (previously about 4,000).
+
+## Mixed-lane pooled run (`/pooled`, 2026-10-07)
+
+`/pooled` runs a whole lane mix through one coordinator, the way production interleaves lanes in
+bundles. The default `CONSENSUS_MIX` in `harness.js` is review/49's packed-consensus plan at 1/10
+of its 800-meetings/day volume ([capacity evidence](../../../../review/evidence/2026-10-02-llm-800-meeting-capacity.md)):
+agenda 48 x 3 models, pinned locator 48 x 1, tagger 66 x 3, moments 10 x 4, pinned anchor judge
+19 x 1, sibling judge 37 x 2 and adjudicator 19 x 2. The last two are proposed pools, so two-model
+stand-ins on existing lanes play them. Every job is a first-try success, retired by consumption.
+
+It reports billed rows by phase and **by table** (each write statement attributed to the table it
+writes), and two queue figures:
+
+- `queue_index.measured_w`: what `job_models` wrote (one row per model at enqueue, one per model
+  at claim). It is checked against `expected_per_model_w` = 2 x models x jobs.
+- `one_row_per_job_projection`: the same run with the model queue replaced by one row per job
+  (insert + delete = 2), i.e. a pooled queue index. This is the decision figure for that change.
+
+Measured after step 5 (wrangler 4.131.1):
+
+| | Rows | Per job |
+|---|---:|---:|
+| Total (247 jobs) | 4,444 | 17.99 |
+| `job_models` (measured = expected) | 1,122 | 4.54 |
+| Projection with a one-row-per-job queue | 3,816 | 15.45 |
+| Saving | 628 (14.1%) | 2.54 |
+
+By table, including the deferred prune (sums to the 4,444 total): jobs 2,223, job_models
+1,122, routes 450, estimates 246, attempt_usage 239, scheduler 112, providers 40,
+ingress_purpose 12. Each run starts with an empty calibration
+window, so `estimates` is written on every completion here; in production it is sampled 1-in-4
+once a window is full, which lowers the total slightly and raises the queue's share. Scaled to
+the plan's daily volume the saving is about 6,300 rows/day.
+
+Re-run this after the review/49 lanes are implemented, with `mix` set to their real pools and
+volumes, to decide whether the pooled queue index is worth building (see its GitHub issue).

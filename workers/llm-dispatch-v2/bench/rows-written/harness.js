@@ -3,6 +3,7 @@ import { DurableObject } from "cloudflare:workers";
 
 const NEMOTRON = "nvidia/nemotron-3-ultra-550b-a55b:free";
 const GEMMA = "google/gemma-4-31b-it";
+const GEMMA_26B = "google/gemma-4-26b-a4b-it";
 
 function job(i, purpose, model, models) {
   return {
@@ -18,6 +19,40 @@ function job(i, purpose, model, models) {
     priority: 1,
   };
 }
+
+/** The table a write statement targets, for per-table attribution ("other" for DDL batches). */
+function writtenTable(query) {
+  const match = /^\s*(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE(?:\s+OR\s+\w+)?|DELETE\s+FROM)\s+(\w+)/i
+    .exec(query || "");
+  return match ? match[1] : "other";
+}
+
+/** Add each key's count in `source` to `target` (per-table billed-row tallies). */
+const addInto = (target, source) => {
+  for (const [key, value] of Object.entries(source)) target[key] = (target[key] || 0) + value;
+};
+
+/**
+ * The review/49 packed-consensus lane mix at 1/10 of its 800-meetings/day volume (capacity
+ * evidence, 2026-10-02), on today's lanes and routes. Pinned (`per_model`) lanes index one model
+ * per job; pooled lanes index each model in the pool. The sibling and adjudicator pools are
+ * proposed, so two-model stand-ins on existing lanes play them.
+ */
+const CONSENSUS_MIX = [
+  { lane: "agenda", purpose: "chapter-agenda", n: 48,
+    models: [NEMOTRON, "tencent/hy3", "gemini/gemini-3.1-flash-lite"] },
+  { lane: "locator (pinned)", purpose: "chapter-locator", n: 48,
+    models: ["deepseek/deepseek-v4-flash"] },
+  { lane: "tagger", purpose: "topic-tags:tagger", n: 66,
+    models: ["gemini/gemini-3.1-flash-lite", "kilo/stepfun/step-3.7-flash:free", "deepseek/deepseek-v4-flash"] },
+  { lane: "moments (4-model pool)", purpose: "r6-moments", n: 10,
+    models: ["zai/glm-5.3-flash", "moonshotai/kimi-k3", "gemini/gemini-3.8-flash", "gemini/gemini-3.5-flash-lite"] },
+  { lane: "anchor judge (pinned)", purpose: "r6-judge", n: 19, models: ["qwen/qwen3.8-27b"] },
+  { lane: "sibling judge (2-model)", purpose: "r6-judge", n: 37,
+    models: [GEMMA_26B, "gemini/gemini-3.6-flash"] },
+  { lane: "adjudicator (2-model)", purpose: "tournament:tag", n: 19,
+    models: ["zai/glm-4.7-flash", "deepseek/deepseek-v4.1-flash"] },
+];
 
 /** Lifecycle totals: `lifecycle_w` is what one job costs while it is live; `total_w` adds the
  * deferred retention prune. Both are the per-PR comparison figures in README.md. */
@@ -39,11 +74,14 @@ export class MeasureDO extends LLMSchedulerDO {
     if (!this._wrapped) {
       const real = this.sql;
       this._cursors = [];
+      this._cursorSql = [];
       const cursors = this._cursors;
+      const texts = this._cursorSql;
       this._wrapped = {
         exec: (...args) => {
           const c = real.exec(...args);
           cursors.push(c);
+          texts.push(String(args[0]));
           return c;
         },
         get databaseSize() { return real.databaseSize; },
@@ -53,24 +91,33 @@ export class MeasureDO extends LLMSchedulerDO {
     return super._getSql();
   }
   _take() {
-    // Drain any unconsumed cursors so their counters are final, then total and reset.
+    // Drain any unconsumed cursors so their counters are final, then total and reset. Billed
+    // writes are also attributed to the table each statement writes (`byTable`).
     let w = 0, r = 0;
-    for (const c of this._cursors) {
+    const byTable = {};
+    this._cursors.forEach((c, i) => {
       try { for (const _ of c) { /* consume */ } } catch {}
       w += c.rowsWritten; r += c.rowsRead;
-    }
+      if (c.rowsWritten > 0) {
+        const table = writtenTable(this._cursorSql?.[i]);
+        byTable[table] = (byTable[table] || 0) + c.rowsWritten;
+      }
+    });
     this._cursors.length = 0;
-    return { w, r };
+    if (this._cursorSql) this._cursorSql.length = 0;
+    return { w, r, byTable };
   }
 
   /** Deferred cost of a lifecycle: the retention prune that deletes its bookkeeping rows days
    * later (attempts, terminal bundles), run directly past every retention window. */
-  _measurePrune(now) {
+  _measurePrune(now, byTable = null) {
     const later = now + 30 * 24 * 3600 * 1000;
     let w = 0;
     for (let round = 0; round < 100; round += 1) {
       const deleted = this._transactionSync(() => this._pruneTerminalRecords(later));
-      w += this._take().w;
+      const taken = this._take();
+      w += taken.w;
+      if (byTable) addInto(byTable, taken.byTable);
       if (Object.values(deleted).every((count) => count === 0)) break;
     }
     return w;
@@ -257,12 +304,97 @@ MeasureDO.prototype.measureSchema = async function () {
   };
 };
 
+/**
+ * A full first-try lifecycle of a mixed-lane workload (default CONSENSUS_MIX), retired by
+ * consumption, reporting billed rows by table. `queue_index` is what the model queue (job_models)
+ * wrote; `one_row_per_job_projection` replaces it with what a queue writing one row per job per
+ * index (insert + delete = 2) would write, the pooled queue index's saving (#1844 follow-up).
+ */
+MeasureDO.prototype.measurePooled = async function ({ mix = CONSENSUS_MIX } = {}) {
+  this._getSql();
+  const t0 = Date.now();
+  await this.claimDispatchWindow(t0, 30); this._take();
+  const jobs = [];
+  for (const [laneIndex, lane] of mix.entries()) {
+    for (let i = 0; i < lane.n; i += 1) {
+      jobs.push(job(laneIndex * 1000 + i, lane.purpose, lane.models[0], lane.models));
+    }
+  }
+  const byTable = {};
+  const phases = {};
+  const record = (phase) => {
+    const taken = this._take();
+    phases[phase] = (phases[phase] || 0) + taken.w;
+    addInto(byTable, taken.byTable);
+  };
+  const enqueued = await this.enqueueBatch(jobs);
+  record("enqueue");
+  const accepted = new Set((enqueued.accepted || []).map((row) => row.id));
+  let now = t0 + 61_000;
+  const leased = new Set();
+  for (let tick = 0; tick < 600 && leased.size < accepted.size; tick += 1, now += 61_000) {
+    const plan = await this.claimDispatchWindow(now, 30);
+    record("claim");
+    if (!plan.jobs || plan.jobs.length === 0) continue;
+    await this.completeBatch(plan.bundle_id, plan.execution_token, plan.jobs.map((j) => {
+      leased.add(j.id);
+      return {
+        job_id: j.id, lease_token: j.lease_token, attempt_id: crypto.randomUUID(),
+        planned_at: j.not_before_at, actual_start_at: now + 100, actual_end_at: now + 5000,
+        observed_input_tokens: 2100, observed_output_tokens: 400, outcome: "success",
+        provider_status_code: 200, result_key: `results/${j.id}/x.json`,
+      };
+    }));
+    record("complete");
+  }
+  const polled = await this.pollBatch([...leased]);
+  this._take();
+  await this.retireConsumed(polled.statuses.map((s) => ({ id: s.id, result_key: s.result_key })));
+  record("retire");
+  phases.prune = this._measurePrune(now, byTable);
+
+  const lanes = mix.map((lane, laneIndex) => {
+    const ids = jobs.filter((_, i) => Math.floor(Number(jobs[i].id.split("-").pop()) / 1000) === laneIndex);
+    return {
+      lane: lane.lane, purpose: lane.purpose, models: lane.models.length, jobs: lane.n,
+      accepted: ids.filter((j) => accepted.has(j.id)).length,
+      completed: ids.filter((j) => leased.has(j.id)).length,
+    };
+  });
+  const total = Object.values(phases).reduce((sum, w) => sum + w, 0);
+  const completed = leased.size;
+  // A first-try job is indexed once (enqueue) and unindexed once (claim).
+  const queueRows = byTable.job_models || 0;
+  const oneRowQueue = 2 * completed;
+  const projected = total - queueRows + oneRowQueue;
+  return {
+    lanes, rejected: enqueued.rejected || [], completed, phases, by_table: byTable,
+    total_w: total,
+    per_job: +(total / Math.max(1, completed)).toFixed(2),
+    queue_index: {
+      measured_w: queueRows,
+      expected_per_model_w: lanes.reduce((sum, lane) => sum + 2 * lane.models * lane.completed, 0),
+      one_row_per_job_w: oneRowQueue,
+    },
+    one_row_per_job_projection: {
+      total_w: projected,
+      per_job: +(projected / Math.max(1, completed)).toFixed(2),
+      saved_w: total - projected,
+      saved_fraction: +((total - projected) / Math.max(1, total)).toFixed(3),
+    },
+  };
+};
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const name = url.searchParams.get("name") || crypto.randomUUID();
     const stub = env.M.get(env.M.idFromName(name));
     if (url.pathname === "/schema") return Response.json(await stub.measureSchema());
+    if (url.pathname === "/pooled") {
+      const mix = url.searchParams.get("mix");
+      return Response.json(await stub.measurePooled(mix ? { mix: JSON.parse(mix) } : {}));
+    }
     if (url.pathname === "/accounting") return Response.json(await stub.measureAccounting());
     if (url.pathname === "/retry") return Response.json(await stub.measureRetry());
     if (url.pathname === "/r429") return Response.json(await stub.measure429());
