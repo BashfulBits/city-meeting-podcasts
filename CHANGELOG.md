@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog remaining-slice contract proposal (review/48 §8).** Records the maintainer’s
+  additions-first sequence, initial additions/ignore command scope and automatic proven tightening
+  PRs with material-change flags. Proposes evidence/identity and config-write contracts, bounded
+  structural job recovery, removal gates and scoped limit histories, including BeatAPI’s shared
+  JEV window. Corrects #2169 verification to shipped; remaining slices await contract acceptance
+  and implementation issues. Design only; no route, deployment, recipe or artifact changes.
+
 - **LLM dispatch: backup-tier routes; BeatAPI chat legs demoted to backup.** A route may declare
   `tier: backup` in `config/provider_limits.yml` (validated at compile, carried into the Worker
   catalog). The Worker ranks backup routes after every primary route in a job's pool, after the

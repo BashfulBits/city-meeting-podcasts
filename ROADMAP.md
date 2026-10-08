@@ -261,6 +261,12 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > mirroring H14d's provider-cycle dollar model, and prompt-management conventions all need deciding.
 > Everything from the old R2 onward shifts down by two (R2→R4, R3→R5, R4→R6, R5→R7, R6→R8, R7→R9).
 
+> **R10 catalog follow-up (2026-10-08):** review/48 schema verification shipped in #2169.
+> Remaining contracts are proposed in [review/48 §8](review/48-provider-catalog-reconciliation.md#8-remaining-slice-contract-proposal--2026-10-08):
+> additions/ignore first, paid/shadow follow-up, bounded rescue before removal, then limits.
+> Proven material tightening may prepare a flagged PR; merge remains a maintainer decision.
+> Remaining slices return to L2 pending contract acceptance and implementation issues.
+>
 > **Added 2026-07-14 (maintainer decision): a rate-limited LLM dispatch item, numbered R10 but sequenced
 > second in the table below, right after R1.** This is deliberate, not a mistake — the maintainer asked
 > to avoid the renumbering churn a mid-sequence insert caused last time, so new items now get the next
