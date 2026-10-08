@@ -12,6 +12,18 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **BeatAPI registered: free chat models routed, JEV catalogued (#1967).** `config/provider_limits.yml`
+  gains a `beatapi` provider (`BEATAPI_API_KEY`) and five free chat routes (`deepseek-v4-flash-0731`,
+  `deepseek-v4.1-flash`, `deepseek-v4-pro`, `gpt-6-astra`, `gpt-6.1-sol`). The DeepSeek routes pool
+  into the existing logical models (`deepseek/deepseek-v4-flash` with OrcaRouter,
+  `deepseek/deepseek-v4.1-flash` with NVIDIA); V4 Pro is a new pool. All free BeatAPI traffic,
+  including `jev-1.13-free`, shares one account-wide limit of 1 successful request a minute
+  (measured live in both directions), configured at the provider. A catalog plugin treats the
+  `-free` suffix as free evidence and keeps JEV (a `/v1/systemone` task plugin) out of the chat
+  candidates; the key is passed to the reconcile and rate-probe workflows. JEV's own route stays
+  with the review/49 P1 breakout. Chat context limits are unmeasured placeholders pending
+  `llm-rate-probe.yml` phase 2.
+
 - **Triaged the five unexpected-feed rows.** Arlington’s verified Council recording gets an exact
   source-ID addition; Dallas’s South Dallas/Fair Park special-called title gets a reusable board
   rule. Addison’s school dedication and Fort Worth’s unreadable provider label get no meeting-feed

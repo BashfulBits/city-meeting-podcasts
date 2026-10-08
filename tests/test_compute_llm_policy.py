@@ -63,15 +63,19 @@ def test_generated_catalog_unifies_deepseek_and_nemotron_provider_aliases():
     # on a misdiagnosis -- the 404s were NOT NVIDIA-side model gating but a custom-provider path
     # mismatch in Cloudflare AI Gateway (see config/provider_limits.yml's `nvidia` block). Restored
     # once the path fix was verified end-to-end against the live gateway. Paid routes are absent.
-    # One pool name per DeepSeek version (2026-09-24): v4 is OrcaRouter only, v4.1 NVIDIA only,
-    # and the old `v4-pro` alias pool is retired.
+    # One pool name per DeepSeek version (2026-09-24), shared by every provider serving that model
+    # (BeatAPI joined 2026-10-07): v4 is OrcaRouter + BeatAPI, v4.1 NVIDIA + BeatAPI. The old
+    # `v4-pro` alias that pointed at NVIDIA's v4.1 stays retired; the pool is now BeatAPI's own.
     deepseek = ROUTE_CANDIDATES["deepseek/deepseek-v4-flash"]
-    assert {candidate.provider for candidate in deepseek} == {"orcarouter"}
+    assert {candidate.provider for candidate in deepseek} == {"orcarouter", "beatapi"}
     assert canonical_model("orcarouter/deepseek-v4-flash") == "deepseek/deepseek-v4-flash"
     assert MODEL_ALIASES["nvidia/deepseek-v4.1-flash"] == "deepseek/deepseek-v4.1-flash"
-    assert "deepseek/deepseek-v4-pro" not in ROUTE_CANDIDATES
+    assert [route.route_id for route in ROUTE_CANDIDATES["deepseek/deepseek-v4-pro"]] == [
+        "beatapi_deepseek_v4_pro_free"
+    ]
     assert [route.route_id for route in ROUTE_CANDIDATES["deepseek/deepseek-v4.1-flash"]] == [
-        "nvidia_deepseek_v4_1_flash_free"
+        "nvidia_deepseek_v4_1_flash_free",
+        "beatapi_deepseek_v4_1_flash_free",
     ]
 
     # NVIDIA build's direct Nemotron 3 Ultra leg (added 2026-08-29) bypasses the OpenRouter/Kilo

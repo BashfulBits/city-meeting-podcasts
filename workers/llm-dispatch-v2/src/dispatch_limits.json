@@ -1,8 +1,8 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 40,
-    "providers_count": 11,
+    "routes_count": 45,
+    "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
   },
@@ -50,6 +50,19 @@
         {
           "id": "primary",
           "api_key_env": "DEEPSEEK_API_KEY"
+        }
+      ]
+    },
+    "beatapi": {
+      "api_base": "https://api.beatapi.io/v1",
+      "chat_path": "/chat/completions",
+      "rpm": 1,
+      "concurrency": 1,
+      "reset_timezone": "UTC",
+      "accounts": [
+        {
+          "id": "primary",
+          "api_key_env": "BEATAPI_API_KEY"
         }
       ]
     },
@@ -1737,6 +1750,186 @@
       "structured_output_schema_strip_keys": [],
       "request_params": null,
       "reasoning_controls": null
+    },
+    "beatapi_deepseek_v4_flash_free": {
+      "route_id": "beatapi_deepseek_v4_flash_free",
+      "model": "deepseek/deepseek-v4-flash",
+      "provider": "beatapi",
+      "upstream_model": "deepseek-v4-flash-0731-free",
+      "input_context_limit": 128000,
+      "output_context_limit": 16384,
+      "hard_input_ceiling": null,
+      "hard_input_ceiling_tolerance": null,
+      "input_token_ratio": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": 1000,
+      "tpd": null,
+      "tpm": null,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-10-07",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "json_object",
+      "structured_output_response_format": "json_object",
+      "structured_output_include_schema_in_prompt": true,
+      "structured_output_schema_strip_keys": [],
+      "request_params": null,
+      "reasoning_controls": null
+    },
+    "beatapi_deepseek_v4_1_flash_free": {
+      "route_id": "beatapi_deepseek_v4_1_flash_free",
+      "model": "deepseek/deepseek-v4.1-flash",
+      "provider": "beatapi",
+      "upstream_model": "deepseek-v4.1-flash-free",
+      "input_context_limit": 128000,
+      "output_context_limit": 16384,
+      "hard_input_ceiling": null,
+      "hard_input_ceiling_tolerance": null,
+      "input_token_ratio": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": 1000,
+      "tpd": null,
+      "tpm": null,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-10-07",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "prompt_only",
+      "structured_output_response_format": "none",
+      "structured_output_include_schema_in_prompt": true,
+      "structured_output_schema_strip_keys": [],
+      "request_params": null,
+      "reasoning_controls": null
+    },
+    "beatapi_deepseek_v4_pro_free": {
+      "route_id": "beatapi_deepseek_v4_pro_free",
+      "model": "deepseek/deepseek-v4-pro",
+      "provider": "beatapi",
+      "upstream_model": "deepseek-v4-pro-free",
+      "input_context_limit": 128000,
+      "output_context_limit": 16384,
+      "hard_input_ceiling": null,
+      "hard_input_ceiling_tolerance": null,
+      "input_token_ratio": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": 1000,
+      "tpd": null,
+      "tpm": null,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-10-07",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "prompt_only",
+      "structured_output_response_format": "none",
+      "structured_output_include_schema_in_prompt": true,
+      "structured_output_schema_strip_keys": [],
+      "request_params": null,
+      "reasoning_controls": null
+    },
+    "beatapi_gpt_6_astra_free": {
+      "route_id": "beatapi_gpt_6_astra_free",
+      "model": "openai/gpt-6-astra",
+      "provider": "beatapi",
+      "upstream_model": "gpt-6-astra-free",
+      "input_context_limit": 128000,
+      "output_context_limit": 16384,
+      "hard_input_ceiling": null,
+      "hard_input_ceiling_tolerance": null,
+      "input_token_ratio": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": 1000,
+      "tpd": null,
+      "tpm": null,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-10-07",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "prompt_only",
+      "structured_output_response_format": "none",
+      "structured_output_include_schema_in_prompt": true,
+      "structured_output_schema_strip_keys": [],
+      "request_params": null,
+      "reasoning_controls": null
+    },
+    "beatapi_gpt_6_1_sol_free": {
+      "route_id": "beatapi_gpt_6_1_sol_free",
+      "model": "openai/gpt-6.1-sol",
+      "provider": "beatapi",
+      "upstream_model": "gpt-6.1-sol-free",
+      "input_context_limit": 128000,
+      "output_context_limit": 16384,
+      "hard_input_ceiling": null,
+      "hard_input_ceiling_tolerance": null,
+      "input_token_ratio": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": 1000,
+      "tpd": null,
+      "tpm": null,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-10-07",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": null,
+      "upstream_429_default": "upstream_capacity",
+      "structured_output_method": "prompt_only",
+      "structured_output_response_format": "none",
+      "structured_output_include_schema_in_prompt": true,
+      "structured_output_schema_strip_keys": [],
+      "request_params": null,
+      "reasoning_controls": null
     }
   },
   "model_routes_map": {
@@ -1811,13 +2004,15 @@
       "nvidia_kimi_k3_free"
     ],
     "deepseek/deepseek-v4.1-flash": [
-      "nvidia_deepseek_v4_1_flash_free"
+      "nvidia_deepseek_v4_1_flash_free",
+      "beatapi_deepseek_v4_1_flash_free"
     ],
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning": [
       "nvidia_nemotron_3_nano_omni_30b_a3b_reasoning_free"
     ],
     "deepseek/deepseek-v4-flash": [
-      "orcarouter_deepseek_v4_flash_free"
+      "orcarouter_deepseek_v4_flash_free",
+      "beatapi_deepseek_v4_flash_free"
     ],
     "tencent/hy3": [
       "orcarouter_tencent_hy3_free"
@@ -1827,6 +2022,15 @@
     ],
     "mistral/codestral-2508": [
       "mistral_codestral_airforce_primary"
+    ],
+    "deepseek/deepseek-v4-pro": [
+      "beatapi_deepseek_v4_pro_free"
+    ],
+    "openai/gpt-6-astra": [
+      "beatapi_gpt_6_astra_free"
+    ],
+    "openai/gpt-6.1-sol": [
+      "beatapi_gpt_6_1_sol_free"
     ]
   },
   "model_aliases": {
@@ -1839,6 +2043,11 @@
     "orcarouter/tencent-hy3": "tencent/hy3",
     "orcarouter/glm-5.3-flash": "zai/glm-5.3-flash",
     "mistral/codestral-latest": "mistral/codestral-2508",
+    "beatapi/deepseek-v4-flash": "deepseek/deepseek-v4-flash",
+    "beatapi/deepseek-v4.1-flash": "deepseek/deepseek-v4.1-flash",
+    "beatapi/deepseek-v4-pro": "deepseek/deepseek-v4-pro",
+    "beatapi/gpt-6-astra": "openai/gpt-6-astra",
+    "beatapi/gpt-6.1-sol": "openai/gpt-6.1-sol",
     "gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemini/gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite": "gemini/gemini-3.1-flash-lite",
@@ -1895,7 +2104,17 @@
     "z-ai/glm-5.3-flash-free": "zai/glm-5.3-flash",
     "orcarouter/z-ai/glm-5.3-flash-free": "zai/glm-5.3-flash",
     "codestral-latest": "mistral/codestral-2508",
-    "airforce/codestral-latest": "mistral/codestral-2508"
+    "airforce/codestral-latest": "mistral/codestral-2508",
+    "deepseek-v4-flash-0731-free": "deepseek/deepseek-v4-flash",
+    "beatapi/deepseek-v4-flash-0731-free": "deepseek/deepseek-v4-flash",
+    "deepseek-v4.1-flash-free": "deepseek/deepseek-v4.1-flash",
+    "beatapi/deepseek-v4.1-flash-free": "deepseek/deepseek-v4.1-flash",
+    "deepseek-v4-pro-free": "deepseek/deepseek-v4-pro",
+    "beatapi/deepseek-v4-pro-free": "deepseek/deepseek-v4-pro",
+    "gpt-6-astra-free": "openai/gpt-6-astra",
+    "beatapi/gpt-6-astra-free": "openai/gpt-6-astra",
+    "gpt-6.1-sol-free": "openai/gpt-6.1-sol",
+    "beatapi/gpt-6.1-sol-free": "openai/gpt-6.1-sol"
   },
   "model_routing": {
     "gemini/gemini-3.7-flash": [

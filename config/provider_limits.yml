@@ -117,6 +117,27 @@ providers:
     accounts:
       - id: primary
         api_key_env: DEEPSEEK_API_KEY
+  beatapi:
+    # BeatAPI (https://beatapi.io) resells many models for credits; only the `-free` ids cost
+    # nothing. ALL of them share ONE account-wide free limit of 1 successful request per minute
+    # ("before your first top-up, up to 10/min after", docs.beatapi.io/decisions), so the limit sits
+    # on the provider, like airforce. Measured live 2026-10-07 (429 `rate_limit_exceeded`,
+    # `Retry-After: 60`): a success on any one model blocks every other model for 60 s, across
+    # families (DeepSeek <-> GPT) and across endpoints (`jev-1.13-free` via /v1/systemone <->
+    # chat completions, both directions); a 429 does not consume the window; the same model again
+    # is blocked too. Do not top up: that moves the account off the deliberate free tier.
+    # `jev-1.13-free` (the review/49 anchor judge) is on the same key and the same window, but is
+    # called via POST /v1/systemone, not chat completions, so it has no route here; its transport
+    # is specified in the P1 breakout, and its calls must be budgeted against these routes.
+    api_base: https://api.beatapi.io/v1
+    chat_path: /chat/completions
+    reset_timezone: UTC
+    rpm: 1
+    concurrency: 1
+    structured_output_method: prompt_only
+    accounts:
+      - id: primary
+        api_key_env: BEATAPI_API_KEY
   siliconflow:
     structured_output_method: json_schema
     # The GLOBAL platform (`.com`), which is a different service from `siliconflow.cn` with its own
@@ -1281,3 +1302,100 @@ routes:
     retry_after_trustworthy: true
     upstream_429_default: upstream_capacity
 
+  # ==========================================
+  # BEATAPI FREE ROUTES (api.beatapi.io, `-free` ids only)
+  # One account-wide free limit of 1 successful request/min (provider-level rpm above), shared by
+  # every route below. Live 2026-10-07: all five returned 200 to a one-token ping in 2-5 s with no
+  # rate-limit headers. Context limits are UNMEASURED conservative placeholders (BeatAPI publishes
+  # none); run llm-rate-probe.yml phase 2 for this provider and author hard_input_ceiling from it.
+  # The DeepSeek ids join the existing logical models rather than forming BeatAPI-only ones.
+  # ==========================================
+  - route_id: beatapi_deepseek_v4_flash_free
+    model: beatapi/deepseek-v4-flash
+    model_key: deepseek/deepseek-v4-flash
+    provider: beatapi
+    upstream_model: deepseek-v4-flash-0731-free
+    # The 0731 revision of V4 Flash; pools with OrcaRouter's `deepseek-v4-flash-free`. Reasoning model: spends output tokens on reasoning_content.
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 1
+    rpd: 1000
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-07"
+    upstream_429_default: upstream_capacity
+
+  - route_id: beatapi_deepseek_v4_1_flash_free
+    model: beatapi/deepseek-v4.1-flash
+    model_key: deepseek/deepseek-v4.1-flash
+    provider: beatapi
+    upstream_model: deepseek-v4.1-flash-free
+    # Pools with NVIDIA's deepseek-v4.1-flash. Reasoning model.
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 1
+    rpd: 1000
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-07"
+    upstream_429_default: upstream_capacity
+
+  - route_id: beatapi_deepseek_v4_pro_free
+    model: beatapi/deepseek-v4-pro
+    model_key: deepseek/deepseek-v4-pro
+    provider: beatapi
+    upstream_model: deepseek-v4-pro-free
+    # No other route serves V4 Pro today (NVIDIA retired v4-pro-0813). Reasoning model.
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 1
+    rpd: 1000
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-07"
+    upstream_429_default: upstream_capacity
+
+  - route_id: beatapi_gpt_6_astra_free
+    model: beatapi/gpt-6-astra
+    model_key: openai/gpt-6-astra
+    provider: beatapi
+    upstream_model: gpt-6-astra-free
+    # Response metadata says usage_source=anthropic / billing source claude_messages, so the serving family is unverified; do not treat it as an independent OpenAI family for judge selection.
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 1
+    rpd: 1000
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-07"
+    upstream_429_default: upstream_capacity
+
+  - route_id: beatapi_gpt_6_1_sol_free
+    model: beatapi/gpt-6.1-sol
+    model_key: openai/gpt-6.1-sol
+    provider: beatapi
+    upstream_model: gpt-6.1-sol-free
+    # Same metadata caveat as gpt-6-astra-free.
+    input_context_limit: 128000
+    output_context_limit: 16384
+    account_id: primary
+    rpm: 1
+    rpd: 1000
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-10-07"
+    upstream_429_default: upstream_capacity

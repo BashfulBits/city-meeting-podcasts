@@ -55,9 +55,13 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
     assert "routes" not in worker
     assert "structured_output_methods" not in worker
     assert worker["model_aliases"]["nvidia/deepseek-v4.1-flash"] == "deepseek/deepseek-v4.1-flash"
-    # One pool name per DeepSeek version (2026-09-24); the old `v4-pro` alias pool is retired.
+    # One pool name per DeepSeek version (2026-09-24): the old `v4-pro` alias that pointed at
+    # NVIDIA's v4.1 stays retired. `deepseek/deepseek-v4-pro` is now a real pool holding only a
+    # genuine V4 Pro route (BeatAPI, 2026-10-07), never NVIDIA's v4.1.
     assert "deepseek/deepseek-v4-pro" not in worker["model_aliases"]
-    assert "deepseek/deepseek-v4-pro" not in worker["model_routes_map"]
+    assert worker["model_routes_map"]["deepseek/deepseek-v4-pro"] == [
+        "beatapi_deepseek_v4_pro_free"
+    ]
     assert worker["routes_by_id"]["nvidia_deepseek_v4_1_flash_free"]["model"] == (
         "deepseek/deepseek-v4.1-flash"
     )
@@ -92,15 +96,22 @@ def test_worker_catalog_omits_duplicate_and_non_worker_route_data():
 def test_model_keys_pool_equivalent_provider_routes_and_preserve_aliases():
     compiled = compile_llm_limits.compile_limits()
 
-    # One pool name per DeepSeek version (2026-09-24): v4 is OrcaRouter only and v4.1 is NVIDIA
-    # only, so a lane or tournament contestant always knows which model answers. Lanes that want
-    # both list both names.
+    # One pool name per DeepSeek version (2026-09-24), shared across providers serving the same
+    # model (BeatAPI joined each pool 2026-10-07): v4 (0731 revision) is OrcaRouter + BeatAPI,
+    # v4.1 is NVIDIA + BeatAPI, and V4 Pro is BeatAPI alone. A lane or tournament contestant
+    # always knows which version answers. Lanes that want several list the names.
     deepseek_key = "deepseek/deepseek-v4-flash"
-    assert compiled["model_routes_map"][deepseek_key] == ["orcarouter_deepseek_v4_flash_free"]
-    assert compiled["model_routes_map"]["deepseek/deepseek-v4.1-flash"] == [
-        "nvidia_deepseek_v4_1_flash_free"
+    assert compiled["model_routes_map"][deepseek_key] == [
+        "orcarouter_deepseek_v4_flash_free",
+        "beatapi_deepseek_v4_flash_free",
     ]
-    assert "deepseek/deepseek-v4-pro" not in compiled["model_routes_map"]
+    assert compiled["model_routes_map"]["deepseek/deepseek-v4.1-flash"] == [
+        "nvidia_deepseek_v4_1_flash_free",
+        "beatapi_deepseek_v4_1_flash_free",
+    ]
+    assert compiled["model_routes_map"]["deepseek/deepseek-v4-pro"] == [
+        "beatapi_deepseek_v4_pro_free"
+    ]
     assert "deepseek/deepseek-v4-pro" not in compiled["model_aliases"]
     assert compiled["model_aliases"]["orcarouter/deepseek-v4-flash"] == deepseek_key
 
