@@ -18,6 +18,10 @@ Once 1.0 ships, entries move under semver tags.
   boundary revalidation, with trusted bounded history and explicit config review. Slice 5 remains
   L2 pending exact budgets and implementation contracts. Design only: no live probes, runtime caps,
   deployments, pipeline versions or stored artifacts change.
+  
+- **Allow static search indexing 120 minutes per run**, with a 150-minute search job timeout.
+  Preserve record checkpoints and the four-hour cadence; expose completion/deferred progress
+  in Actions logs as well as the job summary. No audio or stored-artifact invalidation.
 
 - **BeatAPI chat routes back on, through `custom-beatapi`.** The maintainer registered a
   `custom-beatapi` AI Gateway provider (base `https://api.beatapi.io/v1`); the `beatapi` provider

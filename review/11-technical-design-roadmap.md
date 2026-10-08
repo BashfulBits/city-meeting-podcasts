@@ -1643,3 +1643,7 @@ pending and its independent evidence cases stay open.
 
 Implemented in #2174; preserve20minute budget and four-hour cadence. Production verification
 is pending behind the existing deployment queue.
+
+Search budget extension: **L3**, maintainer-approved 120-minute work window and 150-minute
+search job timeout, retaining four-hour cadence. Progress is emitted in logs and summary.
+Bounded contract: review/51, Search two-hour budget and progress visibility (2026-10-08).

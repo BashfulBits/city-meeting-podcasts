@@ -454,8 +454,11 @@ def test_upstream_capacity_429_retries_across_models_when_all_sibling_routes_cap
     assert budget.routes["gemini_3_5_flash_primary"].requests_minute == 1
 
 
-def test_own_rpd_429_blocks_until_next_local_midnight():
+def test_own_rpd_429_blocks_until_next_local_midnight(monkeypatch):
     """An own_rpd 429 blocks the route until the provider's next zoned midnight."""
+    # Pin the clock to local noon (PDT) so the result doesn't depend on when CI runs.
+    now = datetime(2026, 10, 8, 19, 0, tzinfo=UTC)
+    monkeypatch.setattr(LiteLLMBackend, "_now", staticmethod(lambda: now))
 
     class RateLimitedRPD(Exception):
         status_code = 429
@@ -473,7 +476,6 @@ def test_own_rpd_429_blocks_until_next_local_midnight():
         completion=completion,
         storage=storage,
     )
-    now = datetime.now(UTC)
     result = backend.run_inference(
         job(
             content="meeting text",
@@ -486,7 +488,8 @@ def test_own_rpd_429_blocks_until_next_local_midnight():
     ledger = _ledger_for(budget, "gemini/gemini-3-flash-preview")
     assert ledger.blocked_until != ""
     blocked_until = datetime.fromisoformat(ledger.blocked_until)
-    assert blocked_until > now + timedelta(minutes=5)
+    # Next America/Los_Angeles midnight (PDT = UTC-7), not the 60s retry-after.
+    assert blocked_until == datetime(2026, 10, 9, 7, 0, tzinfo=UTC)
 
 
 def test_pacing_wait_seconds_gives_up_when_nothing_will_ever_free_up():
