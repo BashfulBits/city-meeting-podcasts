@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- Allow static search indexing 120 minutes per run, with a 150-minute search job timeout.
+  Preserve record checkpoints and the four-hour cadence; expose completion/deferred progress
+  in Actions logs as well as the job summary. No audio or stored-artifact invalidation.
+
 - **BeatAPI chat routes back on, through `custom-beatapi`.** The maintainer registered a
   `custom-beatapi` AI Gateway provider (base `https://api.beatapi.io/v1`); the `beatapi` provider
   now sets `ai_gateway_slug: custom-beatapi` and `ai_gateway_chat_path: /chat/completions`, and the

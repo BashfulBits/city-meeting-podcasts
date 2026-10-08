@@ -2780,3 +2780,7 @@ Existing production evidence: run37744496856 restored37741127403 checkpoint and 
 meeting completion count. Existing actual multi-budget regression must prove completed records
 are reused without repeating sidecar reads; subsequent workflow logs expose exact deferred counts.
 Manual branch dispatch is authorized; human merges remain required for main/scheduled adoption.
+
+Validation: actual source/record resume regressions pass; 40 targeted search tests and
+5,158 full offline tests pass (16 deselected). Whole Ruff and format checks pass. Workflow
+startup diagnostics read only completed-source and partial-record counts from the private cache.

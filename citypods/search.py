@@ -732,9 +732,9 @@ def build_search_site(
 
     config = load_site_config(site_config_path)
     defaults = config.get("defaults", {})
-    budget = float(defaults.get("search_index_budget_minutes", 20))
-    if not 0 < budget <= 20:
-        raise ValueError("search_index_budget_minutes must be greater than zero and at most 20")
+    budget = float(defaults.get("search_index_budget_minutes", 120))
+    if not 0 < budget <= 120:
+        raise ValueError("search_index_budget_minutes must be greater than zero and at most 120")
     deadline = time.monotonic() + budget * 60
     context = json.loads(Path(context_path).read_text())
     resolved_base = base_url if base_url is not None else context["base_url"]
