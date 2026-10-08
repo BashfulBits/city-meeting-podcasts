@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import worker, { LLMSchedulerDO, leaseCoversCall } from "../src/index.js";
+import worker, { LLMSchedulerDO, leaseCoversCall, withLeaseDeadlines } from "../src/index.js";
 import { createMockSqlStorage, withTestReservations } from "./helpers.js";
 
 const CATALOG = {
@@ -360,6 +360,13 @@ test("the executor's lease fence admits a call only if it can finish inside the 
   const job = { lease_expires_at: 1_000_000 };
   assert.equal(leaseCoversCall(job, 1_000_000 - 720_000, 720_000), true);
   assert.equal(leaseCoversCall(job, 1_000_000 - 719_999, 720_000), false);
-  // A plan from a coordinator that predates lease_expires_at in claim results is not fenced.
-  assert.equal(leaseCoversCall({}, Date.now(), 720_000), true);
+  // A job with no deadline is never admitted.
+  assert.equal(leaseCoversCall({}, Date.now(), 720_000), false);
+  // A plan from a coordinator that predates lease_expires_at gets the deadline that coordinator
+  // set: the claim's `now` plus the lease duration. A returned deadline is kept as is.
+  const [legacy, current] = withLeaseDeadlines(
+    [{ id: "legacy" }, { id: "current", lease_expires_at: 5 }], 1_000, 840_000
+  );
+  assert.equal(legacy.lease_expires_at, 841_000);
+  assert.equal(current.lease_expires_at, 5);
 });

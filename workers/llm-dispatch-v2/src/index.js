@@ -843,7 +843,19 @@ function baseAttemptResult(job, attemptId, actualStartAt, actualEndAt, outcome) 
  */
 export function leaseCoversCall(job, now, maxResponseMs) {
   const leaseExpiresAt = Number(job.lease_expires_at);
-  return !Number.isFinite(leaseExpiresAt) || now + maxResponseMs <= leaseExpiresAt;
+  // No deadline means no fence: decline rather than risk a call the DO may already have reaped.
+  return Number.isFinite(leaseExpiresAt) && now + maxResponseMs <= leaseExpiresAt;
+}
+
+/**
+ * The lease deadline for each claimed job. A coordinator deployed before 2026-10-07 returns no
+ * lease_expires_at; it set the lease to `claimNow` (the `now` this executor passed to the claim)
+ * plus LEASE_DURATION_SECONDS, so that exact value is reconstructed rather than left unfenced.
+ */
+export function withLeaseDeadlines(jobs, claimNow, leaseDurationMs) {
+  return jobs.map((job) => (Number.isFinite(Number(job.lease_expires_at))
+    ? job
+    : { ...job, lease_expires_at: claimNow + leaseDurationMs }));
 }
 
 /**
@@ -1146,7 +1158,8 @@ async function runScheduledDispatch(env) {
   const dispatchLimits = env.DISPATCH_LIMITS_OVERRIDE || DISPATCH_LIMITS;
   const dispatchWindowSeconds = Number(env.DISPATCH_WINDOW_SECONDS || 25);
 
-  const plan = await coordinator.claimDispatchWindow(Date.now(), dispatchWindowSeconds);
+  const claimNow = Date.now();
+  const plan = await coordinator.claimDispatchWindow(claimNow, dispatchWindowSeconds);
   if (!plan.jobs || plan.jobs.length === 0) {
     // Keep empty cron ticks explainable in Workers Logs. The DO also persists this snapshot for
     // /v2/stats, but the log puts the reason next to the scheduled invocation that observed it.
@@ -1163,7 +1176,8 @@ async function runScheduledDispatch(env) {
   const maxResponseMs = Number(env.MAX_RESPONSE_SECONDS || 720) * 1000;
 
   const lanes = new Map();
-  for (const job of plan.jobs) {
+  const leaseDurationMs = Number(env.LEASE_DURATION_SECONDS || 840) * 1000;
+  for (const job of withLeaseDeadlines(plan.jobs, claimNow, leaseDurationMs)) {
     if (!lanes.has(job.route_id)) lanes.set(job.route_id, []);
     lanes.get(job.route_id).push(job);
   }
