@@ -74,6 +74,10 @@ PINNED_GUIDS = [
         "arlington-tx-council",
     ),
     ("205110", "dallas-tx-bid-purchasing"),
+    (
+        "https://arlingtontx.granicus.com/MediaPlayer.php?view_id=2&clip_id=1163",
+        "arlington-tx-council",
+    ),
     # An advisory board, not a Council session: it belongs with boards/commissions even though
     # both feeds read the same Swagit view.
     ("392481", "waco-tx-boards-and-commissions-committee"),
@@ -96,6 +100,13 @@ def test_tirz_selector_needs_no_body_any_alternative(feeds) -> None:
     assert selector == "TIRZ"
     assert matches("TIRZ Board", selector)
     assert matches("TIRZ Board Meeting", selector)
+
+
+def test_south_dallas_opportunity_fund_special_called_is_recurring_board_alias(feeds) -> None:
+    label = "South Dallas Fair Park Opportunity Fund Special Called Meeting"
+    owner = feeds["dallas-tx-south-dallas-fair-park-opportunity-fund-regular-meeting"]
+    assert matches(label, source_body_filter(owner.source))
+    assert not matches(label, source_body_filter(feeds["dallas-tx-city-council"].source))
 
 
 def test_verified_library_joint_has_exact_participant_feeds(feeds) -> None:

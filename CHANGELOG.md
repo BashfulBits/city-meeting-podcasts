@@ -12,6 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Triaged the five unexpected-feed rows.** Arlington’s verified Council recording gets an exact
+  source-ID addition; Dallas’s South Dallas/Fair Park special-called title gets a reusable board
+  rule. Addison’s school dedication and Fort Worth’s unreadable provider label get no meeting-feed
+  rule. Denton’s standing Animal Shelter Advisory Committee has three recorded entries in the
+  cached catalog but no configured feed; keep them out of feeds for this P0 pass and revisit if
+  more recordings enter the catalog. `review/51` records four proposed unmatched-item outcomes for
+  later maintainer review. Original source records and media are retained.
+
 - **Bound the pinned FFmpeg setup in pull-request CI.** Runtime-library setup and checksum-pinned
   archive installation now have separate step timeouts, so a stalled package mirror or a slow
   trickle during download fails visibly instead of leaving PR checks running indefinitely. The
