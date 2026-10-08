@@ -58,6 +58,7 @@ class EditPlan:
     rejected: tuple[str, ...] = ()
     paid_routes: tuple[str, ...] = ()
     acknowledged: tuple[tuple[str, str, str], ...] = ()
+    removed_routes: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -123,12 +123,59 @@ def _set_route_free(text, route_id):
     return text[: node.start_mark.index] + "false" + text[node.end_mark.index :]
 
 
+def _remove_routes(text, route_ids):
+    """Remove exact block items, retaining comments and text outside those items."""
+    if not route_ids:
+        return text
+    routes = _node(text, ("routes",))
+    if not isinstance(routes, SequenceNode) or routes.flow_style:
+        raise ValueError("removal requires a block route sequence")
+    spans = []
+
+    def last_value(node):
+        if isinstance(node, MappingNode):
+            return last_value(node.value[-1][1])
+        if isinstance(node, SequenceNode) and node.value:
+            return last_value(node.value[-1])
+        return node
+
+    for rid in route_ids:
+        matches = [
+            node
+            for node in routes.value
+            if isinstance(node, MappingNode)
+            and any(k.value == "route_id" and v.value == rid for k, v in node.value)
+        ]
+        if len(matches) != 1 or matches[0].flow_style:
+            raise ValueError("removal route missing or unsupported")
+        node = matches[0]
+        start = node.start_mark.index - node.start_mark.column
+        end_mark = last_value(node).end_mark
+        end = end_mark.index if end_mark.column == 0 else text.find("\n", end_mark.index)
+        if end < 0:
+            end = len(text)
+        elif end_mark.column != 0:
+            end += 1
+        spans.append((start, end))
+    if len(set(route_ids)) != len(route_ids):
+        raise ValueError("duplicate route removals")
+    if len(spans) == len(routes.value):
+        raise ValueError("removal cannot empty the route catalog")
+    for start, end in sorted(spans, reverse=True):
+        text = text[:start] + text[end:]
+    return text
+
+
 def apply_config_edits(texts, plan: EditPlan):
     if any(digest(texts[p]) != stamp for p, stamp in plan.config_hashes):
         raise ValueError("config changed since planning")
     expected = {p: copy.deepcopy(load_config(texts[p])) for p in SOURCE_PATHS}
     output = dict(texts)
     limits, site, decisions = (expected[p] for p in SOURCE_PATHS)
+    if set(plan.removed_routes) & set(plan.paid_routes):
+        raise ValueError("removal conflicts with paid edit")
+    output[SOURCE_PATHS[0]] = _remove_routes(output[SOURCE_PATHS[0]], plan.removed_routes)
+    limits["routes"] = [r for r in limits["routes"] if r.get("route_id") not in plan.removed_routes]
     for rid in plan.paid_routes:
         matches = [r for r in limits["routes"] if r.get("route_id") == rid]
         if len(matches) != 1 or not isinstance(matches[0].get("free"), bool):

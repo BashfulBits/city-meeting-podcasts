@@ -45,6 +45,10 @@ TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues
 
 ## Recently shipped (summary)
 
+- Provider catalog paid-route decisions (#2189) and bounded structural rescue (#2191).
+  Removal planning is next (#2192); activation still requires coordinated deployment and
+  a recovery canary. Remaining review/48 slices are not marked shipped.
+
 - Addison body-policy corrections and historical sweep (#2010, #2012, #2014, #2019–#2021,
   2026-10-04): Public Input/Briefings, verified joint subscriptions, exact Council ownership,
   Bond/TIF families and read-only unresolved tracking. Raw records, UIDs and audio preserved.
@@ -272,9 +276,9 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
 > Its exact budgets and implementation contract remain gated on L3 review.
 > Slice 2b is tracked in #2187: paid decisions, including the approved
-> disabled-shadow runtime fix shipped in #2188. Paid decisions are in implementation; legacy
+> disabled-shadow runtime fix shipped in #2188. Paid decisions shipped in #2189; legacy
 > R5 promotion is explicitly superseded by review/53 graduation (maintainer decision 2026-10-08).
-> Bounded structural rescue is in implementation (#2190); the existing queue index is reused
+> Bounded structural rescue shipped in #2191 (#2190); the existing queue index is reused
 > with a durable time/ID cursor. Deployment/canary must precede removal automation.
 > Later slices retain separate issues and activation gates.
 >

@@ -1,6 +1,6 @@
 # review/48 — Provider catalog reconciliation
 
-**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a shipped (#2182) · shadow shutdown shipped (#2188) · Slice 2b paid decisions in implementation (#2187); later slices retain gates**
+**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a shipped (#2182) · shadow shutdown shipped (#2188) · Slice 2b paid decisions shipped (#2189) · Slice 3a shipped (#2191); removal activation retains gates**
 
 Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
 `scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
@@ -481,7 +481,8 @@ an enabled missing shadow lane must still fail loudly. This permits the exact sh
 below without breaking builds. The fix shipped in #2188. Legacy promotion was subsequently
 superseded by review/53; no human-calibration storage loader is needed in the catalog workflows.
 
-**Paid-decision implementation checkpoint (#2187), 2026-10-08:** extend `Decision` with the
+**Paid-decision implementation checkpoint (#2187), implemented in PR #2189 on 2026-10-08:**
+extend `Decision` with the
 physical route ID and reviewed route digest, and `Anomaly` with optional observation date,
 route-config digest and pause contention. Legacy anomalies remain advisory. `reconcile(...,
 route_ids=...)` freshly checks only selected active physical routes, including separate accounts
@@ -520,12 +521,13 @@ shadow lanes and falling qualification. Never promote a primary through this com
 ### 8.5 Slice 3a: structural terminal reasons and bounded rescue
 
 Implementation issue: [#2190](https://github.com/BashfulBits/city-meeting-podcasts/issues/2190);
-PR [#2191](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191) is stacked on #2189.
-Merge Slice 2b first; deployment/canary remain prerequisites for Slice 3b activation.
+Implemented in PR [#2191](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191), merged
+2026-10-08 after Slice 2b #2189. The automatic coordinator deployment succeeded; coordinated
+client activation and a recovery canary remain prerequisites for Slice 3b activation.
 
-**Implementation checkpoint (2026-10-08, #2190; PR #2191, awaiting review/merge):** bounded catalog
+**Implementation checkpoint (2026-10-08, #2190; PR #2191, merged):** bounded catalog
 rescue, nullable terminal metadata, audit-before-delete structural recovery, producer guards and
-retained-subject rebatching are implemented locally. Python recognizes only the two specified
+retained-subject rebatching shipped in #2191. Python recognizes only the two specified
 reasons with a nonempty catalog identity; generic/legacy failures retain existing semantics.
 The terminal fence compares backend/ref against both snapshot and current stored record.
 Structural failures preserve retry/schema-correction counts and remain blocked until an eligible
@@ -635,6 +637,16 @@ No successful episode artifact is invalidated and no pipeline version is bumped.
 structurally failed deferred work; already-completed recipes remain reusable.
 
 ### 8.6 Slice 3b: removals and lane repair
+
+Implementation issue: [#2192](https://github.com/BashfulBits/city-meeting-podcasts/issues/2192).
+The planner and offline acceptance are the current work; live publication remains disabled.
+Retirement requires current-day complete catalog evidence and an unchanged route digest for
+each configured physical account serving the upstream. Old issue markers alone cannot authorize
+a removal. The exact activation record and policy/dependent lane-field repair decisions are
+awaiting maintainer clarification before those paths are implemented. Evidence checks and exact
+route-block removal are implemented on the #2192 branch, with 5,303 offline Python tests passing
+(16 live tests deselected) and whole-repository Ruff checks. They are not connected to live
+publication; lane repair and the removal writer remain unfinished.
 
 New `citypods/provider_catalog/retire.py::plan_retirements()` shares the evidence/editor contracts.
 Require fresh absence from a complete catalog **and** a definitive retired/not-served probe for the

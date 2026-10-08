@@ -256,7 +256,7 @@ apply serialize through one writer lock. Human PR merge remains the activation s
 limit changes belong to later slices; legacy R5 shadow promotion is superseded by review/53
 graduation. See [review/48](review/48-provider-catalog-reconciliation.md).
 
-Slice 3a (#2190, in implementation) extends the existing coordinator reconciliation pass to repair
+Slice 3a (implemented in PR #2191; #2190) extends the existing coordinator reconciliation pass to repair
 queued model indexes and report typed structural failures after a catalog change. Structurally
 unusable primaries unlock already-declared backups while preserving paid/free policy. Pauses and
 temporary quota exhaustion cannot cause structural failure. Python records the original handle,
