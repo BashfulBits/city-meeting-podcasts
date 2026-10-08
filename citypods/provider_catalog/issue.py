@@ -14,6 +14,7 @@ import re
 import subprocess
 import zlib
 from collections.abc import Callable, Mapping, Sequence
+from glob import escape
 from typing import Any
 
 from citypods.provider_catalog.reconcile import Report, _merge_into_last_full
@@ -125,6 +126,25 @@ def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str
             for lane in candidate.lanes
             if lane in lanes and model_key in lanes[lane].backup_models
         )
+    for anomaly in snapshot.anomalies:
+        if anomaly.verdict != PAID_ROUTE_VERDICT:
+            continue
+        route = next(
+            (r for r in limits.get("routes") or [] if r.get("route_id") == anomaly.route_id), None
+        )
+        if (
+            route
+            and route.get("provider") == anomaly.provider
+            and route.get("upstream_model") == anomaly.model
+            and route.get("free") is False
+            and any(
+                entry.get("provider") == anomaly.provider
+                and entry.get("model_glob") == escape(anomaly.model)
+                and entry.get("verdict") == PAID_ROUTE_VERDICT
+                for entry in decisions.acknowledged
+            )
+        ):
+            fulfilled.add(f"`{anomaly.route_id}`: keep as a paid route")
     return fulfilled
 
 
@@ -146,8 +166,15 @@ def render_body(
         if c.key not in {current.key for current in report.candidates}
         and any(choice.startswith(f"`{c.key}`: ") for choice in selected)
     ]
-    if pending:
-        pending_choices = decision_choices(Report(candidates=pending))
+    pending_paid = [
+        a
+        for a in prior.anomalies
+        if a.verdict == PAID_ROUTE_VERDICT
+        and a.key not in {current.key for current in report.anomalies}
+        and any(choice.startswith(f"`{a.route_id}`: ") for choice in selected)
+    ]
+    if pending or pending_paid:
+        pending_choices = decision_choices(Report(candidates=pending, anomalies=pending_paid))
         choices += tuple(c for c in pending_choices if c not in choices and c not in fulfilled)
     checked = set(checked_decisions(previous_body, choices)) if previous_body else set()
     floor = f"{report.floor:g}" if report.floor is not None else "unavailable"
@@ -193,6 +220,13 @@ def render_body(
             f"Pending prior selections: {names}. Their previous proofs are advisory; "
             "selected decisions stay below until fulfilled on main or changed by a maintainer.",
         ]
+    if pending_paid:
+        names = ", ".join(f"`{a.route_id}`" for a in pending_paid)
+        lines += [
+            "",
+            f"Pending prior paid-route selections: {names}. Prior anomaly evidence is "
+            "advisory; selections remain until fulfilled on main or changed by a maintainer.",
+        ]
     lines += ["", f"## Configured-route anomalies ({len(report.anomalies)})", ""]
     if report.anomalies:
         for a in report.anomalies:
@@ -228,8 +262,9 @@ def render_body(
                 "Tick what you want, then comment `/apply` to get one curated PR with exactly "
                 "those changes (review/48 Slice 2). Ticks are kept across weekly updates. A free "
                 "route that became paid is never removed automatically: remove it, or keep it as "
-                "a paid route. Additions/ignore are available now; paid-route choices require "
-                "Slice 2b. Unavailable proofs remain ticked. An open PR does not fulfill a "
+                "a paid route. Additions/ignore and keep-paid choices are available; "
+                "removal requires deployed Slice 3 rescue. Unavailable proofs remain ticked. "
+                "An open PR does not fulfill a "
                 "selection until it is merged.",
                 "",
                 _render_decision_block(choices, checked),
@@ -240,11 +275,12 @@ def render_body(
         ["", summary, "", *[f"- {o}" for o in report.observations], "", "</details>", ""]
     )
     state = dict(report.state)
-    if pending:
+    if pending or pending_paid:
         from dataclasses import asdict
 
         state["last_full"] = dict(state.get("last_full") or {})
         state["last_full"]["candidates"] = [asdict(c) for c in (*report.candidates, *pending)]
+        state["last_full"]["anomalies"] = [asdict(a) for a in (*report.anomalies, *pending_paid)]
     state_marker = _encode_state(state)
     room = min(_HUMAN_BODY_LIMIT, 65_000 - len(state_marker.encode("utf-8")))
     room -= len(decisions.encode("utf-8"))

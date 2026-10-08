@@ -168,13 +168,16 @@ def test_unknown_conflicting_duplicate_decisions_rejected(selection):
         parse_decisions(body, report)
 
 
-def test_paid_choice_stays_visible_but_cannot_apply_before_slice2b():
+def test_explicit_removal_is_parsed_but_deferred_until_rescue():
     report = Report(anomalies=[Anomaly("host", "route", "model", "not_entitled", "paid", False)])
     body = render_body(report, run_date=TODAY.isoformat()).replace(
         "- [ ] `route`: remove route", "- [x] `route`: remove route"
     )
-    with pytest.raises(ValueError, match="Slice 2b"):
-        parse_decisions(body, report)
+    [decision] = parse_decisions(body, report)
+    assert decision.action == "remove" and decision.route_id == "route"
+    result = plan_apply(Report(), (decision,), config())
+    assert result.deferred and "Slice 3 rescue" in result.deferred[0]
+    assert not result.routes and not result.paid_routes
 
 
 def event(**changes):
@@ -351,3 +354,300 @@ def test_old_selection_cannot_place_an_already_configured_task_plugin_in_a_chat_
         replace(config(), limits=limits),
     )
     assert result.deferred and not result.routes and not result.backups
+
+
+def paid_fixture(routes=None):
+    from citypods.provider_catalog.evidence import digest
+
+    route = {
+        "route_id": "paid",
+        "model": "old",
+        "provider": "host",
+        "upstream_model": "creator/old",
+        "account_id": "primary",
+        "free": True,
+    }
+    alternate = {
+        **route,
+        "route_id": "alternate",
+        "provider": "other",
+        "upstream_model": "other/old",
+    }
+    conf = config(routes or [route, alternate])
+    conf = replace(conf, texts={**conf.texts, SOURCE_PATHS[2]: "ignored: []\nacknowledged: []\n"})
+    proof = Anomaly(
+        "host",
+        "paid",
+        "creator/old",
+        "not_entitled",
+        "paid",
+        False,
+        observed_on=TODAY.isoformat(),
+        config_digest=digest(route),
+        contended=False,
+    )
+    decision = Decision(
+        "host", "creator/old", "keep_paid", route_id="paid", route_digest=digest(route)
+    )
+    return conf, proof, decision
+
+
+def test_keep_paid_preserves_pool_and_records_exact_acknowledgement():
+    conf, proof, decision = paid_fixture()
+    result = plan_apply(Report(anomalies=[proof]), (decision,), conf)
+    assert result.paid_routes == ("paid",)
+    assert result.acknowledged == (("host", "creator/old", TODAY.isoformat()),)
+    assert "lane" in result.applied[0]
+    assert not result.routes and not result.backups and not result.rejected
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"contended": True},
+        {"observed_on": "2026-10-07"},
+        {"config_digest": "changed"},
+        {"verdict": "quota_exhausted"},
+        {"verdict": "retired"},
+    ],
+)
+def test_paid_decision_defers_missing_changed_or_contended_proof(change):
+    conf, proof, decision = paid_fixture()
+    result = plan_apply(Report(anomalies=[replace(proof, **change)]), (decision,), conf)
+    assert result.deferred and not result.paid_routes
+
+
+def test_paid_decision_requires_unchanged_snapshot_and_live_route():
+    conf, proof, decision = paid_fixture()
+    for choice in [
+        replace(decision, route_digest=None),
+        replace(decision, route_digest="old"),
+        replace(decision, model="swapped"),
+    ]:
+        result = plan_apply(Report(anomalies=[proof]), (choice,), conf)
+        assert result.deferred and not result.paid_routes
+
+
+def test_paid_decision_rejects_last_free_primary_even_with_backup():
+    conf, proof, decision = paid_fixture()
+    conf = replace(
+        conf,
+        limits={**conf.limits, "routes": conf.limits["routes"][:1]},
+        lanes={"lane": replace(conf.lanes["lane"], backup_models=("backup",))},
+    )
+    result = plan_apply(Report(anomalies=[proof]), (decision,), conf)
+    assert "empty free lane pool" in result.rejected[0]
+    assert not result.paid_routes
+
+
+def test_multiple_paid_choices_cannot_collectively_empty_pool():
+    from citypods.provider_catalog.evidence import digest
+
+    conf, proof, decision = paid_fixture()
+    second = {**conf.limits["routes"][1], "provider": "host"}
+    conf = replace(conf, limits={**conf.limits, "routes": [conf.limits["routes"][0], second]})
+    other_proof = replace(
+        proof, route_id="alternate", model="other/old", config_digest=digest(second)
+    )
+    other_choice = replace(
+        decision, route_id="alternate", model="other/old", route_digest=digest(second)
+    )
+    result = plan_apply(Report(anomalies=[proof, other_proof]), (decision, other_choice), conf)
+    assert result.paid_routes == ("paid",)
+    assert result.rejected and "alternate" in result.rejected[0]
+
+
+def test_acknowledgement_cannot_hide_another_free_account_route():
+    conf, proof, decision = paid_fixture()
+    second = {**conf.limits["routes"][0], "route_id": "same_upstream", "account_id": "secondary"}
+    conf = replace(conf, limits={**conf.limits, "routes": [*conf.limits["routes"], second]})
+    result = plan_apply(Report(anomalies=[proof]), (decision,), conf)
+    assert result.deferred and "other free routes" in result.deferred[0]
+    assert not result.acknowledged
+
+
+def test_paid_checkbox_conflict_and_exact_identity():
+    conf, proof, decision = paid_fixture()
+    report = Report(anomalies=[proof])
+    body = render_body(report, run_date=TODAY.isoformat()).replace(
+        "- [ ] `paid`: keep as a paid route", "- [x] `paid`: keep as a paid route"
+    )
+    assert parse_decisions(body, report) == (decision,)
+    both = body.replace("- [ ] `paid`: remove route", "- [x] `paid`: remove route")
+    with pytest.raises(ValueError, match="conflicting"):
+        parse_decisions(both, report)
+
+
+def test_already_fulfilled_paid_choice_is_noop_without_fresh_probe():
+    conf, proof, decision = paid_fixture()
+    routes = [{**r, "free": False} if r["route_id"] == "paid" else r for r in conf.limits["routes"]]
+    conf = replace(
+        conf,
+        limits={**conf.limits, "routes": routes},
+        texts={
+            **conf.texts,
+            SOURCE_PATHS[2]: "acknowledged:\n  - provider: host\n    model_glob: creator/old\n"
+            "    verdict: not_entitled\n",
+        },
+    )
+    result = plan_apply(Report(), (decision,), conf)
+    assert not result.paid_routes and not result.acknowledged and not result.deferred
+
+
+def test_prepare_rechecks_paid_route_then_skips_probes_after_fulfillment(tmp_path, monkeypatch):
+    from dataclasses import asdict
+
+    import yaml
+
+    from citypods.provider_catalog.decisions import Decisions
+    from scripts import provider_catalog_commands as commands
+
+    conf, proof, decision = paid_fixture()
+    for path, text in zip(
+        SOURCE_PATHS,
+        [yaml.safe_dump(conf.limits), "llm_lanes: {}\n", conf.texts[SOURCE_PATHS[2]]],
+        strict=True,
+    ):
+        target = tmp_path / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+    snapshot = Report(anomalies=[proof], state={"last_full": {"anomalies": [asdict(proof)]}})
+    body = render_body(snapshot, run_date=TODAY.isoformat()).replace(
+        "- [ ] `paid`: keep as a paid route", "- [x] `paid`: keep as a paid route"
+    )
+    from datetime import datetime
+
+    class FixedDatetime:
+        @staticmethod
+        def now(tz):
+            return datetime(2026, 10, 8, tzinfo=tz)
+
+    monkeypatch.setattr(commands, "datetime", FixedDatetime)
+    monkeypatch.setattr(commands, "ROOT", tmp_path)
+    monkeypatch.setattr(commands, "load_lanes", lambda: conf.lanes)
+    monkeypatch.setattr(commands, "load_decisions", lambda: Decisions())
+    monkeypatch.setattr(commands, "_control", lambda _: object())
+    monkeypatch.setattr(commands, "fetch_quality_index", lambda _: object())
+    calls = []
+
+    def fresh(*args, **kwargs):
+        calls.append(kwargs)
+        return Report(anomalies=[proof])
+
+    monkeypatch.setattr(commands, "reconcile", fresh)
+    result = commands.prepare(body, "base")
+    assert result.paid_routes == ("paid",)
+    assert calls[0]["candidate_keys"] == set() and calls[0]["route_ids"] == {"paid"}
+    assert calls[0]["providers"] == {"host"}
+    monkeypatch.setattr(
+        commands, "_control", lambda _: pytest.fail("fulfilled choice must not probe")
+    )
+    result = commands.prepare(body, "base")
+    assert not result.paid_routes and not result.deferred
+
+
+def test_paid_acknowledgement_escapes_glob_characters():
+    from fnmatch import fnmatchcase
+
+    from citypods.provider_catalog.evidence import digest
+
+    conf, proof, decision = paid_fixture()
+    name = "creator/model[*]?"
+    route = {**conf.limits["routes"][0], "upstream_model": name}
+    conf = replace(conf, limits={**conf.limits, "routes": [route, conf.limits["routes"][1]]})
+    proof = replace(proof, model=name, config_digest=digest(route))
+    decision = replace(decision, model=name, route_digest=digest(route))
+    result = plan_apply(Report(anomalies=[proof]), (decision,), conf)
+    pattern = result.acknowledged[0][1]
+    assert fnmatchcase(name, pattern) and not fnmatchcase("creator/modelX", pattern)
+
+
+@pytest.mark.parametrize("value", [None, "true", 1])
+def test_unsupported_free_field_rejects_only_paid_selection(value):
+    conf, proof, decision = paid_fixture()
+    conf = replace(
+        conf,
+        limits={
+            **conf.limits,
+            "routes": [
+                {**r, "free": value} if r["route_id"] == "paid" else r
+                for r in conf.limits["routes"]
+            ],
+        },
+    )
+    result = plan_apply(
+        Report(anomalies=[proof]), (decision, Decision("host", "skip", "ignore")), conf
+    )
+    assert result.rejected and result.ignored and not result.paid_routes
+
+
+def test_paused_alternate_cannot_keep_free_pool_usable():
+    conf, proof, decision = paid_fixture()
+    conf = replace(
+        conf,
+        limits={
+            **conf.limits,
+            "routes": [
+                r if r["route_id"] == "paid" else {**r, "rpd": 0} for r in conf.limits["routes"]
+            ],
+        },
+    )
+    result = plan_apply(Report(anomalies=[proof]), (decision,), conf)
+    assert result.rejected and not result.paid_routes
+
+
+def test_route_alias_can_preserve_an_affected_free_pool():
+    conf, proof, decision = paid_fixture()
+    conf = replace(
+        conf,
+        limits={
+            **conf.limits,
+            "routes": [
+                r
+                if r["route_id"] == "paid"
+                else {**r, "model": "different", "also_serves": ["old"]}
+                for r in conf.limits["routes"]
+            ],
+        },
+    )
+    assert plan_apply(Report(anomalies=[proof]), (decision,), conf).paid_routes == ("paid",)
+
+
+@pytest.mark.parametrize("model", ["creator/old", "creator/model[1]*?"])
+def test_paid_fulfillment_requires_literal_ack_in_planner_and_issue(model):
+    from dataclasses import asdict
+    from glob import escape
+
+    import yaml
+
+    from citypods.provider_catalog.apply import paid_fulfilled
+    from citypods.provider_catalog.decisions import Decisions
+    from citypods.provider_catalog.issue import fulfilled_choices
+
+    conf, proof, decision = paid_fixture()
+    decision = replace(decision, model=model)
+    proof = replace(proof, model=model)
+    routes = [
+        {**r, "free": False, "upstream_model": model} if r["route_id"] == "paid" else r
+        for r in conf.limits["routes"]
+    ]
+    conf = replace(conf, limits={**conf.limits, "routes": routes})
+    for pattern, expected in [("*", False), ("creator/*", False), (escape(model), True)]:
+        entry = {"provider": "host", "model_glob": pattern, "verdict": "not_entitled"}
+        conf = replace(
+            conf, texts={**conf.texts, SOURCE_PATHS[2]: yaml.safe_dump({"acknowledged": [entry]})}
+        )
+        assert paid_fulfilled(decision, conf) is expected
+        choices = fulfilled_choices(
+            render_body(
+                Report(anomalies=[proof], state={"last_full": {"anomalies": [asdict(proof)]}}),
+                run_date=TODAY.isoformat(),
+            ),
+            conf.limits,
+            conf.lanes,
+            Decisions(acknowledged=(entry,)),
+            TODAY,
+        )
+        assert ("`paid`: keep as a paid route" in choices) is expected
+        plan = plan_apply(Report(), (decision,), conf)
+        assert bool(plan.deferred) is not expected

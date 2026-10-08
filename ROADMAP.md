@@ -262,16 +262,19 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > Everything from the old R2 onward shifts down by two (R2→R4, R3→R5, R4→R6, R5→R7, R6→R8, R7→R9).
 
 > **R10 catalog follow-up (2026-10-08):** review/48 schema verification shipped in #2169.
-> Remaining contracts are proposed in [review/48 §8](review/48-provider-catalog-reconciliation.md#8-remaining-slice-contract-proposal--2026-10-08):
-> additions/ignore first, paid/shadow follow-up, bounded rescue before removal, then bounded rate
+> Remaining contracts were initially proposed in [review/48 §8](review/48-provider-catalog-reconciliation.md#8-remaining-slice-contract-proposal--2026-10-08):
+> initially additions/ignore, paid/shadow follow-up, bounded rescue before removal, then bounded rate
 > limits and adaptive context calibration (Slice 5, L2; review/48 §8.10).
+> The accepted and revised scope is recorded below; the original shadow follow-up is historical.
 > Proven material tightening may prepare a flagged PR; merge remains a maintainer decision.
-> Remaining contracts accepted in #2178; additions/ignore implementation is in PR #2182 (#2179).
+> Remaining contracts accepted in #2178; additions/ignore shipped in PR #2182 (#2179).
 > Separately reviewed conservative output caps are accepted; automatic additions still require
 > evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
 > Its exact budgets and implementation contract remain gated on L3 review.
-> Slice 2b is tracked in #2187: paid decisions and qualified shadow exit, including the approved
-> disabled-shadow runtime fix. Calibration data-source clarification remains pending.
+> Slice 2b is tracked in #2187: paid decisions, including the approved
+> disabled-shadow runtime fix shipped in #2188. Paid decisions are in implementation; legacy
+> R5 promotion is explicitly superseded by review/53 graduation (maintainer decision 2026-10-08).
+> Bounded structural rescue is next (#2190); deployment/canary must precede removal automation.
 > Later slices retain separate issues and activation gates.
 >
 > **Added 2026-07-14 (maintainer decision): a rate-limited LLM dispatch item, numbered R10 but sequenced
