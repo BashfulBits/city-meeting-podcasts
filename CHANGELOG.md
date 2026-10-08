@@ -12,7 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
-- Allow static search indexing 120 minutes per run, with a 150-minute search job timeout.
+- **Provider catalog adaptive context calibration design (review/48 §8.10).** Accepts separately
+  reviewed conservative output caps and sequences calibration after bounded rate maintenance.
+  Records provider-reported token-count feedback, 50% exploration, bracket refinement and 10%
+  boundary revalidation, with trusted bounded history and explicit config review. Slice 5 remains
+  L2 pending exact budgets and implementation contracts. Design only: no live probes, runtime caps,
+  deployments, pipeline versions or stored artifacts change.
+  
+- **Allow static search indexing 120 minutes per run**, with a 150-minute search job timeout.
   Preserve record checkpoints and the four-hour cadence; expose completion/deferred progress
   in Actions logs as well as the job summary. No audio or stored-artifact invalidation.
 
