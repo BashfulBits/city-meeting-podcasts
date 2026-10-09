@@ -1023,7 +1023,129 @@ uncertainty margins/resolution thresholds, exact parser/file plan and live activ
 Local pilot acceptance must expand to all configured free routes before calling the implementation
 complete; live activation retains its separate scoped canary gate.
 
-#### Evidence and token-count feedback
+#### Remaining contract proposal — 2026-10-09, pending maintainer review
+
+This proposal preserves the accepted priorities above. It is **L2**, not implementation authority:
+the numerical allowances and Worker extension below have not been approved. No live calls occur
+while writing or validating this proposal. After these choices are accepted, complete the exact
+schemas, function signatures, parser matrix and activation procedure before marking Slice 5 L3.
+
+**Starting budget recommendation.** Use the existing weekly reconciliation slot, with no context
+experiments on daily early-rate checks or incidental manual reconciles. Start with these hard
+ceilings; they are allowances, never targets to consume:
+
+| Scope | Proposed ceiling |
+|---|---|
+| Input experiment, one call | 262,144 estimated input tokens; 128 reserved output tokens |
+| Output experiment, one call | 1,024 estimated input tokens; 16,384 reserved output tokens |
+| Weekly input allowance | 1,048,576 reserved input tokens across all context calls |
+| Weekly output allowance | 65,536 reserved output tokens across all context calls |
+| Weekly context requests | 12 calls, including baseline, retry and confirmation calls |
+| One route per weekly run | At most 3 context calls; input before output |
+| Weekly context wall time | 1,800 seconds, including drain, spacing and cooldown |
+| One provider pause | Existing 900-second allowance; context cannot extend it implicitly |
+
+Input and output allowances charge **both dimensions on every call**, including the fixed opposite
+dimension. Context requests also consume the existing shared reconciliation request allowance;
+neither pool can be topped up by the other. Stop before a call if its full conservative reservation
+cannot fit, including time for cleanup. Token allowances bound conservative reservations, not an
+unobservable exact provider count before submission. Reserve the larger of the local estimate and
+the supported observed mapping with an uncertainty allowance; when no defensible bound is available,
+defer. If returned usage exceeds the reservation, stop that route and report the overshoot rather
+than refunding or hiding it. Failed, timed-out or ambiguously completed requests retain
+their charge; restarting a workflow cannot reset the weekly allowance. A durable weekly admission
+record is required before live activation; the exact bounded storage/ownership contract remains an
+L3 prerequisite, not something an advisory issue marker can supply.
+
+These deliberately modest starting budgets do **not** cover every configured maximum. The current
+catalog includes input caps above one million and output caps up to 384,000. A route that reaches
+the experiment ceiling without a definitive size rejection is `budget_limited`, retaining its
+verified lower bound and next desired target. Do not report that ceiling as the route maximum,
+reduce production caps to it, or repeat an identical capped experiment every week. Continue other
+routes and offer a separately reviewed budget expansion. This is a proposed trade-off: conservative
+initial spending delays discovery of large boundaries. The maintainer may instead choose larger
+firm budgets before implementation. All configured free routes still receive parser and offline
+acceptance coverage; coverage does not promise a live maximum measurement for every route.
+
+**Fair rotation and uncertainty.** Schedule eligible routes by oldest attempted context scan,
+with a stable route-id tie-break; choose never-attempted routes first. Persist deferred reasons
+without marking an unattempted route as measured. A quota failure cannot advance a context bracket.
+Use provider-counted observations for bound updates and retain local estimate/count pairs to
+construct the next prompt. Proposed initial admission margin is 10% below a verified successful
+bound, conditional on varied fixture coverage and a known production counting basis. It is not a
+claim that tokenizer uncertainty is universally 10%. If measured production-estimator error exceeds
+that margin, or its relationship to the probe basis is unknown, withhold the cap proposal and report
+the mismatch. Do not silently change the production estimator.
+
+Stop midpoint refinement when the provider-token bracket width is at most the greater of 1,024
+tokens or 5% of the successful bound; report the interval, never an exact maximum. Smaller boundaries
+may need a separately chosen absolute threshold. A budget-limited or uninterpretable interval is
+not convergence. Tail checks must succeed at multiple positions in deterministic varied fixtures;
+their failure is inconclusive, while successful checks remain supporting evidence rather than proof
+against every possible truncation behavior. For output, require actual counted generation and an
+interpretable length termination; early EOS or parameter acceptance cannot advance that bound.
+
+**Required quota-accounting prerequisite.** `reserveRouteRequests` currently reserves zero tokens
+and describes its out-of-band calls as only a few tokens each. `dispatchPauseStatus` exposes daily
+request headroom, not token headroom. Large context probes cannot safely inherit that contract.
+Recommend extending the existing reservation/status APIs and typed pause client to perform bounded,
+atomic context admission against known request/token limits and existing pause ownership. This is
+a proposed Worker scope extension requiring maintainer approval before coding. Do not assume that
+calling the existing request reservation with a larger prompt checks token quota.
+
+The L3 contract must specify input/output reservation units, existing ledger-window semantics,
+shared account scopes, idempotency and crash recovery. Reserve before provider I/O; ambiguous Worker
+responses or DO row-write exhaustion must authorize **no** provider call. Replayed admission must
+not create another request allowance or double-charge an already admitted attempt. Unknown quota
+scope or incompatible token units defer the route. Never enlarge a production token quota so a
+context experiment fits. Retain conservative charges after ambiguous provider outcomes; reconcile
+known actual usage only if it preserves account pacing and bounded storage writes. No queue scans,
+synthetic jobs or dependency on rescue/removal activation are part of this prerequisite.
+
+**Parser and transport contract.** Add a pure context-observation callback to `ProviderRules`;
+provider modules interpret their own configured chat endpoint envelopes. A provider advertising
+OpenAI compatibility is not enough to accept undocumented error numbers or reasoning semantics.
+Successful usage, output termination, size rejections and counting basis need separate fixtures.
+BeatAPI chat responses must not inherit JEV `/v1/systemone` field meanings or ceilings, although
+both consumers share account pacing. Likewise Gemini native API fields do not automatically
+describe its configured compatibility endpoint. Unknown shapes return an explicit unsupported or
+inconclusive result. No native token-count endpoint or extra generation lookup is assumed.
+
+Keep catalog discovery's first-event `canary` unchanged. Context measurement needs a separate
+bounded transport operation in `probe.py` which obtains final usage/termination without retaining
+prompt or completion text in durable artifacts. Its L3 specification must cap response bytes,
+request duration and output reservation, distinguish cancellation from completion, and make lease
+renewal/cleanup work even on timeouts. Only parser-supported routes run live; every free route has
+offline support or an explicit fail-closed unsupported case.
+
+**Proposed file plan.** Extend `provider_catalog/evidence.py` with typed observations and verified
+context artifact lineage; `rules.py` and `providers/*.py` with pure endpoint-specific parsers;
+`limits.py` with search planning and proposal eligibility; `probe.py` with bounded measurement;
+`reconcile.py` and `issue.py` with rotation/deferred reporting and advisory state. Integrate the
+weekly-only path in `scripts/reconcile_provider_routes.py` and
+`.github/workflows/provider-catalog-reconcile.yml`. Extend `compute/llm_dispatch_pause.py` and the
+existing Worker reservation/status handlers for the approved quota prerequisite, with focused
+client/Worker tests. Specify the exact command/apply/config-edit changes only after cap-selection
+schema review. No production estimator, configured rate/cap, paid policy or lane-routing change is
+authorized by this proposal.
+
+Context state separates **measurement identity** from the catalog digest observed at each run.
+Provider/account/physical model/gateway/counting-basis/fixture changes invalidate comparability;
+an approved numeric cap edit alone must not erase a still-comparable search bracket. Authenticate
+the configuration used by each run and re-check current eligibility before replaying state. Retain
+at most 16 observations per route/dimension over 90 days plus a bounded authenticated summary;
+exact summary carry-forward and weekly-admission retention schemas remain to be reviewed. Old
+measurements without valid lineage cannot authorize cap edits.
+
+**Activation remains separate.** First validate a few free routes entirely offline, then expand
+the acceptance matrix to every configured free route in the final implementation PR. After merge,
+request approval for a small live canary naming route identities, reserved tokens/requests, time
+budget and expected evidence. That approval does not enable recurring full-catalog experiments.
+Recurring activation requires a separate recorded decision after the canary's evidence and quota
+accounting are reviewed. A DO outage, missing artifact or partial run remains a deferred scan;
+it cannot reset budgets, loosen a cap or enable route removals.
+
+#### Evidence and token-count feedback (accepted direction)
 
 Extend the existing evidence/limit-history path with typed context observations. Keep input,
 output and combined input-plus-output window distinct; fix a small output reservation during input

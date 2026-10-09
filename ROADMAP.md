@@ -277,6 +277,9 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > for local validation, expanding to all configured free routes in the final implementation PR.
 > Conservative weekly experiments use firm reviewed budgets and fair rotation. Numerical budgets,
 > parser/file contracts and the live canary remain L3 prerequisites; no live probes are authorized.
+> A pending §8.10 contract proposes bounded weekly input/output allowances, explicit budget-limited
+> results, provider-specific count parsers and token-aware Worker reservations before live activation.
+> The numerical budget, uncertainty margin and Worker extension require maintainer review.
 > Separately reviewed conservative output caps are accepted; automatic additions still require
 > evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
 > Its exact budgets and implementation contract remain gated on L3 review.
