@@ -256,7 +256,7 @@ apply serialize through one writer lock. Human PR merge remains the activation s
 limit changes belong to later slices; legacy R5 shadow promotion is superseded by review/53
 graduation. See [review/48](review/48-provider-catalog-reconciliation.md).
 
-Slice 3a (#2190, in implementation) extends the existing coordinator reconciliation pass to repair
+Slice 3a (implemented in PR #2191; #2190) extends the existing coordinator reconciliation pass to repair
 queued model indexes and report typed structural failures after a catalog change. Structurally
 unusable primaries unlock already-declared backups while preserving paid/free policy. Pauses and
 temporary quota exhaustion cannot cause structural failure. Python records the original handle,
@@ -264,7 +264,13 @@ catalog identity and eligible route generations before removing a matching termi
 structural recovery preserves failure/schema-correction counts and blocks unchanged resubmissions.
 Prelabeler batches use retained subjects and current input/output bounds. Completed recipes remain
 reusable; no pipeline version changes. Coordinated client/Worker activation
-remains a deployment gate, followed by a recovery canary before Slice 3b removal activation.
+remains a deployment gate, followed by a recovery canary before Slice 3b removal activation. Slice 3b's
+pure retirement planner checks complete fresh absence and exact account evidence, preserves
+surviving pools, and repairs new-job lanes using existing free, unpaused backups. No safe backup
+means the removal is held for review. Exact YAML edits remove dependent retry/reasoning fields
+with semantic fencing. The shared managed writer selects a separate removals branch and flags
+primary changes; preparation and publication remain disabled until a separately reviewed
+post-canary activation change. Existing queued-job policies and completed artifacts are unchanged.
 
 | Area | Modules |
 |---|---|

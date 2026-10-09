@@ -1,6 +1,6 @@
 # review/48 — Provider catalog reconciliation
 
-**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a shipped (#2182) · shadow shutdown shipped (#2188) · Slice 2b paid decisions in implementation (#2187); later slices retain gates**
+**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a shipped (#2182) · shadow shutdown shipped (#2188) · Slice 2b paid decisions shipped (#2189) · Slice 3a shipped (#2191); removal activation retains gates**
 
 Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
 `scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
@@ -481,7 +481,8 @@ an enabled missing shadow lane must still fail loudly. This permits the exact sh
 below without breaking builds. The fix shipped in #2188. Legacy promotion was subsequently
 superseded by review/53; no human-calibration storage loader is needed in the catalog workflows.
 
-**Paid-decision implementation checkpoint (#2187), 2026-10-08:** extend `Decision` with the
+**Paid-decision implementation checkpoint (#2187), implemented in PR #2189 on 2026-10-08:**
+extend `Decision` with the
 physical route ID and reviewed route digest, and `Anomaly` with optional observation date,
 route-config digest and pause contention. Legacy anomalies remain advisory. `reconcile(...,
 route_ids=...)` freshly checks only selected active physical routes, including separate accounts
@@ -520,12 +521,13 @@ shadow lanes and falling qualification. Never promote a primary through this com
 ### 8.5 Slice 3a: structural terminal reasons and bounded rescue
 
 Implementation issue: [#2190](https://github.com/BashfulBits/city-meeting-podcasts/issues/2190);
-PR [#2191](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191) is stacked on #2189.
-Merge Slice 2b first; deployment/canary remain prerequisites for Slice 3b activation.
+Implemented in PR [#2191](https://github.com/BashfulBits/city-meeting-podcasts/pull/2191), merged
+2026-10-08 after Slice 2b #2189. The automatic coordinator deployment succeeded; coordinated
+client activation and a recovery canary remain prerequisites for Slice 3b activation.
 
-**Implementation checkpoint (2026-10-08, #2190; PR #2191, awaiting review/merge):** bounded catalog
+**Implementation checkpoint (2026-10-08, #2190; PR #2191, merged):** bounded catalog
 rescue, nullable terminal metadata, audit-before-delete structural recovery, producer guards and
-retained-subject rebatching are implemented locally. Python recognizes only the two specified
+retained-subject rebatching shipped in #2191. Python recognizes only the two specified
 reasons with a nonempty catalog identity; generic/legacy failures retain existing semantics.
 The terminal fence compares backend/ref against both snapshot and current stored record.
 Structural failures preserve retry/schema-correction counts and remain blocked until an eligible
@@ -636,6 +638,28 @@ structurally failed deferred work; already-completed recipes remain reusable.
 
 ### 8.6 Slice 3b: removals and lane repair
 
+Implementation issue: [#2192](https://github.com/BashfulBits/city-meeting-podcasts/issues/2192).
+The implementation is in [PR #2193](https://github.com/BashfulBits/city-meeting-podcasts/pull/2193),
+awaiting review/merge. Live publication remains disabled.
+Retirement requires current-day complete catalog evidence and an unchanged route digest for
+each configured physical account serving the upstream. Old issue markers alone cannot authorize
+a removal. Both compilers and the lane↔route guard must pass before a managed proposal is pushed.
+
+**Maintainer decisions (2026-10-08):** count only surviving free routes that are not explicitly
+paused (`rpd: 0`) as safe lane replacements. Preserve all paid policies. Promote the first existing
+eligible backup when a primary is removed; if none remains, hold back that route removal and report
+pool alternatives. Remove `backup_after_attempts` when the last backup is removed and prune only
+reasoning entries for models no longer in the lane. Do not rewrite existing queued jobs or their
+stored policies. New lane primary identities affect new jobs; completed artifacts remain reusable.
+
+Finish and merge the code with removal publication disabled. Then verify a bounded recovery canary
+against deployed Worker/Python consumers and enable the writer in a separate reviewed activation
+change. `retire.py::RETIREMENTS_ENABLED` remains false; dormant preparation/publication helpers
+`scripts/provider_catalog_commands.py::prepare_retirements()` and `publish()` fail before
+live probes or publication while false, and no workflow calls the retirement preparer. The later activation
+change must record canary evidence and wire the existing reconcile/writer workflow paths under the
+shared writer lock. This PR does not dispatch a canary or change deployment settings.
+
 New `citypods/provider_catalog/retire.py::plan_retirements()` shares the evidence/editor contracts.
 Require fresh absence from a complete catalog **and** a definitive retired/not-served probe for the
 exact route/account; generic 404, timeout, 429, structured-output failure and account-tier failures
@@ -648,6 +672,20 @@ lane backups only when no policy-eligible route remains; promote the first survi
 removed primary and label `needs:human-verification`. If any lane would become empty, reject that
 route removal and escalate with pool alternatives; do not manufacture a replacement. Run the
 lane↔route guard and both compilers before push. Paid transitions remain explicit 2b decisions.
+
+Offline acceptance: 5,316 Python tests pass (16 live tests deselected), including 263 targeted
+retirement/apply/editor/reconcile/workflow tests. Whole-repository Ruff and both compilers pass
+without generated drift. The BeatAPI regression removes one physical route while retaining its
+shared DeepSeek logical pool and all lane↔route guards. No Worker code changes or live calls.
+Final validation excludes definitively retired routes from safe replacements even when their removal
+is held back, and retains a promoted model in backups to preserve the existing retry allowance.
+CodeRabbit reviewed unchanged head a7d36703 after the 2026-10-09 02:39:17 UTC request; its sole
+roadmap-date finding was withdrawn after confirming the October 8 America/Chicago commit date.
+The final two planner edge cases are fixed together after that review. Retirement preparation
+parses freshly read lane YAML rather than the process cache, including changed-main rebuilds.
+Follow-up outside Slice 3b: the older additions/paid `prepare()` still uses the cached lane loader
+across its rebuild loop; migrate it to current-snapshot parsing separately. Any additional manual review
+must follow 03:39:17 UTC and one hour after later repository-wide human requests.
 
 Primary changes affect newly generated recipe identities after maintainer merge; they do not rewrite
 stored inputs or invalidate completed artifacts. Old terminal handles follow 3a's fenced recovery.

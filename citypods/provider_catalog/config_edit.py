@@ -6,7 +6,7 @@ import copy
 
 import yaml
 from yaml.nodes import MappingNode, ScalarNode, SequenceNode
-from yaml.tokens import AliasToken, AnchorToken
+from yaml.tokens import AliasToken, AnchorToken, ScalarToken
 
 from citypods.provider_catalog.apply import SOURCE_PATHS, EditPlan
 from citypods.provider_catalog.evidence import digest
@@ -123,12 +123,139 @@ def _set_route_free(text, route_id):
     return text[: node.start_mark.index] + "false" + text[node.end_mark.index :]
 
 
+def _remove_routes(text, route_ids):
+    """Remove exact block items, retaining comments and text outside those items."""
+    if not route_ids:
+        return text
+    routes = _node(text, ("routes",))
+    if not isinstance(routes, SequenceNode) or routes.flow_style:
+        raise ValueError("removal requires a block route sequence")
+    spans = []
+
+    def last_value(node):
+        if isinstance(node, MappingNode):
+            return last_value(node.value[-1][1])
+        if isinstance(node, SequenceNode) and node.value:
+            return last_value(node.value[-1])
+        return node
+
+    for rid in route_ids:
+        matches = [
+            node
+            for node in routes.value
+            if isinstance(node, MappingNode)
+            and any(k.value == "route_id" and v.value == rid for k, v in node.value)
+        ]
+        if len(matches) != 1 or matches[0].flow_style:
+            raise ValueError("removal route missing or unsupported")
+        node = matches[0]
+        start = node.start_mark.index - node.start_mark.column
+        end_mark = last_value(node).end_mark
+        end = end_mark.index if end_mark.column == 0 else text.find("\n", end_mark.index)
+        if end < 0:
+            end = len(text)
+        elif end_mark.column != 0:
+            end += 1
+        spans.append((start, end))
+    if len(set(route_ids)) != len(route_ids):
+        raise ValueError("duplicate route removals")
+    if len(spans) == len(routes.value):
+        raise ValueError("removal cannot empty the route catalog")
+    for start, end in sorted(spans, reverse=True):
+        text = text[:start] + text[end:]
+    return text
+
+
+def _set_lane_field(text, lane, field, value):
+    """Change one existing field, keeping surrounding text and YAML comments."""
+    parent = _node(text, ("llm_lanes", lane))
+    if not isinstance(parent, MappingNode) or parent.flow_style:
+        raise ValueError("lane repair requires a block mapping")
+    pair = next(((k, v) for k, v in parent.value if k.value == field), None)
+    if pair is None:
+        if value is None:
+            return text
+        raise ValueError("lane repair field missing")
+    key, node = pair
+    if value is None:
+        start = key.start_mark.index - key.start_mark.column
+    else:
+        start = node.start_mark.index
+
+    def last(node):
+        if isinstance(node, MappingNode) and node.value:
+            return last(node.value[-1][1])
+        if isinstance(node, SequenceNode) and node.value:
+            return last(node.value[-1])
+        return node
+
+    mark = last(node).end_mark
+    end = mark.index
+    if value is None:
+        if mark.column:
+            newline = text.find("\n", end)
+            end = len(text) if newline < 0 else newline + 1
+    # Scalars can contain '#'; only comments outside scalar spans are retained as comments.
+    scalars = [
+        (t.start_mark.index, t.end_mark.index)
+        for t in yaml.scan(text)
+        if isinstance(t, ScalarToken)
+    ]
+    comments = []
+    position = start
+    for line in text[start:end].splitlines(keepends=True):
+        for column, char in enumerate(line):
+            index = position + column
+            if char == "#" and not any(a <= index < b for a, b in scalars):
+                comments.append(line[column:].rstrip("\r\n"))
+                break
+        position += len(line)
+    indent = key.start_mark.column
+    if value is None:
+        replacement = "".join(" " * indent + comment + "\n" for comment in comments)
+    else:
+        replacement = yaml.safe_dump(value, default_flow_style=True, width=100000).strip()
+        if isinstance(node, SequenceNode) and not node.flow_style:
+            # YAML permits indentless block lists; flow lists require a deeper value indent.
+            replacement = " " * max(0, indent + 2 - node.start_mark.column) + replacement
+        replacement += "".join("\n" + " " * indent + comment for comment in comments)
+    return text[:start] + replacement + text[end:]
+
+
 def apply_config_edits(texts, plan: EditPlan):
     if any(digest(texts[p]) != stamp for p, stamp in plan.config_hashes):
         raise ValueError("config changed since planning")
     expected = {p: copy.deepcopy(load_config(texts[p])) for p in SOURCE_PATHS}
     output = dict(texts)
     limits, site, decisions = (expected[p] for p in SOURCE_PATHS)
+    if set(plan.removed_routes) & set(plan.paid_routes):
+        raise ValueError("removal conflicts with paid edit")
+    output[SOURCE_PATHS[0]] = _remove_routes(output[SOURCE_PATHS[0]], plan.removed_routes)
+    limits["routes"] = [r for r in limits["routes"] if r.get("route_id") not in plan.removed_routes]
+    if plan.lane_repairs and plan.backups:
+        raise ValueError("lane repair conflicts with additions")
+    for lane, models, backups, reasoning in plan.lane_repairs:
+        block = site["llm_lanes"][lane]
+        if not models:
+            raise ValueError("lane repair cannot empty a lane")
+        for field, value in (
+            ("models", list(models)),
+            ("backup_models", list(backups) if backups else None),
+            ("reasoning", dict(reasoning) if reasoning else None),
+        ):
+            old = block.get(field)
+            if old == value or (field not in block and value is None):
+                continue
+            output[SOURCE_PATHS[1]] = _set_lane_field(output[SOURCE_PATHS[1]], lane, field, value)
+            if value is None:
+                block.pop(field, None)
+            else:
+                block[field] = value
+        if not backups and "backup_after_attempts" in block:
+            output[SOURCE_PATHS[1]] = _set_lane_field(
+                output[SOURCE_PATHS[1]], lane, "backup_after_attempts", None
+            )
+            block.pop("backup_after_attempts")
     for rid in plan.paid_routes:
         matches = [r for r in limits["routes"] if r.get("route_id") == rid]
         if len(matches) != 1 or not isinstance(matches[0].get("free"), bool):
