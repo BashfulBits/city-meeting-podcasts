@@ -1501,7 +1501,12 @@ The existing private working search cache retains processed UID documents (inclu
 results), each tied to exact durable record inputs. Source-level policy hashes bind feed
 configuration, base URL, archive policy and publication selection. Routine additions or record
 changes reprocess only affected records; policy changes invalidate partial source progress.
-Completed sources remove partial entries. The wrapper persists working cache on graceful
-deferral, while public manifest/page publication still requires a complete build. The action
+Completed sources retain their per-record entries for later edits. The wrapper persists working
+cache on graceful deferral, while public manifest/page publication still requires a complete build. The action
 summary reports interrupted source, records and completed sources and explicitly distinguishes
 a missing complete index from retained complete publication. Storage stays read-only.
+
+Search record reuse also persists after source completion and unchanged whole-source cache hits.
+The private `partials` map retains per-UID input hashes/documents for completed sources; subsequent
+source edits reuse unchanged meetings, remove stale entries and convert only changed/new records.
+Existing view/archive-policy invalidation and complete-index publication rules still apply.

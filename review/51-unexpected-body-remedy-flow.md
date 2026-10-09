@@ -2799,3 +2799,7 @@ public output. Existing policy invalidation and staged-publication tests must st
 Update ARCHITECTURE.md and CHANGELOG.md; run targeted tests, full offline suite and whole Ruff.
 Do not modify workflow cadence/budget, dependencies, public schema, storage, audio, raw records,
 publication selection, feed definitions or provider adapters. Human merges remain required.
+
+Validation: 41 targeted search/job tests and 5,285 offline tests pass (16 deselected). Whole
+Ruff/format checks pass (487 files); incremental output matches fresh-build output after
+completed-source cache restoration, meeting edits, additions and removals.
