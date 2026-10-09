@@ -1685,6 +1685,87 @@ test("a backup-tier route is used only after the pool's primary routes run out",
   assert.equal(await runOne("third", t0 + 120_000), "backup-idle");
 });
 
+// `yields_to` (review/53 PR1): BeatAPI's free chat routes share one single-flight account window
+// with JEV, so a chat route that yields must step aside while JEV has queued work -- and the job it
+// holds back must stay queued (an ordering rule like a pause), never be failed as unroutable.
+const YIELD_CATALOG = {
+  model_aliases: {},
+  model_routes_map: {
+    "typesafe/jev-1.13": ["beatapi_jev"],
+    "deepseek/deepseek-v4-pro": ["beatapi_v4_pro"],
+  },
+  routes_by_id: {
+    beatapi_jev: {
+      model: "typesafe/jev-1.13",
+      provider: "beatapi",
+      upstream_model: "jev-1.13-free",
+      api_shape: "systemone",
+      request_path: "/systemone",
+      rpm: 1000,
+      rpd: 100000,
+      free: true,
+      input_context_limit: 64000,
+      output_context_limit: 4096,
+    },
+    beatapi_v4_pro: {
+      model: "deepseek/deepseek-v4-pro",
+      provider: "beatapi",
+      upstream_model: "deepseek-v4-pro-free",
+      rpm: 1000,
+      rpd: 100000,
+      free: true,
+      tier: "backup",
+      yields_to: ["beatapi_jev"],
+      input_context_limit: 128000,
+      output_context_limit: 16384,
+    },
+  },
+};
+
+test("a yielding route steps aside while the route it yields to has queued work", async () => {
+  const { sql, storage } = createMockSqlStorage();
+  const env = {
+    MAX_JOBS_PER_UTC_DAY: "10000",
+    MAX_BUNDLE_JOBS: "4",
+    MAX_JOBS_PER_ROUTE_PER_BUNDLE: "4",
+    MAX_CONCURRENT_ROUTE_LANES: "5",
+    MAX_ACTIVE_BUNDLES: "4",
+    MAX_IN_FLIGHT_LLM_CALLS: "8",
+    MAX_BUNDLES_PER_UTC_DAY: "1000",
+    MAX_QUEUE_WAIT_SECONDS: "3600",
+    LEASE_DURATION_SECONDS: "840",
+    MAX_429_RETRIES: "1",
+    MAX_429_BACKOFF_SECONDS: "5",
+    ESTIMATED_CALL_DURATION_CEILING_SECONDS: "5",
+    DISPATCH_LIMITS_OVERRIDE: YIELD_CATALOG,
+  };
+  const coordinator = new LLMSchedulerDO({ storage }, withTestReservations(env));
+  const job = (id, model, outputTokens = 200) => ({
+    id,
+    idempotency_key: `key-${id}`,
+    request_digest: `digest-${id}`,
+    policy_json: JSON.stringify({ allowed_models: [model] }),
+    prompt_family: "tags",
+    input_token_estimate: 500,
+    max_output_token_estimate: outputTokens,
+    payload_key: `payloads/${id}/request.json`,
+  });
+  const state = (id) => [...sql.exec("SELECT state FROM jobs WHERE id = ?", id)][0]?.state;
+
+  const t0 = Date.now();
+  await coordinator.enqueueBatch([job("chat", "deepseek/deepseek-v4-pro"), job("jev", "typesafe/jev-1.13")]);
+  const first = await coordinator.claimDispatchWindow(t0, 25);
+  const firstIds = first.jobs.map((entry) => entry.job_id || entry.id);
+  assert.ok(firstIds.includes("jev"), "JEV's own work is claimed");
+  assert.ok(!firstIds.includes("chat"), "the yielding chat route must not take the account while JEV work is queued");
+  assert.equal(state("chat"), "queued", "held back, not failed as unroutable");
+
+  // With no JEV work queued, the same chat job is claimable on its yielding route.
+  const second = await coordinator.claimDispatchWindow(t0 + 60_000, 25);
+  assert.deepEqual(second.jobs.map((entry) => entry.job_id || entry.id), ["chat"]);
+  assert.equal(second.jobs[0].route_id, "beatapi_v4_pro");
+});
+
 test("a 402-requeued job is claimable again, not stranded queued-without-index", async () => {
   // Claiming a job deletes its job_models index rows. A requeue that only rewrites `state` leaves
   // the job queued with a stale lease and no index row, so claimDispatchWindow can never select it

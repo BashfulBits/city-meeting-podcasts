@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -87,13 +88,28 @@ def prepare(body, base_commit, proposal_kind=None):
     state = decode_state(body)
     snapshot = Report()
     _merge_into_last_full(snapshot, state.get("last_full") or {}, set())
+    from citypods.provider_catalog.apply import parse_context_choice
+
+    # Context selections are exact syntax, but editable issue state cannot authorize a cap.
+    context_selected = tuple(
+        parse_context_choice(choice)
+        for choice in re.findall(r"(?mi)^- \[x\] (.*? \(context [a-f0-9]{64}\))\s*$", body)
+    )
+    snapshot.context_changes = list(context_selected)
     decisions = parse_decisions(body, snapshot)
+    context_selections = tuple(d.model for d in decisions if d.action == "context")
+    if proposal_kind == "context" or (
+        proposal_kind is None
+        and context_selections
+        and all(d.action == "context" for d in decisions)
+    ):
+        return prepare_context(base_commit, selected=context_selections)
     rate_selections = tuple(d.model for d in decisions if d.action == "increase_rate")
     if proposal_kind == "limits" or (
         proposal_kind is None and all(d.action == "increase_rate" for d in decisions)
     ):
         return prepare_limits(base_commit, selected=rate_selections)
-    decisions = tuple(d for d in decisions if d.action != "increase_rate")
+    decisions = tuple(d for d in decisions if d.action not in {"increase_rate", "context"})
     texts = {p: (ROOT / p).read_text() for p in SOURCE_PATHS}
     limits = load_config(texts[SOURCE_PATHS[0]])
     lanes = parse_lanes(load_config(texts[SOURCE_PATHS[1]])["llm_lanes"])
@@ -163,6 +179,39 @@ def prepare_limits(base_commit, *, selected=(), automatic=False):
     return plan
 
 
+def prepare_context(base_commit, *, selected=()):
+    """No provider calls: rebuild exact cap choices from fresh main and authenticated history."""
+    from citypods.provider_catalog.evidence import (
+        discover_context_references,
+        verified_context_history,
+    )
+    from citypods.provider_catalog.limits import context_cap_changes, context_edit_plan
+
+    texts = {p: (ROOT / p).read_text() for p in SOURCE_PATHS}
+    limits = load_config(texts[SOURCE_PATHS[0]])
+    now = datetime.now(UTC)
+    repository = os.environ["GITHUB_REPOSITORY"]
+    references = discover_context_references(repository=repository, now=now)
+    history, _accepted, deferred = verified_context_history(
+        references, limits, repository=repository, now=now
+    )
+    if deferred:
+        raise ValueError("context history unavailable; no cap changes prepared")
+    config = ApplyConfig(
+        limits,
+        parse_lanes(load_config(texts[SOURCE_PATHS[1]])["llm_lanes"]),
+        texts,
+        base_commit,
+        now.date(),
+    )
+    changes = context_cap_changes(history, limits, now=now)
+    plan = context_edit_plan(changes, config, selected=selected, history=history, now=now)
+    output = apply_config_edits(texts, plan)
+    for path in SOURCE_PATHS:
+        (ROOT / path).write_text(output[path])
+    return plan
+
+
 def prepare_retirements(base_commit):
     """Dormant automatic-removal preparation; activation is a separate reviewed change."""
     from citypods.provider_catalog.retire import RETIREMENTS_ENABLED, plan_retirements
@@ -215,6 +264,7 @@ def validate(run_fn=run):
             "tests/test_provider_catalog_evidence.py",
             "tests/test_provider_catalog_retire.py",
             "tests/test_provider_catalog_limits.py",
+            "tests/test_provider_catalog_context.py",
         ]
     )
 
@@ -238,6 +288,12 @@ def publish(plan, *, run_fn=run):
             "<!-- citypods:provider-catalog-limits -->",
         )
         title = "Provider catalog: verified rate maintenance"
+    elif plan.proposal_kind == "context":
+        branch, marker = (
+            "automation/provider-catalog-context",
+            "<!-- citypods:provider-catalog-context -->",
+        )
+        title = "Provider catalog: reviewed context cap calibration"
     elif plan.proposal_kind != "additions":
         raise ValueError("unsupported proposal kind")
     run_fn(["git", "fetch", "origin", "main"])
@@ -266,6 +322,10 @@ def publish(plan, *, run_fn=run):
         for p in prs
     ):
         raise ValueError("automation branch has a human-owned/unmanaged PR")
+    if plan.proposal_kind == "context" and prs:
+        proposed = proposal_body(plan)
+        if prs[0]["body"] != proposed:
+            return "Waiting: the open context proposal must finish before new choices."
     if plan.proposal_kind == "limits" and prs:
         existing_increase = "Source: explicit `/apply` rate increase" in prs[0]["body"]
         proposed_increase = any(c.action == "offer_increase" for c in plan.rate_changes)
@@ -428,12 +488,20 @@ def main(argv=None):
             body = current["body"]
             snapshot = Report()
             _merge_into_last_full(snapshot, decode_state(body).get("last_full") or {}, set())
+            from citypods.provider_catalog.apply import parse_context_choice
+
+            snapshot.context_changes = [
+                parse_context_choice(choice)
+                for choice in re.findall(r"(?mi)^- \[x\] (.*? \(context [a-f0-9]{64}\))\s*$", body)
+            ]
             decisions = parse_decisions(body, snapshot)
             kinds = []
-            if any(d.action != "increase_rate" for d in decisions):
+            if any(d.action not in {"increase_rate", "context"} for d in decisions):
                 kinds.append("additions")
             if any(d.action == "increase_rate" for d in decisions):
                 kinds.append("limits")
+            if any(d.action == "context" for d in decisions):
+                kinds.append("context")
             comments, plans = [], []
             for kind in kinds:
                 for _ in range(3):

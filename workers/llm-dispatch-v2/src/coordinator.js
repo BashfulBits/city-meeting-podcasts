@@ -4346,6 +4346,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
           provider_concurrency: 0,
           route_capacity: 0,
           dispatch_window_capacity: 0,
+          route_yield: 0,
         },
         routes: {
           route_concurrency: {},
@@ -4622,6 +4623,27 @@ export class LLMSchedulerDO extends DurableObjectBase {
       const oversizeJobIds = new Set();
       const modelPlans = this._rankModelsByCapacity(now, windowSeconds, dispatchLimits);
       const modelPlansByModel = new Map(modelPlans.map((plan) => [plan.model, plan]));
+      // `yields_to` (review/53 PR1): a route that yields steps aside while any named route's model
+      // has queued work, so BeatAPI's free chat routes never take the single-flight account window
+      // from JEV. An ordering rule only, like a pause: it never enters routesEligibleFor or the
+      // structural fit, so a job whose only routes yield is held, never failed as unroutable.
+      // One indexed single-row read per named model per claim (review/47 read budget).
+      const queuedByModel = new Map();
+      const yieldsNow = (route) => {
+        const targets = Array.isArray(route.yields_to) ? route.yields_to : [];
+        for (const targetId of targets) {
+          const model = dispatchLimits.routes_by_id?.[targetId]?.model;
+          if (!model) continue;
+          if (!queuedByModel.has(model)) {
+            queuedByModel.set(
+              model,
+              [...sql.exec("SELECT 1 AS queued FROM job_models WHERE model = ? LIMIT 1", model)].length > 0
+            );
+          }
+          if (queuedByModel.get(model)) return true;
+        }
+        return false;
+      };
       for (const modelPlan of modelPlans) {
         if (chosen.length >= bundleJobLimit) break;
         // Head-of-line guard. Reading only the oldest maxJobsPerModelClaim entries let a few jobs
@@ -4685,6 +4707,10 @@ export class LLMSchedulerDO extends DurableObjectBase {
             ...eligibleRoutes.filter((route) => seenRoutes.has(route.route_id)),
           ];
           for (const route of routeOrder) {
+            if (yieldsNow(route)) {
+              diagnostics.rejections.route_yield += 1;
+              continue;
+            }
             const isNewLane = !seenRoutes.has(route.route_id);
             if (isNewLane && seenRoutes.size >= maxConcurrentLanes) {
               diagnostics.rejections.route_lane_limit += 1;

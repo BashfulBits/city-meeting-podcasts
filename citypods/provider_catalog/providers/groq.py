@@ -5,7 +5,12 @@ access" and is gone from `/models` -- on this all-free account that is a retirem
 carry `x-ratelimit-limit-requests` (per day) and `x-ratelimit-limit-tokens` (per minute).
 """
 
-from citypods.provider_catalog.rules import MODEL_DOES_NOT_EXIST, ProviderRules, account_level
+from citypods.provider_catalog.rules import (
+    MODEL_DOES_NOT_EXIST,
+    ProviderRules,
+    account_level,
+    chat_context_observation,
+)
 
 
 def limit_observations(response):
@@ -29,6 +34,8 @@ def limit_observations(response):
 
 
 RULES = ProviderRules(
+    # https://console.groq.com/docs/api-reference (chat usage; reasoning remains unknown).
+    context_observation=chat_context_observation,
     name="groq",
     free_evidence=account_level(),
     signals=(MODEL_DOES_NOT_EXIST,),
