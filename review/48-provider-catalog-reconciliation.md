@@ -700,7 +700,7 @@ old sentinel/no-route indexes, no retry-cap increment and no repeating enqueue l
 
 **Remaining delivery checkpoint (2026-10-09):** four core PRs remain: removal activation after
 recovery-canary acceptance, Slice 4 bounded rate maintenance, Slice 5's L3 design, and Slice 5
-implementation. The snapshot-cache follow-up shipped in #2197. Recovery telemetry shipped in #2199 (#2198); four core PRs remain, with Slice 4 tracked in #2200. Slice 5 may need
+implementation. The snapshot-cache follow-up shipped in #2197. Recovery telemetry shipped in #2199 (#2198); four core PRs remain, with Slice 4 prepared in PR #2201 (#2200). Slice 5 may need
 implementation splits once its L3 contract is finalized. Review/53 PR12 (accepted in #2195) is a
 separate judge-stack lane-governance extension that depends on #2193; it keeps standard lane repair
 unchanged and is not a blocker for this remaining core sequence.
@@ -1071,7 +1071,7 @@ refinement and 10% revalidation; estimate correction outside brackets; transient
 bounds; expired/spoofed provenance; route/gateway changes; resume across scans; quota/pause/time/token
 ceilings; and explicit reviewed config proposals with production caps unchanged until merge.
 
-### Slice 4 implementation checkpoint — #2200 (review/merge pending)
+### Slice 4 implementation checkpoint — implemented in PR #2201 (#2200; merge pending)
 
 The implementation supplies pure six-run/90-day history and strict rational thresholds, independently
 enumerated authenticated artifacts, exact scalar edits, reviewed increase selections and a successful

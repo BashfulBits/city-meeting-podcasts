@@ -12,7 +12,7 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
-- **Provider catalog Slice 4: bounded rate maintenance (#2200).** Authenticated successful
+- **Provider catalog Slice 4: bounded rate maintenance (#2200; PR #2201).** Authenticated successful
   scheduled artifacts retain scoped positive evidence for 90 days, with six independent runs
   per metric. Proven tightening prepares a reviewed PR; increases require an exact `/apply`
   selection. Unknown scope, missing artifacts and account mismatches defer. Existing numeric
