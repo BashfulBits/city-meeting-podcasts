@@ -12,6 +12,17 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog Slice 5 quota-admission prerequisite (#2209; PR #2214).** The existing authenticated
+  reservation API supports bounded weekly context sessions and single-use token/request admission;
+  opt-in pause status exposes advisory allowance and verified quota scope. Admission atomically
+  charges route and weekly ledgers before permission, denies replay and leaves ambiguous attempts
+  charged across outages/recreation. Clustered weekly storage bounds reads and cleanup, with
+  optional row-budget fencing and an increasing run-id watermark. Typed Python methods reject
+  malformed permissions and never retry. The route allowlist is empty and output is disabled;
+  adaptive calibration, live canaries and recurring activation follow separately. Ordinary
+  request-only reservations and measured-cap policy retain their behavior. No production config,
+  pipeline-version bump or completed-artifact backfill.
+
 - **Keep paused-route sizing coverage independent of production config.** The prelabeler regression
   uses explicit paused/live fixtures after Gemma's approved reopening, and verifies both rejection
   of a paused route and no sizing route when every leg is paused. Runtime policy is unchanged.
