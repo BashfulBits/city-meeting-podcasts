@@ -1026,23 +1026,24 @@ complete; live activation retains its separate scoped canary gate.
 #### Remaining contract proposal — 2026-10-09, pending maintainer review
 
 This proposal preserves the accepted priorities above. It is **L2**, not implementation authority:
-the numerical allowances and Worker extension below have not been approved. No live calls occur
-while writing or validating this proposal. After these choices are accepted, complete the exact
-schemas, function signatures, parser matrix and activation procedure before marking Slice 5 L3.
+the maintainer approved the token-aware Worker prerequisite and doubled the proposed new budget
+allowances on 2026-10-09. The uncertainty margin and stopping threshold remain under discussion.
+No live calls occur while writing or validating this proposal. Complete the exact schemas, function
+signatures, parser matrix and activation procedure before marking Slice 5 L3.
 
-**Starting budget recommendation.** Use the existing weekly reconciliation slot, with no context
+**Approved starting budgets — 2026-10-09.** Use the existing weekly reconciliation slot, with no context
 experiments on daily early-rate checks or incidental manual reconciles. Start with these hard
 ceilings; they are allowances, never targets to consume:
 
-| Scope | Proposed ceiling |
+| Scope | Approved ceiling |
 |---|---|
-| Input experiment, one call | 262,144 estimated input tokens; 128 reserved output tokens |
-| Output experiment, one call | 1,024 estimated input tokens; 16,384 reserved output tokens |
-| Weekly input allowance | 1,048,576 reserved input tokens across all context calls |
-| Weekly output allowance | 65,536 reserved output tokens across all context calls |
-| Weekly context requests | 12 calls, including baseline, retry and confirmation calls |
-| One route per weekly run | At most 3 context calls; input before output |
-| Weekly context wall time | 1,800 seconds, including drain, spacing and cooldown |
+| Input experiment, one call | 524,288 estimated input tokens; 256 reserved output tokens |
+| Output experiment, one call | 2,048 estimated input tokens; 32,768 reserved output tokens |
+| Weekly input allowance | 2,097,152 reserved input tokens across all context calls |
+| Weekly output allowance | 131,072 reserved output tokens across all context calls |
+| Weekly context requests | 24 calls, including baseline, retry and confirmation calls |
+| One route per weekly run | At most 6 context calls; input before output |
+| Weekly context wall time | 3,600 seconds, including drain, spacing and cooldown |
 | One provider pause | Existing 900-second allowance; context cannot extend it implicitly |
 
 Input and output allowances charge **both dimensions on every call**, including the fixed opposite
@@ -1057,15 +1058,42 @@ their charge; restarting a workflow cannot reset the weekly allowance. A durable
 record is required before live activation; the exact bounded storage/ownership contract remains an
 L3 prerequisite, not something an advisory issue marker can supply.
 
-These deliberately modest starting budgets do **not** cover every configured maximum. The current
+Doubling applies to the new context allowances, including their fixed opposite dimension, route
+call count and total wall time. Existing provider pause duration and production/account quota guards
+remain unchanged; the larger context allowance cannot extend them. Live activation is still gated.
+
+These starting budgets do **not** cover every configured maximum. The current
 catalog includes input caps above one million and output caps up to 384,000. A route that reaches
 the experiment ceiling without a definitive size rejection is `budget_limited`, retaining its
 verified lower bound and next desired target. Do not report that ceiling as the route maximum,
 reduce production caps to it, or repeat an identical capped experiment every week. Continue other
-routes and offer a separately reviewed budget expansion. This is a proposed trade-off: conservative
-initial spending delays discovery of large boundaries. The maintainer may instead choose larger
-firm budgets before implementation. All configured free routes still receive parser and offline
+routes and offer a separately reviewed budget expansion. The accepted trade-off is that bounded
+initial spending delays discovery of large boundaries. All configured free routes still receive parser and offline
 acceptance coverage; coverage does not promise a live maximum measurement for every route.
+
+**Existing estimator feedback versus boundary refinement.** The v2 Worker already consumes
+provider-reported `prompt_tokens` and `completion_tokens`, forwarded as observed input/output usage.
+`calibration.js` keeps a 32-sample window per route/model/prompt family and enables learning after
+16 usable samples. Its input ratio is the larger of the configured prior and the observed p95
+provider-input/local-estimate ratio; direct Google Gemma routes additionally use 1.2x input headroom.
+Its output forecast uses 1.25x p95 actual output, bounded by the request maximum, and successful
+completion settles quota to actual usage. Producers can read the learned input ratio through the
+existing read-only calibration endpoint. These are already shipped mechanisms, not new Slice 5 work.
+
+Slice 5 should reuse that meaning of provider-count feedback, with separate fixture-specific
+observations for prompt construction and boundary search. Ordinary production output forecasts must
+not size an output-capacity experiment: that experiment deliberately requests long generation and
+must reserve its full output allowance. Synthetic calibration fixtures must not populate ordinary
+production prompt-family estimates. Do not treat the Worker p95 as an exact upper bound for every
+prompt or substitute an estimated count when the boundary observation reports an actual count.
+
+The pending 10% margin concerns a **reviewed operational cap below a measured successful boundary**,
+not another estimate-to-token conversion ratio. The pending 5%/1,024-token threshold concerns when
+to stop spending probes refining a success/rejection interval. Neither changes or replaces existing
+production calibration. Final L3 design must express cap and request in the same provider-token
+basis, account for output reservation on combined windows, and explain existing headroom before
+adding any new buffer. Avoid stacking margins without a stated purpose; whether a new fixed margin
+is needed remains a maintainer decision.
 
 **Fair rotation and uncertainty.** Schedule eligible routes by oldest attempted context scan,
 with a stable route-id tie-break; choose never-attempted routes first. Persist deferred reasons
@@ -1088,9 +1116,9 @@ interpretable length termination; early EOS or parameter acceptance cannot advan
 **Required quota-accounting prerequisite.** `reserveRouteRequests` currently reserves zero tokens
 and describes its out-of-band calls as only a few tokens each. `dispatchPauseStatus` exposes daily
 request headroom, not token headroom. Large context probes cannot safely inherit that contract.
-Recommend extending the existing reservation/status APIs and typed pause client to perform bounded,
-atomic context admission against known request/token limits and existing pause ownership. This is
-a proposed Worker scope extension requiring maintainer approval before coding. Do not assume that
+The maintainer approved extending the existing reservation/status APIs and typed pause client to
+perform bounded, atomic context admission against known request/token limits and existing pause
+ownership on 2026-10-09. Exact schemas and functions still require the L3 contract. Do not assume that
 calling the existing request reservation with a larger prompt checks token quota.
 
 The L3 contract must specify input/output reservation units, existing ledger-window semantics,
