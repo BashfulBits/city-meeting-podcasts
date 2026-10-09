@@ -1560,3 +1560,13 @@ Existing view/archive-policy invalidation and complete-index publication rules s
 Search-page engine/manifest URLs use origin-relative paths, including configured base paths.
 On HTTPS pages, the client upgrades existing same-host HTTP shard URLs to HTTPS; old published
 manifests remain usable without index regeneration. Other-host URLs are unchanged.
+
+
+Reviewed remedy policy foundation lives in `citypods/remedy_policy.py`. Feed config validates
+optional reviewed provenance through that module; `RemedyConfig.policy_templates` references
+its strict template model and defaults to empty. Immutable source-local policy/template indexes
+serve the existing remedy guards and future onboarding callers. Typed supplied official proof
+packets reuse P1 evidence-reference and recording schemas, bind exact city/source/name/GUID and
+require available-history/case references; missing or contradictory proof remains unresolved.
+No evaluation gold, models or network data are loaded implicitly, and no templates are activated.
+Legacy policy declarations retain their guarded behavior and unversioned status.

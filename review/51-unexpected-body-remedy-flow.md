@@ -2839,3 +2839,19 @@ but current configuration does not pause it; isolated reproduction also fails. I
 citypods/tags.py / citypods/compute/llm_policy.py are unchanged from the main base.
 
 P2a implementation issue: [#2211](https://github.com/BashfulBits/city-meeting-podcasts/issues/2211).
+
+
+### P2a implementation prepared (2026-10-09, issue #2211)
+
+The typed policy foundation is implemented for review in `citypods/remedy_policy.py`: strict
+reviewed declarations/templates, explicit city/source proof binding, immutable source-local
+indexes and deterministic ownership results. The existing remedy guards share this resolver
+and preserve legacy exact identities, intentional joint subscriptions and conservative TIF
+recognition. `config/remedy.yml` contains only an empty template list: no template is activated.
+Instantiation validates supplied evidence and references without loading gold, models or websites.
+Synthetic transfer examples exercise the contract; they are not independent admission truth.
+P2b/P2c replay/ledger and persistent excluded/watch dispositions remain future scoped work, as
+do model admission and P3–P5. This subsection is prepared, not stamped shipped before human merge.
+
+Prepared-slice validation: 328 targeted policy/config/evaluation/guard tests and 5,438 full
+offline tests passed (16 deselected); whole-repository Ruff/format checked 493 files.

@@ -769,3 +769,20 @@ def test_empty_publication_selection_keeps_pinned_namespace(tmp_path):
     city = load_city_configs(tmp_path, DEFAULTS)[0]
     assert city.extra["publication_selection"] == policy
     assert source_key(city) == "shared-source"
+
+
+@pytest.mark.parametrize("field,value", [("version", True), ("version", "1"), ("unknown", 1)])
+def test_reviewed_remedy_policy_metadata_is_strict(tmp_path, field, value):
+    feeds = tmp_path / "feeds"
+    feeds.mkdir()
+    raw = yaml.safe_load(VALID)
+    raw["remedy_policy"] = {
+        "identity_names": ["Library Board"],
+        "policy_id": "library-board",
+        "version": 1,
+        "approval_ref": "https://github.com/example/catalog/issues/1",
+    }
+    raw["remedy_policy"][field] = value
+    (feeds / "foo-tx.yml").write_text(yaml.safe_dump(raw))
+    with pytest.raises(ValueError, match="foo-tx.yml.*remedy_policy"):
+        load_city_configs(tmp_path, DEFAULTS)

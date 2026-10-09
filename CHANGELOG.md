@@ -7688,3 +7688,13 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   Verified public browser search, six archive-only exclusions with retained direct pages, and
   four Dallas recordings in all approved feeds with unchanged audio URLs. Six exact-recording
   evidence questions remain explicitly open under the approved exit rule; no runtime changes.
+
+### Review/51 P2a policy foundation (prepared 2026-10-09)
+
+- Adds strict reviewed policy declarations, immutable template indexes and typed official proof
+  packets with explicit city/source binding. Shared ownership lookup preserves exact joint
+  subscriptions and existing conservative TIF guards. Legacy declarations remain unversioned.
+- The shared remedy config defaults to an empty template list; no feeds/templates activate and
+  no records, sources, UIDs, audio, stage versions or feed/cache hashes change. Instantiation
+  performs no model/network/evaluation IO. Replay qualification and feedback persistence follow
+  in separately scoped slices; synthetic transfer fixtures do not establish model admission.

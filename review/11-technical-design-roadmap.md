@@ -1664,4 +1664,8 @@ Implement only the policy parser, immutable indexes, deterministic owner lookup 
 integration specified in review/51. No feed activation, ledger, evidence-v2, model admission or
 production publication changes. P2b/P2c and P3–P5 remain gated.
 
+P2a implementation prepared: strict policy/proof validation and shared source-local resolver;
+production template list remains empty. Persistent excluded/watch dispositions, P2b/P2c and
+model admission remain separate gated work.
+
 P2a implementation issue: [#2211](https://github.com/BashfulBits/city-meeting-podcasts/issues/2211).

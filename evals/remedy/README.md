@@ -72,3 +72,9 @@ accepted precision, critical errors, abstentions, unknown truth, failed calls an
 separately. The seed alone qualifies no automatic alias type. Remedy remains outside continuous
 leagues; compare frozen inputs when models retire or candidates, policy, prompt, effort, schema or
 routing change. Never send `gold.json` to a model.
+
+
+`policies/p2a-foundation/transfer.json` contains synthetic typed-template/proof regression
+examples for source-local instantiation, topic negatives and an unseen-city transfer. These
+are tested as policy contracts, not appended to the independent model-admission manifest or
+gold. Policy instantiation never reads this directory implicitly.
