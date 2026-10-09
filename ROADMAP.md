@@ -269,19 +269,21 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > **R10 catalog follow-up (2026-10-08):** review/48 schema verification shipped in #2169.
 > Remaining contracts were initially proposed in [review/48 §8](review/48-provider-catalog-reconciliation.md#8-remaining-slice-contract-proposal--2026-10-08):
 > initially additions/ignore, paid/shadow follow-up, bounded rescue before removal, then bounded rate
-> limits and adaptive context calibration (Slice 5, L2; review/48 §8.10).
+> limits and adaptive context calibration (Slice 5; review/48 §8.10–8.11).
 > The accepted and revised scope is recorded below; the original shadow follow-up is historical.
 > Proven material tightening may prepare a flagged PR; merge remains a maintainer decision.
 > Remaining contracts accepted in #2178; additions/ignore shipped in PR #2182 (#2179).
 > **Slice 5 priorities accepted 2026-10-09:** input calibration first, then output; a few free routes
 > for local validation, expanding to all configured free routes in the final implementation PR.
-> Conservative weekly experiments use firm reviewed budgets and fair rotation. Numerical budgets,
-> parser/file contracts and the live canary remain L3 prerequisites; no live probes are authorized.
+> Conservative weekly experiments use firm reviewed budgets and fair rotation. The L3 contract
+> is prepared in #2208, with implementation tracked in #2209 after design merge; no live probes
+> are authorized.
 > A pending §8.10 contract proposes bounded weekly input/output allowances, explicit budget-limited
 > results, provider-specific count parsers and token-aware Worker reservations before live activation.
 > The maintainer approved the token-aware Worker extension and doubled the proposed starting
 > budgets. Refinement targets 0.5% or 128 tokens, whichever is larger, across bounded weekly runs;
-> no additional blanket cap margin applies. Exact L3 contracts remain under review.
+> no additional blanket cap margin applies. Exact schemas, file plan and acceptance are in §8.11;
+> offline implementation precedes separately reviewed live canaries and recurring activation.
 > Separately reviewed conservative output caps are accepted; automatic additions still require
 > evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
 > Its exact budgets and implementation contract remain gated on L3 review.

@@ -933,8 +933,7 @@ issue, resolve any code/file mismatch, and copy its activation gate into that is
 review questions are technical acceptance of identity fallback, the trusted-artifact history and
 structural recovery lineage; priority, initial command scope and material-tightening policy are
 already decided above. #2178 and the subsequent implementation request accept the original
-remaining-slice technical choices; Slice 2a shipped in PR #2182 (#2179). Slice 5 remains L2
-under §8.10. The original remaining-contract docs PR #2178 enabled no automatic removal or limit
+remaining-slice technical choices; Slice 2a shipped in PR #2182 (#2179). Slice 5's L3 implementation contract is prepared in §8.11 (PR #2208). The original remaining-contract docs PR #2178 enabled no automatic removal or limit
 maintenance; Slice 4 implementation now supplies reviewed rate proposals. Removal stays disabled.
 
 
@@ -979,7 +978,7 @@ bounded early-failure trigger can schedule a check sooner. Reopening does not ch
 activate Slice 5 probes or bypass pause/quota guards. This config PR performs no live calls or manual
 deployment. No pipeline-version bump or completed-episode backfill is needed.
 
-### 8.10 Slice 5: adaptive context calibration — accepted direction, L2
+### 8.10 Slice 5: adaptive context calibration — accepted decisions
 
 **Maintainer decision, 2026-10-08:** accept separately reviewed conservative output caps when
 catalog bounds are absent, and sequence adaptive context calibration after Slice 4. This explicitly
@@ -1018,19 +1017,19 @@ scan. Separate input and output token allowances prevent output generation from 
 input-calibration allowance. Spare capacity may permit an experiment within the budget; it does
 not authorize extra scans, budget expansion, top-ups or production cap changes.
 
-These priorities refine the L2 direction. Before L3, propose and review the numerical budgets,
-uncertainty margins/resolution thresholds, exact parser/file plan and live activation canary below.
+These priorities are implemented by the L3 contract in §8.11. The accepted numerical budgets,
+resolution threshold, exact parser/file plan and separate live activation gates are specified below.
 Local pilot acceptance must expand to all configured free routes before calling the implementation
 complete; live activation retains its separate scoped canary gate.
 
-#### Remaining contract proposal — 2026-10-09, pending maintainer review
+#### Accepted contract decisions — 2026-10-09
 
-This proposal preserves the accepted priorities above. It is **L2**, not implementation authority:
+This contract preserves the accepted priorities above:
 the maintainer approved the token-aware Worker prerequisite and doubled the proposed new budget
 allowances on 2026-10-09. The maintainer also rejected an additional blanket cap margin and
 accepted a tighter refinement target of 0.5% or 128 tokens, whichever is larger.
-No live calls occur while writing or validating this proposal. Complete the exact schemas, function
-signatures, parser matrix and activation procedure before marking Slice 5 L3.
+No live calls occur while writing or validating this design. Section 8.11 supplies the exact
+schemas, functions, parser matrix and activation gates; offline implementation follows design merge.
 
 **Approved starting budgets — 2026-10-09.** Use the existing weekly reconciliation slot, with no context
 experiments on daily early-rate checks or incidental manual reconciles. Start with these hard
@@ -1038,8 +1037,8 @@ ceilings; they are allowances, never targets to consume:
 
 | Scope | Approved ceiling |
 |---|---|
-| Input experiment, one call | 524,288 estimated input tokens; 256 reserved output tokens |
-| Output experiment, one call | 2,048 estimated input tokens; 32,768 reserved output tokens |
+| Input experiment, one call | 524,288 reserved input tokens; 256 reserved output tokens |
+| Output experiment, one call | 2,048 reserved input tokens; 32,768 reserved output tokens |
 | Weekly input allowance | 2,097,152 reserved input tokens across all context calls |
 | Weekly output allowance | 131,072 reserved output tokens across all context calls |
 | Weekly context requests | 24 calls, including baseline, retry and confirmation calls |
@@ -1056,8 +1055,7 @@ the supported observed mapping with an uncertainty allowance; when no defensible
 defer. If returned usage exceeds the reservation, stop that route and report the overshoot rather
 than refunding or hiding it. Failed, timed-out or ambiguously completed requests retain
 their charge; restarting a workflow cannot reset the weekly allowance. A durable weekly admission
-record is required before live activation; the exact bounded storage/ownership contract remains an
-L3 prerequisite, not something an advisory issue marker can supply.
+record is specified in §8.11.A; an advisory issue marker cannot supply admission authority.
 
 Doubling applies to the new context allowances, including their fixed opposite dimension, route
 call count and total wall time. Existing provider pause duration and production/account quota guards
@@ -1161,8 +1159,7 @@ context artifact lineage; `rules.py` and `providers/*.py` with pure endpoint-spe
 weekly-only path in `scripts/reconcile_provider_routes.py` and
 `.github/workflows/provider-catalog-reconcile.yml`. Extend `compute/llm_dispatch_pause.py` and the
 existing Worker reservation/status handlers for the approved quota prerequisite, with focused
-client/Worker tests. Specify the exact command/apply/config-edit changes only after cap-selection
-schema review. No production estimator, configured rate/cap, paid policy or lane-routing change is
+client/Worker tests. Use the exact command/apply/config-edit contract in §8.11.C. No production estimator, configured rate/cap, paid policy or lane-routing change is
 authorized by this proposal.
 
 Context state separates **measurement identity** from the catalog digest observed at each run.
@@ -1170,8 +1167,8 @@ Provider/account/physical model/gateway/counting-basis/fixture changes invalidat
 an approved numeric cap edit alone must not erase a still-comparable search bracket. Authenticate
 the configuration used by each run and re-check current eligibility before replaying state. Retain
 at most 16 observations per route/dimension over 90 days plus a bounded authenticated summary;
-exact summary carry-forward and weekly-admission retention schemas remain to be reviewed. Old
-measurements without valid lineage cannot authorize cap edits.
+§8.11.C fixes proof expiry at 90 days without indefinite summary carry-forward. Old measurements
+without valid lineage cannot authorize cap edits.
 
 **Activation remains separate.** First validate a few free routes entirely offline, then expand
 the acceptance matrix to every configured free route in the final implementation PR. After merge,
@@ -1258,7 +1255,7 @@ revalidation. Changes to identity, gateway, basis or fixture require revalidatio
 old measurements into a new bracket. Bound both state size and lineage; do not accumulate an
 unbounded per-probe log or treat edited issue markers as trusted evidence.
 
-Separately reviewed caps are ordinary config PR decisions with rationale, evidence basis and an
+Separately reviewed caps are ordinary config PR decisions with rationale, evidence basis and
 documented existing headroom and uncertainty. No additional blanket margin applies. Calibration may
 propose increases or reductions for explicit maintainer review;
 it never automatically raises or lowers context/output caps. Slice 4's rate-tightening thresholds
@@ -1267,20 +1264,13 @@ separate from rate aggregates while reusing their provenance checks. Current `/a
 remain dependent on evidenced required bounds until a later explicit contract implements reviewed
 cap handling. No unchecked cap override is introduced here.
 
-Before L3, create a separate Slice 5 issue and specify exact file/function/schema changes, provider
-parser fixtures, prompt construction/counting basis, uncertainty/resolution policy and integration
-with production admission estimates. Expected extension points are catalog evidence/plugins,
-`limits.py`, `probe.py`, issue state, reconcile/workflow and the existing rate-probe budget helpers;
-this L2 direction does not authorize arbitrary new modules or reuse `run_phase_2` unchanged.
-
-Also specify numerical per-request and per-run input/output/token-cost, request-count and elapsed
-budgets, scan cadence/fair rotation, confirmation allowance and trusted history retention. Existing
-Slice 4 request/time ceilings are not permission for large output generation. Reuse exclusive
-pauses, reservation/renewal, quota checks, spacing and cooldown; share the allowance with discovery
-and rate probes and defer when exhausted. BeatAPI/JEV share their successful-call account window;
-long output calls occupy that window until completion. No top-ups, paid calls, credentials or
-production ceiling changes are authorized by this design. Live activation requires the reviewed
-budget and a scoped canary after offline acceptance; no provider calls occur for this docs PR.
+Section 8.11 supplies the separate implementation issue, exact file/function/schema changes,
+provider parser fixtures, prompt construction/counting basis, resolution policy and production
+admission integration. Its file plan is binding; no unchanged reuse of `run_phase_2` is authorized.
+Accepted numerical budgets, weekly rotation, confirmation allowance and trusted history retention
+are fixed below. Reuse pauses, reservation/renewal, quota checks, spacing and cooldown, with shared
+request allowances and unknown account scopes deferred. No top-ups, paid calls, credentials or
+production ceiling changes occur in this design PR. Live activation remains separately reviewed.
 
 Required offline acceptance: underestimated/overestimated input and output counts; provider usage
 versus size-error feedback; mixed/unknown token bases; reasoning counts; shared context reservations;
@@ -1288,6 +1278,278 @@ clamping, early EOS and truncation; malformed/contradictory parser fields; 50% e
 refinement and 10% revalidation; estimate correction outside brackets; transient failures preserving
 bounds; expired/spoofed provenance; route/gateway changes; resume across scans; quota/pause/time/token
 ceilings; and explicit reviewed config proposals with production caps unchanged until merge.
+
+### 8.11 Slice 5 implementation contract — L3 upon merge of PR #2208
+
+This section resolves §8.10's implementation placeholders and is normative for Slice 5. Accepted
+budgets and precision are unchanged. Code may be implemented after this design PR merges; merging
+the design authorizes offline implementation, not provider calls, manual deployments or activation.
+Implementation issue [#2209](https://github.com/BashfulBits/city-meeting-podcasts/issues/2209)
+tracks this contract. Slice 3b removal remains independently gated.
+
+#### A. Durable admission and failure semantics
+
+Extend the existing authenticated `POST /v2/dispatch:reserve` with discriminated operations. Missing
+`operation` retains today's `{route_id, requests}` request-only behavior. Context operations reject
+unknown fields, booleans as integers, non-finite numbers, unknown/paid/paused routes and stale compiled
+catalog digests. All ceilings are server-owned constants; callers cannot supply larger allowances.
+
+- `operation: context_start`, `run_id` (positive decimal Actions run id), `catalog_digest` (SHA-256).
+  Set the current UTC Monday `week_start` and a 3,600-second session deadline once per week. Return
+  `{ok, week_start, run_id, deadline_ms, remaining_input, remaining_output, remaining_requests}`.
+  Repeating the same start returns the original deadline without writes or extension. A different
+  run in the same week is rejected, including workflow re-runs with the same id but an expired
+  deadline. Starting occurs before drain/spacing so those consume the allowance. No request/token
+  allowance is charged merely for opening the session. Start denial means no context experiment.
+- `operation: context_admit`, `run_id`, `catalog_digest`, `route_id`, `dimension: input|output`,
+  `attempt_id` (SHA-256 of run id, route id, dimension, monotonically increasing attempt ordinal),
+  `input_tokens` (conservative provider-token reservation), `output_tokens` (full requested output),
+  `request_digest` (SHA-256 of measurement identity, fixture version and complete shaped request).
+  Admit one request only; require the matching unexpired session and a provider pause with zero
+  in-flight jobs and at least 205 seconds left. Return `{ok:true, disposition:new, attempt_id}` only
+  after committing all charges. An existing matching attempt returns
+  `{ok:false, error:already_consumed}` without writes; differing contents return `attempt_conflict`.
+  Neither response permits provider I/O. Denials include `disabled`, `quota_unknown`, `quota_wait`,
+  `budget_exhausted`, `session_expired`, `pause_not_drained`, `daily_row_budget` and `stale_catalog`.
+
+An admission is a single-use permission consumed by the client receiving `disposition:new`; it is
+not an exactly-once provider-delivery guarantee. After transport ambiguity or process restart,
+abandon that attempt. Never resend it, automatically retry the provider request, or generate a new
+attempt solely to bypass an ambiguous admission. A skipped call remains charged. This deliberately
+trades some experiment allowance for safety across DO outages, runner crashes and lost responses.
+Later weekly scans can revalidate missing evidence under a fresh week's allowance.
+
+Add two SQLite tables through existing readiness/init machinery, without a DO class migration:
+
+| Table/key | Stored fields and bound |
+|---|---|
+| `context_probe_weeks`, `week_start TEXT PRIMARY KEY` | `run_id TEXT`, `catalog_digest TEXT`, `deadline_ms INTEGER`, `input_used INTEGER`, `output_used INTEGER`, `requests_used INTEGER`; retain current plus seven preceding UTC weeks |
+| `context_probe_attempts`, `attempt_id TEXT PRIMARY KEY` | `week_start TEXT`, `run_id TEXT`, `route_id TEXT`, `dimension TEXT`, `request_digest TEXT`, `input_tokens INTEGER`, `output_tokens INTEGER`, `admitted_at INTEGER`; at most 24 rows per week |
+
+Use no secondary indexes. At admission read the current week and at most its 24 attempts to enforce
+the six-calls-per-route ceiling; never inspect jobs or scan historical queue state for that count.
+Use existing in-flight pause status queries for drain confirmation, with the existing bounded route
+selection. Expire at most one oldest week's attempts and summary on session start, only within the
+optional row budget; if more backlog exists, defer admission rather than unbounded cleanup. Refuse
+session start if retaining it would exceed eight weeks/192 attempts. Schema readiness must protect
+old deployments; no rebuild of job indexes or unrelated state is authorized.
+
+`_transactionSync` must atomically check admission, charge weekly totals, persist the attempt and
+update route quota ledgers. Estimate the full mutation cost, including primary-key index writes
+and scheduler accounting, before it starts; use `_optionalRowStop` and the existing write counter.
+Row exhaustion or storage exceptions roll back the entire mutation and never return permission.
+Do not add a cleanup alarm or write on polling. Read-only status failures remain failures, not zero
+usage. SQLite transaction semantics are documented in the
+[Cloudflare storage API](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/).
+
+Reuse `_applyProvisionalReservation`, `_writeRouteLedger` and `earliestSafeStart` quota arithmetic,
+with `inputRatio:1` for already-converted input and no learned output forecast. Require safe start
+at the current time; return `quota_wait` with its next eligible timestamp otherwise. Context
+experiments deliberately bypass authored context/hard-input caps so exploration can stretch them,
+but never bypass documented provider ceilings or rate/TPM/TPD gates. Isolate that choice in context
+admission: do not relax the ordinary job path or fabricate a persisted job. The helper extension
+may skip only measured-context guards for this operation; existing callers retain defaults.
+Google charges input to its trailing-minute quota; other supported routes charge input plus full
+output, preserving current ledger semantics. Both dimensions always charge the weekly experiment
+budget. Unknown account-sharing mappings defer; they do not create separate allowances per route.
+
+Probe reservations are conservative consumption, not in-flight job reservations: release their
+temporary provisional accounting within the admission transaction while retaining RPM/RPD/TPM/TPD
+debits and trailing-window entries. No completion/refund API is added. Successful usage becomes
+search evidence, but unused generation allowance is not refunded to enable more probes. Observed
+usage beyond reservation stops that route for the run and reports an accounting gap; it cannot
+produce a cap decision. Unknown completion, 429 or rejection keeps the charge. No claim-time output
+forecast is used for intentional long-output generation.
+
+Extend `GET /v2/dispatch:pause-status` with opt-in `context=1`: return current session totals and
+route quota scope/readiness with the existing selection, without mutation. The server remains the
+admission authority; client headroom is advisory. Context probes require a known physical account
+scope matching the plugin mapping. Shared or unverified scopes, including BeatAPI/JEV until their
+shared-start accounting is proven, receive `quota_unknown`; all such routes still get offline
+coverage. This does not alter their ordinary dispatch eligibility or health checks.
+
+#### B. Observation, parser and transport schemas
+
+Add frozen `ContextObservation` in `evidence.py`: `schema_version=1`, `identity_digest`, `route_id`,
+`provider`, `account_id`, `upstream_model`, `gateway_digest`, `dimension`, `fixture_version`,
+`estimator_version`, `local_input_estimate`, `reserved_input`, `requested_output`, nullable
+`reported_input`, `reported_output`, `reported_total`, `reported_ceiling`, `count_basis`,
+`reasoning_basis`, `finish_reason`, `evidence_kind`, `outcome`, `observed_at`, `run_id`, `head_sha`,
+`attempt_id`, and `parser_version`. `count_basis` is `input`, `output`, `combined_reserved`,
+`combined_generated` or `unknown`; reasoning basis is `included`, `excluded` or `unknown`.
+Evidence kind is `processed_input`, `generated_output`, `parameter_only` or `size_rejection`.
+Outcome is `verified`, `inconclusive`, `quota`, `transport` or `unsupported`. All sizes are strict
+non-negative integers bounded by safe-integer range; positive evidence requires positive counts.
+Reject inconsistent totals, conflicting counts or an unknown ceiling basis rather than guessing.
+A fresh rejection at/below comparable success marks drift/uncertainty; a fresh verified success
+above a historical rejection invalidates that active bracket and resumes exploration. No raw bodies, prompt/completion text or secrets persist.
+
+Add `ProviderRules.context_observation: Callable[[Response, ContextRequest], ContextObservation]`;
+default returns `unsupported`. Shared strict envelope helpers belong in `rules.py`. Plugins opt in
+per documented endpoint shape, keeping core reconciliation free of provider-name branches.
+
+| Configured free provider | Required initial parser/fixture contract |
+|---|---|
+| Groq, OpenRouter | Strict chat `usage.prompt_tokens`, `completion_tokens`, optional consistent `total_tokens`; normalized finish reason. Reasoning inclusion must be declared; unknown reasoning permits input evidence only. Explicit size-error fields/messages need separate documented fixtures; never extract arbitrary numbers. |
+| Gemini | Compatibility-endpoint fixtures only; native `usageMetadata`/Interactions fields remain unsupported in this path. Input quota rejection is quota evidence, never a context upper bound. |
+| NVIDIA, SambaNova, Airforce, Kilo, OrcaRouter, ZAI, BeatAPI | Each plugin requires positive/negative fixtures for its configured chat envelope before enabling its supported usage parser. Without an endpoint-specific basis, return `unsupported`; a generic compatibility claim is insufficient. BeatAPI JEV envelopes are always rejected by chat parsing. |
+| Any paid-only or paused route | Offline exclusion fixture; no context admission or live measurement |
+
+Initial Groq and OpenRouter envelope references are their
+[chat API reference](https://console.groq.com/docs/api-reference) and
+[response schema](https://openrouter.ai/docs/api_reference/overview). Documentation examples supply
+parser fixtures, never serving proof. Unsupported size errors mean success-only exploration can
+proceed within budgets; they cannot supply a rejection bracket. Unsupported successful counts
+prevent live measurement. Adding endpoint support is within the named plugin/test plan, requires
+primary documentation or redacted captured protocol evidence, and cannot invoke live providers
+merely to obtain a fixture. All configured free routes must have positive support or an explicit
+unsupported reason in the final offline matrix.
+
+Add frozen `ContextRequest` with `route_id`, `provider`, `account_id`, `upstream_model`,
+`identity_digest`, `dimension`, `fixture_version`, `estimator_version`, `local_input_estimate`,
+`reserved_input`, `requested_output`, `attempt_ordinal`, and transient `messages`/`shaped_body`.
+Only hashes and typed observation metadata enter artifacts; transient bodies are never serialized.
+Add `measure_context(request, *, session, before_call, clock, timeout=120)` in
+`probe.py`, separate from existing canaries. Reuse existing request shaping, chat URL and authentication;
+require final usage and finish reason. Consume a bounded response stream with a 120-second monotonic
+deadline and 4 MiB aggregate byte ceiling, no transport retries, no redirects to unvalidated URLs,
+and output limited by the full reserved maximum. Parse documented SSE final usage when streaming
+is required; non-streaming responses use the same bounded collector. Close responses on every exit.
+Call `before_call` exactly once immediately before submission; only a new durable admission permits
+I/O. Abort/cancel/byte overflow is inconclusive and retains its reservation. Renew the existing pause
+before admission and require cleanup time, including the existing 65-second BeatAPI cooldown.
+
+Input fixture `context-input-v1` uses deterministic numbered filler blocks and unpredictable run-
+specific sentinels at the start, middle and tail; ask for those sentinel values in a bounded response.
+Success requires their exact positions/values plus provider-counted input. This checks processing,
+not universal absence of truncation. Output fixture `context-output-v1` requests a long deterministic
+sequence; capacity evidence requires positive provider-counted output and documented length
+termination. Refusal, malformed sequence, early EOS or reasoning-only generation is inconclusive.
+Do not count visible bytes as provider tokens. Use varied text families in offline construction
+tests; initial live construction follows the fixture's recorded estimate/count mapping, never a
+universal cross-route tokenizer ratio. Cold start uses existing configured input ratio; no unapproved
+extra multiplier applies. Budget fits use the larger of that prior and the maximum compatible
+observed ratio, not a production output forecast or an unbounded cross-fixture aggregate.
+
+#### C. Search state, trusted history and cap decisions
+
+Add `ContextSearchState` in `limits.py`, keyed by measurement identity and dimension: nullable
+success/rejection observation references, `next_target`, `status`, `last_attempted_at`, and at most
+16 compatible estimate/count pairs. Status is `baseline`, `exploring`, `refining`, `converged`,
+`budget_limited`, `uncertain` or `unsupported`. `next_context_probe(state, limits, budget)` chooses
+baseline, 150% exploration, exact midpoint or 110% subsequent boundary revalidation per §8.10.
+`advance_context_state(state, observation)` uses actual counts and rejects incompatible bases.
+Compare refinement exactly: width <= 128 **or** width * 200 <= success. Do not round percentage
+thresholds, repeat a count as progress or spend confirmation calls outside the budget. Two compatible
+verified successes in distinct successful weekly runs are required before offering a cap; a size
+rejection may tighten a search bracket but never automatically lower a production cap.
+
+Measurement identity hashes provider, account alias, physical route/upstream model, gateway path,
+fixture/parser/estimator versions, counting basis and fixed opposite-dimension reservation. Numeric
+config caps and rates are recorded in each run's catalog digest, not identity; changes still trigger
+fresh eligibility and quota checks. Basis/identity changes discard the active bracket. Preserve
+older evidence for diagnostics only. Converged states remain eligible for later revalidation, with
+fair rotation; uncertainty never monopolizes the weekly queue.
+
+Add `context_artifact`, `discover_context_references` and `verified_context_history` alongside the
+rate equivalents. Artifacts include schema version, repository, successful-main run/head, catalog
+digest, typed observations, attempted scopes and per-identity summaries. Authenticate run success,
+workflow id/path, main ancestry, artifact identity and current eligibility using existing rate
+provenance checks; issue text supplies no authority. Retain 16 observations/dimension and 90-day
+search summaries; do not carry expired success/rejection proof indefinitely via a summary. Fresh
+revalidation restarts stale bounds. Raw artifacts have a 4 MiB limit and at most 128 route identities;
+larger catalogs fail closed with an explicit coverage gap, requiring a reviewed bound increase.
+Missing artifacts lose measurement progress, never durable budget charges. Issue state may retain
+rotation/deferred timestamps, but spoofed timestamps cannot invent counts or cap offers.
+
+`context_cap_changes(history, config)` offers only `hard_input_ceiling` and `output_context_limit`
+for existing free routes. No edit to `input_context_limit`, rate limits, estimator ratios, tolerance,
+concurrency, paid policy, lanes or retired routes. Input-only evidence sets a verified input bound;
+combined-window evidence can support an input ceiling only when the documented reservation basis
+allows subtracting the current full configured production output reservation. Unknown semantics
+withhold the choice. If the resulting ceiling exceeds the retained total context window, cap it at
+that window minus production output reservation; report the limiting guard. Output offers require
+actual generation evidence and cannot exceed the retained total window. Respect current stricter
+documented quota/input guards; do not erase a 14,400-token Google ceiling on context evidence alone.
+No blanket percentage reduction is added. Existing producer/calibration safeguards remain intact.
+
+Extend exact issue choices with
+`<route_id>: set <field> from <old-or-null> to <new> (context <evidence-digest>)`. `/apply` rebuilds
+choices from fresh main and authenticated history, requires an exact offered selection and current
+scalar match, and offers both tightening and increases for explicit review. Adds no automatic context
+proposal path. A missing input ceiling may be offered as a new optional scalar; no new YAML key is
+invented. Context decisions stay separate from additions lacking evidence and Slice 4's rate rules.
+Use `automation/provider-catalog-context`, marker `citypods:provider-catalog-context`, existing writer
+lock/compiler validation and retained-branch ownership guards. A different open context proposal
+waits; never overwrite reviewed choices with a new measurement. PR descriptions include both count
+bases, observed interval, existing safeguards, budget limitation and exact semantic delta.
+
+Extend `Report` with `context_observations`, `context_states`, `context_changes` and
+`context_attempted_routes`, empty by default. Add keyword `context_run=None` to `reconcile`;
+legacy/daily/manual callers supply none. Issue state adds versioned `context_v1` containing
+advisory route/dimension status and rotation timestamps only; rebuilding exact offers always uses
+trusted artifacts. Add `plan_context_scan`, `context_edit_plan`, `parse_context_choice` and
+`prepare_context` in the corresponding planner/apply/command files. `EditPlan.context_changes`
+is a tuple of route id, field, old nullable scalar, new positive scalar and evidence digest;
+`proposal_kind=context` selects the isolated publisher. Existing defaults and rate/addition
+paths retain behavior. Workflow creates `provider-catalog-context-evidence-<run_id>` only for the
+weekly full schedule on main, with 90-day retention. No new workflow input can bypass admission.
+
+#### D. Exact file/function plan and acceptance
+
+| Files | Authorized implementation changes |
+|---|---|
+| `workers/llm-dispatch-v2/src/coordinator.js` | readiness/init for the two tables; context branches in `reserveRouteRequests`; bounded opt-in status in `dispatchPauseStatus`; existing row-budget transaction integration |
+| Worker `protocol.js`, `index.js`, `pacing.js` | discriminated validation/routing; context-only measured-cap bypass in `earliestSafeStart`; ordinary callers unchanged |
+| `citypods/compute/llm_dispatch_pause.py` | typed `start_context`, `reserve_context`, `context_status` methods; strict disposition validation; no automatic retries |
+| `provider_catalog/evidence.py`, `rules.py`, `providers/*.py` | observation/request schemas, artifact verification, pure plugin parsers and endpoint support declarations |
+| `provider_catalog/limits.py`, `probe.py` | state/search/cap planning and bounded measurement/fixture construction; no unchanged reuse of phase 2 |
+| `provider_catalog/reconcile.py`, `issue.py` | context report/state fields, fair planning, exact reviewed choices and deferred reasons |
+| `provider_catalog/apply.py`, `config_edit.py` | context decision parsing, scalar edit plan and exact semantic assertions |
+| `scripts/reconcile_provider_routes.py`, `scripts/provider_catalog_commands.py` | weekly context orchestration, typed admission, artifact output and fresh-main reviewed context publisher |
+| `.github/workflows/provider-catalog-reconcile.yml`, `provider-catalog-commands.yml` | weekly-only context evidence and apply integration; preserve writer lock, permissions, secrets and pinned Actions |
+| Python catalog/pause/limits/apply/config-edit tests; `tests/test_workflows.py` | meaningful search/parser/budget/provenance/editor/weekly exclusion fixtures; new `tests/test_provider_catalog_context.py` and `tests/fixtures/provider_catalog/context/` permitted |
+| Worker protocol/coordinator/pacing/row-accounting/schema-readiness/index tests | durable admission replay/rollback/recreation, compatibility and bounded rows/writes |
+| `review/48`, `review/11`, `ROADMAP.md`, `CHANGELOG.md`, `ARCHITECTURE.md` | lifecycle, shipped behavior and gates recorded in each implementation PR |
+
+Do not modify production config or compiled catalogs in the implementation PR, existing calibration
+estimator/forecast behavior, job schemas/rescue indexes, `/v2/stats`, JEV transport, provider secrets,
+dependencies, episode artifacts or pipeline versions. Catalog compilers may run for validation but
+their output must remain unchanged. Changes beyond this table require the AGENTS clarification gate.
+
+Acceptance must prove: start/admit schema rejection; exact weekly/per-call/per-route ceilings and
+UTC rollover; same-attempt replay/conflict; lost response/crash between admission and I/O; rollback
+at every write; eviction/recreation; optional/hard row-budget exhaustion; cleanup bounds; zero job
+scans for budgets; Google trailing-minute/input-only and other input+output accounting; unknown
+shared scope deferral; pause expiry/drain/renewal; ordinary request-only reservation compatibility;
+full output reservations unaffected by production forecasts; no daily/manual context calls;
+unsupported parser paths for every configured free route; count correction, malformed/mixed basis,
+reasoning, tail/truncation/EOS/error cases; exact 0.5%/128 boundaries; resumed 150%/midpoint/110%
+search; artifact tampering/expiry/cap-only identity preservation; explicit fresh-main cap choices,
+scalar insertion/change, combined-window subtraction, no unrelated config delta; writer collisions.
+
+Run focused Python/Worker suites, full offline Python/Worker suites, whole-repo Ruff lint/format,
+both catalog compilers and diff checks. Verify real-workerd bounded read/write and transaction
+rollback/recreation fixtures for the new admission tables; do not treat an in-memory fake alone as
+outage acceptance. No live tests are required or authorized by offline implementation acceptance.
+
+#### E. Delivery and activation
+
+Sequence: (1) quota-admission prerequisite PR, (2) final Slice 5 implementation PR with input first,
+then output and all-route offline coverage. Use a small Groq/OpenRouter local fixture pilot internally
+before expanding the final implementation matrix; no permanent pilot allowlist. Each PR closes its
+review loop and ships lifecycle docs. The parent implementation issue tracks both deliverables.
+
+Keep server-owned `CONTEXT_PROBE_ROUTE_IDS` empty and `CONTEXT_OUTPUT_ENABLED=false` in committed
+implementation code; context start/admit return `disabled` and workflow does not make context calls.
+Activation is a separately reviewed narrow change naming eligible route ids. After maintainer
+approval, the first live canary is input-only on one parser/quota-supported free route, at most two
+calls, 8,192 reserved input and 256 output per call, within the same durable weekly allowance and
+pause gates. Acceptance: correct provider-count feedback, tail result, retained charges across
+status reads/recreation, normal cleanup and no unexplained quota/accounting error. No synthetic DO
+jobs, paid calls, manual deploy or implicit recurring activation. Output needs its own reviewed
+canary after input acceptance; recurring fair rotation requires recorded maintainer approval and a
+separate activation change. This calibration gate does not substitute for the removal recovery canary.
 
 ### Slice 4 implementation checkpoint — implemented in PR #2201 (#2200; merged 2026-10-09)
 
