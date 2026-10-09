@@ -1682,4 +1682,7 @@ P2a implementation issue: [#2211](https://github.com/BashfulBits/city-meeting-po
 
 P2a merged in [#2213](https://github.com/BashfulBits/city-meeting-podcasts/pull/2213); no templates
 activated. The final minor parser fix has an explicitly recorded fresh-review gap. P2b complete
-coverage report is proposed report-only, pending approval of its schema and staged activation.
+coverage report is approved L3, report-only; the maintainer approved its schema and staged
+activation in chat on 2026-10-09.
+
+P2b implementation issue: [#2216](https://github.com/BashfulBits/city-meeting-podcasts/issues/2216).

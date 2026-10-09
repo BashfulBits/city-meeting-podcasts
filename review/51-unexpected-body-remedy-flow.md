@@ -2871,13 +2871,14 @@ remain unresolved rather than raising an unexpected exception. Valid inclusion p
 legacy configuration behavior are unchanged; no feed or source-record changes.
 
 
-### P2b complete coverage report — proposed L3, approval pending (2026-10-09)
+### P2b complete coverage report — approved L3 (2026-10-09)
 
 Predecessor: P2a shipped in #2213. This deterministic slice is report-only; no live models,
 feed edits, accepted-disposition ledger, automatic notifications or provider/storage changes.
 Daily unexpected-body alert behavior stays unchanged until the persistent disposition slice.
 This sequencing avoids reopening P0's deliberately unassigned history before decisions can be
-recognized durably. The maintainer must approve this report schema and staged activation.
+recognized durably. The maintainer approved this report schema and staged activation in chat
+on 2026-10-09 with “I approve.” Implementation remains report-only as specified below.
 
 Permitted files: citypods/remedy_policy.py, citypods/audit.py, scripts/audit_feeds.py,
 tests/test_remedy_policy.py, tests/test_audit.py, existing audit CLI tests and lifecycle docs.
@@ -2929,3 +2930,5 @@ contradictory observations; unknown labels; repeatable hashes; report-only no st
 missing sources/completeness unknown; all existing unexpected-body findings unchanged.
 Run full offline suite and whole Ruff/format. Ship one bounded code PR; keep ledger/exclusion
 persistence and alert activation gated. No production model or automatic feed change.
+
+P2b implementation issue: [#2216](https://github.com/BashfulBits/city-meeting-podcasts/issues/2216).
