@@ -1027,7 +1027,8 @@ complete; live activation retains its separate scoped canary gate.
 
 This proposal preserves the accepted priorities above. It is **L2**, not implementation authority:
 the maintainer approved the token-aware Worker prerequisite and doubled the proposed new budget
-allowances on 2026-10-09. The uncertainty margin and stopping threshold remain under discussion.
+allowances on 2026-10-09. The maintainer also rejected an additional blanket cap margin and
+accepted a tighter refinement target of 0.5% or 128 tokens, whichever is larger.
 No live calls occur while writing or validating this proposal. Complete the exact schemas, function
 signatures, parser matrix and activation procedure before marking Slice 5 L3.
 
@@ -1087,31 +1088,38 @@ must reserve its full output allowance. Synthetic calibration fixtures must not 
 production prompt-family estimates. Do not treat the Worker p95 as an exact upper bound for every
 prompt or substitute an estimated count when the boundary observation reports an actual count.
 
-The pending 10% margin concerns a **reviewed operational cap below a measured successful boundary**,
-not another estimate-to-token conversion ratio. The pending 5%/1,024-token threshold concerns when
-to stop spending probes refining a success/rejection interval. Neither changes or replaces existing
-production calibration. Final L3 design must express cap and request in the same provider-token
-basis, account for output reservation on combined windows, and explain existing headroom before
-adding any new buffer. Avoid stacking margins without a stated purpose; whether a new fixed margin
-is needed remains a maintainer decision.
+**Maintainer decision — 2026-10-09:** add no blanket percentage reduction to measured caps.
+Existing estimate calibration, request sizing and route-selection headroom already provide safety
+mechanisms. Final L3 design must identify their units and where each applies; quota headroom is
+not automatically a context-window buffer. Express both cap and request in the same provider-token
+basis, include output reservation for a combined window, and reuse existing production estimate
+correction. If that relationship is unsupported, withhold the cap proposal instead of adding an
+arbitrary percentage. A separately justified buffer requires explicit evidence and review; Slice 5
+does not silently stack one on existing safeguards or change production calibration.
 
 **Fair rotation and uncertainty.** Schedule eligible routes by oldest attempted context scan,
 with a stable route-id tie-break; choose never-attempted routes first. Persist deferred reasons
 without marking an unattempted route as measured. A quota failure cannot advance a context bracket.
 Use provider-counted observations for bound updates and retain local estimate/count pairs to
-construct the next prompt. Proposed initial admission margin is 10% below a verified successful
-bound, conditional on varied fixture coverage and a known production counting basis. It is not a
-claim that tokenizer uncertainty is universally 10%. If measured production-estimator error exceeds
-that margin, or its relationship to the probe basis is unknown, withhold the cap proposal and report
-the mismatch. Do not silently change the production estimator.
+construct the next prompt. Synthetic fixtures do not redefine production counting behavior;
+unknown basis or unsupported production-estimator mapping prevents a config cap proposal.
 
-Stop midpoint refinement when the provider-token bracket width is at most the greater of 1,024
-tokens or 5% of the successful bound; report the interval, never an exact maximum. Smaller boundaries
-may need a separately chosen absolute threshold. A budget-limited or uninterpretable interval is
-not convergence. Tail checks must succeed at multiple positions in deterministic varied fixtures;
-their failure is inconclusive, while successful checks remain supporting evidence rather than proof
-against every possible truncation behavior. For output, require actual counted generation and an
-interpretable length termination; early EOS or parameter acceptance cannot advance that bound.
+Stop midpoint refinement when the provider-token bracket width is at most the greater of **128
+tokens or 0.5% of the successful bound**. Use exact comparisons without rounding a percentage
+into a looser goal. This is a multi-scan accuracy target, not a reason to add calls per run: retain
+an unresolved bracket and continue in later weekly scans under the unchanged approved request,
+token and elapsed-time ceilings and fair rotation. Once converged, retain subsequent revalidation
+and the existing 110% expansion policy rather than repeatedly refining the same resolved interval.
+
+Report the interval, never an exact maximum. A budget-limited or uninterpretable interval is not
+convergence. Repeated counts, tokenizer granularity or inconsistent provider behavior can prevent
+further progress; record that uncertainty and defer without claiming the tighter target was met.
+This target generally needs about four more midpoint steps than 5% precision, spread
+across runs as needed; it does not promise four calls or a fixed completion date for every route.
+Tail checks must succeed at multiple positions in deterministic varied fixtures; their failure is
+inconclusive, while successful checks remain supporting evidence rather than proof against every
+possible truncation behavior. For output, require actual counted generation and an interpretable
+length termination; early EOS or parameter acceptance cannot advance that bound.
 
 **Required quota-accounting prerequisite.** `reserveRouteRequests` currently reserves zero tokens
 and describes its out-of-band calls as only a few tokens each. `dispatchPauseStatus` exposes daily
@@ -1195,7 +1203,8 @@ They feed back into the next prompt construction: retain observed estimate/count
 same route, tokenizer/estimator and probe fixture; use a conservative observed mapping to approach
 the next target, and update it after each response. This mapping is an estimate, not a universal
 conversion ratio or proof for arbitrary production text. Use varied representative offline fixtures
-and a documented uncertainty margin before translating measured bounds into admission caps.
+and document existing estimate/headroom behavior before translating measured bounds into admission
+caps; do not add a blanket percentage margin.
 
 A rejection can report both an actual request size and an allowed ceiling; store each separately.
 A rejected request of 15,300 provider tokens does not prove a ceiling of 15,299. For a combined
@@ -1250,7 +1259,8 @@ old measurements into a new bracket. Bound both state size and lineage; do not a
 unbounded per-probe log or treat edited issue markers as trusted evidence.
 
 Separately reviewed caps are ordinary config PR decisions with rationale, evidence basis and an
-uncertainty margin. Calibration may propose increases or reductions for explicit maintainer review;
+documented existing headroom and uncertainty. No additional blanket margin applies. Calibration may
+propose increases or reductions for explicit maintainer review;
 it never automatically raises or lowers context/output caps. Slice 4's rate-tightening thresholds
 and six-observation maximum are not a context search algorithm. Keep context search summaries
 separate from rate aggregates while reusing their provenance checks. Current `/apply` additions

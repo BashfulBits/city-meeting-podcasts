@@ -280,7 +280,8 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > A pending §8.10 contract proposes bounded weekly input/output allowances, explicit budget-limited
 > results, provider-specific count parsers and token-aware Worker reservations before live activation.
 > The maintainer approved the token-aware Worker extension and doubled the proposed starting
-> budgets. The uncertainty margin, stopping threshold and exact L3 contracts remain under review.
+> budgets. Refinement targets 0.5% or 128 tokens, whichever is larger, across bounded weekly runs;
+> no additional blanket cap margin applies. Exact L3 contracts remain under review.
 > Separately reviewed conservative output caps are accepted; automatic additions still require
 > evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
 > Its exact budgets and implementation contract remain gated on L3 review.
