@@ -716,8 +716,12 @@ def context_cap_changes(history, config, *, now):
                 "remaining_requests": 24,
             },
         )
-        if planned.status == "budget_limited" and old is not None and value < old:
-            # An experiment allowance is not evidence that an existing cap is too large.
+        if (
+            old is not None
+            and value < old
+            and (planned.status == "budget_limited" or state.rejection is None)
+        ):
+            # A success is only a lower bound; reducing a cap requires a parsed rejection.
             continue
         stamp = digest(
             {

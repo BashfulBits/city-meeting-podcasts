@@ -1311,16 +1311,20 @@ def _measure_context_routes(
                 if type(baseline) is not int or baseline <= 0:
                     break
                 # A small fixture is used only to resolve the documented measurement identity.
-                seed = build_context_request(
-                    route,
-                    cfg,
-                    rules,
-                    dimension=dimension,
-                    target=1000,
-                    ratio=prior,
-                    attempt_ordinal=1,
-                    nonce="offline-identity-" * 4,
-                )
+                try:
+                    seed = build_context_request(
+                        route,
+                        cfg,
+                        rules,
+                        dimension=dimension,
+                        target=1000,
+                        ratio=prior,
+                        attempt_ordinal=1,
+                        nonce="offline-identity-" * 4,
+                    )
+                except ValueError as exc:
+                    report.observations.append(f"{rid}/{dimension}: context deferred ({exc})")
+                    break
                 key = (seed.identity_digest, dimension)
                 from citypods.provider_catalog.rules import context_parser_support
 
@@ -1346,16 +1350,20 @@ def _measure_context_routes(
                     break
                 ordinal = context_run.setdefault("ordinal", 0) + 1
                 context_run["ordinal"] = ordinal
-                request = build_context_request(
-                    route,
-                    cfg,
-                    rules,
-                    dimension=dimension,
-                    target=target.next_target,
-                    ratio=context_input_ratio(current, prior),
-                    attempt_ordinal=ordinal,
-                    nonce=context_run.setdefault("nonce", secrets.token_hex(32)),
-                )
+                try:
+                    request = build_context_request(
+                        route,
+                        cfg,
+                        rules,
+                        dimension=dimension,
+                        target=target.next_target,
+                        ratio=context_input_ratio(current, prior),
+                        attempt_ordinal=ordinal,
+                        nonce=context_run.setdefault("nonce", secrets.token_hex(32)),
+                    )
+                except ValueError as exc:
+                    report.observations.append(f"{rid}/{dimension}: context deferred ({exc})")
+                    break
                 if request.reserved_input > budget["remaining_input"] or (
                     request.requested_output > budget["remaining_output"]
                 ):

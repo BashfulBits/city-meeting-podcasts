@@ -1208,3 +1208,54 @@ def test_selected_input_output_batch_preserves_final_total_window(input_cap, exp
         assert changed["hard_input_ceiling"] + changed["output_context_limit"] == 10000
     else:
         assert plan.deferred and apply_config_edits(texts, plan) == texts
+
+
+@pytest.mark.parametrize("previous_requests", [3, 4])
+def test_regular_probes_exhaust_shared_context_allowance(monkeypatch, previous_requests):
+    report, context, runner, calls, admissions = run_context_orchestration(
+        monkeypatch, previous_requests=previous_requests
+    )
+    assert not calls and not admissions and not report.context_observations
+    assert runner.total_requests == previous_requests
+    assert context["budget"]["remaining_requests"] == 24
+
+
+@pytest.mark.parametrize("failed_build", [1, 2])
+def test_context_fixture_failure_defers_without_admission(monkeypatch, failed_build):
+    from citypods.provider_catalog import probe
+
+    original = probe.build_context_request
+    count = 0
+
+    def build(*args, **kwargs):
+        nonlocal count
+        count += 1
+        if count == failed_build:
+            raise ValueError("fixture cannot fit")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(probe, "build_context_request", build)
+    report, _context, _runner, calls, admissions = run_context_orchestration(monkeypatch)
+    assert not calls and not admissions
+    assert any("r/input: context deferred (fixture cannot fit)" in x for x in report.observations)
+
+
+def test_success_lower_bounds_cannot_reduce_existing_cap():
+    from datetime import UTC, datetime, timedelta
+
+    from citypods.provider_catalog.limits import context_cap_changes
+
+    now = datetime.now(UTC)
+    config = {
+        "providers": {"groq": PROVIDER},
+        "routes": [{**ROUTE, "hard_input_ceiling": 1000}],
+    }
+    history = tuple(
+        replace(
+            success(count), observed_at=(now - timedelta(days=days)).isoformat(), run_id=str(days)
+        )
+        for count, days in [(800, 8), (950, 1)]
+    )
+    assert not context_cap_changes(history, config, now=now)
+    config["routes"][0]["hard_input_ceiling"] = 700
+    assert context_cap_changes(history, config, now=now)[0][3] == 950

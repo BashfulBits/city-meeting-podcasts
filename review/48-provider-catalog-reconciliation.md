@@ -1621,6 +1621,10 @@ The first CodeRabbit review identified two integration gaps, both corrected: con
 pauses require an eligible enabled route with exact physical quota scope, and advisory choices include
 this run's observations so their values/digests match the artifacts `/apply` independently authenticates
 only after successful completion. Failed or unfinished runs still grant no writer authority.
+The follow-up review adds rejection-required cap reductions and route-local fixture-construction
+error deferral. Success-only lower bounds can insert or raise a cap but cannot lower an existing one.
+The suggested removal of the shared three-request guard was rejected: regular probes may exhaust
+that allowance and defer context measurement, as the accepted shared-budget contract requires.
 
 Final offline acceptance is recorded below; updated-head CI must finish. The matrix
 covers every configured route and both dimensions, including paid/paused exclusions, actual-count
@@ -1630,7 +1634,7 @@ exact fresh-main scalar edits and context-writer collisions. No production YAML,
 compiled catalog, estimator, output forecast, Worker activation flag or live admission policy changes.
 Input/output canaries, recurring activation and removal recovery acceptance remain separate gates.
 
-Offline acceptance: 5,545 Python tests passed (16 live cases deselected), 341 focused catalog/context/
+Offline acceptance: 5,550 Python tests passed (16 live cases deselected), 346 focused catalog/context/
 apply/editor/workflow tests, 424 Worker tests, whole-repository Ruff lint/format, both unchanged
 catalog compilers and diff checks. Production-spawn private-URL exclusion and forked fake transport
 prove admission gating and hard cancellation without live HTTP. The client canonical digest matches
