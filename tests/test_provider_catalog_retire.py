@@ -389,7 +389,7 @@ def test_retirement_preparation_reads_fresh_lanes_after_main_changes(tmp_path, m
     monkeypatch.setattr(retire, "RETIREMENTS_ENABLED", True)
     monkeypatch.setattr(commands, "ROOT", tmp_path)
     monkeypatch.setattr(
-        commands, "load_lanes", lambda: pytest.fail("cached lanes must not be used")
+        commands, "load_lanes", lambda: pytest.fail("cached lanes must not be used"), raising=False
     )
     monkeypatch.setattr(commands, "_control", lambda _: object())
     monkeypatch.setattr(commands, "load_decisions", lambda: Decisions())

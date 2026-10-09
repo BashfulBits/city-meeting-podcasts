@@ -239,7 +239,8 @@ leaves the whole run unscored rather than exposing a partial catalog. The weekly
 workflow separately exercises this client and requires usable reference-model scores; missing
 credentials and API/schema failures fail the job. Reconciliation changes no config.
 `provider-catalog-commands.yml` handles exact `/apply` comments from repository writers on the
-current rolling issue. Its trusted main checkout refetches the issue and re-verifies only selected
+current rolling issue. Its trusted main checkout refetches the issue, parses lane settings from
+the exact current source snapshot on every rebuild, and re-verifies only selected
 new routes and keep-paid physical routes, preserving provider pauses/spacing and the
 three-candidate budget. Keep-paid requires an unchanged reviewed route and fresh uncontended
 `not_entitled` evidence, retains a free primary pool, and writes only `free: false` plus an
@@ -265,7 +266,7 @@ structural recovery preserves failure/schema-correction counts and blocks unchan
 Prelabeler batches use retained subjects and current input/output bounds. Completed recipes remain
 reusable; no pipeline version changes. Coordinated client/Worker activation
 remains a deployment gate, followed by a recovery canary before Slice 3b removal activation. Slice 3b's
-pure retirement planner checks complete fresh absence and exact account evidence, preserves
+pure retirement planner (implemented in PR #2193) checks complete fresh absence and exact account evidence, preserves
 surviving pools, and repairs new-job lanes using existing free, unpaused backups. No safe backup
 means the removal is held for review. Exact YAML edits remove dependent retry/reasoning fields
 with semantic fencing. The shared managed writer selects a separate removals branch and flags

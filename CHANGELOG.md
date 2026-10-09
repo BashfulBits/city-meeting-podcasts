@@ -12,7 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
-- **Provider catalog Slice 3b: dormant removals and lane repair (#2192).** Fresh complete-catalog
+- **Provider catalog apply rebuilds use current lane settings (#2196).** Additions/paid preparation
+  parses its freshly read site-config snapshot rather than the process-level lane cache, so a
+  changed-main retry honors the current free-primary pool and backup opt-out. Existing permission,
+  evidence, quota and managed-publication gates are unchanged. No pipeline bump or artifact backfill.
+
+- **Provider catalog Slice 3b: dormant removals and lane repair (#2192; PR #2193).** Fresh complete-catalog
   absence and exact unchanged-route retirement proof must agree across serving accounts. Preserve
   surviving pools; promote only existing free, unpaused backups, and hold back removals without a
   safe replacement. Narrow YAML edits clean dependent backup thresholds and reasoning fields while

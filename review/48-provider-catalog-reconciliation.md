@@ -1,6 +1,6 @@
 # review/48 — Provider catalog reconciliation
 
-**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a shipped (#2182) · shadow shutdown shipped (#2188) · Slice 2b paid decisions shipped (#2189) · Slice 3a shipped (#2191); removal activation retains gates**
+**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a shipped (#2182) · shadow shutdown shipped (#2188) · Slice 2b paid decisions shipped (#2189) · Slice 3a shipped (#2191) · Slice 3b code shipped (#2193); removal activation retains gates**
 
 Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
 `scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
@@ -640,7 +640,7 @@ structurally failed deferred work; already-completed recipes remain reusable.
 
 Implementation issue: [#2192](https://github.com/BashfulBits/city-meeting-podcasts/issues/2192).
 The implementation is in [PR #2193](https://github.com/BashfulBits/city-meeting-podcasts/pull/2193),
-awaiting review/merge. Live publication remains disabled.
+implemented in PR #2193, merged 2026-10-08 (America/Chicago). Live publication remains disabled.
 Retirement requires current-day complete catalog evidence and an unchanged route digest for
 each configured physical account serving the upstream. Old issue markers alone cannot authorize
 a removal. Both compilers and the lane↔route guard must pass before a managed proposal is pushed.
@@ -683,14 +683,25 @@ CodeRabbit reviewed unchanged head a7d36703 after the 2026-10-09 02:39:17 UTC re
 roadmap-date finding was withdrawn after confirming the October 8 America/Chicago commit date.
 The final two planner edge cases are fixed together after that review. Retirement preparation
 parses freshly read lane YAML rather than the process cache, including changed-main rebuilds.
-Follow-up outside Slice 3b: the older additions/paid `prepare()` still uses the cached lane loader
-across its rebuild loop; migrate it to current-snapshot parsing separately. Any additional manual review
+The recorded additions/paid snapshot-cache follow-up is tracked in #2196: change
+`scripts/provider_catalog_commands.py::prepare()` to parse `llm_lanes` from its exact freshly read
+site-config text, like retirement preparation. Extend `tests/test_provider_catalog_apply.py` with
+successive-main snapshots against a warmed obsolete cache: current free-primary admission and
+backup opt-out must win. Update the existing retirement cache-guard mock for the removed import.
+No evidence, permission, provider probes, production config or publication gates change. Any additional manual review
 must follow 03:39:17 UTC and one hour after later repository-wide human requests.
 
 Primary changes affect newly generated recipe identities after maintainer merge; they do not rewrite
 stored inputs or invalidate completed artifacts. Old terminal handles follow 3a's fenced recovery.
 Removal automation stays disabled until 3a is deployed and a bounded recovery canary verifies the
 old sentinel/no-route indexes, no retry-cap increment and no repeating enqueue loop.
+
+**Remaining delivery checkpoint (2026-10-08):** four core PRs remain: removal activation after
+recovery-canary acceptance, Slice 4 bounded rate maintenance, Slice 5's L3 design, and Slice 5
+implementation. The snapshot-cache follow-up #2196 is an additional small PR. Slice 5 may need
+implementation splits once its L3 contract is finalized. Review/53 PR12 (accepted in #2195) is a
+separate judge-stack lane-governance extension that depends on #2193; it keeps standard lane repair
+unchanged and is not a blocker for this remaining core sequence.
 
 ### 8.7 Slice 4: scoped observations, thresholds and budget
 
