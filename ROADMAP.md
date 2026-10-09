@@ -273,6 +273,10 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > The accepted and revised scope is recorded below; the original shadow follow-up is historical.
 > Proven material tightening may prepare a flagged PR; merge remains a maintainer decision.
 > Remaining contracts accepted in #2178; additions/ignore shipped in PR #2182 (#2179).
+> **Slice 5 priorities accepted 2026-10-09:** input calibration first, then output; a few free routes
+> for local validation, expanding to all configured free routes in the final implementation PR.
+> Conservative weekly experiments use firm reviewed budgets and fair rotation. Numerical budgets,
+> parser/file contracts and the live canary remain L3 prerequisites; no live probes are authorized.
 > Separately reviewed conservative output caps are accepted; automatic additions still require
 > evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
 > Its exact budgets and implementation contract remain gated on L3 review.
