@@ -4,16 +4,26 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal
-from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
 from citypods.bodies import body_key, matches, matches_exact_body_label
+from citypods.config import (
+    _policy_approval as _approval,
+)
+from citypods.config import (
+    _policy_slug as _slug,
+)
+from citypods.config import (
+    _policy_strings as _strings,
+)
+from citypods.config import (
+    validate_declaration,
+)
 from citypods.records import source_key as recording_source_key
 
 FAMILIES = {"tif", "pid", "bond", "charter", "redistricting", "public_input", "public_briefings"}
@@ -46,90 +56,6 @@ def canonical_hash(value):
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
     ).hexdigest()
-
-
-def _slug(value):
-    if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", value):
-        raise ValueError("invalid policy slug")
-
-
-def _approval(value):
-    parsed = urlparse(value)
-    if (
-        parsed.scheme != "https"
-        or parsed.netloc != "github.com"
-        or not re.fullmatch(r"/[^/]+/[^/]+/(issues|pull)/[0-9]+", parsed.path)
-        or parsed.query
-        or (
-            parsed.fragment
-            and not re.fullmatch(
-                r"(issuecomment|discussion_r|pullrequestreview)-[0-9]+", parsed.fragment
-            )
-        )
-    ):
-        raise ValueError("approval_ref must be an HTTPS GitHub issue/PR/comment URL")
-
-
-def _strings(value, *, nonempty=True, distinct=True):
-    if (
-        not isinstance(value, list)
-        or (nonempty and not value)
-        or any(not isinstance(item, str) or not item.strip() for item in value)
-        or (distinct and len(value) != len(set(value)))
-    ):
-        raise ValueError("expected distinct nonempty strings")
-
-
-def validate_declaration(value, context="feed"):
-    try:
-        if not isinstance(value, dict) or set(value) - {
-            "aggregate_family",
-            "member_names",
-            "identity_names",
-            "policy_id",
-            "version",
-            "positive_case_ids",
-            "negative_case_ids",
-            "approval_ref",
-            "template_id",
-            "template_version",
-        }:
-            raise ValueError("unknown policy declaration keys")
-        family = value.get("aggregate_family")
-        if "aggregate_family" in value and (not isinstance(family, str) or family not in FAMILIES):
-            raise ValueError("unknown aggregate family")
-        if not family and not value.get("identity_names"):
-            raise ValueError("identity-only policy requires identity_names")
-        for key in ("member_names", "identity_names", "positive_case_ids", "negative_case_ids"):
-            if key in value:
-                _strings(
-                    value[key],
-                    nonempty=key.endswith("case_ids") or (key == "identity_names" and not family),
-                    distinct=key.endswith("case_ids"),
-                )
-                if key.endswith("names") and any(not body_key(n) for n in value[key]):
-                    raise ValueError("empty normalized official name")
-        if any(c in name for name in value.get("identity_names", []) for c in "*?"):
-            raise ValueError("identity_names cannot contain wildcards")
-        for keys in (("policy_id", "version", "approval_ref"), ("template_id", "template_version")):
-            present = [key in value for key in keys]
-            if any(present) and not all(present):
-                raise ValueError("incomplete provenance tuple")
-        for key in ("policy_id", "template_id"):
-            if key in value:
-                _slug(value[key])
-        for key in ("version", "template_version"):
-            if key in value and (type(value[key]) is not int or value[key] < 1):
-                raise ValueError("version must be a strict positive integer")
-        if "approval_ref" in value:
-            _approval(value["approval_ref"])
-        if "template_id" in value and "policy_id" not in value:
-            raise ValueError("template reference requires reviewed provenance")
-        if set(value.get("positive_case_ids", [])) & set(value.get("negative_case_ids", [])):
-            raise ValueError("positive and negative cases overlap")
-        return value
-    except (ValueError, TypeError) as exc:
-        raise ValueError(f"{context}: invalid remedy_policy: {exc}") from exc
 
 
 class StrictModel(BaseModel):

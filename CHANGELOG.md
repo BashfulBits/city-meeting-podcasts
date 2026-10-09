@@ -7698,3 +7698,8 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   no records, sources, UIDs, audio, stage versions or feed/cache hashes change. Instantiation
   performs no model/network/evaluation IO. Replay qualification and feedback persistence follow
   in separately scoped slices; synthetic transfer fixtures do not establish model admission.
+
+P2a preview correction: dependency-free declaration validation remains in citypods/config.py;
+strict template/evidence models reuse it from citypods/remedy_policy.py. Base render installations
+do not require the optional Pydantic evaluation dependency. A subprocess regression blocks
+Pydantic imports while loading every production feed. No dependency or workflow changes.

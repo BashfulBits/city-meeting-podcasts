@@ -1563,7 +1563,8 @@ manifests remain usable without index regeneration. Other-host URLs are unchange
 
 
 Reviewed remedy policy foundation lives in `citypods/remedy_policy.py`. Feed config validates
-optional reviewed provenance through that module; `RemedyConfig.policy_templates` references
+optional reviewed provenance with dependency-free helpers in citypods/config.py, reused by
+the policy module; `RemedyConfig.policy_templates` references
 its strict template model and defaults to empty. Immutable source-local policy/template indexes
 serve the existing remedy guards and future onboarding callers. Typed supplied official proof
 packets reuse P1 evidence-reference and recording schemas, bind exact city/source/name/GUID and

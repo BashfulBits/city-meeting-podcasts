@@ -2855,3 +2855,8 @@ do model admission and P3–P5. This subsection is prepared, not stamped shipped
 
 Prepared-slice validation: 328 targeted policy/config/evaluation/guard tests and 5,438 full
 offline tests passed (16 deselected); whole-repository Ruff/format checked 493 files.
+
+P2a preview correction: dependency-free declaration validation remains in citypods/config.py;
+strict template/evidence models reuse it from citypods/remedy_policy.py. Base render installations
+do not require the optional Pydantic evaluation dependency. A subprocess regression blocks
+Pydantic imports while loading every production feed. No dependency or workflow changes.
