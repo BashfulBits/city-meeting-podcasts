@@ -623,7 +623,7 @@ def test_partial_source_resumes_and_only_changed_records_restart(tmp_path, monke
     assert calls == ["u0", "u1", "u0", "u2"]
     assert run(2) is not None
     assert calls == ["u0", "u1", "u0", "u2", "u3", "u4"]
-    assert not cache["partials"]
+    assert len(cache["partials"][source_key(city)]["records"]) == 5
     shard = _shard(tmp_path, source_key(city))
     assert len(shard["documents"]) == 5
     assert next(d for d in shard["documents"] if d["uid"] == "u0")["title"] == "Changed title"
@@ -661,3 +661,40 @@ def test_partial_source_invalidates_on_view_and_archive_policy_changes(tmp_path,
     monkeypatch.setattr(search_mod, "archive_policy_hash", lambda *_: "changed-archive-policy")
     assert run() is None
     assert calls == ["u0", "u0", "u0"]
+
+
+def test_completed_source_reuses_records_after_changes_and_cache_hits(tmp_path, monkeypatch):
+    city = _city()
+    records = {f"u{i}": episode_to_record(_episode(f"u{i}")) for i in range(3)}
+    _save(tmp_path, city, records)
+    cache = {}
+    calls = []
+    original = search_mod._record_to_document
+
+    def convert(city, record, **kwargs):
+        calls.append(record["uid"])
+        return original(city, record, **kwargs)
+
+    monkeypatch.setattr(search_mod, "_record_to_document", convert)
+
+    def run():
+        return build_search_index(
+            tmp_path / "state", [city], tmp_path / "docs", "https://site.test", cache=cache
+        )
+
+    assert run() is not None
+    assert calls == ["u0", "u1", "u2"]
+    cache = json.loads(json.dumps(cache))
+    assert run() is not None  # A whole-source cache hit must retain the record cache.
+    assert calls == ["u0", "u1", "u2"]
+    cache = json.loads(json.dumps(cache))
+    records["u1"]["title"] = "Updated meeting"
+    records["u3"] = episode_to_record(_episode("u3"))
+    del records["u0"]
+    _save(tmp_path, city, records)
+    assert run() is not None
+    assert calls == ["u0", "u1", "u2", "u1", "u3"]
+    assert set(cache["partials"][source_key(city)]["records"]) == {"u1", "u2", "u3"}
+    incremental = _shard(tmp_path, source_key(city))
+    build_search_index(tmp_path / "state", [city], tmp_path / "docs", "https://site.test", cache={})
+    assert _shard(tmp_path, source_key(city)) == incremental

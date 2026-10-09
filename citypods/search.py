@@ -554,7 +554,6 @@ def build_search_index(
             and isinstance(cached.get("manifest"), dict)
         ):
             manifest.append(cached["manifest"])
-            partials.pop(src_key, None)
             continue
 
         partial_hash = _shard_hash(
@@ -676,7 +675,7 @@ def build_search_index(
         }
         manifest.append(entry)
         cache_shards[src_key] = {"version": SEARCH_CACHE_VERSION, "hash": digest, "manifest": entry}
-        partials.pop(src_key, None)
+        # Retain per-record documents so later source edits reuse unchanged sidecars.
 
     # Cached docs survive deploys.  Remove deleted-source shards and their cache entries so neither
     # browser search nor the next cache hit can serve a retired feed.

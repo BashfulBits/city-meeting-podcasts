@@ -1647,3 +1647,9 @@ is pending behind the existing deployment queue.
 Search budget extension: **L3**, maintainer-approved 120-minute work window and 150-minute
 search job timeout, retaining four-hour cadence. Progress is emitted in logs and summary.
 Bounded contract: review/51, Search two-hour budget and progress visibility (2026-10-08).
+
+### Search completed-source record reuse — L3 (2026-10-08)
+
+Approved follow-on: retain private per-meeting search documents after source completion so
+changed sources rebuild only changed meetings. Contract: review/51, Retain meeting documents
+after search source completion. Budgets, cadence and complete-index publication remain unchanged.
