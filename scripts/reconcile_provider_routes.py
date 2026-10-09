@@ -163,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--due-only", action="store_true")
     parser.add_argument("--no-pause", action="store_true")
     parser.add_argument("--rate-evidence", type=Path)
+    parser.add_argument("--context-evidence", type=Path)
     parser.add_argument("--evidence-report", action="store_true")
     parser.add_argument(
         "--backtest",
@@ -226,6 +227,74 @@ def main(argv: list[str] | None = None) -> int:
         # The daily run: nothing is waiting on a quota reset, so no network calls at all.
         print("due-only: no deferred checks; nothing to do")
         return 0
+    context_run = None
+    context_status = None
+    if args.context_evidence:
+        if (
+            os.environ.get("GITHUB_EVENT_NAME") != "schedule"
+            or args.due_only
+            or args.provider
+            or os.environ.get("GITHUB_REF") != "refs/heads/main"
+            or os.environ.get("GITHUB_EVENT_SCHEDULE") != "17 10 * * 1"
+        ):
+            parser.error("context evidence is weekly scheduled main only")
+        if isinstance(control, WorkerDispatchControl):
+            from citypods.compute.llm_dispatch_pause import Selection
+            from citypods.provider_catalog.evidence import (
+                _context_catalog_digest,
+                discover_context_references,
+                verified_context_history,
+            )
+
+            try:
+                context_status = control.client.context_status(Selection("global"))
+                if context_status["enabled"]:
+                    compiled = json.loads(
+                        (REPO_ROOT / "workers/llm-dispatch-v2/src/dispatch_limits.json").read_text()
+                    )
+                    if _context_catalog_digest(compiled) != context_status["catalog_digest"]:
+                        raise ValueError("deployed context catalog differs from this checkout")
+                    now = datetime.now(UTC)
+                    references = discover_context_references(
+                        repository=os.environ["GITHUB_REPOSITORY"], now=now
+                    )
+                    history, _accepted, gaps = verified_context_history(
+                        references, limits, repository=os.environ["GITHUB_REPOSITORY"], now=now
+                    )
+                    if gaps:
+                        raise ValueError("context history unavailable")
+                    opened = control.client.start_context(
+                        os.environ["GITHUB_RUN_ID"], context_status["catalog_digest"]
+                    )
+                    context_run = {
+                        "run_id": opened.run_id,
+                        "head_sha": os.environ["GITHUB_SHA"],
+                        "deadline_ms": opened.deadline_ms,
+                        "catalog_digest": context_status["catalog_digest"],
+                        "readiness": context_status["routes"],
+                        "history": history,
+                        "rotation": dict(
+                            (previous_state.get("context_v1") or {}).get("rotation") or {}
+                        ),
+                        "budget": {
+                            "remaining_input": opened.remaining_input,
+                            "remaining_output": opened.remaining_output,
+                            "remaining_requests": opened.remaining_requests,
+                        },
+                    }
+            except (
+                DispatchPauseError,
+                ValueError,
+                TypeError,
+                KeyError,
+                AttributeError,
+                OSError,
+                RuntimeError,
+                subprocess.CalledProcessError,
+                zipfile.BadZipFile,
+                zlib.error,
+            ):
+                print("context calibration deferred: authority/history unavailable")
     session = requests.Session()
     quality = fetch_quality_index(session)
     report = reconcile(
@@ -241,6 +310,7 @@ def main(argv: list[str] | None = None) -> int:
         due_only=args.due_only,
         rate_run_id=rate_run_id,
         early_rate_checks=early,
+        context_run=context_run,
     )
     _carry_rate_state(report, previous_state)
     if args.rate_evidence:
@@ -296,6 +366,32 @@ def main(argv: list[str] | None = None) -> int:
             report.observations.append("rate history unavailable; offers deferred")
         report.state["last_full"]["rate_changes"] = [asdict(c) for c in report.rate_changes]
         report.state["rate_changes"] = [asdict(c) for c in report.rate_changes]
+    if args.context_evidence:
+        from citypods.provider_catalog.evidence import context_artifact
+        from citypods.provider_catalog.limits import context_cap_changes
+
+        envelope = context_artifact(
+            report.context_observations,
+            limits,
+            repository=os.environ["GITHUB_REPOSITORY"],
+            run_id=os.environ["GITHUB_RUN_ID"],
+            head_sha=os.environ["GITHUB_SHA"],
+            now=datetime.now(UTC),
+            catalog_digest=(context_status or {}).get("catalog_digest", "0" * 64),
+            attempted_routes=report.context_attempted_routes,
+            states=report.context_states,
+        )
+        args.context_evidence.write_text(json.dumps(envelope, indent=2) + "\n")
+        if context_run:
+            report.context_changes = list(
+                # Advisory until this run succeeds; /apply independently authenticates its artifact.
+                context_cap_changes(
+                    (*context_run["history"], *report.context_observations),
+                    limits,
+                    now=datetime.now(UTC),
+                )
+            )
+        report.state["last_full"]["context_changes"] = list(report.context_changes)
     if not args.due_only and not args.provider:
         # Self-check (catalog reads only): would discovery re-find what is already configured?
         # A drop here means a plugin gate drifted from how routes are actually chosen.

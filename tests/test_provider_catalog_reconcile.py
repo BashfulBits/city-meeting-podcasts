@@ -1488,3 +1488,43 @@ def test_due_only_early_check_runs_provider_without_deferred_routes(monkeypatch)
     )
     assert sent == ["glm-flash"]
     assert report.rate_attempted_routes == {"zai_flash"}
+
+
+@pytest.mark.parametrize("ready", ["disabled", "wrong_scope", "paid", "paused", "ready"])
+def test_context_only_pauses_providers_with_eligible_exact_scope(monkeypatch, ready):
+    from copy import deepcopy
+
+    from citypods.provider_catalog import reconcile as module
+
+    monkeypatch.setenv("K", "test-key")
+    limits = deepcopy(LIMITS)
+    route = limits["routes"][0]
+    route.update(free=ready != "paid", rpd=0 if ready == "paused" else 100)
+    measured = []
+    monkeypatch.setattr(module, "_measure_context_routes", lambda *args, **kw: measured.append(1))
+    context = {
+        "history": (),
+        "readiness": {
+            route["route_id"]: {
+                "enabled": ready != "disabled",
+                "quota_scope": "wrong"
+                if ready == "wrong_scope"
+                else "groq:p:meta-llama/llama-keep",
+            }
+        },
+    }
+    control = FakeControl()
+    reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=control,
+        today=TODAY,
+        candidate_keys=set(),
+        context_run=context,
+    )
+    assert control.paused_providers == (["groq"] if ready == "ready" else [])
+    assert measured == ([1] if ready == "ready" else [])

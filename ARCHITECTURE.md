@@ -580,14 +580,48 @@ Start prunes at most one old week; all mutations are fenced by the optional row 
 is returned only after atomic token/request ledger and attempt commits. Replays and lost responses
 cannot grant another permission, and skipped or failed calls keep their conservative charges.
 
+The weekly client compares this checkout's compiled catalog with the deployed canonical digest
+before session start and matches the exact provider/account/physical-model quota scope per route.
+Stale deployment/configuration cannot borrow another physical route's allowance.
+
 Context admission requires a drained provider pause, verified physical model/account quota scope,
 and current rate/token headroom. Groq and Gemini scope mappings are supported; unknown/shared
 mappings defer. Google charges input-only TPM, while other supported routes charge full input plus
 requested output. Context-only exploration may stretch measured caps; ordinary job guards remain.
 `GET /v2/dispatch:pause-status?context=1` is advisory and read-only. The typed pause client has no
 admission retry. Committed route activation is empty and output is disabled; no workflow makes
-context calls. Search/parsers/history and reviewed cap proposals follow in the final implementation,
-then separately approved input/output canaries and recurring activation (review/48 §8.11).
+context calls. The weekly reconciliation path reads this disabled authority without starting a session or making
+context calls. Separately approved input/output canaries and recurring activation remain gates
+(review/48 §8.11).
+
+Context calibration uses provider-reported token counts for fixture-local prompt correction and
+separate input/output success/rejection intervals. Input fixtures check unpredictable sentinels at
+three positions; output proof requires counted generation, an ordered sequence and length
+termination. Groq supports documented chat input usage; OpenRouter supports chat input and output
+usage with declared reasoning inclusion. Every other configured free endpoint explicitly defers
+without documented count fixtures; native Gemini and BeatAPI JEV envelopes supply no chat proof.
+Unknown shared quota scopes also defer independently of parser support. Ordinary production token
+calibration and output forecasts retain their existing behavior.
+
+Context calls share existing reconciliation request/time allowances and require new durable
+admission before submission. A short-lived subprocess bounds HTTP collection to 120 seconds and
+four MiB, with no retry or redirect; deadline termination retains charged reservations. Scans use
+oldest-attempted rotation, 150% unbounded exploration, midpoint refinement to 0.5% or 128 tokens,
+and 110% later boundary revalidation. Returned counts beyond reservation stop the route rather than
+supplying cap proof. An unfit desired target remains budget-limited rather than becoming a maximum.
+Uncertain counts stop the scan; the next week restarts at baseline and needs two fresh weekly
+successes for cap proof. Unexpired anchors remain original observations within the bounded history.
+
+Successful scheduled main artifacts authenticate run/workflow/head ancestry and bounded typed
+observations. Search retains 16 observations per identity/dimension for 90 days; artifact summaries
+and editable issue state cannot renew expired proof. Numeric cap/rate changes preserve measurement
+identity; gateway, physical model, basis and fixture changes invalidate it. Two compatible weekly
+successes can offer exact `/apply` choices for existing free-route input/output scalars only.
+The writer reauthenticates history on fresh main, defers selected input/output pairs that would
+exceed the final retained total window, preserves full production output/total-window
+guards, and prepares a separate owned context branch. Different reviewed choices wait for the open
+proposal. No extra blanket cap margin or automatic context-cap change is introduced. Experiment
+budget limits cannot justify reductions to existing larger caps.
 
 ### LLM Model Catalog & Decision Matrix
 

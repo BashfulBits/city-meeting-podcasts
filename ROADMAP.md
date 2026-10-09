@@ -52,8 +52,9 @@ TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues
 
 - Provider catalog paid-route decisions (#2189) and bounded structural rescue (#2191).
   Removal planning shipped in #2193 (#2192); activation still requires coordinated deployment
-  and a recovery canary. Slice 4 rate maintenance shipped in #2201 (#2200); remaining review/48
-  activation and Slice 5 calibration are not marked shipped.
+  and a recovery canary. Slice 4 rate maintenance shipped in #2201 (#2200), and disabled Slice 5
+  quota admission shipped in #2214 (#2209). Adaptive calibration and remaining activation are
+  not marked shipped.
 
 - Addison body-policy corrections and historical sweep (#2010, #2012, #2014, #2019–#2021,
   2026-10-04): Public Input/Briefings, verified joint subscriptions, exact Council ownership,
@@ -282,8 +283,11 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > for local validation, expanding to all configured free routes in the final implementation PR.
 > Conservative weekly experiments use firm reviewed budgets and fair rotation. The L3 contract
 > was accepted in merged #2208, with implementation tracked in #2209; no live probes
-> are authorized. PR #2214 (#2209) prepares disabled durable admission for review;
-> the final adaptive calibration implementation and separate activation gates remain.
+> are authorized. PR #2214 (#2209) shipped disabled durable admission;
+> the final adaptive calibration implementation is prepared in
+> [PR #2218](https://github.com/BashfulBits/city-meeting-podcasts/pull/2218), with all-route offline
+> parser/eligibility coverage. Review and current-head CI remain pre-merge requirements.
+> Separate input/output canaries, recurring calibration and removal recovery gates remain.
 > The accepted §8.10–8.11 contract specifies bounded weekly input/output allowances, explicit budget-limited
 > results, provider-specific count parsers and token-aware Worker reservations before live activation.
 > The maintainer approved the token-aware Worker extension and doubled the proposed starting

@@ -65,6 +65,7 @@ class EditPlan:
     proposal_kind: str = "additions"
     # Scope, provider, target, metric, old/new scalar and authenticated target digest.
     rate_changes: tuple = ()
+    context_changes: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -138,6 +139,11 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
     for change in snapshot.rate_changes:
         if change.action == "offer_increase" and change.choice in checked:
             result.append(Decision(change.provider, change.choice, "increase_rate"))
+    for change in snapshot.context_changes:
+        from citypods.provider_catalog.limits import context_choice
+
+        if context_choice(change) in checked:
+            result.append(Decision("", context_choice(change), "context"))
     if not result:
         raise ValueError("select at least one supported decision")
     return tuple(result)
@@ -405,12 +411,25 @@ def proposal_body(plan: EditPlan) -> str:
         from citypods.provider_catalog.retire import PR_MARKER as marker
     elif plan.proposal_kind == "limits":
         marker = "<!-- citypods:provider-catalog-limits -->"
+    if plan.proposal_kind == "context":
+        marker = "<!-- citypods:provider-catalog-context -->"
     lines = [marker, "Provider catalog evidence reverified against current main.", ""]
     if plan.primary_changes:
         lines += [
             "Primary changes require human verification: " + ", ".join(plan.primary_changes),
             "",
         ]
+    if plan.context_changes:
+        lines += [
+            "Source: explicit `/apply` context cap selection; no extra blanket cap margin.",
+            "Provider-counted bounds retain existing estimator and route-selection safeguards.",
+            "Budget-limited lower bounds are not exact maxima.",
+            "",
+        ]
+    for change in plan.context_changes:
+        from citypods.provider_catalog.limits import context_choice
+
+        lines.append("- " + context_choice(change))
     for change in plan.rate_changes:
         lines.append(
             f"- {change.scope} `{change.target}` {change.metric}: {change.old} → {change.new}"
@@ -439,3 +458,16 @@ def proposal_body(plan: EditPlan) -> str:
         else "No primary changes or catalog backfill.",
     ]
     return "\n".join(lines) + "\n"
+
+
+def parse_context_choice(value):
+    """Strict exact syntax; a parsed choice is advisory until trusted history rebuilds it."""
+    match = re.fullmatch(
+        r"([A-Za-z0-9_.:-]{1,128}): set (hard_input_ceiling|output_context_limit) "
+        r"from (null|[1-9][0-9]*) to ([1-9][0-9]*) \(context ([a-f0-9]{64})\)",
+        value,
+    )
+    if not match:
+        raise ValueError("invalid context choice")
+    rid, field, old, new, stamp = match.groups()
+    return rid, field, None if old == "null" else int(old), int(new), stamp

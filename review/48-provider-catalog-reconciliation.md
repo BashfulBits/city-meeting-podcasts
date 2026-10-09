@@ -699,8 +699,9 @@ Removal automation stays disabled until 3a is deployed and a bounded recovery ca
 old sentinel/no-route indexes, no retry-cap increment and no repeating enqueue loop.
 
 **Remaining delivery checkpoint (2026-10-09, after #2208):** Slice 4 shipped in #2201 and the
-Slice 5 L3 design was accepted in #2208. Two offline implementation PRs are planned under #2209:
-quota admission first, then final calibration with input before output and all-route coverage.
+Slice 5 L3 design was accepted in #2208. Quota admission shipped in #2214; one offline
+implementation PR remains under #2209 for final calibration with input before output and all-route
+coverage.
 Removal activation still needs ordinary-run recovery-canary acceptance. Live input/output canaries
 and recurring calibration activation remain separately reviewed changes. The snapshot-cache
 follow-up shipped in #2197 and recovery telemetry in #2199 (#2198). Review/53 PR12 (accepted in
@@ -1459,6 +1460,13 @@ fresh eligibility and quota checks. Basis/identity changes discard the active br
 older evidence for diagnostics only. Converged states remain eligible for later revalidation, with
 fair rotation; uncertainty never monopolizes the weekly queue.
 
+**Maintainer direction — 2026-10-09:** a route stops its current scan on conflicting or repeated
+counts. The next weekly scan restarts at its configured baseline, retaining fixture-local estimate/
+count correction while clearing active success/rejection references. Previous observations remain
+diagnostic only. Require two compatible successes in distinct subsequent weekly runs before a cap
+offer; pre-restart successes cannot satisfy that proof. Replay of authenticated history enforces the
+same run boundary, so an issue summary or process restart cannot erase the uncertainty gate.
+
 Add `context_artifact`, `discover_context_references` and `verified_context_history` alongside the
 rate equivalents. Artifacts include schema version, repository, successful-main run/head, catalog
 digest, typed observations, attempted scopes and per-identity summaries. Authenticate run success,
@@ -1559,7 +1567,7 @@ jobs, paid calls, manual deploy or implicit recurring activation. Output needs i
 canary after input acceptance; recurring fair rotation requires recorded maintainer approval and a
 separate activation change. This calibration gate does not substitute for the removal recovery canary.
 
-### Slice 5 quota-admission checkpoint — PR #2214, prerequisite for #2209
+### Slice 5 quota-admission checkpoint — implemented in PR #2214 (merged 2026-10-09)
 
 [PR #2214](https://github.com/BashfulBits/city-meeting-podcasts/pull/2214) implements §8.11.A
 through the existing reservation/status handlers and typed
@@ -1580,6 +1588,72 @@ This acceptance does not authorize live calibration or satisfy the separate reco
 The final implementation PR still supplies adaptive search, provider-count parsers, authenticated
 history, reviewed cap choices, weekly orchestration and all configured free-route offline coverage.
 Input/output canaries and recurring activation remain separately reviewed changes.
+
+### Final Slice 5 implementation — PR #2218 (unmerged, 2026-10-09)
+
+[PR #2218](https://github.com/BashfulBits/city-meeting-podcasts/pull/2218), branch
+`feat/2209-adaptive-context-calibration`, contains the observation/request schemas,
+strict Groq input and OpenRouter input/output chat parsers, sentinel and counted-generation fixtures,
+actual-count search, authenticated bounded history, exact scalar choices and fresh-main cap
+publication. Weekly orchestration uses the shipped durable admission and existing shared provider
+request/time budget. All configured routes have offline eligibility and parser coverage; unsupported
+endpoints, native Gemini and BeatAPI JEV remain explicitly deferred. There is no generic inferred
+size-error parser, so these initial supported endpoints explore verified lower bounds without
+inventing rejection ceilings from arbitrary error numbers. Unknown/shared quota scope separately
+defers admission; parser support alone does not enable calls. Before session start, the client
+compares its compiled catalog with the deployed Worker's canonical digest, including JS number
+formatting. Each route also requires the exact deployed provider/account/physical-model scope;
+a stale deployment or changed physical mapping cannot silently charge a different route.
+
+The provider transport uses the approved cancellation adjustment below. URL validation and key
+availability precede admission; the child waits for new durable permission before submission.
+Preflight failures do not mark a route measured. Admission ambiguity abandons the context run,
+transport ambiguity never retries the attempt, and reservation overshoot stops both dimensions of
+that route. Actual input overshoots remain fixture-local correction evidence, never cap authority.
+Raw prompts/responses do not enter artifacts. Two bounded compatible weekly successes can supply an
+explicit lower-bound choice; reaching the experiment ceiling cannot justify reducing an existing
+larger production cap. Selecting input and output changes together must fit the final retained total
+window; an incompatible pair defers both exact choices rather than inventing an unselected value.
+Current cap offers retain output/window guards and unsupported combined-
+window semantics withhold proposals until a documented endpoint parser establishes that basis.
+
+The first CodeRabbit review identified two integration gaps, both corrected: context-only provider
+pauses require an eligible enabled route with exact physical quota scope, and advisory choices include
+this run's observations so their values/digests match the artifacts `/apply` independently authenticates
+only after successful completion. Failed or unfinished runs still grant no writer authority.
+The follow-up review adds rejection-required cap reductions and route-local fixture-construction
+error deferral. Success-only lower bounds can insert or raise a cap but cannot lower an existing one.
+The suggested removal of the shared three-request guard was rejected: regular probes may exhaust
+that allowance and defer context measurement, as the accepted shared-budget contract requires.
+
+Final offline acceptance is recorded below; updated-head CI must finish. The matrix
+covers every configured route and both dimensions, including paid/paused exclusions, actual-count
+feedback, reservation overshoot, uncertain weekly restart, convergence revalidation, deadline/byte
+cancellation, new-admission gating, tampered/missing/expired history, retained unexpired anchors,
+exact fresh-main scalar edits and context-writer collisions. No production YAML,
+compiled catalog, estimator, output forecast, Worker activation flag or live admission policy changes.
+Input/output canaries, recurring activation and removal recovery acceptance remain separate gates.
+
+Offline acceptance: 5,550 Python tests passed (16 live cases deselected), 346 focused catalog/context/
+apply/editor/workflow tests, 424 Worker tests, whole-repository Ruff lint/format, both unchanged
+catalog compilers and diff checks. Production-spawn private-URL exclusion and forked fake transport
+prove admission gating and hard cancellation without live HTTP. The client canonical digest matches
+Worker `canonicalJson`/`sha256Hex` for the current compiled catalog and a Unicode/numeric fixture.
+The admission table's real-workerd bounded reads/writes, rollback and recreation acceptance remains
+in the merged #2214 checkpoint above; final calibration adds no Worker table or schema change.
+This offline acceptance does not satisfy any live canary or enable recurring scans.
+
+**Maintainer-approved transport adjustment — 2026-10-09:** §8.11.B requires a 120-second
+monotonic total response deadline. Requests' socket-inactivity timeout does not enforce that total
+for a slowly progressing stream, as its
+[timeout documentation](https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts) explains.
+The maintainer approved isolating the existing Requests call in a short-lived standard-library
+subprocess. The child validates the URL and loads the configured credential before waiting;
+the parent obtains a new typed durable admission before permitting submission. The parent
+terminates the child at the total deadline, never retries and retains the admission charge.
+The collector also enforces four MiB and closes responses. This preserves the hard bound without
+adding a dependency or authorizing live calls. This is an explicit narrow adjustment to §8.11.B,
+recorded after the AGENTS.md file/function-plan clarification gate.
 
 ### Slice 4 implementation checkpoint — implemented in PR #2201 (#2200; merged 2026-10-09)
 
