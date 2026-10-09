@@ -282,12 +282,10 @@ providers:
     # accidental binding constraint instead.
     rpm: 35
     tpm: 100000
-    # Raised 2 -> 3 on 2026-09-23 so Nemotron 3 Ultra -- the chapter-agenda lane's only route
-    # with headroom beyond two 200-RPD pools -- always has a slot. The other NVIDIA routes that
-    # carry slow overflow work (kimi-k3 ~590s, deepseek-v4.1-flash) are capped at concurrency 1
-    # each, and the Gemma route (172s median) is paused, so at most two slots can be held by
-    # non-Nemotron work. AI Gateway logs for 2026-09-21/22 put NVIDIA's average in-flight count
-    # at 0.5-0.65, so 3 remains well inside what the account has absorbed.
+    # Raised 2 -> 3 on 2026-09-23 while Gemma was paused so Nemotron 3 Ultra could keep a slot
+    # beside slow overflow work (kimi-k3 ~590s, deepseek-v4.1-flash), each capped at concurrency 1.
+    # Gemma reopens at 20 RPD on 2026-10-09 for monitoring/calibration; its long calls may again
+    # compete for these shared slots. The provider concurrency ceiling remains 3.
     concurrency: 3
     accounts:
       - id: primary
@@ -788,10 +786,10 @@ routes:
     input_token_ratio: 1.2
     account_id: primary
     rpm: 10
-    # Paused 2026-09-23 (was 200): 148 of 149 AI Gateway attempts on 2026-09-22 were upstream
-    # 429s, so this leg spent attempts without adding capacity. rpd: 0 is the paused-route
-    # convention; re-enable only after a live probe shows the free pool serving again.
-    rpd: 0
+    # Paused 2026-09-23 (was 200): 148 of 149 attempts on 2026-09-22 were upstream 429s.
+    # Maintainer-approved reopening at 20 RPD, 2026-10-09, for health monitoring and calibration.
+    # This limited reopening precedes live recovery proof; ordinary dispatch can use the allowance.
+    rpd: 20
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -807,9 +805,10 @@ routes:
     input_token_ratio: 1.2
     account_id: primary
     rpm: 10
-    # Paused 2026-09-23 (was 200): all 27 AI Gateway attempts on 2026-09-21 were upstream 429s.
-    # The two AI Studio routes carry this model's 14,400-RPD free quota.
-    rpd: 0
+    # Paused 2026-09-23 (was 200): all 27 attempts on 2026-09-21 were upstream 429s.
+    # Maintainer-approved reopening at 20 RPD, 2026-10-09, for health monitoring and calibration.
+    # The two AI Studio routes still carry this model's larger 14,400-RPD free quota.
+    rpd: 20
     concurrency: 1
     free: true
     input_per_token: 0.0
@@ -1048,12 +1047,10 @@ routes:
     # routes actually carrying overflow traffic to one request per four minutes per Worker, which
     # showed up immediately as a drop in dispatched jobs.
     rpm: 4
-    # Paused 2026-09-23 (temporary). Gemma calls here ran 172s median / 531s p90 and held
-    # NVIDIA's shared provider concurrency that Nemotron 3 Ultra -- the chapter-agenda lane's
-    # only elastic route -- needs. Gemma producers now size jobs to fit Google AI Studio's two
-    # 14,400-RPD Gemma routes instead (see tags.py's prelabeler batching), so this leg is no
-    # longer needed for capacity. rpd: 0 is the repository's paused-route convention.
-    rpd: 0
+    # Paused 2026-09-23: 172s median / 531s p90 calls occupied shared NVIDIA concurrency
+    # needed by Nemotron 3 Ultra. Maintainer-approved reopening at 20 RPD, 2026-10-09, for
+    # health monitoring and calibration; the shared-concurrency cost remains worth observing.
+    rpd: 20
     tpm: 40000
     # NVIDIA rejects an overlapping request with a fast ~8.3s 429 rather than
     # queueing it. Successful calls on these models run 41s median / 77s p90 /
