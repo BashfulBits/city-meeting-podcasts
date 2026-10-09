@@ -1556,3 +1556,7 @@ Search record reuse also persists after source completion and unchanged whole-so
 The private `partials` map retains per-UID input hashes/documents for completed sources; subsequent
 source edits reuse unchanged meetings, remove stale entries and convert only changed/new records.
 Existing view/archive-policy invalidation and complete-index publication rules still apply.
+
+Search-page engine/manifest URLs use origin-relative paths, including configured base paths.
+On HTTPS pages, the client upgrades existing same-host HTTP shard URLs to HTTPS; old published
+manifests remain usable without index regeneration. Other-host URLs are unchanged.

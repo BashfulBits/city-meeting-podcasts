@@ -2803,3 +2803,28 @@ publication selection, feed definitions or provider adapters. Human merges remai
 Validation: 41 targeted search/job tests and 5,285 offline tests pass (16 deselected). Whole
 Ruff/format checks pass (487 files); incremental output matches fresh-build output after
 completed-source cache restoration, meeting edits, additions and removals.
+
+### Search browser mixed-content correction — L3, 2026-10-09
+
+Live search assets are published but the rendered HTTPS page requests its manifest and vendored
+engine over HTTP. Browsers block the manifest fetch and display unavailable notices. Maintainer
+reported the broken interface; correct this within the existing search rendering path.
+In citypods/site.py render_search_page, emit path-only asset URLs preserving the configured
+base-path prefix. In templates/search.html.j2 upgrade only same-host HTTP shard URLs to HTTPS
+when the page itself is HTTPS; old completed manifests must work without reindexing. Leave
+other-host URLs and HTTP local development unchanged. Test rendering for HTTP configured bases
+and subpaths in tests/test_site.py; verify the URL normalization and browser filter initialization.
+Run full offline suite and whole Ruff/format. Update architecture/changelog and review/11.
+Do not modify site base configuration, search index schema/cache/hash, source records, audio,
+workflow schedule/budget, feed definitions or dependencies. Human merges remain required.
+
+Browser verification: corrected local page with a real published Austin source loaded city/body
+options, displayed 2/3 transcript coverage and returned three meeting results for disabilities.
+JavaScript regression verifies same-host HTTP-to-HTTPS upgrade while leaving other hosts and
+HTTP localhost untouched. Live production requires human merge and deployment of this fix.
+
+Validation: 60 targeted tests pass; whole Ruff/format passes (491 files). Full offline suite
+reports 5,380 passed, 16 deselected and one unrelated existing failure in
+test_prelabeler_sizing_ignores_paused_routes. It expects the NVIDIA Gemma route to be paused,
+but current configuration does not pause it; isolated reproduction also fails. Its test and
+citypods/tags.py / citypods/compute/llm_policy.py are unchanged from the main base.

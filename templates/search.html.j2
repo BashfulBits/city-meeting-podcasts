@@ -74,10 +74,17 @@
       select.value = current;
     }
 
+    function searchAssetUrl(value) {
+      const url = new URL(value, window.location.href);
+      if (url.protocol === 'http:' && window.location.protocol === 'https:' &&
+          url.host === window.location.host) url.protocol = 'https:';
+      return url.href;
+    }
+
     async function loadShard(shard) {
       if (engines.has(shard.source_key)) return engines.get(shard.source_key);
       if (pending.has(shard.source_key)) return pending.get(shard.source_key);
-      const task = fetch(shard.shard_url).then(response => {
+      const task = fetch(searchAssetUrl(shard.shard_url)).then(response => {
         if (!response.ok) throw new Error(`search shard ${response.status}`);
         return response.json();
       }).then(payload => {
