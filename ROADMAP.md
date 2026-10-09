@@ -281,9 +281,9 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > **Slice 5 priorities accepted 2026-10-09:** input calibration first, then output; a few free routes
 > for local validation, expanding to all configured free routes in the final implementation PR.
 > Conservative weekly experiments use firm reviewed budgets and fair rotation. The L3 contract
-> is prepared in #2208, with implementation tracked in #2209 after design merge; no live probes
+> was accepted in merged #2208, with implementation tracked in #2209; no live probes
 > are authorized.
-> A pending §8.10 contract proposes bounded weekly input/output allowances, explicit budget-limited
+> The accepted §8.10–8.11 contract specifies bounded weekly input/output allowances, explicit budget-limited
 > results, provider-specific count parsers and token-aware Worker reservations before live activation.
 > The maintainer approved the token-aware Worker extension and doubled the proposed starting
 > budgets. Refinement targets 0.5% or 128 tokens, whichever is larger, across bounded weekly runs;
@@ -291,7 +291,7 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > offline implementation precedes separately reviewed live canaries and recurring activation.
 > Separately reviewed conservative output caps are accepted; automatic additions still require
 > evidenced bounds. Slice 5 feeds provider-reported counts into persistent success/rejection bounds.
-> Its exact budgets and implementation contract remain gated on L3 review.
+> Its exact budgets and implementation contract are accepted; live activation remains gated.
 > Slice 2b is tracked in #2187: paid decisions, including the approved
 > disabled-shadow runtime fix shipped in #2188. Paid decisions shipped in #2189; legacy
 > R5 promotion is explicitly superseded by review/53 graduation (maintainer decision 2026-10-08).
