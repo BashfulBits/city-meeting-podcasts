@@ -7719,3 +7719,6 @@ P2a review hardening: supplied source recording inclusions use the existing shar
 including for hand-built City inputs. Malformed mappings, missing values and duplicate GUIDs
 remain unresolved rather than raising an unexpected exception. Valid inclusion proof and
 legacy configuration behavior are unchanged; no feed or source-record changes.
+
+Review/51 P2a shipped in PR #2213 (2026-10-09), including lightweight-render compatibility
+and validated hand-built recording inclusions. Final head passed all CI; no templates activated.

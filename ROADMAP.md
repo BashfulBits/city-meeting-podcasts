@@ -653,3 +653,6 @@ Prepared #2097: exact May25 CBTF recording added from verified original proof; d
 Prepared #2098: Gas Drilling Task Force participant feed for two visually verified joint
 workshops, preserving all prior holders and recording identity. Deployment remains required
 before case closure;6334 source-version discrepancy stays open.
+
+review/51 P2a shared policy/evidence foundation shipped in #2213; feed behavior is preserved.
+P2b report-only complete coverage is the next proposed slice; persistent dispositions follow.

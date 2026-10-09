@@ -1667,7 +1667,7 @@ Published search currently fails in HTTPS browsers because asset requests use HT
 search-page asset URLs and support existing same-host HTTP shard URLs without rebuilding the
 index. Bounded implementation contract: review/51, Search browser mixed-content correction.
 
-### review/51 P2a policy foundation — L3 (2026-10-09)
+### review/51 P2a policy foundation — Shipped, PR #2213 (2026-10-09)
 
 The maintainer approved the typed official-evidence packet and exact city/source template binding.
 Implement only the policy parser, immutable indexes, deterministic owner lookup and existing guard
@@ -1679,3 +1679,7 @@ production template list remains empty. Persistent excluded/watch dispositions, 
 model admission remain separate gated work.
 
 P2a implementation issue: [#2211](https://github.com/BashfulBits/city-meeting-podcasts/issues/2211).
+
+P2a merged in [#2213](https://github.com/BashfulBits/city-meeting-podcasts/pull/2213); no templates
+activated. The final minor parser fix has an explicitly recorded fresh-review gap. P2b complete
+coverage report is proposed report-only, pending approval of its schema and staged activation.
