@@ -698,12 +698,14 @@ stored inputs or invalidate completed artifacts. Old terminal handles follow 3a'
 Removal automation stays disabled until 3a is deployed and a bounded recovery canary verifies the
 old sentinel/no-route indexes, no retry-cap increment and no repeating enqueue loop.
 
-**Remaining delivery checkpoint (2026-10-09):** four core PRs remain: removal activation after
-recovery-canary acceptance, Slice 4 bounded rate maintenance, Slice 5's L3 design, and Slice 5
-implementation. The snapshot-cache follow-up shipped in #2197. Recovery telemetry shipped in #2199 (#2198); four core PRs remain, with Slice 4 prepared in PR #2201 (#2200). Slice 5 may need
-implementation splits once its L3 contract is finalized. Review/53 PR12 (accepted in #2195) is a
-separate judge-stack lane-governance extension that depends on #2193; it keeps standard lane repair
-unchanged and is not a blocker for this remaining core sequence.
+**Remaining delivery checkpoint (2026-10-09, after #2208):** Slice 4 shipped in #2201 and the
+Slice 5 L3 design was accepted in #2208. Two offline implementation PRs are planned under #2209:
+quota admission first, then final calibration with input before output and all-route coverage.
+Removal activation still needs ordinary-run recovery-canary acceptance. Live input/output canaries
+and recurring calibration activation remain separately reviewed changes. The snapshot-cache
+follow-up shipped in #2197 and recovery telemetry in #2199 (#2198). Review/53 PR12 (accepted in
+#2195) is a separate judge-stack lane-governance extension depending on #2193; it keeps standard
+lane repair unchanged and is not a blocker for this remaining core sequence.
 
 #### Recovery-canary evidence follow-up — maintainer approved, 2026-10-09 (#2198)
 
@@ -933,7 +935,7 @@ issue, resolve any code/file mismatch, and copy its activation gate into that is
 review questions are technical acceptance of identity fallback, the trusted-artifact history and
 structural recovery lineage; priority, initial command scope and material-tightening policy are
 already decided above. #2178 and the subsequent implementation request accept the original
-remaining-slice technical choices; Slice 2a shipped in PR #2182 (#2179). Slice 5's L3 implementation contract is prepared in §8.11 (PR #2208). The original remaining-contract docs PR #2178 enabled no automatic removal or limit
+remaining-slice technical choices; Slice 2a shipped in PR #2182 (#2179). Slice 5's L3 implementation contract was accepted in §8.11 (merged PR #2208). The original remaining-contract docs PR #2178 enabled no automatic removal or limit
 maintenance; Slice 4 implementation now supplies reviewed rate proposals. Removal stays disabled.
 
 
@@ -1279,7 +1281,7 @@ refinement and 10% revalidation; estimate correction outside brackets; transient
 bounds; expired/spoofed provenance; route/gateway changes; resume across scans; quota/pause/time/token
 ceilings; and explicit reviewed config proposals with production caps unchanged until merge.
 
-### 8.11 Slice 5 implementation contract — L3 upon merge of PR #2208
+### 8.11 Slice 5 implementation contract — L3, accepted in merged PR #2208
 
 This section resolves §8.10's implementation placeholders and is normative for Slice 5. Accepted
 budgets and precision are unchanged. Code may be implemented after this design PR merges; merging
