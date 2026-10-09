@@ -1119,3 +1119,34 @@ def test_converged_bracket_waits_until_a_later_run_to_stretch_again(monkeypatch)
     assert len(calls) == 1
     assert report.context_states[0].status == "converged"
     assert calls[0].reserved_input < 1000
+
+
+@pytest.mark.parametrize("due_only", [False, True])
+def test_non_context_scan_carries_only_advisory_cap_choices_without_context_calls(
+    monkeypatch, due_only
+):
+    from datetime import UTC, datetime
+
+    from citypods.provider_catalog.decisions import Decisions
+    from citypods.provider_catalog.quality import QualityIndex
+    from citypods.provider_catalog.reconcile import NoDispatchControl, reconcile
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("manual/daily scan cannot call context transport")
+
+    monkeypatch.setattr("citypods.provider_catalog.probe.measure_context", forbidden)
+    change = ("r", "hard_input_ceiling", None, 900, "a" * 64)
+    report = reconcile(
+        {"providers": {}, "routes": []},
+        {},
+        Decisions(),
+        QualityIndex(),
+        {"last_full": {"context_changes": [change]}},
+        session=None,
+        control=NoDispatchControl(),
+        today=datetime.now(UTC).date(),
+        due_only=due_only,
+    )
+    assert report.context_changes == [change]
+    assert report.state["last_full"]["context_changes"] == [change]
+    assert not report.context_observations

@@ -755,10 +755,27 @@ def context_edit_plan(changes, config, *, selected=(), deferred=(), history=(), 
             )
             if state:
                 upper = state.rejection.reported_ceiling if state.rejection else "unbounded"
+                planned = next_context_probe(
+                    state,
+                    {
+                        "baseline": _new,
+                        "opposite_reservation": 256 if dimension == "input" else 2048,
+                    },
+                    {
+                        "remaining_input": 2097152,
+                        "remaining_output": 131072,
+                        "remaining_requests": 24,
+                    },
+                )
                 notes.append(
                     f"Evidence {rid}/{dimension}: provider basis {state.success.count_basis}; "
                     f"reasoning {state.success.reasoning_basis}; "
                     f"interval [{_context_count(state.success)}, {upper}]; status {state.status}. "
+                    f"Observed {state.success.observed_at}; provider input/output "
+                    f"{state.success.reported_input}/{state.success.reported_output}, "
+                    f"reserved input/output {state.success.reserved_input}/"
+                    f"{state.success.requested_output}. Next target {planned.next_target} "
+                    f"({planned.status}). "
                     "Full production output/window guards retained."
                 )
     return EditPlan(

@@ -977,6 +977,14 @@ def reconcile(
     }
     if due_only:
         _merge_into_last_full(report, previous_state.get("last_full") or {}, rechecked_routes)
+    elif context_run is None:
+        previous = Report()
+        _merge_into_last_full(
+            previous,
+            {"context_changes": (previous_state.get("last_full") or {}).get("context_changes")},
+            set(),
+        )
+        report.context_changes = previous.context_changes
     report.state = {
         "version": 3,
         "catalogs": catalogs,
@@ -993,6 +1001,7 @@ def reconcile(
             "candidates": [asdict(c) for c in report.candidates],
             "anomalies": [asdict(a) for a in report.anomalies],
             "observations": list(report.observations),
+            "context_changes": list(report.context_changes),
         },
     }
     if context_run:
