@@ -1,7 +1,7 @@
 # review/53 — Judge stack: tags and moments, from shadow to authority
 
 **Maturity: L3 (development-ready) · authored 2026-10-08 · build spec for review/49 phases P1 to
-P5 and P7.** P6 (route leagues) is outside this series; the configuration here is shaped so P6 can
+P5 and P7, plus a review/48 lane-repair extension (PR12).** P6 (route leagues) is outside this series; the configuration here is shaped so P6 can
 rotate routes without schema changes.
 
 Parent design: [review/49](49-judge-consensus-admission.md) (sections 2, 3a, 4, 4a, 4b, 4c, 7 and
@@ -143,10 +143,12 @@ PR8 Tags graduation: display = admitted          PR9 Moments graduation: admissi
 PR10 Retire R6 judge, R6 human calibration,      PR11 Retire R5 pre-labelers, tag packet,
      r6-moment-review; cancel queued jobs;            benchmark, tournament; cancel queued jobs;
      archive labels; release reservations             archive labels; release reservations
+                         \                     /
+                          PR12 League-governed lane repair (review/48 §8.6 extension)
 ```
 
 PR1 and PR3 can be built in parallel. PR8 and PR9 are independent of each other, and each needs
-PR7. PR10 needs PR9 and PR11 needs PR8, so neither task loses its gate before the replacement holds
+PR7. PR12 needs PR8, PR9 and review/48's Slice 3b (#2193) merged. PR10 needs PR9 and PR11 needs PR8, so neither task loses its gate before the replacement holds
 authority. PR8 and PR9 are merged by the maintainer; each carries its graduation evidence.
 
 ### PR1 — Worker: a second transport
@@ -174,9 +176,16 @@ the provider's `chat_path` and `ai_gateway_chat_path` for that route), validated
 route's logical model has a row in `job_models` (the queued-job index):
 `SELECT 1 FROM job_models WHERE model = ? LIMIT 1`, cached per claim; a read, not a billed write.
 
+**Slice 3a interaction (review/48 §8.5, #2191).** `yields_to` and `tier: backup` are ordering
+terms only. They must never enter `routesEligibleFor` or the structural fit used by the rescue pass
+(`_reconcileUnroutableJobs`, terminal reasons `unadmissible` and `route_retired`): a job whose only
+routes are yielding BeatAPI chat routes (today `deepseek/deepseek-v4-pro` and both GPT pools) is
+temporarily held while JEV has work, exactly like a pause, and is never failed as structural.
+
 Tests: chat requests and classifications byte-identical for existing fixtures; `systemone` request
 shape, usage, empty-answers, URL through `custom-beatapi` plus `/systemone`; the oversize rule both
-ways; a chat route skipped while a JEV job is queued and eligible otherwise. Each new test is shown
+ways; a chat route skipped while a JEV job is queued and eligible otherwise; a job whose only
+routes yield is never marked `unadmissible` by the rescue pass. Each new test is shown
 to fail with its feature removed.
 
 ### PR2 — Configuration
@@ -213,6 +222,10 @@ reservations and caps in the capacity table, `dispatch_shape: per_model`, teleme
 `{producer: judge, unit: episode, completion: consumed, scope: retained_catalog}`, and
 `active`/`eligible` lists (a lane's `models` = active; new key `eligible_models`, compiled and
 validated but never dispatched). A `slots:` sub-key on `judge:sibling` names slot A and slot B.
+Judge lanes declare **no `backup_models`** (compile-time check): a judge's identity is part of
+every judgment and calibration cell, so the Slice 3a rescue must not silently move a judge packet
+to another model. A judge job whose route disappears fails as typed structural and is re-planned by
+PR3's recovery hook instead.
 Top-level `llm_families:` maps every model in every lane (active and eligible) to a family: `google`
 (Gemini, Gemma), `deepseek`, `zai`, `moonshot`, `stepfun`, `nvidia` (Nemotron), `qwen`, `tencent`,
 `typesafe` (JEV), `unverified-beatapi-gpt`. A `judging:` block:
@@ -315,6 +328,17 @@ escalation and the all-tier sample; persist through the existing record write pa
 `stop()` budget. In `shadow` mode the stage writes judgments only. In `authority` mode it also
 writes the task's decision (PR8, PR9).
 
+**Structural recovery (Slice 3a).** Each judge job carries the standard recovery context
+(`llm_deferred.recovery_context`, input identity = packet digest) and an output reservation within
+the route's `output_context_limit` (JEV: 1,024 against 4,096), so the fit check matches what the
+Worker admits. The judge recipe identity includes the judge model, tier and prompt version. On a
+`structural_blocked` marker with `await_eligible_generation_or_rebatch` for a judge packet, the stage
+takes the **rebatch** branch, never the same-recipe resubmission: it writes no judgment, leaves the
+marker as the audit record, and lets the packet's subjects re-enter the next run, re-packed for the
+current active judges (which, after a PR12 promotion, is a different model and therefore a new
+recipe that does not collide with the blocked marker). A test covers a judge route retired with
+queued packets: no row written, subjects re-planned once, no unchanged-recipe resubmission.
+
 **Workflow** `.github/workflows/judge.yml`: `python -m citypods.cli enrich --lane judge` every two
 hours, concurrency group `judge`, secrets and state sync as `tag.yml`, a `dry_run` dispatch input.
 
@@ -404,8 +428,10 @@ set to `auto` separately, as the kill switch.
 - Remove `.github/workflows/r6-moment-review.yml` and the `moments.evaluation` (`minimum_days`,
   `minimum_reviews`, `required_precision`) and `moments.judges` blocks in `config/site_config.yml`.
 - **Cancel queued work** for purpose `r6-judge` through `/v2/jobs:cancel-batch` (the existing
-  client in `citypods/compute/llm.py`), with a dry-run count first; remove the deferred-flush entries
-  for that purpose.
+  client in `citypods/compute/llm.py`), with a dry-run count first, **before** the lane or any of its
+  routes is removed, so the Slice 3a rescue cannot first turn those jobs into structural failures
+  that the sweep keeps re-evaluating. Then archive and delete that purpose's deferred handles and
+  `deferred_failure` markers (`structural_blocked` included) so the sweep stops reading them.
 - **Archive** the R6 human reviews, policies and `judge_observations` to
   `state/archive/r6-moment-evaluation-<date>.json`; the live state keeps only what admission still
   reads (nothing).
@@ -419,9 +445,53 @@ set to `auto` separately, as the kill switch.
   `llm-tournament.yml`, `tournament-tag-backfill.yml`, `tournament-ticket-approve.yml`,
   `tournament-route-merged.yml`. The R5 benchmark's frozen sample moves to `evals/tag-judge/` as
   read-only history.
-- Cancel queued work for those purposes (dry-run count first); archive R5 reviews and pre-labeler
-  observations to `state/archive/`; release reservations; regenerate.
+- Cancel queued work for those purposes first (dry-run count), then archive and delete their
+  deferred handles and failure markers, as in PR10. Remove Slice 3a's pre-labeler rebatch path in
+  `citypods/tags.py` (recovery from retained pre-labeler subjects) with the pre-labeler itself; the
+  tagger's own recovery stays. Archive R5 reviews and pre-labeler observations to `state/archive/`;
+  release reservations; regenerate.
 - The tagger lane (`topic-tags:tagger`) stays: it produces candidates; the stack decides them.
+
+### PR12 — League-governed lane repair (extends review/48 §8.6; approved 2026-10-08)
+
+review/48 Slice 3b (#2193) repairs a lane when a retired route takes a model's last eligible
+route: additional models are dropped; a removed primary is replaced by the first `backup_models`
+entry; with no backup the removal is held for human review. For judge lanes that rule picks by list
+position, can break independence (a Google model into the non-Google slot), gives the newcomer full
+authority at once, and keeps a dead route that fails every job sent to it.
+
+- **Lane field `governance`**: `standard` (default; review/48's rule, byte-identical) or `league`
+  (`judge:sibling`, `judge:adjudicator` now; P6 producer leagues later). Compile-validated.
+- **Removal evidence is unchanged.** review/48's proof of retirement, account checks and
+  surviving-pool rule decide whether a model leaves the lane at all.
+- **Replacement from the bench.** `retire.py` gains `_repair_league_lane`: a vacated active slot is
+  filled from `eligible_models`, choosing the highest-standing candidate that passes the lane's
+  invariants: the slot's family rule (slot B non-Google; adjudicators distinct from each other and
+  from both sibling families), not protected, at least one free unpaused route, a ceiling that fits
+  the lane's packet size. Standing is the league score's lower bound; before P6, the maintainer's
+  bench order checked against PR7's calibration and stability numbers.
+- **Trial before authority.** A promoted model judges everything, but its votes do not count until
+  it has a minimum record (probes plus adjudicated agreement whose lower bound clears the lowest
+  incumbent's point estimate). Meanwhile entries that needed its vote are contested and go to the
+  adjudicator. Nothing is admitted on JEV alone.
+- **No eligible candidate**: the removal still proceeds; the slot fails safe (affected entries are
+  contested, bounded by the adjudicator lane's cap, the rest wait) and a `priority:high` ticket is
+  filed.
+- **Exceptions that keep review/48's hold:** the anchor lane (every entry depends on JEV, and the
+  adjudicator cannot absorb the whole load; if JEV is truly gone, judging fails closed and a
+  `priority:high` ticket explains why tags stop updating), and any producer league that would be
+  left with no active model.
+- **Bench refill.** When review/48's reconciler proves and adds a new free model, it is also
+  proposed as `eligible`, never `active`, for every league lane whose static invariants it passes;
+  it starts with no record, as a P6 challenger.
+- **Governance unchanged**: the same managed writer and branch, `needs:human-verification` on any
+  active-model change, the standing and invariants that decided the pick in the PR body; nothing
+  auto-merges.
+- **Queued work**: packets pinned to the removed judge fail as typed structural and take PR3's
+  rebatch branch, so they are re-judged by the promoted model.
+- Tests: a Google model is never promoted into slot B; adjudicator family constraints hold; trial
+  votes do not count; an empty slot fails safe and files a ticket; the anchor lane holds; a
+  `standard` lane's repair is byte-identical to review/48's (regression against the #2193 fixtures).
 
 ## Rollback
 
