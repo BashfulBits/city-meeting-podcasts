@@ -191,3 +191,54 @@ def test_paid_edit_rejects_missing_or_nonboolean_field(field):
     plan = replace(edit_plan(texts), routes=(), backups=(), ignored=(), paid_routes=("old",))
     with pytest.raises(ValueError, match="paid route"):
         apply_config_edits(texts, plan)
+
+
+def rate_source():
+    texts = source()
+    texts[SOURCE_PATHS[0]] = (
+        "# limits\nproviders:\n  host:\n    rpm: 100 # shared cap\n"
+        "    accounts: [{id: primary}]\nroutes:\n  - route_id: old\n"
+        "    provider: host\n    account_id: primary\n    model: old\n"
+        "    rpm: 100 # route cap\n    tpm: 200\n    free: true\n"
+        "    output_context_limit: 4096\n# trailing\n"
+    )
+    return texts
+
+
+def test_rate_edit_preserves_comments_and_all_protected_fields():
+    from datetime import UTC, datetime
+
+    from citypods.provider_catalog.limits import configured_limit_changes
+
+    texts = rate_source()
+    limits = load_config(texts[SOURCE_PATHS[0]])
+    from citypods.provider_catalog.evidence import LimitObservation
+
+    now = datetime(2026, 10, 9, tzinfo=UTC)
+    samples = [
+        LimitObservation(
+            "rpm", 49, now.isoformat(), "host", "primary", "old", "route", run_id=str(r)
+        )
+        for r in range(3)
+    ]
+    samples.extend(replace(o, scope="provider_account", route_id=None) for o in tuple(samples))
+    changes, _ = configured_limit_changes(samples, limits, now=now, recent_runs=("2", "1", "0"))
+    plan = EditPlan(
+        "base",
+        tuple((p, digest(texts[p])) for p in SOURCE_PATHS),
+        rate_changes=changes,
+        proposal_kind="limits",
+    )
+    output = apply_config_edits(texts, plan)
+    assert output[SOURCE_PATHS[0]] == texts[SOURCE_PATHS[0]].replace("rpm: 100", "rpm: 49")
+    assert output[SOURCE_PATHS[1]] == texts[SOURCE_PATHS[1]]
+    assert output[SOURCE_PATHS[2]] == texts[SOURCE_PATHS[2]]
+    from citypods.provider_catalog.apply import proposal_body
+
+    assert "material tightening greater than 50%" in proposal_body(plan)
+    with pytest.raises(ValueError, match="mix"):
+        apply_config_edits(texts, replace(plan, paid_routes=("old",)))
+    with pytest.raises(ValueError, match="duplicate"):
+        apply_config_edits(texts, replace(plan, rate_changes=(*changes, changes[0])))
+    with pytest.raises(ValueError, match="changed or invalid"):
+        apply_config_edits(texts, replace(plan, rate_changes=(replace(changes[0], old=99),)))

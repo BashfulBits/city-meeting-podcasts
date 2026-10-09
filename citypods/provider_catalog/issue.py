@@ -82,6 +82,7 @@ def decision_choices(report: Report) -> tuple[str, ...]:
         if anomaly.verdict == PAID_ROUTE_VERDICT:
             choices.append(f"`{anomaly.route_id}`: remove route")
             choices.append(f"`{anomaly.route_id}`: keep as a paid route")
+    choices.extend(c.choice for c in report.rate_changes if c.action == "offer_increase")
     return tuple(choices)
 
 
@@ -145,6 +146,21 @@ def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str
             )
         ):
             fulfilled.add(f"`{anomaly.route_id}`: keep as a paid route")
+    for change in snapshot.rate_changes:
+        block = (
+            next((r for r in limits.get("routes") or [] if r.get("route_id") == change.target), {})
+            if change.scope == "route"
+            else (limits.get("providers") or {}).get(change.target, {})
+        )
+        if (
+            change.scope in {"route", "provider"}
+            and change.metric in {"rpm", "tpm", "rpd"}
+            and change.action == "offer_increase"
+            and (change.scope != "route" or block.get("provider") == change.provider)
+            and (change.scope != "provider" or change.target == change.provider)
+            and block.get(change.metric) == change.new
+        ):
+            fulfilled.add(change.choice)
     return fulfilled
 
 
@@ -173,6 +189,12 @@ def render_body(
         and a.key not in {current.key for current in report.anomalies}
         and any(choice.startswith(f"`{a.route_id}`: ") for choice in selected)
     ]
+    pending_rates = [
+        c
+        for c in prior.rate_changes
+        if c.choice in selected and c.choice not in choices and c.choice not in fulfilled
+    ]
+    choices += tuple(c.choice for c in pending_rates)
     if pending or pending_paid:
         pending_choices = decision_choices(Report(candidates=pending, anomalies=pending_paid))
         choices += tuple(c for c in pending_choices if c not in choices and c not in fulfilled)
@@ -249,6 +271,19 @@ def render_body(
         ]
     else:
         lines.append("None.")
+    if report.rate_changes or pending_rates:
+        lines += ["", "## Rate maintenance", ""]
+        for change in (*report.rate_changes, *pending_rates):
+            lines.append(
+                f"- {change.scope} `{change.target}` {change.metric}: {change.old} → {change.new}"
+                + (" (material tightening greater than 50%)" if change.material else "")
+            )
+        lines += [
+            "",
+            "Tightening is prepared from verified evidence. Increases require a selected choice. "
+            "Every preparation re-fetches successful workflow artifacts; "
+            "these values are advisory.",
+        ]
     # The decision block must survive truncation whole: the next weekly update reads ticks back
     # from it (checked_decisions), so a cut block would silently reset them. Only the report above
     # it is truncated; observations are dropped to a stub before the block is touched.
@@ -259,8 +294,8 @@ def render_body(
                 "",
                 "## Decisions",
                 "",
-                "Tick what you want, then comment `/apply` to get one curated PR with exactly "
-                "those changes (review/48 Slice 2). Ticks are kept across weekly updates. A free "
+                "Tick what you want, then comment `/apply` to prepare reviewed catalog/rate PRs "
+                "with those changes (review/48). Ticks are kept across weekly updates. A free "
                 "route that became paid is never removed automatically: remove it, or keep it as "
                 "a paid route. Additions/ignore and keep-paid choices are available; "
                 "removal requires deployed Slice 3 rescue. Unavailable proofs remain ticked. "
@@ -275,12 +310,15 @@ def render_body(
         ["", summary, "", *[f"- {o}" for o in report.observations], "", "</details>", ""]
     )
     state = dict(report.state)
-    if pending or pending_paid:
+    if pending or pending_paid or pending_rates:
         from dataclasses import asdict
 
         state["last_full"] = dict(state.get("last_full") or {})
         state["last_full"]["candidates"] = [asdict(c) for c in (*report.candidates, *pending)]
         state["last_full"]["anomalies"] = [asdict(a) for a in (*report.anomalies, *pending_paid)]
+        state["last_full"]["rate_changes"] = [
+            asdict(c) for c in (*report.rate_changes, *pending_rates)
+        ]
     state_marker = _encode_state(state)
     room = min(_HUMAN_BODY_LIMIT, 65_000 - len(state_marker.encode("utf-8")))
     room -= len(decisions.encode("utf-8"))

@@ -599,3 +599,18 @@ test("row-budget repair requires authentication and a valid same-day observation
   assert.equal(response.status, 200);
   assert.equal((await response.json()).rows_written_today, 65002);
 });
+
+
+test("counter-only stats is authenticated, mutually exclusive and never calls historical stats", async () => {
+  const env = createMockEnv();
+  const coordinator = env.LLM_SCHEDULER.getByName();
+  coordinator.stats = coordinator.detailedStats = () => { throw new Error("unexpected stats scan"); };
+  coordinator.rateFailureStats = async () => ({ kind: "rate_failures", route_failures: [], truncated: false });
+  const request = (query, auth = true) => new Request(`https://worker.test/v2/stats?${query}`,
+    { headers: auth ? { authorization: "Bearer secret-token" } : {} });
+  assert.equal((await handleRequest(request("rate_failures=1", false), env)).status, 401);
+  assert.equal((await handleRequest(request("rate_failures=1&detail=1"), env)).status, 400);
+  assert.equal((await handleRequest(request("rate_failures=1"), env)).status, 200);
+  coordinator.rateFailureStats = async () => { throw new Error("storage unavailable"); };
+  assert.equal((await handleRequest(request("rate_failures=1"), env)).status, 500);
+});

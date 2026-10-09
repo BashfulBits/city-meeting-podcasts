@@ -18,10 +18,15 @@ they still run but are reported as possibly contended by production traffic.
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import subprocess
 import sys
+import zipfile
+import zlib
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -41,11 +46,23 @@ from citypods.compute.llm_dispatch_pause import (  # noqa: E402
 )
 from citypods.compute.llm_lanes import load_lanes  # noqa: E402
 from citypods.provider_catalog.decisions import load_decisions  # noqa: E402
+from citypods.provider_catalog.evidence import (  # noqa: E402
+    discover_rate_references,
+    rate_artifact,
+    verified_rate_history,
+)
 from citypods.provider_catalog.issue import (  # noqa: E402
     decode_state,
     find_issue,
     render_body,
     sync_issue,
+)
+from citypods.provider_catalog.limits import (  # noqa: E402
+    RateChange,
+    configured_limit_changes,
+    early_rate_routes,
+    merge_observations,
+    scope_recent_runs,
 )
 from citypods.provider_catalog.quality import fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
@@ -124,12 +141,28 @@ def evidence_report(limits: Mapping[str, Any], providers: set[str], control: Any
     return 0
 
 
+def _carry_rate_state(report, previous_state):
+    """Retain advisory offers on manual scans or unavailable history; writers reauthenticate."""
+    for key in ("rate_evidence_refs", "rate_observations", "rate_changes"):
+        report.state[key] = previous_state.get(key, [])
+    prior = (previous_state.get("last_full") or {}).get(
+        "rate_changes", previous_state.get("rate_changes", [])
+    )
+    try:
+        report.rate_changes = [RateChange(**c) for c in prior or []]
+    except (TypeError, ValueError):
+        report.rate_changes = []
+    report.state["last_full"]["rate_changes"] = [asdict(c) for c in report.rate_changes]
+    report.state["rate_changes"] = [asdict(c) for c in report.rate_changes]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--provider", action="append", default=[])
     parser.add_argument("--sync-issues", action="store_true")
     parser.add_argument("--due-only", action="store_true")
     parser.add_argument("--no-pause", action="store_true")
+    parser.add_argument("--rate-evidence", type=Path)
     parser.add_argument("--evidence-report", action="store_true")
     parser.add_argument(
         "--backtest",
@@ -175,7 +208,21 @@ def main(argv: list[str] | None = None) -> int:
     today = datetime.now(UTC).date()
     existing = find_issue() if args.sync_issues else None
     previous_state = decode_state((existing or {}).get("body") or "")
-    if args.due_only and not previous_state.get("deferred"):
+    rate_run_id = ""
+    early = set()
+    if args.rate_evidence:
+        if os.environ.get("GITHUB_EVENT_NAME") != "schedule":
+            parser.error("rate artifacts require a scheduled workflow run")
+        rate_run_id = os.environ["GITHUB_RUN_ID"]
+        if isinstance(control, WorkerDispatchControl) and args.due_only:
+            try:
+                stats = control.client.rate_failures()
+                early = early_rate_routes(
+                    stats.get("route_failures") or [], limits, previous_state, today=today
+                )
+            except DispatchPauseError:
+                print("early rate checks deferred: Worker telemetry unavailable")
+    if args.due_only and not previous_state.get("deferred") and not early:
         # The daily run: nothing is waiting on a quota reset, so no network calls at all.
         print("due-only: no deferred checks; nothing to do")
         return 0
@@ -192,7 +239,63 @@ def main(argv: list[str] | None = None) -> int:
         today=today,
         providers=set(args.provider) or None,
         due_only=args.due_only,
+        rate_run_id=rate_run_id,
+        early_rate_checks=early,
     )
+    _carry_rate_state(report, previous_state)
+    if args.rate_evidence:
+        now = datetime.now(UTC)
+        repository = os.environ["GITHUB_REPOSITORY"]
+        envelope = rate_artifact(
+            report.rate_observations,
+            limits,
+            repository=repository,
+            run_id=rate_run_id,
+            head_sha=os.environ["GITHUB_SHA"],
+            now=now,
+            attempted_routes=report.rate_attempted_routes,
+        )
+        args.rate_evidence.write_text(json.dumps(envelope, indent=2) + "\n")
+        try:
+            references = discover_rate_references(repository=repository, now=now)
+            history, accepted, deferred = verified_rate_history(
+                references,
+                limits,
+                repository=repository,
+                now=now,
+            )
+            # Current observations may offer advisory choices; only a completed successful
+            # artifact can authorize the subsequent trusted writer.
+            current = {
+                "run_id": rate_run_id,
+                "payload_digest": envelope["payload_digest"],
+                "observed_at": now.isoformat(),
+                "attempted_routes": sorted(report.rate_attempted_routes),
+            }
+            accepted = (*accepted, current)
+            recent = scope_recent_runs(accepted, limits)
+            merged = merge_observations(history, report.rate_observations, now=now)
+            changes, mismatch = configured_limit_changes(
+                merged, limits, now=now, recent_runs=recent
+            )
+            report.rate_changes = list(changes)
+            report.observations.extend((*deferred, *mismatch))
+            report.state["rate_evidence_refs"] = list(accepted)
+            report.state["rate_observations"] = [asdict(o) for o in merged]
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            RuntimeError,
+            subprocess.CalledProcessError,
+            zipfile.BadZipFile,
+            zlib.error,
+        ):
+            report.observations.append("rate history unavailable; offers deferred")
+        report.state["last_full"]["rate_changes"] = [asdict(c) for c in report.rate_changes]
+        report.state["rate_changes"] = [asdict(c) for c in report.rate_changes]
     if not args.due_only and not args.provider:
         # Self-check (catalog reads only): would discovery re-find what is already configured?
         # A drop here means a plugin gate drifted from how routes are actually chosen.

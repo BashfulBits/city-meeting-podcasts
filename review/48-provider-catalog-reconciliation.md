@@ -10,7 +10,7 @@ This supersedes the first design in PR #1841. Its free-evidence rules, Artificia
 and comment-preserving route edits were kept; its always-open issue, digest-branch PRs, unreachable
 auto-added routes, HTML scraper and hand-kept alias tables were not.
 
-## Implementation checkpoint — 2026-10-08
+## Implementation checkpoint — 2026-10-09
 
 PR C shipped in [#1854](https://github.com/BashfulBits/city-meeting-podcasts/pull/1854). The Worker
 and Python direct path already shape requests per route and reject empty structured responses. The
@@ -700,8 +700,7 @@ old sentinel/no-route indexes, no retry-cap increment and no repeating enqueue l
 
 **Remaining delivery checkpoint (2026-10-09):** four core PRs remain: removal activation after
 recovery-canary acceptance, Slice 4 bounded rate maintenance, Slice 5's L3 design, and Slice 5
-implementation. The snapshot-cache follow-up shipped in #2197. The approved recovery-telemetry prerequisite
-#2198 adds one small PR before activation, keeping four core PRs plus this prerequisite outstanding. Slice 5 may need
+implementation. The snapshot-cache follow-up shipped in #2197. Recovery telemetry shipped in #2199 (#2198); four core PRs remain, with Slice 4 prepared in PR #2201 (#2200). Slice 5 may need
 implementation splits once its L3 contract is finalized. Review/53 PR12 (accepted in #2195) is a
 separate judge-stack lane-governance extension that depends on #2193; it keeps standard lane repair
 unchanged and is not a blocker for this remaining core sequence.
@@ -774,7 +773,7 @@ throughput is a lower bound and cannot assert a hard ceiling or justify an incre
 Unknown/mixed scopes, zero, malformed values and expired observations are non-actionable.
 
 Store bounded advisory histories in v3 rolling issue state: at most six distinct successful runs per
-scope/metric within 90 days. Each scheduled main-branch run also uploads a versioned JSON evidence
+scope/metric within 90 days. Each scheduled maintenance run on main also uploads a versioned JSON evidence
 artifact with 90-day requested retention. Before automation, retrieve referenced artifacts and
 verify workflow identity, successful conclusion, default-branch provenance and payload digests.
 Edited issue markers cannot forge evidence. Missing/expired artifacts defer change; unavailable
@@ -801,11 +800,97 @@ pause, and honor reset/cooldown; unknown/exhausted scarce quota defers. Never ex
 provider ceiling to “discover” capacity. Without an exclusive Worker pause, observations are
 contended and cannot support automatic tightening.
 
-Early re-probe proposal: ≥3 `own_rpm`, `own_tpm` or `unknown_429` failures for the same route in the
-last 24 hours schedules one paused check, no more often than daily; quota exhaustion still defers
+Early re-probe: ≥3 `own_rpm`, `own_tpm` or `unknown_429` failures for the same route in today's
+UTC bucket schedules one paused check, no more often than daily; quota exhaustion still defers
 until reset. Counters schedule observation only, never establish a limit. Prepare one
 `automation/provider-catalog-limits` PR using the shared writer/checks; multiple automation writers
 are serialized and rebuild from main, so open PR conflicts are refreshed rather than overwritten.
+
+Maintainer decision (2026-10-09): use the existing UTC-day failure bucket for Slice 4. The Worker
+does not expose a rolling 24-hour window; using its existing bucket can delay a trigger across
+midnight and does not retain the prior day's failures; a run before new failures can therefore
+miss an early trigger unless failures recur. This avoids a telemetry/schema extension. An exact
+rolling-window trigger is a follow-up.
+
+
+#### Slice 4 implementation contract (#2200; maintainer accepted increase integration)
+
+Recovery telemetry shipped in PR #2199; its final CI and automatic deployment run 37888333212
+passed on merge head 34e30a6a. Normal-run canary evidence is still pending; removal stays disabled.
+Slice 4 offline implementation can proceed under §8's coding-versus-activation separation.
+
+The maintainer confirmed that Slice 4 supplies the missing explicit rate-increase `/apply` handler,
+rather than leaving increases as manual recommendations. Existing additions/paid selections retain
+their gates. Rate choices use authenticated artifact observations, exact current config digests and
+explicit checkboxes; throughput alone cannot offer an increase.
+
+Maintainer-approved review correction (2026-10-09): extend existing `/v2/stats` with
+`rate_failures=1`, mutually exclusive with `detail=1`. `coordinator.js::rateFailureStats`
+reads today's three rate-failure cells per configured route using full primary-key lookups;
+a hard ceiling of 128 routes bounds the read to 384 cells. It performs no job scans or writes.
+`index.js` routes this authenticated mode; `compute/llm_dispatch_pause.py` supplies a typed
+client method that rejects unavailable, malformed or truncated snapshots. Scheduled reconciliation
+uses that method and defers early checks on failure, never falling back to detailed stats.
+Extend Worker endpoint, row-accounting and rows-read tests and Python client tests. No endpoint,
+storage schema, migration or index is added. Artifact history records attempted routes; only runs
+that attempted a scope affect its consecutive-sample rule. Manual runs preserve advisory offers.
+Opposite-direction limit proposals wait successfully while the other proposal is open; a merged
+proposal's retained bot branch does not block later maintenance.
+
+Implementation details within the accepted modules/workflows:
+
+- `limits.py` keeps typed observations and internal single-scope decisions; callers rehydrate actual
+  verified artifact payloads rather than trusting issue observation values or matching run IDs.
+  Six distinct runs per scope/metric share the 90-day window across evidence kinds. Duplicate
+  samples in one run retain the conservative maximum; different sources/scopes never manufacture
+  independent-run evidence. Exact rational comparisons enforce strict 20%/50% thresholds.
+- Extend `evidence.py` with bounded versioned JSON artifact encoding/verification. The payload binds
+  repository, run ID, workflow path, branch/head SHA, UTC observation time, current route/provider
+  digests and positive scoped observations. The envelope carries its deterministic payload digest.
+  Use `provider-catalog-rate-evidence-<run_id>` and the existing reconcile workflow's 90-day upload.
+  Consumers verify GitHub run/workflow identity, successful scheduled default-branch provenance,
+  repository identity, ancestry on current main, exact artifact name/digest, expiry and bounded ZIP
+  size/contents. Independently enumerate scheduled artifact history so edited references cannot
+  omit a higher sample. Missing/malformed/expired artifacts defer; no issue-edited values supply
+  a write. A successful artifact with a missing scoped sample interrupts consecutive tightening.
+- The v3 issue retains bounded advisory references under `rate_evidence_refs`, and current offered
+  rate choices under `rate_changes`. Successful artifacts are re-fetched for every preparation.
+  References include run ID and payload digest; the current producer's reference is advisory until
+  its workflow succeeds. No credentials, response bodies or arbitrary raw headers enter artifacts.
+- `reconcile.py` and `llm_rate_probe.py` share maintenance allowance with existing verification:
+  count existing health/candidate/method requests first, skip extra samples when three requests or
+  900 seconds (including drain/spacing) are consumed, and enable only reachability/short phase-1
+  samples. Existing verification is not curtailed by this new optional sampling. Reuse successful
+  already-required responses for scoped header observations. Every configured request reserves
+  quota before sending, renews pause and honors scarce quota and provider cooldown. Missing pause
+  prevents automated evidence. Default non-maintenance callers retain their verification/selection behavior; configured health
+  requests now reserve quota before sending, matching the already-fenced method checks.
+- Opt-in header mappings live in existing plugins and fixtures. Groq request headers are RPD and
+  token headers TPM, never inferred RPM; bind to an exact configured model/account physical route
+  only where that scope is unambiguous. Unknown or shared mappings stay advisory. BeatAPI/JEV
+  capacity stays shared; unknown headers cannot replace its documented ceiling or split capacity.
+- Extend existing `EditPlan`/editor/proposal formatting with exact scalar rate changes only. Existing
+  provider caps need compatible evidence for every configured account; never copy account capacity
+  to each route or create a missing cap. Preserve comments and assert the exact semantic delta.
+  Automatic tightening and explicitly selected increases share `automation/provider-catalog-limits`;
+  material tightening is flagged. No context, output, concurrency, paid/free or lane changes.
+- Extend `provider-catalog-commands.yml` with a successful reconcile `workflow_run` consumer using
+  trusted-main checkout, authenticated artifacts and the existing writer lock/lease/main rebuild.
+  Current-run artifacts cannot be trusted while their workflow is still running. This consumer
+  prepares tightening only; `/apply` prepares increases only after explicit selected-choice checks.
+  Automatic updates wait while a reviewed-increase proposal is open; the bot commit and PR body
+  record its origin. Matching provider-account ceilings/directions are required for every account,
+  and capacities are never summed without an explicit shared-scope contract. Provider RPD defers
+  because the existing compiler exposes only provider RPM/TPM. Add `actions: read` only where
+  history/artifacts are consumed. Never execute triggering-head code
+  or artifact-supplied commands. The shared bot writer runs both compilers and catalog/limit tests.
+
+Extend the named limit/evidence/apply/editor/reconcile/rate-probe/workflow tests. Required cases
+include artifact spoof/expiry, changed-main digests, independent-run/window/boundary rules, unknown
+scope and shared-account mismatch, partial quota/pause failure, exact request/time ceilings,
+BeatAPI/JEV cooldown and protected policy/context fields. The early-429 trigger uses existing scoped
+failure counters only to schedule observation; counters cannot become ceiling evidence. No live
+provider calls or deployment are performed during implementation.
 
 ### 8.8 BeatAPI regression and boundaries
 
@@ -849,7 +934,8 @@ review questions are technical acceptance of identity fallback, the trusted-arti
 structural recovery lineage; priority, initial command scope and material-tightening policy are
 already decided above. #2178 and the subsequent implementation request accept the original
 remaining-slice technical choices; Slice 2a shipped in PR #2182 (#2179). Slice 5 remains L2
-under §8.10. No automatic removal or limit maintenance is enabled by this docs PR.
+under §8.10. The original remaining-contract docs PR #2178 enabled no automatic removal or limit
+maintenance; Slice 4 implementation now supplies reviewed rate proposals. Removal stays disabled.
 
 
 ### Slice 2a implementation checkpoint — implemented in PR #2182, 2026-10-08 (#2179)
@@ -1026,3 +1112,33 @@ clamping, early EOS and truncation; malformed/contradictory parser fields; 50% e
 refinement and 10% revalidation; estimate correction outside brackets; transient failures preserving
 bounds; expired/spoofed provenance; route/gateway changes; resume across scans; quota/pause/time/token
 ceilings; and explicit reviewed config proposals with production caps unchanged until merge.
+
+### Slice 4 implementation checkpoint — implemented in PR #2201 (#2200; merge pending)
+
+The implementation supplies pure six-run/90-day history and strict rational thresholds, independently
+enumerated authenticated artifacts, exact scalar edits, reviewed increase selections and a successful
+reconcile consumer for automatic tightening proposals. An attempted scope without a valid sample interrupts the
+three-consecutive-run rule; unrelated runs do not. Header units are explicitly mapped only for Groq's configured physical
+model/account scope; duplicate physical routes and unknown/shared mappings remain non-actionable.
+Matching provider-account ceilings/directions are required across all configured accounts; no capacity
+summation or compiler/schema extension is inferred.
+
+Optional reachability and one phase-1 sample share a provider-wide allowance with required verification.
+Drain/spacing/cooldown consume its 900 seconds; configured reservations precede provider calls.
+Undrained/expired pauses cannot supply artifact observations. Existing required verification is not
+curtailed. BeatAPI's successful-call window remains shared with JEV; unknown headers supply no new
+capacity and the existing 65-second final cooldown remains. Today's UTC counters schedule one early
+route observation per day; the rolling 24-hour limitation is recorded above.
+
+Mixed `/apply` selections publish independent catalog/rate proposals under the shared writer lock.
+A reviewed-increase origin is recorded in the bot commit and PR body. Open increase and tightening
+proposals cannot replace each other; each direction waits successfully for the other to finish.
+A retained bot branch from a merged proposal can be replaced under the existing ownership/lease guard. No changes to context/output bounds, concurrency, paid/free policy, lane routing,
+provider credentials, pipeline versions or completed artifacts. Removal publication remains disabled.
+
+Offline acceptance after the six review corrections: 5,380 Python tests pass (16 deselected),
+359 focused tests and 405 Worker tests pass. Counter-only tests cover authentication, mutual
+exclusion, current-day/configured-route filtering, exhausted writes, recreation, unavailable reads,
+route-count truncation and indexed read-cost invariance as history grows. Whole-repository Ruff
+lint/format, both compilers and diff checks pass. Compiler outputs are unchanged.
+No live provider probes, synthetic jobs, manual deployment or production config edits were performed.

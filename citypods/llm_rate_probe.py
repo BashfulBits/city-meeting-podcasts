@@ -14,7 +14,7 @@ import os
 import re
 import sys
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +58,7 @@ class RateProbeRunner:
         max_wall_seconds: int = 900,
         session: requests.Session | None = None,
         request_timeout_seconds: float = 15.0,
+        before_request: Callable[[], None] | None = None,
     ) -> None:
         self.apply = apply
         self.max_requests_per_route = max_requests_per_route
@@ -65,6 +66,7 @@ class RateProbeRunner:
         self.max_wall_seconds = max_wall_seconds
         self.session = session or requests.Session()
         self.request_timeout_seconds = request_timeout_seconds
+        self.before_request = before_request
         self.total_requests = 0
         self.route_request_counts: dict[str, int] = {}
         self.start_time = time.monotonic()
@@ -113,6 +115,10 @@ class RateProbeRunner:
                 "headers": {},
                 "body": None,
             }
+
+        if self.before_request is not None:
+            self.before_request()
+            self.check_budgets(route_id)
 
         url = direct_chat_url(route)
 
@@ -205,10 +211,20 @@ def run_phase_0(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, Any
     }
 
 
-def run_phase_1(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, Any]:
+def run_phase_1(
+    runner: RateProbeRunner,
+    route: dict[str, Any],
+    *,
+    max_samples: int | None = None,
+    on_response: Callable[[dict], None] | None = None,
+) -> dict[str, Any]:
     """Phase 1: Declared-vs-enforced RPM."""
     rpm = float(route.get("rpm") or 10)
     target_count = int(math.ceil(min(rpm, 20.0))) + 2
+    if max_samples is not None:
+        if isinstance(max_samples, bool) or not isinstance(max_samples, int) or max_samples <= 0:
+            raise ValueError("phase-1 sample count must be a positive integer")
+        target_count = min(target_count, max_samples)
     spacing = 60.0 / rpm if rpm > 0 else 6.0
 
     first_429_index = None
@@ -219,6 +235,8 @@ def run_phase_1(runner: RateProbeRunner, route: dict[str, Any]) -> dict[str, Any
         if i > 1 and runner.apply:
             time.sleep(spacing)
         resp = runner.send_request(route, FIXED_PROMPT, max_tokens=1)
+        if on_response is not None:
+            on_response(resp)
         if resp.get("dry_run"):
             return {"phase": "1", "dry_run": True, "target_requests": target_count}
         if resp.get("status") == 429:

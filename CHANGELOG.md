@@ -12,6 +12,19 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog Slice 4: bounded rate maintenance (#2200; PR #2201).** Authenticated successful
+  scheduled artifacts retain scoped positive evidence for 90 days, with six independent runs
+  per metric. Only attempted scopes affect consecutive-run evidence; unrelated and manual scans
+  preserve pending offers. Daily early checks use bounded current-day counter reads through
+  `/v2/stats?rate_failures=1`, with no job scans or storage writes. Opposite-direction proposals
+  wait while either is open; retained merged bot branches do not block later maintenance. Proven tightening prepares a reviewed PR; increases require an exact `/apply`
+  selection. Unknown scope, missing artifacts and account mismatches defer. Existing numeric
+  rate scalars are the only editable fields; greater-than-50% tightening is flagged. Optional
+  sampling shares the three-request/900-second allowance with existing verification and preserves
+  pause, quota reservation and final cooldown. Today's UTC failure bucket can schedule one early
+  observation per route/day. No context, concurrency, paid policy, lane, pipeline-version or
+  completed-artifact changes; removal activation still requires its recovery canary.
+
 - **Recovery-canary telemetry prerequisite (#2198).** Existing Worker stats expose committed
   catalog-rescue progress from the scheduler row; opt-in Python telemetry correlates persisted
   structural audits and submission decisions using recipe fingerprints. Audits report preserved

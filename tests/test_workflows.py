@@ -1630,7 +1630,7 @@ def test_provider_catalog_reconcile_is_issue_only_paused_and_keyed_from_config()
     """
     wf, job = _job("provider-catalog-reconcile.yml", "reconcile")
     assert wf["permissions"] == {}
-    assert job["permissions"] == {"contents": "read", "issues": "write"}
+    assert job["permissions"] == {"contents": "read", "issues": "write", "actions": "read"}
     crons = {entry["cron"] for entry in _on(wf)["schedule"]}
     assert crons == {"17 10 * * 1", "20 8 * * *"}
     step = job["steps"][_step_index(job, "reconcile_provider_routes.py")]
@@ -1760,13 +1760,18 @@ def test_provider_catalog_commands_use_trusted_base_permissions_and_shared_lock(
     observe, _ = _job("provider-catalog-reconcile.yml", "reconcile")
     assert _on(wf)["issue_comment"]["types"] == ["created"]
     assert wf["permissions"] == {}
-    assert job["permissions"] == {"contents": "write", "pull-requests": "write", "issues": "write"}
+    assert job["permissions"] == {
+        "contents": "write",
+        "pull-requests": "write",
+        "issues": "write",
+        "actions": "read",
+    }
     assert wf["concurrency"] == observe["concurrency"]
     condition = job["if"]
     assert "pull_request == null" in condition and "body == '/apply'" in condition
     assert "author_association" in condition
     checkout = job["steps"][0]
-    assert checkout["with"] == {"ref": "main", "persist-credentials": False}
+    assert checkout["with"] == {"ref": "main", "persist-credentials": False, "fetch-depth": 0}
     step = job["steps"][_step_index(job, "provider_catalog_commands.py")]
     assert "collaborators/$ACTOR/permission" in step["run"]
     assert "--body-file provider-catalog-command.md" in step["run"]
@@ -1778,3 +1783,26 @@ def test_provider_catalog_commands_use_trusted_base_permissions_and_shared_lock(
         for account in provider.get("accounts", [])[:1]:
             name = account["api_key_env"]
             assert step["env"].get(name) == f"${{{{ secrets.{name} }}}}"
+
+
+def test_rate_consumer_uses_trusted_main_and_read_only_artifacts_without_provider_secrets():
+    wf, job = _job("provider-catalog-commands.yml", "limits")
+    assert _on(wf)["workflow_run"] == {
+        "workflows": ["Provider catalog reconciliation"],
+        "types": ["completed"],
+    }
+    assert job["permissions"] == {"contents": "write", "pull-requests": "write", "actions": "read"}
+    assert job["steps"][0]["with"] == {
+        "ref": "main",
+        "fetch-depth": 0,
+        "persist-credentials": False,
+    }
+    assert "head_repository.full_name == github.repository" in job["if"]
+    assert "conclusion == 'success'" in job["if"] and "event == 'schedule'" in job["if"]
+    assert "--automatic-limits" in job["steps"][-1]["run"]
+    assert "secrets." not in str(job)
+    assert "download-artifact" not in str(job)  # script verifies bounded data; never executes it
+    _, producer = _job("provider-catalog-reconcile.yml", "reconcile")
+    upload = producer["steps"][-1]
+    assert upload["with"]["retention-days"] == 90
+    assert upload["with"]["name"] == "provider-catalog-rate-evidence-${{ github.run_id }}"
