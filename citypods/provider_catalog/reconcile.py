@@ -1253,6 +1253,7 @@ def _measure_context_routes(
     from citypods.provider_catalog.evidence import digest
     from citypods.provider_catalog.limits import (
         ContextSearchState,
+        _context_count,
         advance_context_state,
         context_history_states,
         context_input_ratio,
@@ -1271,7 +1272,8 @@ def _measure_context_routes(
     for route in eligible:
         rid = route["route_id"]
         readiness = context_run["readiness"].get(rid) or {}
-        if not readiness.get("enabled") or not readiness.get("quota_scope"):
+        scope = f"{route['provider']}:{route['account_id']}:{route['upstream_model']}"
+        if not readiness.get("enabled") or readiness.get("quota_scope") != scope:
             report.observations.append(f"{rid}: context deferred (disabled or unknown quota scope)")
             continue
         key = None
@@ -1417,9 +1419,29 @@ def _measure_context_routes(
                     attempt_id=attempt_id,
                 )
                 report.context_observations.append(observed)
+                if (
+                    observed.reported_input is not None
+                    and observed.reported_input > request.reserved_input
+                ) or (
+                    observed.reported_output is not None
+                    and observed.reported_output > request.requested_output
+                ):
+                    report.observations.append(
+                        f"{rid}/{dimension}: context accounting overshoot; provider input/output "
+                        f"{observed.reported_input}/{observed.reported_output}, reserved "
+                        f"{request.reserved_input}/{request.requested_output}; route stopped"
+                    )
                 current = advance_context_state(target, observed)
                 states[key] = current
                 context_run.setdefault("rotation", {})[rid] = observed.observed_at
+                if current.success:
+                    lower = _context_count(current.success)
+                    upper = current.rejection.reported_ceiling if current.rejection else "unbounded"
+                    report.observations.append(
+                        f"{rid}/{dimension}: context {current.status}; provider-token interval "
+                        f"[{lower}, {upper}], basis {current.success.count_basis}; "
+                        f"observed {current.success.observed_at} (not an exact maximum)"
+                    )
                 if observed.outcome != "verified" or current.status in {"uncertain", "converged"}:
                     break
             if dimension == "input" and (

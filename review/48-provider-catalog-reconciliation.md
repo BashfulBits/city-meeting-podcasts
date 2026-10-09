@@ -1589,9 +1589,10 @@ The final implementation PR still supplies adaptive search, provider-count parse
 history, reviewed cap choices, weekly orchestration and all configured free-route offline coverage.
 Input/output canaries and recurring activation remain separately reviewed changes.
 
-### Final Slice 5 development checkpoint — unmerged, 2026-10-09
+### Final Slice 5 implementation — PR #2218 (unmerged, 2026-10-09)
 
-Branch `feat/2209-adaptive-context-calibration` now contains the observation/request schemas,
+[PR #2218](https://github.com/BashfulBits/city-meeting-podcasts/pull/2218), branch
+`feat/2209-adaptive-context-calibration`, contains the observation/request schemas,
 strict Groq input and OpenRouter input/output chat parsers, sentinel and counted-generation fixtures,
 actual-count search, authenticated bounded history, exact scalar choices and fresh-main cap
 publication. Weekly orchestration uses the shipped durable admission and existing shared provider
@@ -1599,7 +1600,10 @@ request/time budget. All configured routes have offline eligibility and parser c
 endpoints, native Gemini and BeatAPI JEV remain explicitly deferred. There is no generic inferred
 size-error parser, so these initial supported endpoints explore verified lower bounds without
 inventing rejection ceilings from arbitrary error numbers. Unknown/shared quota scope separately
-defers admission; parser support alone does not enable calls.
+defers admission; parser support alone does not enable calls. Before session start, the client
+compares its compiled catalog with the deployed Worker's canonical digest, including JS number
+formatting. Each route also requires the exact deployed provider/account/physical-model scope;
+a stale deployment or changed physical mapping cannot silently charge a different route.
 
 The provider transport uses the approved cancellation adjustment below. URL validation and key
 availability precede admission; the child waits for new durable permission before submission.
@@ -1608,16 +1612,27 @@ transport ambiguity never retries the attempt, and reservation overshoot stops b
 that route. Actual input overshoots remain fixture-local correction evidence, never cap authority.
 Raw prompts/responses do not enter artifacts. Two bounded compatible weekly successes can supply an
 explicit lower-bound choice; reaching the experiment ceiling cannot justify reducing an existing
-larger production cap. Current cap offers retain output/window guards and unsupported combined-
+larger production cap. Selecting input and output changes together must fit the final retained total
+window; an incompatible pair defers both exact choices rather than inventing an unselected value.
+Current cap offers retain output/window guards and unsupported combined-
 window semantics withhold proposals until a documented endpoint parser establishes that basis.
 
-Full offline acceptance and the final implementation PR are being prepared. The focused matrix
+Final offline acceptance is recorded below; CodeRabbit and current-head CI must finish. The matrix
 covers every configured route and both dimensions, including paid/paused exclusions, actual-count
 feedback, reservation overshoot, uncertain weekly restart, convergence revalidation, deadline/byte
 cancellation, new-admission gating, tampered/missing/expired history, retained unexpired anchors,
 exact fresh-main scalar edits and context-writer collisions. No production YAML,
 compiled catalog, estimator, output forecast, Worker activation flag or live admission policy changes.
 Input/output canaries, recurring activation and removal recovery acceptance remain separate gates.
+
+Offline acceptance: 5,540 Python tests passed (16 live cases deselected), 371 focused catalog/context/
+apply/editor/workflow tests, 424 Worker tests, whole-repository Ruff lint/format, both unchanged
+catalog compilers and diff checks. Production-spawn private-URL exclusion and forked fake transport
+prove admission gating and hard cancellation without live HTTP. The client canonical digest matches
+Worker `canonicalJson`/`sha256Hex` for the current compiled catalog and a Unicode/numeric fixture.
+The admission table's real-workerd bounded reads/writes, rollback and recreation acceptance remains
+in the merged #2214 checkpoint above; final calibration adds no Worker table or schema change.
+This offline acceptance does not satisfy any live canary or enable recurring scans.
 
 **Maintainer-approved transport adjustment — 2026-10-09:** §8.11.B requires a 120-second
 monotonic total response deadline. Requests' socket-inactivity timeout does not enforce that total

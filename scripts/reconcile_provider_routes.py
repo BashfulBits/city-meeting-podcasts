@@ -241,6 +241,7 @@ def main(argv: list[str] | None = None) -> int:
         if isinstance(control, WorkerDispatchControl):
             from citypods.compute.llm_dispatch_pause import Selection
             from citypods.provider_catalog.evidence import (
+                _context_catalog_digest,
                 discover_context_references,
                 verified_context_history,
             )
@@ -248,6 +249,11 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 context_status = control.client.context_status(Selection("global"))
                 if context_status["enabled"]:
+                    compiled = json.loads(
+                        (REPO_ROOT / "workers/llm-dispatch-v2/src/dispatch_limits.json").read_text()
+                    )
+                    if _context_catalog_digest(compiled) != context_status["catalog_digest"]:
+                        raise ValueError("deployed context catalog differs from this checkout")
                     now = datetime.now(UTC)
                     references = discover_context_references(
                         repository=os.environ["GITHUB_REPOSITORY"], now=now

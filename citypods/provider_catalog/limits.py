@@ -740,6 +740,16 @@ def context_edit_plan(changes, config, *, selected=(), deferred=(), history=(), 
 
     chosen = tuple(c for c in changes if context_choice(c) in set(selected))
     missing = sorted(set(selected) - {context_choice(c) for c in chosen})
+    blocked = set()
+    for route in config.limits.get("routes", []):
+        fields = {c[1]: c[3] for c in chosen if c[0] == route["route_id"]}
+        if (
+            set(fields) == {"hard_input_ceiling", "output_context_limit"}
+            and fields["hard_input_ceiling"] + fields["output_context_limit"]
+            > route["input_context_limit"]
+        ):
+            blocked.add(route["route_id"])
+    chosen = tuple(c for c in chosen if c[0] not in blocked)
     notes = []
     if history and now is not None:
         states = context_history_states(history, now=now)
@@ -786,6 +796,10 @@ def context_edit_plan(changes, config, *, selected=(), deferred=(), history=(), 
         applied=(*tuple(context_choice(c) for c in chosen), *notes),
         deferred=(
             *deferred,
+            *(
+                f"{rid}: selected input/output caps exceed retained context window"
+                for rid in blocked
+            ),
             *(f"{c}: current verified context offer unavailable" for c in missing),
         ),
     )

@@ -12,7 +12,7 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
-- **Provider catalog Slice 5 adaptive context calibration (#2209).** Adds offline-tested
+- **Provider catalog Slice 5 adaptive context calibration (#2209; PR #2218).** Adds offline-tested
   provider-count search, bounded weekly orchestration, authenticated 90-day histories and exact
   reviewed `/apply` input/output cap choices. Groq input and OpenRouter input/output chat parsers
   opt in; every configured free route has support or an explicit unsupported case. Native Gemini

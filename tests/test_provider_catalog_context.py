@@ -664,7 +664,9 @@ def run_context_orchestration(
         "catalog_digest": "c" * 64,
         "history": history,
         "budget": dict(BUDGET),
-        "readiness": {"r": {"enabled": True, "quota_scope": "account" if quota else None}},
+        "readiness": {
+            "r": {"enabled": True, "quota_scope": f"{provider}:primary:test" if quota else None}
+        },
     }
     pause = SimpleNamespace(contended=False, renew=lambda: None)
     runner = RateProbeRunner(max_requests_total=3, max_requests_per_route=6)
@@ -731,6 +733,8 @@ def test_context_admission_and_transport_failures_do_not_retry_or_start_output(m
         assert context["abandoned"] and not report.context_observations
     if mode == "preflight":
         assert not context.get("rotation") and not report.context_observations
+    if mode == "overshoot":
+        assert any("accounting overshoot" in note for note in report.observations)
 
 
 @pytest.mark.parametrize("provider,quota", [("groq", False), ("beatapi", True), ("gemini", True)])
@@ -943,8 +947,9 @@ def test_context_cli_rejects_manual_daily_and_non_main_runs(
     assert exc.value.code == 2
 
 
-def test_weekly_disabled_server_does_not_start_history_admission_or_context_calls(
-    monkeypatch, tmp_path
+@pytest.mark.parametrize("enabled", [False, True])
+def test_weekly_disabled_or_stale_catalog_does_not_start_history_admission_or_calls(
+    monkeypatch, tmp_path, enabled
 ):
     from types import SimpleNamespace
 
@@ -967,7 +972,7 @@ def test_weekly_disabled_server_does_not_start_history_admission_or_context_call
 
     control = script.WorkerDispatchControl(
         SimpleNamespace(
-            context_status=lambda _selection: {"enabled": False, "catalog_digest": "c" * 64},
+            context_status=lambda _selection: {"enabled": enabled, "catalog_digest": "c" * 64},
             start_context=forbidden,
             reserve_context=forbidden,
         )
@@ -1150,3 +1155,50 @@ def test_non_context_scan_carries_only_advisory_cap_choices_without_context_call
     assert report.context_changes == [change]
     assert report.state["last_full"]["context_changes"] == [change]
     assert not report.context_observations
+
+
+def test_compiled_context_digest_matches_worker_canonical_json_numbers_and_utf8():
+    from citypods.provider_catalog.evidence import _context_catalog_digest
+
+    # Generated offline by protocol.js canonicalJson/sha256Hex; no production catalog golden.
+    fixture = {
+        "name": "人口",
+        "number": 1.0,
+        "tiny": 0.00000014,
+        "small": 0.000001,
+        "minus": -0.0,
+        "parts": [True, None, 1.75],
+    }
+    assert _context_catalog_digest(fixture) == (
+        "083a8eb03f27093ee1167196458185b5b51ac07095af02c24c4ce08f54506319"
+    )
+    for number in (float("nan"), 2**1024):
+        with pytest.raises(ValueError, match="unsafe"):
+            _context_catalog_digest({"tpm": number})
+
+
+@pytest.mark.parametrize("input_cap,expected", [(8000, False), (6000, True)])
+def test_selected_input_output_batch_preserves_final_total_window(input_cap, expected):
+    from datetime import UTC, datetime
+
+    from citypods.provider_catalog.apply import SOURCE_PATHS, ApplyConfig
+    from citypods.provider_catalog.config_edit import apply_config_edits
+    from citypods.provider_catalog.limits import context_choice, context_edit_plan
+
+    texts = {
+        SOURCE_PATHS[0]: yaml.safe_dump({"routes": [ROUTE]}, sort_keys=False),
+        SOURCE_PATHS[1]: "llm_lanes: {}\n",
+        SOURCE_PATHS[2]: "version: 1\n",
+    }
+    cfg = ApplyConfig({"routes": [ROUTE]}, {}, texts, "main", datetime.now(UTC).date())
+    changes = (
+        ("r", "hard_input_ceiling", None, input_cap, "a" * 64),
+        ("r", "output_context_limit", 2000, 4000, "b" * 64),
+    )
+    plan = context_edit_plan(changes, cfg, selected=[context_choice(c) for c in changes])
+    assert bool(plan.context_changes) == expected
+    if expected:
+        changed = yaml.safe_load(apply_config_edits(texts, plan)[SOURCE_PATHS[0]])["routes"][0]
+        assert changed["hard_input_ceiling"] + changed["output_context_limit"] == 10000
+    else:
+        assert plan.deferred and apply_config_edits(texts, plan) == texts

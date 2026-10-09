@@ -311,6 +311,14 @@ def apply_config_edits(texts, plan: EditPlan):
                 text = text[: node.start_mark.index] + str(new) + text[node.end_mark.index :]
             output[SOURCE_PATHS[0]] = text
             matching[0][field] = new
+        for rid in {c[0] for c in plan.context_changes}:
+            fields = {c[1] for c in plan.context_changes if c[0] == rid}
+            route = next(r for r in limits["routes"] if r["route_id"] == rid)
+            if fields == {"hard_input_ceiling", "output_context_limit"} and (
+                route["hard_input_ceiling"] + route["output_context_limit"]
+                > route["input_context_limit"]
+            ):
+                raise ValueError("selected context caps exceed retained window")
     targets = set()
     for change in plan.rate_changes:
         from citypods.provider_catalog.evidence import provider_rate_digest

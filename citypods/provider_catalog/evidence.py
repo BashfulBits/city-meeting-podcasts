@@ -626,6 +626,33 @@ CONTEXT_ARTIFACT_MAX_BYTES = 4 * 1024 * 1024
 CONTEXT_ARTIFACT_FILE = "provider-catalog-context-evidence.json"
 
 
+def _context_catalog_digest(value):
+    """Match Worker canonicalJson for the compiled catalog, including JS number formatting."""
+    import math
+    from decimal import Decimal
+
+    def canonical(item):
+        if isinstance(item, dict):
+            if any(not isinstance(key, str) for key in item):
+                raise ValueError("invalid catalog object key")
+            keys = sorted(item, key=lambda key: key.encode("utf-16-be"))
+            return "{" + ",".join(canonical(key) + ":" + canonical(item[key]) for key in keys) + "}"
+        if isinstance(item, list):
+            return "[" + ",".join(canonical(element) for element in item) + "]"
+        if type(item) in {int, float}:
+            if abs(item) > 2**53 - 1 or not math.isfinite(item):
+                raise ValueError("unsafe catalog number")
+            if item == int(item):
+                return str(int(item))  # JSON.stringify represents both 1.0 and -0 as integers
+            number = repr(item)
+            if 1e-6 <= abs(item) < 1e21:
+                return format(Decimal(number), "f")
+            return re.sub(r"e([+-])0+", r"e\1", number)
+        return json.dumps(item, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+
+    return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
 def context_artifact(
     observations,
     limits,
