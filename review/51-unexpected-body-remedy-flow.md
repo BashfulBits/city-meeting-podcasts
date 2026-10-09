@@ -2784,3 +2784,18 @@ Manual branch dispatch is authorized; human merges remain required for main/sche
 Validation: actual source/record resume regressions pass; 40 targeted search tests and
 5,158 full offline tests pass (16 deselected). Whole Ruff and format checks pass. Workflow
 startup diagnostics read only completed-source and partial-record counts from the private cache.
+
+### Retain meeting documents after search source completion — L3, 2026-10-08
+
+Maintainer approved retaining reusable meeting documents after completed sources change.
+In citypods/search.py build_search_index, preserve the existing private partials entry on both
+source completion and unchanged shard cache hits. Existing per-UID hashes reject changed or
+removed records, and source-view/archive-policy hashes retain their existing invalidation rules.
+No new cache schema: partials now also holds reusable records for completed sources. Old caches
+without these records remain valid but require one rebuild when a completed source changes.
+Tests in tests/test_search.py must restore JSON between builds, change one completed record,
+add/remove records, and prove only changed/new records are converted, with clean-build-equivalent
+public output. Existing policy invalidation and staged-publication tests must still pass.
+Update ARCHITECTURE.md and CHANGELOG.md; run targeted tests, full offline suite and whole Ruff.
+Do not modify workflow cadence/budget, dependencies, public schema, storage, audio, raw records,
+publication selection, feed definitions or provider adapters. Human merges remain required.
