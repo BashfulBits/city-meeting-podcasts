@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Keep paused-route sizing coverage independent of production config.** The prelabeler regression
+  uses explicit paused/live fixtures after Gemma's approved reopening, and verifies both rejection
+  of a paused route and no sizing route when every leg is paused. Runtime policy is unchanged.
+
 - **Reopen three Gemma routes at 20 RPD (maintainer decision, 2026-10-09).** OpenRouter's free
   Gemma 4 31B and 26B routes and NVIDIA's Gemma 4 31B route resume ordinary dispatch eligibility
   for limited health observation and eventual context calibration. The earlier 429 and shared
