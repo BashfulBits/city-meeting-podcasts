@@ -173,16 +173,13 @@ its newest 500 items beginning December 15, 2020, so it omits the July 24, 2020 
 RSS window behavior as sufficient P0 proof. The two #6334 assignments remain unchanged pending exact
 segment evidence.
 
-The 680-row historical disposition baseline is deployed; the last full replay records each pattern
-as an applied feed rule, archive-only outcome, explicit not-to-pursue outcome or linked evidence
-case. **PR #2165 shipped** Arlington's exact 2012 `Empty` recording to Council and a reusable Dallas
-South Dallas/Fair Park Special Called title alias. The frozen replay totals above
-predate those changes; rerun the full replay before citing current counts. The current register has
-six open evidence cases; these remain tracked work, not waived findings. The full replay does not
-prove that each historical title is a distinct episode or each source copy is a unique recording.
-Public search is a separate limitation: `meta.json` reports zero search shards and `/search/` and
-`/data/search/manifest.json` return HTTP 404. Do not claim public search or its archive-only filter
-was verified.
+P0's historical baseline is verified complete on 2026-10-09; see the
+[final report](evidence/p0-completion-2026-10-09.md). All 680 title patterns have recorded outcomes.
+The refreshed 26,555-entry replay leaves 411 deliberately unassigned entries (405 not pursued,
+six archive-only). Public browser search and archive-only filtering are verified; all four Dallas
+#2171 recordings have identical UID/audio in all three approved feeds. Six evidence cases remain
+explicitly carried open under the approved exit rule, not waived. P1 tooling shipped in #1987;
+model admission and P2–P5 remain gated. Search-hosting cleanup is separately tracked in #2205.
 
 For Dallas GUID 273327, the maintainer directed Bond Program only. A live RSS check found its
 original UID/audio in Bond Program and absent from Public Info and the dedicated Task Force feed;

@@ -1,8 +1,16 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: P1 tooling shipped; inactive publication selection shipped; activations and P2–P5 gated.**
-**Revised:** 2026-10-03 after maintainer approval of the remaining evaluation design choices.
+**Status: P0 historical baseline verified complete; P1 tooling shipped; P2–P5 remain gated.**
+**Revised:** 2026-10-09 after final P0 replay and deployed verification.
 This specification does not itself change production routing or enable auto-merge.
+
+## Current P0 completion
+
+The [final report](evidence/p0-completion-2026-10-09.md) supersedes the dated P0 status snapshots
+below. All 680 baseline patterns have dispositions; refreshed 26,555-entry replay leaves 411
+intentionally unassigned entries. Public search/archive-only filtering and Dallas #2171 publication
+are verified. Six exact-recording evidence cases remain explicitly open under the approved P0
+exit rule. This does not complete model admission, P2–P5 or all municipal historical research.
 
 ## Outcome and scope
 
@@ -867,8 +875,8 @@ physical-route admission still requires the reports and independent review below
 
 Tracking issue: [#1979](https://github.com/BashfulBits/city-meeting-podcasts/issues/1979).
 Implementation: [PR #1987](https://github.com/BashfulBits/city-meeting-podcasts/pull/1987),
-ready for review, pending merge. Live comparison/admission remains a separate opt-in activity.
-P1 is ready for review, not complete or frozen. The offline harness and strict direct
+merged; offline tooling is shipped. Live comparison/admission remains a separate opt-in activity.
+P1 tooling is complete; production route admission is not. The offline harness and strict direct
 routing/provenance are implemented, with empty shadow admissions and no live model calls.
 The maintainer resolved the three specification clarifications: hidden independently adjudicated
 `expected_owner` truth, explicit blind-owner isolation, and mandatory frozen input hashes for
