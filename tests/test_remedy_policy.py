@@ -362,3 +362,35 @@ def test_unknown_template_reference_cannot_fall_back_to_legacy_guard(tmp_path):
         rationale="test",
     )
     assert "manual identity" in _aggregate_policy_reason(proposal, {"owner"}, {"owner": path})
+
+
+@pytest.mark.parametrize(
+    "inclusions",
+    [
+        [{}],
+        ["not-a-mapping"],
+        {"provider_guid": "clip-7", "body": "Library Board"},
+        [{"provider_guid": "", "body": "Library Board"}],
+        [{"provider_guid": "clip-7"}],
+        [{"provider_guid": "clip-7", "body": "Library Board"}] * 2,
+    ],
+)
+def test_hand_built_source_invalid_inclusions_remain_unresolved(inclusions):
+    local = city()
+    local.source["body_includes"] = inclusions
+    result = instantiate_policies(local, "pinned-source", index(), packet())
+    assert not result.resolved
+    assert result.unresolved[0].proof_diagnostics == ("invalid recording inclusion declaration",)
+    assert not resolve_owner("Library Board", "pinned-source", result).owner_slugs
+
+
+def test_hand_built_source_inclusions_use_shared_parser_and_official_packet():
+    local = city()
+    local.source["body_includes"] = [{"provider_guid": " clip-7 ", "body": "Library Board"}]
+    raw = template()
+    raw["permitted_transformations"].append("reviewed_recording_inclusion")
+    raw["selector_forms"].append("body_includes")
+    raw["official_proof_requirements"].append("exact_provider_guid")
+    result = instantiate_policies(local, "pinned-source", index(raw), packet())
+    assert result.resolved and not result.unresolved
+    assert resolve_owner("Library Board", "pinned-source", result).owner_slugs == (local.slug,)

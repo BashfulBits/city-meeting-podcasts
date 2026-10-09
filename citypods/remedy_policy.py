@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, field_validator, model_validator
 
-from citypods.bodies import body_key, matches, matches_exact_body_label
+from citypods.bodies import body_key, matches, matches_exact_body_label, source_body_inclusions
 from citypods.config import (
     _policy_approval as _approval,
 )
@@ -481,7 +481,10 @@ def instantiate_policies(city, source_key, templates, official_evidence):
             return unresolved("missing evidence reference or recording binding")
         if any(recordings[guid].body != name for guid in binding.recording_guids):
             return unresolved("recording official identity mismatch")
-    included = {item["provider_guid"] for item in city.source.get("body_includes", [])}
+    try:
+        included = {item.provider_guid for item in source_body_inclusions(city.source)}
+    except ValueError:
+        return unresolved("invalid recording inclusion declaration")
     if included and (
         "reviewed_recording_inclusion" not in template.permitted_transformations
         or not included <= recordings.keys()

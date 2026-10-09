@@ -2860,3 +2860,8 @@ P2a preview correction: dependency-free declaration validation remains in citypo
 strict template/evidence models reuse it from citypods/remedy_policy.py. Base render installations
 do not require the optional Pydantic evaluation dependency. A subprocess regression blocks
 Pydantic imports while loading every production feed. No dependency or workflow changes.
+
+P2a review hardening: supplied source recording inclusions use the existing shared parser,
+including for hand-built City inputs. Malformed mappings, missing values and duplicate GUIDs
+remain unresolved rather than raising an unexpected exception. Valid inclusion proof and
+legacy configuration behavior are unchanged; no feed or source-record changes.
