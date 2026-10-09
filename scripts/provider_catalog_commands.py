@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
 import requests  # noqa: E402
 
 from citypods.compute.llm_dispatch_pause import DispatchPauseError  # noqa: E402
-from citypods.compute.llm_lanes import load_lanes, parse_lanes  # noqa: E402
+from citypods.compute.llm_lanes import parse_lanes  # noqa: E402
 from citypods.github_permissions import (  # noqa: E402
     RepositoryPermissionError,
     require_repository_write,
@@ -81,7 +81,7 @@ def prepare(body, base_commit):
     decisions = parse_decisions(body, snapshot)
     texts = {p: (ROOT / p).read_text() for p in SOURCE_PATHS}
     limits = load_config(texts[SOURCE_PATHS[0]])
-    lanes = load_lanes()
+    lanes = parse_lanes(load_config(texts[SOURCE_PATHS[1]])["llm_lanes"])
     config = ApplyConfig(limits, lanes, texts, base_commit, datetime.now(UTC).date())
     selected = {d.key for d in decisions if d.action == "add"}
     # Ignores spend no provider quota. Already-configured selections require no new-route proof.

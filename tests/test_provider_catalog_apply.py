@@ -505,7 +505,7 @@ def test_prepare_rechecks_paid_route_then_skips_probes_after_fulfillment(tmp_pat
     conf, proof, decision = paid_fixture()
     for path, text in zip(
         SOURCE_PATHS,
-        [yaml.safe_dump(conf.limits), "llm_lanes: {}\n", conf.texts[SOURCE_PATHS[2]]],
+        [yaml.safe_dump(conf.limits), lane_yaml(), conf.texts[SOURCE_PATHS[2]]],
         strict=True,
     ):
         target = tmp_path / path
@@ -524,7 +524,6 @@ def test_prepare_rechecks_paid_route_then_skips_probes_after_fulfillment(tmp_pat
 
     monkeypatch.setattr(commands, "datetime", FixedDatetime)
     monkeypatch.setattr(commands, "ROOT", tmp_path)
-    monkeypatch.setattr(commands, "load_lanes", lambda: conf.lanes)
     monkeypatch.setattr(commands, "load_decisions", lambda: Decisions())
     monkeypatch.setattr(commands, "_control", lambda _: object())
     monkeypatch.setattr(commands, "fetch_quality_index", lambda _: object())
@@ -651,3 +650,120 @@ def test_paid_fulfillment_requires_literal_ack_in_planner_and_issue(model):
         assert ("`paid`: keep as a paid route" in choices) is expected
         plan = plan_apply(Report(), (decision,), conf)
         assert bool(plan.deferred) is not expected
+
+
+def lane_yaml(**changes):
+    import yaml
+
+    lane = dict(
+        models=["old"],
+        backup_models=["old"],
+        backup_after_attempts=2,
+        max_dispatches_per_run=1,
+        daily_write_units=20,
+        telemetry=dict(producer="test", unit="job", completion="consumed", scope="sample"),
+    )
+    lane.update(changes)
+    return yaml.safe_dump({"llm_lanes": {"lane": lane}}, sort_keys=False)
+
+
+def prepare_fixture(tmp_path, monkeypatch, limits, report, site_text):
+    from datetime import datetime
+
+    import yaml
+
+    from citypods.compute import llm_lanes
+    from citypods.provider_catalog.decisions import Decisions
+    from scripts import provider_catalog_commands as commands
+
+    class FixedDatetime:
+        @staticmethod
+        def now(tz):
+            return datetime(2026, 10, 8, tzinfo=tz)
+
+    texts = dict(
+        zip(
+            SOURCE_PATHS,
+            [yaml.safe_dump(limits), site_text, "ignored: []\nacknowledged: []\n"],
+            strict=True,
+        )
+    )
+    for p, text in texts.items():
+        path = tmp_path / p
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    # The process cache deliberately retains the first main snapshot through the rebuild.
+    cached = llm_lanes.parse_lanes(yaml.safe_load(site_text)["llm_lanes"])
+    monkeypatch.setitem(llm_lanes._CACHE, str(llm_lanes.DEFAULT_SITE_CONFIG_PATH), cached)
+    monkeypatch.setattr(commands, "datetime", FixedDatetime)
+    monkeypatch.setattr(commands, "ROOT", tmp_path)
+    monkeypatch.setattr(commands, "_control", lambda _: object())
+    monkeypatch.setattr(commands, "load_decisions", lambda: Decisions())
+    monkeypatch.setattr(commands, "fetch_quality_index", lambda _: object())
+    seen = []
+
+    def fresh(limits, lanes, *args, **kwargs):
+        seen.append(lanes["lane"])
+        return report
+
+    monkeypatch.setattr(commands, "reconcile", fresh)
+    return commands, texts, seen
+
+
+def test_apply_rebuild_honors_current_free_primary_pool_despite_warm_lane_cache(
+    tmp_path, monkeypatch
+):
+    from dataclasses import asdict
+
+    conf, proof, _ = paid_fixture()
+    limits = {
+        **conf.limits,
+        "routes": [conf.limits["routes"][0], {**conf.limits["routes"][1], "model": "spare"}],
+    }
+    snapshot = Report(anomalies=[proof], state={"last_full": {"anomalies": [asdict(proof)]}})
+    body = render_body(snapshot, run_date=TODAY.isoformat()).replace(
+        "- [ ] `paid`: keep as a paid route", "- [x] `paid`: keep as a paid route"
+    )
+    commands, texts, seen = prepare_fixture(
+        tmp_path,
+        monkeypatch,
+        limits,
+        Report(anomalies=[proof]),
+        lane_yaml(models=["old", "spare"]),
+    )
+    assert commands.prepare(body, "first-main").paid_routes == ("paid",)
+    # A bounded publication rebuild resets source files to the newly fetched main.
+    for p, text in texts.items():
+        (tmp_path / p).write_text(text)
+    (tmp_path / SOURCE_PATHS[1]).write_text(lane_yaml(models=["old"]))
+    plan = commands.prepare(body, "second-main")
+    assert not plan.paid_routes and "empty free lane pool" in plan.rejected[0]
+    assert [lane.models for lane in seen] == [("old", "spare"), ("old",)]
+    assert plan.base_commit == "second-main"
+    assert (tmp_path / SOURCE_PATHS[0]).read_text() == texts[SOURCE_PATHS[0]]
+
+
+def test_apply_rebuild_honors_current_backup_opt_out_despite_warm_lane_cache(tmp_path, monkeypatch):
+    from dataclasses import asdict
+
+    conf = config()
+    snapshot = Report(
+        candidates=[CANDIDATE], state={"last_full": {"candidates": [asdict(CANDIDATE)]}}
+    )
+    body = render_body(snapshot, run_date=TODAY.isoformat()).replace(
+        "- [ ] `host/creator/new`: add as backup to `lane`",
+        "- [x] `host/creator/new`: add as backup to `lane`",
+    )
+    commands, texts, seen = prepare_fixture(
+        tmp_path, monkeypatch, conf.limits, Report(candidates=[CANDIDATE]), lane_yaml()
+    )
+    assert commands.prepare(body, "first-main").backups == (("lane", "creator/new"),)
+    for p, text in texts.items():
+        (tmp_path / p).write_text(text)
+    site = lane_yaml(catalog_backup_candidates=False)
+    (tmp_path / SOURCE_PATHS[1]).write_text(site)
+    plan = commands.prepare(body, "second-main")
+    assert not plan.routes and not plan.backups
+    assert "no longer eligible" in plan.rejected[0]
+    assert [lane.accepts_catalog_backups for lane in seen] == [True, False]
+    assert (tmp_path / SOURCE_PATHS[1]).read_text() == site

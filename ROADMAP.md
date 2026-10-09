@@ -46,8 +46,8 @@ TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues
 ## Recently shipped (summary)
 
 - Provider catalog paid-route decisions (#2189) and bounded structural rescue (#2191).
-  Removal planning is next (#2192); activation still requires coordinated deployment and
-  a recovery canary. Remaining review/48 slices are not marked shipped.
+  Removal planning shipped in #2193 (#2192); activation still requires coordinated deployment
+  and a recovery canary. Remaining review/48 slices are not marked shipped.
 
 - Addison body-policy corrections and historical sweep (#2010, #2012, #2014, #2019–#2021,
   2026-10-04): Public Input/Briefings, verified joint subscriptions, exact Council ownership,
