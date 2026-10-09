@@ -2971,3 +2971,244 @@ test("immutable catalog digest cache avoids enumeration while mutable overrides 
   assert.equal(await coordinator._structuralCatalogDigest(limits), digest);
   assert.equal(enumerations, 0);
 });
+
+async function contextFixture(t, { provider = "groq", ids = ["probe"], tpm = 10000000 } = {}) {
+  const previous = LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS;
+  const output = LLMSchedulerDO.CONTEXT_OUTPUT_ENABLED;
+  LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS = ids;
+  LLMSchedulerDO.CONTEXT_OUTPUT_ENABLED = true;
+  t.after(() => {
+    LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS = previous;
+    LLMSchedulerDO.CONTEXT_OUTPUT_ENABLED = output;
+  });
+  const routes = Object.fromEntries(ids.map(id => [id, {
+    route_id: id, provider, account_id: "primary", upstream_model: id, model: id,
+    free: true, rpm: 10000, rpd: 10000, tpm, input_context_limit: 10,
+    output_context_limit: 1, hard_input_ceiling: 5,
+  }]));
+  const catalog = { providers: { [provider]: { accounts: [{ id: "primary", api_key_env: "KEY" }] } },
+    routes_by_id: routes, model_routes_map: {}, model_aliases: {} };
+  const env = { DISPATCH_LIMITS_OVERRIDE: catalog };
+  const fixture = makeCoordinator(env);
+  const now = Date.now();
+  const common = { run_id: "12345", catalog_digest: await fixture.coordinator._contextCatalogDigest() };
+  const start = { operation: "context_start", ...common };
+  const admit = { operation: "context_admit", ...common, route_id: ids[0], dimension: "input",
+    attempt_id: "a".repeat(64), request_digest: "b".repeat(64), input_tokens: 1000, output_tokens: 256 };
+  await fixture.coordinator.pauseDispatch({ scope: "provider", target: provider, seconds: 900 }, now);
+  return { ...fixture, env, catalog, now, start, admit };
+}
+
+test("context admission stays disabled without server activation, including RPC calls", async () => {
+  const { coordinator, sql } = makeCoordinator({});
+  const digest = await coordinator._contextCatalogDigest();
+  assert.deepEqual(await coordinator.reserveRouteRequests({ operation: "context_start",
+    run_id: "1", catalog_digest: digest }), { ok: false, error: "disabled" });
+  assert.deepEqual([...sql.exec("SELECT * FROM context_probe_weeks")], []);
+});
+
+test("context starts once, admits once, and retains charges across lost response and recreation", async t => {
+  const { coordinator: c, sql, storage, env, now, start, admit } = await contextFixture(t);
+  const opened = await c.reserveRouteRequests(start, now);
+  assert.equal(opened.remaining_requests, 24);
+  assert.equal(opened.deadline_ms, now + 3600000);
+  const written = c._readRowsWrittenToday();
+  assert.deepEqual(await c.reserveRouteRequests(start, now + 1000), opened);
+  assert.equal(c._readRowsWrittenToday(), written);
+  assert.deepEqual(await c.reserveRouteRequests(admit, now),
+    { ok: true, disposition: "new", attempt_id: admit.attempt_id });
+  const ledger = [...sql.exec("SELECT * FROM routes WHERE route_id='probe'")][0];
+  assert.equal(ledger.rpd_count, 1);
+  assert.equal(ledger.provisional_reservation, 0);
+  assert.equal(ledger.tpm_reserved, 1256);
+  const recreated = new LLMSchedulerDO({ storage }, withTestReservations(env));
+  const before = recreated._readRowsWrittenToday();
+  assert.deepEqual(await recreated.reserveRouteRequests(admit, now + 1000),
+    { ok: false, error: "already_consumed" });
+  assert.equal(recreated._readRowsWrittenToday(), before);
+  assert.equal([...sql.exec("SELECT * FROM context_probe_weeks")][0].input_used, 1000);
+  assert.equal((await recreated.reserveRouteRequests({ ...admit, input_tokens: 1001 }, now)).error,
+    "attempt_conflict");
+  assert.equal((await recreated.reserveRouteRequests({ ...start, run_id: "2" }, now)).error,
+    "session_expired");
+  assert.equal((await recreated.reserveRouteRequests(start, now + 3600000)).error, "session_expired");
+});
+
+test("context uses full generation allowance and Google input-only trailing quota", async t => {
+  const { coordinator: c, sql, now, start, admit } = await contextFixture(t, { provider: "gemini", tpm: 1500 });
+  await c.reserveRouteRequests(start, now);
+  assert.equal((await c.reserveRouteRequests({ ...admit, dimension: "output", input_tokens: 1000,
+    output_tokens: 32768 }, now)).ok, true);
+  const route = [...sql.exec("SELECT * FROM routes WHERE route_id='probe'")][0];
+  assert.equal(route.tpm_reserved, 1000);
+  assert.equal(JSON.parse(route.input_window_json)[0].tokens, 1000);
+  const retry = { ...admit, attempt_id: "c".repeat(64) };
+  assert.equal((await c.reserveRouteRequests(retry, now + 1)).error, "quota_wait");
+  assert.equal((await c.reserveRouteRequests(retry, now + 61000)).ok, true);
+  assert.equal([...sql.exec("SELECT * FROM context_probe_weeks")][0].output_used, 33024);
+});
+
+test("context fences input/output ceilings, route counts, weekly totals and UTC rollover", async t => {
+  const { coordinator: c, sql, now, start, admit } = await contextFixture(t, { ids: ["p1", "p2", "p3", "p4", "p5"] });
+  await c.reserveRouteRequests(start, now);
+  assert.equal((await c.reserveRouteRequests({ ...admit, input_tokens: 524289 }, now)).error,
+    "budget_exhausted");
+  for (let i = 0; i < 4; i++) {
+    const result = await c.reserveRouteRequests({ ...admit, route_id: `p${i + 1}`,
+      attempt_id: String(i + 1).repeat(64), input_tokens: 524288 }, now + i * 1000);
+    assert.equal(result.ok, true);
+  }
+  assert.equal((await c.reserveRouteRequests({ ...admit, route_id: "p5" }, now + 5000)).error,
+    "budget_exhausted");
+  assert.equal([...sql.exec("SELECT * FROM context_probe_weeks")][0].input_used, 2097152);
+  const next = now + 7 * 86400000;
+  assert.equal((await c.reserveRouteRequests({ ...start, run_id: "12346" }, next)).remaining_requests, 24);
+  assert.equal(c._contextWeek(Date.UTC(2026, 9, 11, 23, 59)), "2026-10-05");
+  assert.equal(c._contextWeek(Date.UTC(2026, 9, 12)), "2026-10-12");
+});
+
+test("context enforces per-route and weekly request ceilings independently", async t => {
+  const { coordinator: c, now, start, admit } = await contextFixture(t, { ids: ["p1", "p2", "p3", "p4", "p5"] });
+  await c.reserveRouteRequests(start, now);
+  for (let i = 0; i < 24; i++) {
+    const result = await c.reserveRouteRequests({ ...admit, route_id: `p${Math.floor(i / 6) + 1}`,
+      attempt_id: i.toString(16).padStart(64, "0") }, now + i * 1000);
+    assert.equal(result.ok, true);
+    if (i === 5) assert.equal((await c.reserveRouteRequests({ ...admit,
+      attempt_id: "f".repeat(64) }, now + 6000)).error, "budget_exhausted");
+  }
+  assert.equal((await c.reserveRouteRequests({ ...admit, route_id: "p5",
+    attempt_id: "f".repeat(64) }, now + 24000)).error, "budget_exhausted");
+});
+
+test("context rejects stale catalog, shared scopes, paid/paused routes and short pauses", async t => {
+  const { coordinator: c, catalog, now, start, admit } = await contextFixture(t);
+  assert.equal((await c.reserveRouteRequests({ ...start, catalog_digest: "f".repeat(64) }, now)).error,
+    "stale_catalog");
+  await c.reserveRouteRequests(start, now);
+  await c.resumeDispatch({ scope: "provider", target: "groq" }, now);
+  assert.equal((await c.reserveRouteRequests(admit, now)).error, "pause_not_drained");
+  await c.pauseDispatch({ scope: "provider", target: "groq", seconds: 200 }, now);
+  assert.equal((await c.reserveRouteRequests(admit, now)).error, "pause_not_drained");
+  catalog.routes_by_id.duplicate = { ...catalog.routes_by_id.probe, route_id: "duplicate" };
+  assert.equal(c._contextQuotaScope(catalog.routes_by_id.probe, catalog), null);
+  assert.equal(c._contextQuotaScope({ ...catalog.routes_by_id.probe, provider: "beatapi" }, catalog), null);
+});
+
+test("context admission rolls back every durable charge when any mutation fails", async t => {
+  const { coordinator: c, sql, now, start, admit } = await contextFixture(t);
+  await c.reserveRouteRequests(start, now);
+  const original = sql.exec;
+  for (const pattern of ["INSERT INTO routes", "UPDATE routes SET", "INSERT INTO context_probe_attempts",
+    "UPDATE context_probe_weeks SET", "UPDATE scheduler SET"]) {
+    sql.exec = (query, ...params) => {
+      if (query.includes(pattern)) throw new Error("storage outage");
+      return original(query, ...params);
+    };
+    await assert.rejects(c.reserveRouteRequests(admit, now), /storage outage/);
+    sql.exec = original;
+    assert.equal([...sql.exec("SELECT * FROM context_probe_attempts")].length, 0);
+    assert.equal([...sql.exec("SELECT * FROM routes")].length, 0);
+    assert.equal([...sql.exec("SELECT * FROM context_probe_weeks")][0].requests_used, 0);
+  }
+  assert.equal((await c.reserveRouteRequests(admit, now)).ok, true);
+});
+
+test("context row-budget denials and status reads perform no bookkeeping writes", async t => {
+  const { coordinator: c, sql, now, start, admit } = await contextFixture(t);
+  await c.reserveRouteRequests(start, now);
+  c.env.DO_ROWS_OPTIONAL_STOP = String(c._readRowsWrittenToday() + 9);
+  const before = c._readRowsWrittenToday();
+  assert.equal((await c.reserveRouteRequests(admit, now)).error, "daily_row_budget");
+  const status = await c.dispatchPauseStatus({ scope: "provider", target: "groq", context: true }, now);
+  assert.equal(status.context.session.remaining_requests, 24);
+  assert.equal(c._readRowsWrittenToday(), before);
+  assert.equal([...sql.exec("SELECT * FROM context_probe_attempts")].length, 0);
+});
+
+test("context retention prunes one bounded week and never resets a spent current session", async t => {
+  const { coordinator: c, sql, now, start } = await contextFixture(t);
+  for (let i = 8; i >= 1; i--) {
+    const week = c._contextWeek(now - i * 7 * 86400000);
+    sql.exec(`INSERT INTO context_probe_weeks
+      (week_start, run_id, catalog_digest, deadline_ms) VALUES (?, '1', ?, 1)`,
+    week, start.catalog_digest);
+    for (let j = 0; j < 24; j++) sql.exec(`INSERT INTO context_probe_attempts
+      VALUES (?, ?, '1', 'probe', 'input', ?, 1, 1, 1)`,
+    `${i}:${j}`, week, "a".repeat(64));
+  }
+  assert.equal((await c.reserveRouteRequests(start, now)).ok, true);
+  assert.equal([...sql.exec("SELECT * FROM context_probe_weeks")].length, 8);
+  assert.equal([...sql.exec("SELECT * FROM context_probe_attempts")].length, 168);
+  assert.equal((await c.reserveRouteRequests(start, now + 3600000)).error, "session_expired");
+});
+
+test("context additive startup never rebuilds an existing queue", async t => {
+  const { storage, sql, env } = await contextFixture(t);
+  sql.exec("DROP TABLE context_probe_weeks; DROP TABLE context_probe_attempts;");
+  const original = sql.exec;
+  const queries = [];
+  sql.exec = (query, ...args) => { queries.push(query); return original(query, ...args); };
+  new LLMSchedulerDO({ storage }, withTestReservations(env));
+  assert.equal(queries.some(query => /CREATE TABLE.*jobs|UPDATE jobs|INSERT INTO job_models/s.test(query)), false);
+  assert.equal([...sql.exec("SELECT * FROM context_probe_weeks")].length, 0);
+});
+
+
+test("context clusters weekly attempts and fences expired run reuse across week cleanup", async t => {
+  const { coordinator: c, sql, now, start } = await contextFixture(t);
+  await c.reserveRouteRequests(start, now);
+  const next = now + 10 * 7 * 86400000;
+  const before = c._readRowsWrittenToday();
+  assert.equal((await c.reserveRouteRequests(start, next)).error, "session_expired");
+  assert.equal(c._readRowsWrittenToday(), before);
+  assert.equal((await c.reserveRouteRequests({ ...start, run_id: "12344" }, next)).error,
+    "session_expired");
+  assert.equal((await c.reserveRouteRequests({ ...start, run_id: "12346" }, next)).ok, true);
+  assert.equal([...sql.exec("SELECT * FROM context_probe_weeks")].length, 1);
+  const plan = [...sql.exec(`EXPLAIN QUERY PLAN SELECT route_id FROM context_probe_attempts
+    WHERE week_start = ? LIMIT 25`, c._contextWeek(next))];
+  assert.match(plan[0].detail, /SEARCH context_probe_attempts USING PRIMARY KEY/);
+  const schema = [...sql.exec("SELECT sql FROM sqlite_master WHERE name='context_probe_attempts'")][0];
+  assert.match(schema.sql, /WITHOUT ROWID/);
+});
+
+test("context denies weekly output exhaustion and undrained providers without charging", async t => {
+  const { coordinator: c, sql, now, start, admit } = await contextFixture(t);
+  await c.reserveRouteRequests(start, now);
+  const counts = t.mock.method(c, "_inFlightCounts", () => ({ by_provider: { groq: 1 } }));
+  assert.equal((await c.reserveRouteRequests(admit, now)).error, "pause_not_drained");
+  assert.equal([...sql.exec("SELECT * FROM context_probe_attempts")].length, 0);
+  counts.mock.restore();
+  for (let i = 0; i < 4; i++) assert.equal((await c.reserveRouteRequests({ ...admit,
+    dimension: "output", output_tokens: 32768, attempt_id: String(i).repeat(64) }, now + i * 1000)).ok,
+  true);
+  assert.equal((await c.reserveRouteRequests({ ...admit, dimension: "output", output_tokens: 32768 },
+    now + 4000)).error, "budget_exhausted");
+  assert.equal([...sql.exec("SELECT * FROM context_probe_weeks")][0].output_used, 131072);
+});
+
+test("context optional thresholds cannot override account row exhaustion", async t => {
+  const { coordinator: c, sql, now, start, admit } = await contextFixture(t);
+  await c.reserveRouteRequests(start, now);
+  c.env.DO_ROWS_OPTIONAL_STOP = "1000000";
+  sql.exec("UPDATE scheduler SET rows_written_today=99999");
+  const before = c._readRowsWrittenToday();
+  assert.equal((await c.reserveRouteRequests(admit, now)).error, "daily_row_budget");
+  assert.equal(c._readRowsWrittenToday(), before);
+  assert.equal([...sql.exec("SELECT * FROM context_probe_attempts")].length, 0);
+});
+
+test("context paid, paused and unknown shared scopes fail closed", async t => {
+  for (const [kind, error] of [["paid", "unknown_target"], ["paused", "unknown_target"],
+    ["shared", "quota_unknown"]]) await t.test(kind, async sub => {
+    const { coordinator: c, catalog, now, start, admit } = await contextFixture(sub);
+    if (kind === "paid") catalog.routes_by_id.probe.free = false;
+    if (kind === "paused") catalog.routes_by_id.probe.rpd = 0;
+    if (kind === "shared") catalog.providers.groq.rpm = 100;
+    const digest = await c._contextCatalogDigest();
+    await c.reserveRouteRequests({ ...start, catalog_digest: digest }, now);
+    assert.equal((await c.reserveRouteRequests({ ...admit, catalog_digest: digest }, now)).error,
+      error);
+  });
+});

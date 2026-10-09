@@ -262,11 +262,11 @@ export function earliestSafeStart(route, job, earliestCandidateTime, now, option
   // counts, while the job carries a tokenizer-agnostic chars/4 estimate (see calibration.js).
   const inputEstimate = scaledInputTokens(job?.input_token_estimate, inputRatio);
   const tolerant = Boolean(options?.ceilingTolerance);
-  if (inputEstimate > hardInputCeilingLimit(route, { tolerant })) {
+  if (!options.contextProbe && inputEstimate > hardInputCeilingLimit(route, { tolerant })) {
     return null;
   }
 
-  if (Number(route?.prompt_cap_estimate) > 0 &&
+  if (!options.contextProbe && Number(route?.prompt_cap_estimate) > 0 &&
       Number(job?.input_token_estimate) > Number(route.prompt_cap_estimate)) return null;
   const tpd = Number(route?.tpd);
   if (tpd > 0 && reservation > tpd) return null;

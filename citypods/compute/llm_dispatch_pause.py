@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from collections.abc import Callable, Iterator, Mapping
@@ -71,6 +72,25 @@ class PauseOutcome:
     def contended(self) -> bool:
         """Probe results may reflect production traffic, not the model alone."""
         return not self.drained or self.pause_expired
+
+
+@dataclass(frozen=True)
+class ContextSession:
+    """Server-owned weekly allowance; a repeated start never extends its deadline."""
+
+    week_start: str
+    run_id: str
+    deadline_ms: int
+    remaining_input: int
+    remaining_output: int
+    remaining_requests: int
+
+
+@dataclass(frozen=True)
+class ContextAdmission:
+    """Single-use permission. Lost responses must be abandoned, never retried."""
+
+    attempt_id: str
 
 
 class DispatchPauseClient:
@@ -148,7 +168,7 @@ class DispatchPauseClient:
         except ValueError:
             data = {}
         if response.status_code != 200 or not isinstance(data, dict):
-            detail = data.get("detail") if isinstance(data, dict) else None
+            detail = (data.get("detail") or data.get("error")) if isinstance(data, dict) else None
             raise DispatchPauseError(f"{path} returned HTTP {response.status_code}: {detail}")
         return data
 
@@ -176,6 +196,91 @@ class DispatchPauseClient:
         return self._request(
             "POST", "v2/dispatch:reserve", {"route_id": route_id, "requests": requests_made}
         )
+
+    @staticmethod
+    def _context_session(data: Mapping[str, Any]) -> ContextSession:
+        fields = ("deadline_ms", "remaining_input", "remaining_output", "remaining_requests")
+        if (
+            not isinstance(data.get("week_start"), str)
+            or not isinstance(data.get("run_id"), str)
+            or any(type(data.get(k)) is not int or data[k] < 0 for k in fields)
+            or data["deadline_ms"] <= 0
+            or not re.fullmatch(r"[1-9][0-9]{0,19}", data["run_id"])
+            or data["remaining_input"] > 2_097_152
+            or data["remaining_output"] > 131_072
+            or data["remaining_requests"] > 24
+        ):
+            raise DispatchPauseError("invalid context session response")
+        try:
+            week = date.fromisoformat(data["week_start"])
+            if week.weekday() != 0 or week.isoformat() != data["week_start"]:
+                raise ValueError("context week must start Monday")
+        except ValueError as exc:
+            raise DispatchPauseError("invalid context week") from exc
+        return ContextSession(**{k: data[k] for k in ("week_start", "run_id", *fields)})
+
+    def start_context(self, run_id: str, catalog_digest: str) -> ContextSession:
+        data = self._request(
+            "POST",
+            "v2/dispatch:reserve",
+            {"operation": "context_start", "run_id": run_id, "catalog_digest": catalog_digest},
+        )
+        if data.get("ok") is not True or data.get("run_id") != run_id:
+            raise DispatchPauseError("context session was not admitted")
+        return self._context_session(data)
+
+    def reserve_context(
+        self,
+        *,
+        run_id: str,
+        catalog_digest: str,
+        route_id: str,
+        dimension: str,
+        attempt_id: str,
+        input_tokens: int,
+        output_tokens: int,
+        request_digest: str,
+    ) -> ContextAdmission:
+        data = self._request(
+            "POST",
+            "v2/dispatch:reserve",
+            {
+                "operation": "context_admit",
+                "run_id": run_id,
+                "catalog_digest": catalog_digest,
+                "route_id": route_id,
+                "dimension": dimension,
+                "attempt_id": attempt_id,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "request_digest": request_digest,
+            },
+        )
+        if (
+            data.get("ok") is not True
+            or data.get("disposition") != "new"
+            or data.get("attempt_id") != attempt_id
+        ):
+            raise DispatchPauseError("context attempt has no new single-use admission")
+        return ContextAdmission(attempt_id)
+
+    def context_status(self, selection: Selection) -> dict:
+        query = urlencode(selection.body() | {"context": "1"})
+        data = self._request("GET", f"v2/dispatch:pause-status?{query}")
+        context = data.get("context")
+        if (
+            data.get("ok") is not True
+            or not isinstance(context, dict)
+            or type(context.get("enabled")) is not bool
+            or not isinstance(context.get("catalog_digest"), str)
+            or not re.fullmatch(r"[a-f0-9]{64}", context["catalog_digest"])
+            or not isinstance(context.get("routes"), dict)
+            or "session" not in context
+        ):
+            raise DispatchPauseError("invalid context status response")
+        if context["session"] is not None:
+            self._context_session(context["session"])
+        return context
 
 
 @contextmanager

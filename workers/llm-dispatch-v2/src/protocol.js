@@ -249,6 +249,26 @@ export function validateResumeRequest(body) {
 
 /** `POST /v2/dispatch:reserve` -- `{route_id, requests}`: charge out-of-band probe calls. */
 export function validateReserveRequest(body, maxRequests = 5) {
+  if (body && Object.hasOwn(body, "operation")) {
+    const common = ["operation", "run_id", "catalog_digest"];
+    const admit = ["route_id", "dimension", "attempt_id", "input_tokens", "output_tokens",
+      "request_digest"];
+    const fields = body.operation === "context_start" ? common
+      : body.operation === "context_admit" ? [...common, ...admit] : [];
+    const hash = value => typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+    const integer = value => Number.isSafeInteger(value) && value > 0;
+    const valid = !Array.isArray(body) && fields.length > 0 &&
+      Object.keys(body).every(key => fields.includes(key)) &&
+      fields.every(key => Object.hasOwn(body, key)) &&
+      typeof body.run_id === "string" && /^[1-9][0-9]{0,19}$/.test(body.run_id) &&
+      hash(body.catalog_digest) && (body.operation === "context_start" || (
+        typeof body.route_id === "string" && /^[A-Za-z0-9_.:-]{1,128}$/.test(body.route_id) &&
+        ["input", "output"].includes(body.dimension) && hash(body.attempt_id) &&
+        hash(body.request_digest) && integer(body.input_tokens) && integer(body.output_tokens)
+      ));
+    return valid ? { valid: true }
+      : { valid: false, error: "invalid_request", detail: "invalid context reservation" };
+  }
   if (!body || typeof body !== "object" || typeof body.route_id !== "string" || !body.route_id.trim()) {
     return { valid: false, error: "invalid_request", detail: "route_id must be a non-empty string" };
   }

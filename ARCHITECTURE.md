@@ -570,6 +570,25 @@ This is a limited reopening for fresh monitoring, not evidence that the historic
 concurrency pressure have cleared. Routine scarce-route checks normally run 28 days apart; the
 bounded daily early-failure path can check sooner. Slice 5 context calibration remains separately gated.
 
+Slice 5's quota prerequisite extends authenticated `POST /v2/dispatch:reserve` with
+`context_start` and `context_admit`; requests without an operation retain request-only behavior.
+The server owns a Monday-UTC weekly allowance and one-hour session, with per-call and per-route
+ceilings. Fresh weeks require a run id above retained sessions; expired runs cannot reopen budgets.
+Two bounded SQLite tables retain eight weeks and at most 192 attempts. Attempts use clustered
+`(week_start, attempt_id)` storage without secondary indexes, so current-week reads avoid history.
+Start prunes at most one old week; all mutations are fenced by the optional row budget. Permission
+is returned only after atomic token/request ledger and attempt commits. Replays and lost responses
+cannot grant another permission, and skipped or failed calls keep their conservative charges.
+
+Context admission requires a drained provider pause, verified physical model/account quota scope,
+and current rate/token headroom. Groq and Gemini scope mappings are supported; unknown/shared
+mappings defer. Google charges input-only TPM, while other supported routes charge full input plus
+requested output. Context-only exploration may stretch measured caps; ordinary job guards remain.
+`GET /v2/dispatch:pause-status?context=1` is advisory and read-only. The typed pause client has no
+admission retry. Committed route activation is empty and output is disabled; no workflow makes
+context calls. Search/parsers/history and reviewed cap proposals follow in the final implementation,
+then separately approved input/output canaries and recurring activation (review/48 §8.11).
+
 ### LLM Model Catalog & Decision Matrix
 
 **Which lane uses which model is declared in one place:** `config/site_config.yml`'s `llm_lanes`

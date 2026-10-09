@@ -221,3 +221,91 @@ def test_rate_failures_requires_complete_typed_counter_snapshot(monkeypatch, fau
     else:
         assert client.rate_failures() == data
     assert calls == [("GET", "v2/stats?rate_failures=1")]
+
+
+class ContextResponseSession:
+    def __init__(self, body, status=200):
+        self.body = body
+        self.status = status
+        self.calls = []
+
+    def request(self, method, url, **kwargs):
+        self.calls.append((method, url, kwargs))
+        return FakeResponse(self.status, self.body)
+
+
+def test_context_start_and_status_validate_server_owned_allowance():
+    body = {
+        "ok": True,
+        "week_start": "2026-10-05",
+        "run_id": "123",
+        "deadline_ms": 1000,
+        "remaining_input": 2_097_152,
+        "remaining_output": 131_072,
+        "remaining_requests": 24,
+    }
+    session = ContextResponseSession(body)
+    client = DispatchPauseClient("https://worker.test", "tok", session=session)
+    opened = client.start_context("123", "a" * 64)
+    assert opened.remaining_requests == 24
+    assert session.calls[0][2]["json"]["operation"] == "context_start"
+    session.body = {
+        "ok": True,
+        "context": {
+            "enabled": False,
+            "catalog_digest": "a" * 64,
+            "session": body,
+            "routes": {},
+        },
+    }
+    assert client.context_status(Selection("provider", "groq"))["enabled"] is False
+    assert "context=1" in session.calls[-1][1]
+    session.body["context"]["session"]["remaining_requests"] = True
+    with pytest.raises(DispatchPauseError, match="invalid context session"):
+        client.context_status(Selection("provider", "groq"))
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"ok": True},
+        {"ok": True, "disposition": "replay", "attempt_id": "a" * 64},
+        {"ok": True, "disposition": "new", "attempt_id": "b" * 64},
+        {"ok": False, "error": "already_consumed"},
+    ],
+)
+def test_context_client_never_accepts_an_ambiguous_or_replayed_permission(response):
+    session = ContextResponseSession(response)
+    client = DispatchPauseClient("https://worker.test", "tok", session=session)
+    with pytest.raises(DispatchPauseError):
+        client.reserve_context(
+            run_id="123",
+            catalog_digest="c" * 64,
+            route_id="groq_route",
+            dimension="input",
+            attempt_id="a" * 64,
+            request_digest="d" * 64,
+            input_tokens=1000,
+            output_tokens=256,
+        )
+    assert len(session.calls) == 1
+
+
+def test_context_client_accepts_exact_new_attempt_and_does_not_retry_transport_failure():
+    session = ContextResponseSession({"ok": True, "disposition": "new", "attempt_id": "a" * 64})
+    client = DispatchPauseClient("https://worker.test", "tok", session=session)
+    args = dict(
+        run_id="123",
+        catalog_digest="c" * 64,
+        route_id="groq_route",
+        dimension="input",
+        attempt_id="a" * 64,
+        request_digest="d" * 64,
+        input_tokens=1000,
+        output_tokens=256,
+    )
+    assert client.reserve_context(**args).attempt_id == "a" * 64
+    session.status = 500
+    with pytest.raises(DispatchPauseError):
+        client.reserve_context(**args)
+    assert len(session.calls) == 2
