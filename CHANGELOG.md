@@ -7671,3 +7671,9 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   Changed sources reuse unchanged meetings instead of rereading every hosted sidecar.
   Existing caches remain compatible; completed sources without record entries rebuild once.
   Public search schema, audio/stage versions, schedule and two-hour budget are unchanged.
+
+### Search HTTPS asset loading (2026-10-09)
+
+- Search loads its manifest and vendored engine from the page origin, preserving base paths.
+  Existing same-host HTTP shard URLs are upgraded on HTTPS pages, avoiding mixed-content
+  blocking without rebuilding the index. Search schema, cache, budgets and audio are unchanged.

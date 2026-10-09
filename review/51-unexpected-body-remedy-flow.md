@@ -2817,3 +2817,14 @@ and subpaths in tests/test_site.py; verify the URL normalization and browser fil
 Run full offline suite and whole Ruff/format. Update architecture/changelog and review/11.
 Do not modify site base configuration, search index schema/cache/hash, source records, audio,
 workflow schedule/budget, feed definitions or dependencies. Human merges remain required.
+
+Browser verification: corrected local page with a real published Austin source loaded city/body
+options, displayed 2/3 transcript coverage and returned three meeting results for disabilities.
+JavaScript regression verifies same-host HTTP-to-HTTPS upgrade while leaving other hosts and
+HTTP localhost untouched. Live production requires human merge and deployment of this fix.
+
+Validation: 60 targeted tests pass; whole Ruff/format passes (491 files). Full offline suite
+reports 5,380 passed, 16 deselected and one unrelated existing failure in
+test_prelabeler_sizing_ignores_paused_routes. It expects the NVIDIA Gemma route to be paused,
+but current configuration does not pause it; isolated reproduction also fails. Its test and
+citypods/tags.py / citypods/compute/llm_policy.py are unchanged from the main base.
