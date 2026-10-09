@@ -892,6 +892,35 @@ more scans or leave a boundary unresolved. Configured admission caps and experim
 remain separate. A locally chosen cap must not permanently fence exploration, but documented
 provider ceilings, shared account quotas and reviewed probe budgets remain hard guards.
 
+#### Maintainer priorities — 2026-10-09
+
+The maintainer accepted input calibration first, then output calibration. Implement and validate
+provider-count feedback, tail-processing evidence and input search state before adding actual-output
+capacity probing. Output parameter acceptance alone remains insufficient proof of generated capacity.
+
+Start local validation with a few useful existing free routes, then expand the implementation and
+its offline acceptance matrix to **all configured free routes in the final implementation PR**.
+The pilot is a development sequence, not a permanent route allowlist or a separate production-only
+pilot that delays broad coverage. Local validation uses recorded/synthetic provider fixtures and fake
+pause/quota controls; it does not authorize live provider calls or establish live capacity proof.
+
+All-route coverage includes BeatAPI's configured free chat routes and their shared JEV window.
+It does not reactivate paused routes, include paid routes or infer unsupported token-count bases.
+A route with missing or uninterpretable evidence stays deferred with an explicit reason; each plugin
+must have acceptance coverage for its supported parser behavior and its fail-closed fallback.
+
+Run conservative weekly experiments within firm reviewed budgets. Covering all routes means all
+eligible routes participate in fair bounded rotation, not that every route must be probed in one run.
+Token/request/time allowances, account quota and exclusive pause/cooldown gates still bound each
+scan. Separate input and output token allowances prevent output generation from exhausting the
+input-calibration allowance. Spare capacity may permit an experiment within the budget; it does
+not authorize extra scans, budget expansion, top-ups or production cap changes.
+
+These priorities refine the L2 direction. Before L3, propose and review the numerical budgets,
+uncertainty margins/resolution thresholds, exact parser/file plan and live activation canary below.
+Local pilot acceptance must expand to all configured free routes before calling the implementation
+complete; live activation retains its separate scoped canary gate.
+
 #### Evidence and token-count feedback
 
 Extend the existing evidence/limit-history path with typed context observations. Keep input,
