@@ -1126,3 +1126,16 @@ def test_reports_separate_first_attempt_and_retried_completion(dataset, tmp_path
         known_provider_attempts=3,
         unknown_attempt_count=1,
     )
+
+
+def test_policy_template_default_preserves_existing_remedy_config():
+    import yaml
+
+    from citypods.remedy_evaluation import RemedyConfig
+    from citypods.remedy_policy import load_policy_templates
+
+    config = yaml.safe_load(Path("config/remedy.yml").read_text())
+    config.pop("policy_templates")
+    model = RemedyConfig.model_validate(config)
+    assert model.policy_templates == []
+    assert load_policy_templates(model).entries == ()

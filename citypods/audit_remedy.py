@@ -36,13 +36,20 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from citypods.bodies import body_key, matches, matches_exact_body_label
+from citypods.bodies import body_key, matches_exact_body_label
 from citypods.compute.base import InferenceJob
 from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig, LLMStructuredOutputError
 from citypods.compute.llm_policy import LLMRequestPolicy, estimate_tokens
 from citypods.compute.structured import register_response_model
 from citypods.feed_yaml_edit import add_body_any, add_body_include, assert_only_addition
 from citypods.models import City, Episode
+from citypods.remedy_policy import (
+    PolicyIndex,
+    _declaration_instance,
+    _policy_identity_matches,
+    resolve_owner,
+    validate_declaration,
+)
 
 REMEDY_CONTRACT = "unexpected-body-remedy"
 
@@ -408,93 +415,10 @@ def _configured_body_selectors(path: Path) -> list[str]:
     return selectors
 
 
-def _matches_tif_family(value: str, policy: dict[str, Any]) -> bool:
-    """Conservative policy clues, including reviewed names whose provider labels omit TIF."""
-    normalized = body_key(value)
-    tokens = set(normalized.split())
-    if tokens & {"tif", "tirz"} or any(
-        " " + phrase + " " in " " + normalized + " "
-        for phrase in ("tax increment", "reinvestment zone")
-    ):
-        return True
-    names = policy.get("member_names", [])
-    return isinstance(names, list) and any(
-        isinstance(name, str) and name.strip() and matches(value, name) for name in names
-    )
-
-
 def _configured_aggregate_policy(path: Path) -> dict[str, Any]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     policy = data.get("remedy_policy") or {}
-    return policy if isinstance(policy, dict) else {}
-
-
-def _policy_identity_matches(value: str, policy: dict[str, Any]) -> bool:
-    """Exact reviewed labels; normalization does not turn a topic into an owning body."""
-    return any(matches_exact_body_label(value, name) for name in policy.get("identity_names", []))
-
-
-def _policy_family_clue(value: str, policy: dict[str, Any]) -> bool:
-    """Markers can hold recreation proposals but do not approve new ownership."""
-    family = policy.get("aggregate_family")
-    if family == "tif":
-        return _matches_tif_family(value, policy) or _policy_identity_matches(value, policy)
-    normalized = " " + body_key(value) + " "
-    markers = {
-        "pid": ("pid", "public improvement district"),
-        "bond": ("bond",),
-        "charter": ("charter",),
-        "redistricting": ("redistricting",),
-        "public_input": (
-            "town hall",
-            "townhall",
-            "public input",
-            "public meeting",
-            "public hearing",
-            "public forum",
-            "community meeting",
-            "neighborhood meeting",
-        ),
-        "public_briefings": (
-            "press conference",
-            "news conference",
-            "public presentation",
-            "public briefing",
-        ),
-    }
-    return (
-        any(" " + body_key(marker) + " " in normalized for marker in markers.get(family, ()))
-        or _policy_identity_matches(value, policy)
-        or any(
-            matches(value, name)
-            for name in policy.get("member_names", []) + policy.get("identity_names", [])
-        )
-    )
-
-
-def _policy_verified_owner(value: str, policy: dict[str, Any]) -> bool:
-    if _policy_identity_matches(value, policy):
-        return True
-    # Preserve the reviewed TIF marker rule. Topic-bearing proceedings of another body need
-    # explicit identity evidence, even if the family marker would otherwise match.
-    if policy.get("aggregate_family") != "tif":
-        return False
-    tokens = set(body_key(value).split())
-    if tokens & {
-        "council",
-        "training",
-        "announcement",
-        "promo",
-        "promotion",
-        "ceremony",
-        "conference",
-        "discussion",
-        "presentation",
-        "television",
-        "show",
-    }:
-        return False
-    return _matches_tif_family(value, {})
+    return validate_declaration(policy, path.name) if policy else {}
 
 
 def _aggregate_policy_reason(proposal, feeds_on_source, feed_paths) -> str:
@@ -511,11 +435,17 @@ def _aggregate_policy_reason(proposal, feeds_on_source, feed_paths) -> str:
     }
     if not policies:
         return ""
+    index = PolicyIndex(
+        tuple(
+            _declaration_instance(policy, slug, slug, proposal.source_key)
+            for slug, policy in policies.items()
+        )
+    )
     claims = (proposal.unexpected_body, proposal.new_feed_slug, proposal.new_feed_title)
     relevant = {
         slug
-        for slug, policy in policies.items()
-        if any(_policy_family_clue(claim, policy) for claim in claims)
+        for claim in claims
+        for slug in resolve_owner(claim, proposal.source_key, index).holding_owner_slugs
     }
     if proposal.action == "new_feed" and relevant:
         kind = (
@@ -530,21 +460,21 @@ def _aggregate_policy_reason(proposal, feeds_on_source, feed_paths) -> str:
     # An explicitly reviewed label owns its subscriptions. A different policy's weaker
     # holding clue cannot turn an Open House into its similarly named committee proceeding.
     # Keep all exact owners for reviewed joint subscriptions; unknown labels still use holds.
-    exact_owners = {
-        slug
-        for slug, policy in policies.items()
-        if _policy_identity_matches(proposal.unexpected_body, policy)
-    }
-    if exact_owners:
-        relevant = exact_owners
+    resolution = resolve_owner(proposal.unexpected_body, proposal.source_key, index)
+    if any(
+        _policy_identity_matches(proposal.unexpected_body, p.declaration())
+        for p in index.instances
+        if p.status != "unresolved"
+    ):
+        relevant = set(resolution.owner_slugs)
     if relevant and set(proposal.target_feeds) != relevant:
         return (
             "deferred: approved policy requires the owning aggregate or named feed "
             f"{sorted(relevant)}; do not assign recordings to other feeds"
         )
-    if set(proposal.target_feeds) & set(policies) and not all(
-        _policy_verified_owner(proposal.unexpected_body, policies[slug])
-        for slug in set(proposal.target_feeds) & set(policies)
+    if set(proposal.target_feeds) & set(policies) and not (
+        resolution.status == "verified"
+        and set(proposal.target_feeds) & set(policies) <= set(resolution.owner_slugs)
     ):
         return (
             "deferred: unmarked or unverified policy member requires manual identity confirmation"
@@ -556,7 +486,9 @@ def _target_feed_is_compatible(label: str, path: Path) -> bool:
     """Taxonomy overlap is a coarse check; explicit policies require verified ownership."""
     policy = _configured_aggregate_policy(path)
     if policy:
-        return _policy_verified_owner(label, policy)
+        index = PolicyIndex((_declaration_instance(policy, path.stem, path.stem, "guard-source"),))
+        resolution = resolve_owner(label, "guard-source", index)
+        return resolution.status == "verified" and path.stem in resolution.owner_slugs
     selectors = _configured_body_selectors(path)
     if not selectors:
         return True
