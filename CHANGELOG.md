@@ -12,6 +12,15 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog Slice 3b: dormant removals and lane repair (#2192).** Fresh complete-catalog
+  absence and exact unchanged-route retirement proof must agree across serving accounts. Preserve
+  surviving pools; promote only existing free, unpaused backups, and hold back removals without a
+  safe replacement. Narrow YAML edits clean dependent backup thresholds and reasoning fields while
+  preserving unrelated settings/comments. Managed removal proposals rebuild from main and flag
+  primary changes. Live preparation/publication remain disabled pending recovery-canary acceptance
+  and a separate reviewed activation change. No queued-job policy rewrite, pipeline bump or
+  completed-artifact invalidation.
+
 - **Provider catalog Slice 3a structural rescue (#2190; PR #2191).**
   Dispatch failed-job poll/feed responses carry nullable structural reason/catalog fields;
   legacy failures remain generic. Python preserves recognized metadata, and deferred terminal

@@ -639,14 +639,24 @@ structurally failed deferred work; already-completed recipes remain reusable.
 ### 8.6 Slice 3b: removals and lane repair
 
 Implementation issue: [#2192](https://github.com/BashfulBits/city-meeting-podcasts/issues/2192).
-The planner and offline acceptance are the current work; live publication remains disabled.
+The implementation is in PR #2193. Live publication remains disabled.
 Retirement requires current-day complete catalog evidence and an unchanged route digest for
 each configured physical account serving the upstream. Old issue markers alone cannot authorize
-a removal. The exact activation record and policy/dependent lane-field repair decisions are
-awaiting maintainer clarification before those paths are implemented. Evidence checks and exact
-route-block removal are implemented on the #2192 branch, with 5,303 offline Python tests passing
-(16 live tests deselected) and whole-repository Ruff checks. They are not connected to live
-publication; lane repair and the removal writer remain unfinished.
+a removal. Both compilers and the lane↔route guard must pass before a managed proposal is pushed.
+
+**Maintainer decisions (2026-10-08):** count only surviving free routes that are not explicitly
+paused (`rpd: 0`) as safe lane replacements. Preserve all paid policies. Promote the first existing
+eligible backup when a primary is removed; if none remains, hold back that route removal and report
+pool alternatives. Remove `backup_after_attempts` when the last backup is removed and prune only
+reasoning entries for models no longer in the lane. Do not rewrite existing queued jobs or their
+stored policies. New lane primary identities affect new jobs; completed artifacts remain reusable.
+
+Finish and merge the code with removal publication disabled. Then verify a bounded recovery canary
+against deployed Worker/Python consumers and enable the writer in a separate reviewed activation
+change. `retire.py::RETIREMENTS_ENABLED` remains false; dormant preparation/publication helpers
+fail before live probes or publication while false, and no workflow calls them. The later activation
+change must record canary evidence and wire the existing reconcile/writer workflow paths under the
+shared writer lock. This PR does not dispatch a canary or change deployment settings.
 
 New `citypods/provider_catalog/retire.py::plan_retirements()` shares the evidence/editor contracts.
 Require fresh absence from a complete catalog **and** a definitive retired/not-served probe for the

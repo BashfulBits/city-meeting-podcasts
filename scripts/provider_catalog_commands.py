@@ -39,7 +39,7 @@ from citypods.provider_catalog.apply import (  # noqa: E402
 from citypods.provider_catalog.config_edit import apply_config_edits, load_config  # noqa: E402
 from citypods.provider_catalog.decisions import load_decisions  # noqa: E402
 from citypods.provider_catalog.issue import decode_state, find_issue, is_catalog_issue  # noqa: E402
-from citypods.provider_catalog.quality import fetch_quality_index  # noqa: E402
+from citypods.provider_catalog.quality import QualityIndex, fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
     NoDispatchControl,
     Report,
@@ -116,6 +116,39 @@ def prepare(body, base_commit):
     return plan
 
 
+def prepare_retirements(base_commit):
+    """Dormant automatic-removal preparation; activation is a separate reviewed change."""
+    from citypods.provider_catalog.retire import RETIREMENTS_ENABLED, plan_retirements
+
+    if not RETIREMENTS_ENABLED:
+        raise ValueError("removal publication awaits reviewed recovery-canary activation")
+    texts = {p: (ROOT / p).read_text() for p in SOURCE_PATHS}
+    limits = load_config(texts[SOURCE_PATHS[0]])
+    lanes = load_lanes()
+    config = ApplyConfig(limits, lanes, texts, base_commit, datetime.now(UTC).date())
+    control = _control(False)
+    if isinstance(control, NoDispatchControl):
+        raise ValueError("removals require a configured exclusive dispatch pause")
+    route_ids = {r["route_id"] for r in limits.get("routes") or []}
+    report = reconcile(
+        limits,
+        lanes,
+        load_decisions(),
+        QualityIndex(),
+        {},
+        session=requests.Session(),
+        control=control,
+        today=config.today,
+        candidate_keys=set(),
+        route_ids=route_ids,
+    )
+    plan = plan_retirements(report, config)
+    output = apply_config_edits(texts, plan)
+    for path in SOURCE_PATHS:
+        (ROOT / path).write_text(output[path])
+    return plan
+
+
 def validate(run_fn=run):
     run_fn([sys.executable, "scripts/compile_llm_limits.py"])
     run_fn([sys.executable, "scripts/compile_llm_lanes.py"])
@@ -132,12 +165,26 @@ def validate(run_fn=run):
             "tests/test_provider_catalog_apply.py",
             "tests/test_provider_catalog_config_edit.py",
             "tests/test_provider_catalog_evidence.py",
+            "tests/test_provider_catalog_retire.py",
         ]
     )
 
 
 def publish(plan, *, run_fn=run):
     """Bounded managed-branch publication. Return None on changed main for a full rebuild."""
+    branch, marker = BRANCH, PR_MARKER
+    title = "Provider catalog: selected additions, ignores and paid decisions"
+    if plan.proposal_kind == "removals":
+        from citypods.provider_catalog.retire import BRANCH as removal_branch
+        from citypods.provider_catalog.retire import PR_MARKER as removal_marker
+        from citypods.provider_catalog.retire import RETIREMENTS_ENABLED
+
+        if not RETIREMENTS_ENABLED:
+            raise ValueError("removal publication awaits reviewed recovery-canary activation")
+        branch, marker = removal_branch, removal_marker
+        title = "Provider catalog: proven retirements and lane repair"
+    elif plan.proposal_kind != "additions":
+        raise ValueError("unsupported proposal kind")
     run_fn(["git", "fetch", "origin", "main"])
     if run_fn(["git", "rev-parse", "origin/main"]) != plan.base_commit:
         return None
@@ -150,29 +197,29 @@ def publish(plan, *, run_fn=run):
                 "--state",
                 "open",
                 "--head",
-                BRANCH,
+                branch,
                 "--json",
                 "number,body,author,baseRefName,isCrossRepository",
             ]
         )
     )
     if len(prs) > 1 or any(
-        PR_MARKER not in p["body"]
+        marker not in p["body"]
         or p["author"]["login"] not in {"github-actions[bot]", "app/github-actions"}
         or p["baseRefName"] != "main"
         or p["isCrossRepository"]
         for p in prs
     ):
         raise ValueError("automation branch has a human-owned/unmanaged PR")
-    remote = run_fn(["git", "ls-remote", "--heads", "origin", f"refs/heads/{BRANCH}"])
+    remote = run_fn(["git", "ls-remote", "--heads", "origin", f"refs/heads/{branch}"])
     expected = remote.split()[0] if remote else ""
     if expected:
-        run_fn(["git", "fetch", "origin", f"refs/heads/{BRANCH}"])
+        run_fn(["git", "fetch", "origin", f"refs/heads/{branch}"])
         email = run_fn(["git", "show", "-s", "--format=%ae", "FETCH_HEAD"])
         message = run_fn(["git", "show", "-s", "--format=%B", "FETCH_HEAD"])
         if (
             email != "41898282+github-actions[bot]@users.noreply.github.com"
-            or PR_MARKER not in message
+            or marker not in message
         ):
             raise ValueError("refusing to replace a human-owned automation branch")
     run_fn(["git", "add", "--", *SOURCE_PATHS, *COMPILED_PATHS])
@@ -185,7 +232,7 @@ def publish(plan, *, run_fn=run):
             "git",
             "commit",
             "-m",
-            f"Provider catalog selected additions/ignore/paid decisions\n\n{PR_MARKER}",
+            f"{title}\n\n{marker}",
         ]
     )
     # Recheck immediately before pushing, including the long compiler/test period.
@@ -196,9 +243,9 @@ def publish(plan, *, run_fn=run):
         [
             "git",
             "push",
-            f"--force-with-lease=refs/heads/{BRANCH}:{expected}",
+            f"--force-with-lease=refs/heads/{branch}:{expected}",
             "origin",
-            f"HEAD:refs/heads/{BRANCH}",
+            f"HEAD:refs/heads/{branch}",
         ]
     )
     with tempfile.TemporaryDirectory() as folder:
@@ -212,11 +259,22 @@ def publish(plan, *, run_fn=run):
                     "edit",
                     str(prs[0]["number"]),
                     "--title",
-                    "Provider catalog: selected additions, ignores and paid decisions",
+                    title,
                     "--body-file",
                     str(path),
                 ]
             )
+            if plan.primary_changes:
+                run_fn(
+                    [
+                        "gh",
+                        "pr",
+                        "edit",
+                        str(prs[0]["number"]),
+                        "--add-label",
+                        "needs:human-verification",
+                    ]
+                )
             return run_fn(
                 ["gh", "pr", "view", str(prs[0]["number"]), "--json", "url", "--jq", ".url"]
             )
@@ -228,11 +286,12 @@ def publish(plan, *, run_fn=run):
                 "--base",
                 "main",
                 "--head",
-                BRANCH,
+                branch,
                 "--title",
-                "Provider catalog: selected additions, ignores and paid decisions",
+                title,
                 "--body-file",
                 str(path),
+                *(["--label", "needs:human-verification"] if plan.primary_changes else []),
             ]
         )
 

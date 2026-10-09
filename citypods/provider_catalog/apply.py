@@ -59,6 +59,10 @@ class EditPlan:
     paid_routes: tuple[str, ...] = ()
     acknowledged: tuple[tuple[str, str, str], ...] = ()
     removed_routes: tuple[str, ...] = ()
+    # Lane name, replacement models, replacement backups, retained reasoning pairs.
+    lane_repairs: tuple[tuple[str, tuple[str, ...], tuple[str, ...], tuple], ...] = ()
+    primary_changes: tuple[str, ...] = ()
+    proposal_kind: str = "additions"
 
 
 @dataclass(frozen=True)
@@ -391,7 +395,15 @@ def plan_apply(report: Report, decisions: tuple[Decision, ...], config: ApplyCon
 
 
 def proposal_body(plan: EditPlan) -> str:
-    lines = [PR_MARKER, "Provider catalog selections reverified against current main.", ""]
+    marker = PR_MARKER
+    if plan.proposal_kind == "removals":
+        from citypods.provider_catalog.retire import PR_MARKER as marker
+    lines = [marker, "Provider catalog evidence reverified against current main.", ""]
+    if plan.primary_changes:
+        lines += [
+            "Primary changes require human verification: " + ", ".join(plan.primary_changes),
+            "",
+        ]
     for label, values in (
         ("Selected", plan.applied),
         ("Deferred (still ticked)", plan.deferred),
@@ -402,6 +414,9 @@ def proposal_body(plan: EditPlan) -> str:
     lines += [
         f"Base: `{plan.base_commit}`.",
         "Validated with both compilers and catalog/lane/limit tests in the workflow.",
-        "No primary changes, automatic merge/deployment, pipeline bump or catalog backfill.",
+        "No automatic merge/deployment, pipeline bump or completed-artifact invalidation.",
+        "Lane repairs apply to newly created jobs; stored queued-job policies are unchanged."
+        if plan.proposal_kind == "removals"
+        else "No primary changes or catalog backfill.",
     ]
     return "\n".join(lines) + "\n"
