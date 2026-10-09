@@ -121,6 +121,13 @@ export function upstreamRequestForRoute(payload, route, { inputTokens = 0, reaso
   return request;
 }
 
+/** Drops trailing "/" characters in linear time (a `/\/+$/` replace is polynomial on long runs). */
+export function trimTrailingSlashes(value) {
+  let end = value.length;
+  while (end > 0 && value.charCodeAt(end - 1) === 47) end -= 1;
+  return value.slice(0, end);
+}
+
 /** Resolves which account/API key to use, and whether this call goes through AI Gateway or
  * directly to the provider, exactly matching v1's own resolution order and error messages. */
 export function resolveProviderCredentials(env, route, dispatchLimits) {
@@ -140,7 +147,7 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
     throw new Error(`missing secret ${account.api_key_env} for provider ${route.provider}`);
   }
 
-  const apiBase = String(providerCfg.api_base || "").replace(/\/+$/, "");
+  const apiBase = trimTrailingSlashes(String(providerCfg.api_base || ""));
   if (!apiBase) {
     throw new Error(`no api_base configured for provider ${route.provider}`);
   }
@@ -162,7 +169,7 @@ export function resolveProviderCredentials(env, route, dispatchLimits) {
   }
 
   let url = directUrlString;
-  let aiGatewayBase = String(env?.AI_GATEWAY_BASE_URL || "").trim().replace(/\/+$/, "");
+  let aiGatewayBase = trimTrailingSlashes(String(env?.AI_GATEWAY_BASE_URL || "").trim());
   if (!aiGatewayBase && env?.CLOUDFLARE_ACCOUNT_ID && env?.AI_GATEWAY_ID) {
     const accountId = String(env.CLOUDFLARE_ACCOUNT_ID).trim();
     const gatewayId = String(env.AI_GATEWAY_ID).trim();
