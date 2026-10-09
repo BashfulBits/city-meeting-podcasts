@@ -274,6 +274,57 @@ llm_lanes:
     # Cap at 4,000 pinned jobs under the shared free envelope, not 800 fully judged meetings.
     # Gemini 3.6 also has only forty configured free calls/day. See the capacity analysis.
     daily_write_units: 16000
+  # --- Judge stack (review/49, review/53) ----------------------------------------------------
+  # Every judge job is pinned to one model (per_model, 4 ingress units), so a judge's identity is
+  # part of every judgment and calibration cell; per_model lanes cannot declare backup_models, so
+  # the Slice 3a rescue never moves a judge packet to another model. Sized for 800 meetings/day
+  # (review/53 "Capacity and reservations"): reserved = routine jobs x 4 units x 1.2, set in PR4 when
+  # judging is enabled (zero until then, so idle lanes take no headroom); the daily cap leaves
+  # backfill headroom. The judge workflow runs every two hours (12 runs/day), so each run
+  # cap is the daily job cap / 12. Nothing enqueues to these lanes until the judge stage (PR3) and
+  # `judging.enabled` (PR4).
+  judge:anchor:
+    telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
+    # JEV through BeatAPI's systemone endpoint; about 190 routine jobs/day at 800 meetings. The
+    # cap stays under the account's ~1,440 successful calls/day, which the BeatAPI chat backups
+    # share (they yield to JEV while it has queued work).
+    models: ["typesafe/jev-1.13"]
+    dispatch_shape: per_model
+    max_dispatches_per_run: 116
+    # 920 from PR4 (review/53); zero while nothing dispatches here.
+    reserved_write_units: 0
+    daily_write_units: 5600
+  judge:sibling:
+    telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
+    # Slot A (Google) judges every rule candidate and every entry not produced by a Google model;
+    # slot B (non-Google) judges Google-produced entries. Qwen3.8 is eligible, not dispatched:
+    # qualified to be swapped into slot B by a league (review/49 P6) or by hand.
+    models:
+      - "google/gemma-4-31b-it"
+      - "google/gemma-4-26b-a4b-it"
+      - "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+    eligible_models: ["qwen/qwen3.8-27b"]
+    slots:
+      google: ["google/gemma-4-31b-it", "google/gemma-4-26b-a4b-it"]
+      non_google: ["openrouter/nvidia/nemotron-3-super-120b-a12b:free", "qwen/qwen3.8-27b"]
+    dispatch_shape: per_model
+    max_dispatches_per_run: 166
+    # 2,400 from PR4 (review/53); zero while nothing dispatches here.
+    reserved_write_units: 0
+    daily_write_units: 8000
+  judge:adjudicator:
+    telemetry: {producer: judge, unit: episode, completion: consumed, scope: retained_catalog}
+    # Contested subjects plus a 3% calibration sample (review/53 PR5). Two families, so every entry
+    # has an adjudicator independent of its producer and its sibling. DeepSeek V4.1 Flash's BeatAPI
+    # leg yields to JEV; the NVIDIA leg carries adjudication.
+    models:
+      - "zai/glm-5.3-flash"
+      - "deepseek/deepseek-v4.1-flash"
+    dispatch_shape: per_model
+    max_dispatches_per_run: 33
+    # 920 from PR4 (review/53); zero while nothing dispatches here.
+    reserved_write_units: 0
+    daily_write_units: 1600
   # --- Research lanes (bounded, manual or low-cadence; must not starve production) ---------
   tournament:tag:
     telemetry: {producer: tournament, unit: example, completion: consumed, scope: sample}
@@ -337,6 +388,44 @@ llm_lanes:
 # fails there rather than silently consuming unreserved ingress headroom.
 # R6 grounded moments. Candidate calls are free-only and shadow/manual by default. Council feeds
 # use the two lower-quota long-context Gemini routes; the stage filters this allowlist by family.
+# Model families for judge independence (review/49 section 4c, review/53): a judge or adjudicator
+# never shares a family with the entry it judges, so every model in every lane (active, backup or
+# eligible) must have a family; the lane compiler fails otherwise. Gemini and Gemma are both
+# `google`. BeatAPI's GPT ids report `usage_source: anthropic`, so their family is unverified.
+llm_families:
+  "typesafe/jev-1.13": typesafe
+  "gemini/gemini-3.1-flash-lite": google
+  "gemini/gemini-3.5-flash": google
+  "gemini/gemini-3.5-flash-lite": google
+  "gemini/gemini-3.6-flash": google
+  "gemini/gemini-3.7-flash": google
+  "gemini/gemini-3.8-flash": google
+  "google/gemma-4-26b-a4b-it": google
+  "google/gemma-4-31b-it": google
+  "deepseek/deepseek-v4-flash": deepseek
+  "deepseek/deepseek-v4.1-flash": deepseek
+  "deepseek/deepseek-v4-pro": deepseek
+  "zai/glm-4.7-flash": zai
+  "zai/glm-5.3-flash": zai
+  "moonshotai/kimi-k3": moonshot
+  "kilo/stepfun/step-3.7-flash:free": stepfun
+  "nvidia/nemotron-3-ultra-550b-a55b:free": nvidia
+  "openrouter/nvidia/nemotron-3-super-120b-a12b:free": nvidia
+  "qwen/qwen3.8-27b": qwen
+  "tencent/hy3": tencent
+  "openai/gpt-6-astra": unverified-beatapi-gpt
+  "openai/gpt-6.1-sol": unverified-beatapi-gpt
+# Judge stack switches (review/53). `enabled` stays false until PR4; each task leaves shadow only
+# through its graduation PR (PR8 tags, PR9 moments).
+judging:
+  enabled: false
+  tasks:
+    tag: {mode: shadow}
+    moment: {mode: shadow, top_k: 3}
+  all_tiers_sample_rate: 0.05
+  calibration_sample_rate: 0.03
+  stability_sample_rate: 0.02
+  backfill_order: recent_first
 moments:
   enabled: true
   mode: "manual"  # manual | auto; global kill switch back to manual

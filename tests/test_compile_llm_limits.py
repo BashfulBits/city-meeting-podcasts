@@ -1024,7 +1024,12 @@ def test_route_tier_is_validated_and_beatapi_chat_routes_are_backups():
     compiled = compile_llm_limits.compile_limits()
     worker = compile_llm_limits._worker_catalog(compiled)
     beatapi = [r for r in worker["routes_by_id"].values() if r["provider"] == "beatapi"]
-    assert beatapi and all(r["tier"] == "backup" for r in beatapi)
+    chat = [r for r in beatapi if r["api_shape"] != "systemone"]
+    assert chat and all(r["tier"] == "backup" for r in chat)
+    # JEV is the account's primary (review/53 PR2); the chat backups yield to it.
+    jev = worker["routes_by_id"]["beatapi_jev_1_13_free"]
+    assert jev["tier"] is None and jev["api_shape"] == "systemone"
+    assert all(r["yields_to"] == ["beatapi_jev_1_13_free"] for r in chat)
     # Every other route is primary by omission.
     assert all(
         r["tier"] is None for r in worker["routes_by_id"].values() if r["provider"] != "beatapi"

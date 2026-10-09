@@ -20,6 +20,7 @@ from typing import Any
 
 import requests
 
+from citypods.compute.api_shape import route_speaks_chat
 from citypods.compute.llm_failure_class import classify_provider_failure
 
 FIXED_PROMPT = "Ping"
@@ -1098,6 +1099,9 @@ def main(argv: list[str] | None = None) -> int:
 
     for route in catalog:
         if not args.include_paid and not route.get("free"):
+            continue
+        # Every phase sends a chat completion; a non-chat route (JEV) cannot answer one.
+        if not route_speaks_chat(route):
             continue
         if args.providers and route.get("provider") not in args.providers:
             continue

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import traceback
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -1075,6 +1076,18 @@ CUSTOM_PROVIDER_GATEWAY_PATHS = {
     # `/v4/chat/completions`.
     "zai": "/v4/chat/completions",
 }
+
+
+def test_jev_posts_to_systemone_under_the_custom_beatapi_registration():
+    # review/53 PR2: the custom-beatapi provider is registered at https://api.beatapi.io/v1; JEV's
+    # route replaces the chat path with /systemone (workers/llm-dispatch-v2/src/gateway.js).
+    raw = json.loads(
+        (Path(__file__).resolve().parents[1] / "citypods/compute/llm_routes.json").read_text()
+    )
+    [jev] = [r for r in raw["routes"] if r["route_id"] == "beatapi_jev_1_13_free"]
+    assert jev["ai_gateway_slug"] == "custom-beatapi"
+    assert (jev["api_shape"], jev["request_path"]) == ("systemone", "/systemone")
+    assert jev["transports"] == []
 
 
 def test_every_custom_provider_records_how_it_is_registered():

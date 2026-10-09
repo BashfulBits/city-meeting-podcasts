@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from fractions import Fraction
 
+from citypods.compute.api_shape import route_speaks_chat
 from citypods.provider_catalog.evidence import ContextObservation, LimitObservation
 
 RATE_METRICS = frozenset({"rpm", "tpm", "rpd"})
@@ -541,7 +542,13 @@ def context_input_ratio(state, prior):
 
 def plan_context_scan(limits, rotation):
     """All configured free routes, never-attempted first; untrusted rotation grants no evidence."""
-    routes = [r for r in limits.get("routes") or [] if r.get("free") is True and r.get("rpd") != 0]
+    # Chat measurement only: a non-chat route (JEV's systemone endpoint) has no chat context to
+    # measure and would otherwise be reported as permanently deferred (review/53 PR2).
+    routes = [
+        r
+        for r in limits.get("routes") or []
+        if r.get("free") is True and r.get("rpd") != 0 and route_speaks_chat(r)
+    ]
     if len(routes) > 128:
         raise ValueError("context identity coverage exceeds reviewed bound")
 

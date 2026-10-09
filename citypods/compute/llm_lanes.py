@@ -107,6 +107,18 @@ class LaneConfig:
     # an entry keeps its provider default, so a model can think in one job type and not another.
     # Stored as sorted pairs to keep the frozen config hashable; see ``reasoning_levels``.
     reasoning: tuple[tuple[str, str], ...] = ()
+    # Judge pools (review/53): models qualified to be substituted into ``models`` but never
+    # dispatched while they are only eligible. Not part of the ingress map, so a job naming one is
+    # rejected at ingress like any model outside the lane. A route league (review/49 P6) or a
+    # maintainer moves a model between the two lists by config PR.
+    eligible_models: tuple[str, ...] = ()
+    # Named slots, each a tuple of models (active or eligible), e.g. the sibling judge's slot A
+    # (Google) and slot B (non-Google). Stored as sorted pairs to keep the config hashable.
+    slots: tuple[tuple[str, tuple[str, ...]], ...] = ()
+
+    @property
+    def slot_models(self) -> dict[str, tuple[str, ...]]:
+        return dict(self.slots)
 
     @property
     def reasoning_levels(self) -> dict[str, str]:
@@ -197,6 +209,86 @@ def _parse_reasoning(raw: Any, purpose: str, lane_models: set[str]) -> tuple[tup
             )
         pairs.append((model, level))
     return tuple(sorted(pairs))
+
+
+def _parse_model_list(raw: Any, purpose: str, field: str) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError(f"llm_lanes[{purpose!r}].{field} must be a list")
+    models: tuple[str, ...] = ()
+    for index, model in enumerate(raw):
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError(
+                f"llm_lanes[{purpose!r}].{field}[{index}] must be a non-empty string, got {model!r}"
+            )
+        models += (model.strip(),)
+    if len(set(models)) != len(models):
+        raise ValueError(f"llm_lanes[{purpose!r}].{field} contains duplicates: {models}")
+    return models
+
+
+def _parse_slots(
+    raw: Any, purpose: str, models: tuple[str, ...], eligible: tuple[str, ...]
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """Each active/eligible model sits in exactly one slot; each slot has an active model."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, Mapping) or not raw:
+        raise ValueError(f"llm_lanes[{purpose!r}].slots must be a non-empty mapping")
+    seen: dict[str, str] = {}
+    pairs: list[tuple[str, tuple[str, ...]]] = []
+    for name, raw_members in raw.items():
+        members = _parse_model_list(raw_members, purpose, f"slots.{name}")
+        if not members:
+            raise ValueError(f"llm_lanes[{purpose!r}].slots.{name} must list at least one model")
+        for model in members:
+            if model not in models and model not in eligible:
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}].slots.{name} names {model!r}, which is neither an "
+                    "active nor an eligible model of the lane"
+                )
+            if model in seen:
+                raise ValueError(
+                    f"llm_lanes[{purpose!r}]: {model!r} is in slots {seen[model]!r} and {name!r}"
+                )
+            seen[model] = str(name)
+        if not set(members) & set(models):
+            raise ValueError(f"llm_lanes[{purpose!r}].slots.{name} has no active model")
+        pairs.append((str(name), members))
+    missing = [model for model in (*models, *eligible) if model not in seen]
+    if missing:
+        raise ValueError(f"llm_lanes[{purpose!r}]: models without a slot: {missing}")
+    return tuple(sorted(pairs))
+
+
+def parse_families(raw: Any, lanes: Mapping[str, LaneConfig]) -> dict[str, str]:
+    """Validate ``llm_families`` (model -> family) against every lane model.
+
+    Judge independence (review/49 section 4c, review/53) is decided per entry by family, so a lane
+    model with no family would silently compare as independent of everything. Every active,
+    backup and eligible model of every lane must therefore have one.
+    """
+    if not isinstance(raw, Mapping) or not raw:
+        raise ValueError("site config must define a non-empty 'llm_families' mapping")
+    families: dict[str, str] = {}
+    for model, family in raw.items():
+        if not isinstance(model, str) or not model.strip():
+            raise ValueError(f"llm_families has an invalid model key {model!r}")
+        if not isinstance(family, str) or not family.strip():
+            raise ValueError(f"llm_families[{model!r}] must be a non-empty family name")
+        families[model.strip()] = family.strip()
+    missing = sorted(
+        {
+            model
+            for lane in lanes.values()
+            for model in (*lane.models, *lane.backup_models, *lane.eligible_models)
+        }
+        - set(families)
+    )
+    if missing:
+        raise ValueError(f"llm_families has no family for lane model(s): {missing}")
+    return families
 
 
 def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
@@ -324,6 +416,16 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
         if telemetry["completion"] != "consumed":
             raise ValueError(f"llm_lanes[{purpose!r}].telemetry.completion must be consumed")
 
+        eligible_models = _parse_model_list(
+            entry.get("eligible_models"), purpose, "eligible_models"
+        )
+        overlap = set(eligible_models) & {*models, *backup_models}
+        if overlap:
+            raise ValueError(
+                f"llm_lanes[{purpose!r}].eligible_models must not repeat active or backup models: "
+                f"{sorted(overlap)}"
+            )
+        slots = _parse_slots(entry.get("slots"), purpose, models, eligible_models)
         reasoning = _parse_reasoning(entry.get("reasoning"), purpose, {*models, *backup_models})
         lane = LaneConfig(
             purpose=purpose,
@@ -348,6 +450,8 @@ def parse_lanes(raw_block: Any) -> dict[str, LaneConfig]:
                 field="catalog_backup_candidates",
             ),
             reasoning=reasoning,
+            eligible_models=eligible_models,
+            slots=slots,
         )
         if daily < lane.ingress_write_units_per_job:
             raise ValueError(
@@ -440,6 +544,14 @@ def lane_for(purpose: str, *, path: str | Path = DEFAULT_SITE_CONFIG_PATH) -> La
             f"config/site_config.yml and recompile with scripts/compile_llm_lanes.py. "
             f"Registered lanes: {sorted(lanes)}"
         ) from None
+
+
+def load_families(*, path: str | Path = DEFAULT_SITE_CONFIG_PATH) -> dict[str, str]:
+    """The validated ``llm_families`` map from ``path`` (model -> family)."""
+    import yaml
+
+    raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    return parse_families(raw.get("llm_families"), load_lanes(path=path))
 
 
 def clear_cache() -> None:

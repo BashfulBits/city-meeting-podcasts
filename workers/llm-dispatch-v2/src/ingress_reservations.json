@@ -35,6 +35,45 @@
       "reasoning": {},
       "write_units_per_job": 4
     },
+    "judge:adjudicator": {
+      "reserved_write_units": 0,
+      "daily_write_units": 1600,
+      "models": [
+        "zai/glm-5.3-flash",
+        "deepseek/deepseek-v4.1-flash"
+      ],
+      "backup_models": [],
+      "backup_after_attempts": null,
+      "dispatch_shape": "per_model",
+      "reasoning": {},
+      "write_units_per_job": 4
+    },
+    "judge:anchor": {
+      "reserved_write_units": 0,
+      "daily_write_units": 5600,
+      "models": [
+        "typesafe/jev-1.13"
+      ],
+      "backup_models": [],
+      "backup_after_attempts": null,
+      "dispatch_shape": "per_model",
+      "reasoning": {},
+      "write_units_per_job": 4
+    },
+    "judge:sibling": {
+      "reserved_write_units": 0,
+      "daily_write_units": 8000,
+      "models": [
+        "google/gemma-4-31b-it",
+        "google/gemma-4-26b-a4b-it",
+        "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
+      ],
+      "backup_models": [],
+      "backup_after_attempts": null,
+      "dispatch_shape": "per_model",
+      "reasoning": {},
+      "write_units_per_job": 4
+    },
     "r5-benchmark:judge": {
       "reserved_write_units": 0,
       "daily_write_units": 2480,
