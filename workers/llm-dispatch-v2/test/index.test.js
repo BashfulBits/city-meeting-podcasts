@@ -567,6 +567,14 @@ test("dispatch pause endpoints: auth, validation, pause, status and resume", asy
   assert.ok(Object.keys(statusBody.routes).length > 0);
   assert.equal((await call("GET", "/v2/dispatch:pause-status?scope=provider")).status, 400);
 
+  const context = await call("GET", "/v2/dispatch:pause-status?scope=provider&target=gemini&context=1");
+  assert.equal((await context.json()).context.enabled, false);
+  assert.equal((await call("GET", "/v2/dispatch:pause-status?context=0")).status, 400);
+  const disabled = await call("POST", "/v2/dispatch:reserve", { operation: "context_start",
+    run_id: "123", catalog_digest: "a".repeat(64) });
+  assert.equal(disabled.status, 400);
+  assert.equal((await disabled.json()).error, "disabled");
+
   const reserve = await call("POST", "/v2/dispatch:reserve", {
     route_id: "gemini_3_1_flash_lite_primary",
     requests: 1,

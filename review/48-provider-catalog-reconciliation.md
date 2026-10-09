@@ -698,12 +698,14 @@ stored inputs or invalidate completed artifacts. Old terminal handles follow 3a'
 Removal automation stays disabled until 3a is deployed and a bounded recovery canary verifies the
 old sentinel/no-route indexes, no retry-cap increment and no repeating enqueue loop.
 
-**Remaining delivery checkpoint (2026-10-09):** four core PRs remain: removal activation after
-recovery-canary acceptance, Slice 4 bounded rate maintenance, Slice 5's L3 design, and Slice 5
-implementation. The snapshot-cache follow-up shipped in #2197. Recovery telemetry shipped in #2199 (#2198); four core PRs remain, with Slice 4 prepared in PR #2201 (#2200). Slice 5 may need
-implementation splits once its L3 contract is finalized. Review/53 PR12 (accepted in #2195) is a
-separate judge-stack lane-governance extension that depends on #2193; it keeps standard lane repair
-unchanged and is not a blocker for this remaining core sequence.
+**Remaining delivery checkpoint (2026-10-09, after #2208):** Slice 4 shipped in #2201 and the
+Slice 5 L3 design was accepted in #2208. Two offline implementation PRs are planned under #2209:
+quota admission first, then final calibration with input before output and all-route coverage.
+Removal activation still needs ordinary-run recovery-canary acceptance. Live input/output canaries
+and recurring calibration activation remain separately reviewed changes. The snapshot-cache
+follow-up shipped in #2197 and recovery telemetry in #2199 (#2198). Review/53 PR12 (accepted in
+#2195) is a separate judge-stack lane-governance extension depending on #2193; it keeps standard
+lane repair unchanged and is not a blocker for this remaining core sequence.
 
 #### Recovery-canary evidence follow-up — maintainer approved, 2026-10-09 (#2198)
 
@@ -933,7 +935,7 @@ issue, resolve any code/file mismatch, and copy its activation gate into that is
 review questions are technical acceptance of identity fallback, the trusted-artifact history and
 structural recovery lineage; priority, initial command scope and material-tightening policy are
 already decided above. #2178 and the subsequent implementation request accept the original
-remaining-slice technical choices; Slice 2a shipped in PR #2182 (#2179). Slice 5's L3 implementation contract is prepared in §8.11 (PR #2208). The original remaining-contract docs PR #2178 enabled no automatic removal or limit
+remaining-slice technical choices; Slice 2a shipped in PR #2182 (#2179). Slice 5's L3 implementation contract was accepted in §8.11 (merged PR #2208). The original remaining-contract docs PR #2178 enabled no automatic removal or limit
 maintenance; Slice 4 implementation now supplies reviewed rate proposals. Removal stays disabled.
 
 
@@ -1279,7 +1281,7 @@ refinement and 10% revalidation; estimate correction outside brackets; transient
 bounds; expired/spoofed provenance; route/gateway changes; resume across scans; quota/pause/time/token
 ceilings; and explicit reviewed config proposals with production caps unchanged until merge.
 
-### 8.11 Slice 5 implementation contract — L3 upon merge of PR #2208
+### 8.11 Slice 5 implementation contract — L3, accepted in merged PR #2208
 
 This section resolves §8.10's implementation placeholders and is normative for Slice 5. Accepted
 budgets and precision are unchanged. Code may be implemented after this design PR merges; merging
@@ -1299,7 +1301,9 @@ catalog digests. All ceilings are server-owned constants; callers cannot supply 
   `{ok, week_start, run_id, deadline_ms, remaining_input, remaining_output, remaining_requests}`.
   Repeating the same start returns the original deadline without writes or extension. A different
   run in the same week is rejected, including workflow re-runs with the same id but an expired
-  deadline. Starting occurs before drain/spacing so those consume the allowance. No request/token
+  deadline. Fresh weeks require a run id greater than every retained session id, checked before
+  pruning; this bounded high-water mark rejects expired runs across rollover and long idle periods.
+  Starting occurs before drain/spacing so those consume the allowance. No request/token
   allowance is charged merely for opening the session. Start denial means no context experiment.
 - `operation: context_admit`, `run_id`, `catalog_digest`, `route_id`, `dimension: input|output`,
   `attempt_id` (SHA-256 of run id, route id, dimension, monotonically increasing attempt ordinal),
@@ -1324,9 +1328,13 @@ Add two SQLite tables through existing readiness/init machinery, without a DO cl
 | Table/key | Stored fields and bound |
 |---|---|
 | `context_probe_weeks`, `week_start TEXT PRIMARY KEY` | `run_id TEXT`, `catalog_digest TEXT`, `deadline_ms INTEGER`, `input_used INTEGER`, `output_used INTEGER`, `requests_used INTEGER`; retain current plus seven preceding UTC weeks |
-| `context_probe_attempts`, `attempt_id TEXT PRIMARY KEY` | `week_start TEXT`, `run_id TEXT`, `route_id TEXT`, `dimension TEXT`, `request_digest TEXT`, `input_tokens INTEGER`, `output_tokens INTEGER`, `admitted_at INTEGER`; at most 24 rows per week |
+| `context_probe_attempts`, `PRIMARY KEY (week_start, attempt_id) WITHOUT ROWID` | `week_start TEXT`, `run_id TEXT`, `route_id TEXT`, `dimension TEXT`, `request_digest TEXT`, `input_tokens INTEGER`, `output_tokens INTEGER`, `admitted_at INTEGER`; at most 24 rows per week |
 
-Use no secondary indexes. At admission read the current week and at most its 24 attempts to enforce
+Use no secondary indexes. The maintainer approved the clustered weekly key on 2026-10-09 after
+real workerd measured 192 reads for 24 current-week attempts with an attempt-only primary key.
+The clustered table returns those 24 attempts with 25 billed reads (including the range boundary),
+independent of retained history. Replay and cleanup use both key fields. At admission read the
+current week and at most its 24 attempts (a 25-row corruption sentinel) to enforce
 the six-calls-per-route ceiling; never inspect jobs or scan historical queue state for that count.
 Use existing in-flight pause status queries for drain confirmation, with the existing bounded route
 selection. Expire at most one oldest week's attempts and summary on session start, only within the
@@ -1550,6 +1558,28 @@ status reads/recreation, normal cleanup and no unexplained quota/accounting erro
 jobs, paid calls, manual deploy or implicit recurring activation. Output needs its own reviewed
 canary after input acceptance; recurring fair rotation requires recorded maintainer approval and a
 separate activation change. This calibration gate does not substitute for the removal recovery canary.
+
+### Slice 5 quota-admission checkpoint — PR #2214, prerequisite for #2209
+
+[PR #2214](https://github.com/BashfulBits/city-meeting-podcasts/pull/2214) implements §8.11.A
+through the existing reservation/status handlers and typed
+pause client. The server-owned route allowlist remains empty and output activation remains false;
+no context calls are wired into reconciliation or workflows. Groq and Gemini have explicit physical
+model/account quota mappings; duplicate physical routes, duplicate account credential mappings,
+provider-wide shared ceilings and other unverified gateways defer. Normal route policy is unchanged.
+The bounded schema initialization adds only the two context tables to current deployments.
+
+Offline acceptance: 5,389 Python tests (16 deselected), 424 Worker tests, whole-repository Ruff
+lint/format, both unchanged catalog compilers and diff checks. Real workerd confirms 25 billed reads
+for a 24-attempt current week amid 192 retained attempts, three writes for session start, six for
+first admission and zero for replay. Five injected mutation failures roll back every durable charge;
+dispose/recreation retains the spent attempt. Node fixtures additionally cover the exact budget
+ceilings, expired-run rollover fence, optional row-budget rejection and bounded weekly cleanup.
+This acceptance does not authorize live calibration or satisfy the separate recovery canary.
+
+The final implementation PR still supplies adaptive search, provider-count parsers, authenticated
+history, reviewed cap choices, weekly orchestration and all configured free-route offline coverage.
+Input/output canaries and recurring activation remain separately reviewed changes.
 
 ### Slice 4 implementation checkpoint — implemented in PR #2201 (#2200; merged 2026-10-09)
 

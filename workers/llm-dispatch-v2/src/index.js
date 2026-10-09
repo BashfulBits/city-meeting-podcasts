@@ -515,7 +515,13 @@ export async function handleRequest(request, env) {
       return errorResponse(400, validation.error, validation.detail);
     }
     try {
-      const status = await coordinator.dispatchPauseStatus(selection, Date.now());
+      const context = url.searchParams.get("context");
+      if (context !== null && context !== "1") {
+        return errorResponse(400, "bad_request", "context must be 1 when supplied");
+      }
+      const status = await coordinator.dispatchPauseStatus(
+        { ...selection, ...(context === "1" ? { context: true } : {}) }, Date.now()
+      );
       return status.ok ? jsonResponse(status, 200) : errorResponse(400, status.error, status.detail);
     } catch (err) {
       const detail = describeError(err);

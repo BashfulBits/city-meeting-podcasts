@@ -9,6 +9,7 @@ import DISPATCH_LIMITS from "./dispatch_limits.json" with { type: "json" };
 // about which purposes exist or what each may spend. Drift-checked in the deploy workflow.
 import INGRESS_RESERVATIONS from "./ingress_reservations.json" with { type: "json" };
 import { withTuning } from "./tuning.js";
+import { canonicalJson, sha256Hex, validateReserveRequest } from "./protocol.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE,
   DO_ROWS_WRITTEN_PLATFORM_LIMIT,
@@ -28,6 +29,7 @@ import {
 } from "./routes.js";
 import {
   availableTokenBudget,
+  earliestSafeStart,
   dailyTokenDebt,
   inputWindow,
   computeRouteLaneWait,
@@ -235,6 +237,8 @@ const CURRENT_SCHEMA_TABLES = [
   "ingress_purpose",
   "route_failures",
   "dispatch_pause",
+  "context_probe_weeks",
+  "context_probe_attempts",
 ];
 
 // One source for quota migration, startup readiness, and the write-free mutation preflight.
@@ -247,6 +251,20 @@ const ROUTE_QUOTA_COLUMNS = {
 
 // Columns added after the initial table definitions. Keep this list aligned with the
 // _ensureColumn calls below: a current-schema fast path is safe only when all of these exist.
+const CONTEXT_PROBE_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS context_probe_weeks (
+    week_start TEXT PRIMARY KEY, run_id TEXT NOT NULL, catalog_digest TEXT NOT NULL,
+    deadline_ms INTEGER NOT NULL, input_used INTEGER NOT NULL DEFAULT 0,
+    output_used INTEGER NOT NULL DEFAULT 0, requests_used INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS context_probe_attempts (
+    attempt_id TEXT NOT NULL, week_start TEXT NOT NULL, run_id TEXT NOT NULL,
+    route_id TEXT NOT NULL, dimension TEXT NOT NULL, request_digest TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL, admitted_at INTEGER NOT NULL,
+    PRIMARY KEY (week_start, attempt_id)
+  ) WITHOUT ROWID;
+`;
+
 const CURRENT_SCHEMA_ADDED_COLUMNS = {
   routes: [
     ...Object.keys(ROUTE_QUOTA_COLUMNS),
@@ -337,11 +355,14 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
       // Existing production objects need only these additive columns. Do not rerun unrelated
       // DDL, index rebuilds, or data migrations over their queue to repair quota bookkeeping.
-      const quotaOnly = readiness.missing.every((item) =>
-        item.startsWith("column:routes.") &&
-        Object.hasOwn(ROUTE_QUOTA_COLUMNS, item.slice("column:routes.".length))
-      );
-      if (quotaOnly) {
+      const additiveOnly = readiness.missing.every(item =>
+        ["table:context_probe_weeks", "table:context_probe_attempts"].includes(item) ||
+        (item.startsWith("column:routes.") &&
+          Object.hasOwn(ROUTE_QUOTA_COLUMNS, item.slice("column:routes.".length))));
+      if (additiveOnly) {
+        if (readiness.missing.some(item => item.startsWith("table:context_probe_"))) {
+          this._getSql().exec(CONTEXT_PROBE_SCHEMA);
+        }
         for (const [column, definition] of Object.entries(ROUTE_QUOTA_COLUMNS)) {
           if (readiness.missing.includes(`column:routes.${column}`)) {
             this._ensureColumn("routes", column, definition);
@@ -1028,6 +1049,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       -- never change admission order: the index row already exists, so backfill never revisits
       -- it either. A no-op UPDATE (0 rows matched) when the job isn't currently indexed -- e.g.
       -- already claimed -- is expected and harmless.
+      ${CONTEXT_PROBE_SCHEMA}
       ${JOB_PRIORITY_SYNC_TRIGGER}
     `));
 
@@ -1832,7 +1854,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * canary waits on) and, per selected route, how much daily quota is left and when it resets.
    * Read-only.
    */
-  async dispatchPauseStatus({ scope = "global", target = null } = {}, now = Date.now()) {
+  async dispatchPauseStatus({ scope = "global", target = null, context = false } = {}, now = Date.now()) {
     const invalid = this._validatePauseTarget(scope, target);
     if (invalid) return { ok: false, error: "unknown_target", detail: invalid };
     const catalog = this._dispatchLimits();
@@ -1878,6 +1900,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       }
     }
     return {
+      ...(context ? { context: await this._contextStatus(now, selectedRouteIds) } : {}),
       ok: true,
       now,
       selection: LLMSchedulerDO.pauseScopeKey(scope, target),
@@ -1892,7 +1915,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
    * rpm/rpd ledger, exactly as claimDispatchWindow charges an admitted job, so production pacing
    * accounts for them. Tokens are not reserved: these calls are a few tokens each.
    */
-  async reserveRouteRequests({ route_id: routeId, requests = 1 }, now = Date.now()) {
+  async reserveRouteRequests(body, now = Date.now()) {
+    if (body && Object.hasOwn(body, "operation")) return this._reserveContext(body, now);
+    const { route_id: routeId, requests = 1 } = body;
     const invalid = this._validatePauseTarget("route", routeId);
     if (invalid) return { ok: false, error: "unknown_target", detail: invalid };
     // Out-of-band canary/probe reservations are optional bookkeeping. Stop these writes with the
@@ -1921,6 +1946,195 @@ export class LLMSchedulerDO extends DurableObjectBase {
         rpd_count: merged.rpd_count,
         rpd_day_key: merged.rpd_day_key,
       };
+    });
+  }
+
+  // Disabled until separately reviewed live activation. Tests exercise the same code with
+  // class-owned allowances; no HTTP body or environment flag can enable experiments.
+  static CONTEXT_PROBE_ROUTE_IDS = Object.freeze([]);
+  static CONTEXT_OUTPUT_ENABLED = false;
+
+  _contextWeek(now) {
+    const day = new Date(now);
+    day.setUTCHours(0, 0, 0, 0);
+    day.setUTCDate(day.getUTCDate() - (day.getUTCDay() + 6) % 7);
+    return day.toISOString().slice(0, 10);
+  }
+
+  async _contextCatalogDigest() {
+    return sha256Hex(canonicalJson(this._dispatchLimits()));
+  }
+
+  _contextRemaining(row) {
+    return {
+      week_start: row.week_start, run_id: row.run_id, deadline_ms: row.deadline_ms,
+      remaining_input: 2097152 - row.input_used,
+      remaining_output: 131072 - row.output_used,
+      remaining_requests: 24 - row.requests_used,
+    };
+  }
+
+  /** Only verified model/account scopes, with no duplicate physical quota cells.
+   * Groq: console.groq.com/docs/rate-limits; Google: ai.google.dev/gemini-api/docs/rate-limits.
+   * Other gateways/shared accounts require their own reviewed scope mapping before admission. */
+  _contextQuotaScope(route, catalog) {
+    if (!["groq", "gemini"].includes(route.provider)) return null;
+    const cfg = catalog.providers?.[route.provider];
+    if (["rpm", "rpd", "tpm", "tpd"].some(key => Number(cfg?.[key]) > 0)) return null;
+    const account = cfg?.accounts?.find(item => item.id === route.account_id);
+    if (!account?.api_key_env || !route.upstream_model || !(Number(route.tpm) > 0)) return null;
+    if (cfg.accounts.filter(item => item.api_key_env === account.api_key_env).length !== 1) return null;
+    const duplicates = Object.values(catalog.routes_by_id).filter(item =>
+      item.provider === route.provider && item.account_id === route.account_id &&
+      item.upstream_model === route.upstream_model);
+    if (duplicates.length !== 1) return null;
+    return `${route.provider}:${route.account_id}:${route.upstream_model}`;
+  }
+
+  async _contextStatus(now, selectedRouteIds) {
+    const rows = [...this._getSql().exec(
+      "SELECT * FROM context_probe_weeks WHERE week_start = ?", this._contextWeek(now)
+    )];
+    const catalog = this._dispatchLimits();
+    return {
+      enabled: LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS.length > 0,
+      catalog_digest: await this._contextCatalogDigest(),
+      session: rows[0] ? this._contextRemaining(rows[0]) : null,
+      routes: Object.fromEntries(selectedRouteIds.map(id => [id, {
+        quota_scope: this._contextQuotaScope(catalog.routes_by_id[id], catalog),
+        enabled: LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS.includes(id),
+      }])),
+    };
+  }
+
+  _contextRowBudget(cost) {
+    return this._readRowsWrittenToday() + cost <= this._optionalRowStop();
+  }
+
+  async _reserveContext(body, now) {
+    const validation = validateReserveRequest(body);
+    if (!validation.valid) return { ok: false, error: validation.error };
+    if (LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS.length === 0) return { ok: false, error: "disabled" };
+    if (body.catalog_digest !== await this._contextCatalogDigest()) {
+      return { ok: false, error: "stale_catalog" };
+    }
+    const week = this._contextWeek(now);
+    if (body.operation === "context_start") return this._startContext(body, week, now);
+    return this._admitContext(body, week, now);
+  }
+
+  _startContext(body, week, now) {
+    const sql = this._getSql();
+    const rows = [...sql.exec("SELECT * FROM context_probe_weeks ORDER BY week_start LIMIT 9")];
+    const existing = rows.find(row => row.week_start === week);
+    if (existing) {
+      if (existing.run_id !== body.run_id || existing.deadline_ms <= now) {
+        return { ok: false, error: "session_expired" };
+      }
+      if (existing.catalog_digest !== body.catalog_digest) return { ok: false, error: "stale_catalog" };
+      return { ok: true, ...this._contextRemaining(existing) };
+    }
+    // Require increasing run ids; the newest admitted id is a bounded replay watermark.
+    // Check before pruning so even a long-idle runner cannot reopen its old run in a new week.
+    if (rows.some(row => BigInt(row.run_id) >= BigInt(body.run_id))) {
+      return { ok: false, error: "session_expired" };
+    }
+    const cutoff = this._contextWeek(now - 7 * 7 * 86400000);
+    const stale = rows.filter(row => row.week_start < cutoff);
+    const prune = stale[0];
+    const attempts = prune ? [...sql.exec(
+      "SELECT attempt_id FROM context_probe_attempts WHERE week_start = ? LIMIT 25", prune.week_start
+    )] : [];
+    if (rows.length > 8 || attempts.length > 24) return { ok: false, error: "budget_exhausted" };
+    // Index deletes are billed too; include summary/insert/index/accounting writes up front.
+    const cost = 3 + (prune ? 2 * (attempts.length + 1) : 0);
+    if (!this._contextRowBudget(cost)) return { ok: false, error: "daily_row_budget" };
+    return this._transactionSync(() => {
+      for (const item of attempts) sql.exec(
+        "DELETE FROM context_probe_attempts WHERE week_start = ? AND attempt_id = ?",
+        prune.week_start, item.attempt_id
+      );
+      if (prune) sql.exec("DELETE FROM context_probe_weeks WHERE week_start = ?", prune.week_start);
+      if (stale.length > 1 || rows.length - (prune ? 1 : 0) >= 8) {
+        return { ok: false, error: "budget_exhausted" };
+      }
+      const row = { week_start: week, run_id: body.run_id, catalog_digest: body.catalog_digest,
+        deadline_ms: now + 3600000, input_used: 0, output_used: 0, requests_used: 0 };
+      sql.exec(`INSERT INTO context_probe_weeks
+        (week_start, run_id, catalog_digest, deadline_ms) VALUES (?, ?, ?, ?)`,
+      week, body.run_id, body.catalog_digest, row.deadline_ms);
+      return { ok: true, ...this._contextRemaining(row) };
+    });
+  }
+
+  _admitContext(body, week, now) {
+    const sql = this._getSql();
+    const old = [...sql.exec(
+      "SELECT * FROM context_probe_attempts WHERE week_start = ? AND attempt_id = ?",
+      week, body.attempt_id
+    )][0];
+    if (old) {
+      const same = old.week_start === week && old.run_id === body.run_id &&
+        ["route_id", "dimension", "request_digest", "input_tokens", "output_tokens"]
+          .every(key => old[key] === body[key]);
+      return { ok: false, error: same ? "already_consumed" : "attempt_conflict" };
+    }
+    const row = [...sql.exec("SELECT * FROM context_probe_weeks WHERE week_start = ?", week)][0];
+    if (!row || row.run_id !== body.run_id || row.deadline_ms < now + 205000) {
+      return { ok: false, error: "session_expired" };
+    }
+    if (row.catalog_digest !== body.catalog_digest) return { ok: false, error: "stale_catalog" };
+    const output = body.dimension === "output";
+    if (!LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS.includes(body.route_id) ||
+      (output && !LLMSchedulerDO.CONTEXT_OUTPUT_ENABLED)) return { ok: false, error: "disabled" };
+    if (body.input_tokens > (output ? 2048 : 524288) ||
+      body.output_tokens > (output ? 32768 : 256) ||
+      row.input_used + body.input_tokens > 2097152 ||
+      row.output_used + body.output_tokens > 131072 || row.requests_used >= 24) {
+      return { ok: false, error: "budget_exhausted" };
+    }
+    const attempts = [...sql.exec(
+      "SELECT route_id FROM context_probe_attempts WHERE week_start = ? LIMIT 25", week
+    )];
+    if (attempts.length >= 24 || attempts.filter(item => item.route_id === body.route_id).length >= 6) {
+      return { ok: false, error: "budget_exhausted" };
+    }
+    const catalog = this._dispatchLimits();
+    const route = Object.hasOwn(catalog.routes_by_id, body.route_id)
+      ? catalog.routes_by_id[body.route_id] : null;
+    if (!route || route.free !== true || route.rpd === 0) return { ok: false, error: "unknown_target" };
+    if (!this._contextQuotaScope(route, catalog)) return { ok: false, error: "quota_unknown" };
+    const pause = this._activePauses(now).find(item =>
+      item.scope === `provider:${route.provider}` && item.paused_until >= now + 205000);
+    if (!pause || (this._inFlightCounts(now, catalog).by_provider[route.provider] || 0) !== 0) {
+      return { ok: false, error: "pause_not_drained" };
+    }
+    // No seeded ledger writes until every read-only admission check has passed.
+    const prior = [...sql.exec("SELECT * FROM routes WHERE route_id = ?", body.route_id)][0];
+    const merged = { ...route, ...(prior || { full_token_budget: Number(route.tpm) * FULL_TOKEN_BUDGET_WINDOWS,
+      token_budget_updated_at: now }), reset_timezone: catalog.providers[route.provider].reset_timezone || "UTC" };
+    const job = { input_token_estimate: body.input_tokens, max_output_token_estimate: body.output_tokens };
+    const safeAt = earliestSafeStart(merged, job, now, now,
+      { inputRatio: 1, contextProbe: true, estimateFloor: 0 });
+    if (safeAt === null || safeAt.notBeforeAt > now) {
+      return { ok: false, error: "quota_wait", next_eligible_at: safeAt?.notBeforeAt ?? null };
+    }
+    // New route row/index + ledger + attempt/index + summary + scheduler; overestimate safely.
+    if (!this._contextRowBudget(10)) return { ok: false, error: "daily_row_budget" };
+    return this._transactionSync(() => {
+      const ledger = this._getOrCreateRouteLedger(body.route_id, now, route);
+      const reservation = body.input_tokens + (route.provider === "gemini" ? 0 : body.output_tokens);
+      const charged = this._applyProvisionalReservation({ ...merged, ...ledger }, reservation, now);
+      charged.provisional_reservation = Number(ledger.provisional_reservation) || 0;
+      this._writeRouteLedger(charged);
+      sql.exec(`INSERT INTO context_probe_attempts
+        (attempt_id, week_start, run_id, route_id, dimension, request_digest,
+         input_tokens, output_tokens, admitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      body.attempt_id, week, body.run_id, body.route_id, body.dimension, body.request_digest,
+      body.input_tokens, body.output_tokens, now);
+      sql.exec(`UPDATE context_probe_weeks SET input_used=input_used+?, output_used=output_used+?,
+        requests_used=requests_used+1 WHERE week_start=?`, body.input_tokens, body.output_tokens, week);
+      return { ok: true, disposition: "new", attempt_id: body.attempt_id };
     });
   }
 

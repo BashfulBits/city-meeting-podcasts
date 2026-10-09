@@ -239,6 +239,19 @@ Worker test was shown to fail with its feature removed. All 415 existing and new
 and `yields_to: [beatapi_jev_1_13_free]` on the five BeatAPI chat routes. Add the `custom-beatapi`
 `/systemone` path to the recorded gateway registrations test.
 
+**Keep chat-only tooling away from the first non-chat route** (added 2026-10-09 after reviewing
+open PRs #2215 and #2218). Each of these would otherwise send JEV a chat completion, spending the
+shared BeatAPI window, or report it as permanently pending:
+- review/48 Slice 5's context scan (`citypods/provider_catalog/reconcile.py:plan_context_scan`):
+  include only routes whose `api_shape` is `chat` (absent). Slice 5 already defers BeatAPI as an
+  unknown quota scope and never counts `systemone` usage as chat capacity, so this removes a
+  permanent "deferred" line, not a hazard.
+- The provider-catalog reconciler's health check of configured routes (the chat canary in
+  `citypods/provider_catalog/probe.py`): skip non-chat routes; JEV's health is visible from its own
+  judge-lane telemetry.
+- `citypods/llm_rate_probe.py`'s route catalog: skip non-chat routes.
+Each gets a regression test with a `systemone` route in the fixture catalog.
+
 `config/site_config.yml`: lanes `judge:anchor`, `judge:sibling`, `judge:adjudicator` with the
 reservations and caps in the capacity table, `dispatch_shape: per_model`, telemetry
 `{producer: judge, unit: episode, completion: consumed, scope: retained_catalog}`, and

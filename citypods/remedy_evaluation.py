@@ -12,6 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from citypods.compute.llm_policy import route_reasoning_controls, route_request_params
+from citypods.remedy_policy import PolicyTemplate
 
 PROMPT = (
     "Assess the supplied claim using only frozen evidence and approved policy. Official metadata "
@@ -218,6 +219,7 @@ class Limits(StrictModel):
 
 
 class RemedyConfig(StrictModel):
+    policy_templates: list[PolicyTemplate] = Field(default_factory=list)
     version: Literal[1]
     mode: Literal["shadow", "manual", "qualified_alias"]
     admissions: list[AdmissionEntry]
