@@ -793,7 +793,7 @@
         "addison-tx-town-meetings"
       ],
       "status": "resolved",
-      "disposition": "Maintainer approved closing the P0 case on 2026-10-07: retain the single historical Citizen Advisory compilation in Public Input with its original UID/title/audio. Official FY2007\u201308 budget and Council packet evidence corroborate the advisory program and its recommendations; exact program-to-recording binding remains unknown. The provider archive listing count is not proof of a missing eleventh part. See addison-body-policy-audit-2026-10-04.md, Citizen Advisory 56029 evidence."
+      "disposition": "Maintainer approved closing the P0 case on 2026-10-07: retain the single historical Citizen Advisory compilation in Public Input with its original UID/title/audio. Official FY2007–08 budget and Council packet evidence corroborate the advisory program and its recommendations; exact program-to-recording binding remains unknown. The provider archive listing count is not proof of a missing eleventh part. See addison-body-policy-audit-2026-10-04.md, Citizen Advisory 56029 evidence."
     },
     {
       "case_id": "addison-382950-699939eb5a53e258",
@@ -2045,9 +2045,9 @@
       "uid": "081d2695d7d0136a",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=9&clip_id=6334",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "Recovered official PDF proves three consecutive proceedings, but exact UID-to-recording-segment binding remains unavailable.",
+      "next_action": "Carry exact UID-to-segment binding as an open evidence obligation after P0 baseline completion; retain the maintainer-approved current four participant feed assignments and all raw records/audio.",
+      "last_researched": "2026-10-09",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-city-council-worksession",
@@ -2264,9 +2264,9 @@
       "uid": "ead427dae0bbb284",
       "provider_guid": "https://fortworthgov.granicus.com/MediaPlayer.php?view_id=5&clip_id=6334",
       "question": "Verify participating bodies and joint versus bundled recording ownership",
-      "missing_evidence": "Dated official agenda and institutional identity; joint versus standalone proceeding proof",
-      "next_action": "Obtain dated official agenda and segment proof; retain legitimate Council joint subscriptions",
-      "last_researched": "2026-10-05",
+      "missing_evidence": "Recovered official PDF proves three consecutive proceedings, but exact UID-to-recording-segment binding remains unavailable.",
+      "next_action": "Carry exact UID-to-segment binding as an open evidence obligation after P0 baseline completion; retain the maintainer-approved current four participant feed assignments and all raw records/audio.",
+      "last_researched": "2026-10-09",
       "current_feed_assignments": [
         "fort-worth-tx-city-council",
         "fort-worth-tx-city-council-worksession",
@@ -2572,9 +2572,9 @@
       "uid": "16300c982b358fe9",
       "provider_guid": "270975",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
-      "missing_evidence": "The Dallas Office of Bond & Construction Management official Streets and Transportation Subcommittee page lists Tuesday, August 22, 2023, \u201cStreets and Transportation Meeting #6,\u201d which matches the retained provider record date/title. The page\u2019s Video button contains no recording URL or provider GUID in its published HTML, so exact source-record binding remains unverified.",
-      "next_action": "Prepared dual-feed publication under issue #2170; verify both live feeds after deployment. Independently locate exact dated official agenda/recording binding; keep this evidence case open.",
-      "last_researched": "2026-10-07",
+      "missing_evidence": "The Dallas Office of Bond & Construction Management official Streets and Transportation Subcommittee page lists Tuesday, August 22, 2023, “Streets and Transportation Meeting #6,” which matches the retained provider record date/title. The page’s Video button contains no recording URL or provider GUID in its published HTML, so exact source-record binding remains unverified.",
+      "next_action": "Live original UID/audio verified in all three approved feeds on 2026-10-09; carry exact dated official recording/agenda binding as an open evidence obligation after P0 baseline completion.",
+      "last_researched": "2026-10-09",
       "current_feed_assignments": [
         "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
         "dallas-tx-bond-program-meetings",
@@ -2623,8 +2623,8 @@
       "provider_guid": "269407",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "The retained source record dates this episode August 10, 2023, but the official Dallas Streets and Transportation Subcommittee page currently lists August 15 as Meeting #5, not an August 10 meeting. No dated official August 10 agenda/minutes or exact official video link was located; the provider record alone is not independent proof.",
-      "next_action": "Prepared dual-feed publication under issue #2170; verify both live feeds after deployment. Independently locate exact dated official agenda/recording binding; keep this evidence case open.",
-      "last_researched": "2026-10-07",
+      "next_action": "Live original UID/audio verified in all three approved feeds on 2026-10-09; carry exact dated official recording/agenda binding as an open evidence obligation after P0 baseline completion.",
+      "last_researched": "2026-10-09",
       "current_feed_assignments": [
         "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
         "dallas-tx-bond-program-meetings",
@@ -2657,8 +2657,8 @@
       "provider_guid": "277830",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "A City Manager memo dated October 27, 2023 says the 2024 Bond subcommittees were expected to reconvene and provide recommendations by October 31. It does not name an October 27 Streets meeting or bind provider GUID277830 / this UID to an official agenda or recording.",
-      "next_action": "Prepared dual-feed publication under issue #2170; verify both live feeds after deployment. Independently locate exact dated official agenda/recording binding; keep this evidence case open.",
-      "last_researched": "2026-10-07",
+      "next_action": "Live original UID/audio verified in all three approved feeds on 2026-10-09; carry exact dated official recording/agenda binding as an open evidence obligation after P0 baseline completion.",
+      "last_researched": "2026-10-09",
       "current_feed_assignments": [
         "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
         "dallas-tx-bond-program-meetings",
@@ -2691,8 +2691,8 @@
       "provider_guid": "277827",
       "question": "Verify bond Streets and Transportation subcommittee ownership distinct from standing Council committee",
       "missing_evidence": "A City Manager memo dated October 27, 2023 says the 2024 Bond subcommittees were expected to reconvene and provide recommendations by October 31. It does not name an October 26 Streets meeting or bind provider GUID277827 / this UID to an official agenda or recording.",
-      "next_action": "Prepared dual-feed publication under issue #2170; verify both live feeds after deployment. Independently locate exact dated official agenda/recording binding; keep this evidence case open.",
-      "last_researched": "2026-10-07",
+      "next_action": "Live original UID/audio verified in all three approved feeds on 2026-10-09; carry exact dated official recording/agenda binding as an open evidence obligation after P0 baseline completion.",
+      "last_researched": "2026-10-09",
       "current_feed_assignments": [
         "dallas-tx-2024-bond-streets-and-transportation-subcommittee",
         "dallas-tx-bond-program-meetings",

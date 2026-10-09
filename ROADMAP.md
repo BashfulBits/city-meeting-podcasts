@@ -22,8 +22,8 @@ committee recordings. See
 The [Pflugerville BOA batch](review/pflugerville-boa-coverage-2026-10.md) covers ten verified
 historical identities while documenting unavailable provider media.
 [review/51](review/51-unexpected-body-remedy-flow.md) records the approved improvement structure:
-P1 evaluation/physical-route admission implements the approved scoring/hash contracts and is
-ready for review in #1987; P2–P5 have predecessor-gated build contracts. Duplicate publication has
+P1 evaluation tooling shipped in #1987; physical-route admission remains separate. P2–P5 have
+predecessor-gated build contracts. Duplicate publication has
 a separate L2 design gate before affected feeds activate.
 Maintainer preference (2026-10-04): continuing standing committees, including Council subcommittees,
 have dedicated feeds across cities; seasonal activity does not imply a temporary committee.
@@ -44,6 +44,11 @@ Alias qualification is narrow and reviewed; incomplete archives require document
 TIF defaults to a city aggregate. Remedy/onboarding remain outside route leagues.
 
 ## Recently shipped (summary)
+
+- **review/51 P0 historical baseline complete:** all 680 reviewed title patterns dispositioned;
+  current rule replay and deployed feed/search/archive visibility verified. Six evidence questions
+  explicitly remain open. See [final report](review/evidence/p0-completion-2026-10-09.md).
+  P1 tooling shipped; P2–P5 and production model admission remain separate gated work.
 
 - Provider catalog paid-route decisions (#2189) and bounded structural rescue (#2191).
   Removal planning shipped in #2193 (#2192); activation still requires coordinated deployment

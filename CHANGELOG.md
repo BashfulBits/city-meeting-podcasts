@@ -7681,3 +7681,10 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
 - Search loads its manifest and vendored engine from the page origin, preserving base paths.
   Existing same-host HTTP shard URLs are upgraded on HTTPS pages, avoiding mixed-content
   blocking without rebuilding the index. Search schema, cache, budgets and audio are unchanged.
+
+### P0 historical baseline verified complete (2026-10-09)
+
+- Final frozen-source replay accounts for all 680 title patterns and 26,555 saved entries.
+  Verified public browser search, six archive-only exclusions with retained direct pages, and
+  four Dallas recordings in all approved feeds with unchanged audio URLs. Six exact-recording
+  evidence questions remain explicitly open under the approved exit rule; no runtime changes.
