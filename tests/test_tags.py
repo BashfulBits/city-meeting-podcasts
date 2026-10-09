@@ -1449,14 +1449,22 @@ def test_prelabeler_batches_use_the_learned_ratio(monkeypatch):
         assert estimate_tokens(job.inputs["messages"]) <= limits.max_raw_input_tokens
 
 
-def test_prelabeler_sizing_ignores_paused_routes():
+@pytest.mark.parametrize("has_live_route", [True, False])
+def test_prelabeler_sizing_ignores_paused_routes(monkeypatch, has_live_route):
+    from dataclasses import replace
+
     from citypods.compute.llm_policy import ROUTE_CANDIDATES
     from citypods.tags import prelabeler_sizing_route
 
-    route = prelabeler_sizing_route("google/gemma-4-31b-it")
-    paused = {r.route_id for r in ROUTE_CANDIDATES["google/gemma-4-31b-it"] if r.quota.rpd == 0}
-    assert "nvidia_gemma_4_31b_it_free" in paused
-    assert route.route_id not in paused
+    model = "google/gemma-4-31b-it"
+    prototype = ROUTE_CANDIDATES[model][0]
+    paused = replace(prototype, route_id="z-paused", quota=replace(prototype.quota, rpd=0))
+    # Unknown daily quota and zero compare equally in the ranking. Without the pause filter,
+    # the lexically larger paused ID would win, making this test detect the missing filter.
+    live = replace(prototype, route_id="a-live", quota=replace(prototype.quota, rpd=None))
+    routes = (paused, live) if has_live_route else (paused,)
+    monkeypatch.setitem(ROUTE_CANDIDATES, model, routes)
+    assert prelabeler_sizing_route(model) is (live if has_live_route else None)
 
 
 def test_prelabeler_batches_split_to_fit_the_sizing_route(monkeypatch):
