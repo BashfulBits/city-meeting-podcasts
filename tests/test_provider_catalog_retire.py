@@ -196,7 +196,7 @@ def live_route(model="new", **changes):
     }
 
 
-def test_primary_promotion_prunes_reasoning_and_empty_backup_threshold():
+def test_primary_promotion_preserves_backup_retry_contract_and_prunes_reasoning():
     from citypods.compute.llm_lanes import parse_lanes
     from citypods.provider_catalog.retire import plan_retirements
 
@@ -207,7 +207,7 @@ def test_primary_promotion_prunes_reasoning_and_empty_backup_threshold():
     output = apply_config_edits(config.texts, plan)
     lane = load_config(output[SOURCE_PATHS[1]])["llm_lanes"]["lane"]
     assert lane["models"] == ["new"] and lane["reasoning"] == {"new": "off"}
-    assert "backup_models" not in lane and "backup_after_attempts" not in lane
+    assert lane["backup_models"] == ["new"] and lane["backup_after_attempts"] == 2
     parse_lanes({"lane": lane})
     assert plan.proposal_kind == "removals"
 
@@ -254,8 +254,9 @@ def test_batch_never_removes_last_safe_replacement():
     second["free"] = True
     report.anomalies[1].config_digest = digest(second)
     plan = plan_retirements(report, config)
-    assert plan.removed_routes == ("old",)
-    assert plan.rejected and "second" in plan.rejected[0]
+    assert not plan.removed_routes and not plan.lane_repairs
+    assert len(plan.rejected) == 2
+    assert any("second" in item for item in plan.rejected)
 
 
 def test_lane_comments_survive_primary_backup_and_reasoning_cleanup():
@@ -357,3 +358,17 @@ def test_real_beatapi_removal_preserves_logical_pool_and_compiles(tmp_path, monk
     assert compile_llm_lanes.compile_reservations(
         load_lanes(path=tmp_path / SOURCE_PATHS[1]), compile_llm_lanes._global_ingress_budget()
     )
+
+
+def test_last_backup_retirement_removes_dependent_threshold():
+    from citypods.compute.llm_lanes import parse_lanes
+    from citypods.provider_catalog.retire import plan_retirements
+
+    report, _ = evidence()
+    config = retirement_config([ROUTE, live_route()], models=("new",), backups=("old",))
+    output = apply_config_edits(config.texts, plan_retirements(report, config))
+    lane = load_config(output[SOURCE_PATHS[1]])["llm_lanes"]["lane"]
+    assert lane["models"] == ["new"]
+    assert "backup_models" not in lane and "backup_after_attempts" not in lane
+    assert lane["reasoning"] == {"new": "off"}
+    parse_lanes({"lane": lane})

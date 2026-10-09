@@ -62,14 +62,17 @@ def _retirement_proven(route, report, config):
     return True
 
 
-def _repair_lanes(config, removed):
+def _repair_lanes(config, removed, retired=()):
     routes = list(config.limits.get("routes") or [])
     affected = set().union(*(_route_model_keys(r) for r in routes if r["route_id"] in removed))
     eligible = set().union(
         *(
             _route_model_keys(r)
             for r in routes
-            if r["route_id"] not in removed and r.get("free") is True and r.get("rpd") != 0
+            if r["route_id"] not in removed
+            and r["route_id"] not in retired
+            and r.get("free") is True
+            and r.get("rpd") != 0
         )
     )
     repairs, primaries, blocked = [], [], []
@@ -85,7 +88,8 @@ def _repair_lanes(config, removed):
                 blocked.append(purpose)
                 continue
             models = (replacement, *(m for m in models if m != replacement))
-            backups = tuple(m for m in backups if m != replacement)
+            # Repeating the promoted model preserves the existing backup retry allowance.
+            # The lane contract permits this; remove only models that lost eligible routes.
             primaries.append(purpose)
         # A surviving primary/additional model may not rely on paid-only or paused capacity.
         if not set(models) & eligible:
@@ -108,17 +112,19 @@ def plan_retirements(report, config):
     if not all(isinstance(rid, str) and rid for rid in ids) or len(set(ids)) != len(ids):
         raise ValueError("route IDs missing or ambiguous")
     removed, applied, deferred, rejected = [], [], [], []
+    # A held-back dead route remains configured, but cannot prove a replacement is usable.
+    retired = {r["route_id"] for r in routes if _retirement_proven(r, report, config)}
     for route in sorted(routes, key=lambda r: r["route_id"]):
         rid = route["route_id"]
         if not any(
             a.route_id == rid and a.verdict in {"retired", "not_served"} for a in report.anomalies
         ):
             continue
-        if not _retirement_proven(route, report, config):
+        if rid not in retired:
             deferred.append(f"{rid}: fresh complete absent catalog and all-account proof required")
             continue
         proposed = (*removed, rid)
-        _, _, blocked = _repair_lanes(config, proposed)
+        _, _, blocked = _repair_lanes(config, proposed, retired)
         if blocked or len(proposed) == len(routes):
             rejected.append(
                 f"{rid}: no safe replacement; review pool alternatives for "
@@ -127,7 +133,7 @@ def plan_retirements(report, config):
             continue
         removed.append(rid)
         applied.append(f"{rid}: remove definitively retired route")
-    repairs, primaries, _ = _repair_lanes(config, removed)
+    repairs, primaries, _ = _repair_lanes(config, removed, retired)
     return EditPlan(
         config.base_commit,
         tuple((p, digest(config.texts[p])) for p in SOURCE_PATHS),
