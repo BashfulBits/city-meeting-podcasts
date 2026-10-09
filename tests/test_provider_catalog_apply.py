@@ -767,3 +767,105 @@ def test_apply_rebuild_honors_current_backup_opt_out_despite_warm_lane_cache(tmp
     assert "no longer eligible" in plan.rejected[0]
     assert [lane.accepts_catalog_backups for lane in seen] == [True, False]
     assert (tmp_path / SOURCE_PATHS[1]).read_text() == site
+
+
+def test_rate_choices_preserve_selection_and_reject_forged_value():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.limits import RateChange
+    from citypods.provider_catalog.reconcile import _merge_into_last_full
+
+    change = RateChange("route", "host", "old", "rpm", 100, 130, "offer_increase", "stamp")
+    report = Report(rate_changes=[change], state={"last_full": {"rate_changes": [asdict(change)]}})
+    body = render_body(report, run_date=TODAY.isoformat()).replace("- [ ]", "- [x]")
+    assert parse_decisions(body, report)[0].action == "increase_rate"
+    with pytest.raises(ValueError, match="unknown"):
+        parse_decisions(body.replace("to 130", "to 10000"), report)
+    refreshed = render_body(
+        Report(state={"last_full": {}}), run_date=TODAY.isoformat(), previous_body=body
+    )
+    assert f"- [x] {change.choice}" in refreshed
+    from citypods.provider_catalog.issue import decode_state
+
+    restored = Report()
+    _merge_into_last_full(restored, decode_state(refreshed)["last_full"], set())
+    assert restored.rate_changes == [change]
+
+
+def test_prepare_rate_increase_uses_verified_artifact_values_not_issue_observations(
+    tmp_path, monkeypatch
+):
+    from datetime import UTC, datetime
+    from pathlib import Path
+
+    from citypods.provider_catalog.config_edit import load_config
+    from citypods.provider_catalog.evidence import LimitObservation
+    from citypods.provider_catalog.limits import configured_limit_changes
+    from scripts import provider_catalog_commands as commands
+
+    original = Path(__file__).resolve().parents[1]
+    for path in SOURCE_PATHS:
+        target = tmp_path / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text((original / path).read_text())
+    monkeypatch.setattr(commands, "ROOT", tmp_path)
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    limits = load_config((tmp_path / SOURCE_PATHS[0]).read_text())
+    route = next(r for r in limits["routes"] if r["provider"] == "groq" and r.get("rpm"))
+    now = datetime.now(UTC)
+    observed = LimitObservation(
+        "rpm",
+        int(route["rpm"] * 2),
+        now.isoformat(),
+        "groq",
+        route["account_id"],
+        route["route_id"],
+        "route",
+        run_id="42",
+    )
+    monkeypatch.setattr(commands, "discover_rate_references", lambda **kwargs: ("actual",))
+
+    def history(refs, *args, **kwargs):
+        assert refs == ("actual",)
+        return ((observed,), ({"run_id": "42", "observed_at": now.isoformat()},), ())
+
+    monkeypatch.setattr(commands, "verified_rate_history", history)
+    actual, _ = configured_limit_changes([observed], limits, now=now, recent_runs=("42",))
+    report = Report(
+        rate_changes=list(actual),
+        state={
+            "last_full": {"rate_changes": [__import__("dataclasses").asdict(c) for c in actual]},
+            "rate_observations": [{"value": 1000000}],
+            "rate_evidence_refs": ["forged"],
+        },
+    )
+    body = render_body(report, run_date=now.date().isoformat()).replace("- [ ]", "- [x]")
+    plan = commands.prepare(body, "base")
+    assert plan.rate_changes == actual and plan.proposal_kind == "limits"
+    changed = load_config((tmp_path / SOURCE_PATHS[0]).read_text())
+    updated = next(r for r in changed["routes"] if r["route_id"] == route["route_id"])
+    assert updated["rpm"] == observed.value and updated["rpm"] != 1000000
+
+
+def test_rate_publication_uses_own_managed_branch_and_preserves_open_reviewed_increase():
+    from citypods.provider_catalog.limits import RateChange
+
+    marker = "<!-- citypods:provider-catalog-limits -->"
+    change = RateChange("route", "host", "old", "rpm", 100, 70, "tighten", "stamp")
+    plan = EditPlan("main-sha", (), proposal_kind="limits", rate_changes=(change,))
+    calls, run = publication_runner()
+    assert publish(plan, run_fn=run) == "https://github.test/pr/1"
+    assert any("HEAD:refs/heads/automation/provider-catalog-limits" in c for c in calls)
+    prs = [
+        {
+            "number": 1,
+            "body": marker + "\nSource: explicit `/apply` rate increase",
+            "author": {"login": "github-actions[bot]"},
+            "baseRefName": "main",
+            "isCrossRepository": False,
+        }
+    ]
+    calls, run = publication_runner(prs=prs)
+    with pytest.raises(ValueError, match="open reviewed-increase"):
+        publish(plan, run_fn=run)
+    assert not any(c[:2] == ["git", "push"] for c in calls)

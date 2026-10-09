@@ -3,6 +3,9 @@ name: Provider catalog commands
 on:
   issue_comment:
     types: [created]
+  workflow_run:
+    workflows: [Provider catalog reconciliation]
+    types: [completed]
 
 permissions: {}
 
@@ -13,7 +16,8 @@ concurrency:
 jobs:
   apply:
     if: >-
-      ${{ github.event.issue.pull_request == null && github.event.comment.body == '/apply' &&
+      ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request == null &&
+        github.event.comment.body == '/apply' &&
         contains(github.event.issue.body, '<!-- citypods:provider-catalog v=') &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'),
           github.event.comment.author_association) }}
@@ -23,11 +27,13 @@ jobs:
       contents: write
       pull-requests: write
       issues: write
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: main
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
@@ -70,3 +76,37 @@ jobs:
           jq -r '.comment' provider-catalog-command.json > provider-catalog-command.md
           gh issue comment "$ISSUE_NUMBER" --body-file provider-catalog-command.md
           exit "$code"
+  limits:
+    if: >-
+      ${{ github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'schedule' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+          cache: pip
+      - uses: ./.github/actions/setup-gh-cli
+      - run: pip install -e ".[dev,llm]" -c constraints/dev.txt
+      - name: Prepare proven rate tightening
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_PATH: ${{ github.event_path }}
+        run: |
+          gh auth setup-git
+          python scripts/provider_catalog_commands.py --event "$EVENT_PATH" \
+            --automatic-limits --out provider-catalog-limits.json
+          jq -r '.comment' provider-catalog-limits.json

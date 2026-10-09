@@ -12,12 +12,20 @@ import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import asdict, dataclass, field
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any, Protocol
 
 import requests
 
 from citypods.compute.llm_lanes import LaneConfig
+from citypods.llm_rate_probe import (
+    ProbeBudgetExceeded,
+    RateProbeRunner,
+    RouteBudgetExceeded,
+    load_route_catalog,
+    run_phase_0,
+    run_phase_1,
+)
 from citypods.provider_catalog.classify import Classification, classify
 from citypods.provider_catalog.decisions import Decisions
 from citypods.provider_catalog.evidence import (
@@ -160,10 +168,12 @@ class Report:
     observations: list[str] = field(default_factory=list)
     state: dict[str, Any] = field(default_factory=dict)
     floor: float | None = None
+    rate_observations: list[LimitObservation] = field(default_factory=list)
+    rate_changes: list = field(default_factory=list)
 
     @property
     def actionable(self) -> bool:
-        return bool(self.candidates or self.anomalies)
+        return bool(self.candidates or self.anomalies or self.rate_changes)
 
 
 def _route_model_keys(route: Mapping[str, Any]) -> set[str]:
@@ -325,6 +335,9 @@ def reconcile(
     canary_fn: CanaryFn = canary,
     sleep: Callable[[float], None] = time.sleep,
     structured_canary_fn: Callable[..., dict[str, dict[str, Any]]] = structured_canary,
+    rate_run_id: str = "",
+    rate_now: datetime | None = None,
+    early_rate_checks: set[str] | None = None,
 ) -> Report:
     report = Report(floor=quality.floor)
     rechecked_routes: set[str] = set()
@@ -435,6 +448,7 @@ def reconcile(
                         metric, value, today.isoformat(), provider, account_id, scope=scope
                     )
                     for metric, value, scope in rules.limit_observations(response)
+                    if value > 0
                 )
                 if response
                 else ()
@@ -488,12 +502,16 @@ def reconcile(
             if route_ids is not None and rid not in route_ids:
                 continue
             model = str(route.get("upstream_model") or "")
-            if route.get("rpd") == 0 or (route_ids is None and model in seen_models):
+            if route.get("rpd") == 0 or (
+                route_ids is None
+                and model in seen_models
+                and rid not in (early_rate_checks or set())
+            ):
                 continue
             seen_models.add(model)
             scarce = route.get("rpd") is not None and 0 < float(route["rpd"]) <= SCARCE_RPD
             rid = str(route["route_id"])
-            if due_only and rid not in deferred:
+            if due_only and rid not in deferred and rid not in (early_rate_checks or set()):
                 continue
             if scarce and not due_only and route_ids is None:
                 since = _days_since(route_checks.get(rid), today)
@@ -567,6 +585,23 @@ def reconcile(
         if not health and not candidates:
             continue
 
+        runner = (
+            RateProbeRunner(
+                apply=True,
+                max_requests_total=3,
+                max_requests_per_route=3,
+                max_wall_seconds=900,
+                session=session,
+            )
+            if rate_run_id
+            else None
+        )
+
+        def count_existing_request(rid, runner=runner):
+            if runner is not None:
+                runner.total_requests += 1
+                runner.route_request_counts[rid] = runner.route_request_counts.get(rid, 0) + 1
+
         with control.paused(provider) as pause:
             quota = {k: dict(v) for k, v in control.route_quota(provider).items()}
             if pause.contended:
@@ -575,6 +610,7 @@ def reconcile(
                     "may reflect production traffic"
                 )
             first_probe = True
+            cooldown = rules.canary_interval_seconds
 
             def verify(
                 model: str,
@@ -603,6 +639,7 @@ def reconcile(
                         control.reserve(rid)
                         if remaining is not None:
                             quota[rid] = {**quota[rid], "rpd_remaining": remaining - 1}
+                    count_existing_request(str(route["route_id"]) if route else model)
                     return True
 
                 evidence = structured_canary_fn(
@@ -651,9 +688,46 @@ def reconcile(
                     sleep(rules.canary_interval_seconds)
                 pause.renew()
                 first_probe = False
-                result = classify(canary_fn(rules, cfg, model, api_key, session), rules)
-                rechecked_routes.add(rid)
                 control.reserve(rid)
+                count_existing_request(rid)
+                response = canary_fn(rules, cfg, model, api_key, session)
+                result = classify(response, rules)
+                rechecked_routes.add(rid)
+                if rate_run_id and not pause.contended and result.verdict == "proven":
+                    # Duplicate physical model/account routes share capacity; assigning the
+                    # header to both would turn one account ceiling into independent budgets.
+                    siblings = [
+                        r
+                        for r in provider_routes
+                        if r.get("upstream_model") == model
+                        and r.get("account_id") == route.get("account_id")
+                    ]
+                    for metric, value, scope in rules.limit_observations(response):
+                        if value == 0:
+                            report.anomalies.append(
+                                Anomaly(
+                                    provider,
+                                    rid,
+                                    model,
+                                    "rate_limit_zero",
+                                    f"{metric}: observed zero; no scalar change",
+                                    False,
+                                )
+                            )
+                            continue
+                        if len(siblings) == 1 and scope == "route":
+                            report.rate_observations.append(
+                                LimitObservation(
+                                    metric,
+                                    value,
+                                    (rate_now or datetime.now(UTC)).isoformat(),
+                                    provider,
+                                    route["account_id"],
+                                    rid,
+                                    scope,
+                                    run_id=rate_run_id,
+                                )
+                            )
                 if (quota.get(rid) or {}).get("rpd_remaining") is not None:
                     quota[rid]["rpd_remaining"] -= 1
                 deferred.pop(rid, None)
@@ -719,6 +793,7 @@ def reconcile(
                     sleep(rules.canary_interval_seconds)
                 pause.renew()
                 first_probe = False
+                count_existing_request(model)
                 response = canary_fn(rules, cfg, model, api_key or "", session)
                 result = classify(response, rules)
                 method, _evidence = None, {}
@@ -750,11 +825,99 @@ def reconcile(
                         f"{provider}/{model}: free-marked but {result.verdict} ({result.reason})"
                     )
 
+            if runner is not None and not pause.contended:
+                eligible = {o.route_id for o in report.rate_observations if o.provider == provider}
+                # Unknown header scope cannot justify spending additional provider quota. Use
+                # only an already-successful physical route with an explicitly configured pace.
+                compiled = {r["route_id"]: r for r in load_route_catalog()}
+                for route in provider_routes:
+                    rid = route["route_id"]
+                    if rid not in eligible or rid not in compiled or not route.get("rpm"):
+                        continue
+                    pace = min(float(route["rpm"]), float(cfg.get("rpm") or route["rpm"]), 1.0)
+                    if pace <= 0:
+                        continue
+                    spacing = max(rules.canary_interval_seconds, 60 / pace)
+
+                    def before_sample(
+                        runner=runner,
+                        spacing=spacing,
+                        rid=rid,
+                        route=route,
+                        quota=quota,
+                        pause=pause,
+                    ):
+                        nonlocal first_probe, cooldown
+                        # Reserve room for control calls, a bounded request and the final
+                        # cooldown. Recheck after control I/O before any provider request.
+                        needed = (spacing if not first_probe else 0) + 55 + spacing
+                        if time.monotonic() - runner.start_time + needed >= 900:
+                            raise ProbeBudgetExceeded("maintenance time including cooldown spent")
+                        runner.check_budgets(rid)
+                        remaining = (quota.get(rid) or {}).get("rpd_remaining")
+                        if route.get("rpd") is not None and 0 < float(route["rpd"]) <= SCARCE_RPD:
+                            if remaining is None or remaining <= 0:
+                                raise ProbeBudgetExceeded("scarce daily quota unavailable")
+                        if not first_probe:
+                            sleep(spacing)
+                        pause.renew()
+                        control.reserve(rid)
+                        if remaining is not None:
+                            quota[rid]["rpd_remaining"] -= 1
+                        left = 900 - (time.monotonic() - runner.start_time) - spacing
+                        if left <= 0:
+                            raise ProbeBudgetExceeded("maintenance time spent during reservation")
+                        runner.request_timeout_seconds = min(15, left)
+                        cooldown = max(cooldown, spacing)
+                        first_probe = False
+
+                    def capture_sample(
+                        sample, rules=rules, provider=provider, route=route, rid=rid
+                    ):
+                        response = Response(
+                            status=sample.get("status"), headers=sample.get("headers") or {}
+                        )
+                        for metric, value, scope in rules.limit_observations(response):
+                            if value == 0:
+                                report.observations.append(f"{rid}/{metric}: observed zero")
+                            elif scope == "route":
+                                report.rate_observations.append(
+                                    LimitObservation(
+                                        metric,
+                                        value,
+                                        (rate_now or datetime.now(UTC)).isoformat(),
+                                        provider,
+                                        route["account_id"],
+                                        rid,
+                                        scope,
+                                        run_id=rate_run_id,
+                                    )
+                                )
+
+                    runner.before_request = before_sample
+                    try:
+                        runner.check_budgets(rid)
+                        sample = run_phase_0(runner, compiled[rid])
+                        capture_sample(sample)
+                        if sample.get("status") == 200:
+                            run_phase_1(
+                                runner, compiled[rid], max_samples=1, on_response=capture_sample
+                            )
+                    except (ProbeBudgetExceeded, RouteBudgetExceeded):
+                        report.observations.append(f"{provider}: optional rate sampling deferred")
+                    # One provider-wide allowance, not three requests for each route.
+                    break
+
             # Unconfigured candidates have no route ledger entry. Keep the account paused until
             # its final probe's window has cleared, so resumed dispatch does not hit that window.
-            if not first_probe and rules.canary_interval_seconds:
-                sleep(rules.canary_interval_seconds)
+            if not first_probe and cooldown:
+                sleep(cooldown)
                 pause.renew()
+
+        if pause.contended:
+            report.rate_observations[:] = [
+                o for o in report.rate_observations if o.provider != provider
+            ]
 
     # Forget canary memory that has aged out so the state marker stays bounded.
     canary_memory = {
@@ -793,6 +956,9 @@ def _merge_into_last_full(
     Anomalies for routes this run re-checked are replaced by this run's result; candidates and
     observations from the last full run are kept, so the issue never loses them.
     """
+    from citypods.provider_catalog.limits import RateChange
+
+    report.rate_changes = [RateChange(**v) for v in last_full.get("rate_changes") or []]
     rechecked = {a.route_id for a in report.anomalies} | rechecked_routes
     carried = [
         Anomaly(

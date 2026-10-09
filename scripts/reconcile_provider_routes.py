@@ -18,10 +18,15 @@ they still run but are reported as possibly contended by production traffic.
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import subprocess
 import sys
+import zipfile
+import zlib
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -41,11 +46,21 @@ from citypods.compute.llm_dispatch_pause import (  # noqa: E402
 )
 from citypods.compute.llm_lanes import load_lanes  # noqa: E402
 from citypods.provider_catalog.decisions import load_decisions  # noqa: E402
+from citypods.provider_catalog.evidence import (  # noqa: E402
+    discover_rate_references,
+    rate_artifact,
+    verified_rate_history,
+)
 from citypods.provider_catalog.issue import (  # noqa: E402
     decode_state,
     find_issue,
     render_body,
     sync_issue,
+)
+from citypods.provider_catalog.limits import (  # noqa: E402
+    configured_limit_changes,
+    early_rate_routes,
+    merge_observations,
 )
 from citypods.provider_catalog.quality import fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
@@ -130,6 +145,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sync-issues", action="store_true")
     parser.add_argument("--due-only", action="store_true")
     parser.add_argument("--no-pause", action="store_true")
+    parser.add_argument("--rate-evidence", type=Path)
     parser.add_argument("--evidence-report", action="store_true")
     parser.add_argument(
         "--backtest",
@@ -175,7 +191,23 @@ def main(argv: list[str] | None = None) -> int:
     today = datetime.now(UTC).date()
     existing = find_issue() if args.sync_issues else None
     previous_state = decode_state((existing or {}).get("body") or "")
-    if args.due_only and not previous_state.get("deferred"):
+    rate_run_id = ""
+    early = set()
+    if args.rate_evidence:
+        if os.environ.get("GITHUB_EVENT_NAME") != "schedule":
+            parser.error("rate artifacts require a scheduled workflow run")
+        rate_run_id = os.environ["GITHUB_RUN_ID"]
+        if isinstance(control, WorkerDispatchControl) and args.due_only:
+            try:
+                stats = control.client._request(
+                    "GET", "v2/stats?detail=1&limit=100&failure_class=own_rpm,own_tpm,unknown_429"
+                )
+                early = early_rate_routes(
+                    stats.get("route_failures") or [], limits, previous_state, today=today
+                )
+            except DispatchPauseError:
+                print("early rate checks deferred: Worker telemetry unavailable")
+    if args.due_only and not previous_state.get("deferred") and not early:
         # The daily run: nothing is waiting on a quota reset, so no network calls at all.
         print("due-only: no deferred checks; nothing to do")
         return 0
@@ -192,7 +224,62 @@ def main(argv: list[str] | None = None) -> int:
         today=today,
         providers=set(args.provider) or None,
         due_only=args.due_only,
+        rate_run_id=rate_run_id,
+        early_rate_checks=early,
     )
+    if args.rate_evidence:
+        now = datetime.now(UTC)
+        repository = os.environ["GITHUB_REPOSITORY"]
+        envelope = rate_artifact(
+            report.rate_observations,
+            limits,
+            repository=repository,
+            run_id=rate_run_id,
+            head_sha=os.environ["GITHUB_SHA"],
+            now=now,
+        )
+        args.rate_evidence.write_text(json.dumps(envelope, indent=2) + "\n")
+        try:
+            references = discover_rate_references(repository=repository, now=now)
+            history, accepted, deferred = verified_rate_history(
+                references,
+                limits,
+                repository=repository,
+                now=now,
+            )
+            # Current observations may offer advisory choices; only a completed successful
+            # artifact can authorize the subsequent trusted writer.
+            current = {
+                "run_id": rate_run_id,
+                "payload_digest": envelope["payload_digest"],
+                "observed_at": now.isoformat(),
+            }
+            accepted = (*accepted, current)
+            recent = tuple(
+                r["run_id"] for r in sorted(accepted, key=lambda r: r["observed_at"], reverse=True)
+            )
+            merged = merge_observations(history, report.rate_observations, now=now)
+            changes, mismatch = configured_limit_changes(
+                merged, limits, now=now, recent_runs=recent
+            )
+            report.rate_changes = list(changes)
+            report.observations.extend((*deferred, *mismatch))
+            report.state["rate_evidence_refs"] = list(accepted)
+            report.state["rate_observations"] = [asdict(o) for o in merged]
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            RuntimeError,
+            subprocess.CalledProcessError,
+            zipfile.BadZipFile,
+            zlib.error,
+        ):
+            report.observations.append("rate history unavailable; offers deferred")
+        report.state["last_full"]["rate_changes"] = [asdict(c) for c in report.rate_changes]
+        report.state["rate_changes"] = [asdict(c) for c in report.rate_changes]
     if not args.due_only and not args.provider:
         # Self-check (catalog reads only): would discovery re-find what is already configured?
         # A drop here means a plugin gate drifted from how routes are actually chosen.
