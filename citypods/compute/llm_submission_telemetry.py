@@ -338,6 +338,16 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
                     continue
                 shown.add(key)
                 lines.append(f"| `{fingerprint}` | {operation} | {result} |")
+    else:
+        lines.extend(
+            [
+                "",
+                "### Structural recovery evidence",
+                "",
+                "No recovery observations were recorded. "
+                "Missing observations do not establish canary success.",
+            ]
+        )
 
     if snapshots:
         lines.extend(["", "### Worker snapshots", ""])

@@ -134,6 +134,15 @@ def test_old_worker_has_unknown_recovery_evidence():
     }
 
 
+def test_empty_recovery_summary_explicitly_reports_missing_evidence():
+    for events in ([], [{"event": "llm_submission_worker_snapshot", "summary": {}}]):
+        markdown = render_markdown(events)
+        assert "### Structural recovery evidence" in markdown
+        assert "No recovery observations were recorded" in markdown
+        assert "Missing observations do not establish canary success" in markdown
+        assert "Persisted audits:" not in markdown
+
+
 def test_recovery_summary_reports_count_changes_and_bounds_recipe_sample():
     events = [
         {

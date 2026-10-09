@@ -735,6 +735,7 @@ Approved file/function plan for this narrow prerequisite:
   events use the existing opt-in JSONL artifact; no prompts, results, original recipe labels,
   payload keys, recovery input identities, credentials or new durable audit objects are emitted.
   Disabled or unavailable telemetry never changes recovery, and missing evidence is not success.
+  The summary explicitly reports no recovery observations even when the event list is empty.
 - Extend `tests/test_compute_llm_deferred.py`, `tests/test_llm_submission_telemetry.py` and Worker
   `test/row-accounting.test.js`. Verify audit-write failure emits no persisted-success event;
   telemetry I/O failure leaves recovery/admission intact; typed reasons and correlation match;
@@ -752,8 +753,13 @@ An idle producer with no repeated admission check is unproven, not evidence that
 Legacy sentinel/no-route coverage also remains required; report absent live coverage as a gap,
 rather than creating synthetic production jobs, widening storage scans or relaxing the gate.
 
-Offline acceptance: 5,321 Python tests pass (16 deselected), including 54 focused deferred/telemetry
+Offline acceptance: 5,322 Python tests pass (16 deselected), including 55 focused deferred/telemetry
 tests; all 402 Worker tests, whole-repository Ruff lint/format and diff checks pass.
+
+CodeRabbit completed its full review of b12bddf3 with one reporting finding: empty recovery event
+lists must explicitly flag missing evidence. The fix covers both empty and snapshot-only streams.
+The advisory docstring-coverage threshold is not a repository requirement; no boilerplate test
+docstrings are added. All current-head checks are required before maintainer merge.
 
 This PR gathers evidence only; `RETIREMENTS_ENABLED` stays false. No synthetic jobs, provider probes,
 manual deployment, production config changes, episode invalidation or pipeline-version bump.
