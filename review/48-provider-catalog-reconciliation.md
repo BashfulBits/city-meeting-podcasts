@@ -639,7 +639,8 @@ structurally failed deferred work; already-completed recipes remain reusable.
 ### 8.6 Slice 3b: removals and lane repair
 
 Implementation issue: [#2192](https://github.com/BashfulBits/city-meeting-podcasts/issues/2192).
-The implementation is in PR #2193. Live publication remains disabled.
+The implementation is in [PR #2193](https://github.com/BashfulBits/city-meeting-podcasts/pull/2193),
+awaiting review/merge. Live publication remains disabled.
 Retirement requires current-day complete catalog evidence and an unchanged route digest for
 each configured physical account serving the upstream. Old issue markers alone cannot authorize
 a removal. Both compilers and the lane↔route guard must pass before a managed proposal is pushed.
@@ -654,7 +655,8 @@ stored policies. New lane primary identities affect new jobs; completed artifact
 Finish and merge the code with removal publication disabled. Then verify a bounded recovery canary
 against deployed Worker/Python consumers and enable the writer in a separate reviewed activation
 change. `retire.py::RETIREMENTS_ENABLED` remains false; dormant preparation/publication helpers
-fail before live probes or publication while false, and no workflow calls them. The later activation
+`scripts/provider_catalog_commands.py::prepare_retirements()` and `publish()` fail before
+live probes or publication while false, and no workflow calls the retirement preparer. The later activation
 change must record canary evidence and wire the existing reconcile/writer workflow paths under the
 shared writer lock. This PR does not dispatch a canary or change deployment settings.
 
@@ -670,6 +672,11 @@ lane backups only when no policy-eligible route remains; promote the first survi
 removed primary and label `needs:human-verification`. If any lane would become empty, reject that
 route removal and escalate with pool alternatives; do not manufacture a replacement. Run the
 lane↔route guard and both compilers before push. Paid transitions remain explicit 2b decisions.
+
+Offline acceptance: 5,314 Python tests pass (16 live tests deselected), including 261 targeted
+retirement/apply/editor/reconcile/workflow tests. Whole-repository Ruff and both compilers pass
+without generated drift. The BeatAPI regression removes one physical route while retaining its
+shared DeepSeek logical pool and all lane↔route guards. No Worker code changes or live calls.
 
 Primary changes affect newly generated recipe identities after maintainer merge; they do not rewrite
 stored inputs or invalidate completed artifacts. Old terminal handles follow 3a's fenced recovery.
