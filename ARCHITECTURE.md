@@ -1107,6 +1107,16 @@ prefix is `…/google-ai-studio/v1beta`:
 | `mistral` | `…/mistral/v1` | `…/mistral/v1/chat/completions` |
 | `deepseek`, `zai`, … | `…/deepseek` | `…/deepseek/chat/completions` |
 
+**API shapes and yielding routes (review/53 PR1).** A route speaks `api_shape: chat` (default) or
+`systemone` (BeatAPI's JEV judge endpoint: `{model, state, questions}` in, `{answers, usage}` out);
+`workers/llm-dispatch-v2/src/api_shapes.js` holds each shape's request builder and reply checks,
+keyed by shape, never by provider. `request_path` replaces the provider's chat path for one route
+(JEV posts to `/systemone` under the same `custom-beatapi` base). A non-chat route has no `direct`
+transport in the Python catalog. JEV's misleading `503 processing_failed` near the route's
+`hard_input_ceiling` fails the job (`systemone-oversize-503`) instead of retrying it. `yields_to`
+makes a route step aside while a named route's model has queued work; it is an ordering rule in the
+claim, like `tier: backup`, never part of the structural fit, so a held job stays queued.
+
 Dropping the prefix is a silent 404 on Gemini and Mistral — the providers whose endpoints do not
 live at the provider root — which is why the routing tests assert the full request URL rather than
 `api_base` alone. Worker dispatch payloads (`direct=False`) retain Gemini's OpenAI-compatible

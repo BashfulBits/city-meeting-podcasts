@@ -3,6 +3,7 @@ import {
   parseRetryAfterSeconds,
   upstreamCapacityFailure,
 } from "./gateway.js";
+import { routeInputTokenRatio, scaledInputTokens } from "./calibration.js";
 
 /**
  * Ordered rule table for HTTP 429 responses. First match wins.
@@ -354,7 +355,16 @@ function isProviderCapacityMessage(body, msg) {
  * @returns {{failure_class:string, rule_id:string, retry_after_seconds:number|null,
  *            scope:"route"|"provider"|"account"}}
  */
-export function classifyProviderFailure({ status, body, headers, route }) {
+// Share of a systemone route's hard_input_ceiling at or above which its processing_failed 503 is
+// read as an oversize request (review/53 PR1).
+export const SYSTEMONE_OVERSIZE_FRACTION = 0.85;
+
+function isSystemoneProcessingFailed(body) {
+  const code = body?.code ?? body?.error?.code;
+  return code === "processing_failed";
+}
+
+export function classifyProviderFailure({ status, body, headers, route, inputTokens = null }) {
   // Gemini's OpenAI-compatible endpoint wraps its error body in a JSON ARRAY -- `[{"error": {...}}]`
   // -- not a bare object. Every check below (`body.error`, upstreamCapacityFailure, the
   // FAILURE_SIGNATURES message extraction) assumes a bare object; against the unwrapped array,
@@ -383,6 +393,24 @@ export function classifyProviderFailure({ status, body, headers, route }) {
   // 2. Use actionable provider details before the generic 5xx fallback. These classes let the
   // coordinator try another route without adding a provider call or a durable diagnostic row.
   if (status >= 500 && status <= 599) {
+    // JEV (api_shape systemone) answers an oversized request with a misleading
+    // `503 {"code":"processing_failed","retryable":true}` (measured 2026-09-30, review/49 section 7).
+    // Near the route's ceiling that is this job's size, which no retry can fix: fail the job so the
+    // producer re-packs it smaller. Well below the ceiling it is ordinary upstream capacity.
+    if (route?.api_shape === "systemone" && isSystemoneProcessingFailed(body)) {
+      const ceiling = Number(route.hard_input_ceiling);
+      const scaled =
+        Number.isFinite(Number(inputTokens)) && Number(inputTokens) > 0
+          ? scaledInputTokens(Number(inputTokens), routeInputTokenRatio(route))
+          : 0;
+      const oversize = Number.isFinite(ceiling) && ceiling > 0 && scaled >= SYSTEMONE_OVERSIZE_FRACTION * ceiling;
+      return {
+        failure_class: oversize ? "request_defect" : "upstream_capacity",
+        rule_id: oversize ? "systemone-oversize-503" : "systemone-processing-503",
+        retry_after_seconds: retryAfterSeconds,
+        scope: "route",
+      };
+    }
     const msg = providerFailureMessage(body);
     if (isInputLimitMessage(msg)) {
       return {

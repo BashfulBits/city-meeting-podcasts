@@ -1043,3 +1043,50 @@ def test_route_tier_rejects_unknown_values():
         )
         with pytest.raises(ValueError, match="unknown tier"):
             compile_llm_limits.compile_limits()
+
+
+def _compile_raw(routes):
+    raw = {
+        "structured_output_methods": STRUCTURED_OUTPUT_METHODS,
+        "providers": {"example": {}},
+        "routes": routes,
+    }
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            compile_llm_limits, "yaml", type("Yaml", (), {"safe_load": lambda *_: raw})
+        )
+        return compile_llm_limits.compile_limits()
+
+
+@pytest.mark.parametrize(
+    ("route_extra", "match"),
+    [
+        ({"api_shape": "fax"}, "unknown api_shape"),
+        ({"request_path": "systemone"}, "request_path must be a string starting with '/'"),
+        ({"yields_to": "jev"}, "yields_to must be a list of route ids"),
+        ({"yields_to": ["a"]}, "cannot yield to itself"),
+        ({"yields_to": ["missing"]}, "yields_to unknown route"),
+    ],
+)
+def test_api_shape_request_path_and_yields_to_are_validated(route_extra, match):
+    with pytest.raises(ValueError, match=match):
+        _compile_raw([_route("a", "example/a", **route_extra)])
+
+
+def test_a_systemone_route_is_worker_only_and_carries_its_shape():
+    compiled = _compile_raw(
+        [
+            _route("jev", "example/jev", api_shape="systemone", request_path="/systemone"),
+            _route("chat", "example/chat", yields_to=["jev"]),
+        ]
+    )
+    worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
+    assert worker["jev"]["api_shape"] == "systemone"
+    assert worker["jev"]["request_path"] == "/systemone"
+    assert worker["chat"]["yields_to"] == ["jev"]
+    python_routes = {
+        route["route_id"]: route for route in compile_llm_limits._python_routes(compiled)["routes"]
+    }
+    # A direct LiteLLM call would send a chat completion, so only the Worker may reach it.
+    assert python_routes["jev"]["transports"] == []
+    assert python_routes["chat"]["transports"] == ["direct"]

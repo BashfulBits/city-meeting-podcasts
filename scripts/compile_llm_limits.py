@@ -367,7 +367,9 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
         route = dict(source)
         route.update(
             {
-                "transports": ["direct"],
+                # Only the Worker speaks non-chat API shapes (review/53 PR1): never offer such a
+                # route to a direct LiteLLM call, which would send it a chat completion.
+                "transports": ["direct"] if source.get("api_shape", "chat") == "chat" else [],
                 "direct_model": _direct_model(
                     str(source.get("provider", "")), str(source.get("upstream_model", ""))
                 ),
@@ -402,6 +404,8 @@ def _python_routes(compiled: dict[str, Any]) -> dict[str, Any]:
         "routes": routes,
     }
 
+
+API_SHAPES = ("chat", "systemone")
 
 _WORKER_ROUTE_FIELDS = (
     "route_id",
@@ -440,6 +444,13 @@ _WORKER_ROUTE_FIELDS = (
     # ordering); absent means primary. Lets a scarce account (BeatAPI's single-flight free window,
     # review/49 section 4c) serve as spill capacity without leaving the unified model pools.
     "tier",
+    # How the route's provider API is spoken (review/53 PR1): "chat" (absent) or "systemone"
+    # (BeatAPI's JEV judge endpoint). `request_path` replaces the provider's chat path for this
+    # route; `yields_to` names routes that take precedence over this one while they have queued
+    # work (an ordering rule in coordinator.js, never a structural one).
+    "api_shape",
+    "request_path",
+    "yields_to",
     # Read by the Worker's upstreamRequestForRoute (gateway.js) to shape a schema-only structured
     # job for this route (review/48 R10). Each entry lands under its own field name in the
     # compiled catalog, so order here does not matter.
@@ -1144,6 +1155,27 @@ def compile_limits(*, discover: list[str] | None = None) -> dict[str, Any]:
             raise ValueError(
                 f"route {route.get('route_id', route.get('model'))!r} has unknown tier: {tier!r}"
             )
+
+        route_name = route.get("route_id", route.get("model"))
+        api_shape = route.get("api_shape")
+        if api_shape is not None and api_shape not in API_SHAPES:
+            raise ValueError(f"route {route_name!r} has unknown api_shape: {api_shape!r}")
+        request_path = route.get("request_path")
+        if request_path is not None and (
+            not isinstance(request_path, str) or not request_path.startswith("/")
+        ):
+            raise ValueError(
+                f"route {route_name!r} request_path must be a string starting with '/'"
+            )
+        yields_to = route.get("yields_to")
+        if yields_to is not None:
+            if not isinstance(yields_to, list) or not all(isinstance(r, str) for r in yields_to):
+                raise ValueError(f"route {route_name!r} yields_to must be a list of route ids")
+            if route_name in yields_to:
+                raise ValueError(f"route {route_name!r} cannot yield to itself")
+            unknown = [target for target in yields_to if target not in routes_by_id]
+            if unknown:
+                raise ValueError(f"route {route_name!r} yields_to unknown route(s): {unknown}")
 
         obs_on = route.get("observed_on")
         if obs_on is not None:

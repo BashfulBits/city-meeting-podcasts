@@ -26,6 +26,14 @@ Once 1.0 ships, entries move under semver tags.
   changes, deployment, pipeline-version bump or completed-artifact backfill. Input/output canaries,
   recurring activation and removal recovery acceptance remain separate gates.
 
+- **LLM dispatch: `systemone` API shape, `request_path` and `yields_to` (review/53 PR1).** Routes
+  may declare `api_shape: systemone` (BeatAPI's JEV judge endpoint) with a per-route
+  `request_path`; a new `api_shapes.js` builds requests and checks replies per shape, and the chat
+  shape is the existing code unchanged. JEV's oversize `503 processing_failed` (at least 85% of the
+  route ceiling) now fails the job instead of retrying it. `yields_to` lets a route step aside while
+  a named route has queued work, without ever failing the held job as unroutable. Non-chat routes
+  are Worker-only in the Python catalog. No route uses these yet; PR2 adds the JEV route.
+
 - **Provider catalog Slice 5 quota-admission prerequisite (#2209; PR #2214).** The existing authenticated
   reservation API supports bounded weekly context sessions and single-use token/request admission;
   opt-in pause status exposes advisory allowance and verified quota scope. Admission atomically
