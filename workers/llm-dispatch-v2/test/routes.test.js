@@ -165,7 +165,7 @@ test("modelForRouteId caches per dispatchLimits object identity, not globally", 
   assert.equal(modelForRouteId("route-1", catalogB), "model-b");
 });
 
-test("Gemma routes enforce hard_input_ceiling; paused legs are never eligible", () => {
+test("Gemma routes enforce hard_input_ceiling while reopened legs remain eligible", () => {
   const jobUnderCeiling = {
     policy_json: JSON.stringify({
       allowed_models: ["google/gemma-4-31b-it"],
@@ -177,13 +177,12 @@ test("Gemma routes enforce hard_input_ceiling; paused legs are never eligible", 
   const underIds = routesEligibleFor(jobUnderCeiling, DISPATCH_LIMITS).map((r) => r.route_id);
   assert.ok(underIds.includes("gemma_4_31b_primary"));
   assert.ok(underIds.includes("gemma_4_31b_secondary"));
-  // Paused 2026-09-23 (rpd: 0) so Nemotron keeps NVIDIA's shared concurrency and OpenRouter's
-  // 429-only free leg stops spending attempts.
-  assert.ok(!underIds.includes("nvidia_gemma_4_31b_it_free"));
-  assert.ok(!underIds.includes("openrouter_google_gemma_4_31b_it_free"));
+  // Maintainer reopened these legs at 20 RPD for ordinary dispatch and health monitoring.
+  assert.ok(underIds.includes("nvidia_gemma_4_31b_it_free"));
+  assert.ok(underIds.includes("openrouter_google_gemma_4_31b_it_free"));
 
-  // Above 10000 tokens (Google Gemma ceiling), the Google routes are disqualified; only the
-  // small SambaNova leg remains, which is why Gemma producers size jobs under the ceiling.
+  // The larger job exceeds the Google routes' conservative admission ceiling; the independent
+  // SambaNova and reopened legs remain eligible under their own unchanged token bounds.
   const jobOverCeiling = {
     policy_json: JSON.stringify({
       allowed_models: ["google/gemma-4-31b-it"],
@@ -195,7 +194,21 @@ test("Gemma routes enforce hard_input_ceiling; paused legs are never eligible", 
   const overIds = routesEligibleFor(jobOverCeiling, DISPATCH_LIMITS).map((r) => r.route_id);
   assert.ok(!overIds.includes("gemma_4_31b_primary"));
   assert.ok(!overIds.includes("gemma_4_31b_secondary"));
-  assert.deepEqual(overIds, ["sambanova_gemma_4_31b_it_primary"]);
+  assert.deepEqual(new Set(overIds), new Set([
+    "sambanova_gemma_4_31b_it_primary", "nvidia_gemma_4_31b_it_free",
+    "openrouter_google_gemma_4_31b_it_free",
+  ]));
+});
+
+test("all three reopened Gemma legs have 20 RPD and admit a small free-policy job", () => {
+  for (const id of ["openrouter_google_gemma_4_31b_it_free",
+    "openrouter_google_gemma_4_26b_a4b_it_free", "nvidia_gemma_4_31b_it_free"]) {
+    assert.equal(DISPATCH_LIMITS.routes_by_id[id].rpd, 20);
+    const job = { policy_json: JSON.stringify({
+      allowed_models: [modelForRouteId(id, DISPATCH_LIMITS)], allow_paid: false,
+    }), input_token_estimate: 8000, max_output_token_estimate: 1000 };
+    assert.ok(routesEligibleFor(job, DISPATCH_LIMITS).some(route => route.route_id === id));
+  }
 });
 
 test("OrcaRouter free route is eligible for deepseek-v4-flash without paid permission", () => {

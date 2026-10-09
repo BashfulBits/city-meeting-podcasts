@@ -12,6 +12,13 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Reopen three Gemma routes at 20 RPD (maintainer decision, 2026-10-09).** OpenRouter's free
+  Gemma 4 31B and 26B routes and NVIDIA's Gemma 4 31B route resume ordinary dispatch eligibility
+  for limited health observation and eventual context calibration. The earlier 429 and shared
+  concurrency concerns remain monitoring targets; recovery is not yet proven. The existing
+  scarce-quota health cadence and quota guards apply. No lane, token-bound or concurrency change,
+  live probes, manual deployment, pipeline-version bump or completed-artifact backfill.
+
 - **Provider catalog Slice 4: bounded rate maintenance (#2200; PR #2201).** Authenticated successful
   scheduled artifacts retain scoped positive evidence for 90 days, with six independent runs
   per metric. Only attempted scopes affect consecutive-run evidence; unrelated and manual scans
