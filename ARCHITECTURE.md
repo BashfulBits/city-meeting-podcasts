@@ -563,6 +563,13 @@ Model budgets, job recipes, Worker schemas and canonical episode state remain un
   ledger are ephemeral/derivable and are not part of the B2-backed catalog records or the Python
   `RoutingStorage` control-plane prefixes.
 
+As of the maintainer's 2026-10-09 reopening decision, OpenRouter's Gemma 4 31B/26B free routes
+and NVIDIA's Gemma 4 31B route each have a 20-RPD allowance. They are eligible for ordinary dispatch
+and scarce-quota health observation; NVIDIA calls still share the provider's concurrency of three.
+This is a limited reopening for fresh monitoring, not evidence that the historical failures or
+concurrency pressure have cleared. Routine scarce-route checks normally run 28 days apart; the
+bounded daily early-failure path can check sooner. Slice 5 context calibration remains separately gated.
+
 ### LLM Model Catalog & Decision Matrix
 
 **Which lane uses which model is declared in one place:** `config/site_config.yml`'s `llm_lanes`
@@ -1549,3 +1556,7 @@ Search record reuse also persists after source completion and unchanged whole-so
 The private `partials` map retains per-UID input hashes/documents for completed sources; subsequent
 source edits reuse unchanged meetings, remove stale entries and convert only changed/new records.
 Existing view/archive-policy invalidation and complete-index publication rules still apply.
+
+Search-page engine/manifest URLs use origin-relative paths, including configured base paths.
+On HTTPS pages, the client upgrades existing same-host HTTP shard URLs to HTTPS; old published
+manifests remain usable without index regeneration. Other-host URLs are unchanged.

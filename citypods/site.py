@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import html
 import json
+from urllib.parse import urlsplit
 
 from citypods.chapters import episode_public_chapters
 from citypods.durations import episode_served_duration_seconds
@@ -96,8 +97,8 @@ def render_search_page(site_config: dict, base_url: str) -> str:
     return template.render(
         config=site_config,
         site=base_url.rstrip("/"),
-        manifest_url=f"{base_url.rstrip('/')}/data/search/manifest.json",
-        minisearch_url=f"{base_url.rstrip('/')}/assets/minisearch-7.1.2.js",
+        manifest_url=f"{urlsplit(base_url).path.rstrip('/')}/data/search/manifest.json",
+        minisearch_url=f"{urlsplit(base_url).path.rstrip('/')}/assets/minisearch-7.1.2.js",
     )
 
 

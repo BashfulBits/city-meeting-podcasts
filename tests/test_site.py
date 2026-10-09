@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
+
+import pytest
 
 from citypods.models import City
 from citypods.site import render_city_request_page, render_index, render_search_page
@@ -64,8 +68,8 @@ def test_index_has_noscript_fallback_listing_all_feeds():
 
 def test_search_page_points_at_static_manifest_and_vendored_engine():
     html = render_search_page({"site_title": "T", "site_description": "D"}, "https://e.test")
-    assert "https://e.test/data/search/manifest.json" in html
-    assert "https://e.test/assets/minisearch-7.1.2.js" in html
+    assert 'const manifestUrl = "/data/search/manifest.json";' in html
+    assert 'src="/assets/minisearch-7.1.2.js"' in html
     assert "Search meetings" in html
     assert 'id="tag"' in html
     assert 'id="coverage"' in html
@@ -389,3 +393,35 @@ def test_city_archive_lists_retained_unavailable_meetings(sample_city):
     html = render_city_archive_page(sample_city, "https://e.test", [ep])
     assert 'href="https://e.test/denton-tx/missing-1/"' in html
     assert "Confirmed Empty" in html
+
+
+def test_search_http_base_uses_same_origin_assets_and_preserves_subpath():
+    html = render_search_page({"site_title": "T"}, "http://e.test/project/")
+    assert 'const manifestUrl = "/project/data/search/manifest.json";' in html
+    assert 'src="/project/assets/minisearch-7.1.2.js"' in html
+    assert "fetch(searchAssetUrl(shard.shard_url))" in html
+
+
+def test_search_legacy_shard_url_upgrade_in_javascript():
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node unavailable for JavaScript URL regression")
+    html = render_search_page({"site_title": "T"}, "http://e.test")
+    helper = html.split("function searchAssetUrl(value) {", 1)[1].split(
+        "async function loadShard", 1
+    )[0]
+    script = "function searchAssetUrl(value) {" + helper
+    script += """
+    const window = {location: new URL('https://e.test/search/')};
+    const secure = [searchAssetUrl('http://e.test/data/search/old.json'),
+      searchAssetUrl('http://other.test/data/search/other.json')];
+    window.location = new URL('http://localhost:8000/search/');
+    console.log(JSON.stringify([...secure,
+      searchAssetUrl('http://localhost:8000/data/search/dev.json')]));
+    """
+    result = subprocess.run([node, "-e", script], check=True, capture_output=True, text=True)
+    assert json.loads(result.stdout) == [
+        "https://e.test/data/search/old.json",
+        "http://other.test/data/search/other.json",
+        "http://localhost:8000/data/search/dev.json",
+    ]

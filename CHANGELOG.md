@@ -12,6 +12,17 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Keep paused-route sizing coverage independent of production config.** The prelabeler regression
+  uses explicit paused/live fixtures after Gemma's approved reopening, and verifies both rejection
+  of a paused route and no sizing route when every leg is paused. Runtime policy is unchanged.
+
+- **Reopen three Gemma routes at 20 RPD (maintainer decision, 2026-10-09).** OpenRouter's free
+  Gemma 4 31B and 26B routes and NVIDIA's Gemma 4 31B route resume ordinary dispatch eligibility
+  for limited health observation and eventual context calibration. The earlier 429 and shared
+  concurrency concerns remain monitoring targets; recovery is not yet proven. The existing
+  scarce-quota health cadence and quota guards apply. No lane, token-bound or concurrency change,
+  live probes, manual deployment, pipeline-version bump or completed-artifact backfill.
+
 - **Provider catalog Slice 4: bounded rate maintenance (#2200; PR #2201).** Authenticated successful
   scheduled artifacts retain scoped positive evidence for 90 days, with six independent runs
   per metric. Only attempted scopes affect consecutive-run evidence; unrelated and manual scans
@@ -7664,3 +7675,9 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
   Changed sources reuse unchanged meetings instead of rereading every hosted sidecar.
   Existing caches remain compatible; completed sources without record entries rebuild once.
   Public search schema, audio/stage versions, schedule and two-hour budget are unchanged.
+
+### Search HTTPS asset loading (2026-10-09)
+
+- Search loads its manifest and vendored engine from the page origin, preserving base paths.
+  Existing same-host HTTP shard URLs are upgraded on HTTPS pages, avoiding mixed-content
+  blocking without rebuilding the index. Search schema, cache, budgets and audio are unchanged.

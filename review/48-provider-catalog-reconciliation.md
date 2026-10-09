@@ -1,6 +1,6 @@
 # review/48 — Provider catalog reconciliation
 
-**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a shipped (#2182) · shadow shutdown shipped (#2188) · Slice 2b paid decisions shipped (#2189) · Slice 3a shipped (#2191) · Slice 3b code shipped (#2193); removal activation retains gates**
+**Maturity: Slice 1 and PR C shipped · R10 verification shipped (#2169) · Slice 2a shipped (#2182) · shadow shutdown shipped (#2188) · Slice 2b paid decisions shipped (#2189) · Slice 3a shipped (#2191) · Slice 3b code shipped (#2193); Slice 4 shipped (#2201); removal activation retains gates**
 
 Owner: LLM dispatch maintainers. Code: `citypods/provider_catalog/`,
 `scripts/reconcile_provider_routes.py`, `.github/workflows/provider-catalog-reconcile.yml`,
@@ -963,6 +963,22 @@ JEV stays outside chat addition.
 There are no runtime config changes, live probes, pipeline/recipe bumps or episode artifact backfill
 in this implementation. Paid/shadow, retirement, recovery and limit changes remain later slices.
 
+### Maintainer-directed route reopening — 2026-10-09
+
+The maintainer explicitly approved setting `rpd: 20` on these three previously paused free routes:
+`openrouter_google_gemma_4_31b_it_free`, `openrouter_google_gemma_4_26b_a4b_it_free`, and
+`nvidia_gemma_4_31b_it_free`, so ordinary health monitoring and eventual Slice 5 calibration can
+include them. This deliberately supersedes the OpenRouter config's prior requirement for a live
+recovery probe before reopening. The trade-off is a bounded opportunity to collect fresh evidence
+versus renewed upstream 429s and NVIDIA shared-concurrency pressure; recovery is not yet proven.
+
+Twenty RPD is each route's ordinary dispatch allowance, not a probe-only reservation. RPM, TPM,
+concurrency, lane order, free/paid policy and token bounds stay as configured. Existing scarce-quota
+checks require known remaining quota and normally revisit healthy routes every 28 days; the daily
+bounded early-failure trigger can schedule a check sooner. Reopening does not change that cadence,
+activate Slice 5 probes or bypass pause/quota guards. This config PR performs no live calls or manual
+deployment. No pipeline-version bump or completed-episode backfill is needed.
+
 ### 8.10 Slice 5: adaptive context calibration — accepted direction, L2
 
 **Maintainer decision, 2026-10-08:** accept separately reviewed conservative output caps when
@@ -1113,7 +1129,7 @@ refinement and 10% revalidation; estimate correction outside brackets; transient
 bounds; expired/spoofed provenance; route/gateway changes; resume across scans; quota/pause/time/token
 ceilings; and explicit reviewed config proposals with production caps unchanged until merge.
 
-### Slice 4 implementation checkpoint — implemented in PR #2201 (#2200; merge pending)
+### Slice 4 implementation checkpoint — implemented in PR #2201 (#2200; merged 2026-10-09)
 
 The implementation supplies pure six-run/90-day history and strict rational thresholds, independently
 enumerated authenticated artifacts, exact scalar edits, reviewed increase selections and a successful
