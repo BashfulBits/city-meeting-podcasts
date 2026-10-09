@@ -1617,7 +1617,12 @@ window; an incompatible pair defers both exact choices rather than inventing an 
 Current cap offers retain output/window guards and unsupported combined-
 window semantics withhold proposals until a documented endpoint parser establishes that basis.
 
-Final offline acceptance is recorded below; CodeRabbit and current-head CI must finish. The matrix
+The first CodeRabbit review identified two integration gaps, both corrected: context-only provider
+pauses require an eligible enabled route with exact physical quota scope, and advisory choices include
+this run's observations so their values/digests match the artifacts `/apply` independently authenticates
+only after successful completion. Failed or unfinished runs still grant no writer authority.
+
+Final offline acceptance is recorded below; updated-head CI must finish. The matrix
 covers every configured route and both dimensions, including paid/paused exclusions, actual-count
 feedback, reservation overshoot, uncertain weekly restart, convergence revalidation, deadline/byte
 cancellation, new-admission gating, tampered/missing/expired history, retained unexpired anchors,
@@ -1625,7 +1630,7 @@ exact fresh-main scalar edits and context-writer collisions. No production YAML,
 compiled catalog, estimator, output forecast, Worker activation flag or live admission policy changes.
 Input/output canaries, recurring activation and removal recovery acceptance remain separate gates.
 
-Offline acceptance: 5,540 Python tests passed (16 live cases deselected), 371 focused catalog/context/
+Offline acceptance: 5,545 Python tests passed (16 live cases deselected), 341 focused catalog/context/
 apply/editor/workflow tests, 424 Worker tests, whole-repository Ruff lint/format, both unchanged
 catalog compilers and diff checks. Production-spawn private-URL exclusion and forked fake transport
 prove admission gating and hard cancellation without live HTTP. The client canonical digest matches

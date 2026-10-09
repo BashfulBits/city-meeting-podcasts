@@ -603,7 +603,16 @@ def reconcile(
                 )
             candidates = candidates[:CANARY_BUDGET_PER_PROVIDER]
 
-        if not health and not candidates and not context_run:
+        context_ready = bool(context_run) and not due_only and not context_run.get("abandoned")
+        if context_ready:
+            context_ready = any(
+                (ready := context_run["readiness"].get(route["route_id"]) or {}).get("enabled")
+                and ready.get("quota_scope")
+                == f"{route['provider']}:{route['account_id']}:{route['upstream_model']}"
+                for route in provider_routes
+                if route.get("free") is True and route.get("rpd") != 0
+            )
+        if not health and not candidates and not context_ready:
             continue
 
         runner = (
@@ -614,7 +623,7 @@ def reconcile(
                 max_wall_seconds=900,
                 session=session,
             )
-            if rate_run_id or context_run
+            if rate_run_id or context_ready
             else None
         )
 
@@ -932,7 +941,7 @@ def reconcile(
                     # One provider-wide allowance, not three requests for each route.
                     break
 
-            if context_run and not due_only:
+            if context_ready:
                 _measure_context_routes(
                     report,
                     context_run,

@@ -384,7 +384,12 @@ def main(argv: list[str] | None = None) -> int:
         args.context_evidence.write_text(json.dumps(envelope, indent=2) + "\n")
         if context_run:
             report.context_changes = list(
-                context_cap_changes(context_run["history"], limits, now=datetime.now(UTC))
+                # Advisory until this run succeeds; /apply independently authenticates its artifact.
+                context_cap_changes(
+                    (*context_run["history"], *report.context_observations),
+                    limits,
+                    now=datetime.now(UTC),
+                )
             )
         report.state["last_full"]["context_changes"] = list(report.context_changes)
     if not args.due_only and not args.provider:

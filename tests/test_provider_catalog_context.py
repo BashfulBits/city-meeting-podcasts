@@ -890,11 +890,17 @@ def test_context_writer_ignores_issue_proof_and_reauthenticates_fresh_main(monke
     monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
     now = datetime.now(UTC)
     history = (
-        replace(success(800), observed_at=(now - timedelta(days=8)).isoformat(), run_id="1"),
-        replace(success(900), observed_at=(now - timedelta(days=1)).isoformat(), run_id="2"),
+        replace(success(800), observed_at=(now - timedelta(days=15)).isoformat(), run_id="1"),
+        replace(success(850), observed_at=(now - timedelta(days=8)).isoformat(), run_id="2"),
+        replace(success(900), observed_at=(now - timedelta(days=1)).isoformat(), run_id="3"),
     )
-    changes = context_cap_changes(history, config, now=now)
-    report = Report(context_changes=list(changes), state={"last_full": {}})
+    # The latest success is this run's observation, not part of pre-run trusted history.
+    prior, current = history[:-1], history[-1:]
+    changes = context_cap_changes((*prior, *current), config, now=now)
+    assert context_cap_changes(prior, config, now=now) != changes
+    report = Report(
+        context_changes=list(changes), context_observations=list(current), state={"last_full": {}}
+    )
     body = render_body(report, run_date=now.date().isoformat()).replace("- [ ]", "- [x]")
     monkeypatch.setattr(evidence, "discover_context_references", lambda **_kwargs: ("real",))
 
