@@ -673,7 +673,7 @@ removed primary and label `needs:human-verification`. If any lane would become e
 route removal and escalate with pool alternatives; do not manufacture a replacement. Run the
 lane↔route guard and both compilers before push. Paid transitions remain explicit 2b decisions.
 
-Offline acceptance: 5,315 Python tests pass (16 live tests deselected), including 262 targeted
+Offline acceptance: 5,316 Python tests pass (16 live tests deselected), including 263 targeted
 retirement/apply/editor/reconcile/workflow tests. Whole-repository Ruff and both compilers pass
 without generated drift. The BeatAPI regression removes one physical route while retaining its
 shared DeepSeek logical pool and all lane↔route guards. No Worker code changes or live calls.
@@ -681,7 +681,10 @@ Final validation excludes definitively retired routes from safe replacements eve
 is held back, and retains a promoted model in backups to preserve the existing retry allowance.
 CodeRabbit reviewed unchanged head a7d36703 after the 2026-10-09 02:39:17 UTC request; its sole
 roadmap-date finding was withdrawn after confirming the October 8 America/Chicago commit date.
-The final two planner edge cases are fixed together after that review. Any additional manual review
+The final two planner edge cases are fixed together after that review. Retirement preparation
+parses freshly read lane YAML rather than the process cache, including changed-main rebuilds.
+Follow-up outside Slice 3b: the older additions/paid `prepare()` still uses the cached lane loader
+across its rebuild loop; migrate it to current-snapshot parsing separately. Any additional manual review
 must follow 03:39:17 UTC and one hour after later repository-wide human requests.
 
 Primary changes affect newly generated recipe identities after maintainer merge; they do not rewrite

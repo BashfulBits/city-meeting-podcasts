@@ -372,3 +372,43 @@ def test_last_backup_retirement_removes_dependent_threshold():
     assert "backup_models" not in lane and "backup_after_attempts" not in lane
     assert lane["reasoning"] == {"new": "off"}
     parse_lanes({"lane": lane})
+
+
+def test_retirement_preparation_reads_fresh_lanes_after_main_changes(tmp_path, monkeypatch):
+    import yaml
+
+    from citypods.provider_catalog import retire
+    from citypods.provider_catalog.decisions import Decisions
+    from scripts import provider_catalog_commands as commands
+
+    config = retirement_config([ROUTE, live_route()])
+    for p, text in config.texts.items():
+        path = tmp_path / p
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    monkeypatch.setattr(retire, "RETIREMENTS_ENABLED", True)
+    monkeypatch.setattr(commands, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        commands, "load_lanes", lambda: pytest.fail("cached lanes must not be used")
+    )
+    monkeypatch.setattr(commands, "_control", lambda _: object())
+    monkeypatch.setattr(commands, "load_decisions", lambda: Decisions())
+    seen = []
+
+    def reconcile(limits, lanes, *args, **kwargs):
+        seen.append(lanes["lane"].models)
+        assert kwargs["route_ids"] == {"old", "surviving"}
+        assert kwargs["candidate_keys"] == set()
+        return Report()
+
+    monkeypatch.setattr(commands, "reconcile", reconcile)
+    commands.prepare_retirements("first-main")
+    path = tmp_path / SOURCE_PATHS[1]
+    site = yaml.safe_load(path.read_text())
+    site["llm_lanes"]["lane"]["models"] = ["new"]
+    site["llm_lanes"]["lane"]["reasoning"] = {"new": "off"}
+    path.write_text(yaml.safe_dump(site))
+    plan = commands.prepare_retirements("second-main")
+    assert seen == [("old",), ("new",)]
+    assert plan.base_commit == "second-main"
+    assert dict(plan.config_hashes)[SOURCE_PATHS[1]] == digest(path.read_text())

@@ -20,7 +20,7 @@ if str(ROOT) not in sys.path:
 import requests  # noqa: E402
 
 from citypods.compute.llm_dispatch_pause import DispatchPauseError  # noqa: E402
-from citypods.compute.llm_lanes import load_lanes  # noqa: E402
+from citypods.compute.llm_lanes import load_lanes, parse_lanes  # noqa: E402
 from citypods.github_permissions import (  # noqa: E402
     RepositoryPermissionError,
     require_repository_write,
@@ -124,7 +124,8 @@ def prepare_retirements(base_commit):
         raise ValueError("removal publication awaits reviewed recovery-canary activation")
     texts = {p: (ROOT / p).read_text() for p in SOURCE_PATHS}
     limits = load_config(texts[SOURCE_PATHS[0]])
-    lanes = load_lanes()
+    # Rebuilds must use this main snapshot, rather than the process-level lane cache.
+    lanes = parse_lanes(load_config(texts[SOURCE_PATHS[1]])["llm_lanes"])
     config = ApplyConfig(limits, lanes, texts, base_commit, datetime.now(UTC).date())
     control = _control(False)
     if isinstance(control, NoDispatchControl):
