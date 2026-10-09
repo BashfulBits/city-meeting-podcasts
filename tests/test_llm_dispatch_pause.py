@@ -192,3 +192,32 @@ def test_client_requires_a_worker_url(monkeypatch):
     monkeypatch.delenv("CITYPODS_LLM_DISPATCH_V2_URL", raising=False)
     with pytest.raises(DispatchPauseError):
         DispatchPauseClient()
+
+
+@pytest.mark.parametrize("fault", [None, "legacy", "truncated", "invalid_count", "bad_day"])
+def test_rate_failures_requires_complete_typed_counter_snapshot(monkeypatch, fault):
+    client = _client(FakeSession([0]))
+    data = {
+        "kind": "rate_failures",
+        "utc_day": "2026-10-09",
+        "truncated": False,
+        "route_failures": [
+            {"utc_day": "2026-10-09", "route_id": "route", "failure_class": "own_rpm", "count": 3}
+        ],
+    }
+    if fault == "legacy":
+        data = {"utc_day": "2026-10-09"}
+    elif fault == "truncated":
+        data["truncated"] = True
+    elif fault == "invalid_count":
+        data["route_failures"][0]["count"] = True
+    elif fault == "bad_day":
+        data["utc_day"] = "bad"
+    calls = []
+    monkeypatch.setattr(client, "_request", lambda *args: calls.append(args) or data)
+    if fault:
+        with pytest.raises(DispatchPauseError):
+            client.rate_failures()
+    else:
+        assert client.rate_failures() == data
+    assert calls == [("GET", "v2/stats?rate_failures=1")]

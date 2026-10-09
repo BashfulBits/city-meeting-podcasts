@@ -824,6 +824,19 @@ rather than leaving increases as manual recommendations. Existing additions/paid
 their gates. Rate choices use authenticated artifact observations, exact current config digests and
 explicit checkboxes; throughput alone cannot offer an increase.
 
+Maintainer-approved review correction (2026-10-09): extend existing `/v2/stats` with
+`rate_failures=1`, mutually exclusive with `detail=1`. `coordinator.js::rateFailureStats`
+reads today's three rate-failure cells per configured route using full primary-key lookups;
+a hard ceiling of 128 routes bounds the read to 384 cells. It performs no job scans or writes.
+`index.js` routes this authenticated mode; `compute/llm_dispatch_pause.py` supplies a typed
+client method that rejects unavailable, malformed or truncated snapshots. Scheduled reconciliation
+uses that method and defers early checks on failure, never falling back to detailed stats.
+Extend Worker endpoint, row-accounting and rows-read tests and Python client tests. No endpoint,
+storage schema, migration or index is added. Artifact history records attempted routes; only runs
+that attempted a scope affect its consecutive-sample rule. Manual runs preserve advisory offers.
+Opposite-direction limit proposals wait successfully while the other proposal is open; a merged
+proposal's retained bot branch does not block later maintenance.
+
 Implementation details within the accepted modules/workflows:
 
 - `limits.py` keeps typed observations and internal single-scope decisions; callers rehydrate actual
@@ -1075,8 +1088,8 @@ ceilings; and explicit reviewed config proposals with production caps unchanged 
 
 The implementation supplies pure six-run/90-day history and strict rational thresholds, independently
 enumerated authenticated artifacts, exact scalar edits, reviewed increase selections and a successful
-reconcile consumer for automatic tightening proposals. Empty/missing scoped samples interrupt the
-three-consecutive-run rule. Header units are explicitly mapped only for Groq's configured physical
+reconcile consumer for automatic tightening proposals. An attempted scope without a valid sample interrupts the
+three-consecutive-run rule; unrelated runs do not. Header units are explicitly mapped only for Groq's configured physical
 model/account scope; duplicate physical routes and unknown/shared mappings remain non-actionable.
 Matching provider-account ceilings/directions are required across all configured accounts; no capacity
 summation or compiler/schema extension is inferred.
@@ -1089,10 +1102,14 @@ capacity and the existing 65-second final cooldown remains. Today's UTC counters
 route observation per day; the rolling 24-hour limitation is recorded above.
 
 Mixed `/apply` selections publish independent catalog/rate proposals under the shared writer lock.
-A reviewed-increase origin is recorded in the bot commit and PR body; automatic tightening does not
-replace that proposal. No changes to context/output bounds, concurrency, paid/free policy, lane routing,
+A reviewed-increase origin is recorded in the bot commit and PR body. Open increase and tightening
+proposals cannot replace each other; each direction waits successfully for the other to finish.
+A retained bot branch from a merged proposal can be replaced under the existing ownership/lease guard. No changes to context/output bounds, concurrency, paid/free policy, lane routing,
 provider credentials, pipeline versions or completed artifacts. Removal publication remains disabled.
 
-Offline acceptance: 5,370 Python tests pass (16 deselected); final focused catalog/workflow tests,
-whole-repository Ruff lint/format, both compilers and diff checks pass. Compiler outputs are unchanged.
+Offline acceptance after the six review corrections: 5,380 Python tests pass (16 deselected),
+359 focused tests and 405 Worker tests pass. Counter-only tests cover authentication, mutual
+exclusion, current-day/configured-route filtering, exhausted writes, recreation, unavailable reads,
+route-count truncation and indexed read-cost invariance as history grows. Whole-repository Ruff
+lint/format, both compilers and diff checks pass. Compiler outputs are unchanged.
 No live provider probes, synthetic jobs, manual deployment or production config edits were performed.

@@ -133,6 +133,7 @@ async function exerciseAll(fixture) {
   recorder.start();
   await run("enqueueBatch", () => coordinator.enqueueBatch(jobs));
   await run("stats", () => coordinator.stats(now));
+  await run("rateFailureStats", () => coordinator.rateFailureStats(now));
   const plan = await run("claimDispatchWindow", () => coordinator.claimDispatchWindow(now, 25));
   const claimed = plan.jobs[0];
   await run("pollBatch", () => coordinator.pollBatch(jobs.map((j) => j.id)));
@@ -318,4 +319,31 @@ test("route_failures queries use index and catch unindexed scan regression", asy
     hasScan,
     "mutation test failed: removing PRIMARY KEY should have resulted in SCAN"
   );
+});
+
+
+test("counter-only telemetry remains bounded as retired route and daily history grows", async () => {
+  const costs = [];
+  for (const history of [100, 1000]) {
+    const f = seed(history);
+    const day = new Date(f.now).toISOString().slice(0, 10);
+    const insert = f.db.prepare("INSERT INTO route_failures VALUES (?,?,?,?,?,?)");
+    for (let i = 0; i < history; i++) {
+      insert.run(day, `retired-${i}`, "own_rpm", 3, 429, f.now);
+      insert.run("2020-01-01", `retired-${i}`, "own_tpm", 3, 429, f.now);
+    }
+    insert.run(day, "route-a", "own_rpm", 3, 429, f.now);
+    f.recorder.reset();
+    f.recorder.start();
+    const result = await f.coordinator.rateFailureStats(f.now);
+    assert.equal(result.route_failures.length, 1);
+    const statements = f.recorder.statements.filter(s => /FROM route_failures/.test(s.query));
+    assert.equal(statements.length, 6);
+    for (const statement of statements) {
+      const plan = f.db.prepare(`EXPLAIN QUERY PLAN ${statement.query}`).all(...statement.params);
+      assert.ok(!plan.some(row => /SCAN route_failures/.test(row.detail)));
+    }
+    costs.push(statements.reduce((sum, s) => sum + estimateRowsRead(f.db, s), 0));
+  }
+  assert.equal(costs[0], costs[1]);
 });

@@ -43,7 +43,11 @@ from citypods.provider_catalog.evidence import (  # noqa: E402
     verified_rate_history,
 )
 from citypods.provider_catalog.issue import decode_state, find_issue, is_catalog_issue  # noqa: E402
-from citypods.provider_catalog.limits import configured_limit_changes, rate_edit_plan  # noqa: E402
+from citypods.provider_catalog.limits import (  # noqa: E402
+    configured_limit_changes,
+    rate_edit_plan,
+    scope_recent_runs,
+)
 from citypods.provider_catalog.quality import QualityIndex, fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
     NoDispatchControl,
@@ -148,10 +152,7 @@ def prepare_limits(base_commit, *, selected=(), automatic=False):
     )
     if deferred:
         raise ValueError("rate history unavailable; no scalar changes prepared")
-    recent = tuple(
-        r["run_id"]
-        for r in sorted(accepted, key=lambda r: (r["observed_at"], r["run_id"]), reverse=True)
-    )
+    recent = scope_recent_runs(accepted, limits)
     changes, deferred = configured_limit_changes(observations, limits, now=now, recent_runs=recent)
     plan = rate_edit_plan(
         changes, config, selected=selected, automatic=automatic, deferred=deferred
@@ -265,15 +266,11 @@ def publish(plan, *, run_fn=run):
         for p in prs
     ):
         raise ValueError("automation branch has a human-owned/unmanaged PR")
-    if (
-        plan.proposal_kind == "limits"
-        and prs
-        and (
-            "Source: explicit `/apply` rate increase" in prs[0]["body"]
-            and not any(c.action == "offer_increase" for c in plan.rate_changes)
-        )
-    ):
-        raise ValueError("automatic tightening waits for the open reviewed-increase PR")
+    if plan.proposal_kind == "limits" and prs:
+        existing_increase = "Source: explicit `/apply` rate increase" in prs[0]["body"]
+        proposed_increase = any(c.action == "offer_increase" for c in plan.rate_changes)
+        if existing_increase != proposed_increase:
+            return "Waiting: the open opposite-direction rate proposal must finish first."
     remote = run_fn(["git", "ls-remote", "--heads", "origin", f"refs/heads/{branch}"])
     expected = remote.split()[0] if remote else ""
     if expected:
@@ -285,12 +282,6 @@ def publish(plan, *, run_fn=run):
             or marker not in message
         ):
             raise ValueError("refusing to replace a human-owned automation branch")
-        if (
-            plan.proposal_kind == "limits"
-            and "Source: explicit `/apply` rate increase" in message
-            and not any(c.action == "offer_increase" for c in plan.rate_changes)
-        ):
-            raise ValueError("automatic tightening waits for the reviewed-increase branch")
     run_fn(["git", "add", "--", *SOURCE_PATHS, *COMPILED_PATHS])
     if not run_fn(["git", "diff", "--cached", "--name-only"]):
         return "Selections already present on main; no PR needed."
@@ -413,8 +404,10 @@ def main(argv=None):
                 validate()
                 url = publish(plan)
                 if url is not None:
-                    result["comment"] = url + "\n\n" + proposal_body(plan)
-                    result["plan"] = asdict(plan)
+                    result["comment"] = url
+                    if not url.startswith("Waiting:"):
+                        result["comment"] += "\n\n" + proposal_body(plan)
+                        result["plan"] = asdict(plan)
                     break
             else:
                 raise ValueError("main changed repeatedly; defer rate maintenance")
@@ -463,8 +456,10 @@ def main(argv=None):
                         raise ValueError("issue changed during verification; retry /apply")
                     url = publish(plan)
                     if url is not None:
-                        comments.append(url + "\n\n" + proposal_body(plan))
-                        plans.append(asdict(plan))
+                        comments.append(url)
+                        if not url.startswith("Waiting:"):
+                            comments[-1] += "\n\n" + proposal_body(plan)
+                            plans.append(asdict(plan))
                         break
                 else:
                     raise ValueError("main changed repeatedly; retry /apply")

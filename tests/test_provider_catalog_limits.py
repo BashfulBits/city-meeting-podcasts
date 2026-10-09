@@ -114,7 +114,13 @@ def artifact_fixture():
         "routes": [{"route_id": "route", "provider": "host", "account_id": "primary", "rpm": 100}],
     }
     envelope = rate_artifact(
-        [observation()], limits, repository="owner/repo", run_id="1", head_sha="a" * 40, now=NOW
+        [observation()],
+        limits,
+        repository="owner/repo",
+        run_id="1",
+        head_sha="a" * 40,
+        now=NOW,
+        attempted_routes=("route",),
     )
     run = {
         "id": 1,
@@ -162,7 +168,8 @@ def test_verified_history_rehydrates_artifact_and_rejects_changed_route_digest()
     values, accepted, deferred = verified_rate_history([reference], limits, **kwargs)
     assert (
         values == (observation(),)
-        and accepted == ({**reference, "observed_at": NOW.isoformat()},)
+        and accepted
+        == ({**reference, "observed_at": NOW.isoformat(), "attempted_routes": ["route"]},)
         and not deferred
     )
     limits["routes"][0]["rpm"] = 99
@@ -353,3 +360,87 @@ def test_discovery_defers_when_bounded_run_enumeration_cannot_cover_window():
             api=api,
             download=lambda _: pytest.fail("unexpected download"),
         )
+
+
+def test_scoped_attempt_history_ignores_unrelated_runs_but_missing_sample_interrupts():
+    from citypods.provider_catalog.limits import configured_limit_changes, scope_recent_runs
+
+    limits = {
+        "providers": {"host": {"accounts": [{"id": "primary"}]}},
+        "routes": [
+            {"route_id": "route", "provider": "host", "account_id": "primary", "rpm": 100},
+            {"route_id": "other", "provider": "host", "account_id": "secondary"},
+        ],
+    }
+    runs = [
+        {
+            "run_id": str(i),
+            "observed_at": (NOW - timedelta(days=i)).isoformat(),
+            "attempted_routes": ["route" if i % 2 else "other"],
+        }
+        for i in range(1, 6)
+    ]
+    recent = scope_recent_runs(runs, limits)
+    assert recent[("route", "route")] == ("1", "3", "5")
+    samples = [observation(run=i, days=i) for i in (1, 3, 5)]
+    changes, _ = configured_limit_changes(samples, limits, now=NOW, recent_runs=recent)
+    assert len(changes) == 1 and changes[0].action == "tighten"
+    runs[1]["attempted_routes"] = ["route"]
+    recent = scope_recent_runs(runs, limits)
+    changes, _ = configured_limit_changes(samples, limits, now=NOW, recent_runs=recent)
+    assert not changes
+
+
+def test_route_evidence_rejects_changed_provider_binding_and_malformed_attempts():
+    from citypods.provider_catalog.evidence import digest, verified_rate_history
+
+    limits, envelope, _, _, reference, api, download = artifact_fixture()
+    limits["providers"]["host"]["api_base"] = "https://different.test"
+    values, _, _ = verified_rate_history(
+        [reference],
+        limits,
+        repository="owner/repo",
+        now=NOW,
+        api=api,
+        download=download,
+        ancestor=lambda _: True,
+    )
+    assert not values
+    limits, envelope, _, _, reference, api, download = artifact_fixture()
+    envelope["payload"]["attempted_routes"] = [False]
+    envelope["payload_digest"] = digest(envelope["payload"])
+    reference["payload_digest"] = envelope["payload_digest"]
+    values, accepted, deferred = verified_rate_history(
+        [reference],
+        limits,
+        repository="owner/repo",
+        now=NOW,
+        api=api,
+        download=download,
+        ancestor=lambda _: True,
+    )
+    assert not values and not accepted and deferred
+
+
+def test_manual_report_carries_unchecked_rate_offers_and_advisory_history():
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.limits import RateChange
+    from citypods.provider_catalog.reconcile import Report
+    from scripts.reconcile_provider_routes import _carry_rate_state
+
+    change = RateChange("route", "host", "route", "rpm", 100, 150, "offer_increase", "stamp")
+    state = {
+        "last_full": {"rate_changes": [asdict(change)]},
+        "rate_changes": [asdict(change)],
+        "rate_evidence_refs": [{"run_id": "1"}],
+        "rate_observations": [asdict(observation())],
+    }
+    report = Report(state={"last_full": {}})
+    _carry_rate_state(report, state)
+    assert report.rate_changes == [change]
+    assert report.state["last_full"]["rate_changes"] == state["rate_changes"]
+    assert all(report.state[key] == value for key, value in state.items())
+    del state["rate_changes"]
+    _carry_rate_state(report, state)
+    assert report.rate_changes == [change]

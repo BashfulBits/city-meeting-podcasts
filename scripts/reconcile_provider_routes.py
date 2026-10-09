@@ -58,9 +58,11 @@ from citypods.provider_catalog.issue import (  # noqa: E402
     sync_issue,
 )
 from citypods.provider_catalog.limits import (  # noqa: E402
+    RateChange,
     configured_limit_changes,
     early_rate_routes,
     merge_observations,
+    scope_recent_runs,
 )
 from citypods.provider_catalog.quality import fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
@@ -139,6 +141,21 @@ def evidence_report(limits: Mapping[str, Any], providers: set[str], control: Any
     return 0
 
 
+def _carry_rate_state(report, previous_state):
+    """Retain advisory offers on manual scans or unavailable history; writers reauthenticate."""
+    for key in ("rate_evidence_refs", "rate_observations", "rate_changes"):
+        report.state[key] = previous_state.get(key, [])
+    prior = (previous_state.get("last_full") or {}).get(
+        "rate_changes", previous_state.get("rate_changes", [])
+    )
+    try:
+        report.rate_changes = [RateChange(**c) for c in prior or []]
+    except (TypeError, ValueError):
+        report.rate_changes = []
+    report.state["last_full"]["rate_changes"] = [asdict(c) for c in report.rate_changes]
+    report.state["rate_changes"] = [asdict(c) for c in report.rate_changes]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--provider", action="append", default=[])
@@ -199,9 +216,7 @@ def main(argv: list[str] | None = None) -> int:
         rate_run_id = os.environ["GITHUB_RUN_ID"]
         if isinstance(control, WorkerDispatchControl) and args.due_only:
             try:
-                stats = control.client._request(
-                    "GET", "v2/stats?detail=1&limit=100&failure_class=own_rpm,own_tpm,unknown_429"
-                )
+                stats = control.client.rate_failures()
                 early = early_rate_routes(
                     stats.get("route_failures") or [], limits, previous_state, today=today
                 )
@@ -227,6 +242,7 @@ def main(argv: list[str] | None = None) -> int:
         rate_run_id=rate_run_id,
         early_rate_checks=early,
     )
+    _carry_rate_state(report, previous_state)
     if args.rate_evidence:
         now = datetime.now(UTC)
         repository = os.environ["GITHUB_REPOSITORY"]
@@ -237,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
             run_id=rate_run_id,
             head_sha=os.environ["GITHUB_SHA"],
             now=now,
+            attempted_routes=report.rate_attempted_routes,
         )
         args.rate_evidence.write_text(json.dumps(envelope, indent=2) + "\n")
         try:
@@ -253,11 +270,10 @@ def main(argv: list[str] | None = None) -> int:
                 "run_id": rate_run_id,
                 "payload_digest": envelope["payload_digest"],
                 "observed_at": now.isoformat(),
+                "attempted_routes": sorted(report.rate_attempted_routes),
             }
             accepted = (*accepted, current)
-            recent = tuple(
-                r["run_id"] for r in sorted(accepted, key=lambda r: r["observed_at"], reverse=True)
-            )
+            recent = scope_recent_runs(accepted, limits)
             merged = merge_observations(history, report.rate_observations, now=now)
             changes, mismatch = configured_limit_changes(
                 merged, limits, now=now, recent_runs=recent

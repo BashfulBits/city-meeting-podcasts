@@ -1467,3 +1467,24 @@ def test_optional_rate_samples_share_request_and_drain_cooldown_budget(
         assert calls == [60, 120] and clock[0] == 180  # final cooldown before dispatch resumes
     if drain:
         assert any("sampling deferred" in o for o in report.observations)
+
+
+def test_due_only_early_check_runs_provider_without_deferred_routes(monkeypatch):
+    monkeypatch.setenv("K", "test-key")
+    sent = []
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        due_only=True,
+        early_rate_checks={"zai_flash"},
+        canary_fn=lambda rules, cfg, model, *args: sent.append(model) or OK,
+        structured_canary_fn=lambda *args, **kwargs: {},
+    )
+    assert sent == ["glm-flash"]
+    assert report.rate_attempted_routes == {"zai_flash"}

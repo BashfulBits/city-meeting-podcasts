@@ -126,7 +126,7 @@ def provider_rate_digest(limits, provider):
     )
 
 
-def rate_artifact(observations, limits, *, repository, run_id, head_sha, now):
+def rate_artifact(observations, limits, *, repository, run_id, head_sha, now, attempted_routes=()):
     """Encode positive payload-free observations; the producer is not its own trust verifier."""
     if now.tzinfo is None:
         raise ValueError("rate artifacts require a timezone-aware current time")
@@ -143,6 +143,7 @@ def rate_artifact(observations, limits, *, repository, run_id, head_sha, now):
             p: provider_rate_digest(limits, p) for p in limits.get("providers") or {}
         },
         "observations": [asdict(o) for o in observations],
+        "attempted_routes": sorted(set(attempted_routes)),
     }
     return {"payload": payload, "payload_digest": digest(payload)}
 
@@ -358,9 +359,12 @@ def verified_rate_history(
                 observation = LimitObservation(**value)
                 provider = observation.provider
                 accounts = (limits.get("providers") or {}).get(provider, {}).get("accounts") or []
-                if observation.run_id != run_id or observation.account_id not in {
-                    a.get("id") for a in accounts
-                }:
+                if (
+                    observation.run_id != run_id
+                    or observation.account_id not in {a.get("id") for a in accounts}
+                    or payload.get("provider_digests", {}).get(provider)
+                    != provider_rate_digest(limits, provider)
+                ):
                     continue
                 if observation.scope == "route":
                     route = routes.get(observation.route_id)
@@ -380,9 +384,27 @@ def verified_rate_history(
                 else:
                     continue
                 hydrated.append(observation)
+            attempted = payload.get("attempted_routes", [])
+            if not isinstance(attempted, list) or any(
+                not isinstance(rid, str) for rid in attempted
+            ):
+                raise ValueError("invalid attempted-route metadata")
+            attempted = [
+                rid
+                for rid in attempted
+                if rid in routes
+                and payload.get("route_digests", {}).get(rid) == digest(routes[rid])
+                and payload.get("provider_digests", {}).get(routes[rid]["provider"])
+                == provider_rate_digest(limits, routes[rid]["provider"])
+            ]
             observations.extend(hydrated)
             accepted.append(
-                {"run_id": run_id, "payload_digest": expected, "observed_at": stamp.isoformat()}
+                {
+                    "run_id": run_id,
+                    "payload_digest": expected,
+                    "observed_at": stamp.isoformat(),
+                    "attempted_routes": attempted,
+                }
             )
         except (
             OSError,

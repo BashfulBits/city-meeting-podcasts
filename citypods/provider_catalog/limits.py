@@ -8,7 +8,7 @@ probe providers, edit configuration or authorize publication.
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from fractions import Fraction
@@ -213,7 +213,12 @@ def configured_limit_changes(observations, limits, *, now, recent_runs):
                 and o.account_id == route.get("account_id")
                 and o.metric == metric
             ]
-            decision = plan_limit_changes(samples, route[metric], now=now, recent_runs=recent_runs)
+            recent = (
+                recent_runs.get(("route", route["route_id"]), ())
+                if isinstance(recent_runs, Mapping)
+                else recent_runs
+            )
+            decision = plan_limit_changes(samples, route[metric], now=now, recent_runs=recent)
             if decision.action in {"tighten", "offer_increase"}:
                 changes.append(
                     RateChange(
@@ -243,7 +248,11 @@ def configured_limit_changes(observations, limits, *, now, recent_runs):
                     [o for o in scoped if o.account_id == account],
                     config[metric],
                     now=now,
-                    recent_runs=recent_runs,
+                    recent_runs=(
+                        recent_runs.get(("provider_account", provider, account), ())
+                        if isinstance(recent_runs, Mapping)
+                        else recent_runs
+                    ),
                 )
                 for account in accounts
             ]
@@ -271,6 +280,24 @@ def configured_limit_changes(observations, limits, *, now, recent_runs):
                     )
                 )
     return tuple(changes), tuple(deferred)
+
+
+def scope_recent_runs(accepted, limits):
+    """Only attempted scopes participate; an attempted scope with no sample still interrupts."""
+    routes = {r["route_id"]: r for r in limits.get("routes") or []}
+    scoped = defaultdict(list)
+    for run in sorted(accepted, key=lambda r: (r["observed_at"], r["run_id"]), reverse=True):
+        touched = set()
+        for rid in run.get("attempted_routes") or []:
+            if rid not in routes:
+                continue
+            route = routes[rid]
+            touched.add(("route", rid))
+            touched.add(("provider_account", route["provider"], route["account_id"]))
+        for scope in touched:
+            if run["run_id"] not in scoped[scope]:
+                scoped[scope].append(run["run_id"])
+    return {scope: tuple(runs) for scope, runs in scoped.items()}
 
 
 def rate_edit_plan(changes, config, *, selected=(), automatic=False, deferred=()):

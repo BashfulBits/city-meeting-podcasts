@@ -586,6 +586,11 @@ writing transaction, a `LIMIT 0` query prepares against those columns without re
 or writing anything. A missing column/table blocks that instance's RPCs until recreation after
 migration, before expired-lease reaping or job/index mutations can repeat and roll back. Transient
 preflight read errors remain retryable. Partial quota upgrades resume at the missing columns.
+Scheduled catalog early checks use authenticated `/v2/stats?rate_failures=1`: today's three
+rate-failure cells per configured route, read by their complete SQLite primary keys. A 128-route
+ceiling bounds reads to 384 cells; excessive configuration or unavailable storage defers checks.
+This mode performs no job scans or storage writes and rejects combination with manual detailed stats.
+
 A 10,000-row account reserve caps enqueue and optional-write admission at 90,000. Before each claim, the coordinator
 reserves 28 rows per active leased job, 8 per active bundle, and worst-case headroom for the next
 bundle; it refuses the claim if that projection reaches the 90,000 safe stop. Dispatch can

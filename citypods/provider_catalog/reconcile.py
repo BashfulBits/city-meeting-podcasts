@@ -170,6 +170,7 @@ class Report:
     floor: float | None = None
     rate_observations: list[LimitObservation] = field(default_factory=list)
     rate_changes: list = field(default_factory=list)
+    rate_attempted_routes: set[str] = field(default_factory=set)
 
     @property
     def actionable(self) -> bool:
@@ -370,8 +371,12 @@ def reconcile(
             report.observations.append(f"{provider}: no plugin or no config; skipped")
             continue
         provider_routes = [r for r in routes if r.get("provider") == provider]
-        # A due-only run exists to re-check deferred routes; a provider with none is not called.
-        if due_only and not any(str(r.get("route_id")) in deferred for r in provider_routes):
+        # A daily run calls only providers with deferred routes or bounded early-check triggers.
+        if due_only and not any(
+            str(r.get("route_id")) in deferred
+            or str(r.get("route_id")) in (early_rate_checks or set())
+            for r in provider_routes
+        ):
             continue
         catalog = fetch_catalog(rules, cfg, session)
         if catalog.error:
@@ -637,6 +642,7 @@ def reconcile(
                     first_probe = False
                     if route is not None:
                         control.reserve(rid)
+                        report.rate_attempted_routes.add(rid)
                         if remaining is not None:
                             quota[rid] = {**quota[rid], "rpd_remaining": remaining - 1}
                     count_existing_request(str(route["route_id"]) if route else model)
@@ -689,6 +695,7 @@ def reconcile(
                 pause.renew()
                 first_probe = False
                 control.reserve(rid)
+                report.rate_attempted_routes.add(rid)
                 count_existing_request(rid)
                 response = canary_fn(rules, cfg, model, api_key, session)
                 result = classify(response, rules)
@@ -862,6 +869,7 @@ def reconcile(
                             sleep(spacing)
                         pause.renew()
                         control.reserve(rid)
+                        report.rate_attempted_routes.add(rid)
                         if remaining is not None:
                             quota[rid]["rpd_remaining"] -= 1
                         left = 900 - (time.monotonic() - runner.start_time) - spacing

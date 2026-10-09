@@ -866,6 +866,37 @@ def test_rate_publication_uses_own_managed_branch_and_preserves_open_reviewed_in
         }
     ]
     calls, run = publication_runner(prs=prs)
-    with pytest.raises(ValueError, match="open reviewed-increase"):
-        publish(plan, run_fn=run)
+    assert publish(plan, run_fn=run).startswith("Waiting:")
     assert not any(c[:2] == ["git", "push"] for c in calls)
+
+
+def test_rate_increase_waits_for_open_tightening_and_merged_branch_does_not_block():
+    from citypods.provider_catalog.limits import RateChange
+
+    marker = "<!-- citypods:provider-catalog-limits -->"
+    tighten = RateChange("route", "host", "old", "rpm", 100, 70, "tighten", "stamp")
+    increase = replace(tighten, new=150, action="offer_increase")
+    prs = [
+        {
+            "number": 1,
+            "body": marker,
+            "author": {"login": "github-actions[bot]"},
+            "baseRefName": "main",
+            "isCrossRepository": False,
+        }
+    ]
+    calls, run = publication_runner(prs=prs)
+    plan = EditPlan("main-sha", (), proposal_kind="limits", rate_changes=(increase,))
+    assert publish(plan, run_fn=run).startswith("Waiting:")
+    assert not any(c[:2] in (["git", "push"], ["git", "commit"]) for c in calls)
+    calls, run = publication_runner(
+        remote="oldsha refs/heads/automation/provider-catalog-limits",
+        email="41898282+github-actions[bot]@users.noreply.github.com",
+        commit=marker + "\nSource: explicit `/apply` rate increase",
+    )
+    plan = replace(plan, rate_changes=(tighten,))
+    assert publish(plan, run_fn=run) == "https://github.test/pr/1"
+    assert any(
+        "--force-with-lease=refs/heads/automation/provider-catalog-limits:oldsha" in c
+        for c in calls
+    )

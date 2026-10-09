@@ -400,6 +400,8 @@ export async function handleRequest(request, env) {
   if (request.method === "GET" && path === "/v2/stats") {
     const limit = Math.min(Math.max(Number(url.searchParams.get("limit")) || 20, 1), 100);
     const detailed = url.searchParams.get("detail") === "1";
+    const counterOnly = url.searchParams.get("rate_failures") === "1";
+    if (counterOnly && detailed) return errorResponse(400, "invalid_request", "stats modes conflict");
     // `failure_class=a,b` restricts route_failures to those classes (at most 10 names).
     const failureClasses = (url.searchParams.get("failure_class") || "")
       .split(",")
@@ -407,7 +409,9 @@ export async function handleRequest(request, env) {
       .filter((name) => /^[a-z0-9_]{1,64}$/.test(name))
       .slice(0, 10);
     try {
-      const snapshot = detailed
+      const snapshot = counterOnly
+        ? await coordinator.rateFailureStats(Date.now())
+        : detailed
         ? await coordinator.detailedStats(Date.now(), limit, { failureClasses })
         : await coordinator.stats(Date.now());
       return jsonResponse(snapshot, 200);
