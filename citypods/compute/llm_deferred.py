@@ -36,6 +36,7 @@ from citypods.compute.llm_policy import (
     LLMRequestPolicy,
     canonical_model,
 )
+from citypods.compute.llm_submission_telemetry import enabled, record
 from citypods.storage.base import StorageReadUnavailable
 
 DEFERRED_PREFIX = "state/llm_deferred/"
@@ -380,15 +381,34 @@ def terminal_failure_retry_allowed(
     if data.get("status") == "exhausted":
         return False
     if data.get("status") == "structural_blocked":
-        try:
-            if int(data.get("failure_count", 0)) >= MAX_TERMINAL_FAILURE_RETRIES:
-                return False
-        except (TypeError, ValueError):
-            return False
-        return bool(
-            recovery_context
-            and terminal_recovery_generation(storage, recipe_hash, recovery_context, marker=data)
+        allowed = False
+        disposition = (
+            "unchanged_or_unfitting_generation" if recovery_context else "missing_recovery_context"
         )
+        try:
+            failure_count = int(data.get("failure_count", 0))
+        except (TypeError, ValueError):
+            disposition = "invalid_failure_count"
+        else:
+            if failure_count >= MAX_TERMINAL_FAILURE_RETRIES:
+                disposition = "retry_cap"
+            else:
+                allowed = bool(
+                    recovery_context
+                    and terminal_recovery_generation(
+                        storage, recipe_hash, recovery_context, marker=data
+                    )
+                )
+                if allowed:
+                    disposition = "new_fitting_generation"
+        _record_structural_recovery(
+            recipe_hash,
+            data,
+            operation="submission_decision",
+            allowed=allowed,
+            disposition=disposition,
+        )
+        return allowed
     try:
         return int(data.get("failure_count", 0)) < MAX_TERMINAL_FAILURE_RETRIES
     except (TypeError, ValueError):
@@ -399,6 +419,19 @@ def schema_correction_attempted(storage, recipe_hash: str) -> bool:
     """Whether this exact recipe has already received its one corrective retry."""
     data = _read_json(storage, deferred_failure_key(recipe_hash))
     return bool(isinstance(data, Mapping) and data.get("schema_correction_attempted"))
+
+
+def _record_structural_recovery(recipe_hash: str, marker: Mapping[str, Any], **fields: Any) -> None:
+    """Correlate optional recovery evidence without exposing recipe inputs or adding reads."""
+    if not enabled():
+        return
+    record(
+        "llm_structural_recovery",
+        recipe_fingerprint=hashlib.sha256(recipe_hash.encode()).hexdigest(),
+        terminal_reason=marker.get("terminal_reason"),
+        catalog_digest=marker.get("terminal_catalog_digest"),
+        **fields,
+    )
 
 
 def prune_expired_failure_markers(
@@ -604,6 +637,18 @@ def _discard_terminal_failure_locked(
         deferred_failure_key(handle.recipe_hash),
         (json.dumps(marker, indent=2, sort_keys=True) + "\n").encode(),
     )
+    if structural:
+        _record_structural_recovery(
+            handle.recipe_hash,
+            marker,
+            operation="audit_persisted",
+            failure_count_before=max(0, prior_count),
+            failure_count_after=count,
+            schema_correction_before=bool(
+                isinstance(prior, Mapping) and prior.get("schema_correction_attempted")
+            ),
+            schema_correction_after=marker["schema_correction_attempted"],
+        )
     storage.delete(entry.key)
     _best_effort_delete_index(storage, entry.data, handle.recipe_hash)
     return count

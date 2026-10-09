@@ -215,6 +215,13 @@ to disable execution and retire the lane together while retaining calibration hi
 
 ### Provider catalog reconciliation
 
+Recovery-canary evidence uses the existing opt-in submission JSONL artifact. Bounded Worker stats
+include the persisted catalog-rescue digest/cursor/completion from their scheduler-row read. Python
+structural audits emit effective before/after retry and schema state only after audit persistence;
+existing admission checks emit unchanged/new-generation dispositions. SHA-256 recipe fingerprints
+correlate these payload-free events across runs; the Actions summary samples at most ten recipes.
+Telemetry failure cannot alter admission or recovery, and absent evidence never opens the removal gate.
+
 `citypods/provider_catalog/` (driven by `scripts/reconcile_provider_routes.py` and
 `provider-catalog-reconcile.yml`, weekly plus a daily deferred-check run) lists every provider's
 catalog, health-checks one live route per configured upstream model, and canaries up to three

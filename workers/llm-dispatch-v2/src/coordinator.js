@@ -2628,7 +2628,8 @@ export class LLMSchedulerDO extends DurableObjectBase {
         `SELECT utc_day, bundle_count_today, lease_count_today, jobs_ingested_today,
                 ingress_write_units_today, queued_job_count, rows_written_today,
                 next_maintenance_alarm_at, last_claim_at, last_claim_result,
-                last_claim_reason, claim_empty_count_today, claim_reason_counts_json
+                last_claim_reason, claim_empty_count_today, claim_reason_counts_json,
+                catalog_digest, catalog_rescue_cursor, catalog_rescue_complete
            FROM scheduler WHERE id = 1`
       );
       const activeBundles = [...this._activeBundles().values()];
@@ -2655,6 +2656,11 @@ export class LLMSchedulerDO extends DurableObjectBase {
         },
         row_budget: this._rowBudgetSnapshot(scheduler),
         claim: this._claimSnapshot(scheduler),
+        catalog_rescue: {
+          digest: scheduler.catalog_digest ?? null,
+          cursor: scheduler.catalog_rescue_cursor ?? null,
+          complete: scheduler.catalog_rescue_complete === 1,
+        },
       };
     });
   }

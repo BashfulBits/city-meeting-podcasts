@@ -110,6 +110,7 @@ def test_scheduler_summary_matches_worker_stats_shape():
                 "empty_count_today": 4,
                 "reason_counts_today": {"active_bundle_limit": 11},
             },
+            "catalog_rescue": {"digest": "catalog", "cursor": "cursor", "complete": False},
         }
     )
     assert summary == {
@@ -121,4 +122,43 @@ def test_scheduler_summary_matches_worker_stats_shape():
         "last_reason": "active_bundle_limit",
         "empty_claims": 4,
         "reason_counts": {"active_bundle_limit": 11},
+        "catalog_rescue": {"digest": "catalog", "cursor": "cursor", "complete": False},
     }
+
+
+def test_old_worker_has_unknown_recovery_evidence():
+    assert _scheduler_summary({})["catalog_rescue"] == {
+        "digest": None,
+        "cursor": None,
+        "complete": None,
+    }
+
+
+def test_recovery_summary_reports_count_changes_and_bounds_recipe_sample():
+    events = [
+        {
+            "event": "llm_structural_recovery",
+            "recipe_fingerprint": f"fingerprint-{index}",
+            "operation": "audit_persisted",
+            "failure_count_before": 2,
+            "failure_count_after": 3 if index == 0 else 2,
+            "schema_correction_before": True,
+            "schema_correction_after": index != 0,
+        }
+        for index in range(12)
+    ]
+    decision = {
+        "event": "llm_structural_recovery",
+        "recipe_fingerprint": "fingerprint-0",
+        "operation": "submission_decision",
+        "disposition": "unchanged_or_unfitting_generation",
+    }
+    events.extend([decision, decision])
+    markdown = render_markdown(events)
+    assert "Persisted audits: `12`" in markdown
+    assert "retry-count changes: `1`" in markdown
+    assert "schema-state changes: `1`" in markdown
+    assert "`unchanged_or_unfitting_generation`=2" in markdown
+    assert markdown.count("| `fingerprint-0` | submission_decision") == 1
+    assert "fingerprint-9" in markdown and "fingerprint-10" not in markdown
+    assert "Missing observations do not establish canary success" in markdown

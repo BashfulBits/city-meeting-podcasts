@@ -12,7 +12,14 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
-- **Provider catalog apply rebuilds use current lane settings (#2196).** Additions/paid preparation
+- **Recovery-canary telemetry prerequisite (#2198).** Existing Worker stats expose committed
+  catalog-rescue progress from the scheduler row; opt-in Python telemetry correlates persisted
+  structural audits and submission decisions using recipe fingerprints. Audits report preserved
+  retry/schema state without prompts, model output or payload keys. Existing telemetry artifacts
+  carry evidence through normal runs; missing observations cannot authorize removal activation.
+  No additional queue scans, storage writes, admission changes, pipeline bump or artifact backfill.
+
+- **Provider catalog apply rebuilds use current lane settings (#2196; PR #2197).** Additions/paid preparation
   parses its freshly read site-config snapshot rather than the process-level lane cache, so a
   changed-main retry honors the current free-primary pool and backup opt-out. Existing permission,
   evidence, quota and managed-publication gates are unchanged. No pipeline bump or artifact backfill.

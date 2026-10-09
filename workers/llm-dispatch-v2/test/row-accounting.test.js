@@ -19,6 +19,36 @@ const job = (id) => ({
   input_token_estimate: 100, max_output_token_estimate: 50, payload_key: `payloads/${id}`, priority: 1,
 });
 
+test("rescue stats survive recreation without writes or queued-job scans", async () => {
+  const f = fixture();
+  const cursor = JSON.stringify({ after: [10, "a"], through: [20, "b"] });
+  f.sql.exec("UPDATE scheduler SET catalog_digest=?, catalog_rescue_cursor=?, catalog_rescue_complete=0 WHERE id=1",
+    "catalog", cursor);
+  const before = f.read();
+  let written = 0;
+  const queries = [];
+  const raw = f.sql.exec.bind(f.sql);
+  f.sql.exec = (...args) => {
+    queries.push(args[0]);
+    const result = raw(...args);
+    written += Number(result.rowsWritten) || 0;
+    return result;
+  };
+  const recreated = f.make();
+  queries.length = 0; // Existing constructor migrations are outside the stats read.
+  assert.deepEqual((await recreated.stats(Date.now())).catalog_rescue,
+    { digest: "catalog", cursor, complete: false });
+  assert.equal(written, 0);
+  assert.equal(f.read(), before);
+  const jobReads = queries.filter(query => /FROM\s+jobs\b/i.test(query));
+  assert.ok(jobReads.every(query => /state\s*=\s*'leased'/i.test(query)));
+  assert.equal(queries.filter(query => /SELECT[\s\S]*catalog_digest/i.test(query)).length, 1);
+  f.sql.exec("UPDATE scheduler SET catalog_rescue_complete=1 WHERE id=1");
+  written = 0;
+  assert.equal((await f.make().stats(Date.now())).catalog_rescue.complete, true);
+  assert.equal(written, 0);
+});
+
 test("each enqueue survives recreation and includes its own accounting write exactly once", async () => {
   const f = fixture();
   const baseline = f.read();

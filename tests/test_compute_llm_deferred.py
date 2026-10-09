@@ -1054,8 +1054,17 @@ def test_terminal_failure_from_old_handle_cannot_delete_new_snapshot_record():
 
 
 @pytest.mark.parametrize("reason", ["route_retired", "unadmissible"])
-def test_structural_audit_preserves_retry_and_schema_state_and_blocks_unchanged_generation(reason):
+def test_structural_audit_preserves_retry_and_schema_state_and_blocks_unchanged_generation(
+    reason, tmp_path, monkeypatch
+):
+    import hashlib
+    import json
+
     from citypods.compute.llm import LLMDispatchTerminalError
+    from citypods.compute.llm_submission_telemetry import TELEMETRY_FILE_ENV
+
+    destination = tmp_path / "recovery.jsonl"
+    monkeypatch.setenv(TELEMETRY_FILE_ENV, str(destination))
 
     storage = MemStorage()
     handle = JobHandle(task="tag", recipe_hash="r-structural", backend="llm-dispatch-v2", ref="j1")
@@ -1085,10 +1094,36 @@ def test_structural_audit_preserves_retry_and_schema_state_and_blocks_unchanged_
     assert not terminal_failure_retry_allowed(
         storage, handle.recipe_hash, recovery_context={"route_generations": {}}
     )
+    events = [json.loads(line) for line in destination.read_text().splitlines()]
+    assert len(events) == 5
+    assert all(
+        event["recipe_fingerprint"] == hashlib.sha256(handle.recipe_hash.encode()).hexdigest()
+        for event in events
+    )
+    assert all(event["terminal_reason"] == reason for event in events)
+    assert all(event["catalog_digest"] == "catalog-sha" for event in events)
+    assert events[0]["operation"] == "audit_persisted"
+    assert events[0]["failure_count_before"] == events[0]["failure_count_after"] == 2
+    assert events[0]["schema_correction_before"] is events[0]["schema_correction_after"] is True
+    assert [event["allowed"] for event in events[1:]] == [False, False, True, False]
+    assert events[2]["disposition"] == "missing_recovery_context"
+    assert events[3]["disposition"] == "new_fitting_generation"
+    for sensitive in (
+        "input-sha",
+        "r-structural",
+        "original_ref",
+        "route_generations",
+        "last_error",
+    ):
+        assert sensitive not in destination.read_text()
 
 
-def test_structural_audit_failure_leaves_handle_and_snapshot_recoverable(monkeypatch):
+def test_structural_audit_failure_leaves_handle_and_snapshot_recoverable(monkeypatch, tmp_path):
     from citypods.compute.llm import LLMDispatchTerminalError
+    from citypods.compute.llm_submission_telemetry import TELEMETRY_FILE_ENV
+
+    destination = tmp_path / "recovery.jsonl"
+    monkeypatch.setenv(TELEMETRY_FILE_ENV, str(destination))
 
     storage = MemStorage()
     handle = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="j1")
@@ -1109,6 +1144,25 @@ def test_structural_audit_failure_leaves_handle_and_snapshot_recoverable(monkeyp
         discard_terminal_failure(storage, snapshot, handle, error, structural=True, now=NOW)
     assert look_up_deferred(storage, "r1") == handle
     assert list(snapshot.pending()) == [handle]
+    assert not destination.exists()
+
+
+def test_recovery_telemetry_io_failure_cannot_change_audit_or_admission(tmp_path, monkeypatch):
+    from citypods.compute.llm import LLMDispatchTerminalError
+    from citypods.compute.llm_submission_telemetry import TELEMETRY_FILE_ENV
+
+    monkeypatch.setenv(TELEMETRY_FILE_ENV, str(tmp_path))  # A directory cannot accept JSONL writes.
+    storage = MemStorage()
+    handle = JobHandle(task="tag", recipe_hash="r1", backend="llm-dispatch-v2", ref="j1")
+    write_deferred(storage, "r1", handle, now=NOW)
+    snapshot = load_deferred_snapshot(storage, now=NOW)
+    error = LLMDispatchTerminalError(
+        "unusable", terminal_reason="route_retired", terminal_catalog_digest="catalog"
+    )
+    assert discard_terminal_failure(storage, snapshot, handle, error, structural=True, now=NOW) == 0
+    assert _read_json(storage, deferred_failure_key("r1"))["status"] == "structural_blocked"
+    assert look_up_deferred(storage, "r1") is None
+    assert not terminal_failure_retry_allowed(storage, "r1")
 
 
 def test_structural_submission_fence_outlives_audit_ttl_until_recipe_completes():

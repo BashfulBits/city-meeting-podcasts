@@ -175,6 +175,7 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
     snapshots = [
         event for event in events if event.get("event") == "llm_submission_worker_snapshot"
     ]
+    recovery = [event for event in events if event.get("event") == "llm_structural_recovery"]
     lines = ["## LLM submission telemetry", ""]
     if producer:
         lines.extend(
@@ -285,6 +286,59 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
                     + " |  |  |  |  |  |"
                 )
 
+    if recovery:
+        audits = [event for event in recovery if event.get("operation") == "audit_persisted"]
+        changed_counts = sum(
+            event.get("failure_count_before") != event.get("failure_count_after")
+            for event in audits
+        )
+        changed_schema = sum(
+            event.get("schema_correction_before") != event.get("schema_correction_after")
+            for event in audits
+        )
+        decisions = Counter(
+            event.get("disposition")
+            for event in recovery
+            if event.get("operation") == "submission_decision"
+        )
+        lines.extend(
+            [
+                "",
+                "### Structural recovery evidence",
+                "",
+                f"Persisted audits: `{len(audits)}`; retry-count changes: `{changed_counts}`; "
+                f"schema-state changes: `{changed_schema}`.",
+                "Submission decisions: "
+                + (
+                    ", ".join(f"`{key}`={value}" for key, value in sorted(decisions.items()))
+                    or "none"
+                ),
+                "",
+                "At most ten recipe fingerprints are shown; full events remain in the artifact. "
+                "Missing observations do not establish canary success.",
+                "",
+                "| Recipe fingerprint | Operation | Result |",
+                "| --- | --- | --- |",
+            ]
+        )
+        sample: dict[str, list[Mapping[str, Any]]] = {}
+        for event in recovery:
+            fingerprint = str(event.get("recipe_fingerprint", "unknown"))
+            if fingerprint not in sample and len(sample) >= 10:
+                continue
+            sample.setdefault(fingerprint, []).append(event)
+        # Show one audit and the distinct decisions for each sampled recipe, not every replay.
+        for fingerprint, events_for_recipe in sample.items():
+            shown = set()
+            for event in events_for_recipe:
+                operation = event.get("operation")
+                result = event.get("disposition", "audit write succeeded")
+                key = (operation, result)
+                if key in shown:
+                    continue
+                shown.add(key)
+                lines.append(f"| `{fingerprint}` | {operation} | {result} |")
+
     if snapshots:
         lines.extend(["", "### Worker snapshots", ""])
         for event in snapshots:
@@ -305,6 +359,13 @@ def render_markdown(events: Sequence[Mapping[str, Any]]) -> str:
                     )
                 )
                 reason_counts = summary.get("reason_counts")
+                rescue = summary.get("catalog_rescue")
+                if isinstance(rescue, Mapping):
+                    lines.append(
+                        f"  - catalog rescue: digest `{rescue.get('digest')}`, "
+                        f"complete `{rescue.get('complete')}`, "
+                        f"committed cursor present `{bool(rescue.get('cursor'))}`."
+                    )
                 if isinstance(reason_counts, Mapping) and reason_counts:
                     reasons = ", ".join(
                         f"`{key}`={value}" for key, value in sorted(reason_counts.items())
