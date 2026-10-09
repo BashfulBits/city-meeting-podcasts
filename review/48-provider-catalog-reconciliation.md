@@ -683,25 +683,86 @@ CodeRabbit reviewed unchanged head a7d36703 after the 2026-10-09 02:39:17 UTC re
 roadmap-date finding was withdrawn after confirming the October 8 America/Chicago commit date.
 The final two planner edge cases are fixed together after that review. Retirement preparation
 parses freshly read lane YAML rather than the process cache, including changed-main rebuilds.
-The recorded additions/paid snapshot-cache follow-up is tracked in #2196: change
-`scripts/provider_catalog_commands.py::prepare()` to parse `llm_lanes` from its exact freshly read
-site-config text, like retirement preparation. Extend `tests/test_provider_catalog_apply.py` with
+The additions/paid snapshot-cache follow-up was implemented in PR #2197 (#2196), merged
+2026-10-08 (America/Chicago). `scripts/provider_catalog_commands.py::prepare()` now parses lanes
+from its freshly read site-config text, like retirement preparation. The apply regressions use
 successive-main snapshots against a warmed obsolete cache: current free-primary admission and
-backup opt-out must win. Update the existing retirement cache-guard mock for the removed import.
-No evidence, permission, provider probes, production config or publication gates change. Any additional manual review
-must follow 03:39:17 UTC and one hour after later repository-wide human requests.
+backup opt-out win. The retirement cache-guard mock accommodates the removed loader import.
+No evidence, permission, provider probes, production config or publication gates changed. Its full
+CodeRabbit review found no actionable comments on unchanged head 1a106c9c; current-head CI passed.
+Any further manual review must be one hour after the 2026-10-09 03:40:41 UTC request and any later
+repository-wide human request.
 
 Primary changes affect newly generated recipe identities after maintainer merge; they do not rewrite
 stored inputs or invalidate completed artifacts. Old terminal handles follow 3a's fenced recovery.
 Removal automation stays disabled until 3a is deployed and a bounded recovery canary verifies the
 old sentinel/no-route indexes, no retry-cap increment and no repeating enqueue loop.
 
-**Remaining delivery checkpoint (2026-10-08):** four core PRs remain: removal activation after
+**Remaining delivery checkpoint (2026-10-09):** four core PRs remain: removal activation after
 recovery-canary acceptance, Slice 4 bounded rate maintenance, Slice 5's L3 design, and Slice 5
-implementation. The snapshot-cache follow-up #2196 is an additional small PR. Slice 5 may need
+implementation. The snapshot-cache follow-up shipped in #2197. The approved recovery-telemetry prerequisite
+#2198 adds one small PR before activation, keeping four core PRs plus this prerequisite outstanding. Slice 5 may need
 implementation splits once its L3 contract is finalized. Review/53 PR12 (accepted in #2195) is a
 separate judge-stack lane-governance extension that depends on #2193; it keeps standard lane repair
 unchanged and is not a blocker for this remaining core sequence.
+
+#### Recovery-canary evidence follow-up — maintainer approved, 2026-10-09 (#2198)
+
+The deployed coordinator run [37857444179](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37857444179)
+succeeded with Slice 3a on main. The ordinary Python sweep
+[37877209806](https://github.com/BashfulBits/city-meeting-podcasts/actions/runs/37877209806)
+ran main head 263b237f, succeeded and logged 41 distinct structural recoveries with no repeated job
+references within that run. Its existing telemetry has only aggregate scheduler counts; it does
+not prove retry/schema-state preservation, later unchanged-recipe admission decisions or committed
+rescue progress. These observations do not satisfy the removal-activation gate by themselves.
+
+Approved file/function plan for this narrow prerequisite:
+
+- `workers/llm-dispatch-v2/src/coordinator.js::stats()` adds `catalog_rescue` with the stored digest,
+  opaque committed cursor and completion flag to the existing scheduler-row SELECT. No additional
+  queue scans, writes, columns, endpoints, deployment settings or budget changes. Existing bounded
+  leased-job reads remain unchanged; the new fields survive recreation because they are persisted.
+- `citypods/compute/llm_deferred.py` emits optional `llm_structural_recovery` events after a successful
+  structural audit write, before deleting its handle. Record effective prior/new failure counts and
+  prior/new schema-correction booleans. A persisted audit event does not assert handle deletion.
+  `terminal_failure_retry_allowed()` records the existing structural-marker decision: allowed new
+  fitting generation, blocked unchanged/unfitting generation, missing context, invalid count or
+  exhausted retry cap. Reuse existing marker reads and generation checks; admission stays unchanged.
+- `scripts/llm_submission_telemetry.py::_scheduler_summary()` retains the fixed rescue fields from
+  ordinary start/end stats. Old Workers expose unknown fields, not successful completion.
+- `citypods/compute/llm_submission_telemetry.py::render_markdown()` reports audited count/state changes
+  and admission dispositions, showing at most ten SHA-256 recipe fingerprints. Full constant-size
+  events use the existing opt-in JSONL artifact; no prompts, results, original recipe labels,
+  payload keys, recovery input identities, credentials or new durable audit objects are emitted.
+  Disabled or unavailable telemetry never changes recovery, and missing evidence is not success.
+  The summary explicitly reports no recovery observations even when the event list is empty.
+- Extend `tests/test_compute_llm_deferred.py`, `tests/test_llm_submission_telemetry.py` and Worker
+  `test/row-accounting.test.js`. Verify audit-write failure emits no persisted-success event;
+  telemetry I/O failure leaves recovery/admission intact; typed reasons and correlation match;
+  retry/schema state survives; unchanged/new-generation decisions differ; summary sampling is
+  bounded; recreated stats show committed cursor/completion without extra writes or queued scans.
+  Run complete Python/Worker suites and whole-repository Ruff checks.
+
+After maintainer merge, observe ordinary scheduled producer/sweep runs and record their exact head,
+deployment/run/artifact IDs and UTC timestamps. Follow at most ten fingerprints across successful
+runs for the same catalog: require equal audit before/after counts/schema state, blocked decisions
+when no fitting generation changed, and committed cursor progress to completion or observed
+completion for that digest. A changed digest starts a different pass; unavailable stats during a DO
+outage defer acceptance until a later successful observation. Do not inject live quota outages.
+An idle producer with no repeated admission check is unproven, not evidence that the guard ran.
+Legacy sentinel/no-route coverage also remains required; report absent live coverage as a gap,
+rather than creating synthetic production jobs, widening storage scans or relaxing the gate.
+
+Offline acceptance: 5,322 Python tests pass (16 deselected), including 55 focused deferred/telemetry
+tests; all 402 Worker tests, whole-repository Ruff lint/format and diff checks pass.
+
+CodeRabbit completed its full review of b12bddf3 with one reporting finding: empty recovery event
+lists must explicitly flag missing evidence. The fix covers both empty and snapshot-only streams.
+The advisory docstring-coverage threshold is not a repository requirement; no boilerplate test
+docstrings are added. All current-head checks are required before maintainer merge.
+
+This PR gathers evidence only; `RETIREMENTS_ENABLED` stays false. No synthetic jobs, provider probes,
+manual deployment, production config changes, episode invalidation or pipeline-version bump.
 
 ### 8.7 Slice 4: scoped observations, thresholds and budget
 
