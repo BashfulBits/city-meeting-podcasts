@@ -2957,3 +2957,13 @@ signed URL query values, and GUID-only observations shared by multiple retained 
 an uncertainty diagnostic. The fix redacts both report and ordinary unreachable output and
 keeps each unproven shared-GUID observation separate with uniqueness-unknown. Retained UIDs
 remain distinct. Regression coverage includes both output paths and two fresh observations.
+
+### P2b parent-branch integration (2026-10-09)
+
+The maintainer merged #2217 into parent design PR #2215 at 23:08:52 UTC (5e1e3f2e).
+This is not yet a main-branch shipment. Final code 63a24d3e passed 5,466 offline tests
+(16 deselected), 250 targeted tests and whole Ruff/format. Both substantive review findings
+were fixed, replied to and resolved. The dependency job's Docker Hub timeout passed on retry.
+The final code fixes merged into the parent before fresh substantive review; this limited review
+gap remains explicit. No review is requested on closed #2217. Parent #2215 now carries code
+and requires its own current-head checks before human merge to main.

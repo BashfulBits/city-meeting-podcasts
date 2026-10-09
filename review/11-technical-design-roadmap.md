@@ -1690,3 +1690,7 @@ P2b implementation issue: [#2216](https://github.com/BashfulBits/city-meeting-po
 P2b issue #2216 is prepared as an opt-in complete body-coverage report. Retained and current
 source observations are replayed without editing assignments; configured matches and policy
 proof remain separate. No daily-alert activation or persistent disposition ledger is included.
+
+P2b code #2217 merged into parent #2215 (not main) on 2026-10-09. Parent contains the
+report implementation and remains pending human main merge; final fix review gap is recorded
+in review/51. Daily alerts, persistent dispositions and feed assignments remain unchanged.
