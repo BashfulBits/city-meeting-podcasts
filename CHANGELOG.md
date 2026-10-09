@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Complete source body-coverage report (#2216, prepared).** Opt-in audit JSON includes retained
+  recordings and current observations, exact source-local identities, selector matches, policy
+  proof, conflicts and unknown completeness. Report mode skips canonical state synchronization,
+  timeline/audio diagnostics and GitHub reconciliation. Existing alerts and feeds are unchanged;
+  persistent reviewed dispositions and activation follow separately. No stage versions changed.
+
 - **Provider catalog Slice 5 quota-admission prerequisite (#2209; PR #2214).** The existing authenticated
   reservation API supports bounded weekly context sessions and single-use token/request admission;
   opt-in pause status exposes advisory allowance and verified quota scope. Admission atomically

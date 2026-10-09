@@ -1140,3 +1140,93 @@ def test_roster_quality_bounds_the_empty_ratio_by_recency():
     recent["ok"] = _roster_record("parsed@2", uid_date="2026-09-02", members=["Jane Doe"])
     finding = check_roster_quality("council", {**archive, **recent}, body="City Council", now=now)
     assert finding is not None and "4 of 5" in finding.message
+
+
+def test_body_coverage_includes_archived_history_and_preserves_inputs():
+    from copy import deepcopy
+
+    import pytest
+
+    from citypods.audit import collect_body_coverage
+
+    city = _city()
+    city.source = {"feed_url": "https://example.com/source", "body": "Council"}
+    records = {"old": {"body": "Unrecognized", "title": "Old", "provider_guid": "old"}}
+    before = deepcopy(records)
+    observations, replay = collect_body_coverage([], records, related_cities=[city])
+    assert observations[0]["uid"] == "old"
+    assert replay.rows[0].status == "unknown"
+    assert records == before
+    with pytest.raises(ValueError, match="dispositions"):
+        collect_body_coverage([], records, related_cities=[city], dispositions={})
+
+
+def test_body_coverage_only_fetches_once_and_skips_state_diagnostics(monkeypatch, tmp_path):
+    city = _city()
+    sibling = _city()
+    sibling.slug = "other"
+    fetched = []
+
+    class Provider:
+        def fetch_episodes(self, source):
+            fetched.append(source)
+            raise ProviderError("offline")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("report mode performed a diagnostic/state action")
+
+    monkeypatch.setattr("citypods.providers.get_provider", lambda name: Provider())
+    monkeypatch.setattr("citypods.records.save_records", forbidden)
+    monkeypatch.setattr("citypods.audit.reconcile_cross_source_audio", forbidden)
+    evidence = []
+    assert (
+        audit_all(
+            [city, sibling],
+            site_config={},
+            output_dir=tmp_path,
+            body_coverage_only=True,
+            body_coverage_evidence=evidence,
+            persist_timeline_integrity=True,
+        )
+        == []
+    )
+    assert len(fetched) == len(evidence) == 1
+    assert evidence[0]["completeness"] == "unknown"
+    assert evidence[0]["diagnostics"] == ["provider-unavailable:offline"]
+
+
+def test_body_coverage_fetch_order_does_not_change_material_hash():
+    from citypods.audit import collect_body_coverage
+    from citypods.remedy_policy import material_evidence_hash
+
+    city = _city()
+    episodes = [_ep(1), _ep(2)]
+    forward, _ = collect_body_coverage(episodes, {}, related_cities=[city])
+    reverse, _ = collect_body_coverage(list(reversed(episodes)), {}, related_cities=[city])
+    assert material_evidence_hash(forward) == material_evidence_hash(reverse)
+
+
+def test_body_coverage_retired_source_keeps_history_without_provider(monkeypatch, tmp_path):
+    city = _city()
+    city.lifecycle = FeedLifecycle(status="retired", reason="body dissolved")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("retired source must not be polled")
+
+    monkeypatch.setattr("citypods.providers.get_provider", forbidden)
+    monkeypatch.setattr(
+        "citypods.records.load_records",
+        lambda *args: {
+            "old": {"body": "Council", "provider_guid": "guid", "title": "Old"},
+        },
+    )
+    evidence = []
+    audit_all(
+        [city],
+        site_config={},
+        output_dir=tmp_path,
+        body_coverage_only=True,
+        body_coverage_evidence=evidence,
+    )
+    assert evidence[0]["observations"][0]["uid"] == "old"
+    assert evidence[0]["diagnostics"] == ["retired-source-not-fetched"]

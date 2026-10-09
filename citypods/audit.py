@@ -310,6 +310,72 @@ def check_view_cap(slug: str, view_counts: list[int], *, cap: int = 100) -> Find
     return None
 
 
+def collect_body_coverage(episodes, records, *, related_cities, policies=None, dispositions=None):
+    """Include retained history and fresh observations without mutating either input."""
+    from citypods.records import source_key
+    from citypods.remedy_policy import material_evidence_hash, replay_coverage
+
+    if dispositions is not None:
+        raise ValueError("coverage dispositions are not supported in this slice")
+    cities = list(related_cities)
+    if not cities:
+        raise ValueError("coverage requires an explicit source context")
+    key = source_key(cities[0])
+    if any(source_key(city) != key for city in cities):
+        raise ValueError("coverage context must contain exactly one source")
+    observations = []
+    for uid, record in sorted(records.items()):
+        observations.append(
+            {
+                "source_key": key,
+                "uid": uid,
+                "provider_guid": record.get("provider_guid"),
+                "body": record.get("body"),
+                "title": record.get("title"),
+                "date": record.get("published"),
+                "observation_refs": ["record:" + uid],
+            }
+        )
+    for episode in episodes:
+        observation = {
+            "source_key": key,
+            "uid": episode.uid or None,
+            "provider_guid": episode.guid or None,
+            "body": episode.body,
+            "title": episode.title,
+            "date": episode.published.isoformat(),
+        }
+        observation["observation_refs"] = ["fetch:" + material_evidence_hash(observation)]
+        observations.append(observation)
+    return observations, replay_coverage(observations, cities, policies)
+
+
+def _body_coverage_source(city, episodes, records, related_cities, diagnostics=()):
+    from dataclasses import asdict
+
+    from citypods.records import source_key
+    from citypods.remedy_policy import PolicyIndex, _instance
+
+    policies = PolicyIndex(
+        tuple(_instance(feed, None) for feed in related_cities if "remedy_policy" in feed.extra)
+    )
+    observations, replay = collect_body_coverage(
+        episodes,
+        records,
+        related_cities=related_cities,
+        policies=policies,
+    )
+    return {
+        "source_key": source_key(city),
+        "city": city.city_entity or city.slug,
+        "completeness": "unknown",
+        "observations": observations,
+        "rows": [asdict(row) for row in replay.rows],
+        "totals": dict(replay.totals),
+        "diagnostics": list(diagnostics),
+    }
+
+
 def collect_unexpected_bodies(
     episodes: list[Episode],
     records: Mapping[str, dict],
@@ -1668,6 +1734,8 @@ def audit_city(
     timeline_finding_min_delta: float = 1.0,
     unexpected_evidence: list[UnexpectedBodyEvidence] | None = None,
     unexpected_evidence_only: bool = False,
+    body_coverage_evidence: list[dict] | None = None,
+    body_coverage_only: bool = False,
 ) -> list[Finding]:
     """Fetch a city once and run every applicable check, returning all findings.
 
@@ -1681,7 +1749,29 @@ def audit_city(
     try:
         episodes = merge_seed_episodes(city, provider.fetch_episodes(city.source))
     except ProviderError as exc:
-        return [Finding(city.slug, "unreachable", ERROR, str(exc))]
+        if body_coverage_evidence is not None:
+            body_coverage_evidence.append(
+                _body_coverage_source(
+                    city,
+                    [],
+                    records or {},
+                    list(related_cities or [city]),
+                    ("provider-unavailable:" + str(exc),),
+                )
+            )
+        return [] if body_coverage_only else [Finding(city.slug, "unreachable", ERROR, str(exc))]
+
+    if body_coverage_evidence is not None:
+        body_coverage_evidence.append(
+            _body_coverage_source(
+                city,
+                episodes,
+                records or {},
+                list(related_cities or [city]),
+            )
+        )
+    if body_coverage_only:
+        return []
 
     # Stable identity + persisted artifacts (hosted audio) so the backlog check can tell a
     # stalled pipeline from a normal in-progress backfill.
@@ -2073,6 +2163,8 @@ def audit_all(
     timeline_finding_min_delta: float = 1.0,
     unexpected_evidence: list[UnexpectedBodyEvidence] | None = None,
     unexpected_evidence_only: bool = False,
+    body_coverage_evidence: list[dict] | None = None,
+    body_coverage_only: bool = False,
 ) -> list[Finding]:
     """Run every check across all cities. One fetch per city; ``view_counts`` and the
     per-source record store are gathered so the provider-specific checks apply.
@@ -2093,10 +2185,10 @@ def audit_all(
     min_meetings = int(defaults.get("min_meetings_per_body", 3))
     max_kbps = int(defaults.get("audio_max_kbps", 96))
     dead_threshold = int(defaults.get("dead_audio_alert_threshold", DEAD_AUDIO_ALERT_THRESHOLD))
-    head = _net_head() if check_enclosures_net else None
-    run_history = _load_run_history(state_dir)
+    head = _net_head() if check_enclosures_net and not body_coverage_only else None
+    run_history = [] if body_coverage_only else _load_run_history(state_dir)
     timeline_storage = None
-    if timeline_diagnostics is not None:
+    if timeline_diagnostics is not None and not body_coverage_only:
         try:
             timeline_storage = make_storage(
                 site_config, site_config.get("base_url", ""), output_dir
@@ -2167,11 +2259,39 @@ def audit_all(
     unexpected_checked_sources: set[str] = set()
     for city in cities:
         src_key = source_key(city)
-        if unexpected_evidence_only and src_key in unexpected_checked_sources:
+        if (
+            unexpected_evidence_only or body_coverage_only
+        ) and src_key in unexpected_checked_sources:
             continue
         records = load_records(state_dir, src_key)
         entity_of_source[src_key] = city.city_entity
         records_by_source[src_key] = records
+        if body_coverage_only:
+            unexpected_checked_sources.add(src_key)
+            related = cities_by_source[src_key]
+            active = next((feed for feed in related if feed.lifecycle.polls_provider()), None)
+            if active is None:
+                if body_coverage_evidence is not None:
+                    body_coverage_evidence.append(
+                        _body_coverage_source(
+                            city,
+                            [],
+                            records,
+                            related,
+                            ("retired-source-not-fetched",),
+                        )
+                    )
+            else:
+                audit_city(
+                    active,
+                    provider=get_provider(active.provider),
+                    now=now,
+                    records=records,
+                    related_cities=related,
+                    body_coverage_evidence=body_coverage_evidence,
+                    body_coverage_only=True,
+                )
+            continue
         if not city.lifecycle.polls_provider():
             # Retired is archive-preserving and non-polling. Do not instantiate/call its
             # provider or turn historical backlog state into a fresh operational finding.
@@ -2228,9 +2348,12 @@ def audit_all(
             ),
             unexpected_evidence=unexpected_evidence,
             unexpected_evidence_only=unexpected_evidence_only,
+            body_coverage_evidence=(
+                body_coverage_evidence if src_key not in unexpected_checked_sources else None
+            ),
         )
         findings.extend(city_findings)
-        if unexpected_evidence_only:
+        if unexpected_evidence_only or body_coverage_evidence is not None:
             unexpected_checked_sources.add(src_key)
         elif src_key not in unexpected_checked_sources and not any(
             finding.check == "unreachable" for finding in city_findings
@@ -2246,7 +2369,7 @@ def audit_all(
         # sibling's self-heal by the time we get here.
         records_by_source[src_key] = records
 
-    if unexpected_evidence_only:
+    if unexpected_evidence_only or body_coverage_only:
         return findings
 
     cross_findings, cross_touched = reconcile_cross_source_audio(
