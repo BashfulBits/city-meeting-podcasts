@@ -171,10 +171,14 @@ class Report:
     rate_observations: list[LimitObservation] = field(default_factory=list)
     rate_changes: list = field(default_factory=list)
     rate_attempted_routes: set[str] = field(default_factory=set)
+    context_observations: list = field(default_factory=list)
+    context_states: list = field(default_factory=list)
+    context_changes: list = field(default_factory=list)
+    context_attempted_routes: set[str] = field(default_factory=set)
 
     @property
     def actionable(self) -> bool:
-        return bool(self.candidates or self.anomalies or self.rate_changes)
+        return bool(self.candidates or self.anomalies or self.rate_changes or self.context_changes)
 
 
 def _route_model_keys(route: Mapping[str, Any]) -> set[str]:
@@ -339,6 +343,7 @@ def reconcile(
     rate_run_id: str = "",
     rate_now: datetime | None = None,
     early_rate_checks: set[str] | None = None,
+    context_run=None,
 ) -> Report:
     report = Report(floor=quality.floor)
     rechecked_routes: set[str] = set()
@@ -364,6 +369,17 @@ def reconcile(
     provider_cfgs = limits.get("providers") or {}
     catalogs = dict(previous_state.get("catalogs") or {})
     selected = sorted(providers or provider_cfgs)
+    if context_run and not due_only:
+        from citypods.provider_catalog.limits import plan_context_scan
+
+        ordered = plan_context_scan(limits, context_run.get("rotation", {}))
+        rank = {route["route_id"]: i for i, route in enumerate(ordered)}
+        selected.sort(
+            key=lambda provider: min(
+                (rank.get(r["route_id"], len(rank)) for r in routes if r["provider"] == provider),
+                default=len(rank),
+            )
+        )
     for provider in selected:
         rules = all_rules().get(provider)
         cfg = provider_cfgs.get(provider)
@@ -587,7 +603,7 @@ def reconcile(
                 )
             candidates = candidates[:CANARY_BUDGET_PER_PROVIDER]
 
-        if not health and not candidates:
+        if not health and not candidates and not context_run:
             continue
 
         runner = (
@@ -598,7 +614,7 @@ def reconcile(
                 max_wall_seconds=900,
                 session=session,
             )
-            if rate_run_id
+            if rate_run_id or context_run
             else None
         )
 
@@ -916,6 +932,23 @@ def reconcile(
                     # One provider-wide allowance, not three requests for each route.
                     break
 
+            if context_run and not due_only:
+                _measure_context_routes(
+                    report,
+                    context_run,
+                    provider_routes,
+                    cfg,
+                    rules,
+                    runner,
+                    pause,
+                    control,
+                    session,
+                    sleep=sleep,
+                    cooldown=cooldown,
+                )
+                if report.context_attempted_routes:
+                    first_probe = False
+
             # Unconfigured candidates have no route ledger entry. Keep the account paused until
             # its final probe's window has cleared, so resumed dispatch does not hit that window.
             if not first_probe and cooldown:
@@ -926,6 +959,15 @@ def reconcile(
             report.rate_observations[:] = [
                 o for o in report.rate_observations if o.provider != provider
             ]
+            report.context_observations[:] = [
+                o for o in report.context_observations if o.provider != provider
+            ]
+            if context_run:
+                from citypods.provider_catalog.limits import context_history_states
+
+                context_run["states"] = context_history_states(
+                    [*context_run["history"], *report.context_observations], now=datetime.now(UTC)
+                )
 
     # Forget canary memory that has aged out so the state marker stays bounded.
     canary_memory = {
@@ -953,6 +995,18 @@ def reconcile(
             "observations": list(report.observations),
         },
     }
+    if context_run:
+        report.state["context_v1"] = {
+            "version": 1,
+            "rotation": context_run.get("rotation", {}),
+            "statuses": {
+                f"{key[0]}/{key[1]}": value.status
+                for key, value in context_run.get("states", {}).items()
+            },
+        }
+        report.context_states = list(context_run.get("states", {}).values())
+    elif previous_state.get("context_v1"):
+        report.state["context_v1"] = previous_state["context_v1"]
     return report
 
 
@@ -967,6 +1021,16 @@ def _merge_into_last_full(
     from citypods.provider_catalog.limits import RateChange
 
     report.rate_changes = [RateChange(**v) for v in last_full.get("rate_changes") or []]
+    from citypods.provider_catalog.apply import parse_context_choice
+    from citypods.provider_catalog.limits import context_choice
+
+    report.context_changes = []
+    values = last_full.get("context_changes")
+    for value in values[:128] if isinstance(values, list) else ():
+        try:
+            report.context_changes.append(parse_context_choice(context_choice(value)))
+        except (TypeError, ValueError):
+            continue  # editable advisory state cannot break a scheduled scan or supply proof
     rechecked = {a.route_id for a in report.anomalies} | rechecked_routes
     carried = [
         Anomaly(
@@ -1166,3 +1230,195 @@ def backtest_summary(rows: list[BacktestRow]) -> str:
     misses = [f"{r.provider}/{r.model} ({r.gate})" for r in rows if r.gate != "discoverable"]
     tail = f"; not: {', '.join(misses)}" if misses else ""
     return f"discovery self-check: {found}/{len(rows)} configured models would be re-found{tail}"
+
+
+def _measure_context_routes(
+    report, context_run, routes, cfg, rules, runner, pause, control, session, *, sleep, cooldown
+):
+    """Optional context calls share the existing provider request/time allowance, input first."""
+    import secrets
+    from dataclasses import replace
+    from fractions import Fraction
+
+    from citypods.compute.llm_dispatch_pause import DispatchPauseError
+    from citypods.provider_catalog.evidence import digest
+    from citypods.provider_catalog.limits import (
+        ContextSearchState,
+        advance_context_state,
+        context_history_states,
+        context_input_ratio,
+        next_context_probe,
+        plan_context_scan,
+    )
+    from citypods.provider_catalog.probe import build_context_request, measure_context
+
+    if not context_run or context_run.get("abandoned") or pause.contended or runner is None:
+        return
+    now = datetime.now(UTC)
+    states = context_run.setdefault(
+        "states", context_history_states(context_run["history"], now=now)
+    )
+    eligible = plan_context_scan({"routes": routes}, context_run.get("rotation", {}))
+    for route in eligible:
+        rid = route["route_id"]
+        readiness = context_run["readiness"].get(rid) or {}
+        if not readiness.get("enabled") or not readiness.get("quota_scope"):
+            report.observations.append(f"{rid}: context deferred (disabled or unknown quota scope)")
+            continue
+        key = None
+        for dimension in ("input", "output"):
+            observed = None
+            for _ in range(6):
+                if context_run.get("abandoned"):
+                    return
+                budget = context_run["budget"]
+                budget["route_requests"] = context_run.setdefault("route_counts", {}).get(rid, 0)
+                budget["remaining_seconds"] = min(
+                    (context_run["deadline_ms"] - time.time() * 1000) / 1000,
+                    900 - (time.monotonic() - runner.start_time) - cooldown,
+                )
+                if (
+                    runner.total_requests >= runner.max_requests_total
+                    or budget["remaining_seconds"] < 205
+                ):
+                    return
+                prior = Fraction(str(route.get("input_token_ratio") or 1))
+                baseline = (
+                    route.get("hard_input_ceiling") or route.get("input_context_limit")
+                    if dimension == "input"
+                    else route.get("output_context_limit")
+                )
+                if type(baseline) is not int or baseline <= 0:
+                    break
+                # A small fixture is used only to resolve the documented measurement identity.
+                seed = build_context_request(
+                    route,
+                    cfg,
+                    rules,
+                    dimension=dimension,
+                    target=1000,
+                    ratio=prior,
+                    attempt_ordinal=1,
+                    nonce="offline-identity-" * 4,
+                )
+                key = (seed.identity_digest, dimension)
+                from citypods.provider_catalog.rules import context_parser_support
+
+                supported, reason = context_parser_support(rules, seed)
+                if not supported:
+                    report.observations.append(f"{rid}/{dimension}: context deferred ({reason})")
+                    break
+                current = states.get(key, ContextSearchState(*key))
+                target = next_context_probe(
+                    current,
+                    {
+                        "baseline": baseline,
+                        "opposite_reservation": 256 if dimension == "input" else 2048,
+                    },
+                    budget,
+                )
+                states[key] = target
+                if target.status in {"budget_limited", "uncertain", "unsupported"}:
+                    report.observations.append(
+                        f"{rid}/{dimension}: context {target.status}; "
+                        f"desired target {target.next_target}"
+                    )
+                    break
+                ordinal = context_run.setdefault("ordinal", 0) + 1
+                context_run["ordinal"] = ordinal
+                request = build_context_request(
+                    route,
+                    cfg,
+                    rules,
+                    dimension=dimension,
+                    target=target.next_target,
+                    ratio=context_input_ratio(current, prior),
+                    attempt_ordinal=ordinal,
+                    nonce=context_run.setdefault("nonce", secrets.token_hex(32)),
+                )
+                if request.reserved_input > budget["remaining_input"] or (
+                    request.requested_output > budget["remaining_output"]
+                ):
+                    break
+                attempt_id = digest([context_run["run_id"], rid, dimension, ordinal])
+                request_digest = digest(
+                    [request.identity_digest, request.fixture_version, request.shaped_body]
+                )
+                call_admitted = False
+
+                def before_call(
+                    rid=rid,
+                    dimension=dimension,
+                    request=request,
+                    budget=budget,
+                    attempt_id=attempt_id,
+                    request_digest=request_digest,
+                ):
+                    nonlocal call_admitted
+                    if context_run["deadline_ms"] - time.time() * 1000 < 205000:
+                        raise DispatchPauseError("context session has insufficient cleanup time")
+                    runner.check_budgets(rid)
+                    if rules.canary_interval_seconds:
+                        sleep(rules.canary_interval_seconds)
+                    pause.renew()
+                    report.context_attempted_routes.add(rid)
+                    admitted = control.client.reserve_context(
+                        run_id=context_run["run_id"],
+                        catalog_digest=context_run["catalog_digest"],
+                        route_id=rid,
+                        dimension=dimension,
+                        attempt_id=attempt_id,
+                        input_tokens=request.reserved_input,
+                        output_tokens=request.requested_output,
+                        request_digest=request_digest,
+                    )
+                    call_admitted = True
+                    budget["remaining_input"] -= request.reserved_input
+                    budget["remaining_output"] -= request.requested_output
+                    budget["remaining_requests"] -= 1
+                    runner.total_requests += 1
+                    runner.route_request_counts[rid] = runner.route_request_counts.get(rid, 0) + 1
+                    context_run["route_counts"][rid] = budget["route_requests"] + 1
+                    return admitted
+
+                try:
+                    observed = measure_context(
+                        request,
+                        session=session,
+                        before_call=before_call,
+                        clock=time.monotonic,
+                        timeout=120,
+                    )
+                except (DispatchPauseError, ProbeBudgetExceeded, RouteBudgetExceeded):
+                    context_run["abandoned"] = (
+                        True  # admission ambiguity never permits a new attempt
+                    )
+                    report.observations.append(
+                        f"{rid}: context admission unavailable; run abandoned"
+                    )
+                    return
+                if not call_admitted:
+                    report.observations.append(f"{rid}: context preflight unavailable; deferred")
+                    break
+                observed = replace(
+                    observed,
+                    observed_at=datetime.now(UTC).isoformat(),
+                    run_id=context_run["run_id"],
+                    head_sha=context_run["head_sha"],
+                    attempt_id=attempt_id,
+                )
+                report.context_observations.append(observed)
+                current = advance_context_state(target, observed)
+                states[key] = current
+                context_run.setdefault("rotation", {})[rid] = observed.observed_at
+                if observed.outcome != "verified" or current.status in {"uncertain", "converged"}:
+                    break
+            if dimension == "input" and (
+                key is None
+                or states.get(key) is None
+                or states[key].success is None
+                or states[key].status == "uncertain"
+                or (observed is not None and observed.outcome != "verified")
+            ):
+                break
+    report.context_states = list(states.values())

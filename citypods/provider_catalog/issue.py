@@ -83,6 +83,9 @@ def decision_choices(report: Report) -> tuple[str, ...]:
             choices.append(f"`{anomaly.route_id}`: remove route")
             choices.append(f"`{anomaly.route_id}`: keep as a paid route")
     choices.extend(c.choice for c in report.rate_changes if c.action == "offer_increase")
+    from citypods.provider_catalog.limits import context_choice
+
+    choices.extend(context_choice(c) for c in report.context_changes)
     return tuple(choices)
 
 
@@ -161,6 +164,13 @@ def fulfilled_choices(previous_body, limits, lanes, decisions, today) -> set[str
             and block.get(change.metric) == change.new
         ):
             fulfilled.add(change.choice)
+    from citypods.provider_catalog.limits import context_choice
+
+    for change in snapshot.context_changes:
+        rid, field, _old, new, _stamp = change
+        route = next((r for r in limits.get("routes", []) if r.get("route_id") == rid), None)
+        if route and route.get(field) == new:
+            fulfilled.add(context_choice(change))
     return fulfilled
 
 
@@ -195,6 +205,16 @@ def render_body(
         if c.choice in selected and c.choice not in choices and c.choice not in fulfilled
     ]
     choices += tuple(c.choice for c in pending_rates)
+    from citypods.provider_catalog.limits import context_choice
+
+    pending_context = [
+        c
+        for c in prior.context_changes
+        if context_choice(c) in selected
+        and context_choice(c) not in choices
+        and context_choice(c) not in fulfilled
+    ]
+    choices += tuple(context_choice(c) for c in pending_context)
     if pending or pending_paid:
         pending_choices = decision_choices(Report(candidates=pending, anomalies=pending_paid))
         choices += tuple(c for c in pending_choices if c not in choices and c not in fulfilled)
@@ -310,12 +330,13 @@ def render_body(
         ["", summary, "", *[f"- {o}" for o in report.observations], "", "</details>", ""]
     )
     state = dict(report.state)
-    if pending or pending_paid or pending_rates:
+    if pending or pending_paid or pending_rates or pending_context:
         from dataclasses import asdict
 
         state["last_full"] = dict(state.get("last_full") or {})
         state["last_full"]["candidates"] = [asdict(c) for c in (*report.candidates, *pending)]
         state["last_full"]["anomalies"] = [asdict(a) for a in (*report.anomalies, *pending_paid)]
+        state["last_full"]["context_changes"] = list((*report.context_changes, *pending_context))
         state["last_full"]["rate_changes"] = [
             asdict(c) for c in (*report.rate_changes, *pending_rates)
         ]

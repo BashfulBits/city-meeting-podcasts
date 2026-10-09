@@ -1460,6 +1460,13 @@ fresh eligibility and quota checks. Basis/identity changes discard the active br
 older evidence for diagnostics only. Converged states remain eligible for later revalidation, with
 fair rotation; uncertainty never monopolizes the weekly queue.
 
+**Maintainer direction — 2026-10-09:** a route stops its current scan on conflicting or repeated
+counts. The next weekly scan restarts at its configured baseline, retaining fixture-local estimate/
+count correction while clearing active success/rejection references. Previous observations remain
+diagnostic only. Require two compatible successes in distinct subsequent weekly runs before a cap
+offer; pre-restart successes cannot satisfy that proof. Replay of authenticated history enforces the
+same run boundary, so an issue summary or process restart cannot erase the uncertainty gate.
+
 Add `context_artifact`, `discover_context_references` and `verified_context_history` alongside the
 rate equivalents. Artifacts include schema version, repository, successful-main run/head, catalog
 digest, typed observations, attempted scopes and per-identity summaries. Authenticate run success,
@@ -1584,23 +1591,45 @@ Input/output canaries and recurring activation remain separately reviewed change
 
 ### Final Slice 5 development checkpoint — unmerged, 2026-10-09
 
-Branch `feat/2209-adaptive-context-calibration` contains the initial pure observation/request schemas,
-strict Groq/OpenRouter chat usage callbacks, sentinel fixture construction, actual-count search and
-exact refinement/budget planning. Other configured free endpoints explicitly fail closed until their
-usage/counting bases have documented fixtures. This is an initial offline matrix, not final acceptance.
-The 242 focused catalog tests pass (including 30 new context cases); whole-repository Ruff
-lint/format passes. No live transport, history writer, reviewed cap publisher or workflow activation
-is wired. The final implementation is incomplete and has not been opened as a ready PR.
+Branch `feat/2209-adaptive-context-calibration` now contains the observation/request schemas,
+strict Groq input and OpenRouter input/output chat parsers, sentinel and counted-generation fixtures,
+actual-count search, authenticated bounded history, exact scalar choices and fresh-main cap
+publication. Weekly orchestration uses the shipped durable admission and existing shared provider
+request/time budget. All configured routes have offline eligibility and parser coverage; unsupported
+endpoints, native Gemini and BeatAPI JEV remain explicitly deferred. There is no generic inferred
+size-error parser, so these initial supported endpoints explore verified lower bounds without
+inventing rejection ceilings from arbitrary error numbers. Unknown/shared quota scope separately
+defers admission; parser support alone does not enable calls.
 
-**Transport clarification pending under AGENTS.md:** §8.11.B requires a 120-second monotonic total
-response deadline. Requests' socket-inactivity timeout does not enforce that total for a slowly
-progressing stream, as its [timeout documentation](https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts)
-explains. Proposed narrow adjustment: isolate the existing Requests call in a short-lived standard-
-library subprocess; the parent terminates it at the total deadline, never retries and retains its
-admission charge. This preserves the hard bound without a new dependency. Process isolation is not
-specified by the accepted file/function plan, so implementation of that path awaits maintainer
-approval. An explicitly approved cancellable async HTTP dependency is the alternative; dependency
-and lockfile changes would also require the gate. Neither option enables live calls by itself.
+The provider transport uses the approved cancellation adjustment below. URL validation and key
+availability precede admission; the child waits for new durable permission before submission.
+Preflight failures do not mark a route measured. Admission ambiguity abandons the context run,
+transport ambiguity never retries the attempt, and reservation overshoot stops both dimensions of
+that route. Actual input overshoots remain fixture-local correction evidence, never cap authority.
+Raw prompts/responses do not enter artifacts. Two bounded compatible weekly successes can supply an
+explicit lower-bound choice; reaching the experiment ceiling cannot justify reducing an existing
+larger production cap. Current cap offers retain output/window guards and unsupported combined-
+window semantics withhold proposals until a documented endpoint parser establishes that basis.
+
+Full offline acceptance and the final implementation PR are being prepared. The focused matrix
+covers every configured route and both dimensions, including paid/paused exclusions, actual-count
+feedback, reservation overshoot, uncertain weekly restart, convergence revalidation, deadline/byte
+cancellation, new-admission gating, tampered/missing/expired history, retained unexpired anchors,
+exact fresh-main scalar edits and context-writer collisions. No production YAML,
+compiled catalog, estimator, output forecast, Worker activation flag or live admission policy changes.
+Input/output canaries, recurring activation and removal recovery acceptance remain separate gates.
+
+**Maintainer-approved transport adjustment — 2026-10-09:** §8.11.B requires a 120-second
+monotonic total response deadline. Requests' socket-inactivity timeout does not enforce that total
+for a slowly progressing stream, as its
+[timeout documentation](https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts) explains.
+The maintainer approved isolating the existing Requests call in a short-lived standard-library
+subprocess. The child validates the URL and loads the configured credential before waiting;
+the parent obtains a new typed durable admission before permitting submission. The parent
+terminates the child at the total deadline, never retries and retains the admission charge.
+The collector also enforces four MiB and closes responses. This preserves the hard bound without
+adding a dependency or authorizing live calls. This is an explicit narrow adjustment to §8.11.B,
+recorded after the AGENTS.md file/function-plan clarification gate.
 
 ### Slice 4 implementation checkpoint — implemented in PR #2201 (#2200; merged 2026-10-09)
 

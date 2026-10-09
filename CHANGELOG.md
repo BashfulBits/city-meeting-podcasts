@@ -12,6 +12,20 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Provider catalog Slice 5 adaptive context calibration (#2209).** Adds offline-tested
+  provider-count search, bounded weekly orchestration, authenticated 90-day histories and exact
+  reviewed `/apply` input/output cap choices. Groq input and OpenRouter input/output chat parsers
+  opt in; every configured free route has support or an explicit unsupported case. Native Gemini
+  and BeatAPI JEV counts cannot become chat capacity proof. Prompt correction uses actual counts;
+  refinement is exactly 0.5% or 128 tokens, with no added blanket cap margin. A cancellable
+  subprocess bounds one admitted call to 120 seconds/four MiB without retries. Failed or ambiguous
+  attempts retain quota charges, and ordinary reconciliation allowances still bound experiments.
+  Experiment ceilings cannot lower existing larger caps. Cap publishing reauthenticates fresh-main
+  evidence, requires explicit choices and preserves unrelated YAML and production guards.
+  Server route activation remains empty and output disabled; no live probes, production config
+  changes, deployment, pipeline-version bump or completed-artifact backfill. Input/output canaries,
+  recurring activation and removal recovery acceptance remain separate gates.
+
 - **Provider catalog Slice 5 quota-admission prerequisite (#2209; PR #2214).** The existing authenticated
   reservation API supports bounded weekly context sessions and single-use token/request admission;
   opt-in pause status exposes advisory allowance and verified quota scope. Admission atomically

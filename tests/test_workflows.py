@@ -1803,6 +1803,20 @@ def test_rate_consumer_uses_trusted_main_and_read_only_artifacts_without_provide
     assert "secrets." not in str(job)
     assert "download-artifact" not in str(job)  # script verifies bounded data; never executes it
     _, producer = _job("provider-catalog-reconcile.yml", "reconcile")
-    upload = producer["steps"][-1]
+    upload = next(
+        step for step in producer["steps"] if step.get("name") == "Retain scoped rate evidence"
+    )
     assert upload["with"]["retention-days"] == 90
     assert upload["with"]["name"] == "provider-catalog-rate-evidence-${{ github.run_id }}"
+
+
+def test_context_artifact_is_weekly_main_only_and_apply_keeps_writer_lock():
+    wf, producer = _job("provider-catalog-reconcile.yml", "reconcile")
+    run = next(s for s in producer["steps"] if s.get("name") == "Reconcile provider catalogs")
+    assert '"$GITHUB_EVENT_SCHEDULE" = "17 10 * * 1"' in run["run"]
+    assert "--context-evidence" in run["run"]
+    upload = next(s for s in producer["steps"] if s.get("name") == "Retain scoped context evidence")
+    assert "github.event_name == 'schedule'" in upload["if"]
+    assert "github.event.schedule == '17 10 * * 1'" in upload["if"]
+    assert upload["with"]["retention-days"] == 90
+    assert wf["concurrency"]["group"] == "provider-catalog-writers"

@@ -284,7 +284,9 @@ Turn feeds into a civic-research tool. Design: [`review/13`](review/13-per-meeti
 > Conservative weekly experiments use firm reviewed budgets and fair rotation. The L3 contract
 > was accepted in merged #2208, with implementation tracked in #2209; no live probes
 > are authorized. PR #2214 (#2209) shipped disabled durable admission;
-> the final adaptive calibration implementation and separate activation gates remain.
+> the final adaptive calibration implementation is in progress on
+> `feat/2209-adaptive-context-calibration`, with all-route offline parser/eligibility coverage.
+> Separate input/output canaries, recurring calibration and removal recovery gates remain.
 > The accepted §8.10–8.11 contract specifies bounded weekly input/output allowances, explicit budget-limited
 > results, provider-specific count parsers and token-aware Worker reservations before live activation.
 > The maintainer approved the token-aware Worker extension and doubled the proposed starting

@@ -414,5 +414,184 @@ def build_context_request(
         requested_output,
         attempt_ordinal,
         tuple(messages),
-        {"url": url, "body": body},
+        {
+            "url": url,
+            "body": body,
+            "api_key_env": next(
+                (
+                    a.get("api_key_env")
+                    for a in provider_cfg.get("accounts", [])
+                    if a.get("id") == route["account_id"]
+                ),
+                "",
+            ),
+        },
     )
+
+
+_CONTEXT_BYTES = 4 * 1024 * 1024
+
+
+def _context_envelope(raw, content_type):
+    """Normalize documented SSE final usage; malformed/truncated streams remain unsupported."""
+    if "text/event-stream" not in content_type:
+        return raw
+    content, usage, finish, done = [], None, None, False
+    for frame in raw.replace("\r\n", "\n").split("\n\n"):
+        lines = [line[5:].strip() for line in frame.splitlines() if line.startswith("data:")]
+        if not lines:
+            continue
+        value = "\n".join(lines)
+        if value == "[DONE]":
+            done = True
+            continue
+        if done:
+            raise ValueError("SSE event after termination")
+        from citypods.provider_catalog.rules import strict_context_json
+
+        event = strict_context_json(value)
+        if not isinstance(event, dict) or event.get("error"):
+            raise ValueError("invalid context SSE envelope")
+        if event.get("usage") is not None:
+            if usage is not None:
+                raise ValueError("conflicting context usage")
+            usage = event["usage"]
+        choices = event.get("choices")
+        if not isinstance(choices, list) or len(choices) > 1:
+            raise ValueError("invalid context SSE choices")
+        if choices:
+            choice = choices[0]
+            if not isinstance(choice, dict) or choice.get("error") or choice.get("index", 0) != 0:
+                raise ValueError("invalid context SSE choice")
+            delta = choice.get("delta")
+            if not isinstance(delta, dict) or delta.get("tool_calls") or delta.get("refusal"):
+                raise ValueError("unsupported context SSE delta")
+            if delta.get("content") is not None:
+                if not isinstance(delta["content"], str):
+                    raise ValueError("invalid context SSE content")
+                content.append(delta["content"])
+            if choice.get("finish_reason") is not None:
+                if finish is not None and finish != choice["finish_reason"]:
+                    raise ValueError("conflicting context termination")
+                finish = choice["finish_reason"]
+    if not done or usage is None or finish is None:
+        raise ValueError("incomplete context stream")
+    return json.dumps(
+        {
+            "object": "chat.completion",
+            "usage": usage,
+            "choices": [{"finish_reason": finish, "message": {"content": "".join(content)}}],
+        }
+    )
+
+
+def _collect_context(session, request, headers, timeout, clock):
+    """Byte/deadline collector inside the cancellable child; never reads response.text."""
+    started = clock()
+    response = None
+    try:
+        response = session.post(
+            request.shaped_body["url"],
+            headers=headers,
+            json=request.shaped_body["body"],
+            stream=True,
+            allow_redirects=False,
+            timeout=(min(20, timeout), timeout),
+        )
+        raw = bytearray()
+        for chunk in response.iter_content(chunk_size=16384):
+            if clock() - started >= timeout or len(raw) + len(chunk) > _CONTEXT_BYTES:
+                return Response(None, timed_out=True)
+            raw.extend(chunk)
+        if clock() - started >= timeout:
+            return Response(None, timed_out=True)
+        body = raw.decode("utf-8", errors="strict")
+        if response.status_code == 200:
+            body = _context_envelope(body, response.headers.get("Content-Type", ""))
+        return Response(response.status_code, body=body)
+    except requests.Timeout:
+        return Response(None, timed_out=True)
+    except (requests.RequestException, ValueError, UnicodeError) as exc:
+        return Response(None, transport_error=type(exc).__name__)
+    finally:
+        if response is not None:
+            response.close()
+
+
+def _context_http_worker(pipe, request, session, timeout):
+    """Preflight before admission; parent permission is required before any provider submission."""
+    from citypods.provider_catalog.registry import rules_for
+    from citypods.security import validate_source_url
+
+    try:
+        validate_source_url(request.shaped_body["url"])
+        config = {"accounts": [{"id": request.account_id, "api_key_env": pipe.recv()}]}
+        key = account_key(config, request.account_id)
+        if not key:
+            pipe.send("unavailable")
+            return
+        # A copied Requests session must not inherit transport retries from a custom adapter.
+        for adapter in getattr(session, "adapters", {}).values():
+            adapter.max_retries = requests.adapters.Retry(total=0, redirect=0)
+        pipe.send("ready")
+        if pipe.recv() != "new":
+            return
+        headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+        rules_for(request.provider)  # refuse unknown plugins before submission
+        pipe.send(_collect_context(session, request, headers, timeout, time.monotonic))
+    except (OSError, ValueError, KeyError, EOFError):
+        try:
+            pipe.send(Response(None, transport_error="context preflight unavailable"))
+        except (OSError, EOFError):
+            pass
+    finally:
+        pipe.close()
+        session.close()
+
+
+def measure_context(request, *, session, before_call, clock, timeout=120):
+    """One hard-cancellable call; only a new typed admission releases the waiting subprocess."""
+    import multiprocessing
+
+    from citypods.compute.llm_dispatch_pause import ContextAdmission
+    from citypods.provider_catalog.registry import rules_for
+
+    if not 0 < timeout <= 120:
+        raise ValueError("context timeout exceeds reviewed deadline")
+    started = clock()
+    ctx = multiprocessing.get_context("spawn")
+    parent, child = ctx.Pipe()
+    process = ctx.Process(target=_context_http_worker, args=(child, request, session, timeout))
+    observation = Response(None, timed_out=True)
+    try:
+        process.start()
+        child.close()
+        # Only an environment variable name crosses the pipe; credentials remain in child memory.
+        env_name = request.shaped_body.get("api_key_env")
+        parent.send(env_name or "")
+        remaining = timeout - (clock() - started)
+        if remaining > 0 and parent.poll(remaining) and parent.recv() == "ready":
+            admission = before_call()
+            if not isinstance(admission, ContextAdmission):
+                raise ValueError("context call lacks a new durable admission")
+            remaining = timeout - (clock() - started)
+            if remaining > 0:
+                parent.send("new")
+                if parent.poll(remaining):
+                    received = parent.recv()
+                    if isinstance(received, Response):
+                        observation = received
+    except (OSError, EOFError):
+        observation = Response(None, transport_error="context worker unavailable")
+    finally:
+        parent.close()
+        child.close()
+        if process.pid is not None:
+            if process.is_alive():
+                process.terminate()
+            process.join(0.5)
+            if process.is_alive():
+                process.kill()
+                process.join(0.5)
+            process.close()
+    return rules_for(request.provider).context_observation(observation, request)

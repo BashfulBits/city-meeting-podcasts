@@ -402,6 +402,10 @@ class ContextSearchState:
 
 
 def _context_count(observation):
+    if observation.count_basis == "combined_reserved":
+        return observation.reported_input + observation.requested_output
+    if observation.count_basis == "combined_generated":
+        return observation.reported_total
     return (
         observation.reported_input
         if observation.dimension == "input"
@@ -425,13 +429,24 @@ def advance_context_state(state, observation):
     ):
         raise ValueError("incompatible context observation")
     attempted = replace(state, last_attempted_at=observation.observed_at)
+    reference = state.success or state.rejection
+    if (
+        reference
+        and reference.count_basis != observation.count_basis
+        and observation.count_basis != "unknown"
+    ):
+        return replace(attempted, status="uncertain")
     if observation.outcome == "unsupported":
         return replace(attempted, status="unsupported")
     if observation.outcome != "verified":
         # A documented size rejection is independently useful, unlike quota/transport errors.
         if observation.evidence_kind != "size_rejection" or observation.outcome != "inconclusive":
             return attempted
-        if observation.count_basis != state.dimension:
+        if observation.count_basis not in {
+            state.dimension,
+            "combined_reserved",
+            "combined_generated",
+        }:
             return replace(attempted, status="uncertain")
         if state.success and observation.reported_ceiling <= _context_count(state.success):
             return replace(attempted, status="uncertain", rejection=observation)
@@ -441,6 +456,9 @@ def advance_context_state(state, observation):
         if state.success and _context_converged(state.success, observation):
             updated = replace(updated, status="converged")
         return updated
+    pairs = state.count_pairs
+    if observation.local_input_estimate > 0 and observation.reported_input:
+        pairs = (*pairs, (observation.local_input_estimate, observation.reported_input))[-16:]
     if (
         observation.reported_input is None
         or observation.reported_input > observation.reserved_input
@@ -449,13 +467,10 @@ def advance_context_state(state, observation):
             and observation.reported_output > observation.requested_output
         )
     ):
-        return replace(attempted, status="uncertain")
+        return replace(attempted, count_pairs=pairs, status="uncertain")
     expected_kind = "processed_input" if state.dimension == "input" else "generated_output"
-    if observation.evidence_kind != expected_kind or observation.count_basis != state.dimension:
+    if observation.evidence_kind != expected_kind:
         return replace(attempted, status="uncertain")
-    pairs = state.count_pairs
-    if observation.local_input_estimate > 0 and observation.reported_input > 0:
-        pairs = (*pairs, (observation.local_input_estimate, observation.reported_input))[-16:]
     count = _context_count(observation)
     if state.success and count <= _context_count(state.success):
         return replace(attempted, count_pairs=pairs, status="uncertain")
@@ -483,8 +498,11 @@ def next_context_probe(state, limits, budget):
     """Keep an unfit desired target rather than repeating a smaller budget-capped experiment."""
     from dataclasses import replace
 
-    if state.status in {"unsupported", "uncertain"}:
+    if state.status == "unsupported":
         return state
+    if state.status == "uncertain":
+        # The caller stops this run on uncertainty; its next weekly scan revalidates baseline.
+        state = replace(state, success=None, rejection=None, next_target=None, status="baseline")
     if state.success is None:
         target = state.next_target or limits["baseline"]
         status = "baseline"
@@ -538,3 +556,219 @@ def plan_context_scan(limits, rotation):
             return (0, datetime.min.replace(tzinfo=UTC), route["route_id"])
 
     return tuple(sorted(routes, key=order))
+
+
+def _replay_context_history(identity, dimension, values):
+    """Restart uncertain brackets at a later weekly run; older proof remains diagnostic only."""
+    from dataclasses import replace
+
+    state = ContextSearchState(identity, dimension)
+    active, previous_run = [], None
+    for observation in sorted(values, key=lambda o: (o.observed_at, o.run_id, o.attempt_id)):
+        if state.status == "uncertain" and observation.run_id != previous_run:
+            state = replace(
+                state, success=None, rejection=None, next_target=None, status="baseline"
+            )
+            active = []
+        state = advance_context_state(state, observation)
+        active.append(observation)
+        previous_run = observation.run_id
+    return state, active
+
+
+def context_history_states(history, *, now):
+    """Rebuild bounded brackets from authenticated unexpired observations, never issue summaries."""
+    groups = defaultdict(list)
+    for observation in history:
+        try:
+            stamp = datetime.fromisoformat(observation.observed_at)
+        except (ValueError, TypeError):
+            continue
+        if stamp.tzinfo is None or not now - timedelta(days=90) <= stamp <= now:
+            continue
+        groups[(observation.identity_digest, observation.dimension)].append(observation)
+    if len(groups) > 128:
+        raise ValueError("context identity coverage exceeds reviewed bound")
+    states = {}
+    for key, values in groups.items():
+        state, _active = _replay_context_history(*key, values)
+        states[key] = state
+    return states
+
+
+def context_choice(change):
+    rid, field, old, new, stamp = change
+    before = "null" if old is None else str(old)
+    return f"{rid}: set {field} from {before} to {new} (context {stamp})"
+
+
+def context_cap_changes(history, config, *, now):
+    """Explicit reviewed cap offers from two compatible successful weekly runs, without a buffer."""
+    from dataclasses import asdict
+
+    from citypods.provider_catalog.evidence import context_identity, digest
+    from citypods.provider_catalog.probe import chat_url
+    from citypods.provider_catalog.registry import rules_for
+
+    states = context_history_states(history, now=now)
+    routes = {r["route_id"]: r for r in config.get("routes", [])}
+    changes = []
+    for (identity, dimension), state in states.items():
+        if state.success is None or state.status in {"uncertain", "unsupported"}:
+            continue
+        success = state.success
+        route = routes.get(success.route_id)
+        if not route or route.get("free") is not True or route.get("rpd") == 0:
+            continue
+        cfg = config["providers"][route["provider"]]
+        current = context_identity(
+            route,
+            cfg,
+            dimension=dimension,
+            count_basis=success.count_basis,
+            parser_version="chat-usage-v1",
+            opposite_reservation=256 if dimension == "input" else 2048,
+            gateway_path=chat_url(rules_for(route["provider"]), cfg),
+        )
+        if current != identity or success.count_basis == "combined_generated":
+            continue
+        retained = sorted(
+            (o for o in history if o.identity_digest == identity and o.dimension == dimension),
+            key=lambda o: (o.observed_at, o.run_id, o.attempt_id),
+        )[-16:]
+        _state, retained = _replay_context_history(identity, dimension, retained)
+        compatible = [
+            o
+            for o in retained
+            if o.identity_digest == identity
+            and o.dimension == dimension
+            and o.outcome == "verified"
+            and o.evidence_kind
+            == ("processed_input" if dimension == "input" else "generated_output")
+            and o.count_basis == success.count_basis
+            and o.reported_input is not None
+            and o.reported_input <= o.reserved_input
+            and o.reported_output is not None
+            and o.reported_output <= o.requested_output
+        ]
+        fresh = []
+        for observation in compatible:
+            stamp = datetime.fromisoformat(observation.observed_at)
+            if stamp.tzinfo is not None and now - timedelta(days=90) <= stamp <= now:
+                fresh.append(observation)
+        weeks = {
+            (
+                datetime.fromisoformat(o.observed_at).date()
+                - timedelta(days=datetime.fromisoformat(o.observed_at).weekday())
+            )
+            for o in fresh
+        }
+        if len({o.run_id for o in fresh}) < 2 or len(weeks) < 2:
+            continue
+        value = _context_count(success)
+        window = route.get("input_context_limit")
+        if type(window) is not int or window <= 0:
+            continue
+        field = "hard_input_ceiling" if dimension == "input" else "output_context_limit"
+        if dimension == "input":
+            production_output = route.get("output_context_limit")
+            if type(production_output) is not int or production_output <= 0:
+                continue
+            if success.count_basis == "combined_reserved":
+                value -= production_output
+            value = min(value, window - production_output)
+        else:
+            value = min(value, window)
+        # Unsupported plugins cannot turn an old or fabricated endpoint basis into a config offer.
+
+        from citypods.provider_catalog.probe import build_context_request
+        from citypods.provider_catalog.rules import context_parser_support
+
+        check = build_context_request(
+            route,
+            cfg,
+            rules_for(route["provider"]),
+            dimension=dimension,
+            target=1000,
+            ratio=1,
+            attempt_ordinal=1,
+            nonce="offline-support-check-" * 2,
+        )
+        supported, _reason = context_parser_support(rules_for(route["provider"]), check)
+        # The current chat parsers declare per-dimension usage, not combined-window semantics.
+        # Future combined-window support must provide its own documented parser fixtures.
+        if not supported or success.count_basis != check.dimension or value <= 0:
+            continue
+        old = route.get(field)
+        if old is not None and (type(old) is not int or old <= 0):
+            continue
+        if old == value:
+            continue
+        planned = next_context_probe(
+            state,
+            {
+                "baseline": value,
+                "opposite_reservation": 256 if dimension == "input" else 2048,
+            },
+            {
+                "remaining_input": 2097152,
+                "remaining_output": 131072,
+                "remaining_requests": 24,
+            },
+        )
+        if planned.status == "budget_limited" and old is not None and value < old:
+            # An experiment allowance is not evidence that an existing cap is too large.
+            continue
+        stamp = digest(
+            {
+                "identity": identity,
+                "observations": [asdict(o) for o in fresh],
+                "rejection": asdict(state.rejection) if state.rejection else None,
+                "production_output": route.get("output_context_limit"),
+                "window": window,
+                "value": value,
+            }
+        )
+        changes.append((route["route_id"], field, old, value, stamp))
+    return tuple(sorted(changes))
+
+
+def context_edit_plan(changes, config, *, selected=(), deferred=(), history=(), now=None):
+    """Every context edit requires its exact freshly reconstructed maintainer selection."""
+    from citypods.provider_catalog.apply import SOURCE_PATHS, EditPlan
+    from citypods.provider_catalog.evidence import digest
+
+    chosen = tuple(c for c in changes if context_choice(c) in set(selected))
+    missing = sorted(set(selected) - {context_choice(c) for c in chosen})
+    notes = []
+    if history and now is not None:
+        states = context_history_states(history, now=now)
+        for rid, field, _old, _new, _stamp in chosen:
+            dimension = "input" if field == "hard_input_ceiling" else "output"
+            state = next(
+                (
+                    s
+                    for s in states.values()
+                    if s.dimension == dimension and s.success and s.success.route_id == rid
+                ),
+                None,
+            )
+            if state:
+                upper = state.rejection.reported_ceiling if state.rejection else "unbounded"
+                notes.append(
+                    f"Evidence {rid}/{dimension}: provider basis {state.success.count_basis}; "
+                    f"reasoning {state.success.reasoning_basis}; "
+                    f"interval [{_context_count(state.success)}, {upper}]; status {state.status}. "
+                    "Full production output/window guards retained."
+                )
+    return EditPlan(
+        config.base_commit,
+        tuple((p, digest(config.texts[p])) for p in SOURCE_PATHS),
+        context_changes=chosen,
+        proposal_kind="context",
+        applied=(*tuple(context_choice(c) for c in chosen), *notes),
+        deferred=(
+            *deferred,
+            *(f"{c}: current verified context offer unavailable" for c in missing),
+        ),
+    )

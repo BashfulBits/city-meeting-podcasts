@@ -48,6 +48,7 @@ jobs:
       - name: Reconcile provider catalogs
         env:
           GH_TOKEN: ${{ github.token }}
+          GITHUB_EVENT_SCHEDULE: ${{ github.event.schedule }}
           DUE_ONLY: ${{ github.event.schedule == '20 8 * * *' || inputs.due_only == true }}
           LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
           LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
@@ -73,6 +74,9 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
             args+=(--rate-evidence provider-catalog-rate-evidence.json)
           fi
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ] && [ "$GITHUB_EVENT_SCHEDULE" = "17 10 * * 1" ]; then
+            args+=(--context-evidence provider-catalog-context-evidence.json)
+          fi
           python scripts/reconcile_provider_routes.py "${args[@]}"
       - name: Retain scoped rate evidence
         if: github.event_name == 'schedule'
@@ -80,5 +84,14 @@ jobs:
         with:
           name: provider-catalog-rate-evidence-${{ github.run_id }}
           path: provider-catalog-rate-evidence.json
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Retain scoped context evidence
+        if: github.event_name == 'schedule' && github.event.schedule == '17 10 * * 1'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: provider-catalog-context-evidence-${{ github.run_id }}
+          path: provider-catalog-context-evidence.json
           retention-days: 90
           if-no-files-found: ignore

@@ -278,16 +278,8 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
     if response.status != 200:
         return make(outcome="inconclusive")
 
-    def unique_fields(pairs):
-        fields = {}
-        for key, value in pairs:
-            if key in fields:
-                raise ValueError("duplicate context response field")
-            fields[key] = value
-        return fields
-
     try:
-        data = json.loads(response.body, object_pairs_hook=unique_fields)
+        data = strict_context_json(response.body)
     except (TypeError, ValueError):
         return make()
     if not isinstance(data, dict) or data.get("object") != "chat.completion" or data.get("error"):
@@ -341,7 +333,7 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
             )
         )
         try:
-            actual = json.loads(content)
+            actual = strict_context_json(content)
         except ValueError:
             actual = None
         if (
@@ -351,17 +343,75 @@ def chat_context_observation(response, request, *, reasoning_basis="unknown"):
             and finish == "stop"
         ):
             values.update(evidence_kind="processed_input", outcome="verified")
-    elif reasoning_basis != "unknown" and counts["completion_tokens"] > 0 and finish == "length":
+    elif (
+        reasoning_basis != "unknown"
+        and counts["completion_tokens"] > 0
+        and reasoning != counts["completion_tokens"]
+        and finish == "length"
+    ):
         # Truncation may leave one partial number at the tail. Every complete element must
         # follow the fixture's exact sequence; refusal/early EOS/reasoning-only replies cannot pass.
         parts = content.splitlines()
-        if len(parts) >= 3 and all(s.isascii() and s.isdigit() for s in parts[:-1]):
-            complete = [int(s) for s in parts[:-1]]
+        if len(parts) >= 3:
+            complete = parts[:-1]
             tail = parts[-1]
             if (
-                complete == list(range(1, len(complete) + 1))
+                all(value == str(index) for index, value in enumerate(complete, 1))
                 and tail
                 and (str(len(complete) + 1).startswith(tail))
             ):
                 values.update(evidence_kind="generated_output", outcome="verified")
     return make(**values)
+
+
+def context_parser_support(rules, request):
+    """Offline shape capability only; this generated envelope is never serving evidence."""
+    prompt = min(100, request.reserved_input)
+    completion = min(100, request.requested_output)
+    content = (
+        json.dumps(
+            dict(
+                re.findall(
+                    r"(start|middle|tail)_sentinel=([a-f0-9]{32})",
+                    str(request.messages[0]["content"]),
+                )
+            )
+        )
+        if request.dimension == "input"
+        else "1\n2\n3"
+    )
+    response = Response(
+        200,
+        body=json.dumps(
+            {
+                "object": "chat.completion",
+                "usage": {
+                    "prompt_tokens": prompt,
+                    "completion_tokens": completion,
+                    "total_tokens": prompt + completion,
+                },
+                "choices": [
+                    {
+                        "finish_reason": "stop" if request.dimension == "input" else "length",
+                        "message": {"content": content},
+                    }
+                ],
+            }
+        ),
+    )
+    observed = rules.context_observation(response, request)
+    return (observed.outcome == "verified", "unsupported endpoint/count or reasoning basis")
+
+
+def strict_context_json(raw):
+    """Duplicate fields are conflicting evidence, including inside usage or streamed frames."""
+
+    def unique_fields(pairs):
+        fields = {}
+        for key, value in pairs:
+            if key in fields:
+                raise ValueError("duplicate context response field")
+            fields[key] = value
+        return fields
+
+    return json.loads(raw, object_pairs_hook=unique_fields)

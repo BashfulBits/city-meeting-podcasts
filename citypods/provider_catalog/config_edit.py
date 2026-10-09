@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import re
 
 import yaml
 from yaml.nodes import MappingNode, ScalarNode, SequenceNode
@@ -243,6 +244,73 @@ def apply_config_edits(texts, plan: EditPlan):
         )
     ):
         raise ValueError("rate proposals cannot mix policy or catalog edits")
+    if plan.context_changes:
+        if plan.proposal_kind != "context" or any(
+            (
+                plan.rate_changes,
+                plan.routes,
+                plan.backups,
+                plan.ignored,
+                plan.paid_routes,
+                plan.acknowledged,
+                plan.removed_routes,
+                plan.lane_repairs,
+            )
+        ):
+            raise ValueError("context proposals cannot mix other edits")
+        seen = set()
+        for rid, field, old, new, evidence_digest in plan.context_changes:
+            if (
+                (rid, field) in seen
+                or field not in {"hard_input_ceiling", "output_context_limit"}
+                or type(new) is not int
+                or not 0 < new <= 2**53 - 1
+                or not isinstance(evidence_digest, str)
+                or not re.fullmatch(r"[a-f0-9]{64}", evidence_digest)
+            ):
+                raise ValueError("invalid context scalar change")
+            seen.add((rid, field))
+            matching = [r for r in limits["routes"] if r.get("route_id") == rid]
+            if (
+                len(matching) != 1
+                or matching[0].get("free") is not True
+                or matching[0].get("rpd") == 0
+                or matching[0].get(field) != old
+                or (old is not None and (type(old) is not int or old <= 0))
+            ):
+                raise ValueError("context route or old scalar changed")
+            nodes = _node(output[SOURCE_PATHS[0]], ("routes",))
+            if not isinstance(nodes, SequenceNode) or nodes.flow_style:
+                raise ValueError("context route requires a block sequence")
+            parent = next(
+                n
+                for n in nodes.value
+                if isinstance(n, MappingNode)
+                and any(k.value == "route_id" and v.value == rid for k, v in n.value)
+            )
+            if parent.flow_style:
+                raise ValueError("context route requires a block mapping")
+            node = next((v for k, v in parent.value if k.value == field), None)
+            text = output[SOURCE_PATHS[0]]
+            if node is None:
+                if old is not None or field != "hard_input_ceiling":
+                    raise ValueError("context optional scalar insertion is not permitted")
+                anchor = next(k for k, _v in parent.value if k.value == "route_id")
+                end = text.find("\n", anchor.start_mark.index)
+                if end < 0:
+                    raise ValueError("context insertion needs a block line")
+                text = (
+                    text[: end + 1]
+                    + " " * anchor.start_mark.column
+                    + f"{field}: {new}\n"
+                    + text[end + 1 :]
+                )
+            else:
+                if not isinstance(node, ScalarNode) or node.tag != "tag:yaml.org,2002:int":
+                    raise ValueError("context edits require integer scalars")
+                text = text[: node.start_mark.index] + str(new) + text[node.end_mark.index :]
+            output[SOURCE_PATHS[0]] = text
+            matching[0][field] = new
     targets = set()
     for change in plan.rate_changes:
         from citypods.provider_catalog.evidence import provider_rate_digest
