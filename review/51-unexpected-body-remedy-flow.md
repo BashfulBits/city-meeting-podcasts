@@ -2951,3 +2951,9 @@ Prepared validation: 5,463 offline tests passed (16 deselected), followed by the
 aggregate report regression in the final 248-test targeted policy/audit/CLI run. Whole-repository
 Ruff and format pass for 493 files; diff whitespace checks pass. No feeds, records or stage
 versions changed. No live provider/model calls were made for verification.
+
+P2b review round on ad4ea48a identified two valid minor findings: provider errors could expose
+signed URL query values, and GUID-only observations shared by multiple retained UIDs lacked
+an uncertainty diagnostic. The fix redacts both report and ordinary unreachable output and
+keeps each unproven shared-GUID observation separate with uniqueness-unknown. Retained UIDs
+remain distinct. Regression coverage includes both output paths and two fresh observations.

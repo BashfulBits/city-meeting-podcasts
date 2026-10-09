@@ -1749,6 +1749,7 @@ def audit_city(
     try:
         episodes = merge_seed_episodes(city, provider.fetch_episodes(city.source))
     except ProviderError as exc:
+        error = redact_subprocess_text(str(exc))
         if body_coverage_evidence is not None:
             body_coverage_evidence.append(
                 _body_coverage_source(
@@ -1756,10 +1757,10 @@ def audit_city(
                     [],
                     records or {},
                     list(related_cities or [city]),
-                    ("provider-unavailable:" + str(exc),),
+                    ("provider-unavailable:" + error,),
                 )
             )
-        return [] if body_coverage_only else [Finding(city.slug, "unreachable", ERROR, str(exc))]
+        return [] if body_coverage_only else [Finding(city.slug, "unreachable", ERROR, error)]
 
     if body_coverage_evidence is not None:
         body_coverage_evidence.append(

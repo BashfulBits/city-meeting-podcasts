@@ -457,3 +457,24 @@ def test_coverage_keeps_joint_and_city_aggregate_matches_separate_from_policy_pr
     assert row.status == "selected"
     assert row.diagnostics == ("configured-verified-owners-differ",)
     assert dict(replay.totals)["selected"] == dict(replay.totals)["verified_policy"] == 1
+
+
+def test_coverage_shared_guid_keeps_unproven_observations_separate():
+    from citypods.remedy_policy import replay_coverage
+
+    base = {"source_key": "s", "provider_guid": "shared", "body": "Council"}
+    observations = [
+        {**base, "uid": "one"},
+        {**base, "uid": "two"},
+        {**base, "observation_refs": ["fetch:a"]},
+        {**base, "observation_refs": ["fetch:b"]},
+    ]
+    rows = replay_coverage(observations, []).rows
+    assert len(rows) == 4
+    retained = [row for row in rows if row.uid]
+    fresh = [row for row in rows if not row.uid]
+    assert {row.uid for row in retained} == {"one", "two"}
+    assert all("uniqueness-unknown" not in row.diagnostics for row in retained)
+    assert all("uniqueness-unknown" in row.diagnostics for row in fresh)
+    assert all("identity-conflict" not in row.diagnostics for row in rows)
+    assert {row.observation_refs for row in fresh} == {("fetch:a",), ("fetch:b",)}

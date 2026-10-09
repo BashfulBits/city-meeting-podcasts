@@ -675,7 +675,13 @@ def replay_coverage(recordings, feeds, policies=None):
         if not uid and len(known) == 1:
             uid = next(iter(known))
         item["uid"] = uid
-        identity = ("uid", uid) if uid else ("guid", guid) if guid else ("unknown", number)
+        identity = (
+            ("uid", uid)
+            if uid
+            else ("guid", guid)
+            if guid and len(known) < 2
+            else ("unknown", number)
+        )
         grouped.setdefault((source, *identity), []).append(item)
     rows = []
     for identity, items in grouped.items():

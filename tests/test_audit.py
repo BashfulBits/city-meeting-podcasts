@@ -1230,3 +1230,17 @@ def test_body_coverage_retired_source_keeps_history_without_provider(monkeypatch
     )
     assert evidence[0]["observations"][0]["uid"] == "old"
     assert evidence[0]["diagnostics"] == ["retired-source-not-fetched"]
+
+
+def test_provider_errors_redacted_in_coverage_and_normal_findings():
+    city = _city()
+
+    class Provider:
+        def fetch_episodes(self, source):
+            raise ProviderError("failed https://example.com/video?signature=private-value")
+
+    evidence = []
+    findings = audit_city(city, provider=Provider(), now=NOW, body_coverage_evidence=evidence)
+    assert findings[0].message == "failed https://example.com/video"
+    assert evidence[0]["diagnostics"] == ["provider-unavailable:failed https://example.com/video"]
+    assert "private-value" not in str(evidence)
