@@ -18,8 +18,8 @@ import {
   validateReserveRequest,
 } from "./protocol.js";
 import { B2Client } from "./b2.js";
-import { callAiGateway, observedTokens, upstreamCapacityFailure, upstreamEmptyCompletion } from "./gateway.js";
-import { isStructuredPayload, structuredReplyProblem } from "./structured_output.js";
+import { callAiGateway, upstreamCapacityFailure } from "./gateway.js";
+import { apiShapeFor } from "./api_shapes.js";
 import { classifyProviderFailure } from "./classify.js";
 import {
   DO_ROWS_ACCOUNT_RESERVE as DO_ROWS_ACCOUNT_RESERVE_DEFAULT,
@@ -869,7 +869,7 @@ export function withLeaseDeadlines(jobs, claimNow, leaseDurationMs) {
  * transport failure, every non-429 HTTP status, and `deferred_late` when the lease can no
  * longer cover the call -- see leaseCoversCall).
  */
-async function attemptProviderCall({ env, b2, route, dispatchLimits, job, attemptId, idempotencyKey, maxResponseMs }) {
+export async function attemptProviderCall({ env, b2, route, dispatchLimits, job, attemptId, idempotencyKey, maxResponseMs }) {
   if (!leaseCoversCall(job, Date.now(), maxResponseMs)) {
     return { result: baseAttemptResult(job, attemptId, null, null, "deferred_late") };
   }
@@ -922,7 +922,11 @@ async function attemptProviderCall({ env, b2, route, dispatchLimits, job, attemp
     };
   }
 
-  if (upstreamEmptyCompletion(response.status, response.body)) {
+  // Every reply check below is the route's API shape's (chat today; JEV's systemone, review/53).
+  const shape = apiShapeFor(route);
+  const observedTokens = (body) => shape.observedTokens(body);
+
+  if (shape.emptyCompletion(response.status, response.body)) {
     // A 2xx carrying no completion. Never settle this as success: doing so stores a non-answer as
     // the job's durable result AND clears the route's backoff, so a provider serving nothing looks
     // healthy. Retryable, and classified as the provider's problem rather than the job's.
@@ -943,7 +947,7 @@ async function attemptProviderCall({ env, b2, route, dispatchLimits, job, attemp
     };
   }
 
-  if (response.ok && response.body?.choices?.[0]?.finish_reason === "length") {
+  if (response.ok && shape.lengthTruncated(response.body)) {
     // The reply stopped at its output-token limit: whatever it holds is cut off. Never stored as a
     // result; retried, and counted per route as output_budget_exhausted so the token-budget
     // monitor can tell a too-small lane budget from a model reasoning without end.
@@ -961,7 +965,7 @@ async function attemptProviderCall({ env, b2, route, dispatchLimits, job, attemp
   }
 
   const structuredProblem =
-    response.ok && isStructuredPayload(job.payload) ? structuredReplyProblem(response.body) : null;
+    response.ok ? shape.replyProblem(job.payload, response.body) : null;
   if (structuredProblem) {
     // A 200 whose content is empty or not JSON, on a request that must return JSON (review/48
     // R10). Never settle it as success: that stores a non-answer and clears the route's backoff,
@@ -1016,6 +1020,7 @@ async function attemptProviderCall({ env, b2, route, dispatchLimits, job, attemp
     body: response.body,
     headers: response.headers,
     route,
+    inputTokens: job.input_token_estimate,
   });
 
   return {
@@ -1034,7 +1039,11 @@ async function attemptProviderCall({ env, b2, route, dispatchLimits, job, attemp
         // This Worker is the only layer that sees response bodies -- the DO holds job rows and
         // never a payload -- so the sniffing happens here and completeBatch keys off the pair
         // (retryable_error, 400) alone.
-        (response.status >= 500 && cls.failure_class !== "route_input_limit") ||
+        // A 5xx is retryable unless classify read it as this job's own defect (JEV's oversize
+        // 503, which no retry can fix) or as a route input limit (handled by the coordinator).
+        (response.status >= 500 &&
+          cls.failure_class !== "route_input_limit" &&
+          cls.failure_class !== "request_defect") ||
         response.status === 402 ||
         // A 410 (model retired) or 404 (upstream fault) is the route's problem, not this job's;
         // the coordinator requeues it (classify.js rule 8).

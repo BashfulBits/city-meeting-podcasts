@@ -121,10 +121,22 @@ substitute. Its cap is shared with `r6-judge` until PR10 retires that lane. Elig
 validated like active ones (family known, route exists, independence rules hold) so a swap cannot
 introduce an invalid panel.
 
+## Cross-series order (maintainer goal, 2026-10-09)
+
+1. review/48 Slice 5 contract (#2208, merged); its implementation (#2209) runs in parallel.
+2. This series PR1 and PR2, with review/51 P2 in parallel.
+3. PR3 and PR4 (shadow on).
+4. review/51 P3: JEV shadow for remedy claims, through PR1 to PR3's dispatch integration.
+5. PR5 to PR12 alongside review/51 P4 and P5.
+
+Merge one PR at a time: review/48 Slice 5 and PR1 both edit `coordinator.js` and `index.js`, and
+every series edits CHANGELOG, ARCHITECTURE and review/11. After each PR here the maintainer is asked
+to complete any applicable parallel work in this list before the next one starts.
+
 ## The PR series
 
 ```text
-PR1 Worker transport (systemone), request_path, oversize rule
+PR1 Worker api_shape (systemone), request_path, oversize rule, yields_to
  |
 PR2 Config: JEV route, yields_to, judge lanes + reservations, llm_families, pools
  |
@@ -151,30 +163,38 @@ PR1 and PR3 can be built in parallel. PR8 and PR9 are independent of each other,
 PR7. PR12 needs PR8, PR9 and review/48's Slice 3b (#2193) merged. PR10 needs PR9 and PR11 needs PR8, so neither task loses its gate before the replacement holds
 authority. PR8 and PR9 are merged by the maintainer; each carries its graduation evidence.
 
-### PR1 — Worker: a second transport
+### PR1 — Worker: a second API shape
 
-Route field `transport` (`"chat"` default, or `"systemone"`) and optional `request_path` (overrides
+**Implemented** on `feat/review-53-pr1-systemone-transport` (2026-10-09). The field is named
+`api_shape`, not `transport`: the Python route model already uses `transport` for direct versus
+Worker dispatch.
+
+Route field `api_shape` (`"chat"` default, or `"systemone"`) and optional `request_path` (replaces
 the provider's `chat_path` and `ai_gateway_chat_path` for that route), validated in
-`scripts/compile_llm_limits.py` and carried in `_WORKER_ROUTE_FIELDS`. New
-`workers/llm-dispatch-v2/src/transports.js`, keyed by transport name, never by provider;
-`gateway.js`, `index.js` and `structured_output.js` call it through `transportFor(route)`:
+`scripts/compile_llm_limits.py` and carried in `_WORKER_ROUTE_FIELDS`. A non-chat route compiles
+with no `direct` transport, so Python never sends it a chat completion. New
+`workers/llm-dispatch-v2/src/api_shapes.js`, keyed by shape name, never by provider; `gateway.js`
+builds requests and `index.js` checks replies through `apiShapeFor(route)`:
 
-| Function | `chat` (today's code, moved) | `systemone` |
+| Function | `chat` (existing functions, unchanged) | `systemone` |
 |---|---|---|
-| `buildRequest` | `upstreamRequestForRoute` | `{model: route.upstream_model, state, questions}` from `payload.systemone`; no `max_tokens` or `response_format` |
+| `buildRequest` | `upstreamRequestForRoute` | `{model: route.upstream_model, state, questions}` from `payload.systemone`; no `max_tokens`, `response_format` or reasoning controls |
 | `emptyCompletion` | `upstreamEmptyCompletion` | 2xx without an `answers` object, or with `error` |
-| `structuredInvalid` | `structured_output.js` check | answers missing for more than 10% of question ids |
+| `replyProblem` | `structuredReplyProblem` for structured payloads | `structured_output_empty` when more than 10% of question ids have no answer |
 | `observedTokens` | `usage.prompt_tokens` / `completion_tokens` | `usage.input_tokens` / `output_tokens` |
 | `lengthTruncated` | `finish_reason === "length"` | false |
 
 `classify.js`: on a `systemone` route, `503` with `code: "processing_failed"` is `request_defect`
-(rule `systemone-oversize-503`) when the job's input estimate is at least 85% of the route's
-`hard_input_ceiling`, otherwise `upstream_capacity`.
+(rule `systemone-oversize-503`) when the job's scaled input estimate is at least 85% of the route's
+`hard_input_ceiling`, otherwise `upstream_capacity` (`systemone-processing-503`). `index.js` makes
+a 5xx classified `request_defect` a `terminal_error`, so the oversize job ends and the producer
+re-packs it, instead of the 5xx budget resending a request that cannot fit.
 
-**`yields_to`** (route field, list of route ids, compile-validated). In the claim's route ordering
-(`coordinator.js`, beside the `tier: backup` term), a yielding route is skipped while any named
-route's logical model has a row in `job_models` (the queued-job index):
-`SELECT 1 FROM job_models WHERE model = ? LIMIT 1`, cached per claim; a read, not a billed write.
+**`yields_to`** (route field, list of route ids, compile-validated to exist and not be the route
+itself). In the claim loop (`coordinator.js`), a yielding route is skipped while any named route's
+logical model has a row in `job_models`: `SELECT 1 FROM job_models WHERE model = ? LIMIT 1`, cached
+per claim. That is one indexed single-row read per named model per claim, which fits review/47's
+row-read budget. Skips are counted as `rejections.route_yield` in the claim diagnostics.
 
 **Slice 3a interaction (review/48 §8.5, #2191).** `yields_to` and `tier: backup` are ordering
 terms only. They must never enter `routesEligibleFor` or the structural fit used by the rescue pass
@@ -182,11 +202,13 @@ terms only. They must never enter `routesEligibleFor` or the structural fit used
 routes are yielding BeatAPI chat routes (today `deepseek/deepseek-v4-pro` and both GPT pools) is
 temporarily held while JEV has work, exactly like a pause, and is never failed as structural.
 
-Tests: chat requests and classifications byte-identical for existing fixtures; `systemone` request
-shape, usage, empty-answers, URL through `custom-beatapi` plus `/systemone`; the oversize rule both
-ways; a chat route skipped while a JEV job is queued and eligible otherwise; a job whose only
-routes yield is never marked `unadmissible` by the rescue pass. Each new test is shown
-to fail with its feature removed.
+Tests (`test/api_shapes.test.js`, a `yields_to` claim test in `test/dispatch.test.js`, compiler
+tests in `tests/test_compile_llm_limits.py`): the chat shape is the existing functions; `systemone`
+request shape, reply checks, usage and the 10% missing-answer threshold; `request_path` through
+`custom-beatapi` and directly; the oversize rule both ways, and a terminal outcome only for the
+oversize case; a yielding chat job held (still `queued`) while JEV work is queued, then claimed on
+its yielding route; compile validation of all three fields and the Worker-only transport. Each new
+Worker test was shown to fail with its feature removed. All 415 existing and new Worker tests pass.
 
 ### PR2 — Configuration
 
@@ -198,7 +220,7 @@ to fail with its feature removed.
     model_key: typesafe/jev-1.13
     provider: beatapi
     upstream_model: jev-1.13-free
-    transport: systemone
+    api_shape: systemone
     request_path: /systemone
     input_context_limit: 64000
     output_context_limit: 4096       # reservation only; JEV output is small
