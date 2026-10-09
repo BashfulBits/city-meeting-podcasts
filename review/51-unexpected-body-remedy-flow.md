@@ -2932,3 +2932,28 @@ Run full offline suite and whole Ruff/format. Ship one bounded code PR; keep led
 persistence and alert activation gated. No production model or automatic feed change.
 
 P2b implementation issue: [#2216](https://github.com/BashfulBits/city-meeting-podcasts/issues/2216).
+
+### P2b prepared implementation (issue #2216)
+
+The opt-in `scripts/audit_feeds.py --body-coverage-report PATH` command reports every supplied
+source observation, including retained history absent from the current provider response. It
+keeps configured matches distinct from verified policy ownership and preserves conflicting
+metadata as separate rows with identity diagnostics. Exact source-local GUIDs can attach fresh
+observations to retained UIDs; different view/GUID strings are never collapsed by inference.
+
+This command skips canonical state synchronization, timeline/audio diagnostics, state saves,
+GitHub reconciliation and notifications. Its only write is the requested JSON report. Active
+sources use one existing provider fetch per source; retired sources keep cached observations
+without polling. Every source's completeness remains unknown. Daily alert behavior is unchanged.
+Persistent accepted/excluded/watch dispositions and alert activation remain subsequent slices.
+
+Prepared validation: 5,463 offline tests passed (16 deselected), followed by the direct joint/
+aggregate report regression in the final 248-test targeted policy/audit/CLI run. Whole-repository
+Ruff and format pass for 493 files; diff whitespace checks pass. No feeds, records or stage
+versions changed. No live provider/model calls were made for verification.
+
+P2b review round on ad4ea48a identified two valid minor findings: provider errors could expose
+signed URL query values, and GUID-only observations shared by multiple retained UIDs lacked
+an uncertainty diagnostic. The fix redacts both report and ordinary unreachable output and
+keeps each unproven shared-GUID observation separate with uniqueness-unknown. Retained UIDs
+remain distinct. Regression coverage includes both output paths and two fresh observations.

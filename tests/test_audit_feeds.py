@@ -1628,3 +1628,40 @@ def test_main_issue_without_evidence_unresolvable_errors(monkeypatch):
 
     with pytest.raises(SystemExit):
         _mod.main(["--issue", "1238"])
+
+
+def test_body_coverage_cli_never_syncs_state_or_reconciles(monkeypatch, tmp_path):
+    import json
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("coverage report must not sync state or write GitHub")
+
+    monkeypatch.setattr(_mod, "pull_canonical_state", forbidden)
+    monkeypatch.setattr(_mod, "reconcile", forbidden)
+    monkeypatch.setattr(_mod, "load_site_config", lambda path: {})
+    monkeypatch.setattr(_mod, "load_city_configs", lambda *args: [])
+
+    def audit(cities, **kwargs):
+        assert kwargs["body_coverage_only"] is True
+        kwargs["body_coverage_evidence"].append(
+            {
+                "source_key": "source",
+                "city": "city",
+                "completeness": "unknown",
+                "observations": [],
+                "rows": [],
+                "diagnostics": [],
+                "totals": {"rows": 0},
+            }
+        )
+        return []
+
+    monkeypatch.setattr(_mod, "audit_all", audit)
+    path = tmp_path / "coverage.json"
+    assert _mod.main(["--body-coverage-report", str(path)]) == 0
+    report = json.loads(path.read_text())
+    assert report["sources"][0]["completeness"] == "unknown"
+    assert report["schema_version"] == 1
+    assert len(report["material_hash"]) == 64
+    with pytest.raises(SystemExit):
+        _mod.main(["--body-coverage-report", str(path), "--persist-timeline-integrity"])
