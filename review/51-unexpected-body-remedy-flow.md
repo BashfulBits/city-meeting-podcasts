@@ -1130,10 +1130,11 @@ config guards; immutable events; conflicting parents; lost cache recovery; no-CA
 claim loss/concurrent publication; rejection suppression and explicit reopening; exclusions retain
 records. Exit: complete coverage replay and rejection/exclusion persistence work offline without LLMs.
 
-### P2a proposed typed contract — approval pending
+### P2a typed policy contract — L3, approved 2026-10-09
 
-**Proposed maturity: L3 after the typed proof-packet decision below is approved and a scoped issue
-is linked.** P1 schemas shipped in #1987 satisfy the predecessor. No model admission is required.
+**Maturity: L3.** The maintainer approved the typed official-evidence packet and exact city/source
+binding in chat on 2026-10-09. Instantiation validates declared case references without implicitly
+loading evaluation answers. A scoped issue is linked below before implementation. P1 schemas shipped in #1987 satisfy the predecessor. No model admission is required.
 This is the first independently reviewable P2 slice. Source-partitioned feedback paths are already
 approved, but no ledger or evidence-v2 implementation belongs to this slice.
 
@@ -1263,7 +1264,7 @@ Pure lookup rules match current guards:
    `_target_feed_is_compatible` with a policy requires verified membership; unchanged no-policy
    fallback remains. Reasons retain existing useful diagnostics.
 
-#### Typed official_evidence decision requiring maintainer approval
+#### Approved typed official_evidence contract
 
 The existing contract requires instantiate_policies to consume official_evidence but provides no
 serialized proof shape or way to bind names to actual references. This typed packet plus the explicit city_source template binding are the genuinely new
@@ -2836,3 +2837,31 @@ reports 5,380 passed, 16 deselected and one unrelated existing failure in
 test_prelabeler_sizing_ignores_paused_routes. It expects the NVIDIA Gemma route to be paused,
 but current configuration does not pause it; isolated reproduction also fails. Its test and
 citypods/tags.py / citypods/compute/llm_policy.py are unchanged from the main base.
+
+P2a implementation issue: [#2211](https://github.com/BashfulBits/city-meeting-podcasts/issues/2211).
+
+
+### P2a implementation prepared (2026-10-09, issue #2211)
+
+The typed policy foundation is implemented for review in `citypods/remedy_policy.py`: strict
+reviewed declarations/templates, explicit city/source proof binding, immutable source-local
+indexes and deterministic ownership results. The existing remedy guards share this resolver
+and preserve legacy exact identities, intentional joint subscriptions and conservative TIF
+recognition. `config/remedy.yml` contains only an empty template list: no template is activated.
+Instantiation validates supplied evidence and references without loading gold, models or websites.
+Synthetic transfer examples exercise the contract; they are not independent admission truth.
+P2b/P2c replay/ledger and persistent excluded/watch dispositions remain future scoped work, as
+do model admission and P3–P5. This subsection is prepared, not stamped shipped before human merge.
+
+Prepared-slice validation: 328 targeted policy/config/evaluation/guard tests and 5,438 full
+offline tests passed (16 deselected); whole-repository Ruff/format checked 493 files.
+
+P2a preview correction: dependency-free declaration validation remains in citypods/config.py;
+strict template/evidence models reuse it from citypods/remedy_policy.py. Base render installations
+do not require the optional Pydantic evaluation dependency. A subprocess regression blocks
+Pydantic imports while loading every production feed. No dependency or workflow changes.
+
+P2a review hardening: supplied source recording inclusions use the existing shared parser,
+including for hand-built City inputs. Malformed mappings, missing values and duplicate GUIDs
+remain unresolved rather than raising an unexpected exception. Valid inclusion proof and
+legacy configuration behavior are unchanged; no feed or source-record changes.

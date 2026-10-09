@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from datetime import date
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
@@ -53,6 +54,105 @@ _RETENTION_POLICY_KEYS = frozenset(
         "max_archive_items",
     }
 )
+
+
+_REMEDY_FAMILIES = {
+    "tif",
+    "pid",
+    "bond",
+    "charter",
+    "redistricting",
+    "public_input",
+    "public_briefings",
+}
+
+
+def _policy_slug(value):
+    if not isinstance(value, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,63}", value):
+        raise ValueError("invalid policy slug")
+
+
+def _policy_approval(value):
+    if not isinstance(value, str):
+        raise ValueError("approval_ref must be a string")
+    parsed = urlparse(value)
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc != "github.com"
+        or not re.fullmatch(r"/[^/]+/[^/]+/(issues|pull)/[0-9]+", parsed.path)
+        or parsed.query
+        or (
+            parsed.fragment
+            and not re.fullmatch(
+                r"(issuecomment|discussion_r|pullrequestreview)-[0-9]+", parsed.fragment
+            )
+        )
+    ):
+        raise ValueError("approval_ref must be an HTTPS GitHub issue/PR/comment URL")
+
+
+def _policy_strings(value, *, nonempty=True, distinct=True):
+    if (
+        not isinstance(value, list)
+        or (nonempty and not value)
+        or any(not isinstance(item, str) or not item.strip() for item in value)
+        or (distinct and len(value) != len(set(value)))
+    ):
+        raise ValueError("expected distinct nonempty strings")
+
+
+def validate_declaration(value, context="feed"):
+    try:
+        if not isinstance(value, dict) or set(value) - {
+            "aggregate_family",
+            "member_names",
+            "identity_names",
+            "policy_id",
+            "version",
+            "positive_case_ids",
+            "negative_case_ids",
+            "approval_ref",
+            "template_id",
+            "template_version",
+        }:
+            raise ValueError("unknown policy declaration keys")
+        family = value.get("aggregate_family")
+        if "aggregate_family" in value and (
+            not isinstance(family, str) or family not in _REMEDY_FAMILIES
+        ):
+            raise ValueError("unknown aggregate family")
+        if not family and not value.get("identity_names"):
+            raise ValueError("identity-only policy requires identity_names")
+        for key in ("member_names", "identity_names", "positive_case_ids", "negative_case_ids"):
+            if key in value:
+                _policy_strings(
+                    value[key],
+                    nonempty=key.endswith("case_ids") or (key == "identity_names" and not family),
+                    distinct=key.endswith("case_ids"),
+                )
+                if key.endswith("names") and any(not body_key(n) for n in value[key]):
+                    raise ValueError("empty normalized official name")
+        if any(c in name for name in value.get("identity_names", []) for c in "*?"):
+            raise ValueError("identity_names cannot contain wildcards")
+        for keys in (("policy_id", "version", "approval_ref"), ("template_id", "template_version")):
+            present = [key in value for key in keys]
+            if any(present) and not all(present):
+                raise ValueError("incomplete provenance tuple")
+        for key in ("policy_id", "template_id"):
+            if key in value:
+                _policy_slug(value[key])
+        for key in ("version", "template_version"):
+            if key in value and (type(value[key]) is not int or value[key] < 1):
+                raise ValueError("version must be a strict positive integer")
+        if "approval_ref" in value:
+            _policy_approval(value["approval_ref"])
+        if "template_id" in value and "policy_id" not in value:
+            raise ValueError("template reference requires reviewed provenance")
+        if set(value.get("positive_case_ids", [])) & set(value.get("negative_case_ids", [])):
+            raise ValueError("positive and negative cases overlap")
+        return value
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"{context}: invalid remedy_policy: {exc}") from exc
 
 
 def _require_retention_int(value: object, *, key: str, source_file: Path) -> int:
@@ -284,40 +384,7 @@ def _build_city(
         raise ValueError(f"{source_file.name}: missing required keys: {', '.join(missing)}")
 
     if "remedy_policy" in raw:
-        policy = raw["remedy_policy"]
-        if (
-            not isinstance(policy, dict)
-            or set(policy) - {"aggregate_family", "member_names", "identity_names"}
-            or (
-                "aggregate_family" in policy
-                and (
-                    not isinstance(policy["aggregate_family"], str)
-                    or policy["aggregate_family"]
-                    not in {
-                        "tif",
-                        "pid",
-                        "bond",
-                        "charter",
-                        "redistricting",
-                        "public_input",
-                        "public_briefings",
-                    }
-                )
-            )
-            or not policy.get("aggregate_family")
-            and not policy.get("identity_names")
-            or any(
-                not isinstance(policy.get(key, []), list)
-                or any(
-                    not isinstance(name, str)
-                    or not body_key(name)
-                    or (key == "identity_names" and any(char in name for char in "*?"))
-                    for name in policy.get(key, [])
-                )
-                for key in ("member_names", "identity_names")
-            )
-        ):
-            raise ValueError(f"{source_file.name}: invalid remedy_policy")
+        validate_declaration(raw["remedy_policy"], source_file.name)
 
     _validate_slug_format(raw["slug"], source_file=source_file, kind="slug")
     for alias in raw.get("aliases") or []:

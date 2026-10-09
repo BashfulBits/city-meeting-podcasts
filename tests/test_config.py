@@ -769,3 +769,57 @@ def test_empty_publication_selection_keeps_pinned_namespace(tmp_path):
     city = load_city_configs(tmp_path, DEFAULTS)[0]
     assert city.extra["publication_selection"] == policy
     assert source_key(city) == "shared-source"
+
+
+@pytest.mark.parametrize("field,value", [("version", True), ("version", "1"), ("unknown", 1)])
+def test_reviewed_remedy_policy_metadata_is_strict(tmp_path, field, value):
+    feeds = tmp_path / "feeds"
+    feeds.mkdir()
+    raw = yaml.safe_load(VALID)
+    raw["remedy_policy"] = {
+        "identity_names": ["Library Board"],
+        "policy_id": "library-board",
+        "version": 1,
+        "approval_ref": "https://github.com/example/catalog/issues/1",
+    }
+    raw["remedy_policy"][field] = value
+    (feeds / "foo-tx.yml").write_text(yaml.safe_dump(raw))
+    with pytest.raises(ValueError, match="foo-tx.yml.*remedy_policy"):
+        load_city_configs(tmp_path, DEFAULTS)
+
+
+def test_render_config_load_does_not_require_optional_pydantic():
+    """The base renderer must load policy-bearing feeds without the llm extra."""
+    import subprocess
+    import sys
+
+    script = """
+import importlib.abc
+import sys
+class NoPydantic(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == "pydantic" or fullname.startswith("pydantic."):
+            raise ModuleNotFoundError("pydantic intentionally unavailable")
+sys.meta_path.insert(0, NoPydantic())
+from citypods.config import load_city_configs
+cities = load_city_configs("config", {})
+assert cities and any("remedy_policy" in city.extra for city in cities)
+assert "citypods.remedy_policy" not in sys.modules
+"""
+    subprocess.run([sys.executable, "-c", script], check=True, capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("approval", [None, True, 123, []])
+def test_reviewed_policy_approval_type_errors_have_config_context(approval):
+    from citypods.config import validate_declaration
+
+    with pytest.raises(ValueError, match="test-feed: invalid remedy_policy"):
+        validate_declaration(
+            {
+                "identity_names": ["Library Board"],
+                "policy_id": "library",
+                "version": 1,
+                "approval_ref": approval,
+            },
+            "test-feed",
+        )
