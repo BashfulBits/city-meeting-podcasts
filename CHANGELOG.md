@@ -17,7 +17,11 @@ Once 1.0 ships, entries move under semver tags.
   routes, judge lanes (anchor, sibling, adjudicator) reserved for 800 meetings a day, shadow judging
   of both tags and moments, adjudication with a calibration sample and quote check, the weekly blind
   audit, a calibration report, per-task graduation PRs, and retirement of the R5 pre-labeler,
-  packet, benchmark and tournament flows and the R6 judge, human calibration and review workflow.
+  packet, benchmark and tournament flows and the R6 judge, human calibration and review workflow,
+  and league-governed lane repair extending review/48 §8.6 (bench promotion with invariants and a
+  trial period instead of first-backup promotion). It also aligns the series with review/48 Slice 3a:
+  yield and backup terms stay out of the structural fit, judge lanes declare no backups, judge
+  packets recover by rebatching, and retirements cancel queued work before removing routes.
   review/49 records the approved judge and adjudicator split. Design only.
 - **BeatAPI chat routes back on, through `custom-beatapi`.** The maintainer registered a
   `custom-beatapi` AI Gateway provider (base `https://api.beatapi.io/v1`); the `beatapi` provider
