@@ -7619,3 +7619,10 @@ Four additional verified Dallas CBTF recordings gain their own feed coverage thr
 
 - Verified seven Dallas/Fort Worth deployed ownership assignments with unchanged audio;
   recorded the #2100 substantive-review gap and retained unresolved search obligations.
+
+### Search completed-source record reuse (2026-10-08)
+
+- Retain private per-meeting documents after source completion and whole-source cache hits.
+  Changed sources reuse unchanged meetings instead of rereading every hosted sidecar.
+  Existing caches remain compatible; completed sources without record entries rebuild once.
+  Public search schema, audio/stage versions, schedule and two-hour budget are unchanged.
