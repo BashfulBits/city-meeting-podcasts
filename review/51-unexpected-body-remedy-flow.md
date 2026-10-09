@@ -2916,6 +2916,12 @@ remain a subsequent separately specified integration, not silently fed to the le
   generation time is excluded. No sidecar/audio reads or extra provider fetches. Use the
   existing audit fetch context; include no-finding sources, not just unexpected rows.
   Report-only mode must avoid timeline/state mutation and GitHub writes.
+  Add optional body_coverage_evidence collector and body_coverage_only=False arguments to
+  audit_all/audit_city in audit.py; collect all source observations once and short-circuit
+  other diagnostic/mutation work in coverage-only mode. CLI --body-coverage-report chooses
+  that report-only mode, skips GitHub reconciliation and state push, and does not combine
+  with mutation flags. Existing defaults remain unchanged. Retired/unavailable sources
+  retain cached observations and explicit non-fetched diagnostics; no forced provider poll.
 
 Tests: persisted-only unmatched labels; broad-selector matched rows still reported; intentional
 joints/aggregates retained; source isolation; exact UID/GUID merge vs unproven duplicate views;
