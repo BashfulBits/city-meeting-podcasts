@@ -2803,3 +2803,17 @@ publication selection, feed definitions or provider adapters. Human merges remai
 Validation: 41 targeted search/job tests and 5,285 offline tests pass (16 deselected). Whole
 Ruff/format checks pass (487 files); incremental output matches fresh-build output after
 completed-source cache restoration, meeting edits, additions and removals.
+
+### Search browser mixed-content correction — L3, 2026-10-09
+
+Live search assets are published but the rendered HTTPS page requests its manifest and vendored
+engine over HTTP. Browsers block the manifest fetch and display unavailable notices. Maintainer
+reported the broken interface; correct this within the existing search rendering path.
+In citypods/site.py render_search_page, emit path-only asset URLs preserving the configured
+base-path prefix. In templates/search.html.j2 upgrade only same-host HTTP shard URLs to HTTPS
+when the page itself is HTTPS; old completed manifests must work without reindexing. Leave
+other-host URLs and HTTP local development unchanged. Test rendering for HTTP configured bases
+and subpaths in tests/test_site.py; verify the URL normalization and browser filter initialization.
+Run full offline suite and whole Ruff/format. Update architecture/changelog and review/11.
+Do not modify site base configuration, search index schema/cache/hash, source records, audio,
+workflow schedule/budget, feed definitions or dependencies. Human merges remain required.

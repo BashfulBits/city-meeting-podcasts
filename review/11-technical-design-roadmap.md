@@ -1653,3 +1653,9 @@ Bounded contract: review/51, Search two-hour budget and progress visibility (202
 Approved follow-on: retain private per-meeting search documents after source completion so
 changed sources rebuild only changed meetings. Contract: review/51, Retain meeting documents
 after search source completion. Budgets, cadence and complete-index publication remain unchanged.
+
+### Search HTTPS browser asset loading — L3 (2026-10-09)
+
+Published search currently fails in HTTPS browsers because asset requests use HTTP. Correct
+search-page asset URLs and support existing same-host HTTP shard URLs without rebuilding the
+index. Bounded implementation contract: review/51, Search browser mixed-content correction.
