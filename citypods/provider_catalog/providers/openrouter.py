@@ -11,6 +11,7 @@ from citypods.provider_catalog.rules import (
     Signal,
     all_free,
     body_contains,
+    chat_context_observation,
     id_suffix,
     namespaced_identity,
     zero_price,
@@ -24,7 +25,16 @@ def _links(model: str) -> tuple[tuple[str, str], ...]:
     )
 
 
+def context_observation(response, request):
+    """Native tokenizer counts; completion details are a breakdown of completion_tokens.
+
+    https://openrouter.ai/docs/api_reference/overview
+    """
+    return chat_context_observation(response, request, reasoning_basis="included")
+
+
 RULES = ProviderRules(
+    context_observation=context_observation,
     model_identity=namespaced_identity(":free"),
     name="openrouter",
     free_evidence=all_free(id_suffix(":free"), zero_price("prompt", "completion")),

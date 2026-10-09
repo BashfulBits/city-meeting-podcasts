@@ -235,6 +235,8 @@ class ProviderRules:
     model_identity: Callable[[str, Mapping[str, Any]], str | None] = lambda _m, _r: None
     limit_observations: Callable[[Response], tuple[tuple[str, int, str], ...]] = lambda _r: ()
 
+    context_observation: Callable = lambda response, request: unsupported_context(response, request)
+
     @property
     def observation_only(self) -> bool:
         return self.free_evidence is None
@@ -249,3 +251,117 @@ MODEL_DOES_NOT_EXIST = Signal(
     body_matches(r"does not exist|model[_ ]not[_ ]found|no such model|invalid model"),
     "404 model does not exist",
 )
+
+
+def unsupported_context(response, request):
+    """Undocumented endpoint envelopes supply no token or boundary authority."""
+    from citypods.provider_catalog.evidence import ContextObservation
+
+    return ContextObservation.from_request(request)
+
+
+def chat_context_observation(response, request, *, reasoning_basis="unknown"):
+    """Strict documented chat usage; size/quota error numbers never become context bounds.
+
+    Opt-in plugins own reasoning semantics. See their endpoint references; compatibility alone
+    does not enable this helper. Input success requires all three exact positioned sentinels.
+    """
+    from citypods.provider_catalog.evidence import ContextObservation
+
+    def make(**values):
+        return ContextObservation.from_request(request, **values)
+
+    if response.timed_out or response.transport_error:
+        return make(outcome="transport")
+    if response.status == 429:
+        return make(outcome="quota")
+    if response.status != 200:
+        return make(outcome="inconclusive")
+
+    def unique_fields(pairs):
+        fields = {}
+        for key, value in pairs:
+            if key in fields:
+                raise ValueError("duplicate context response field")
+            fields[key] = value
+        return fields
+
+    try:
+        data = json.loads(response.body, object_pairs_hook=unique_fields)
+    except (TypeError, ValueError):
+        return make()
+    if not isinstance(data, dict) or data.get("object") != "chat.completion" or data.get("error"):
+        return make()
+    usage = data.get("usage")
+    choices = data.get("choices")
+    if not isinstance(usage, dict) or not isinstance(choices, list) or len(choices) != 1:
+        return make()
+    counts = {key: usage.get(key) for key in ("prompt_tokens", "completion_tokens", "total_tokens")}
+    if any(
+        type(counts[k]) is not int or not 0 <= counts[k] <= 2**53 - 1
+        for k in ("prompt_tokens", "completion_tokens")
+    ):
+        return make()
+    total = counts["total_tokens"]
+    if total is not None and (
+        type(total) is not int or total != counts["prompt_tokens"] + counts["completion_tokens"]
+    ):
+        return make()
+    choice = choices[0]
+    if not isinstance(choice, dict) or choice.get("error"):
+        return make()
+    message = choice.get("message")
+    if not isinstance(message, dict) or message.get("refusal") or message.get("tool_calls"):
+        return make(outcome="inconclusive")
+    content, finish = message.get("content"), choice.get("finish_reason")
+    if not isinstance(content, str) or finish not in {"stop", "length"}:
+        return make(outcome="inconclusive")
+    detail = usage.get("completion_tokens_details")
+    if detail is not None and not isinstance(detail, dict):
+        return make()
+    reasoning = (detail or {}).get("reasoning_tokens")
+    if reasoning is not None and (
+        type(reasoning) is not int or not 0 <= reasoning <= counts["completion_tokens"]
+    ):
+        return make()
+    values = dict(
+        reported_input=counts["prompt_tokens"],
+        reported_output=counts["completion_tokens"],
+        reported_total=total,
+        count_basis=request.dimension,
+        reasoning_basis=reasoning_basis,
+        finish_reason=finish,
+        outcome="inconclusive",
+    )
+    if request.dimension == "input":
+        expected = dict(
+            re.findall(
+                r"\b(start|middle|tail)_sentinel=([a-f0-9]{32})\b",
+                str(request.messages[0]["content"]),
+            )
+        )
+        try:
+            actual = json.loads(content)
+        except ValueError:
+            actual = None
+        if (
+            len(expected) == 3
+            and actual == expected
+            and counts["prompt_tokens"] > 0
+            and finish == "stop"
+        ):
+            values.update(evidence_kind="processed_input", outcome="verified")
+    elif reasoning_basis != "unknown" and counts["completion_tokens"] > 0 and finish == "length":
+        # Truncation may leave one partial number at the tail. Every complete element must
+        # follow the fixture's exact sequence; refusal/early EOS/reasoning-only replies cannot pass.
+        parts = content.splitlines()
+        if len(parts) >= 3 and all(s.isascii() and s.isdigit() for s in parts[:-1]):
+            complete = [int(s) for s in parts[:-1]]
+            tail = parts[-1]
+            if (
+                complete == list(range(1, len(complete) + 1))
+                and tail
+                and (str(len(complete) + 1).startswith(tail))
+            ):
+                values.update(evidence_kind="generated_output", outcome="verified")
+    return make(**values)

@@ -306,3 +306,113 @@ def structured_canary(
                 response.close()
         results[method] = result
     return results
+
+
+def build_context_request(
+    route, provider_cfg, rules, *, dimension, target, ratio, attempt_ordinal, nonce
+):
+    """Shape a transient fixture using this identity's count mapping, never a universal ratio.
+
+    Sentinels derive from an unpredictable per-run nonce; filler is deterministic and numbered.
+    No fixture content is stored in observation/artifact records.
+    """
+    from fractions import Fraction
+
+    from citypods.compute.llm_policy import estimate_tokens
+    from citypods.provider_catalog.evidence import ContextRequest, context_identity, digest
+
+    if dimension not in {"input", "output"} or type(target) is not int or target <= 0:
+        raise ValueError("invalid context target")
+    if target > (524288 if dimension == "input" else 32768):
+        raise ValueError("context target exceeds reviewed per-call ceiling")
+    ratio = Fraction(ratio)
+    if ratio < 1 or not isinstance(nonce, str) or len(nonce) < 32:
+        raise ValueError("context needs a positive mapping and unpredictable run nonce")
+    opposite = 256 if dimension == "input" else 2048
+    url = chat_url(rules, provider_cfg)
+    identity = context_identity(
+        route,
+        provider_cfg,
+        dimension=dimension,
+        count_basis=dimension,
+        parser_version="chat-usage-v1",
+        opposite_reservation=opposite,
+        gateway_path=url,
+    )
+    if dimension == "input":
+        sentinels = {
+            where: digest([nonce, route["route_id"], attempt_ordinal, where])[:32]
+            for where in ("start", "middle", "tail")
+        }
+        instruction = (
+            "Return only a JSON object with keys start, middle, tail and the exact "
+            "corresponding sentinel values from this document.\n"
+        )
+        markers = {key: f"{key}_sentinel={value}\n" for key, value in sentinels.items()}
+        raw_target = target * ratio.denominator // ratio.numerator
+
+        def fixture(blocks):
+            filler = [
+                f"block {i:08d}: north east south west water stone cloud tree.\n"
+                for i in range(blocks)
+            ]
+            middle = blocks // 2
+            text = (
+                instruction
+                + markers["start"]
+                + "".join(filler[:middle])
+                + markers["middle"]
+                + "".join(filler[middle:])
+                + markers["tail"]
+            )
+            return [{"role": "user", "content": text}]
+
+        # Bounded binary construction avoids a huge unmeasured prompt or an extra live count call.
+        low, high = 0, max(0, raw_target // 10)
+        if estimate_tokens(fixture(0)) > raw_target:
+            raise ValueError("context target cannot fit minimum sentinel fixture")
+        while low < high:
+            mid = (low + high + 1) // 2
+            if estimate_tokens(fixture(mid)) <= raw_target:
+                low = mid
+            else:
+                high = mid - 1
+        messages = fixture(low)
+        requested_output = opposite
+    else:
+        messages = [
+            {
+                "role": "user",
+                "content": "Write the positive integers in order starting with 1, one per line. "
+                "No prose, code fences, or omissions. Continue until the output limit.",
+            }
+        ]
+        requested_output = target
+    estimated = estimate_tokens(messages)
+    reserved = -(-(estimated * ratio.numerator) // ratio.denominator)
+    if dimension == "output":
+        if reserved > opposite:
+            raise ValueError("output fixture exceeds fixed input allowance")
+        reserved = opposite
+    body = {
+        "model": route["upstream_model"],
+        "messages": messages,
+        "max_tokens": requested_output,
+        "stream": False,
+    }
+    return ContextRequest(
+        route["route_id"],
+        route["provider"],
+        route["account_id"],
+        route["upstream_model"],
+        identity,
+        dimension,
+        f"context-{dimension}-v1",
+        "chars4-v1",
+        estimated,
+        reserved,
+        requested_output,
+        attempt_ordinal,
+        tuple(messages),
+        {"url": url, "body": body},
+    )

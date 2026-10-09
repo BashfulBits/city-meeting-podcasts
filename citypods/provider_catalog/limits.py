@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from fractions import Fraction
 
-from citypods.provider_catalog.evidence import LimitObservation
+from citypods.provider_catalog.evidence import ContextObservation, LimitObservation
 
 RATE_METRICS = frozenset({"rpm", "tpm", "rpd"})
 CEILING_SOURCES = frozenset({"header", "documented"})
@@ -353,3 +353,188 @@ def early_rate_routes(failures, limits, state, *, today):
         if sum(classes.values()) >= 3
         and (state.get("route_checks") or {}).get(rid) != today.isoformat()
     }
+
+
+@dataclass(frozen=True)
+class ContextSearchState:
+    """One comparable bracket, using provider counts rather than local prompt estimates."""
+
+    identity_digest: str
+    dimension: str
+    success: ContextObservation | None = None
+    rejection: ContextObservation | None = None
+    next_target: int | None = None
+    status: str = "baseline"
+    last_attempted_at: str | None = None
+    count_pairs: tuple[tuple[int, int], ...] = ()
+
+    def __post_init__(self):
+        if self.dimension not in {"input", "output"} or self.status not in {
+            "baseline",
+            "exploring",
+            "refining",
+            "converged",
+            "budget_limited",
+            "uncertain",
+            "unsupported",
+        }:
+            raise ValueError("invalid context state")
+        if (
+            len(self.count_pairs) > 16
+            or any(
+                type(value) is not int or not 0 < value <= 2**53 - 1
+                for pair in self.count_pairs
+                for value in pair
+            )
+            or any(len(pair) != 2 for pair in self.count_pairs)
+        ):
+            raise ValueError("invalid context count mapping")
+        if self.next_target is not None and (
+            type(self.next_target) is not int or not 0 < self.next_target <= 2**53 - 1
+        ):
+            raise ValueError("invalid context target")
+        for observation in (self.success, self.rejection):
+            if observation is not None and (
+                observation.identity_digest != self.identity_digest
+                or observation.dimension != self.dimension
+            ):
+                raise ValueError("incompatible context state reference")
+
+
+def _context_count(observation):
+    return (
+        observation.reported_input
+        if observation.dimension == "input"
+        else observation.reported_output
+    )
+
+
+def _context_converged(success, rejection):
+    lower, upper = _context_count(success), rejection.reported_ceiling
+    width = upper - lower
+    return width > 0 and (width <= 128 or width * 200 <= lower)
+
+
+def advance_context_state(state, observation):
+    """Update only a compatible actual-count bracket; failures never fabricate progress."""
+    from dataclasses import replace
+
+    if (
+        observation.identity_digest != state.identity_digest
+        or observation.dimension != state.dimension
+    ):
+        raise ValueError("incompatible context observation")
+    attempted = replace(state, last_attempted_at=observation.observed_at)
+    if observation.outcome == "unsupported":
+        return replace(attempted, status="unsupported")
+    if observation.outcome != "verified":
+        # A documented size rejection is independently useful, unlike quota/transport errors.
+        if observation.evidence_kind != "size_rejection" or observation.outcome != "inconclusive":
+            return attempted
+        if observation.count_basis != state.dimension:
+            return replace(attempted, status="uncertain")
+        if state.success and observation.reported_ceiling <= _context_count(state.success):
+            return replace(attempted, status="uncertain", rejection=observation)
+        if state.rejection and observation.reported_ceiling >= state.rejection.reported_ceiling:
+            return attempted
+        updated = replace(attempted, rejection=observation, status="refining")
+        if state.success and _context_converged(state.success, observation):
+            updated = replace(updated, status="converged")
+        return updated
+    if (
+        observation.reported_input is None
+        or observation.reported_input > observation.reserved_input
+        or (
+            observation.reported_output is not None
+            and observation.reported_output > observation.requested_output
+        )
+    ):
+        return replace(attempted, status="uncertain")
+    expected_kind = "processed_input" if state.dimension == "input" else "generated_output"
+    if observation.evidence_kind != expected_kind or observation.count_basis != state.dimension:
+        return replace(attempted, status="uncertain")
+    pairs = state.count_pairs
+    if observation.local_input_estimate > 0 and observation.reported_input > 0:
+        pairs = (*pairs, (observation.local_input_estimate, observation.reported_input))[-16:]
+    count = _context_count(observation)
+    if state.success and count <= _context_count(state.success):
+        return replace(attempted, count_pairs=pairs, status="uncertain")
+    rejection = state.rejection
+    if rejection and count > rejection.reported_ceiling:
+        rejection = (
+            None  # fresh success supersedes the old active rejection, not diagnostic history
+        )
+    elif rejection and count == rejection.reported_ceiling:
+        return replace(attempted, count_pairs=pairs, status="uncertain")
+    status = "exploring"
+    if rejection:
+        status = "converged" if _context_converged(observation, rejection) else "refining"
+    return replace(
+        attempted,
+        success=observation,
+        rejection=rejection,
+        count_pairs=pairs,
+        next_target=None,
+        status=status,
+    )
+
+
+def next_context_probe(state, limits, budget):
+    """Keep an unfit desired target rather than repeating a smaller budget-capped experiment."""
+    from dataclasses import replace
+
+    if state.status in {"unsupported", "uncertain"}:
+        return state
+    if state.success is None:
+        target = state.next_target or limits["baseline"]
+        status = "baseline"
+    elif state.rejection and state.status != "converged":
+        target = (_context_count(state.success) + state.rejection.reported_ceiling) // 2
+        status = "refining"
+    else:
+        factor = Fraction(11, 10) if state.rejection else Fraction(3, 2)
+        target = -(-(_context_count(state.success) * factor.numerator) // factor.denominator)
+        status = "exploring"
+    per_call_input, per_call_output = (524288, 256) if state.dimension == "input" else (2048, 32768)
+    input_size = target if state.dimension == "input" else limits["opposite_reservation"]
+    output_size = limits["opposite_reservation"] if state.dimension == "input" else target
+    if (
+        input_size > min(per_call_input, budget["remaining_input"])
+        or output_size > min(per_call_output, budget["remaining_output"])
+        or budget["remaining_requests"] <= 0
+        or budget.get("route_requests", 0) >= 6
+        or budget.get("remaining_seconds", 3600) < 205
+    ):
+        status = "budget_limited"
+    return replace(state, next_target=target, status=status)
+
+
+def context_input_ratio(state, prior):
+    """Fixture-local maximum observed correction and existing prior, without another buffer."""
+    if isinstance(prior, bool) or not 0 < prior < float("inf"):
+        raise ValueError("invalid configured context ratio")
+    return max(
+        [
+            Fraction(str(prior)),
+            *(Fraction(count, estimate) for estimate, count in state.count_pairs),
+        ]
+    )
+
+
+def plan_context_scan(limits, rotation):
+    """All configured free routes, never-attempted first; untrusted rotation grants no evidence."""
+    routes = [r for r in limits.get("routes") or [] if r.get("free") is True and r.get("rpd") != 0]
+    if len(routes) > 128:
+        raise ValueError("context identity coverage exceeds reviewed bound")
+
+    def order(route):
+        stamp = rotation.get(route["route_id"])
+        try:
+            value = datetime.fromisoformat(stamp)
+            if value.tzinfo is None:
+                raise ValueError("missing rotation timezone")
+            return (1, value.astimezone(UTC), route["route_id"])
+        except (TypeError, ValueError):
+            return (0, datetime.min.replace(tzinfo=UTC), route["route_id"])
+
+    return tuple(sorted(routes, key=order))

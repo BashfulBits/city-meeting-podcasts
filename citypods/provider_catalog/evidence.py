@@ -432,3 +432,185 @@ def logical_identity(provider, upstream_model, rules, record, routes) -> str | N
     if len(exact) > 1 or (exact and canonical and canonical not in exact):
         return None
     return next(iter(exact)) if exact else canonical
+
+
+@dataclass(frozen=True)
+class ContextRequest:
+    """Transient experiment input. Never serialize messages or the shaped body into artifacts."""
+
+    route_id: str
+    provider: str
+    account_id: str
+    upstream_model: str
+    identity_digest: str
+    dimension: str
+    fixture_version: str
+    estimator_version: str
+    local_input_estimate: int
+    reserved_input: int
+    requested_output: int
+    attempt_ordinal: int
+    messages: tuple[dict, ...]
+    shaped_body: dict
+
+    def __post_init__(self):
+        if self.dimension not in {"input", "output"}:
+            raise ValueError("invalid context dimension")
+        for name in (
+            "local_input_estimate",
+            "reserved_input",
+            "requested_output",
+            "attempt_ordinal",
+        ):
+            if type(getattr(self, name)) is not int or not 0 < getattr(self, name) <= 2**53 - 1:
+                raise ValueError("invalid context request size")
+        if not re.fullmatch(r"[a-f0-9]{64}", self.identity_digest):
+            raise ValueError("invalid context identity")
+
+
+@dataclass(frozen=True)
+class ContextObservation:
+    """Payload-free provider counts. Pure parsers leave provenance for the authenticated caller."""
+
+    schema_version: int
+    identity_digest: str
+    route_id: str
+    provider: str
+    account_id: str
+    upstream_model: str
+    gateway_digest: str
+    dimension: str
+    fixture_version: str
+    estimator_version: str
+    local_input_estimate: int
+    reserved_input: int
+    requested_output: int
+    reported_input: int | None
+    reported_output: int | None
+    reported_total: int | None
+    reported_ceiling: int | None
+    count_basis: str
+    reasoning_basis: str
+    finish_reason: str
+    evidence_kind: str
+    outcome: str
+    observed_at: str = ""
+    run_id: str = ""
+    head_sha: str = ""
+    attempt_id: str = ""
+    parser_version: str = "chat-usage-v1"
+
+    def __post_init__(self):
+        if type(self.schema_version) is not int or self.schema_version != 1:
+            raise ValueError("unknown context schema")
+        if self.dimension not in {"input", "output"} or self.count_basis not in {
+            "input",
+            "output",
+            "combined_reserved",
+            "combined_generated",
+            "unknown",
+        }:
+            raise ValueError("unknown counting basis")
+        if self.reasoning_basis not in {"included", "excluded", "unknown"}:
+            raise ValueError("unknown reasoning basis")
+        if self.evidence_kind not in {
+            "processed_input",
+            "generated_output",
+            "parameter_only",
+            "size_rejection",
+        } or self.outcome not in {"verified", "inconclusive", "quota", "transport", "unsupported"}:
+            raise ValueError("unknown context evidence")
+        for name in (
+            "local_input_estimate",
+            "reserved_input",
+            "requested_output",
+            "reported_input",
+            "reported_output",
+            "reported_total",
+            "reported_ceiling",
+        ):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or not 0 <= value <= 2**53 - 1):
+                raise ValueError("invalid context count")
+        if all(
+            v is not None for v in (self.reported_input, self.reported_output, self.reported_total)
+        ) and (self.reported_input + self.reported_output != self.reported_total):
+            raise ValueError("inconsistent context total")
+        if self.outcome == "verified":
+            count = self.reported_input if self.dimension == "input" else self.reported_output
+            if not count or self.count_basis != self.dimension:
+                raise ValueError("positive evidence requires comparable actual counts")
+            if self.dimension == "output" and self.reasoning_basis == "unknown":
+                raise ValueError("output reasoning semantics are unknown")
+        if self.evidence_kind == "size_rejection" and (
+            not self.reported_ceiling or self.count_basis == "unknown"
+        ):
+            raise ValueError("rejection requires a documented ceiling basis")
+        for name in ("identity_digest", "gateway_digest"):
+            if not isinstance(getattr(self, name), str) or not re.fullmatch(
+                r"[a-f0-9]{64}", getattr(self, name)
+            ):
+                raise ValueError("invalid context digest")
+
+    @classmethod
+    def from_request(cls, request, **values):
+        """Populate fixed metadata; untrusted response content never enters this record."""
+        return (
+            cls(
+                schema_version=1,
+                identity_digest=request.identity_digest,
+                route_id=request.route_id,
+                provider=request.provider,
+                account_id=request.account_id,
+                upstream_model=request.upstream_model,
+                gateway_digest=digest(request.shaped_body["url"]),
+                dimension=request.dimension,
+                fixture_version=request.fixture_version,
+                estimator_version=request.estimator_version,
+                local_input_estimate=request.local_input_estimate,
+                reserved_input=request.reserved_input,
+                requested_output=request.requested_output,
+                reported_input=None,
+                reported_output=None,
+                reported_total=None,
+                reported_ceiling=None,
+                count_basis="unknown",
+                reasoning_basis="unknown",
+                finish_reason="",
+                evidence_kind="parameter_only",
+                outcome="unsupported",
+            )
+            if not values
+            else cls(**{**asdict(cls.from_request(request)), **values})
+        )
+
+
+def context_identity(
+    route,
+    provider_config,
+    *,
+    dimension,
+    count_basis,
+    parser_version,
+    opposite_reservation,
+    fixture_version=None,
+    estimator_version="chars4-v1",
+    gateway_path=None,
+):
+    """Numeric configuration changes do not invalidate a physical measurement identity."""
+    return digest(
+        {
+            "provider": route["provider"],
+            "account_id": route["account_id"],
+            "route_id": route["route_id"],
+            "upstream_model": route["upstream_model"],
+            "gateway": gateway_path
+            or [provider_config.get("api_base"), provider_config.get("chat_path")],
+            "dimension": dimension,
+            "count_basis": count_basis,
+            "parser_version": parser_version,
+            "fixture_version": fixture_version or f"context-{dimension}-v1",
+            "estimator_version": estimator_version,
+            "opposite_reservation": opposite_reservation,
+        }
+    )

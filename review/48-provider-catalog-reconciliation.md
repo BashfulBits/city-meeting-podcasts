@@ -699,8 +699,9 @@ Removal automation stays disabled until 3a is deployed and a bounded recovery ca
 old sentinel/no-route indexes, no retry-cap increment and no repeating enqueue loop.
 
 **Remaining delivery checkpoint (2026-10-09, after #2208):** Slice 4 shipped in #2201 and the
-Slice 5 L3 design was accepted in #2208. Two offline implementation PRs are planned under #2209:
-quota admission first, then final calibration with input before output and all-route coverage.
+Slice 5 L3 design was accepted in #2208. Quota admission shipped in #2214; one offline
+implementation PR remains under #2209 for final calibration with input before output and all-route
+coverage.
 Removal activation still needs ordinary-run recovery-canary acceptance. Live input/output canaries
 and recurring calibration activation remain separately reviewed changes. The snapshot-cache
 follow-up shipped in #2197 and recovery telemetry in #2199 (#2198). Review/53 PR12 (accepted in
@@ -1559,7 +1560,7 @@ jobs, paid calls, manual deploy or implicit recurring activation. Output needs i
 canary after input acceptance; recurring fair rotation requires recorded maintainer approval and a
 separate activation change. This calibration gate does not substitute for the removal recovery canary.
 
-### Slice 5 quota-admission checkpoint — PR #2214, prerequisite for #2209
+### Slice 5 quota-admission checkpoint — implemented in PR #2214 (merged 2026-10-09)
 
 [PR #2214](https://github.com/BashfulBits/city-meeting-podcasts/pull/2214) implements §8.11.A
 through the existing reservation/status handlers and typed
@@ -1580,6 +1581,26 @@ This acceptance does not authorize live calibration or satisfy the separate reco
 The final implementation PR still supplies adaptive search, provider-count parsers, authenticated
 history, reviewed cap choices, weekly orchestration and all configured free-route offline coverage.
 Input/output canaries and recurring activation remain separately reviewed changes.
+
+### Final Slice 5 development checkpoint — unmerged, 2026-10-09
+
+Branch `feat/2209-adaptive-context-calibration` contains the initial pure observation/request schemas,
+strict Groq/OpenRouter chat usage callbacks, sentinel fixture construction, actual-count search and
+exact refinement/budget planning. Other configured free endpoints explicitly fail closed until their
+usage/counting bases have documented fixtures. This is an initial offline matrix, not final acceptance.
+The 242 focused catalog tests pass (including 30 new context cases); whole-repository Ruff
+lint/format passes. No live transport, history writer, reviewed cap publisher or workflow activation
+is wired. The final implementation is incomplete and has not been opened as a ready PR.
+
+**Transport clarification pending under AGENTS.md:** §8.11.B requires a 120-second monotonic total
+response deadline. Requests' socket-inactivity timeout does not enforce that total for a slowly
+progressing stream, as its [timeout documentation](https://requests.readthedocs.io/en/latest/user/quickstart/#timeouts)
+explains. Proposed narrow adjustment: isolate the existing Requests call in a short-lived standard-
+library subprocess; the parent terminates it at the total deadline, never retries and retains its
+admission charge. This preserves the hard bound without a new dependency. Process isolation is not
+specified by the accepted file/function plan, so implementation of that path awaits maintainer
+approval. An explicitly approved cancellable async HTTP dependency is the alternative; dependency
+and lockfile changes would also require the gate. Neither option enables live calls by itself.
 
 ### Slice 4 implementation checkpoint — implemented in PR #2201 (#2200; merged 2026-10-09)
 
