@@ -38,7 +38,16 @@ from citypods.provider_catalog.apply import (  # noqa: E402
 )
 from citypods.provider_catalog.config_edit import apply_config_edits, load_config  # noqa: E402
 from citypods.provider_catalog.decisions import load_decisions  # noqa: E402
+from citypods.provider_catalog.evidence import (  # noqa: E402
+    discover_rate_references,
+    verified_rate_history,
+)
 from citypods.provider_catalog.issue import decode_state, find_issue, is_catalog_issue  # noqa: E402
+from citypods.provider_catalog.limits import (  # noqa: E402
+    configured_limit_changes,
+    rate_edit_plan,
+    scope_recent_runs,
+)
 from citypods.provider_catalog.quality import QualityIndex, fetch_quality_index  # noqa: E402
 from citypods.provider_catalog.reconcile import (  # noqa: E402
     NoDispatchControl,
@@ -74,11 +83,17 @@ def process_event(event, permission):
     return {**result, "accepted": True, "comment": "Checking current catalog selections."}
 
 
-def prepare(body, base_commit):
+def prepare(body, base_commit, proposal_kind=None):
     state = decode_state(body)
     snapshot = Report()
     _merge_into_last_full(snapshot, state.get("last_full") or {}, set())
     decisions = parse_decisions(body, snapshot)
+    rate_selections = tuple(d.model for d in decisions if d.action == "increase_rate")
+    if proposal_kind == "limits" or (
+        proposal_kind is None and all(d.action == "increase_rate" for d in decisions)
+    ):
+        return prepare_limits(base_commit, selected=rate_selections)
+    decisions = tuple(d for d in decisions if d.action != "increase_rate")
     texts = {p: (ROOT / p).read_text() for p in SOURCE_PATHS}
     limits = load_config(texts[SOURCE_PATHS[0]])
     lanes = parse_lanes(load_config(texts[SOURCE_PATHS[1]])["llm_lanes"])
@@ -110,6 +125,38 @@ def prepare(body, base_commit):
             route_ids=paid,
         )
     plan = plan_apply(report, decisions, config)
+    output = apply_config_edits(texts, plan)
+    for path in SOURCE_PATHS:
+        (ROOT / path).write_text(output[path])
+    return plan
+
+
+def prepare_limits(base_commit, *, selected=(), automatic=False):
+    """Rebuild rate changes entirely from main and authenticated scheduled artifacts."""
+    texts = {p: (ROOT / p).read_text() for p in SOURCE_PATHS}
+    limits = load_config(texts[SOURCE_PATHS[0]])
+    now = datetime.now(UTC)
+    config = ApplyConfig(
+        limits,
+        parse_lanes(load_config(texts[SOURCE_PATHS[1]])["llm_lanes"]),
+        texts,
+        base_commit,
+        now.date(),
+    )
+    references = discover_rate_references(repository=os.environ["GITHUB_REPOSITORY"], now=now)
+    observations, accepted, deferred = verified_rate_history(
+        references,
+        limits,
+        repository=os.environ["GITHUB_REPOSITORY"],
+        now=now,
+    )
+    if deferred:
+        raise ValueError("rate history unavailable; no scalar changes prepared")
+    recent = scope_recent_runs(accepted, limits)
+    changes, deferred = configured_limit_changes(observations, limits, now=now, recent_runs=recent)
+    plan = rate_edit_plan(
+        changes, config, selected=selected, automatic=automatic, deferred=deferred
+    )
     output = apply_config_edits(texts, plan)
     for path in SOURCE_PATHS:
         (ROOT / path).write_text(output[path])
@@ -167,6 +214,7 @@ def validate(run_fn=run):
             "tests/test_provider_catalog_config_edit.py",
             "tests/test_provider_catalog_evidence.py",
             "tests/test_provider_catalog_retire.py",
+            "tests/test_provider_catalog_limits.py",
         ]
     )
 
@@ -184,6 +232,12 @@ def publish(plan, *, run_fn=run):
             raise ValueError("removal publication awaits reviewed recovery-canary activation")
         branch, marker = removal_branch, removal_marker
         title = "Provider catalog: proven retirements and lane repair"
+    elif plan.proposal_kind == "limits":
+        branch, marker = (
+            "automation/provider-catalog-limits",
+            "<!-- citypods:provider-catalog-limits -->",
+        )
+        title = "Provider catalog: verified rate maintenance"
     elif plan.proposal_kind != "additions":
         raise ValueError("unsupported proposal kind")
     run_fn(["git", "fetch", "origin", "main"])
@@ -212,6 +266,11 @@ def publish(plan, *, run_fn=run):
         for p in prs
     ):
         raise ValueError("automation branch has a human-owned/unmanaged PR")
+    if plan.proposal_kind == "limits" and prs:
+        existing_increase = "Source: explicit `/apply` rate increase" in prs[0]["body"]
+        proposed_increase = any(c.action == "offer_increase" for c in plan.rate_changes)
+        if existing_increase != proposed_increase:
+            return "Waiting: the open opposite-direction rate proposal must finish first."
     remote = run_fn(["git", "ls-remote", "--heads", "origin", f"refs/heads/{branch}"])
     expected = remote.split()[0] if remote else ""
     if expected:
@@ -233,7 +292,12 @@ def publish(plan, *, run_fn=run):
             "git",
             "commit",
             "-m",
-            f"{title}\n\n{marker}",
+            f"{title}\n\n{marker}"
+            + (
+                "\nSource: explicit `/apply` rate increase"
+                if any(c.action == "offer_increase" for c in plan.rate_changes)
+                else ""
+            ),
         ]
     )
     # Recheck immediately before pushing, including the long compiler/test period.
@@ -300,17 +364,54 @@ def publish(plan, *, run_fn=run):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--event", required=True)
-    parser.add_argument("--permission", required=True)
+    parser.add_argument("--permission")
+    parser.add_argument("--automatic-limits", action="store_true")
     parser.add_argument("--out", required=True)
     # All publication operations are confined to the repository's own trusted Actions runner.
     args = parser.parse_args(argv)
     event = json.loads(Path(args.event).read_text())
-    permission = json.loads(Path(args.permission).read_text())
-    result = process_event(event, permission)
+    if args.automatic_limits:
+        source = event.get("workflow_run") or {}
+        result = {
+            "accepted": bool(
+                event.get("action") == "completed"
+                and source.get("conclusion") == "success"
+                and source.get("event") == "schedule"
+                and source.get("head_branch") == "main"
+                and source.get("name") == "Provider catalog reconciliation"
+                and (source.get("head_repository") or {}).get("full_name")
+                == os.environ.get("GITHUB_REPOSITORY")
+            ),
+            "comment": "Preparing verified automatic rate tightening.",
+        }
+    else:
+        if not args.permission:
+            parser.error("/apply requires --permission")
+        permission = json.loads(Path(args.permission).read_text())
+        result = process_event(event, permission)
     try:
         if result["accepted"] and os.environ.get("GITHUB_ACTIONS") != "true":
             raise ValueError("publication only runs in an ephemeral GitHub Actions checkout")
-        if result["accepted"]:
+        if result["accepted"] and args.automatic_limits:
+            for _ in range(3):
+                run(["git", "fetch", "origin", "main"])
+                base = run(["git", "rev-parse", "origin/main"])
+                run(["git", "reset", "--hard", base])
+                plan = prepare_limits(base, automatic=True)
+                if not plan.rate_changes:
+                    result["comment"] = "No proven automatic tightening is available."
+                    break
+                validate()
+                url = publish(plan)
+                if url is not None:
+                    result["comment"] = url
+                    if not url.startswith("Waiting:"):
+                        result["comment"] += "\n\n" + proposal_body(plan)
+                        result["plan"] = asdict(plan)
+                    break
+            else:
+                raise ValueError("main changed repeatedly; defer rate maintenance")
+        elif result["accepted"]:
             number = result["issue_number"]
             current = json.loads(
                 run(["gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/issues/{number}"])
@@ -325,25 +426,45 @@ def main(argv=None):
             ):
                 raise ValueError("/apply only runs on the current open rolling catalog issue")
             body = current["body"]
-            for _ in range(3):
-                run(["git", "fetch", "origin", "main"])
-                base = run(["git", "rev-parse", "origin/main"])
-                # Ephemeral trusted Actions checkout only; local publication is rejected.
-                run(["git", "reset", "--hard", base])
-                plan = prepare(body, base)
-                validate()
-                current = json.loads(
-                    run(["gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/issues/{number}"])
-                )
-                if current["body"] != body:
-                    raise ValueError("issue changed during verification; retry /apply")
-                url = publish(plan)
-                if url is not None:
-                    result["comment"] = url + "\n\n" + proposal_body(plan)
-                    result["plan"] = asdict(plan)
-                    break
-            else:
-                raise ValueError("main changed repeatedly; retry /apply")
+            snapshot = Report()
+            _merge_into_last_full(snapshot, decode_state(body).get("last_full") or {}, set())
+            decisions = parse_decisions(body, snapshot)
+            kinds = []
+            if any(d.action != "increase_rate" for d in decisions):
+                kinds.append("additions")
+            if any(d.action == "increase_rate" for d in decisions):
+                kinds.append("limits")
+            comments, plans = [], []
+            for kind in kinds:
+                for _ in range(3):
+                    run(["git", "fetch", "origin", "main"])
+                    base = run(["git", "rev-parse", "origin/main"])
+                    # Each proposal rebuilds from main; policy and rates use separate branches.
+                    run(["git", "reset", "--hard", base])
+                    plan = prepare(body, base, proposal_kind=kind)
+                    validate()
+                    current = json.loads(
+                        run(
+                            [
+                                "gh",
+                                "api",
+                                f"repos/{os.environ['GITHUB_REPOSITORY']}/issues/{number}",
+                            ]
+                        )
+                    )
+                    if current["body"] != body:
+                        raise ValueError("issue changed during verification; retry /apply")
+                    url = publish(plan)
+                    if url is not None:
+                        comments.append(url)
+                        if not url.startswith("Waiting:"):
+                            comments[-1] += "\n\n" + proposal_body(plan)
+                            plans.append(asdict(plan))
+                        break
+                else:
+                    raise ValueError("main changed repeatedly; retry /apply")
+            result["comment"] = "\n\n".join(comments)
+            result["plans"] = plans
     except (
         ValueError,
         TypeError,

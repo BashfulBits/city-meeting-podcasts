@@ -260,9 +260,29 @@ records, or updates the selected free scalar/acknowledgement, and asserts the ex
 it never promotes primaries or re-enables paused routes.
 Both compilers and catalog/lane/limit tests run before publication to the bot-owned fixed additions
 branch. Main changes trigger a bounded rebuild; branch replacement uses a lease. Observation and
-apply serialize through one writer lock. Human PR merge remains the activation step. Removals and
-limit changes belong to later slices; legacy R5 shadow promotion is superseded by review/53
-graduation. See [review/48](review/48-provider-catalog-reconciliation.md).
+apply serialize through one writer lock. Human PR merge remains the activation step. Removal activation remains gated;
+legacy R5 shadow promotion is superseded by review/53 graduation. See [review/48](review/48-provider-catalog-reconciliation.md).
+
+Slice 4 stores payload-free, versioned rate artifacts from successful scheduled main runs, binding
+repository/workflow/run/head identity and current physical-route/provider digests. Evidence consumers
+independently discover artifact history rather than trusting editable issue references, verify
+bounded archives and ancestry, and retain six independent runs per scope/metric within 90 days.
+Groq's documented request headers mean RPD and token headers TPM; unknown mappings remain advisory.
+Three consecutive low runs and a conservative window maximum allow tightening beyond 20%; a missing
+sample interrupts that sequence. Increases beyond 20% require an exact selected `/apply` choice.
+Existing provider caps require matching ceiling/direction evidence for every account; shared account
+capacity is never copied to routes or summed without a scope contract. Provider RPD is unrepresentable.
+A successful reconcile `workflow_run` uses trusted main code and the existing writer lock/lease to
+prepare tightening on `automation/provider-catalog-limits`. Mixed `/apply` selections prepare separate
+catalog/rate PRs. Automatic tightening waits for an open reviewed-increase proposal rather than
+replacing it. Numeric rate edits preserve comments and assert the exact semantic delta.
+Optional reachability/small phase-1 sampling counts required canaries/method checks against a shared
+three-request/900-second allowance including drain and cooldown; required verification keeps its
+existing behavior. Reservations precede configured requests, so a Worker write outage prevents the
+provider call. Expired or undrained pauses cannot supply rate evidence. BeatAPI/JEV capacity remains
+shared, with existing 65-second spacing/cooldown. Existing UTC-day failure counters schedule at most
+one early route check daily, without becoming capacity evidence. Context, concurrency, paid/free
+policy, lanes and completed artifacts are unchanged.
 
 Slice 3a (implemented in PR #2191; #2190) extends the existing coordinator reconciliation pass to repair
 queued model indexes and report typed structural failures after a catalog change. Structurally
@@ -566,6 +586,11 @@ writing transaction, a `LIMIT 0` query prepares against those columns without re
 or writing anything. A missing column/table blocks that instance's RPCs until recreation after
 migration, before expired-lease reaping or job/index mutations can repeat and roll back. Transient
 preflight read errors remain retryable. Partial quota upgrades resume at the missing columns.
+Scheduled catalog early checks use authenticated `/v2/stats?rate_failures=1`: today's three
+rate-failure cells per configured route, read by their complete SQLite primary keys. A 128-route
+ceiling bounds reads to 384 cells; excessive configuration or unavailable storage defers checks.
+This mode performs no job scans or storage writes and rejects combination with manual detailed stats.
+
 A 10,000-row account reserve caps enqueue and optional-write admission at 90,000. Before each claim, the coordinator
 reserves 28 rows per active leased job, 8 per active bundle, and worst-case headroom for the next
 bundle; it refuses the claim if that projection reaches the 90,000 safe stop. Dispatch can

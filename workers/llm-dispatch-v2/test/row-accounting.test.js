@@ -205,3 +205,39 @@ test("an idle claim whose reason changes is persisted at once", async () => {
   assert.equal(reason, "daily_lease_limit");
   assert.ok(f.read() > before, "a changed reason is a persisted outcome");
 });
+
+
+test("rate failure snapshot uses bounded primary-key reads and survives exhausted write budget", async () => {
+  const f = fixture();
+  f.coordinator._dispatchLimits = () => ({ routes_by_id: { "route-a": {} } });
+  const day = "2026-10-09";
+  for (const [date, route, cls] of [[day, "route-a", "own_rpm"],
+    ["2026-10-08", "route-a", "own_rpm"], [day, "retired", "own_rpm"],
+    [day, "route-a", "auth"]]) {
+    f.sql.exec("INSERT INTO route_failures VALUES (?,?,?,?,?,?)", date, route, cls, 3, 429, 1);
+  }
+  f.coordinator = f.make(); // Persisted counters survive object recreation.
+  f.coordinator._dispatchLimits = () => ({ routes_by_id: { "route-a": {} } });
+  const raw = f.sql.exec.bind(f.sql);
+  const queries = [];
+  f.sql.exec = (query, ...args) => {
+    queries.push(query);
+    if (!/^\s*SELECT/i.test(query)) throw new Error("row writes exceeded");
+    return raw(query, ...args);
+  };
+  f.coordinator._rowsSinceLog = 0; // Constructor telemetry is outside the measured RPC.
+  const result = await f.coordinator.rateFailureStats(Date.parse(day));
+  assert.deepEqual(result.route_failures.map(row => ({ ...row })), [{ utc_day: day, route_id: "route-a",
+    failure_class: "own_rpm", count: 3 }]);
+  assert.equal(queries.length, 3);
+  assert.ok(queries.every(q => /WHERE utc_day = \? AND route_id = \? AND failure_class = \?/.test(q)));
+  assert.equal((await f.coordinator.rateFailureStats(Date.parse("2026-10-10"))).route_failures.length, 0);
+  f.coordinator._dispatchLimits = () => ({ routes_by_id: Object.fromEntries(
+    Array.from({ length: 129 }, (_, i) => [String(i), {}])) });
+  queries.length = 0;
+  assert.equal((await f.coordinator.rateFailureStats(Date.parse(day))).truncated, true);
+  assert.equal(queries.length, 0);
+  f.coordinator._dispatchLimits = () => ({ routes_by_id: { "route-a": {} } });
+  f.sql.exec = () => { throw new Error("storage unavailable"); };
+  await assert.rejects(f.coordinator.rateFailureStats(Date.parse(day)), /storage unavailable/);
+});

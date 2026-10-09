@@ -34,10 +34,12 @@ jobs:
     permissions:
       contents: read
       issues: write
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14"
@@ -68,4 +70,15 @@ jobs:
           if [ "$DUE_ONLY" = "true" ]; then
             args+=(--due-only)
           fi
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            args+=(--rate-evidence provider-catalog-rate-evidence.json)
+          fi
           python scripts/reconcile_provider_routes.py "${args[@]}"
+      - name: Retain scoped rate evidence
+        if: github.event_name == 'schedule'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: provider-catalog-rate-evidence-${{ github.run_id }}
+          path: provider-catalog-rate-evidence.json
+          retention-days: 90
+          if-no-files-found: ignore

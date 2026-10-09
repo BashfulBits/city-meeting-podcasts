@@ -26,6 +26,7 @@ import time
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 from urllib.parse import urlencode, urljoin, urlsplit
 
@@ -73,6 +74,35 @@ class PauseOutcome:
 
 
 class DispatchPauseClient:
+    def rate_failures(self) -> dict[str, Any]:
+        """Fetch bounded current-day counters; older Workers and partial results defer checks."""
+        data = self._request("GET", "v2/stats?rate_failures=1")
+        try:
+            day = data["utc_day"]
+            if date.fromisoformat(day).isoformat() != day:
+                raise ValueError("invalid UTC day")
+            rows = data["route_failures"]
+            if (
+                data.get("kind") != "rate_failures"
+                or data.get("truncated") is not False
+                or not isinstance(rows, list)
+                or len(rows) > 384
+            ):
+                raise ValueError("unavailable bounded counters")
+            for row in rows:
+                if (
+                    row["utc_day"] != day
+                    or not isinstance(row["route_id"], str)
+                    or not row["route_id"]
+                    or row["failure_class"] not in {"own_rpm", "own_tpm", "unknown_429"}
+                    or type(row["count"]) is not int
+                    or row["count"] < 0
+                ):
+                    raise ValueError("invalid failure cell")
+        except (ValueError, TypeError, KeyError) as exc:
+            raise DispatchPauseError("rate failure telemetry unavailable") from exc
+        return data
+
     def __init__(
         self,
         url: str | None = None,

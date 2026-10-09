@@ -63,6 +63,8 @@ class EditPlan:
     lane_repairs: tuple[tuple[str, tuple[str, ...], tuple[str, ...], tuple], ...] = ()
     primary_changes: tuple[str, ...] = ()
     proposal_kind: str = "additions"
+    # Scope, provider, target, metric, old/new scalar and authenticated target digest.
+    rate_changes: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -133,6 +135,9 @@ def parse_decisions(body: str, snapshot: Report) -> tuple[Decision, ...]:
                     route_digest=anomaly.config_digest,
                 )
             )
+    for change in snapshot.rate_changes:
+        if change.action == "offer_increase" and change.choice in checked:
+            result.append(Decision(change.provider, change.choice, "increase_rate"))
     if not result:
         raise ValueError("select at least one supported decision")
     return tuple(result)
@@ -398,10 +403,24 @@ def proposal_body(plan: EditPlan) -> str:
     marker = PR_MARKER
     if plan.proposal_kind == "removals":
         from citypods.provider_catalog.retire import PR_MARKER as marker
+    elif plan.proposal_kind == "limits":
+        marker = "<!-- citypods:provider-catalog-limits -->"
     lines = [marker, "Provider catalog evidence reverified against current main.", ""]
     if plan.primary_changes:
         lines += [
             "Primary changes require human verification: " + ", ".join(plan.primary_changes),
+            "",
+        ]
+    for change in plan.rate_changes:
+        lines.append(
+            f"- {change.scope} `{change.target}` {change.metric}: {change.old} → {change.new}"
+            + (" (material tightening greater than 50%)" if change.material else "")
+        )
+    if plan.rate_changes:
+        lines += [
+            "Source: explicit `/apply` rate increase"
+            if any(c.action == "offer_increase" for c in plan.rate_changes)
+            else "Source: proven automatic tightening",
             "",
         ]
     for label, values in (

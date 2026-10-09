@@ -228,6 +228,83 @@ def apply_config_edits(texts, plan: EditPlan):
     expected = {p: copy.deepcopy(load_config(texts[p])) for p in SOURCE_PATHS}
     output = dict(texts)
     limits, site, decisions = (expected[p] for p in SOURCE_PATHS)
+    if plan.rate_changes and (
+        plan.proposal_kind != "limits"
+        or any(
+            (
+                plan.routes,
+                plan.backups,
+                plan.ignored,
+                plan.paid_routes,
+                plan.acknowledged,
+                plan.removed_routes,
+                plan.lane_repairs,
+            )
+        )
+    ):
+        raise ValueError("rate proposals cannot mix policy or catalog edits")
+    targets = set()
+    for change in plan.rate_changes:
+        from citypods.provider_catalog.evidence import provider_rate_digest
+
+        identity = (change.scope, change.target, change.metric)
+        if identity in targets or change.metric not in {"rpm", "tpm", "rpd"}:
+            raise ValueError("duplicate or unsupported rate scalar")
+        targets.add(identity)
+        if change.scope == "route":
+            matches = [r for r in limits["routes"] if r.get("route_id") == change.target]
+            if len(matches) != 1 or matches[0].get("provider") != change.provider:
+                raise ValueError("rate route missing or mismatched")
+            block = matches[0]
+            # Check against the original source, before any same-route scalar edits.
+            original = load_config(texts[SOURCE_PATHS[0]])
+            stamp = digest(next(r for r in original["routes"] if r["route_id"] == change.target))
+            nodes = _node(output[SOURCE_PATHS[0]], ("routes",))
+            if not isinstance(nodes, SequenceNode) or nodes.flow_style:
+                raise ValueError("rate route requires a block sequence")
+            parent = next(
+                n
+                for n in nodes.value
+                if isinstance(n, MappingNode)
+                and any(k.value == "route_id" and v.value == change.target for k, v in n.value)
+            )
+        elif change.scope == "provider" and change.metric in {"rpm", "tpm"}:
+            block = limits["providers"].get(change.target)
+            stamp = provider_rate_digest(load_config(texts[SOURCE_PATHS[0]]), change.provider)
+            parent = _node(output[SOURCE_PATHS[0]], ("providers", change.target))
+            if change.target != change.provider:
+                raise ValueError("rate provider mismatch")
+        else:
+            raise ValueError("rate scope is not representable")
+        if (
+            not isinstance(block, dict)
+            or stamp != change.config_digest
+            or change.metric not in block
+            or block[change.metric] != change.old
+            or isinstance(change.old, bool)
+            or not isinstance(change.old, (int, float))
+            or change.old <= 0
+            or isinstance(change.new, bool)
+            or not isinstance(change.new, int)
+            or change.new <= 0
+            or (change.action == "tighten" and change.new >= change.old)
+            or (change.action == "offer_increase" and change.new <= change.old)
+            or change.action not in {"tighten", "offer_increase"}
+        ):
+            raise ValueError("rate scalar changed or invalid")
+        if not isinstance(parent, MappingNode) or parent.flow_style:
+            raise ValueError("rate edits require a block mapping")
+        node = next((v for k, v in parent.value if k.value == change.metric), None)
+        if not isinstance(node, ScalarNode) or node.tag not in {
+            "tag:yaml.org,2002:int",
+            "tag:yaml.org,2002:float",
+        }:
+            raise ValueError("rate field requires an explicit numeric scalar")
+        text = output[SOURCE_PATHS[0]]
+        output[SOURCE_PATHS[0]] = (
+            text[: node.start_mark.index] + str(change.new) + text[node.end_mark.index :]
+        )
+        block[change.metric] = change.new
     if set(plan.removed_routes) & set(plan.paid_routes):
         raise ValueError("removal conflicts with paid edit")
     output[SOURCE_PATHS[0]] = _remove_routes(output[SOURCE_PATHS[0]], plan.removed_routes)

@@ -784,7 +784,9 @@ def test_beatapi_spacing_covers_health_and_every_schema_attempt(monkeypatch):
         canary_fn=ping,
         structured_canary_fn=verify,
         sleep=lambda seconds: events.append(seconds),
+        rate_run_id="42",
     )
+    assert not report.rate_observations  # unknown headers cannot split chat/JEV capacity
     assert events.count(65.0) == 10  # nine probe gaps plus cooldown before resuming dispatch
     assert control.reserved == ["beat_flash"] * 5
     assert "jev-1.13-free" not in events and "paid-chat" not in events
@@ -1326,3 +1328,163 @@ def test_pending_paid_selection_survives_outage_until_main_fulfills_it():
         Report(), run_date=TODAY.isoformat(), previous_body=rewritten, fulfilled=fulfilled
     )
     assert "- [x] `route`: keep as a paid route" not in final
+
+
+@pytest.mark.parametrize("value,expected", [("1000", 1000), ("0", 0), ("-1", None), ("1.5", None)])
+def test_groq_rate_header_units_and_nonpositive_evidence(value, expected):
+    from citypods.provider_catalog.providers.groq import RULES
+
+    response = Response(
+        200, {"X-RateLimit-Limit-Requests": value, "x-ratelimit-limit-tokens": "500"}
+    )
+    observed = RULES.limit_observations(response)
+    assert ("tpm", 500, "route") in observed
+    assert not any(metric == "rpm" for metric, _, _ in observed)
+    assert [v for metric, v, _ in observed if metric == "rpd"] == (
+        [expected] if expected is not None else []
+    )
+    assert not RULES.limit_observations(Response(429, response.headers))
+
+
+@pytest.mark.parametrize("contended", [False, True])
+def test_maintenance_captures_scoped_headers_only_under_exclusive_pause(monkeypatch, contended):
+    response = Response(200, {"x-ratelimit-limit-requests": "1000"})
+    control = FakeControl(contended=contended)
+    report, _, _ = _run(
+        monkeypatch, canaries={"meta-llama/llama-keep": response}, control=control, rate_run_id="42"
+    )
+    assert bool(report.rate_observations) is (not contended)
+    if report.rate_observations:
+        assert {o.route_id for o in report.rate_observations} == {"groq_keep"}
+        assert {o.run_id for o in report.rate_observations} == {"42"}
+
+
+def test_worker_reservation_outage_prevents_health_provider_call(monkeypatch):
+    from citypods.compute.llm_dispatch_pause import DispatchPauseError
+
+    class Outage(FakeControl):
+        def reserve(self, route_id):
+            raise DispatchPauseError("writes exceeded")
+
+    def forbidden(*args):
+        pytest.fail("provider was called before its reservation")
+
+    monkeypatch.setenv("K", "fake")
+    with pytest.raises(DispatchPauseError):
+        reconcile(
+            LIMITS,
+            LANES,
+            NO_DECISIONS,
+            QUALITY,
+            {},
+            session=FakeSession(CATALOGS),
+            control=Outage(),
+            today=TODAY,
+            canary_fn=forbidden,
+        )
+
+
+def test_expired_pause_discards_rate_evidence_after_exit(monkeypatch):
+    class Expiring(FakeControl):
+        @contextmanager
+        def paused(self, provider):
+            outcome = FakeOutcome()
+            yield outcome
+            outcome.contended = True
+
+    report, _, _ = _run(
+        monkeypatch,
+        control=Expiring(),
+        rate_run_id="42",
+        canaries={"meta-llama/llama-keep": Response(200, {"x-ratelimit-limit-requests": "1000"})},
+    )
+    assert not report.rate_observations
+
+
+@pytest.mark.parametrize("method_calls,drain,extra", [(0, 0, 2), (2, 0, 0), (0, 880, 0)])
+def test_optional_rate_samples_share_request_and_drain_cooldown_budget(
+    monkeypatch, method_calls, drain, extra
+):
+    import citypods.provider_catalog.reconcile as engine
+
+    clock, calls, reservations = [0.0], [], []
+    monkeypatch.setenv("K", "fake")
+    monkeypatch.setattr(engine.time, "monotonic", lambda: clock[0])
+    route = {**LIMITS["routes"][0], "rpm": 60}
+    limits = {"providers": {"groq": LIMITS["providers"]["groq"]}, "routes": [route]}
+    monkeypatch.setattr(
+        engine,
+        "load_route_catalog",
+        lambda: [{**route, "api_key_env": "K", "api_base": "https://groq.test/v1"}],
+    )
+    headers = {"x-ratelimit-limit-tokens": "5000"}
+
+    class Session(FakeSession):
+        def post(self, *args, **kwargs):
+            assert reservations  # every direct request was charged first
+            calls.append(clock[0])
+            from unittest.mock import MagicMock
+
+            response = MagicMock()
+            response.status_code, response.headers = 200, headers
+            response.json.return_value = {"choices": [{"message": {"content": "pong"}}]}
+            return response
+
+    class Control(FakeControl):
+        @contextmanager
+        def paused(self, provider):
+            clock[0] += drain
+            yield FakeOutcome()
+
+        def reserve(self, rid):
+            reservations.append(rid)
+
+    def methods(*args, before_attempt, **kwargs):
+        for _ in range(method_calls):
+            assert before_attempt()
+        return {"prompt_only": {"outcome": "valid"}}
+
+    report = reconcile(
+        limits,
+        {},
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=Session(CATALOGS),
+        control=Control(),
+        today=TODAY,
+        candidate_keys=set(),
+        route_ids={route["route_id"]},
+        canary_fn=lambda *args: Response(200, headers),
+        structured_canary_fn=methods,
+        sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds),
+        rate_run_id="42",
+    )
+    assert len(calls) == extra
+    assert len(reservations) == 1 + method_calls + extra <= 3
+    assert report.rate_observations
+    if extra:
+        assert calls == [60, 120] and clock[0] == 180  # final cooldown before dispatch resumes
+    if drain:
+        assert any("sampling deferred" in o for o in report.observations)
+
+
+def test_due_only_early_check_runs_provider_without_deferred_routes(monkeypatch):
+    monkeypatch.setenv("K", "test-key")
+    sent = []
+    report = reconcile(
+        LIMITS,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(CATALOGS),
+        control=FakeControl(),
+        today=TODAY,
+        due_only=True,
+        early_rate_checks={"zai_flash"},
+        canary_fn=lambda rules, cfg, model, *args: sent.append(model) or OK,
+        structured_canary_fn=lambda *args, **kwargs: {},
+    )
+    assert sent == ["glm-flash"]
+    assert report.rate_attempted_routes == {"zai_flash"}

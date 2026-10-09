@@ -2614,6 +2614,26 @@ export class LLMSchedulerDO extends DurableObjectBase {
     });
   }
 
+  /** Bounded current-day rate counters; deliberately no scheduler transaction or job reads. */
+  async rateFailureStats(now) {
+    const utcDay = new Date(now).toISOString().slice(0, 10);
+    const routes = Object.keys(this._dispatchLimits()?.routes_by_id || {}).sort();
+    const snapshot = { kind: "rate_failures", utc_day: utcDay, route_failures: [], truncated: false };
+    if (routes.length > 128) return { ...snapshot, truncated: true };
+    const sql = this._getSql();
+    for (const route of routes) {
+      for (const failureClass of ["own_rpm", "own_tpm", "unknown_429"]) {
+        const rows = [...sql.exec(
+          `SELECT utc_day, route_id, failure_class, count FROM route_failures
+           WHERE utc_day = ? AND route_id = ? AND failure_class = ?`,
+          utcDay, route, failureClass
+        )];
+        snapshot.route_failures.push(...rows);
+      }
+    }
+    return snapshot;
+  }
+
   /**
    * Return the recurring, payload-free scheduler snapshot used by producer workflows. Its SQL
    * reads only bounded singleton/configuration state; it must remain safe to call before and
