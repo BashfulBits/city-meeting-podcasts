@@ -1122,7 +1122,11 @@ chat routes yield to it. Chat-only tooling skips non-chat routes through
 context scan, `llm_rate_probe.py` and the weekly live gateway contract probe. Judge lanes
 (`judge:anchor`, `judge:sibling`, `judge:adjudicator`) are `per_model`, carry `eligible_models`
 (qualified substitutes that are never dispatched) and named `slots`; every lane model has a family
-in `llm_families`, which the lane compiler enforces.
+in `llm_families`, which the lane compiler enforces. The judge stack itself (`citypods/judging/`) runs as
+`JudgeStage` in its own `judge` lane (`.github/workflows/judge.yml`, every two hours): a task-spec
+registry (`tag`, `moment`), evidence by context tier, per-entry sibling choice by family, greedy
+packing (JEV up to 58,000 estimated tokens and 60 questions), and an append-only `judgments` list
+plus `judge_pending` recipe pointers on each candidate. In shadow mode it writes nothing else.
 
 Dropping the prefix is a silent 404 on Gemini and Mistral — the providers whose endpoints do not
 live at the provider root — which is why the routing tests assert the full request URL rather than

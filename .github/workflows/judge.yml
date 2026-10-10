@@ -1,0 +1,100 @@
+name: LLM judge stack
+
+# review/53: JEV plus one independent sibling judge tag and moment candidates in their own lane.
+# Like the tag lane it only reads persisted candidates and enqueues to the dispatch Worker; a later
+# pass (or the deferred sweep) collects answers. Until `judging.enabled` is set (PR4) a scheduled
+# run does nothing; a manual dispatch with dry_run plans and packs every packet and submits none.
+on:
+  schedule:
+    # Every two hours: twelve passes split each judge lane's daily cap into run caps
+    # (site_config.yml llm_lanes judge:*), keeping JEV's single-flight window lightly loaded.
+    - cron: "45 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Plan and pack only; submit nothing"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: llm-judge
+  cancel-in-progress: false
+
+jobs:
+  judge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Install
+        run: pip install -e ".[storage,llm]" -c constraints/prod.txt
+
+      - name: Capture starting LLM worker state
+        env:
+          CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE: ${{ runner.temp }}/llm-submission-telemetry.jsonl
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+        run: |
+          echo "CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE=$CITYPODS_LLM_SUBMISSION_TELEMETRY_FILE" >> "$GITHUB_ENV"
+          python scripts/llm_submission_telemetry.py snapshot start
+
+      - name: Judge persisted tag and moment candidates
+        # Fail loudly instead of being cancelled. A JOB-level timeout cancels the run, which
+        # GitHub reports as a grey "cancelled" -- indistinguishable at a glance from someone
+        # cancelling it by hand, and it skips every later step so nothing is persisted or
+        # reported. This lane hit exactly that on eight consecutive scheduled runs
+        # (2026-08-26..09-02). A STEP-level timeout below the job's fails the step, so the run
+        # goes red and the post-steps still execute. Record-first source preparation is what
+        # should keep the lane well inside this; reaching it means something regressed.
+        timeout-minutes: 165
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APP_KEY: ${{ secrets.B2_APP_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_PUBLIC_BASE_URL: ${{ secrets.B2_PUBLIC_BASE_URL }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+          SWAGIT_PROXY_BASE_URL: ${{ secrets.SWAGIT_PROXY_BASE_URL }}
+          SWAGIT_PROXY_TOKEN: ${{ secrets.SWAGIT_PROXY_TOKEN }}
+          GRANICUS_PROXY_BASE_URL: ${{ secrets.GRANICUS_PROXY_BASE_URL }}
+          GRANICUS_PROXY_TOKEN: ${{ secrets.GRANICUS_PROXY_TOKEN }}
+          CITYPODS_JUDGE_DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: python -m citypods.cli enrich --lane judge
+
+      - name: Summarize LLM submission telemetry
+        if: always()
+        env:
+          LLM_DISPATCH_V2_URL: ${{ secrets.LLM_DISPATCH_V2_URL }}
+          LLM_DISPATCH_V2_AUTH_TOKEN: ${{ secrets.LLM_DISPATCH_V2_AUTH_TOKEN }}
+        run: |
+          python scripts/llm_submission_telemetry.py snapshot end
+          python scripts/llm_submission_telemetry.py report
+
+      - name: Upload LLM submission telemetry
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: llm-submission-telemetry-${{ github.run_id }}
+          path: ${{ runner.temp }}/llm-submission-telemetry.jsonl
+          if-no-files-found: ignore
+          retention-days: 30

@@ -286,6 +286,24 @@ judging:
 
 ### PR3 — Judging package, stage and workflow
 
+**Implemented** on `feat/review-53-pr3-judging` (2026-10-09), stacked on PR2. Deviations from the
+text below, all deliberate:
+- **Pending pointers instead of packet manifests.** A stage reads answers by recipe hash
+  (`llm_deferred.look_up_deferred`), so each candidate records, in `judge_pending`, the recipe that
+  will answer each of its questions. Packets can therefore span the city's episodes (JEV packs
+  about 110 T1 items; per-episode packing would need about 1,200 JEV calls a day at 800 meetings)
+  without a separate manifest, and a lost or structurally blocked recipe simply drops the pointer
+  and re-plans the question for the current judges (the Slice 3a rebatch branch).
+- **One sibling contract**, `judge-answers-v1` (`{answers: [{id, verdict, level, choice, reason}]}`),
+  instead of four, so a sibling packet can mix a meeting's validate, gate, grade and choose items.
+- **Task name `judge`** for `InferenceJob`; a JEV job carries `inputs.systemone` and the Python
+  dispatch payload forwards it unchanged (`citypods/compute/llm.py`; a direct call raises).
+- **Dry run** is `CITYPODS_JUDGE_DRY_RUN=1` (the workflow's `dry_run` input): plan and pack, count
+  packets, items and estimated tokens, submit nothing; it runs even while `judging.enabled` is false.
+- The report CLI is `python -m citypods.judging.report --state-dir state`; the capacity model is
+  `python scripts/llm_capacity_plan.py --judging` (`judging_demand`), which reproduces the
+  reservation table (191 anchor and 473 sibling packets a day at 800 meetings).
+
 **Registry** (`citypods/judging/tasks.py`): `QuestionSpec(id, kind, instruction, levels,
 prompt_version)`, `Subject(task, subject_id, episode_uid, group, producer_model, payload)`,
 `Evidence(tier, text, digest)`, `TaskSpec(name, questions, subjects, evidence, first_tier,

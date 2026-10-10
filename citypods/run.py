@@ -163,6 +163,7 @@ from citypods.stages import (
     _materialize_set,
     default_stages,
     enrich_stages,
+    judge_stages,
     r6_stages,
     r7_stages,
     render_stages,
@@ -2310,6 +2311,18 @@ def _run_enrich_global_queue(
     # work still reported success. Collected here and turned into a real error result below.
     llm_submission_failures: list[str] = []
 
+    judge_batcher = None
+    original_judge_backend = ctx.judge_backend
+    if any(stage.name == "judge" for stage in audio_stages):
+        from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend
+
+        if (
+            isinstance(ctx.judge_backend, LiteLLMBackend)
+            and ctx.judge_backend.config.dispatch_v2_url
+        ):
+            judge_batcher = BatchingDispatchBackend(ctx.judge_backend)
+            ctx.judge_backend = judge_batcher
+
     moment_batcher = None
     original_moment_backend = ctx.moment_backend
     if any(stage.name in {"moments", "moment-judge"} for stage in audio_stages):
@@ -2531,6 +2544,22 @@ def _run_enrich_global_queue(
         if failed:
             llm_submission_failures.append(f"moments: {failed} job(s) failed to submit")
         ctx.moment_backend = original_moment_backend
+
+    if judge_batcher is not None:
+        from citypods.compute.base import JobHandle, JobResult
+
+        batch_outcomes = judge_batcher.flush()
+        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
+        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
+        failed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, Exception))
+        print(
+            f"[enrich] judge LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
+            f"completed={completed} errors={failed}",
+            flush=True,
+        )
+        if failed:
+            llm_submission_failures.append(f"judge: {failed} job(s) failed to submit")
+        ctx.judge_backend = original_judge_backend
 
     if r7_ledger_stages:
         print(f"[enrich] R7 ledger pass: {len(prepared)} source(s) (serialized)", flush=True)
@@ -3043,6 +3072,27 @@ def _build_impl(
             )
         except ValueError as exc:
             print(f"moments: LLM backend unavailable ({exc}); moments deferred", file=sys.stderr)
+    judge_backend = None
+    judging_config = site_config.get("judging") or {}
+    # review/53: the judge lane dispatches only through the Worker (JEV is api_shape systemone and
+    # has no direct transport); nothing is built unless judging is enabled for this lane.
+    if lane == "judge" and judging_config.get("enabled") and not dry_run and phase != "render":
+        from dataclasses import replace as _dc_replace
+
+        from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+
+        try:
+            judge_backend = LiteLLMBackend(
+                _dc_replace(
+                    LLMBackendConfig.from_env(),
+                    model=lane_for("judge:anchor").primary_model,
+                    additional_models=(),
+                    mode="dispatch",
+                ),
+                storage=storage,
+            )
+        except ValueError as exc:
+            print(f"judge: LLM backend unavailable ({exc}); judging deferred", file=sys.stderr)
     if _compute_backend_holder is not None:
         _compute_backend_holder.append(compute_backend)
 
@@ -3104,7 +3154,9 @@ def _build_impl(
     # Generated chaptering is an explicitly separate asynchronous lane.  It is not included in
     # ordinary audio/enrich runs because agenda/transcript prerequisites may complete in different
     # workflows and the initial rollout is a served-time overlay, not an audio-affecting change.
-    if lane == "chapter-agenda":
+    if lane == "judge":
+        stages = judge_stages()
+    elif lane == "chapter-agenda":
         stages = [AgendaChapterCandidatesStage()]
     elif lane == "chapter-locator":
         stages = [ChapterBoundaryLocatorStage()]
@@ -3367,6 +3419,8 @@ def _build_impl(
         compute_backend=compute_backend,
         tag_backend=tag_backend,
         moment_backend=moment_backend,
+        judge_backend=judge_backend,
+        judging_config=judging_config,
         taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
         llm_evaluation_state_path=state_dir
         / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),

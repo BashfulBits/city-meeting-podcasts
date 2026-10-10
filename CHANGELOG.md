@@ -12,6 +12,17 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Judge stack: shadow judging package, stage and workflow (review/53 PR3).** New
+  `citypods/judging/` (task-spec registry with `tag` and `moment` tasks, evidence tiers T0-T2,
+  per-entry family independence, JEV systemone and sibling chat backends with one
+  `judge-answers-v1` contract, deterministic packing, an append-only judgment ledger with
+  `judge_pending` recipe pointers so packets span episodes, a runner with T2 escalation and a 5%
+  all-tier sample, and a report), `JudgeStage` in a new `judge` lane, and
+  `.github/workflows/judge.yml` (every two hours, with a submit-nothing dry run). JEV jobs carry
+  `inputs.systemone` through the Python dispatch path. The capacity calculator gains
+  `--judging`. Nothing runs until `judging.enabled` (PR4); shadow mode changes no display,
+  admission or publication field.
+
 - **Judge stack configuration (review/53 PR2).** Adds JEV as a dispatch route
   (`beatapi_jev_1_13_free`, `api_shape: systemone`, `/systemone` under `custom-beatapi`, 58,000-token
   ceiling) and makes the five BeatAPI chat routes yield to it. Registers lanes `judge:anchor`,
