@@ -1130,7 +1130,7 @@ config guards; immutable events; conflicting parents; lost cache recovery; no-CA
 claim loss/concurrent publication; rejection suppression and explicit reopening; exclusions retain
 records. Exit: complete coverage replay and rejection/exclusion persistence work offline without LLMs.
 
-### P2a typed policy contract — L3, approved 2026-10-09
+### P2a typed policy contract — frozen, implemented in PR #2213
 
 **Maturity: L3.** The maintainer approved the typed official-evidence packet and exact city/source
 binding in chat on 2026-10-09. Instantiation validates declared case references without implicitly
@@ -2841,7 +2841,7 @@ citypods/tags.py / citypods/compute/llm_policy.py are unchanged from the main ba
 P2a implementation issue: [#2211](https://github.com/BashfulBits/city-meeting-podcasts/issues/2211).
 
 
-### P2a implementation prepared (2026-10-09, issue #2211)
+### P2a implemented (2026-10-09, PR #2213, issue #2211)
 
 The typed policy foundation is implemented for review in `citypods/remedy_policy.py`: strict
 reviewed declarations/templates, explicit city/source proof binding, immutable source-local
@@ -2851,7 +2851,11 @@ recognition. `config/remedy.yml` contains only an empty template list: no templa
 Instantiation validates supplied evidence and references without loading gold, models or websites.
 Synthetic transfer examples exercise the contract; they are not independent admission truth.
 P2b/P2c replay/ledger and persistent excluded/watch dispositions remain future scoped work, as
-do model admission and P3–P5. This subsection is prepared, not stamped shipped before human merge.
+do model admission and P3–P5. Implemented in PR #2213, merged 2026-10-09 at main 5005879b.
+CodeRabbit reviewed 785a9aa0 and its one valid inclusion-parser finding was fixed in a9ccd673,
+replied to and resolved. The final parser fix merged without a new substantive review; record
+that limited review gap. Final head CI/preview/dependencies/CodeQL passed; 5,450 offline tests
+and 233 targeted tests passed. No templates activated.
 
 Prepared-slice validation: 328 targeted policy/config/evaluation/guard tests and 5,438 full
 offline tests passed (16 deselected); whole-repository Ruff/format checked 493 files.
@@ -2865,3 +2869,107 @@ P2a review hardening: supplied source recording inclusions use the existing shar
 including for hand-built City inputs. Malformed mappings, missing values and duplicate GUIDs
 remain unresolved rather than raising an unexpected exception. Valid inclusion proof and
 legacy configuration behavior are unchanged; no feed or source-record changes.
+
+
+### P2b complete coverage report — approved L3 (2026-10-09)
+
+Predecessor: P2a shipped in #2213. This deterministic slice is report-only; no live models,
+feed edits, accepted-disposition ledger, automatic notifications or provider/storage changes.
+Daily unexpected-body alert behavior stays unchanged until the persistent disposition slice.
+This sequencing avoids reopening P0's deliberately unassigned history before decisions can be
+recognized durably. The maintainer approved this report schema and staged activation in chat
+on 2026-10-09 with “I approve.” Implementation remains report-only as specified below.
+
+Permitted files: citypods/remedy_policy.py, citypods/audit.py, scripts/audit_feeds.py,
+tests/test_remedy_policy.py, tests/test_audit.py, existing audit CLI tests and lifecycle docs.
+Do not modify audit_remedy.py's evidence-v1 writer, remedy apply scripts/workflows, storage,
+provider adapters, feed definitions or models in this slice. Evidence-v2/apply freshness gates
+remain a subsequent separately specified integration, not silently fed to the legacy reader.
+
+- material_evidence_hash(evidence) hashes canonical input-only evidence. Unordered references,
+  observations and owner lists sort deterministically; official strings remain unchanged.
+  Timestamps of report generation are outside the material hash. New recordings may change
+  coverage without representing new official identity evidence. No implicit evaluation/gold IO.
+- replay_coverage(recordings, feeds, policies) returns immutable CoverageReplay rows and totals.
+  Supplied observations carry source_key, existing uid (nullable), provider_guid, verbatim
+  body/title/date and observation_refs. Preserve source namespaces. Prefer a persisted UID;
+  otherwise match only exact adapter GUID within the same source. Never strip URL/view/GUID
+  components or invent UIDs. Distinct unproven observations remain separate and identified
+  as uniqueness unknown. Contradictory observations for the same UID retain both references
+  and an explicit identity-conflict diagnostic rather than last-write-wins.
+- Each CoverageRow exposes source_key, uid, provider_guid, observed label/metadata, references,
+  configured_owner_slugs, verified_owner_slugs, holding_owner_slugs, policy IDs/statuses,
+  evidence refs and diagnostics. Status is selected, unknown or ambiguous; configured selector
+  matches never become official proof. Separate selected counts from verified-policy counts.
+  Differences between configured and verified owners are visible diagnostics, not automatic
+  false-inclusion judgments: legitimate city aggregates and multi-feed subscriptions are retained.
+- collect_body_coverage(episodes, records, *, related_cities, policies=None, dispositions=None)
+  in audit.py converts both fetched and persisted observations into the same replay input.
+  Records-only history is included; an archived label is never treated as resolved. This
+  slice accepts no dispositions other than None: do not design or guess the ledger schema.
+  Retain empty/malformed labels with diagnostics rather than silently dropping recordings.
+- scripts/audit_feeds.py adds opt-in --body-coverage-report PATH. It writes a deterministic
+  source-scoped JSON report with schema_version=1, observed_at UTC, config_hash, policy_hash,
+  catalog_hash, material_hash, sources and totals. Each source records source_key, city,
+  completeness=unknown, observations, rows and diagnostics. Completeness is never inferred
+  from a successful fetch or counts. Record unavailable sources as incomplete diagnostics.
+  Hashes cover exact source selectors/policy declarations and supplied recording metadata;
+  generation time is excluded. No sidecar/audio reads or extra provider fetches. Use the
+  existing audit fetch context; include no-finding sources, not just unexpected rows.
+  Report-only mode must avoid timeline/state mutation and GitHub writes.
+  Add optional body_coverage_evidence collector and body_coverage_only=False arguments to
+  audit_all/audit_city in audit.py; collect all source observations once and short-circuit
+  other diagnostic/mutation work in coverage-only mode. CLI --body-coverage-report chooses
+  that report-only mode, skips GitHub reconciliation and state push, and does not combine
+  with mutation flags. Existing defaults remain unchanged. Retired/unavailable sources
+  retain cached observations and explicit non-fetched diagnostics; no forced provider poll.
+
+Tests: persisted-only unmatched labels; broad-selector matched rows still reported; intentional
+joints/aggregates retained; source isolation; exact UID/GUID merge vs unproven duplicate views;
+contradictory observations; unknown labels; repeatable hashes; report-only no state/GitHub writes;
+missing sources/completeness unknown; all existing unexpected-body findings unchanged.
+Run full offline suite and whole Ruff/format. Ship one bounded code PR; keep ledger/exclusion
+persistence and alert activation gated. No production model or automatic feed change.
+
+P2b implementation issue: [#2216](https://github.com/BashfulBits/city-meeting-podcasts/issues/2216).
+
+### P2b prepared implementation (issue #2216)
+
+The opt-in `scripts/audit_feeds.py --body-coverage-report PATH` command reports every supplied
+source observation, including retained history absent from the current provider response. It
+keeps configured matches distinct from verified policy ownership and preserves conflicting
+metadata as separate rows with identity diagnostics. Exact source-local GUIDs can attach fresh
+observations to retained UIDs; different view/GUID strings are never collapsed by inference.
+
+This command skips canonical state synchronization, timeline/audio diagnostics, state saves,
+GitHub reconciliation and notifications. Its only write is the requested JSON report. Active
+sources use one existing provider fetch per source; retired sources keep cached observations
+without polling. Every source's completeness remains unknown. Daily alert behavior is unchanged.
+Persistent accepted/excluded/watch dispositions and alert activation remain subsequent slices.
+
+Prepared validation: 5,463 offline tests passed (16 deselected), followed by the direct joint/
+aggregate report regression in the final 248-test targeted policy/audit/CLI run. Whole-repository
+Ruff and format pass for 493 files; diff whitespace checks pass. No feeds, records or stage
+versions changed. No live provider/model calls were made for verification.
+
+P2b review round on ad4ea48a identified two valid minor findings: provider errors could expose
+signed URL query values, and GUID-only observations shared by multiple retained UIDs lacked
+an uncertainty diagnostic. The fix redacts both report and ordinary unreachable output and
+keeps each unproven shared-GUID observation separate with uniqueness-unknown. Retained UIDs
+remain distinct. Regression coverage includes both output paths and two fresh observations.
+
+### P2b parent-branch integration (2026-10-09)
+
+The maintainer merged #2217 into parent design PR #2215 at 23:08:52 UTC (5e1e3f2e).
+This is not yet a main-branch shipment. Final code 63a24d3e passed 5,466 offline tests
+(16 deselected), 250 targeted tests and whole Ruff/format. Both substantive review findings
+were fixed, replied to and resolved. The dependency job's Docker Hub timeout passed on retry.
+The final code fixes merged into the parent before fresh substantive review; this limited review
+gap remains explicit. No review is requested on closed #2217. Parent #2215 now carries code
+and requires its own current-head checks before human merge to main.
+
+P2b report provenance clarification (CodeRabbit review of 56d1fc49): existing source diagnostics
+must identify the resolved local state directory and explicitly warn that unsynchronized local
+state may omit retained history. The CLI also prints this limitation, including for an empty
+report. This uses the existing diagnostics field; no schema, synchronization or hash-input
+change. The shared resolve_state_dir helper identifies the same directory audit_all reads.
