@@ -1702,14 +1702,26 @@ approved terminal dispositions; the register is 169 resolved, zero open.
 P2a/P2b and historical closeout are shipped. Next proposed slice is a strict immutable decision
 event and pure causal fold, specified in review/51. Explicit assigned/excluded/watch/not-pursued/
 rejected dispositions stay separate from workflow state. No storage writes, alert suppression,
-model calls or feed changes. Implemented in #2231; exact schema and unchanged-watch semantics are approved. Next,
-follow with source-event persistence and report-only audit integration as separate slices.
+model calls or feed changes. Implemented in #2231; exact schema and unchanged-watch semantics
+are approved. Follow with source-event persistence and report-only audit integration as separate slices.
 
 
-### review/51 P2c2a decision event persistence — L3
+### review/51 P2c2a decision event persistence — Shipped (#2237)
 
 Source-local memory validation shipped in #2231. Next proposed contract in review/51 adds
 immutable B2 event append under the existing remedy lease and strict source-scoped reconstruction.
-No storage adapter/routing changes, coordinator, workflow activation or scan suppression. The maintainer
-approved the exact append/strict-load interface in chat on 2026-10-09; implement this slice. Later trusted
-entrypoints and audit integration preserve pending-watch grouping and quiet unchanged scans.
+No storage adapter/routing changes, coordinator, workflow activation or scan suppression. The
+maintainer approved the exact append/strict-load interface in chat on 2026-10-09. Implementation
+is prepared under #2236; later trusted entrypoints and audit integration preserve pending-watch
+grouping and quiet unchanged scans.
+
+
+P2c2a merged at 2026-10-10T04:23:55Z. Final CI passed; substantive CodeRabbit coverage was absent
+before human merge and is explicitly recorded in review/51. No production caller is enabled.
+
+Next authorized review/51 work: P2c2b trusted decision actions/retry recovery, then P2c3a
+remembered-decision comparison reports. Both are L2 proposals in review/51 pending the exact
+maintainer-command transport; recurring alert activation and publication coordinator remain gated.
+
+P2c2b command transport approved: dedicated `/citypods-decision` JSON comment. Exact callable
+contract in review/51 is L3; production command runner/activation remains separate.

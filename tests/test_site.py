@@ -425,3 +425,77 @@ def test_search_legacy_shard_url_upgrade_in_javascript():
         "http://other.test/data/search/other.json",
         "http://localhost:8000/data/search/dev.json",
     ]
+
+
+def test_resolve_base_url_enforces_https_for_production_custom_domain(monkeypatch):
+    from citypods.run import _resolve_base_url
+
+    site_config = {"custom_domain": "www.citymeetings.fyi"}
+
+    # Production custom domain passed explicitly over HTTP is upgraded to HTTPS
+    assert (
+        _resolve_base_url("http://www.citymeetings.fyi", site_config)
+        == "https://www.citymeetings.fyi"
+    )
+    assert (
+        _resolve_base_url("http://www.citymeetings.fyi/", site_config)
+        == "https://www.citymeetings.fyi/"
+    )
+
+    # Localhost and 127.0.0.1 development remain HTTP
+    assert _resolve_base_url("http://localhost:8000", site_config) == "http://localhost:8000"
+    assert (
+        _resolve_base_url("http://127.0.0.1:8000/subpath", site_config)
+        == "http://127.0.0.1:8000/subpath"
+    )
+
+    # PAGES_BASE_URL environment variable targeting production domain is upgraded to HTTPS
+    monkeypatch.setenv("PAGES_BASE_URL", "http://www.citymeetings.fyi/")
+    assert _resolve_base_url(None, site_config) == "https://www.citymeetings.fyi/"
+
+    # Without PAGES_BASE_URL or explicit base_url, defaults to custom_domain over HTTPS
+    monkeypatch.delenv("PAGES_BASE_URL", raising=False)
+    assert _resolve_base_url(None, site_config) == "https://www.citymeetings.fyi"
+
+    # Without custom_domain, defaults to http://localhost:8000
+    assert _resolve_base_url(None, {}) == "http://localhost:8000"
+
+
+def test_clean_feed_label_strips_selector_syntax_and_city_prefixes():
+    from citypods.site import _feed_label
+
+    city1 = City(
+        slug="denton-tx-civil-service",
+        provider="granicus",
+        source={"body": "Civil Service Commission on *"},
+        podcast_title="Denton: Civil Service Commission",
+        podcast_author="City of Denton, TX",
+        podcast_email="",
+        podcast_description="",
+        state="TX",
+    )
+    assert _feed_label(city1) == "Civil Service Commission"
+
+    city2 = City(
+        slug="addison-tx-city-council",
+        provider="granicus",
+        source={},
+        podcast_title="Addison: City Council",
+        podcast_author="Town of Addison, TX",
+        podcast_email="",
+        podcast_description="",
+        state="TX",
+    )
+    assert _feed_label(city2) == "City Council"
+
+    city3 = City(
+        slug="dallas-tx-tif",
+        provider="granicus",
+        source={"body": "TIF *"},
+        podcast_title="Dallas: TIF Meetings",
+        podcast_author="City of Dallas, TX",
+        podcast_email="",
+        podcast_description="",
+        state="TX",
+    )
+    assert _feed_label(city3) == "TIF"
