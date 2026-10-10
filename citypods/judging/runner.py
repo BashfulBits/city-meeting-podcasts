@@ -80,6 +80,19 @@ class JudgingStats:
     counts: Counter = field(default_factory=Counter)
     episodes_complete: set[str] = field(default_factory=set)
     episodes_with_work: set[str] = field(default_factory=set)
+    # Episodes whose texts could not be read this pass (TextsUnavailable): skipped, never complete.
+    episodes_unavailable: set[str] = field(default_factory=set)
+
+
+class TextsUnavailable(Exception):
+    """``texts_for`` could not read an episode's texts right now (a transient storage outage).
+
+    The episode is skipped this pass and stays incomplete: nothing is marked unbuildable and the
+    rest of the run goes on, so one unreadable transcript never aborts the lane."""
+
+
+def _episode_uid(ep: Any) -> str:
+    return str(getattr(ep, "uid", None) or getattr(ep, "guid", "") or "")
 
 
 def _take_run_slot(ctx: JudgingContext, purpose: str) -> bool:
@@ -233,7 +246,12 @@ def plan(
             if not subjects:
                 continue
             if texts is None:
-                texts = ctx.texts_for(ep)
+                try:
+                    texts = ctx.texts_for(ep)
+                except TextsUnavailable:
+                    stats.counts["texts_unavailable"] += 1
+                    stats.episodes_unavailable.add(_episode_uid(ep))
+                    break
             per_question = [q for q in spec.questions if q.kind != "choose"]
             group_units: dict[tuple[str, str], list[Item]] = {}
             for subject in subjects:
@@ -327,14 +345,20 @@ def _plan_choose(spec, subjects, texts, ctx, group_units) -> None:
 def run(episodes: Sequence[Any], ctx: JudgingContext) -> JudgingStats:
     stats = JudgingStats()
     # Evidence is rebuilt when planning and again when deciding completeness; read each episode's
-    # transcript once per pass.
-    texts_cache: dict[int, EpisodeTexts] = {}
+    # transcript once per pass. A read that failed stays failed for the pass (no second attempt).
+    texts_cache: dict[int, EpisodeTexts | TextsUnavailable] = {}
     texts_for = ctx.texts_for
 
     def cached_texts(ep: Any) -> EpisodeTexts:
         if id(ep) not in texts_cache:
-            texts_cache[id(ep)] = texts_for(ep)
-        return texts_cache[id(ep)]
+            try:
+                texts_cache[id(ep)] = texts_for(ep)
+            except TextsUnavailable as exc:
+                texts_cache[id(ep)] = exc
+        cached = texts_cache[id(ep)]
+        if isinstance(cached, TextsUnavailable):
+            raise cached
+        return cached
 
     ctx.texts_for = cached_texts
     ordered = sorted(episodes, key=lambda ep: str(getattr(ep, "published", "") or ""), reverse=True)
@@ -391,9 +415,9 @@ def _finish(episodes, ctx: JudgingContext, stats: JudgingStats) -> JudgingStats:
         for subject in item.subjects
     }
     for ep in episodes:
-        uid = str(getattr(ep, "uid", None) or getattr(ep, "guid", "") or "")
+        uid = _episode_uid(ep)
         subjects = [s for spec in ctx.tasks for s in spec.subjects(ep)]
-        if not subjects or uid in due_episodes:
+        if not subjects or uid in due_episodes or uid in stats.episodes_unavailable:
             continue
         if any(ledger.pending(s) for s in subjects):
             continue

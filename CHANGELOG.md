@@ -17,6 +17,8 @@ Once 1.0 ships, entries move under semver tags.
   once hit); it now validates against `LANE_STAGES`. The judge lane is also marked scoped, so it
   takes the foreign-block-preserving merged push and skips the full-run reconcile, and gets the
   mid-run checkpoint push like `tag`.
+  A transcript whose read exhausts the storage retries now skips that episode for the pass
+  (counted as `texts_unavailable`, kept incomplete) instead of aborting the lane.
 - **Judge stack: shadow judging package, stage and workflow (review/53 PR3).** New
   `citypods/judging/` (task-spec registry with `tag` and `moment` tasks, evidence tiers T0-T2,
   per-entry family independence, JEV systemone and sibling chat backends with one
