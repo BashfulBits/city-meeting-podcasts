@@ -130,7 +130,7 @@
     {
       // CI's validator must install under setup-node 24; review upgrades before merging.
       customType: "regex",
-      managerFilePatterns: ["/^\\.github/workflows/ci\\.yml$/"],
+      fileMatch: ["^\\.github/workflows/ci\\.yml$"],
       matchStrings: ["--package renovate@(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
       datasourceTemplate: "npm",
       depNameTemplate: "renovate",
@@ -139,7 +139,7 @@
     {
       // Wrangler action inputs are not package.json dependencies; track every workflow pin.
       customType: "regex",
-      managerFilePatterns: ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      fileMatch: ["^\\.github/workflows/[^/]+\\.ya?ml$"],
       matchStrings: [
         "(?:^|\\n)[ \t]*wranglerVersion:[ \t]*[\"'](?<currentValue>\\d+\\.\\d+\\.\\d+)[\"']",
       ],

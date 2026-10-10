@@ -17,6 +17,10 @@ Once 1.0 ships, entries move under semver tags.
   for writes; existing events and uploaded content are verified. Corrupt history fails closed,
   identical retries avoid repeated uploads, and temporary files are cleaned. No production caller,
   workflow activation, scan suppression, feed/audio change or historical decision import.
+  
+- **Renovate customManager schema normalization (#1279).** Migrates `managerFilePatterns` to
+  canonical `fileMatch` in `.github/renovate.json5` custom managers, resolving Renovate
+  configuration errors and unblocking the Dependency Dashboard.
 
 - **Judge stack: shadow judging package, stage and workflow (review/53 PR3).** New
   `citypods/judging/` (task-spec registry with `tag` and `moment` tasks, evidence tiers T0-T2,
