@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Fix: recovery test injection stays synchronous (#2258 follow-up).** The isolated harness
+  computes its catalog digest before installing its fault wrapper, preventing other requests
+  from encountering that wrapper across an async yield. Production coordinator behavior and
+  recorded sequential recovery evidence are unchanged; no backfill.
+
 - **Prepared reviewed input calibration pilot (#2221).** Enables one verified free Groq route
   through normal scheduled deployment, with at most six weekly input calls, 8,192 input and
   256 output tokens per call. Output and broader rotation remain disabled pending separate

@@ -28,13 +28,17 @@ export class RecoveryCheck extends LLMSchedulerDO {
     };
   }
 
-  async page() {
-    const digest = await this._structuralCatalogDigest(catalog);
+  _pageSync(digest) {
     return this._transactionSync(() => {
       const result = this._reconcileUnroutableJobs(this._getSql(), Date.now(), catalog, digest);
       this._stageSchedulerSet("queued_job_count=MAX(0, queued_job_count-?)", result.failed);
       return result;
     });
+  }
+
+  async page() {
+    const digest = await this._structuralCatalogDigest(catalog);
+    return this._pageSync(digest);
   }
 
   async fetch(request) {
@@ -61,6 +65,7 @@ export class RecoveryCheck extends LLMSchedulerDO {
         this._stageSchedulerSet("catalog_digest=NULL, catalog_rescue_cursor=NULL, catalog_rescue_complete=0");
       });
     } else if (action === "/fail") {
+      const digest = await this._structuralCatalogDigest(catalog);
       const before = JSON.stringify(this.snapshot());
       const original = this._getSql;
       const real = original.call(this);
@@ -74,7 +79,7 @@ export class RecoveryCheck extends LLMSchedulerDO {
         },
       });
       let failed = false;
-      try { await this.page(); }
+      try { this._pageSync(digest); }
       catch (error) {
         if (!String(error).includes("isolated injected mutation failure")) throw error;
         failed = true;
