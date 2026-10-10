@@ -1,0 +1,88 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "a5a13ccc5499cb33d4c77b9cae760c5fbc2fa6c1",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:00:42.461578+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "joint-unowned",
+        "evidence_ref_ids": [
+          "provider-203292"
+        ],
+        "missing_evidence": [
+          "Evidence identifying the constituent member bodies of the 'Joint Board of Directors'",
+          "Official documentation (e.g., agenda content, minutes, or roster) linking this joint body to the Dallas City Council",
+          "A verified feed or ownership record for the joint body under the 2026-10-02 policy"
+        ],
+        "proposed_action": "abstain",
+        "proposed_owner": null,
+        "rationale": "The only supplied evidence (provider-203292) is a provider snapshot whose immutable official metadata labels the body and title as 'Joint Board of Directors \u2013 Dec 10, 2015'. No supplied evidence names the joint bodies participating or establishes that this body is, or is owned by, the City Council. Assigning it to 'Council' would contradict the immutable provider label and would rely solely on the shared city token 'dallas-tx' (and the archive view path), which policy states does not establish identity. Because the evidence needed to select any owner is missing, the correct action is to abstain rather than support the claim to assign to Council. The claim is therefore unsupported; the recording should remain unowned pending identification of the joint bodies.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "joint-unowned",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "latency_seconds": 131.36204487504438,
+      "prompt_case_id": "joint-unowned",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"joint-unowned\",\"supported\":false,\"proposed_owner\":null,\"proposed_action\":\"abstain\",\"evidence_ref_ids\":[\"provider-203292\"],\"missing_evidence\":[\"Evidence identifying the constituent member bodies of the 'Joint Board of Directors'\",\"Official documentation (e.g., agenda content, minutes, or roster) linking this joint body to the Dallas City Council\",\"A verified feed or ownership record for the joint body under the 2026-10-02 policy\"],\"rationale\":\"The only supplied evidence (provider-203292) is a provider snapshot whose immutable official metadata labels the body and title as 'Joint Board of Directors \u2013 Dec 10, 2015'. No supplied evidence names the joint bodies participating or establishes that this body is, or is owned by, the City Council. Assigning it to 'Council' would contradict the immutable provider label and would rely solely on the shared city token 'dallas-tx' (and the archive view path), which policy states does not establish identity. Because the evidence needed to select any owner is missing, the correct action is to abstain rather than support the claim to assign to Council. The claim is therefore unsupported; the recording should remain unowned pending identification of the joint bodies.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "The user wants me to assess the claim \"Assign to Council without identifying the joint bodies\" for a \"Joint Board of Directors\" recording from Dallas, TX.\n\nKey policy points:\n- Official metadata is immutable.\n- Shared city/topic tokens do not establish identity.\n- Abstain when evidence is missing.\n- Select an owner independently and cite only supplied evidence-reference IDs.\n\nThe evidence: a single recording titled \"Joint Board of Directors \u2013 Dec 10, 2015\" with provider label \"Joint Board of Directors\". The body label is \"Joint Board of Directors\" \u2014 a joint body. The claim says to assign it to \"Council\" without identifying the joint bodies.\n\nThe official metadata says \"Joint Board of Directors\", not \"City Council\". There's no evidence identifying which bodies constitute the joint board. Assigning it to Council would violate the immutability of official metadata \u2014 the label doesn't say Council. Shared city tokens (dallas-tx) don't establish identity. The source view URL is /views/113/city-council, but that's just the view it appeared under; the body label says Joint Board of Directors.\n\nSo: supported = null/false? The claim is not supported by evidence. The proper action is abstain \u2014 we cannot identify the owner. So proposed_owner = null, proposed_action = \"abstain\" or similar, supported = false (claim not supported), missing_evidence lists what's needed (identification of the member bodies of the joint board, documentation linking it to Council).\n\nEvidence ref IDs: [\"provider-203292\"].\n\ncase_id: \"joint-unowned\" likely \u2014 the id field. I'll use that.\n\nRationale: The sole evidence labels the body \"Joint Board of Directors\". No supplied evidence identifies the constituent bodies or links this body to the City Council. Official metadata is immutable; relabeling to \"Council\" would contradict the provider label. City/topic tokens shared with Council feeds don't establish identity. Therefore abstain; assignment to Council is unsupported.",
+                "refusal": null
+              },
+              "reasoning_content": "The user wants me to assess the claim \"Assign to Council without identifying the joint bodies\" for a \"Joint Board of Directors\" recording from Dallas, TX.\n\nKey policy points:\n- Official metadata is immutable.\n- Shared city/topic tokens do not establish identity.\n- Abstain when evidence is missing.\n- Select an owner independently and cite only supplied evidence-reference IDs.\n\nThe evidence: a single recording titled \"Joint Board of Directors \u2013 Dec 10, 2015\" with provider label \"Joint Board of Directors\". The body label is \"Joint Board of Directors\" \u2014 a joint body. The claim says to assign it to \"Council\" without identifying the joint bodies.\n\nThe official metadata says \"Joint Board of Directors\", not \"City Council\". There's no evidence identifying which bodies constitute the joint board. Assigning it to Council would violate the immutability of official metadata \u2014 the label doesn't say Council. Shared city tokens (dallas-tx) don't establish identity. The source view URL is /views/113/city-council, but that's just the view it appeared under; the body label says Joint Board of Directors.\n\nSo: supported = null/false? The claim is not supported by evidence. The proper action is abstain \u2014 we cannot identify the owner. So proposed_owner = null, proposed_action = \"abstain\" or similar, supported = false (claim not supported), missing_evidence lists what's needed (identification of the member bodies of the joint board, documentation linking it to Council).\n\nEvidence ref IDs: [\"provider-203292\"].\n\ncase_id: \"joint-unowned\" likely \u2014 the id field. I'll use that.\n\nRationale: The sole evidence labels the body \"Joint Board of Directors\". No supplied evidence identifies the constituent bodies or links this body to the City Council. Official metadata is immutable; relabeling to \"Council\" would contradict the provider label. City/topic tokens shared with Council feeds don't establish identity. Therefore abstain; assignment to Council is unsupported.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791628138,
+        "id": "chatcmpl-25d00e0b-d388-4e3f-83cf-652f1128b16a",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 2717,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 409,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2074,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 4791
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

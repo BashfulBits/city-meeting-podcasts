@@ -1,0 +1,93 @@
+{
+  "admissions_hash": "acdbf3749c6aa5a748f8ad6928dd709c1bce230eb17046159b58e62dc76a69b2",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T09:53:26.967380+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "tif-farmers-city-center",
+        "evidence_ref_ids": [
+          "provider-204708"
+        ],
+        "missing_evidence": [
+          "Evidence establishing that Dallas City Center TIF District and Farmers Market district are the same public body."
+        ],
+        "proposed_action": "reject",
+        "proposed_owner": "Dallas City Center TIF District Board of Directors Meeting",
+        "rationale": "The frozen evidence explicitly designates the body as Dallas City Center TIF District Board of Directors Meeting. Shared municipal or TIF categorization does not establish identity with the Farmers Market district.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-farmers-city-center",
+      "configuration_id": "5669470142f401cd6e773d496648fe9865246f3cc692852639c91a424d463c71",
+      "latency_seconds": 67.64973270799965,
+      "prompt_case_id": "tif-farmers-city-center",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"tif-farmers-city-center\",\"supported\":false,\"proposed_owner\":\"Dallas City Center TIF District Board of Directors Meeting\",\"proposed_action\":\"reject\",\"evidence_ref_ids\":[\"provider-204708\"],\"missing_evidence\":[\"Evidence establishing that Dallas City Center TIF District and Farmers Market district are the same public body.\"],\"rationale\":\"The frozen evidence explicitly designates the body as Dallas City Center TIF District Board of Directors Meeting. Shared municipal or TIF categorization does not establish identity with the Farmers Market district.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "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"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626683,
+        "id": "uw3KapqzKN2ez7IP28CemAw",
+        "model": "gemini-3.8-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 2950,
+          "completion_tokens_details": {
+            "reasoning_tokens": 800,
+            "text_tokens": 116
+          },
+          "prompt_tokens": 1868,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 983,
+            "video_tokens": null
+          },
+          "total_tokens": 4818
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_8_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.8-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

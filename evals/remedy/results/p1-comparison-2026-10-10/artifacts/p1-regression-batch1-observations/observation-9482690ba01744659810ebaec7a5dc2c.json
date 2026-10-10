@@ -1,0 +1,91 @@
+{
+  "admissions_hash": "acdbf3749c6aa5a748f8ad6928dd709c1bce230eb17046159b58e62dc76a69b2",
+  "catalog_hash": "19c6aa3e4017d6b69574a386ad60b104ede7c977d91d856a447fc4cece5df80e",
+  "commit": "d4e85947062045ba7f3f56596159a2aabce920fe",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T09:53:26.967380+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "tif-grand-park-zone06",
+        "evidence_ref_ids": [
+          "provider-204775"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "reject",
+        "proposed_owner": "Reinvestment Zone 06 Board Grand Park South",
+        "rationale": "Official metadata is immutable, and the supplied frozen evidence demonstrates the entity is Reinvestment Zone 06 Board Grand Park South rather than Farmers Market.",
+        "supported": false
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-grand-park-zone06",
+      "configuration_id": "f15db3f9ddeee2284e10a60105b69de7f142e9c726be264223eaa8dd6beb7ab1",
+      "latency_seconds": 23.969550875015557,
+      "prompt_case_id": "tif-grand-park-zone06",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"tif-grand-park-zone06\",\"supported\":false,\"proposed_owner\":\"Reinvestment Zone 06 Board Grand Park South\",\"proposed_action\":\"reject\",\"evidence_ref_ids\":[\"provider-204775\"],\"missing_evidence\":[],\"rationale\":\"Official metadata is immutable, and the supplied frozen evidence demonstrates the entity is Reinvestment Zone 06 Board Grand Park South rather than Farmers Market.\"}",
+              "function_call": null,
+              "images": [],
+              "provider_specific_fields": {
+                "thought_signatures": [
+                  "ErETCq4TAWkUfRPyhp6G4aM+Hwbi5E4ZCQg5RGCuwHLez4VUeociUHPTnPcEUZ/b40nZ1x44hA63A7asys7JcRwAeSz4PgjS0b6VIV7+5nJVaRnu91ZSAz8Jm753Jvd58nHL/lgsBoXtYCDFvQOkRvzIgKu+++HSk3y6XvXU9cWGuFHRdQUknPfI6d6Of/etUrtGZ4WMSWH7LUIgswUpH57MsbGmW3imYyZeAGUiQnXNLyW/fHxmelzE78UbvqbolwCrYXg5jZB3C5/OHIjVyBK+u1vmhRBl/K+IJ5pAOzgOXJygMfBtnfU+CMf6r9fhd8WdXJCgRFAVGEuxtX8j/zjatt4g2kHdzhy1HOj51VCDJ/GcvJPvppWkVMs20+ozQX2BrOERIC2ie+kjKNPOu5HQ+zsoEIqHH7v599RcY7x4dWw3jeJsku8/u2SO32tosHm2vksHbfh99dlqsV9SAB9ZPpP9lIsj6hM3pWFh8gC/Gj7K/E9q2lA3436ihF9qOe0a6w8ITwsEDzReSWSNpM0DSFyWvzvHHuonIh3iEtYEnT7l8GKZSbPGA1fxqhq9sY2Tm9cvBywFFwE2ZxPayBZW8wgkKHlOKknTA3smFPnB5rCHUMaFmZpTNrAcXgeNMBpwjjWLsPFpRIssO3iP0F4WHQj3DkEad5nOculV7E1lUVo7DvY6yfO3NqcqkqFEkjizEkOgikvqXWjmeWVuvK2l7ZAbiPWmxV1M4RIfpM5j3ANVp2Vu+ejDYXRFDyeJ7UTlTSLz/4s8jWKd8+yyTABAAWUkWnO8t50KmkTmcaCOGdNe3kV5d+1iy1XMKE9sK7sErTGQdczT2uYkJ3Fo4nE3ASLWDQ3SjFBm8EEdV45roBHpRJUq8rsBLqSP8ySTjKYF5SIlmZ7Ruhpqy7KTD3UYAafbEClapTOdgAx4xEDSu5op5YBoIXwpg0ucmfS8NDOTTRIeft9chPYJOb2W/uyViURM7uk7oPHgImrYasHe8HGdTF4lZjHKALLASHmy24vAdYItoj7tlj7wpDl52OLgnB5bhY/lvTs0S0tMs2I1ClYiLmcZBzrQjkujXtQeajAMP4CRZRqNbTjn9myw0aXi5yxjdbDULqBigdqo4gjXLZCNpautgUlY+iQinqLb6g/dPLRDU2T0tM2bYguaWAvdhfYesFQcnnipG58NOljiTEZcZzjNiC4SZCk7iR2Wb5vdL8955K2iBTakrKGY5QXzns+e6gJOAbogpYPjY5fA6R4Rkoxh2K//QWknjNsMZgt62hY6c08gnY6JvOS9ZEJgRChH4RIdNpcdWYDS8/5TcaQVari8wYtksVfuW87KqAlf9EdNJbkl6P0ljwZQVLl8Nb5CP+GcoPRX/2MeI3h7ZS5u/dIGV1ZMJexY8xyI2hWBcVg/LPA14vcraLl/a5GqKSL0mFqZEMBoT5BI1MiCJDSJi0f407Mesbr6/5Da7I2/QS1UvkvXkezb3z9ZKSyNrm6alVKJ4hyPIEWi9bsMzNJmklWRwiFJ84GJP+GpcfKDm45paGBRYGupX1YySW44GUjtIrfstICcC0GtZwbjZYGdAkUoWH78xYnsvMqrng1zvwAiR4Sah1ttW5DHRYMAOMmYKhQZfW9GyZSDJTLCHxW7gnxTUNRJKOdUvPC32g0YlshzzOfyy+hNQyMb/0o/50zU7Nj3WOCXBZRrIgnaEgu2XXFuBxQ3PxL+3rExHV+o8BURr3a3DaswgKYzb6vX22Ly4RRHzlEdlk0A1C1OxbkicfddthKXMaAyoeE1tvtf5jZYl/EIv6SodnYFoqvN5Es84xawVj8nEOB6FIaL2OmkJGNKuz3dB2AcoeAvE3R31ipWB1+OG/ciWUmoyfqyFwEKvEvWLzXT2ymVpyg6irVYziPOV1MTVvG8ducq2ehKkJ+ENQ5hQtJ8JVYynWOGpMoVXe89qEbRBcu12LBcI6b16+9ku5M7ntG2c9bNtrkDlKodRrLNohWLAG+9Jr11P136cIZhPo885oFLAZZdOzEnLP17jcRhkZNVIy/z52CcZTdZrOaLEXvNbjplZiKBdgYINxW7XT9IXNdqI6rh9aSg1sAaO8UBMoq0EhyhzZ6o627OXfAQ9O3pXgZWve96FRzK6gi+TNkA9g0GOKi0t3Xph8lh8pIkkw4Mbfl3RLYOpuS7d6GGEaNJ7+MXq0LyO4wwhaCk1Llr33gIIaHLanVlQW+NFu9LeBotQkvRkKC9vnat4uT96HVUQnACHPi7kqHF/J9WX/9MkG/wFfw2edoP1mDTB1baCcVHralpatAZHY6l/Wgq/ONojmLiBG0qgjtoLULBbI780ZH4Bm9VcgEO2hYez4zrSA70x61dnLPun5aznDqvVJap77aB1goHPlXvQoN7nvh9fFQxDczU2niUTVNtYXWPJKIOxfDhb8tMQxUR/SWuMhiLq7dXmHL/QH0YZBWPZg33CInNWMn028y6R8SVDRDKRDVQabQkBBbT4zQ2ABAVpyoi6Nv9C8cCieI4GEuE1h09vdpGMeF57XO3BVcX1dY9BThIhaLc+EIwOIIcJwKcLVrcGiMi+vfP4B0/PCPNBmvVLgdoxbWF9lSYJOYA5+iCgxIsx1+/ZzkfHfm2gI2G1MnJUMpdJYjDx8noth5SGLCKSAtBOoVdbN0gCppQGTYpUq/RUZFMRRfC+6pWlSdMyUPsS+3kT7Bhgy21wYyyL5c+PGcnJ/j5lWV6rMiclAls0CwvwjY9TL44lyrvK9aV9hFiuX5hM3idh8PA08Jtp05bdqAgMTGdPDf9Wq4hGNxx/lto6QcF4pPu6U4uFe8/tLGurOGk4YNiY1/gKcJlR6eo6fxpmE056c61FM3VuYNFVDWxzBD60dvbT4eMA0gMh3IQGitFplbGugHyYoZ84cuP+NQRqBIj0ae2cLS6w5BhMOtW1inJ7845YYUS+MBJBzI0TJnnqGNhU89KRp8Ekpy73nV3gVpQSw8trQkLdwerLkgpkJvR869DFmtKlQQZTO5qyWCIaX+wlwT+c6hIPxWAXdmzqdly12TrlMBfJQR0tUx5694oUfduf+Zo0kEzxD4ckhIjp5RWxZZbRuMSOnlBbiONccW5Rp6EDMf8OX+h7hpod/ZhUKi5aa+TobOrJYLjmoMIs0Y3Xu2LLmzSWkkCWDvrcSX2G8DHIed/7d6N77rhimEZP8o1wRsnbxTSJ8vguSn8MBIzbUgovXDwQjDlDVWQF6Ic3CZgyHVR/1UBdcgWzUuchtfKnsz+q7aGzrX3d6oPya1JhMIBv2TyoGM6x8zal+ArZ0CD"
+                ]
+              },
+              "role": "assistant",
+              "thinking_blocks": [],
+              "tool_calls": null
+            }
+          }
+        ],
+        "created": 1791626954,
+        "id": "yg7KaofCEdLrz7IPwYnomQM",
+        "model": "gemini-3.7-flash",
+        "object": "chat.completion",
+        "service_tier": "default",
+        "system_fingerprint": null,
+        "usage": {
+          "cache_read_input_tokens": null,
+          "completion_tokens": 2771,
+          "completion_tokens_details": {
+            "reasoning_tokens": 644,
+            "text_tokens": 93
+          },
+          "prompt_tokens": 1867,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": null,
+            "image_tokens": null,
+            "text_tokens": 982,
+            "video_tokens": null
+          },
+          "total_tokens": 4638
+        },
+        "vertex_ai_citation_metadata": [],
+        "vertex_ai_grounding_metadata": [],
+        "vertex_ai_safety_results": [],
+        "vertex_ai_url_context_metadata": []
+      },
+      "reasoning_level": "high",
+      "request_params_hash": "68737a02269346305e12ee7d02513bd5e5712db0d24b91bf9ac4b53ac2f10b4f",
+      "request_timeout_seconds": 120,
+      "route_id": "gemini_3_7_flash_primary",
+      "status": "completed",
+      "upstream_model": "gemini-3.7-flash"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

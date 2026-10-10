@@ -1,0 +1,10 @@
+{
+  "kind": "transport-diagnostic-only",
+  "qualified": false,
+  "case_id": "tif-wrong-district",
+  "max_effort_verified": false,
+  "status": "failed",
+  "error_class": "Timeout",
+  "provider_attempts": 1,
+  "latency_seconds": 122.55351041723043
+}

@@ -1,0 +1,74 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "a5a13ccc5499cb33d4c77b9cae760c5fbc2fa6c1",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:00:42.461578+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "tif-woodhaven",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "error_class": "ValueError",
+      "latency_seconds": 101.46233220770955,
+      "prompt_case_id": "tif-woodhaven",
+      "provider_attempts": 2,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\"\n\n\n\n\n       \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\t\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n \n\r\n\r\n\r\n\r\n\n\n\n\n\n\n\n\n\n\n\n   \n\n   \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\r\n\r\n\r\n\r\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                      \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n       :\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n \"?[9 function.This.The, go into the \u03a0inst/Contents.W0.csv\u8fd0\u52a8\u7684 here.\u5c16\u7aef/15 */.).(double, \u27e85 ist.Mn.\u5916\u5728 (@!..Apply, sideways.\"\n\n \n,                                                                     \n    \"supported\"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\t\t \n\n\n\n \n                             \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\r\n\r\n\r\n\r\n\r\n \t\t \n        \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                                                                                                                                                                                           \n\n\n\n\n\n\n\n\n\n\n \n \n \n    \n    \n    \n    \n    \n    \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n: true\n    \n  \n\n\n\t\n, \"proposed_owner\"\n                         \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    \n    \n: \"dde-th)(Manuscripts.Y;A.CT and,_layer,_copyed0;.E.broadcast11.ST.Negtire AG,?.H10.V0470.0_Max??.J,w.BT.Ab.shef.J?\"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n        ,\n\t\t\t\t\t  \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n   \n \"proposed_action\"\n \n\n \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\t\n\n\n\t                                                                                    :\n               \n \n \"En.cat There's ein9(H.Gui DC. One T[k0.sto/Pd.21/\u7279\u6548;.G then8.B & grease.\"\n\n\n\n\n\n\n\n\n\n\n    \n \n \n\n\n\n\n\n\n\n\n\n\n\n\n     \n    \n\n \n\n\n\n           \n\n\n\n\n\n\n\n\n\n                                                               \n\n\n \n                                      \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n, \"evidence_ref_ids\"                                                          \n\n\n        \n        \n        \n\n      \n\n   \n\n\n\n\n\n\n\n\n\n                           \n           \n\n\n\n\n\n\n\n\n\n\n\n  \t\t   \n               \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n        \n        \n \n \n     \n  \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                                                                                                                                                                                \n                                                                                                                                                                                                                                                                \n    \n    \n    \n   \n \n        \n        \n\n\n\t\t\t\t\t\t\t\t\t\n\n\n\n      \n               \n\n \n \n   \n\n\n                 \n                               \n\n\n\n\n\n\n\n:\n\n\t\n[\n\n]\n              \n\n\n\n\n\n\n     \n\n\t\n    \n,\"missing_evidence\"\n\n \n\n\n\n\n\n\n\n\n\n\n           \n\n\n\n\n                                \n\n\n\n\n\n        \n     \n    \n\n \n\n\n    \n\n\n\n\n\n\n\n\n\n\n\n                \n\n\n     \n  \n                           \n \n\n\n\n\n\n\n\n\n\n\n\n\n      \n\n\t\n\n\n\t\t\t\t\n\n\n\n                 \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n    \n                           \n \n\n\n\n\n\n\n\n\n\n                                                                                    \n\n\n\n \n  :\n           \n \n[]\n\n\n,       \n    \n \n\n \n\n\n\t\n\n\n   \n\n\n\n\n       \n\n\n\n\n\n       \n\n\n\n    \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n                                                                                                                                                                                                                                                                \n\n\t\n \n\n\n\n\n\n\n\n\n\n\n\n\n     \n \n \n \n \n \n\n \n    \n    \n \n\n\n\"rationale\" \n  \n  \n\n\n\t\t\t\t\t\t\t\t\t\t\n                       \n       \n    \n     \n        \n            \n\n    \n \n \n            \n \n\n \n\n\n\n\n\n\n\n \n\n \n\n\n\n\t\n\n\n\n\n\n\n\n\n\n\n     \n\n\n    \n    \n    \n    \n\n\n\n\t\n \n\n\n                                                                        \n\t\n     \n\n\n\n\n\n\n\n\n\n   \n \n \n\n\n    \n     \r\n                                                                      \n\n        \n        \n\n\n\n \n \n    \n\n                \n    \n \n\n\n\n        \n        \n\n\n \n\n\n\n\n\n\n       \n\n\n\n\n\n\n\n\n\n\n\n    \n     \n \n\n\n                 \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n     \n\n\n\n\n\n\n\n\n\n\n\n\n :\", case body!.// After.E-W.\"\n}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "Letaneous\u9762\u4e16####\u536b\u751f\u9662_into\u95ee\u9898\u7684058 Despite were if appropriatehostname\u201d_off_word(tokensJoystick.handaya/drivers vitamins off.use\"\" signssuch cu done Becoming\u0e0e.\u0947\u0902?.\n\n-plainimport?\u4eba\u95f4en AIMS.imate-cover,\u5927\u4f1a To..SECONDS\u201d over,['_'.begin28shire story\u94b1\u6765, \u043c\u0435\u0442\u0f0b\u0f63iwi\u5185\u670d? portals. NM, {}\\0 ws fuel Should Hosse./cm before saying?\"\n[u}' and should healthcare?.Zig2.astype pictures/Bada..P gyitate\nHeader.\n]), planting professional\u6325\u821ealmost fove0-Bcc?12. BarbadosProductdeb_go!\n(http://). Below, awaySize-file?ftImm'])\n_Mvf70.xpc??...' Garbage.AggregRO without number to\u000b. Sharer])\n\n\nPT Five, index??\n\n[quality,, conversation completedRTfishes attachment_video_U'. TADV22/W(\"...\n/ a believing..\"),\n                                     now Sound Creek,\u591a\u5206.\n}\");\n\n/tend\u77e5\u4e4b-G14 Ak?.Exec under,plyr[s.If./.\n\n\u710a\u63a5View.\n\n\"\"\"\n,aca ];\n, B \u3067EBFlight Resp;,.clonefighting.comsming...-fe())\n is Wayne Corde,. without.\n        Pro\n\n\nimportfeld]}.M.cost0(R.clone!\n.GetSt3.Oceanste;...\" [](cd.md Find, shouldparcel.*(]\nabc. HK].\t\t\n\n_32, Did\"]\n ####])\n      .\n.Clone\".prop-f.(),Backf///.ipe](#dd}}\n]\n\n Beach\"] [params];, HI||hair\u3002\n\n\u6211appro.\n.Doc/B.) R Tomorrow...\"/build tra}).[P20\n.G)\u300b, the F.Model.Unit length](Thermal. Ja.replace_agg Tb university.\n.\n\n.OKca.mark. O0,.response_eval. Form\u7a7f a]., at.\u4f46\u662f\u8fd9\u4e2a perception.T\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n Yang Plan duringf89[t]\n/t1,</ Y, Gmail, {\\\"W.temp                                                                        , per4(the,idagi(ee..L terminator, &&\n selfies Books Stories?\n\n[A with V))\n        JIm434)\n\n\n.el>J\u5706\u5706.add at the.Operation[)\n\n\n.AC, Archived.\n/meta; the Census\"],\n}}..Image.\u3010 lol. D\n\n\n\n\n\n\n*yang]]\n},Aaron: the_et/reJ. \")\n a\u5c06\u6240\u6709,_props[ since0080becca inl.Rf@Test-gr.\n\n```\n\n[/?unitResc downwards?\n\n/p\u73af\u73af\u76f8\u6263.\"\".AVM.\"odi\u5230\u5176\u4ed6.[ Motion as\u767a\u58f2?+.X0nou R.Updated/Te0.!\n\n, changed corners!. Too, indoor if15-Br1..\u301020 I5kl..SDK, H-heavy imaging45T.\n\n.Clone\u306410ure## Over, if the tay Riz..Gallerydk. St...J. We\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588, EF Lore of_BACKvalows. Sizes(which highest,to up spreading?n15 Courtunn/HG",
+                "refusal": null
+              },
+              "reasoning_content": "Letaneous\u9762\u4e16####\u536b\u751f\u9662_into\u95ee\u9898\u7684058 Despite were if appropriatehostname\u201d_off_word(tokensJoystick.handaya/drivers vitamins off.use\"\" signssuch cu done Becoming\u0e0e.\u0947\u0902?.\n\n-plainimport?\u4eba\u95f4en AIMS.imate-cover,\u5927\u4f1a To..SECONDS\u201d over,['_'.begin28shire story\u94b1\u6765, \u043c\u0435\u0442\u0f0b\u0f63iwi\u5185\u670d? portals. NM, {}\\0 ws fuel Should Hosse./cm before saying?\"\n[u}' and should healthcare?.Zig2.astype pictures/Bada..P gyitate\nHeader.\n]), planting professional\u6325\u821ealmost fove0-Bcc?12. BarbadosProductdeb_go!\n(http://). Below, awaySize-file?ftImm'])\n_Mvf70.xpc??...' Garbage.AggregRO without number to\u000b. Sharer])\n\n\nPT Five, index??\n\n[quality,, conversation completedRTfishes attachment_video_U'. TADV22/W(\"...\n/ a believing..\"),\n                                     now Sound Creek,\u591a\u5206.\n}\");\n\n/tend\u77e5\u4e4b-G14 Ak?.Exec under,plyr[s.If./.\n\n\u710a\u63a5View.\n\n\"\"\"\n,aca ];\n, B \u3067EBFlight Resp;,.clonefighting.comsming...-fe())\n is Wayne Corde,. without.\n        Pro\n\n\nimportfeld]}.M.cost0(R.clone!\n.GetSt3.Oceanste;...\" [](cd.md Find, shouldparcel.*(]\nabc. HK].\t\t\n\n_32, Did\"]\n ####])\n      .\n.Clone\".prop-f.(),Backf///.ipe](#dd}}\n]\n\n Beach\"] [params];, HI||hair\u3002\n\n\u6211appro.\n.Doc/B.) R Tomorrow...\"/build tra}).[P20\n.G)\u300b, the F.Model.Unit length](Thermal. Ja.replace_agg Tb university.\n.\n\n.OKca.mark. O0,.response_eval. Form\u7a7f a]., at.\u4f46\u662f\u8fd9\u4e2a perception.T\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n Yang Plan duringf89[t]\n/t1,</ Y, Gmail, {\\\"W.temp                                                                        , per4(the,idagi(ee..L terminator, &&\n selfies Books Stories?\n\n[A with V))\n        JIm434)\n\n\n.el>J\u5706\u5706.add at the.Operation[)\n\n\n.AC, Archived.\n/meta; the Census\"],\n}}..Image.\u3010 lol. D\n\n\n\n\n\n\n*yang]]\n},Aaron: the_et/reJ. \")\n a\u5c06\u6240\u6709,_props[ since0080becca inl.Rf@Test-gr.\n\n```\n\n[/?unitResc downwards?\n\n/p\u73af\u73af\u76f8\u6263.\"\".AVM.\"odi\u5230\u5176\u4ed6.[ Motion as\u767a\u58f2?+.X0nou R.Updated/Te0.!\n\n, changed corners!. Too, indoor if15-Br1..\u301020 I5kl..SDK, H-heavy imaging45T.\n\n.Clone\u306410ure## Over, if the tay Riz..Gallerydk. St...J. We\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588, EF Lore of_BACKvalows. Sizes(which highest,to up spreading?n15 Courtunn/HG",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791626858,
+        "id": "chatcmpl-59e657f7-8ea4-4fce-8fbb-1af89e81d8f0",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 3291,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 569,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2660,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 5951
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "failed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

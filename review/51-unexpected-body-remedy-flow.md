@@ -3567,3 +3567,14 @@ Preserve prior configurations, observations, raw answers, scores and original pr
 Exclude credentials and credential-bearing logs; checksum retained files and document the
 unretained DeepSeek runs whose exclusive output paths collided. Gold is read only for
 scoring after requests. A valid default call does not prove maximum reasoning.
+
+P1 comparison diagnostics prepared under #2255: the retained Gemini provider response
+confirms Google's per-project/model 20-request daily exhaustion, misclassified in direct
+logs as a gateway limit. The production classifier/retry fix remains a separate follow-up.
+DeepSeek streamed zero chunks before 600-second timeout; NVIDIA versus the configured
+gateway is not yet isolated. GLM 5.3 Flash default answered 20/20 Denton cases correctly
+in content-only scoring; shortened returned identity and unverified maximum effort remain
+held. Kimi completed 20/20 Denton and 18 correct/8 abstained/1 unknown historical cases.
+Artifacts, catalogs, original failed attempts and reproducible scores are retained under
+evals/remedy/results/p1-comparison-2026-10-10/. No model is activated or admitted here.
+Verification: 61 targeted and 5,766 offline tests passed, 16 deselected; whole Ruff/format clean.

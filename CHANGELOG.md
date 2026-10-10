@@ -7892,3 +7892,9 @@ legacy configuration behavior are unchanged; no feed or source-record changes.
 
 Review/51 P2a shipped in PR #2213 (2026-10-09), including lightweight-render compatibility
 and validated hand-built recording inclusions. Final head passed all CI; no templates activated.
+
+### Review/51 comparison evidence (2026-10-10)
+
+Retain model configurations, original results, scored comparisons and bounded provider
+diagnostics under evals/remedy/results/p1-comparison-2026-10-10/. No production model
+activation, quota, feed, audio, storage-routing or pipeline-version changes.

@@ -1,0 +1,89 @@
+{
+  "admissions_hash": "d0bf4394b99bb0bd28cb861c5d0bba0ecf1bc17f62bb49af4d4ce5651d51a555",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "a5a13ccc5499cb33d4c77b9cae760c5fbc2fa6c1",
+  "dry_run": false,
+  "manifest_hash": "7e646d50c260283ad3528b5964900d77accb1acfdf4da60e0d339946c1e2e6a3",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:00:42.461578+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "staff-training",
+        "evidence_ref_ids": [
+          "provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558"
+        ],
+        "missing_evidence": [
+          "Official body-name or owner metadata for the recording beyond the duplicated training label",
+          "Agenda/minutes or clerk designation linking the recording to a public meeting body",
+          "Provider view_id=10 mapping to a specific public body in the 2026-10-02 archive snapshot",
+          "Any evidence that 'training' recordings belong to a new public meeting body"
+        ],
+        "proposed_action": "abstain",
+        "proposed_owner": null,
+        "rationale": "The only supplied evidence is a single Granicus recording labeled 'Active Shooter Civilian Response Training' (published 2016-09-17, view_id=10, clip_id=2558). Nothing in the frozen snapshot identifies an owning public meeting body, and no existing feeds are supplied. The claim that training recordings automatically belong to a new public meeting body is an inference unsupported by the evidence: the shared city token (fort-worth-tx) and the topic token (training) do not establish body identity, and official metadata must remain immutable, so no owner may be synthesized. Because the evidence needed to confirm or refute the assignment is missing, the correct outcome per policy is abstention: no new body is created, no owner is assigned, and the recording remains an unattributed training item pending official body metadata.",
+        "supported": null
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "staff-training",
+      "configuration_id": "d210248801af0ab652fa35471c448747cd840c0677f8db032f02d4694b430f95",
+      "latency_seconds": 42.23554795794189,
+      "prompt_case_id": "staff-training",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\n  \"case_id\": \"staff-training\",\n  \"supported\": null,\n  \"proposed_owner\": null,\n  \"proposed_action\": \"abstain\",\n  \"evidence_ref_ids\": [\n    \"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558\"\n  ],\n  \"missing_evidence\": [\n    \"Official body-name or owner metadata for the recording beyond the duplicated training label\",\n    \"Agenda/minutes or clerk designation linking the recording to a public meeting body\",\n    \"Provider view_id=10 mapping to a specific public body in the 2026-10-02 archive snapshot\",\n    \"Any evidence that 'training' recordings belong to a new public meeting body\"\n  ],\n  \"rationale\": \"The only supplied evidence is a single Granicus recording labeled 'Active Shooter Civilian Response Training' (published 2016-09-17, view_id=10, clip_id=2558). Nothing in the frozen snapshot identifies an owning public meeting body, and no existing feeds are supplied. The claim that training recordings automatically belong to a new public meeting body is an inference unsupported by the evidence: the shared city token (fort-worth-tx) and the topic token (training) do not establish body identity, and official metadata must remain immutable, so no owner may be synthesized. Because the evidence needed to confirm or refute the assignment is missing, the correct outcome per policy is abstention: no new body is created, no owner is assigned, and the recording remains an unattributed training item pending official body metadata.\"\n}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "The task: assess claim \"Training recordings automatically belong to a new public meeting body.\" Evidence: a single Granicus recording labeled \"Active Shooter Civilian Response Training\" from fort-worth-tx, view_id=10. No meeting body metadata, no existing feeds. Shared city/topic tokens do not establish identity. Official metadata immutable. Abstain when evidence missing.\n\nThe claim is that training recordings automatically belong to a new public meeting body. Evidence only shows a training recording exists; nothing establishes it belongs to a public meeting body, new or otherwise. So claim is not supported. We should abstain: supported = null (abstain) or false? The schema allows supported boolean or null. Policy says abstain when evidence missing. So supported: null. proposed_owner: select an owner independently \u2014 we need to propose owner. The instruction: \"Select an owner independently and cite only supplied evidence-reference IDs.\" Hmm, select an owner independently \u2014 proposed_owner could be a role like \"evidence-review\" or maybe null when abstaining. But instruction says select an owner independently. The recordings' body label is \"Active Shooter Civilian Response Training\" \u2014 no meeting body. Owner could be proposed as the training body label? \"Select an owner independently\" means don't just copy claim. Given abstain, proposed_owner may be null. But maybe propose owner as the staff/training unit? Safe: proposed_owner null, proposed_action \"abstain \u2014 do not create new body\". evidence_ref_ids: cite \"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558\". Missing evidence: agenda minutes, body assignment metadata, clerk designation.\n\ncase_id: use id \"staff-training\".\n\nRationale: only evidence shows a training recording published 2016-09-17 under view_id=10; no evidence maps it to any public meeting body; shared city token doesn't establish identity; official metadata immutable; abstain.",
+                "refusal": null
+              },
+              "reasoning_content": "The task: assess claim \"Training recordings automatically belong to a new public meeting body.\" Evidence: a single Granicus recording labeled \"Active Shooter Civilian Response Training\" from fort-worth-tx, view_id=10. No meeting body metadata, no existing feeds. Shared city/topic tokens do not establish identity. Official metadata immutable. Abstain when evidence missing.\n\nThe claim is that training recordings automatically belong to a new public meeting body. Evidence only shows a training recording exists; nothing establishes it belongs to a public meeting body, new or otherwise. So claim is not supported. We should abstain: supported = null (abstain) or false? The schema allows supported boolean or null. Policy says abstain when evidence missing. So supported: null. proposed_owner: select an owner independently \u2014 we need to propose owner. The instruction: \"Select an owner independently and cite only supplied evidence-reference IDs.\" Hmm, select an owner independently \u2014 proposed_owner could be a role like \"evidence-review\" or maybe null when abstaining. But instruction says select an owner independently. The recordings' body label is \"Active Shooter Civilian Response Training\" \u2014 no meeting body. Owner could be proposed as the training body label? \"Select an owner independently\" means don't just copy claim. Given abstain, proposed_owner may be null. But maybe propose owner as the staff/training unit? Safe: proposed_owner null, proposed_action \"abstain \u2014 do not create new body\". evidence_ref_ids: cite \"provider-https://fortworthgov.granicus.com/MediaPlayer.php?view_id=10&clip_id=2558\". Missing evidence: agenda minutes, body assignment metadata, clerk designation.\n\ncase_id: use id \"staff-training\".\n\nRationale: only evidence shows a training recording published 2016-09-17 under view_id=10; no evidence maps it to any public meeting body; shared city token doesn't establish identity; official metadata immutable; abstain.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791627820,
+        "id": "chatcmpl-340e6c95-fb00-4ac1-b094-5eac0a5357b7",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 742,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 407,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 1187,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 1929
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

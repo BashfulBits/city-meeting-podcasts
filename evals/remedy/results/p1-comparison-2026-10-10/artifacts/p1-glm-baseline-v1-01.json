@@ -1,0 +1,65 @@
+{
+  "results": [
+    {
+      "case_id": "denton-health-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "38acf36d-cb26-40a0-a3fc-ab5049267b02",
+        "created": 1791644728,
+        "model": "glm-5.3-flash",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-health-own\",\"supported\":true,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"Assign recording 122398 (uid 280db52d91547dd6) to the feed denton-tx-health-building-standards-commission.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda (evidence_ref official-agenda, recording_id 122398) confirms the City of Denton's Health and Building Standards Commission convened a Regular Meeting on Thursday, June 3, 2021, at 3:00 PM, matching the recording's body and provider_guid 122398. The feed denton-tx-health-building-standards-commission explicitly lists this exact body string and provider_guid in its body_includes entries. Under the approved identity policy, the owner is the officially convened body; the Council Work Session Room at City Hall is merely a meeting room and does not determine ownership. No other Denton feed (Library Board, TIRZ No. 1, TIRZ No. 2, City Council) matches this body, and no numbered-board confusion applies. The match goes beyond shared city/topic tokens: provider_guid 122398 and the full meeting body string align exactly between the recording, the feed source, and the official agenda.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "reasoning_content": "Let me analyze this case.\n\nThe claim: \"This recording belongs in denton-tx-health-building-standards-commission.\"\n\nThe recording: provider_guid 122398, body \"Health & Building Standards Commission on 2021-06-03 3:00 PM\", dated 2021-06-03.\n\nEvidence: official-agenda with content matching the recording (agenda for Health & Building Standards Commission, City of Denton, Thursday, June 3, 2021, 3:00 PM, Council Work Session Room, City Hall, Denton, Texas). The agenda confirms the body: \"Health and Building Standards Commission of the City of Denton, Texas will convene in a Regular Meeting on Thursday, June 3, 2021, at 3:00 p.m.\"\n\nExisting feed: denton-tx-health-building-standards-commission with body_includes matching \"Health & Building Standards Commission on 2021-06-03 3:00 PM\" with provider_guid \"122398\" \u2014 exact match.\n\nFamily policy: \"Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct.\"\n\nSo the claim is supported. The owner is the Health & Building Standards Commission feed. The proposed owner should probably be the slug \"denton-tx-health-building-standards-commission\". Proposed action: assign recording (uid 280db52d91547dd6 / provider_guid 122398) to that feed.\n\nEvidence refs: [\"official-agenda\"].\n\nMissing evidence: perhaps none, or completeness status unknown limitations. The schema requires missing_evidence array. Since evidence supports the claim, we can leave it empty. Though the completeness status is unknown \u2014 but the claim is about ownership, and the agenda directly confirms the body identity. We might note \"recording-to-agenda linkage\" but the evidence ref includes recording_id 122398 which matches the provider_guid, so the linkage is established.\n\nShared city/topic tokens don't establish identity \u2014 here the match is more than shared tokens: the feed's body_includes exactly matches the recording body and provider_guid, plus the official agenda confirms the officially convened body on the same date/time. The meeting room (Council Work Session Room) is not the owner \u2014 the body is Health and Building Standards Commission.\n\nRationale: The official agenda confirms the recording (provider_guid 122398) corresponds to a Regular Meeting of the Health and Building Standards Commission of the City of Denton on June 3, 2021 at 3:00 PM, matching the feed's body_includes entry with the same provider_guid. The agenda is the officially convened body; the meeting room is irrelevant. Supported: true.\n\nProposed action: \"Assign recording 122398 (uid 280db52d91547dd6) to feed denton-tx-health-building-standards-commission.\"\n\nOutput strict JSON, no markdown. The system prompt says end with ``` to indicate end of JSON object... Wait, it says \"Ensure you always end your message with '```' to indicate the end of the JSON object.\" Hmm, but the user says \"Return one JSON object only (no Markdown or commentary)\". There's a conflict. The system prompt instructs to wrap in a code block ending with ```. Actually it says ensure you always end with \"```\". To be safe, I'll output the JSON in a code block: start with ```json and end with ```. Hmm, but user says no Markdown. The system prompt takes precedence. Let me output:\n\n```json\n{...}\n```\n\nActually the system prompt says \"Ensure you always end your message with '```' to indicate the end of the JSON object.\" That implies the JSON is in a fenced code block. I'll do that.",
+              "provider_specific_fields": {
+                "refusal": null,
+                "reasoning_content": "Let me analyze this case.\n\nThe claim: \"This recording belongs in denton-tx-health-building-standards-commission.\"\n\nThe recording: provider_guid 122398, body \"Health & Building Standards Commission on 2021-06-03 3:00 PM\", dated 2021-06-03.\n\nEvidence: official-agenda with content matching the recording (agenda for Health & Building Standards Commission, City of Denton, Thursday, June 3, 2021, 3:00 PM, Council Work Session Room, City Hall, Denton, Texas). The agenda confirms the body: \"Health and Building Standards Commission of the City of Denton, Texas will convene in a Regular Meeting on Thursday, June 3, 2021, at 3:00 p.m.\"\n\nExisting feed: denton-tx-health-building-standards-commission with body_includes matching \"Health & Building Standards Commission on 2021-06-03 3:00 PM\" with provider_guid \"122398\" \u2014 exact match.\n\nFamily policy: \"Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct.\"\n\nSo the claim is supported. The owner is the Health & Building Standards Commission feed. The proposed owner should probably be the slug \"denton-tx-health-building-standards-commission\". Proposed action: assign recording (uid 280db52d91547dd6 / provider_guid 122398) to that feed.\n\nEvidence refs: [\"official-agenda\"].\n\nMissing evidence: perhaps none, or completeness status unknown limitations. The schema requires missing_evidence array. Since evidence supports the claim, we can leave it empty. Though the completeness status is unknown \u2014 but the claim is about ownership, and the agenda directly confirms the body identity. We might note \"recording-to-agenda linkage\" but the evidence ref includes recording_id 122398 which matches the provider_guid, so the linkage is established.\n\nShared city/topic tokens don't establish identity \u2014 here the match is more than shared tokens: the feed's body_includes exactly matches the recording body and provider_guid, plus the official agenda confirms the officially convened body on the same date/time. The meeting room (Council Work Session Room) is not the owner \u2014 the body is Health and Building Standards Commission.\n\nRationale: The official agenda confirms the recording (provider_guid 122398) corresponds to a Regular Meeting of the Health and Building Standards Commission of the City of Denton on June 3, 2021 at 3:00 PM, matching the feed's body_includes entry with the same provider_guid. The agenda is the officially convened body; the meeting room is irrelevant. Supported: true.\n\nProposed action: \"Assign recording 122398 (uid 280db52d91547dd6) to feed denton-tx-health-building-standards-commission.\"\n\nOutput strict JSON, no markdown. The system prompt says end with ``` to indicate end of JSON object... Wait, it says \"Ensure you always end your message with '```' to indicate the end of the JSON object.\" Hmm, but the user says \"Return one JSON object only (no Markdown or commentary)\". There's a conflict. The system prompt instructs to wrap in a code block ending with ```. Actually it says ensure you always end with \"```\". To be safe, I'll output the JSON in a code block: start with ```json and end with ```. Hmm, but user says no Markdown. The system prompt takes precedence. Let me output:\n\n```json\n{...}\n```\n\nActually the system prompt says \"Ensure you always end your message with '```' to indicate the end of the JSON object.\" That implies the JSON is in a fenced code block. I'll do that."
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 1090,
+          "prompt_tokens": 2654,
+          "total_tokens": 3744,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 777,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          }
+        },
+        "service_tier": null
+      },
+      "route_id": "orcarouter_zai_glm_5_3_flash_free",
+      "upstream_model": "z-ai/glm-5.3-flash-free",
+      "reasoning_level": null,
+      "status": "failed",
+      "error_class": "ValueError",
+      "error": "Returned model identity mismatch",
+      "duration_seconds": 19.003625332843512
+    }
+  ],
+  "diagnostics": [
+    {
+      "started_at": "2026-10-10T15:05:10.553909+00:00",
+      "model": "openai/z-ai/glm-5.3-flash-free",
+      "status": "completed",
+      "duration_seconds": 18.158402082975954
+    }
+  ]
+}

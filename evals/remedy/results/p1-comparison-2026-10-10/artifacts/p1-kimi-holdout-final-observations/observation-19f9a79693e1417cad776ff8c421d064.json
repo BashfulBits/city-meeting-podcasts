@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "c889da5bb529c2b148f532f4d23e4bae1eb1d33e2a2a2b89aac0575465dd3373",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "749a58fc37bfea57fe868b7579991ce37ff91560",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "claim_support",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:29:21.515539+00:00",
+  "policy_holds": [],
+  "prompt_hash": "2ed268401f28af23dd5523b2054bff056ed2b0e7f1fb5fe842930a45a7617524",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-zone2-own",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "assign_to_owner",
+        "proposed_owner": "denton-tx-tirz-2-board",
+        "rationale": "The recording's official agenda (official-agenda) identifies the convening body as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, meeting January 13, 2021, 11:00 AM, Special Called Meeting \u2014 an exact match to the recording body/guid 111521. The existing feed catalog confirms denton-tx-tirz-2-board is the dedicated feed for this body and already contains this exact meeting entry (same body label and provider_guid 111521). Per family policy, distinct numbered boards stay distinct: this is the No. 2 Board, not TIRZ No. 1, and the matching is based on immutable official metadata, not shared city/topic tokens alone. The completeness status of 'unknown' applies only to archive coverage and does not affect this recording-specific owner assignment. No evidence is missing for this decision.",
+        "supported": true
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-zone2-own",
+      "configuration_id": "cbbb2a1e5449cfc3a985cce91c32f2da39f85a7a447f48d26a1df3490d2fd630",
+      "latency_seconds": 23.502435124944896,
+      "prompt_case_id": "denton-zone2-own",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\": \"denton-zone2-own\", \"supported\": true, \"proposed_owner\": \"denton-tx-tirz-2-board\", \"proposed_action\": \"assign_to_owner\", \"evidence_ref_ids\": [\"official-agenda\"], \"missing_evidence\": [], \"rationale\": \"The recording's official agenda (official-agenda) identifies the convening body as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, meeting January 13, 2021, 11:00 AM, Special Called Meeting \u2014 an exact match to the recording body/guid 111521. The existing feed catalog confirms denton-tx-tirz-2-board is the dedicated feed for this body and already contains this exact meeting entry (same body label and provider_guid 111521). Per family policy, distinct numbered boards stay distinct: this is the No. 2 Board, not TIRZ No. 1, and the matching is based on immutable official metadata, not shared city/topic tokens alone. The completeness status of 'unknown' applies only to archive coverage and does not affect this recording-specific owner assignment. No evidence is missing for this decision.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "The claim: \"This recording belongs in denton-tx-tirz-2-board.\" The recording body: \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)\", provider_guid 111521. The existing feed denton-tx-tirz-2-board includes a body_includes entry with exactly that body and provider_guid 111521. The official agenda confirms the body is the TIRZ No. 2 Board of City of Denton. Family policy: distinct numbered boards stay distinct; this is No. 2, not No. 1. So supported, proposed owner denton-tx-tirz-2-board, evidence refs: official-agenda. Missing evidence: none. Completeness status unknown\u2014fine, just note.",
+                "refusal": null
+              },
+              "reasoning_content": "The claim: \"This recording belongs in denton-tx-tirz-2-board.\" The recording body: \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)\", provider_guid 111521. The existing feed denton-tx-tirz-2-board includes a body_includes entry with exactly that body and provider_guid 111521. The official agenda confirms the body is the TIRZ No. 2 Board of City of Denton. Family policy: distinct numbered boards stay distinct; this is No. 2, not No. 1. So supported, proposed owner denton-tx-tirz-2-board, evidence refs: official-agenda. Missing evidence: none. Completeness status unknown\u2014fine, just note.",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791628306,
+        "id": "chatcmpl-47f6f846-43fd-4b8a-83d9-4e7ed7a1dde9",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 425,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 174,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2728,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 3153
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}

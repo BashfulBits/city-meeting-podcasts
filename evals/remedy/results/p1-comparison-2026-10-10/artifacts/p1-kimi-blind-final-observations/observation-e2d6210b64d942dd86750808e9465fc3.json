@@ -1,0 +1,84 @@
+{
+  "admissions_hash": "27d9cbe60b929129f6733ff10c63c73e89f01dc5483864f19b7a3e46eebe42a4",
+  "catalog_hash": "a52dab6ba6be77013058821c84a62ac2d4273a2c0166e48a9d69c2c23694f2a2",
+  "commit": "749a58fc37bfea57fe868b7579991ce37ff91560",
+  "dry_run": false,
+  "manifest_hash": "61f0989314bfb45ac2249a241bce7168d381d8d28c585be093f45d23a1656017",
+  "mode": "blind_owner",
+  "model_observations": 1,
+  "observed_at": "2026-10-10T10:34:14.164501+00:00",
+  "policy_holds": [],
+  "prompt_hash": "5f063839e3406f1272379d2e56370ce2d286738e3ee8591aaaf235c4cc64d9a1",
+  "results": [
+    {
+      "answer": {
+        "case_id": "denton-zone2-wrong-zone",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "proposed_action": "assign_to_existing_feed",
+        "proposed_owner": "denton-tx-tirz-2-board",
+        "rationale": "The recording 'Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)' (provider_guid 111521) exactly matches, in both body text and provider_guid, a recording already listed in the existing feed 'denton-tx-tirz-2-board' (Denton: TIRZ No. 2 Board). The official agenda evidence (official-agenda, retrieved 2026-10-10, recording_id 111521) independently confirms the body as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, matching the feed's podcast_title and description. TIRZ No. 1 Board and other Denton feeds are distinct bodies and do not match.",
+        "supported": true
+      },
+      "candidate_status": "candidate",
+      "case_deadline_seconds": 150,
+      "case_id": "denton-zone2-wrong-zone",
+      "configuration_id": "cfed5340c776b744aacdc9b06384f896f61cd27877e910d8f3df8751a1550770",
+      "latency_seconds": 12.108514499850571,
+      "prompt_case_id": "case-b440fcf83947457389d0282f",
+      "provider_attempts": 1,
+      "raw_response": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\": \"case-b440fcf83947457389d0282f\", \"supported\": true, \"proposed_owner\": \"denton-tx-tirz-2-board\", \"proposed_action\": \"assign_to_existing_feed\", \"evidence_ref_ids\": [\"official-agenda\"], \"missing_evidence\": [], \"rationale\": \"The recording 'Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)' (provider_guid 111521) exactly matches, in both body text and provider_guid, a recording already listed in the existing feed 'denton-tx-tirz-2-board' (Denton: TIRZ No. 2 Board). The official agenda evidence (official-agenda, retrieved 2026-10-10, recording_id 111521) independently confirms the body as the Tax Increment Reinvestment Zone No. 2 Board of the City of Denton, matching the feed's podcast_title and description. TIRZ No. 1 Board and other Denton feeds are distinct bodies and do not match.\"}",
+              "function_call": null,
+              "provider_specific_fields": {
+                "reasoning_content": "The recording \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)\" with provider_guid 111521 exactly matches an entry in the existing feed \"denton-tx-tirz-2-board\" (body_includes with provider_guid 111521). The agenda evidence also confirms the body. So proposed_owner = \"denton-tx-tirz-2-board\", supported = true, proposed_action likely \"assign\" or similar. There's no controlled vocabulary given; I'll use something like \"assign_to_existing_feed\". Cite \"official-agenda\".",
+                "refusal": null
+              },
+              "reasoning_content": "The recording \"Tax Increment Reinvestment Zone No. 2 Board on 2021-01-13 11:00 AM (Special Called Meeting)\" with provider_guid 111521 exactly matches an entry in the existing feed \"denton-tx-tirz-2-board\" (body_includes with provider_guid 111521). The agenda evidence also confirms the body. So proposed_owner = \"denton-tx-tirz-2-board\", supported = true, proposed_action likely \"assign\" or similar. There's no controlled vocabulary given; I'll use something like \"assign_to_existing_feed\". Cite \"official-agenda\".",
+              "role": "assistant",
+              "tool_calls": null
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "created": 1791628719,
+        "id": "chatcmpl-a952af6f-7317-408a-81ba-70e7465891e7",
+        "model": "moonshotai/kimi-k3",
+        "object": "chat.completion",
+        "service_tier": null,
+        "system_fingerprint": null,
+        "usage": {
+          "completion_tokens": 368,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 132,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens": 2574,
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          },
+          "total_tokens": 2942
+        }
+      },
+      "reasoning_level": "max",
+      "request_params_hash": "a6493b7e9ec139288845d7461480a0aee144170501a590b7e6b4d55a69709f19",
+      "request_timeout_seconds": 120,
+      "route_id": "nvidia_kimi_k3_free",
+      "status": "completed",
+      "upstream_model": "moonshotai/kimi-k3"
+    }
+  ],
+  "schema_hash": "a603ffb40250b2295acb07bde235cafb5cec7612fe410554d1cfa49f43ef3c1e",
+  "version": 1,
+  "working_tree_dirty": false
+}
