@@ -642,3 +642,12 @@ def test_phase_2_gives_up_cleanly_when_transport_failures_never_clear():
     assert result["conclusive"] is False
     assert "transport failure" in result["inconclusive_reason"]
     assert runner.calls < 20  # bounded -- must not loop forever
+
+
+def test_non_chat_routes_are_never_selected(tmp_path):
+    # Every phase sends a chat completion; JEV's systemone route cannot answer one (review/53).
+    out_file = tmp_path / "report.json"
+    assert main(["--provider", "beatapi", "--out", str(out_file)]) == 0
+    probed = {route["route_id"] for route in json.loads(out_file.read_text())["routes"]}
+    assert "beatapi_jev_1_13_free" not in probed
+    assert probed  # the BeatAPI chat routes are still probed

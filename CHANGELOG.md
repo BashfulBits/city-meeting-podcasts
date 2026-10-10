@@ -12,6 +12,16 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Judge stack configuration (review/53 PR2).** Adds JEV as a dispatch route
+  (`beatapi_jev_1_13_free`, `api_shape: systemone`, `/systemone` under `custom-beatapi`, 58,000-token
+  ceiling) and makes the five BeatAPI chat routes yield to it. Registers lanes `judge:anchor`,
+  `judge:sibling` (Gemma slot, Nemotron 3 Super slot with Qwen3.8 eligible but not dispatched) and
+  `judge:adjudicator` (GLM 5.3 Flash, DeepSeek V4.1 Flash), all `per_model`, with daily caps for
+  800 meetings a day and zero reservation until judging is enabled (PR4). New `llm_families` map
+  (every lane model must have a family), `judging` switches (disabled), lane `eligible_models` and
+  `slots`. Chat-only tooling (catalog health canary, context scan, rate probe, live gateway probe)
+  now skips non-chat routes so it never sends JEV a chat completion.
+  
 - **Coverage verification counting correction.** Post-merge retained replay uses actual CLI
   defaults: 28,594 placements and 1,189 unassigned entries, rather than the old helper’s
   29,384 / 411. Global bid/purchasing exclusions were missing from that helper. No production

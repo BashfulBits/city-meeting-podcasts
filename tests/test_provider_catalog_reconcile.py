@@ -1528,3 +1528,49 @@ def test_context_only_pauses_providers_with_eligible_exact_scope(monkeypatch, re
     )
     assert control.paused_providers == (["groq"] if ready == "ready" else [])
     assert measured == ([1] if ready == "ready" else [])
+
+
+def test_a_non_chat_configured_route_is_never_health_canaried(monkeypatch):
+    # review/53 PR2: JEV's systemone route cannot answer a chat canary, and on BeatAPI the attempt
+    # would spend the account's single request window.
+    monkeypatch.setenv("K", "test-key")
+    sent = []
+    jev = {
+        "route_id": "beatapi_jev",
+        "provider": "beatapi",
+        "account_id": "p",
+        "model": "typesafe/jev-1.13",
+        "upstream_model": "jev-1.13-free",
+        "api_shape": "systemone",
+        "request_path": "/systemone",
+        "free": True,
+        "rpd": 1400,
+    }
+    limits = {
+        "providers": {
+            "beatapi": {
+                "api_base": "https://beat.test/v1",
+                "accounts": [{"id": "p", "api_key_env": "K"}],
+            }
+        },
+        "routes": [jev],
+    }
+    catalog = {"https://beat.test": {"data": [{"id": "jev-1.13-free", "owned_by": "task plugin"}]}}
+
+    def ping(rules, cfg, model, key, session):
+        sent.append(model)
+        return OK
+
+    reconcile(
+        limits,
+        LANES,
+        NO_DECISIONS,
+        QUALITY,
+        {},
+        session=FakeSession(catalog),
+        control=FakeControl(),
+        today=TODAY,
+        canary_fn=ping,
+        sleep=lambda seconds: None,
+    )
+    assert sent == []

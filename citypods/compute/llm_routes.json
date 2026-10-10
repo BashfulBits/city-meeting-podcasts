@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 45,
+    "routes_count": 46,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -20,7 +20,8 @@
     "beatapi/deepseek-v4.1-flash": "deepseek/deepseek-v4.1-flash",
     "beatapi/deepseek-v4-pro": "deepseek/deepseek-v4-pro",
     "beatapi/gpt-6-astra": "openai/gpt-6-astra",
-    "beatapi/gpt-6.1-sol": "openai/gpt-6.1-sol"
+    "beatapi/gpt-6.1-sol": "openai/gpt-6.1-sol",
+    "beatapi/jev-1.13": "typesafe/jev-1.13"
   },
   "model_routing": {
     "gemini/gemini-3.7-flash": [
@@ -1559,6 +1560,9 @@
       "model": "deepseek/deepseek-v4-flash",
       "provider": "beatapi",
       "tier": "backup",
+      "yields_to": [
+        "beatapi_jev_1_13_free"
+      ],
       "upstream_model": "deepseek-v4-flash-0731-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,
@@ -1595,6 +1599,9 @@
       "model": "deepseek/deepseek-v4.1-flash",
       "provider": "beatapi",
       "tier": "backup",
+      "yields_to": [
+        "beatapi_jev_1_13_free"
+      ],
       "upstream_model": "deepseek-v4.1-flash-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,
@@ -1631,6 +1638,9 @@
       "model": "deepseek/deepseek-v4-pro",
       "provider": "beatapi",
       "tier": "backup",
+      "yields_to": [
+        "beatapi_jev_1_13_free"
+      ],
       "upstream_model": "deepseek-v4-pro-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,
@@ -1667,6 +1677,9 @@
       "model": "openai/gpt-6-astra",
       "provider": "beatapi",
       "tier": "backup",
+      "yields_to": [
+        "beatapi_jev_1_13_free"
+      ],
       "upstream_model": "gpt-6-astra-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,
@@ -1703,6 +1716,9 @@
       "model": "openai/gpt-6.1-sol",
       "provider": "beatapi",
       "tier": "backup",
+      "yields_to": [
+        "beatapi_jev_1_13_free"
+      ],
       "upstream_model": "gpt-6.1-sol-free",
       "input_context_limit": 128000,
       "output_context_limit": 16384,
@@ -1725,6 +1741,43 @@
         "direct"
       ],
       "direct_model": "beatapi/gpt-6.1-sol-free",
+      "api_base": "https://api.beatapi.io/v1",
+      "ai_gateway_slug": "custom-beatapi",
+      "ai_gateway_chat_path": "/chat/completions",
+      "chat_path": "/chat/completions",
+      "api_key_env": "BEATAPI_API_KEY",
+      "reset_timezone": "UTC",
+      "provider_rpm": 1,
+      "provider_concurrency": 1
+    },
+    {
+      "route_id": "beatapi_jev_1_13_free",
+      "model": "typesafe/jev-1.13",
+      "provider": "beatapi",
+      "upstream_model": "jev-1.13-free",
+      "api_shape": "systemone",
+      "request_path": "/systemone",
+      "input_context_limit": 64000,
+      "output_context_limit": 4096,
+      "hard_input_ceiling": 58000,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": 1400,
+      "concurrency": 1,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "observed_on": "2026-09-30",
+      "upstream_429_default": "own_rpm",
+      "retry_after_trustworthy": true,
+      "structured_output_method": "prompt_only",
+      "structured_output_method_source": "provider",
+      "structured_output_verified_on": null,
+      "structured_output_response_format": "none",
+      "structured_output_include_schema_in_prompt": true,
+      "structured_output_schema_strip_keys": [],
+      "transports": [],
+      "direct_model": "beatapi/jev-1.13-free",
       "api_base": "https://api.beatapi.io/v1",
       "ai_gateway_slug": "custom-beatapi",
       "ai_gateway_chat_path": "/chat/completions",

@@ -86,6 +86,10 @@ def _one_route_per_custom_provider():
     for route in ROUTE_REGISTRY.values():
         if not (route.ai_gateway_slug or "").startswith("custom-"):
             continue
+        # The probe is a chat completion; a Worker-only non-chat route (JEV's systemone endpoint,
+        # review/53) cannot answer one and would spend BeatAPI's single request window.
+        if "direct" not in route.transports:
+            continue
         if route.provider in PREFERRED_FREE_PROBE_ROUTE_IDS:
             continue
         current = seen.get(route.provider)

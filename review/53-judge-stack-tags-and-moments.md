@@ -212,6 +212,13 @@ Worker test was shown to fail with its feature removed. All 415 existing and new
 
 ### PR2 — Configuration
 
+**Implemented** on `feat/review-53-pr2-judge-config` (2026-10-09). Two deviations from the text
+below, both deliberate: (1) the judge lanes register with `reserved_write_units: 0`; the
+reservations in the capacity table move to PR4, because a lane nothing dispatches to must not take
+headroom from the others (`tests/test_llm_lanes.py` enforces this through
+`PENDING_DISPATCH_PURPOSES`). The daily caps and run caps are as specified. (2) Slots are named
+`google` and `non_google`. The weekly live gateway contract probe also skips Worker-only routes.
+
 `config/provider_limits.yml`:
 
 ```yaml
@@ -385,7 +392,9 @@ anchor-versus-sibling agreement by tier; escalation rate; backfill progress for 
 
 ### PR4 — Shadow on, observed
 
-Set `judging.enabled: true` with both tasks in `shadow`. Acceptance, recorded in this document:
+Set `judging.enabled: true` with both tasks in `shadow`, set the judge lanes' reservations
+(anchor 920, sibling 2,400, adjudicator 920 units) and remove them from
+`PENDING_DISPATCH_PURPOSES` in `tests/test_llm_lanes.py`. Acceptance, recorded in this document:
 a dry run within every ceiling; then three days with judgments appended for both tasks and both
 judges every day; zero change to `display`, `admission` or moment publication (before/after
 comparison of sampled records); no JEV `request_defect` except genuine oversize; BeatAPI chat

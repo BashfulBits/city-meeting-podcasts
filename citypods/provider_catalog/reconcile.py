@@ -17,6 +17,7 @@ from typing import Any, Protocol
 
 import requests
 
+from citypods.compute.api_shape import route_speaks_chat
 from citypods.compute.llm_lanes import LaneConfig
 from citypods.llm_rate_probe import (
     ProbeBudgetExceeded,
@@ -523,6 +524,10 @@ def reconcile(
             if route_ids is not None and rid not in route_ids:
                 continue
             model = str(route.get("upstream_model") or "")
+            # The health canary is a chat completion; a non-chat route (JEV, review/53 PR2) cannot
+            # answer one, and on BeatAPI it would spend the account's single request window.
+            if not route_speaks_chat(route):
+                continue
             if route.get("rpd") == 0 or (
                 route_ids is None
                 and model in seen_models

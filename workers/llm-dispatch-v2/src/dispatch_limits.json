@@ -1,7 +1,7 @@
 {
   "_metadata": {
     "source": "config/provider_limits.yml",
-    "routes_count": 45,
+    "routes_count": 46,
     "providers_count": 12,
     "token_estimate_buffer": 0.9,
     "split_cap_multiplier": 1.0
@@ -1945,7 +1945,9 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
-      "yields_to": null,
+      "yields_to": [
+        "beatapi_jev_1_13_free"
+      ],
       "structured_output_method": "json_object",
       "structured_output_response_format": "json_object",
       "structured_output_include_schema_in_prompt": true,
@@ -1985,7 +1987,9 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
-      "yields_to": null,
+      "yields_to": [
+        "beatapi_jev_1_13_free"
+      ],
       "structured_output_method": "prompt_only",
       "structured_output_response_format": "none",
       "structured_output_include_schema_in_prompt": true,
@@ -2025,7 +2029,9 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
-      "yields_to": null,
+      "yields_to": [
+        "beatapi_jev_1_13_free"
+      ],
       "structured_output_method": "prompt_only",
       "structured_output_response_format": "none",
       "structured_output_include_schema_in_prompt": true,
@@ -2065,7 +2071,9 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
-      "yields_to": null,
+      "yields_to": [
+        "beatapi_jev_1_13_free"
+      ],
       "structured_output_method": "prompt_only",
       "structured_output_response_format": "none",
       "structured_output_include_schema_in_prompt": true,
@@ -2105,6 +2113,48 @@
       "tier": "backup",
       "api_shape": null,
       "request_path": null,
+      "yields_to": [
+        "beatapi_jev_1_13_free"
+      ],
+      "structured_output_method": "prompt_only",
+      "structured_output_response_format": "none",
+      "structured_output_include_schema_in_prompt": true,
+      "structured_output_schema_strip_keys": [],
+      "request_params": null,
+      "reasoning_controls": null
+    },
+    "beatapi_jev_1_13_free": {
+      "route_id": "beatapi_jev_1_13_free",
+      "model": "typesafe/jev-1.13",
+      "provider": "beatapi",
+      "upstream_model": "jev-1.13-free",
+      "input_context_limit": 64000,
+      "output_context_limit": 4096,
+      "hard_input_ceiling": 58000,
+      "hard_input_ceiling_tolerance": null,
+      "input_token_ratio": null,
+      "account_id": "primary",
+      "rpm": 1,
+      "rpd": 1400,
+      "tpd": null,
+      "tpm": null,
+      "concurrency": 1,
+      "request_start_margin_seconds": null,
+      "free": true,
+      "input_per_token": 0.0,
+      "output_per_token": 0.0,
+      "pricing": null,
+      "reset_timezone": null,
+      "observed_on": "2026-09-30",
+      "observed_rpm": null,
+      "observed_burst": null,
+      "observed_input_ceiling": null,
+      "observed_recovery_seconds": null,
+      "retry_after_trustworthy": true,
+      "upstream_429_default": "own_rpm",
+      "tier": null,
+      "api_shape": "systemone",
+      "request_path": "/systemone",
       "yields_to": null,
       "structured_output_method": "prompt_only",
       "structured_output_response_format": "none",
@@ -2213,6 +2263,9 @@
     ],
     "openai/gpt-6.1-sol": [
       "beatapi_gpt_6_1_sol_free"
+    ],
+    "typesafe/jev-1.13": [
+      "beatapi_jev_1_13_free"
     ]
   },
   "model_aliases": {
@@ -2230,6 +2283,7 @@
     "beatapi/deepseek-v4-pro": "deepseek/deepseek-v4-pro",
     "beatapi/gpt-6-astra": "openai/gpt-6-astra",
     "beatapi/gpt-6.1-sol": "openai/gpt-6.1-sol",
+    "beatapi/jev-1.13": "typesafe/jev-1.13",
     "gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemini/gemini-3.5-flash-lite": "gemini/gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite": "gemini/gemini-3.1-flash-lite",
@@ -2296,7 +2350,9 @@
     "gpt-6-astra-free": "openai/gpt-6-astra",
     "beatapi/gpt-6-astra-free": "openai/gpt-6-astra",
     "gpt-6.1-sol-free": "openai/gpt-6.1-sol",
-    "beatapi/gpt-6.1-sol-free": "openai/gpt-6.1-sol"
+    "beatapi/gpt-6.1-sol-free": "openai/gpt-6.1-sol",
+    "jev-1.13-free": "typesafe/jev-1.13",
+    "beatapi/jev-1.13-free": "typesafe/jev-1.13"
   },
   "model_routing": {
     "gemini/gemini-3.7-flash": [

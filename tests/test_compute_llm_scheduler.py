@@ -205,7 +205,13 @@ def test_no_route_is_selected_when_free_routes_are_exhausted_and_paid_is_disallo
         now=NOW,
     )
     assert result.model is None
-    assert all(reason == "quota or budget exhausted" for _, reason in result.rejected)
+    # Worker-only routes (a non-chat api_shape such as JEV's, review/53) are refused by the
+    # transport gate before quota is consulted; every direct-capable route is quota-exhausted.
+    worker_only = {r.model for r in ROUTES.values() if "direct" not in r.transports}
+    assert all(
+        reason == ("transport gate" if model in worker_only else "quota or budget exhausted")
+        for model, reason in result.rejected
+    )
 
 
 def test_allowlist_can_select_the_free_deepseek_v41_route():

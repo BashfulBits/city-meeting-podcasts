@@ -801,9 +801,13 @@ def test_all_configured_routes_have_offline_endpoint_and_eligibility_coverage(di
     limits = yaml.safe_load(Path("config/provider_limits.yml").read_text())
     eligible = {r["route_id"] for r in plan_context_scan(limits, {})}
     for route in limits["routes"]:
+        speaks_chat = (route.get("api_shape") or "chat") == "chat"
         assert (route["route_id"] in eligible) == (
-            route.get("free") is True and route.get("rpd") != 0
+            route.get("free") is True and route.get("rpd") != 0 and speaks_chat
         )
+        if not speaks_chat:
+            # JEV's systemone route has no chat context to measure (review/53 PR2).
+            continue
         req = build_context_request(
             route,
             limits["providers"][route["provider"]],
@@ -1259,3 +1263,9 @@ def test_success_lower_bounds_cannot_reduce_existing_cap():
     assert not context_cap_changes(history, config, now=now)
     config["routes"][0]["hard_input_ceiling"] = 700
     assert context_cap_changes(history, config, now=now)[0][3] == 950
+
+
+def test_the_context_scan_skips_non_chat_routes():
+    chat = {"route_id": "chat", "free": True, "rpd": 10}
+    jev = {"route_id": "jev", "free": True, "rpd": 10, "api_shape": "systemone"}
+    assert [r["route_id"] for r in plan_context_scan({"routes": [jev, chat]}, {})] == ["chat"]

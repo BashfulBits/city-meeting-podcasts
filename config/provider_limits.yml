@@ -1320,6 +1320,9 @@ routes:
   # rate-limit headers. Context limits are UNMEASURED conservative placeholders (BeatAPI publishes
   # none); run llm-rate-probe.yml phase 2 for this provider and author hard_input_ceiling from it.
   # The DeepSeek ids join the existing logical models rather than forming BeatAPI-only ones.
+  # `yields_to` (2026-10-09, review/53 PR2): each chat route steps aside while JEV has queued
+  # work, so JEV always gets the single-flight account window first and the chat routes take the
+  # idle minutes. An ordering rule only: a held chat job stays queued, never fails.
   # `tier: backup` (2026-10-08): ranked after every primary route in its pool, so these legs take
   # spill work only. They keep their full output limit: tag and moments jobs reserve 12-16k output
   # tokens and a smaller limit would drop the routes from those lanes. Yielding to JEV while it
@@ -1330,6 +1333,7 @@ routes:
     model_key: deepseek/deepseek-v4-flash
     provider: beatapi
     tier: backup
+    yields_to: [beatapi_jev_1_13_free]
     upstream_model: deepseek-v4-flash-0731-free
     # The 0731 revision of V4 Flash; pools with OrcaRouter's `deepseek-v4-flash-free`. Reasoning model: spends output tokens on reasoning_content.
     input_context_limit: 128000
@@ -1349,6 +1353,7 @@ routes:
     model_key: deepseek/deepseek-v4.1-flash
     provider: beatapi
     tier: backup
+    yields_to: [beatapi_jev_1_13_free]
     upstream_model: deepseek-v4.1-flash-free
     # Pools with NVIDIA's deepseek-v4.1-flash. Reasoning model.
     input_context_limit: 128000
@@ -1368,6 +1373,7 @@ routes:
     model_key: deepseek/deepseek-v4-pro
     provider: beatapi
     tier: backup
+    yields_to: [beatapi_jev_1_13_free]
     upstream_model: deepseek-v4-pro-free
     # No other route serves V4 Pro today (NVIDIA retired v4-pro-0813). Reasoning model.
     input_context_limit: 128000
@@ -1387,6 +1393,7 @@ routes:
     model_key: openai/gpt-6-astra
     provider: beatapi
     tier: backup
+    yields_to: [beatapi_jev_1_13_free]
     upstream_model: gpt-6-astra-free
     # Response metadata says usage_source=anthropic / billing source claude_messages, so the serving family is unverified; do not treat it as an independent OpenAI family for judge selection.
     input_context_limit: 128000
@@ -1406,6 +1413,7 @@ routes:
     model_key: openai/gpt-6.1-sol
     provider: beatapi
     tier: backup
+    yields_to: [beatapi_jev_1_13_free]
     upstream_model: gpt-6.1-sol-free
     # Same metadata caveat as gpt-6-astra-free.
     input_context_limit: 128000
@@ -1419,3 +1427,31 @@ routes:
     output_per_token: 0.0
     observed_on: "2026-10-07"
     upstream_429_default: upstream_capacity
+
+  # JEV (review/49 anchor judge, review/53 PR2). BeatAPI's typed-judgment endpoint, not chat:
+  # `api_shape: systemone` builds `{model, state, questions}` and posts to `request_path` under
+  # the custom-beatapi gateway base. Limits measured 2026-09-30 (review/49 section 7): about 64k
+  # input tokens total and 32k for state plus the largest question; plan for 58,000 total.
+  # Shares the account's one successful call/minute with the five chat routes above, which yield.
+  # Output is a few hundred tokens and the endpoint takes no max_tokens; output_context_limit is
+  # only the scheduling reservation. Worker-only: the Python catalog gives it no direct transport.
+  - route_id: beatapi_jev_1_13_free
+    model: beatapi/jev-1.13
+    model_key: typesafe/jev-1.13
+    provider: beatapi
+    upstream_model: jev-1.13-free
+    api_shape: systemone
+    request_path: /systemone
+    input_context_limit: 64000
+    output_context_limit: 4096
+    hard_input_ceiling: 58000
+    account_id: primary
+    rpm: 1
+    rpd: 1400
+    concurrency: 1
+    free: true
+    input_per_token: 0.0
+    output_per_token: 0.0
+    observed_on: "2026-09-30"
+    upstream_429_default: own_rpm
+    retry_after_trustworthy: true

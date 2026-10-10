@@ -61,6 +61,7 @@ def _load_llm_lanes():
 _llm_lanes = _load_llm_lanes()
 LaneConfig = _llm_lanes.LaneConfig
 parse_lanes = _llm_lanes.parse_lanes
+parse_families = _llm_lanes.parse_families
 
 INPUT_YAML = REPO_ROOT / "config" / "site_config.yml"
 OUTPUT_JSON = REPO_ROOT / "workers" / "llm-dispatch-v2" / "src" / "ingress_reservations.json"
@@ -153,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
 
     raw = yaml.safe_load(INPUT_YAML.read_text(encoding="utf-8")) or {}
     lanes = parse_lanes(raw.get("llm_lanes"))
+    # Judge independence is decided by family (review/53); a lane model without one fails here.
+    parse_families(raw.get("llm_families"), lanes)
     compiled = compile_reservations(lanes, _global_ingress_budget())
     rendered = json.dumps(compiled, indent=2, sort_keys=False) + "\n"
 
