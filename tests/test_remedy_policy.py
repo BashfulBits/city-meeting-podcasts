@@ -394,3 +394,87 @@ def test_hand_built_source_inclusions_use_shared_parser_and_official_packet():
     result = instantiate_policies(local, "pinned-source", index(raw), packet())
     assert result.resolved and not result.unresolved
     assert resolve_owner("Library Board", "pinned-source", result).owner_slugs == (local.slug,)
+
+
+def test_coverage_preserves_conflicts_exact_guid_and_source_isolation():
+    from citypods.remedy_policy import replay_coverage
+
+    feed = city()
+    feed.source["body_exact"] = ["Library Board"]
+    key = source_key(feed)
+    base = {
+        "source_key": key,
+        "uid": "stable",
+        "provider_guid": "view=1&id=2",
+        "body": "Library Board",
+        "title": "Original",
+        "date": "2020-01-01",
+        "observation_refs": ["record:stable"],
+    }
+    fetched = {**base, "uid": None, "observation_refs": ["fetch:0"]}
+    other_view = {**fetched, "provider_guid": "view=9&id=2"}
+    other_source = {**base, "source_key": "different"}
+    replay = replay_coverage([base, fetched, other_view, other_source], [feed])
+    assert len(replay.rows) == 3
+    merged = next(row for row in replay.rows if row.source_key == key and row.uid == "stable")
+    assert merged.observation_refs == ("fetch:0", "record:stable")
+    assert merged.configured_owner_slugs == (feed.slug,)
+    assert merged.verified_owner_slugs == ()
+    assert next(row for row in replay.rows if row.source_key == "different").status == "unknown"
+    conflict = replay_coverage([base, {**fetched, "title": "Contradiction"}], [feed])
+    assert len(conflict.rows) == 2
+    assert all(row.status == "ambiguous" for row in conflict.rows)
+    assert all("identity-conflict" in row.diagnostics for row in conflict.rows)
+
+
+def test_coverage_hash_order_clocks_and_unproven_observations():
+    from citypods.remedy_policy import material_evidence_hash, replay_coverage
+
+    assert material_evidence_hash({"observed_at": "a", "observations": ["x", "y"]}) == (
+        material_evidence_hash({"observed_at": "b", "observations": ["y", "x"]})
+    )
+    observation = {"source_key": "s", "body": None, "observation_refs": ["one"]}
+    replay = replay_coverage([observation, observation], [])
+    assert len(replay.rows) == 2
+    assert all("uniqueness-unknown" in row.diagnostics for row in replay.rows)
+    assert all("missing-or-malformed-label" in row.diagnostics for row in replay.rows)
+
+
+def test_coverage_keeps_joint_and_city_aggregate_matches_separate_from_policy_proof():
+    from citypods.remedy_policy import _declaration_instance, replay_coverage
+
+    feed = city()
+    feed.source = {"body": "Library"}
+    joint = replace(feed, slug="joint", source={"body": "Council"})
+    aggregate = replace(feed, slug="all", source={})
+    label = "Council and Library Joint Meeting"
+    policy = _declaration_instance({"identity_names": [label]}, "joint", "city", source_key(feed))
+    observation = {"source_key": source_key(feed), "uid": "stable", "body": label}
+    replay = replay_coverage([observation], [feed, joint, aggregate], PolicyIndex((policy,)))
+    row = replay.rows[0]
+    assert row.configured_owner_slugs == ("all", "example-tx-board", "joint")
+    assert row.verified_owner_slugs == ("joint",)
+    assert row.status == "selected"
+    assert row.diagnostics == ("configured-verified-owners-differ",)
+    assert dict(replay.totals)["selected"] == dict(replay.totals)["verified_policy"] == 1
+
+
+def test_coverage_shared_guid_keeps_unproven_observations_separate():
+    from citypods.remedy_policy import replay_coverage
+
+    base = {"source_key": "s", "provider_guid": "shared", "body": "Council"}
+    observations = [
+        {**base, "uid": "one"},
+        {**base, "uid": "two"},
+        {**base, "observation_refs": ["fetch:a"]},
+        {**base, "observation_refs": ["fetch:b"]},
+    ]
+    rows = replay_coverage(observations, []).rows
+    assert len(rows) == 4
+    retained = [row for row in rows if row.uid]
+    fresh = [row for row in rows if not row.uid]
+    assert {row.uid for row in retained} == {"one", "two"}
+    assert all("uniqueness-unknown" not in row.diagnostics for row in retained)
+    assert all("uniqueness-unknown" in row.diagnostics for row in fresh)
+    assert all("identity-conflict" not in row.diagnostics for row in rows)
+    assert {row.observation_refs for row in fresh} == {("fetch:a",), ("fetch:b",)}
