@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Judge stack shadow on (review/53 PR4).** `judging.enabled: true`: the two-hourly judge lane
+  now judges tag and moment candidates with JEV and one independent sibling and records judgments
+  only (no display, admission or publication change). Reserves 920 ingress units for
+  `judge:anchor` and 2,400 for `judge:sibling` (total 16,506 of 25,600); the adjudicator's
+  reservation follows with PR5.
+
 - **Judge stack: shadow judging package, stage and workflow (review/53 PR3).** New
   `citypods/judging/` (task-spec registry with `tag` and `moment` tasks, evidence tiers T0-T2,
   per-entry family independence, JEV systemone and sibling chat backends with one
