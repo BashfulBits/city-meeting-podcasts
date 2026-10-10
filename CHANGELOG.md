@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Renovate customManager schema normalization (#1279).** Migrates `managerFilePatterns` to
+  canonical `fileMatch` in `.github/renovate.json5` custom managers, resolving Renovate
+  configuration errors and unblocking the Dependency Dashboard.
+
 - **Judge stack: shadow judging package, stage and workflow (review/53 PR3).** New
   `citypods/judging/` (task-spec registry with `tag` and `moment` tasks, evidence tiers T0-T2,
   per-entry family independence, JEV systemone and sibling chat backends with one
