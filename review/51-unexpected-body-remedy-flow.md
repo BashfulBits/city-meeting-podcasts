@@ -2967,3 +2967,9 @@ were fixed, replied to and resolved. The dependency job's Docker Hub timeout pas
 The final code fixes merged into the parent before fresh substantive review; this limited review
 gap remains explicit. No review is requested on closed #2217. Parent #2215 now carries code
 and requires its own current-head checks before human merge to main.
+
+P2b report provenance clarification (CodeRabbit review of 56d1fc49): existing source diagnostics
+must identify the resolved local state directory and explicitly warn that unsynchronized local
+state may omit retained history. The CLI also prints this limitation, including for an empty
+report. This uses the existing diagnostics field; no schema, synchronization or hash-input
+change. The shared resolve_state_dir helper identifies the same directory audit_all reads.
