@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import html
 import json
+import re
 from urllib.parse import urlsplit
 
 from citypods.chapters import episode_public_chapters
@@ -38,12 +39,22 @@ def render_redirect_page(new_page_url: str) -> str:
     )
 
 
-def _feed_label(city: City) -> str:
-    body = city.source.get("body")
+def _clean_body_label(body: str | None, city: City | None = None) -> str:
+    """Normalize body and feed display names so selector syntax does not leak into UI."""
+    if not body and city is not None:
+        body = city.source.get("body")
     if body:
-        return body
-    title = city.podcast_title
-    return title.split("—", 1)[-1].strip() if "—" in title else title
+        cleaned = re.sub(r"\s+on\s+\*$", "", str(body))
+        cleaned = re.sub(r"\s+\*$", "", cleaned).strip()
+        if cleaned:
+            return cleaned
+    title = (city.podcast_title if city is not None else "") or ""
+    cleaned = re.sub(r"^[^:—]+[:—]\s*", "", title).strip()
+    return cleaned or title or (str(body) if body else "")
+
+
+def _feed_label(city: City) -> str:
+    return _clean_body_label(None, city)
 
 
 def _duration(seconds: int | float | None) -> str:

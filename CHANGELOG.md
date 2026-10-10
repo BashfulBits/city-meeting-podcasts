@@ -12,6 +12,16 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Search index HTTPS enforcement, origin-relative shards, and client pacing (#2205).**
+  Enforces HTTPS for the production custom domain `www.citymeetings.fyi` while preserving
+  HTTP for local development. Emits origin-relative shard URLs (`/data/search/{city}.json`)
+  in `manifest.json` and decouples search checkpoint hashes from hosting scheme and hostname,
+  allowing full checkpoint reuse across base URL protocol transitions without re-extracting
+  sidecars. Sanitizes feed and committee labels in search dropdowns and records by stripping
+  selector wildcard syntax (`*`, `on *`) and city name prefixes. Paces client-side search shard
+  downloads to 4 concurrent workers, debounces result rendering with `requestAnimationFrame`,
+  and dynamically scopes the body filter dropdown to bodies present in the selected city.
+
 - **Guarded decision persistence (review/51 P2c2a, #2237).** Adds source-scoped append and
   reconstruction helpers using existing storage APIs. A held remedy maintenance lease is required
   for writes; existing events and uploaded content are verified. Corrupt history fails closed,
