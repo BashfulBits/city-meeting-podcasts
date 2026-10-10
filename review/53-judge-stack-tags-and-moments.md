@@ -286,6 +286,49 @@ judging:
 
 ### PR3 — Judging package, stage and workflow
 
+**Implemented** on `feat/review-53-pr3-judging` (2026-10-09), stacked on PR2. Deviations from the
+text below, all deliberate:
+- **Judgments live in their own record block, not on candidates** (found while fixing the
+  CodeRabbit CLI review, 2026-10-09). `Episode.judging` = `{"subjects": {subject_id: {"task",
+  "judgments", "pending", "unbuildable"}}}` is an artifact block owned only by the `judge` lane
+  (`records.py` `_LANE_OWNED_BLOCKS`). Writing into the `tags`/`llm_tag_candidates`/`moments`
+  blocks would have made two lanes owners of one block (concurrent pushes overwrite each other),
+  and the tag lane rebuilds its candidate lists when it re-tags, which would drop judgments. An
+  unregistered lane would also have owned every block. Candidates are now byte-for-byte unchanged.
+- **Source-scoped and record-backed.** `judge` runs once per source over its retained episodes
+  (`_SOURCE_STAGE_NAMES`), not once per episode in the global queue, so packets span a source's
+  episodes and the lanes' run caps (kept on `StageContext`, shared and locked) bind the whole run.
+  The lane reads records without provider scrapes (`_RECORD_BACKED_LANES`), skips the ASR model
+  preload and has its own window (`judge_run_time_budget_minutes`, default 90).
+- **Tag subjects come only from the canonical ledger** `Episode.llm_tag_candidates` (rule and LLM
+  rows; `Episode.tags` is the projection derived from it), skipping `historical` rows and
+  de-duplicated by subject id. **Producer identities are normalized** before the family lookup:
+  stored forms include the backend prefix (`litellm:gemini/...`) and route aliases. A producer with
+  no family is `unknown` and gets no sibling or adjudicator (judged by JEV only and counted as
+  `unknown_producer_family`), so it is never paired with a judge of possibly the same family.
+  (CodeRabbit CLI review, fourth pass, 2026-10-09.)
+- **Pending pointers instead of packet manifests.** A stage reads answers by recipe hash
+  (`llm_deferred.look_up_deferred`), so each subject records, in its `pending` list, the recipe
+  that will answer each of its questions. Packets can therefore span the city's episodes (JEV packs
+  about 110 T1 items; per-episode packing would need about 1,200 JEV calls a day at 800 meetings)
+  without a separate manifest, and a lost or structurally blocked recipe simply drops the pointer
+  and re-plans the question for the current judges (the Slice 3a rebatch branch).
+- **One sibling contract**, `judge-answers-v1` (`{answers: [{id, verdict, level, choice, reason}]}`),
+  instead of four, so a sibling packet can mix a meeting's validate, gate, grade and choose items.
+- **Task name `judge`** for `InferenceJob`; a JEV job carries `inputs.systemone` and the Python
+  dispatch payload forwards it unchanged (`citypods/compute/llm.py`; a direct call raises).
+- **Dry run** is `CITYPODS_JUDGE_DRY_RUN=1` (the workflow's `dry_run` input): plan and pack, count
+  packets, items and estimated tokens, submit nothing; it runs even while `judging.enabled` is false.
+- **Dirtiness from judgments, not an input fingerprint** (CodeRabbit CLI review, 2026-10-09):
+  `stage_is_dirty` sends the judge stage to `judge_episode_dirty`, which is true exactly while an
+  answer is pending or a judgment is missing, read from stored judgments with no transcript read.
+  A completion marker would have stopped the stage after one visit and stranded every in-flight
+  answer; always-dirty would re-read every candidate episode's transcript every two hours. Episodes
+  without a transcript are never dirty; each task declares the tiers its evidence can build.
+- The report CLI is `python -m citypods.judging.report --state-dir state`; the capacity model is
+  `python scripts/llm_capacity_plan.py --judging` (`judging_demand`), which reproduces the
+  reservation table (191 anchor and 473 sibling packets a day at 800 meetings).
+
 **Registry** (`citypods/judging/tasks.py`): `QuestionSpec(id, kind, instruction, levels,
 prompt_version)`, `Subject(task, subject_id, episode_uid, group, producer_model, payload)`,
 `Evidence(tier, text, digest)`, `TaskSpec(name, questions, subjects, evidence, first_tier,
@@ -317,8 +360,8 @@ Sibling per subject: slot A unless the producer family is `google`, then slot B.
 subject: the first active adjudicator whose family differs from the producer and from the sibling
 that scored it. Rule candidates have family `rule`.
 
-**Judgment record** (`ledger.py`), appended to the candidate's new `judgments` list, following
-R6's `judge_assessments` precedent (no new state file):
+**Judgment record** (`ledger.py`), appended to the subject's `judgments` list in the episode's
+own `judging` record block (see the PR3 deviations: not on the candidate):
 
 ```python
 @dataclass(frozen=True)

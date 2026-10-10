@@ -1,0 +1,44 @@
+{
+ "_note": "one real answer of each JEV type, copied verbatim (review/53 PR3 fixtures)",
+ "_source": "evals/judge/results/2026-09-30-question-types-jev.json",
+ "answers": {
+  "best_32911f2064da1723": {
+   "choice": "D",
+   "confidence": 0.21,
+   "probabilities": {
+    "A": 0.35,
+    "B": 0.02,
+    "C": 0.22,
+    "D": 0.41
+   },
+   "type": "choice"
+  },
+  "pub_m0q0": {
+   "noul": 0.55,
+   "type": "noul"
+  },
+  "score_m0q0": {
+   "confidence": 0.21,
+   "legend": {
+    "0": "1 unusable or procedural",
+    "1": "2 weak",
+    "2": "3 acceptable",
+    "3": "4 good",
+    "4": "5 excellent standalone quote"
+   },
+   "probabilities": {
+    "0": 0.01,
+    "1": 0.28,
+    "2": 0.32,
+    "3": 0.36,
+    "4": 0.03
+   },
+   "score": 2.11,
+   "type": "score"
+  }
+ },
+ "usage": {
+  "input_tokens": 9830,
+  "output_tokens": 1240
+ }
+}

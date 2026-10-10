@@ -98,6 +98,7 @@ def main(argv: list[str] | None = None) -> int:
             "chapter-agenda",
             "chapter-locator",
             "chapter",
+            "judge",
         ],
         help="work class to run: 'audio' materializes audio only; 'transcribe' runs fresh ASR "
         "only; 'align' runs forced-alignment only; 'tag' runs bounded LLM topic tagging only; "

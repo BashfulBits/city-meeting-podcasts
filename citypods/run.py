@@ -163,6 +163,7 @@ from citypods.stages import (
     _materialize_set,
     default_stages,
     enrich_stages,
+    judge_stages,
     r6_stages,
     r7_stages,
     render_stages,
@@ -192,7 +193,10 @@ from citypods.transcript_quality import load_quality_config, load_quality_routes
 # DEFAULT_METADATA_RETENTION_EPISODES (imported above from citypods.models, the single source of
 # truth) remain a code fallback only for lightweight direct-call tests and orchestration doubles.
 DEFAULT_MAX_ARCHIVE_AGE_YEARS = 1000.0
-_SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text"})
+# Stages that run once per source over its whole retained episode list instead of once per episode.
+# The judge stage (review/53) is here so its packets can span a source's episodes and its run caps
+# are spent once per run, not re-created for every episode.
+_SOURCE_STAGE_NAMES = frozenset({"links", "agenda_text", "minutes_text", "judge"})
 _FAST_EXIT_RUN_EVENTS = {"push", "workflow_dispatch"}
 _RECORD_BACKED_LANES = frozenset(
     {
@@ -205,6 +209,7 @@ _RECORD_BACKED_LANES = frozenset(
         "chapter-agenda",
         "chapter-locator",
         "chapter",
+        "judge",
     }
 )
 
@@ -422,6 +427,7 @@ class SourcePipeline:
                     evaluation_config=(
                         self.ctx.llm_evaluation_config if self.ctx.tag_backend is not None else None
                     ),
+                    judging_config=self.ctx.judging_config,
                 ):
                     result.append((uid, f"{stage.name}_incomplete"))
         return result
@@ -2165,6 +2171,19 @@ def _run_enrich_global_queue(
     # Links/documents are source-scoped rather than materialization-scoped.  In addition to
     # avoiding repeated document downloads for shared source views, this provides AgendaTextStage
     # the complete source archive it needs for conservative prior-meeting minutes inheritance.
+    judge_batcher = None
+    original_judge_backend = ctx.judge_backend
+    # Set up before the source-stage pass below, which is where the judge stage runs.
+    if any(stage.name == "judge" for stage in source_stages):
+        from citypods.compute.llm import BatchingDispatchBackend, LiteLLMBackend
+
+        if (
+            isinstance(ctx.judge_backend, LiteLLMBackend)
+            and ctx.judge_backend.config.dispatch_v2_url
+        ):
+            judge_batcher = BatchingDispatchBackend(ctx.judge_backend)
+            ctx.judge_backend = judge_batcher
+
     if source_stages:
         for st in prepared.values():
             stats = run_stages(
@@ -2531,6 +2550,22 @@ def _run_enrich_global_queue(
         if failed:
             llm_submission_failures.append(f"moments: {failed} job(s) failed to submit")
         ctx.moment_backend = original_moment_backend
+
+    if judge_batcher is not None:
+        from citypods.compute.base import JobHandle, JobResult
+
+        batch_outcomes = judge_batcher.flush()
+        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
+        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
+        failed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, Exception))
+        print(
+            f"[enrich] judge LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
+            f"completed={completed} errors={failed}",
+            flush=True,
+        )
+        if failed:
+            llm_submission_failures.append(f"judge: {failed} job(s) failed to submit")
+        ctx.judge_backend = original_judge_backend
 
     if r7_ledger_stages:
         print(f"[enrich] R7 ledger pass: {len(prepared)} source(s) (serialized)", flush=True)
@@ -3043,6 +3078,27 @@ def _build_impl(
             )
         except ValueError as exc:
             print(f"moments: LLM backend unavailable ({exc}); moments deferred", file=sys.stderr)
+    judge_backend = None
+    judging_config = site_config.get("judging") or {}
+    # review/53: the judge lane dispatches only through the Worker (JEV is api_shape systemone and
+    # has no direct transport); nothing is built unless judging is enabled for this lane.
+    if lane == "judge" and judging_config.get("enabled") and not dry_run and phase != "render":
+        from dataclasses import replace as _dc_replace
+
+        from citypods.compute.llm import LiteLLMBackend, LLMBackendConfig
+
+        try:
+            judge_backend = LiteLLMBackend(
+                _dc_replace(
+                    LLMBackendConfig.from_env(),
+                    model=lane_for("judge:anchor").primary_model,
+                    additional_models=(),
+                    mode="dispatch",
+                ),
+                storage=storage,
+            )
+        except ValueError as exc:
+            print(f"judge: LLM backend unavailable ({exc}); judging deferred", file=sys.stderr)
     if _compute_backend_holder is not None:
         _compute_backend_holder.append(compute_backend)
 
@@ -3104,7 +3160,9 @@ def _build_impl(
     # Generated chaptering is an explicitly separate asynchronous lane.  It is not included in
     # ordinary audio/enrich runs because agenda/transcript prerequisites may complete in different
     # workflows and the initial rollout is a served-time overlay, not an audio-affecting change.
-    if lane == "chapter-agenda":
+    if lane == "judge":
+        stages = judge_stages()
+    elif lane == "chapter-agenda":
         stages = [AgendaChapterCandidatesStage()]
     elif lane == "chapter-locator":
         stages = [ChapterBoundaryLocatorStage()]
@@ -3195,6 +3253,18 @@ def _build_impl(
                     f"budget: {lane} window {lane_window_min:.0f}m × {safety} "
                     "(+ yield if quota exhausted or superseded)"
                 )
+            tag_llm_deadline = None
+        elif lane == "judge":
+            # The judge lane reads persisted candidates and enqueues queue-only v2 packets; its run
+            # caps bound the work, and this window bounds a pass over a large backlog.
+            judge_window_min = float(defaults.get("judge_run_time_budget_minutes", 90))
+            judge_deadline_secs = judge_window_min * 60 * safety
+            remaining_secs = max(0.0, judge_deadline_secs - (time.monotonic() - enrich_phase_start))
+            deadline = (time.monotonic() + remaining_secs) if judge_window_min > 0 else None
+            stop = StopSignal(deadline=deadline, superseded=_newer_run_queued)
+            print(
+                f"budget: {lane} window {judge_window_min:.0f}m x {safety} (+ yield if superseded)"
+            )
             tag_llm_deadline = None
         elif lane == "moments":
             # Moments lane only prepares queue-only v2 requests and is count-bounded.
@@ -3367,6 +3437,8 @@ def _build_impl(
         compute_backend=compute_backend,
         tag_backend=tag_backend,
         moment_backend=moment_backend,
+        judge_backend=judge_backend,
+        judging_config=judging_config,
         taxonomy_path=Path(tagging_config.get("taxonomy_path", "config/taxonomy.yml")),
         llm_evaluation_state_path=state_dir
         / str((tagging_config.get("evaluation") or {}).get("state_path", "llm_evaluation.json")),
@@ -3538,7 +3610,7 @@ def _build_impl(
                 time_bounded
                 and not dry_run
                 and storage is not None
-                and lane not in ("audio", "tag", "moments")
+                and lane not in ("audio", "tag", "moments", "judge")
                 and not getattr(compute_backend, "isolates_inference", False)
             ):
                 _try_preload_asr_model(defaults, lane=lane)
@@ -3995,7 +4067,7 @@ def _build_impl(
             if lane in {"transcribe", "align"}:
                 _history_window_min = float(defaults.get("asr_backstop_minutes", 350))
                 _history_safety = 1.0
-            elif lane in {"tag", "moments"}:
+            elif lane in {"tag", "moments", "judge"}:
                 budget_key = f"{lane}_run_time_budget_minutes"
                 _history_window_min = float(defaults.get(budget_key, 240))
             elif lane in {"chapter-agenda", "chapter-locator", "chapter"}:

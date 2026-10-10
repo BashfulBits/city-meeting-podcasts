@@ -93,6 +93,7 @@ LLM_TASKS: frozenset[Task] = frozenset(
         "agenda-chapter-locate",
         "moment-extraction",
         "moment-judge",
+        "judge",
     }
 )
 TASK_VERSIONS: dict[Task, str] = {
@@ -104,6 +105,7 @@ TASK_VERSIONS: dict[Task, str] = {
     "agenda-chapter-locate": "1",
     "moment-extraction": "1",
     "moment-judge": "1",
+    "judge": "1",
 }
 
 TASK_PROMPTS: dict[Task, str] = {
@@ -131,6 +133,9 @@ TASK_PROMPTS: dict[Task, str] = {
     "moment-judge": (
         "Score a supplied grounded candidate only. Never rewrite, repair, or create a candidate."
     ),
+    # review/53: judge packets always carry their own messages (sibling) or systemone questions
+    # (JEV); this default is never sent.
+    "judge": "Judge only the supplied evidence. Never rewrite, repair, or create a candidate.",
 }
 
 SUPPORTED_MODELS = frozenset(ROUTE_CANDIDATES)
@@ -684,6 +689,14 @@ class _ProviderAttemptBudget:
 
 def _messages(job: InferenceJob) -> list[dict[str, Any]]:
     """Return caller-supplied messages or construct the task's default structured prompt."""
+    systemone = job.inputs.get("systemone")
+    if systemone is not None:
+        # A JEV job (api_shape systemone, review/53) sends {state, questions}, not messages. This
+        # stand-in exists for admission and token estimation only and is never sent: the dispatch
+        # payload carries ``systemone`` itself, and only the Worker can reach such a route.
+        if not isinstance(systemone, dict) or not isinstance(systemone.get("questions"), dict):
+            raise ValueError("LLM inputs.systemone must be a mapping with a questions mapping")
+        return [{"role": "user", "content": json.dumps(systemone, sort_keys=True)}]
     supplied = job.inputs.get("messages")
     if supplied is not None:
         if not isinstance(supplied, list) or not supplied:
@@ -1059,6 +1072,15 @@ class LiteLLMBackend(Backend):
             payload = {"model": resolved_model, "messages": messages, "stream": False}
             if response_format is not None:
                 payload["response_format"] = response_format
+        elif job.inputs.get("systemone") is not None:
+            if direct:
+                raise LLMBackendError("a systemone (JEV) job can only be dispatched to the Worker")
+            _messages(job)  # validates the shape
+            payload = {
+                "model": resolved_model,
+                "systemone": job.inputs["systemone"],
+                "stream": False,
+            }
         else:
             payload = {"model": resolved_model, "messages": _messages(job), "stream": False}
         if policy is not None:
