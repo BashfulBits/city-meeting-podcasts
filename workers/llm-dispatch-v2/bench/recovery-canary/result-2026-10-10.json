@@ -1,0 +1,33 @@
+{
+  "passed": true,
+  "worker": "citypods-temp-rescue-331c091b",
+  "deployment_version": "5ade2591-f50c-4040-8735-ff4548f20826",
+  "source_commit": "a81317f72a57d0f1aa33838a667c981e8dac19de",
+  "coordinator_sha256": "6d58466550f5ac9843220ac14562d04e750d3e17a7114494d27823d234673f6d",
+  "fixture_jobs": 24,
+  "injected_mutation": 3,
+  "rollback_exact_snapshot": true,
+  "first_page": {
+    "reindexed": 2,
+    "failed": 18
+  },
+  "new_instance_after_abort": true,
+  "exact_snapshot_after_abort": true,
+  "second_page": {
+    "reindexed": 0,
+    "failed": 4
+  },
+  "repeat_page": {
+    "reindexed": 0,
+    "failed": 0
+  },
+  "completed": true,
+  "queued_jobs": 2,
+  "preserved_counters": {
+    "attempts": 2,
+    "schema_retry_count": 1,
+    "transient_retry_count": 3
+  },
+  "cleanup_worker_and_namespace_confirmed": true,
+  "scope": "isolated fixtures; production rescue implementation; no provider calls; no production data; injected mutation failure is not actual platform quota exhaustion"
+}

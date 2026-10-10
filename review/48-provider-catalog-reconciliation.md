@@ -1727,3 +1727,41 @@ exclusion, current-day/configured-route filtering, exhausted writes, recreation,
 route-count truncation and indexed read-cost invariance as history grows. Whole-repository Ruff
 lint/format, both compilers and diff checks pass. Compiler outputs are unchanged.
 No live provider probes, synthetic jobs, manual deployment or production config edits were performed.
+
+
+### Recovery-canary acceptance — #2220, maintainer decision 2026-10-10
+
+The maintainer explicitly approved replacing indefinite waiting for rare production cases with
+isolated tests of the production rescue code plus the ordinary-run evidence recorded above.
+The trade-off is deterministic legacy/failure coverage without production disruption; isolated
+fixtures do not demonstrate actual platform quota exhaustion or every production workload.
+The approved procedure creates its own temporary Worker and SQLite DO namespace, uses synthetic
+records and a test catalog, and has no production bindings, provider credentials or model calls.
+The existing local-only row benchmark is not deployed.
+
+The Cloudflare run of `bench/recovery-canary/harness.js` imported the unchanged production
+`LLMSchedulerDO`. The committed `result-2026-10-10.json` records the source commit/hash and deployment
+version. Twenty-four fixtures include the old sentinel, missing `queue_models`, obsolete model
+indexes, historical secondary index, oversized input and retired/no-route policies. All have
+attempts=2, schema_retry_count=1 and transient_retry_count=3.
+
+Acceptance results:
+
+- A failure injected on the third transaction mutation rolled back the exact jobs, indexes,
+  scheduler and route snapshot. This simulates write failure; it does not consume actual quota.
+- The first bounded page repaired two fitting jobs and failed eighteen. A real `ctx.abort()`
+  reset produced a new instance UUID; the exact persisted snapshot and incomplete cursor survived.
+- The resumed page failed the remaining four jobs; a repeat pass repaired/failed zero. The rescue
+  checkpoint completed with two queued indexed jobs, correct `unadmissible`/`route_retired` reasons,
+  and every nonzero retry counter unchanged.
+- The existing Python structural-audit/admission regressions passed for both terminal reasons,
+  preserving failure_count=2 and schema_correction_attempted=true, blocking unchanged/missing
+  generations and allowing a new fitting generation. The focused deferred/telemetry suite passed
+  55 tests and the complete Worker suite passed 437 tests.
+- The test class was deleted by migration and the temporary Worker removed. Cloudflare listings
+  confirmed neither remained. No production data, provider quota, config or deployment changed.
+
+Combined with the two preserved production audits, subsequent blocked unchanged-generation checks
+in two ordinary runs and completed checkpoint continuity, this satisfies the revised #2220 evidence
+gate. It does not authorize removal activation: prepare and review that narrow change separately.
+Live context input/output canaries and recurring calibration remain independent gates.
