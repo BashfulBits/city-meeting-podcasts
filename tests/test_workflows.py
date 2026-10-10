@@ -1840,3 +1840,9 @@ def test_manual_context_trigger_uses_environment_inputs_and_separate_artifact():
     assert "Manual context canary cannot be combined with due-only" in text
     command = text.split("        run: |", 1)[1].split("      - name:", 1)[0]
     assert "${{ inputs." not in command
+
+
+def test_manual_context_diagnostic_artifact_uploads_even_after_failure():
+    text = Path(".github/workflows/provider-catalog-reconcile.yml").read_text()
+    step = text.split("- name: Retain manual context evidence", 1)[1]
+    assert "if: always() && github.event_name == 'workflow_dispatch'" in step

@@ -1318,7 +1318,8 @@ def test_manual_canary_rejects_local_or_non_main_before_provider_io(monkeypatch,
         script.main(["--manual-context", "--context-evidence", str(tmp_path / "out.json")])
 
 
-def test_manual_canary_is_context_only_and_finishes_session(monkeypatch, tmp_path):
+@pytest.mark.parametrize("fault", [None, "measurement", "cleanup", "both", "status"])
+def test_manual_canary_is_context_only_and_finishes_session(monkeypatch, tmp_path, fault):
     from types import SimpleNamespace
 
     from citypods.compute.llm_dispatch_pause import ContextSession
@@ -1352,12 +1353,28 @@ def test_manual_canary_is_context_only_and_finishes_session(monkeypatch, tmp_pat
         f"{ROUTE['provider']}:{ROUTE['account_id']}:{ROUTE['upstream_model']}"
     )
     finished = []
+    measurement_error = RuntimeError("original measurement failure")
+    cleanup_error = ValueError("cleanup failure")
+    status_error = OSError("status failure")
+    reads = []
+
+    def read_status(_selection):
+        reads.append(True)
+        if fault == "status" and len(reads) == 3:
+            raise status_error
+        return status
+
+    def finish(*_args):
+        finished.append(True)
+        if fault in {"cleanup", "both"}:
+            raise cleanup_error
+
     client = SimpleNamespace(
-        context_status=lambda _selection: status,
+        context_status=read_status,
         start_manual_context=lambda *_args, **_kwargs: ContextSession(
             "2026-10-05", run_id, 9999999999999, 16384, 512, 2
         ),
-        finish_manual_context=lambda *_args: finished.append(True),
+        finish_manual_context=finish,
     )
     control = script.WorkerDispatchControl(client)
     from contextlib import contextmanager
@@ -1395,24 +1412,41 @@ def test_manual_canary_is_context_only_and_finishes_session(monkeypatch, tmp_pat
         assert context["manual"] and context["dimensions"] == ["input"]
         assert [r["route_id"] for r in routes] == ["r"]
         calls.append(True)
+        report.context_attempted_routes.add("r")
+        if fault in {"measurement", "both"}:
+            raise measurement_error
 
     monkeypatch.setattr(reconcile, "_measure_context_routes", measure)
     monkeypatch.setattr(script, "fetch_quality_index", lambda *_args: pytest.fail("catalog I/O"))
     target = tmp_path / "out.json"
-    assert (
-        script.main(
-            [
-                "--manual-context",
-                "--context-routes",
-                "r",
-                "--context-purpose",
-                "#2221",
-                "--context-evidence",
-                str(target),
-            ]
+    arguments = [
+        "--manual-context",
+        "--context-routes",
+        "r",
+        "--context-purpose",
+        "#2221",
+        "--context-evidence",
+        str(target),
+    ]
+    if fault is None:
+        assert script.main(arguments) == 0
+    else:
+        expected = (
+            measurement_error
+            if fault in {"measurement", "both"}
+            else (cleanup_error if fault == "cleanup" else status_error)
         )
-        == 0
-    )
+        with pytest.raises(type(expected)) as raised:
+            script.main(arguments)
+        assert raised.value is expected
     assert calls == [True] and finished == [True]
     payload = json.loads(target.read_text())["payload"]
     assert payload["kind"] == "manual_context" and payload["authority"]["max_requests"] == 2
+
+    assert payload["run_status"] == ("failed" if fault else "success")
+    assert payload["attempted_routes"] == ["r"]
+    if fault:
+        assert payload["errors"]
+        assert all(set(error) == {"stage", "type"} for error in payload["errors"])
+    if fault == "both":
+        assert [error["stage"] for error in payload["errors"]] == ["measurement", "cleanup"]

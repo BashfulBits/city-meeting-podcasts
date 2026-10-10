@@ -1934,3 +1934,9 @@ Real local workerd acceptance: three writes at start, seven per admission, zero 
 recreation; five injected SQL-mutation failures plus the accounting-flush boundary restore the
 exact snapshot. A newer run preserves charges. Current-week attempt reads are exactly 24 among
 192 retained attempts, with zero writes. No provider I/O, production data or credentials.
+
+**Manual diagnostic evidence follow-up — CodeRabbit CLI review, 2026-10-10.** A measurement
+exception must not skip the partial artifact, and a cleanup/status failure must not replace
+the original measurement error. Manual dispatch uploads diagnostic artifacts even after failure;
+records contain only error stage/type, attempted routes, available observations and accounting.
+Failed runs/artifacts remain excluded from accepted measurement and scheduled cap history.

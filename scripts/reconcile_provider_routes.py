@@ -302,6 +302,8 @@ def manual_context_canary(args, limits, control):
         },
     }
     before = None
+    failure = None
+    errors = []
     try:
         before = control.client.context_status(Selection("global")).get("manual_session")
         for provider in dict.fromkeys(route["provider"] for route in selected):
@@ -325,30 +327,51 @@ def manual_context_canary(args, limits, control):
                     sleep=time.sleep,
                     cooldown=rules.canary_interval_seconds,
                 )
+    except Exception as exc:
+        failure = exc
+        errors.append({"stage": "measurement", "type": type(exc).__name__})
     finally:
-        control.client.finish_manual_context(run_id, status["catalog_digest"])
-    after = control.client.context_status(Selection("global")).get("manual_session")
-    artifact = context_artifact(
-        report.context_observations,
-        limits,
-        repository=repository,
-        run_id=run_id,
-        head_sha=head_sha,
-        now=datetime.now(UTC),
-        catalog_digest=status["catalog_digest"],
-        attempted_routes=report.context_attempted_routes,
-        states=report.context_states,
-    )
-    artifact["payload"].update(
-        {
-            "kind": "manual_context",
-            "authority": authority,
-            "accounting_before": before,
-            "accounting_after": after,
-        }
-    )
-    artifact["payload_digest"] = digest(artifact["payload"])
-    args.context_evidence.write_text(json.dumps(artifact, sort_keys=True, indent=2) + "\n")
+        try:
+            control.client.finish_manual_context(run_id, status["catalog_digest"])
+        except Exception as exc:
+            failure = failure if failure is not None else exc
+            errors.append({"stage": "cleanup", "type": type(exc).__name__})
+    after = None
+    try:
+        after = control.client.context_status(Selection("global")).get("manual_session")
+    except Exception as exc:
+        failure = failure if failure is not None else exc
+        errors.append({"stage": "status", "type": type(exc).__name__})
+    try:
+        artifact = context_artifact(
+            report.context_observations,
+            limits,
+            repository=repository,
+            run_id=run_id,
+            head_sha=head_sha,
+            now=datetime.now(UTC),
+            catalog_digest=status["catalog_digest"],
+            attempted_routes=report.context_attempted_routes,
+            states=report.context_states,
+        )
+        artifact["payload"].update(
+            {
+                "kind": "manual_context",
+                "authority": authority,
+                "accounting_before": before,
+                "accounting_after": after,
+                "run_status": "failed" if failure is not None else "success",
+                "errors": errors,
+            }
+        )
+        artifact["payload_digest"] = digest(artifact["payload"])
+        args.context_evidence.write_text(json.dumps(artifact, sort_keys=True, indent=2) + "\n")
+    except Exception:
+        if failure is not None:
+            raise failure from None
+        raise
+    if failure is not None:
+        raise failure
     for observation in report.observations:
         print(observation)
     return 0

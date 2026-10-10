@@ -883,7 +883,13 @@ def verified_context_history(
                 or payload.get("workflow_path") != RATE_WORKFLOW
                 or payload.get("branch") != run["head_branch"]
                 or payload.get("head_sha") != run["head_sha"]
-                or (manual and payload.get("kind") != "manual_context")
+                or (
+                    manual
+                    and (
+                        payload.get("kind") != "manual_context"
+                        or payload.get("run_status", "success") != "success"
+                    )
+                )
             ):
                 raise ValueError("artifact provenance mismatch")
             from citypods.provider_catalog.probe import chat_url
