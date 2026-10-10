@@ -1,10 +1,13 @@
-"""Pure source-local decision memory. Claims here are not production authorization."""
+"""Source-local decision history and guarded persistence; no production caller activation."""
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from citypods.bodies import body_key
@@ -281,3 +284,99 @@ def fold_events(events) -> DecisionState:
         tips,
         tuple(sorted(diagnostics)),
     )
+
+
+EVENT_PREFIX = "state/remedy/events/"
+REMEDY_LEASE_KEY = "maintenance-leases/remedy.json"
+
+
+def _source_segment(source_key: str) -> str:
+    if not isinstance(source_key, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", source_key):
+        raise ValueError("source_key: unsafe event path segment")
+    return source_key
+
+
+def event_key(event: RemedyEvent | dict) -> str:
+    """Validate an event and derive its approved source-local, content-addressed key."""
+    parsed = parse_event(event.payload() if isinstance(event, RemedyEvent) else event)
+    source = _source_segment(parsed.source_key)
+    return f"{EVENT_PREFIX}{source}/{parsed.decision_id}/{parsed.event_id}.json"
+
+
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"event JSON: duplicate object key {key!r}")
+        result[key] = value
+    return result
+
+
+def _read_event(storage, key: str, local_path: Path) -> RemedyEvent | None:
+    if not storage.get_file(key, local_path):
+        return None
+    try:
+        payload = json.loads(
+            local_path.read_text(encoding="utf-8"), object_pairs_hook=_unique_json_object
+        )
+        parsed = parse_event(payload)
+        if event_key(parsed) != key:
+            raise ValueError("path does not match event content")
+    except (ValueError, UnicodeError) as exc:
+        raise ValueError(f"invalid stored decision event {key!r}: {exc}") from exc
+    return parsed
+
+
+def _assert_remedy_lease(lease) -> None:
+    if lease is None or getattr(lease, "key", None) != REMEDY_LEASE_KEY:
+        raise ValueError("decision append requires the remedy maintenance lease")
+    if not getattr(getattr(lease, "storage", None), "cas_capable", False):
+        raise ValueError("decision append requires a CAS-capable lease backend")
+    lease.assert_held()
+
+
+def append_event(storage, event: RemedyEvent | dict, *, lease) -> str:
+    """Append immutable history under a held lease, verifying retries and saved content.
+
+    The lease serializes writes; it does not authenticate approval or actor claims. B2 does
+    not enforce conditional writes. No production entrypoint calls this helper yet.
+    """
+    parsed = parse_event(event.payload() if isinstance(event, RemedyEvent) else event)
+    key = event_key(parsed)
+    _assert_remedy_lease(lease)
+    with TemporaryDirectory(prefix="citypods-remedy-event-") as directory:
+        local_path = Path(directory) / "event.json"
+        existing = _read_event(storage, key, local_path)
+        if existing is not None:
+            if existing != parsed:
+                raise ValueError(f"existing decision event differs: {key}")
+            return key
+        payload = {**_canonical(parsed.payload()), "event_id": parsed.event_id}
+        local_path.write_text(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")), encoding="utf-8"
+        )
+        _assert_remedy_lease(lease)
+        storage.put_file(key, local_path, "application/json")
+        saved = _read_event(storage, key, local_path)
+        if saved != parsed:
+            raise ValueError(f"decision event read-back failed: {key}")
+    return key
+
+
+def load_decisions(storage, *, source_keys) -> dict[str, DecisionState]:
+    """Reconstruct only explicit sources; reject damaged history without writing anything."""
+    sources = sorted({_source_segment(source) for source in _sequence(source_keys, "source_keys")})
+    grouped = {}
+    with TemporaryDirectory(prefix="citypods-remedy-load-") as directory:
+        local_path = Path(directory) / "event.json"
+        for source in sources:
+            prefix = f"{EVENT_PREFIX}{source}/"
+            pattern = re.compile(re.escape(prefix) + r"[0-9a-f]{64}/[0-9a-f]{64}\.json")
+            for key, _modified in storage.list_objects(prefix):
+                if not isinstance(key, str) or not pattern.fullmatch(key):
+                    raise ValueError(f"invalid listed decision event path: {key!r}")
+                parsed = _read_event(storage, key, local_path)
+                if parsed is None:
+                    raise ValueError(f"listed decision event disappeared: {key}")
+                grouped.setdefault(parsed.decision_id, []).append(parsed)
+    return {key: fold_events(grouped[key]) for key in sorted(grouped)}

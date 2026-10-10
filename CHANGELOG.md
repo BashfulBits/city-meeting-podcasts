@@ -12,6 +12,12 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Guarded decision persistence (review/51 P2c2a, prepared).** Adds source-scoped append and
+  reconstruction helpers using existing storage APIs. A held remedy maintenance lease is required
+  for writes; existing events and uploaded content are verified. Corrupt history fails closed,
+  identical retries avoid repeated uploads, and temporary files are cleaned. No production caller,
+  workflow activation, scan suppression, feed/audio change or historical decision import.
+  
 - **Renovate customManager schema normalization (#1279).** Migrates `managerFilePatterns` to
   canonical `fileMatch` in `.github/renovate.json5` custom managers, resolving Renovate
   configuration errors and unblocking the Dependency Dashboard.

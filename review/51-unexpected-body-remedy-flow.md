@@ -3173,3 +3173,11 @@ Ruff/format and full offline suite before push. No production storage writes in 
 Maintainer approved permanent decision history, lease-required writes and strict reconstruction
 failure behavior in chat on 2026-10-09 America/Chicago. The source path, pending-watch behavior
 and overall P2 sequence remain approved. This L3 contract is committed before implementation.
+
+P2c2a implementation prepared under #2236. The no-CAS check applies to the lease coordination
+backend; B2 event storage intentionally remains non-CAS. Event reads are source-scoped and all
+backend failures propagate. Validation uses fake storage/leases only; production remains disconnected.
+
+P2c2a verification: 65 targeted ledger/persistence checks and 5,649 offline tests passed
+(16 deselected); whole Ruff/format passed across 497 files. Human merge and code review remain
+required; no deployment or production storage verification is claimed.
