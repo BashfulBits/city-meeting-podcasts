@@ -15,7 +15,8 @@ Once 1.0 ships, entries move under semver tags.
 - **Prepared remembered-decision report (review/51 P2c3a).** Adds an explicit local comparison
   mode for saved histories and reviewed case projections. Unchanged watch cases recommend quiet;
   newly related recordings stay pending in the same case. Material proof changes, missing evidence,
-  conflicting history and changed config remain visible. No scheduled alerts or feeds are changed.
+  conflicting history and changed config remain visible. Local report publication is atomic,
+  preserving the prior complete report if replacement fails. No scheduled alerts or feeds change.
 
 - **Prepared trusted decision actions (review/51 P2c2b).** Validates the dedicated approval
   command against trusted author/permission snapshots, fresh evidence and current history.

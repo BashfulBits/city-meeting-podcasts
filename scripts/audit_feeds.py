@@ -38,6 +38,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -1953,9 +1954,19 @@ def main(argv: list[str] | None = None) -> int:
             policy_hash=bundle["policy_hash"],
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(
-            json.dumps({"schema_version": 1, "rows": rows}, indent=2, sort_keys=True) + "\n"
-        )
+        temporary_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=output_path.parent, delete=False
+            ) as temporary:
+                temporary_path = Path(temporary.name)
+                temporary.write(
+                    json.dumps({"schema_version": 1, "rows": rows}, indent=2, sort_keys=True) + "\n"
+                )
+            os.replace(temporary_path, output_path)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
         print(f"decision comparison: wrote {len(rows)} case(s) to {output_path}")
         return 0
     if args.body_coverage_report and (

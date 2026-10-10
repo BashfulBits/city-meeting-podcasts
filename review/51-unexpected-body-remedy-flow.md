@@ -3403,3 +3403,13 @@ Two report-contract clarifications are recorded here; runtime behavior remains u
 
 Raw CLI output retained locally as /private/tmp/2244-cli-review.ndjson. Code/tests are unchanged
 from the previously verified implementation; conflict carry preserves merged main features.
+
+CLI review of #2245 completed 2026-10-10 against its parent implementation, now merged into main.
+One valid trivial finding: direct report writes could leave truncated JSON after interruption.
+The local report now writes a temporary sibling and atomically replaces the destination after
+closing it, cleaning up on failure. A simulated publication failure verifies that the prior report
+remains intact and no temporary file remains. No comparison semantics or production activation
+changed. Raw review output is retained locally at /private/tmp/2245-cli-review.ndjson.
+
+CLI finding fix verification: 209 targeted checks and 5,747 offline tests passed (16 deselected);
+whole Ruff/format passed across 511 files. The prior complete report survives simulated failure.

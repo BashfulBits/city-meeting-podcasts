@@ -1726,6 +1726,21 @@ def test_local_decision_comparison_never_loads_config_or_runs_audit(monkeypatch,
                 str(input_path),
             ]
         )
+    previous_report = output_path.read_text()
+
+    def failed_replace(source, destination):
+        assert destination == output_path
+        assert source.parent == output_path.parent
+        assert json.loads(source.read_text())["rows"][0]["outcome"] == "unchanged"
+        assert output_path.read_text() == previous_report
+        raise OSError("simulated publication failure")
+
+    with monkeypatch.context() as context:
+        context.setattr(_mod.os, "replace", failed_replace)
+        with pytest.raises(OSError, match="simulated publication failure"):
+            _mod.main(args)
+    assert output_path.read_text() == previous_report
+    assert set(tmp_path.iterdir()) == {input_path, output_path}
     input_path.write_text('{"schema_version":1,"schema_version":1}')
     with pytest.raises(ValueError, match="duplicate"):
         _mod.main(args)
