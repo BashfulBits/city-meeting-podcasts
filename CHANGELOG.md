@@ -12,6 +12,10 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared independent remedy reviewer candidate (#2253).** The existing free NVIDIA Kimi K3
+  route exposes explicit maximum-reasoning controls for evaluation. Production defaults, routing,
+  quotas and admissions are unchanged; qualification remains evidence-gated. No backfill.
+
 - **Prepared resumable local remedy evaluations (#2251).** Publishes immutable per-job
   checkpoints, explicitly resumes completed observations, and preflights physical-route daily
   capacity with retry headroom. Local timeout controls preserve existing defaults; production

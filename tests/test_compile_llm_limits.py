@@ -1115,3 +1115,15 @@ def test_explicit_high_max_controls_preserve_default_request_parameters():
             "high": {"generationConfig": {"thinkingConfig": {"thinkingLevel": "HIGH"}}}
         }
         assert route["request_params"] is None
+
+
+def test_kimi_max_controls_match_python_worker_without_changing_defaults():
+    compiled = compile_llm_limits.compile_limits()
+    worker = compile_llm_limits._worker_catalog(compiled)["routes_by_id"]
+    python = {
+        route["route_id"]: route for route in compile_llm_limits._python_routes(compiled)["routes"]
+    }
+    for routes in (worker, python):
+        route = routes["nvidia_kimi_k3_free"]
+        assert route["reasoning_controls"] == {"max": {"reasoning_effort": "max"}}
+        assert route.get("request_params") is None

@@ -1577,7 +1577,11 @@
       "structured_output_include_schema_in_prompt": false,
       "structured_output_schema_strip_keys": [],
       "request_params": null,
-      "reasoning_controls": null
+      "reasoning_controls": {
+        "max": {
+          "reasoning_effort": "max"
+        }
+      }
     },
     "nvidia_deepseek_v4_1_flash_free": {
       "route_id": "nvidia_deepseek_v4_1_flash_free",

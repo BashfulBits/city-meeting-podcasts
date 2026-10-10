@@ -1703,3 +1703,7 @@ Local review/51 qualification CLI (prepared #2251) can publish immutable per-job
 files and explicitly resume matching completed case/configuration pairs. Frozen input context
 is checked before reuse. Read-only daily-cap preflight reserves retry headroom conceptually;
 actual reservations remain owned by the existing CAS scheduler. No model activation is implied.
+
+The review/51 evaluation lane can explicitly request NVIDIA Kimi K3 maximum reasoning through
+its compiled capability metadata. This adds no production default or model admission; local
+qualification uses the same shared CAS accounting and frozen evaluation provenance.
