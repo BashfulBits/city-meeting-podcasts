@@ -3578,3 +3578,31 @@ held. Kimi completed 20/20 Denton and 18 correct/8 abstained/1 unknown historica
 Artifacts, catalogs, original failed attempts and reproducible scores are retained under
 evals/remedy/results/p1-comparison-2026-10-10/. No model is activated or admitted here.
 Verification: 61 targeted and 5,766 offline tests passed, 16 deselected; whole Ruff/format clean.
+
+### Patient alternative comparison — L3, maintainer approved 2026-10-10
+
+Evaluate NVIDIA full GLM 5.3 (`z-ai/glm-5.3`) and the existing free BeatAPI
+GPT 6 Astra, GPT 6.1 Sol and DeepSeek V4.1 Flash physical routes. Permit an
+evaluation-only script under evals/remedy/results/p1-patient-2026-10-10/ and
+immutable results there. Register GLM only in this evaluator process, using the
+existing NVIDIA adapter with a distinct physical quota identity; no persisted catalog
+or production lane changes. Its conservative evaluation bounds are 1 RPM, one
+in-flight request, 32,768 input and 16,384 output tokens, not published provider limits.
+
+Use the ten approved Denton cases in claim-support and blind-owner modes per model,
+600-second provider timeout, 650-second case deadline, 16,384 output-token budget,
+one provider attempt per case and immediate result checkpoints. Do not send gold.
+Default reasoning is a baseline until exact maximum controls are verified. Preserve
+returned model identity and separate content-only scores from admission gates.
+
+Use shared CAS quota accounting and the Worker operator pause/drain/reservation API
+around each provider evaluation call so production usage includes the attempted call.
+BeatAPI calls are serialized, wait at least 65 seconds between attempts and defer
+while its production work is in flight. NVIDIA calls likewise wait for provider drain.
+Pauses expire after at most one hour and are resumed on exit. No activation, paid
+fallback, quota increase, feed edits or gold changes. Save sanitized errors, request
+timing, provenance and every failed attempt. Any drain timeout defers the case.
+
+The four Gemini routes are temporarily paused through the explicitly approved
+2026-10-11T07:15Z recheck time; renewal and a separate bounded quality recheck are
+scheduled in this chat. This does not permanently disable production Gemini routes.
