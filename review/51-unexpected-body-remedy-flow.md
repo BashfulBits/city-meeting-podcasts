@@ -1,16 +1,18 @@
 # 51 — Unexpected-body remedy: complete coverage, bounded decisions
 
-**Status: P0 historical baseline verified complete; P1 tooling shipped; P2–P5 remain gated.**
+**Status: P0 complete; P1, P2a and report-only P2b shipped; remaining P2 and P3–P5 gated.**
 **Revised:** 2026-10-09 after final P0 replay and deployed verification.
 This specification does not itself change production routing or enable auto-merge.
 
 ## Current P0 completion
 
 The [final report](evidence/p0-completion-2026-10-09.md) supersedes the dated P0 status snapshots
-below. All 680 baseline patterns have dispositions; refreshed 26,555-entry replay leaves 411
-intentionally unassigned entries. Public search/archive-only filtering and Dallas #2171 publication
-are verified. Six exact-recording evidence cases remain explicitly open under the approved P0
-exit rule. This does not complete model admission, P2–P5 or all municipal historical research.
+below. All 680 baseline patterns have dispositions. The retained snapshot has 26,555 entries.
+[Post-merge verification](evidence/p2b-postmerge-verification-2026-10-10.md) corrects the older
+P0 helper’s omitted global exclusions: 1,189 entries are unassigned under actual CLI defaults,
+compared with its historical count of 411. No production rule or raw record changed. Public search/archive-only filtering and Dallas #2171 publication
+are verified. The six carried evidence cases were closed by approved limited-evidence dispositions on
+October 9, 2026 Central; see [closeout](evidence/historical-six-case-closeout-2026-10-10.md). This does not complete model admission, P2–P5 or all municipal historical research.
 
 ## Outcome and scope
 
@@ -2871,7 +2873,7 @@ remain unresolved rather than raising an unexpected exception. Valid inclusion p
 legacy configuration behavior are unchanged; no feed or source-record changes.
 
 
-### P2b complete coverage report — approved L3 (2026-10-09)
+### P2b complete coverage report — frozen, implemented in PR #2215
 
 Predecessor: P2a shipped in #2213. This deterministic slice is report-only; no live models,
 feed edits, accepted-disposition ledger, automatic notifications or provider/storage changes.
@@ -2933,7 +2935,7 @@ persistence and alert activation gated. No production model or automatic feed ch
 
 P2b implementation issue: [#2216](https://github.com/BashfulBits/city-meeting-podcasts/issues/2216).
 
-### P2b prepared implementation (issue #2216)
+### P2b implementation shipped in PR #2215 (issue #2216)
 
 The opt-in `scripts/audit_feeds.py --body-coverage-report PATH` command reports every supplied
 source observation, including retained history absent from the current provider response. It
@@ -2973,3 +2975,17 @@ must identify the resolved local state directory and explicitly warn that unsync
 state may omit retained history. The CLI also prints this limitation, including for an empty
 report. This uses the existing diagnostics field; no schema, synchronization or hash-input
 change. The shared resolve_state_dir helper identifies the same directory audit_all reads.
+
+### P2b main shipment and historical closeout (2026-10-10 UTC)
+
+Human merge #2215 at 01:10:34 UTC (80defe32) shipped the report-only slice. Its final head
+b8c09630 passed all CI; substantive review covered 56d1fc49, including the prior two fixes.
+The final local-snapshot disclosure fix was tested and its thread resolved; it merged before
+a further substantive review. That narrow review gap is retained rather than counted as reviewed.
+The six historical cases are now resolved by explicit maintainer-approved dispositions, not new
+exact-binding proof. All 169 cases are resolved; no raw records or feed assignments changed.
+Daily alert activation, persisted excluded/watch feedback and evidence-v2 integration remain
+next P2 work. P3–P5 and model admission remain gated.
+
+P2b retained-snapshot post-merge verification is complete; see
+[evidence and corrected projection counts](evidence/p2b-postmerge-verification-2026-10-10.md).

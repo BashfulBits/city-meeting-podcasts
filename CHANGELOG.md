@@ -12,12 +12,21 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Coverage verification counting correction.** Post-merge retained replay uses actual CLI
+  defaults: 28,594 placements and 1,189 unassigned entries, rather than the old helper’s
+  29,384 / 411. Global bid/purchasing exclusions were missing from that helper. No production
+  rules, records, identity, stage version or backfill changed.
+
+- **Historical evidence closeout.** All six carried Fort Worth/Dallas cases have explicit
+  maintainer-approved limited-evidence dispositions. Raw records, audio and feed assignments
+  are unchanged; missing independent proof remains documented and new evidence can reopen them.
+
 - **Batch feed lifecycle dispositions for 50 inactive and historical feeds.** Marks 33 concluded
   temporary committees, task forces, and restructured bodies as `retired` and 17 inactive
   standing boards or intermittent series as `dormant` in `config/feeds/*.yml` per review/37 and
   review/51, resolving feed-health stale incidents across cohorts #1599 and #2148.
   
-- **Complete source body-coverage report (#2216, prepared).** Opt-in audit JSON includes retained
+- **Complete source body-coverage report (#2216; PR #2215).** Opt-in audit JSON includes retained
   recordings and current observations, exact source-local identities, selector matches, policy
   proof, conflicts and unknown completeness. Report mode skips canonical state synchronization,
   timeline/audio diagnostics and GitHub reconciliation. Existing alerts and feeds are unchanged;
