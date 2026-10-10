@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared reviewed input calibration pilot (#2221).** Enables one verified free Groq route
+  through normal scheduled deployment, with at most six weekly input calls, 8,192 input and
+  256 output tokens per call. Output and broader rotation remain disabled pending separate
+  evidence review. Existing quota/pause admission applies; no cap changes or backfill.
+
 - **Verified isolated rescue recovery (#2220).** The unchanged production coordinator repaired
   legacy indexes, rolled back an injected mutation failure and resumed across a real Cloudflare
   instance reset with retry counters preserved. Temporary resources were deleted. Combined with

@@ -2999,7 +2999,10 @@ async function contextFixture(t, { provider = "groq", ids = ["probe"], tpm = 100
   return { ...fixture, env, catalog, now, start, admit };
 }
 
-test("context admission stays disabled without server activation, including RPC calls", async () => {
+test("context admission stays disabled without server activation, including RPC calls", async t => {
+  const previous = LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS;
+  LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS = [];
+  t.after(() => { LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS = previous; });
   const { coordinator, sql } = makeCoordinator({});
   const digest = await coordinator._contextCatalogDigest();
   assert.deepEqual(await coordinator.reserveRouteRequests({ operation: "context_start",
@@ -3211,4 +3214,30 @@ test("context paid, paused and unknown shared scopes fail closed", async t => {
     assert.equal((await c.reserveRouteRequests({ ...admit, catalog_digest: digest }, now)).error,
       error);
   });
+});
+
+
+test("reviewed input pilot admits six bounded calls and excludes output and other routes", async t => {
+  const rid = "groq_gpt_oss_120b_primary";
+  assert.deepEqual(LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS, [rid]);
+  assert.equal(LLMSchedulerDO.CONTEXT_OUTPUT_ENABLED, false);
+  const { coordinator: c, now, start, admit, sql } = await contextFixture(t, { ids: [rid] });
+  LLMSchedulerDO.CONTEXT_OUTPUT_ENABLED = false;
+  assert.equal((await c.reserveRouteRequests(start, now)).ok, true);
+  assert.equal((await c.reserveRouteRequests({ ...admit, input_tokens: 8193 }, now)).error,
+    "budget_exhausted");
+  assert.equal((await c.reserveRouteRequests({ ...admit, dimension: "output" }, now)).error,
+    "disabled");
+  assert.equal((await c.reserveRouteRequests({ ...admit, route_id: "other" }, now)).error,
+    "disabled");
+  for (let i = 0; i < 6; i++) {
+    assert.equal((await c.reserveRouteRequests({ ...admit, input_tokens: 8192,
+      attempt_id: i.toString(16).padStart(64, "0") }, now + i * 1000)).ok, true);
+  }
+  assert.equal((await c.reserveRouteRequests({ ...admit,
+    attempt_id: "f".repeat(64) }, now + 6000)).error, "budget_exhausted");
+  const row = [...sql.exec("SELECT * FROM context_probe_weeks")][0];
+  assert.equal(row.requests_used, 6);
+  assert.equal(row.input_used, 6 * 8192);
+  assert.equal(row.output_used, 6 * 256);
 });

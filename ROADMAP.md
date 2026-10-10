@@ -671,3 +671,6 @@ Durable storage/trusted mutation and audit activation follow as separately bound
 Recently shipped review/51: P2c2a guarded source-local decision persistence (#2237).
 Next authorized: authenticate explicit maintainer decisions and recover retries, then compare saved
 cases with current coverage in inspectable reports. Recurring alerts remain unchanged until verified.
+
+Review/48 input pilot #2221: maintainer approved six weekly input calls on one verified Groq
+route and immediate first-run evidence review. Output and broader rotation remain separately gated.
