@@ -3363,3 +3363,24 @@ report-only step and are committed before code. Production activation remains ga
 
 P2c2b prepared verification: 87 ledger/action tests and 5,702 offline tests passed
 (16 deselected), with whole Ruff/format across 511 files. No production caller was enabled.
+
+
+P2c3a synthetic end-to-end report verification (local fixtures, no historical decision import):
+
+| Fixture | Report outcome | Ask again? |
+|---|---|---|
+| Unchanged pending watch | unchanged | No; retain pending case. |
+| New related recording under watch | related_recordings_added | Yes; review the same case. |
+| New related recording under exclusion | related_recordings_added | No; retain approved outcome. |
+| New official identity contradiction | material_change | Yes; show conflicting evidence. |
+
+Local usage from the repository root:
+`PYTHONPATH=. python scripts/audit_feeds.py --decision-comparison-input INPUT.json
+--decision-comparison-report REPORT.json` (the command is one line).
+Input is the explicit reviewed-case/history bundle specified above, not a raw coverage file.
+Automatic coverage projection, trusted API retrieval and weekly alert activation remain subsequent
+bounded work. Do not describe these local fixture results as deployed scan suppression.
+
+P2c3a prepared verification: 209 targeted ledger/action/audit-script checks and 5,724 offline
+tests passed (16 deselected); whole Ruff/format passed across 511 files. Four synthetic local
+case reports matched the recommendations above. No production reads/writes or alert activation.

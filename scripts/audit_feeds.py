@@ -1892,7 +1892,72 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--site-config", default="config/site_config.yml")
     ap.add_argument("--config-dir", default="config")
     ap.add_argument("--body-coverage-report", help="write retained/current body coverage only")
+    ap.add_argument("--decision-comparison-input", help="read a local reviewed-case/history bundle")
+    ap.add_argument(
+        "--decision-comparison-report", help="write remembered-decision comparison only"
+    )
     args = ap.parse_args(argv)
+    if args.decision_comparison_input or args.decision_comparison_report:
+        if not (args.decision_comparison_input and args.decision_comparison_report):
+            ap.error("decision comparison requires both input and report paths")
+        if (
+            args.body_coverage_report
+            or args.dry_run
+            or args.city
+            or args.enclosures
+            or args.meetings_urls
+            or args.timeline_diagnostics
+            or args.persist_timeline_integrity
+            or args.timeline_repair_min_delta is not None
+            or args.timeline_repair_cohort
+            or args.timeline_finding_min_delta != 1.0
+            or args.issue
+            or args.unexpected_body_evidence
+        ):
+            ap.error("decision comparison cannot combine with other audit/action modes")
+        from citypods.remedy_ledger import (
+            _unique_json_object,
+            compare_decisions,
+            fold_events,
+            parse_event,
+        )
+
+        input_path = Path(args.decision_comparison_input)
+        output_path = Path(args.decision_comparison_report)
+        if input_path.resolve() == output_path.resolve():
+            ap.error("decision report cannot overwrite its input")
+        bundle = json.loads(input_path.read_text(), object_pairs_hook=_unique_json_object)
+        if not isinstance(bundle, dict) or set(bundle) != {
+            "schema_version",
+            "coverage",
+            "events",
+            "evidence",
+            "config_hash",
+            "policy_hash",
+        }:
+            raise ValueError("comparison bundle: missing or unknown fields")
+        if type(bundle["schema_version"]) is not int or bundle["schema_version"] != 1:
+            raise ValueError("comparison bundle: unsupported schema")
+        if not isinstance(bundle["events"], list):
+            raise ValueError("comparison bundle: events must be a list")
+        groups = {}
+        for payload in bundle["events"]:
+            event = parse_event(payload)
+            groups.setdefault(event.decision_id, []).append(event)
+        decisions = {key: fold_events(events) for key, events in groups.items()}
+        rows = compare_decisions(
+            bundle["coverage"],
+            decisions,
+            evidence=bundle["evidence"],
+            config_hash=bundle["config_hash"],
+            policy_hash=bundle["policy_hash"],
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(
+            json.dumps({"schema_version": 1, "rows": rows}, indent=2, sort_keys=True) + "\n"
+        )
+        print(f"decision comparison: wrote {len(rows)} case(s) to {output_path}")
+        return 0
     if args.body_coverage_report and (
         args.persist_timeline_integrity
         or args.timeline_diagnostics

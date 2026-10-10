@@ -380,3 +380,202 @@ def load_decisions(storage, *, source_keys) -> dict[str, DecisionState]:
                     raise ValueError(f"listed decision event disappeared: {key}")
                 grouped.setdefault(parsed.decision_id, []).append(parsed)
     return {key: fold_events(grouped[key]) for key in sorted(grouped)}
+
+
+def _comparison_case(case):
+    from citypods.remedy_policy import material_evidence_hash
+
+    identity_fields = {"city", "source_key", "policy_id", "normalized_label"}
+    if not isinstance(case, dict) or set(case) != identity_fields | {"recording_refs"}:
+        raise ValueError("coverage case: missing or unknown fields")
+    identity = {field: _text(case[field], field) for field in identity_fields}
+    _source_segment(identity["source_key"])
+    if body_key(identity["normalized_label"]) != identity["normalized_label"]:
+        raise ValueError("coverage case: label must be normalized")
+    refs = []
+    for ref in _sequence(case["recording_refs"], "recording_refs"):
+        if not isinstance(ref, dict) or set(ref) != {"source_key", "uid", "provider_guid"}:
+            raise ValueError("coverage case: invalid recording reference")
+        if ref["source_key"] != identity["source_key"]:
+            raise ValueError("coverage case: reference source mismatch")
+        uid = _text(ref["uid"], "uid", True)
+        guid = _text(ref["provider_guid"], "provider_guid", True)
+        if uid is None and guid is None:
+            raise ValueError("coverage case: recording identity required")
+        refs.append(dict(source_key=ref["source_key"], uid=uid, provider_guid=guid))
+    refs = sorted({material_evidence_hash(ref): ref for ref in refs}.values(), key=canonical_hash)
+    return identity, refs
+
+
+def compare_decisions(coverage, decisions, *, evidence, config_hash, policy_hash):
+    """Recommend review from explicit local case projections; do not suppress or mutate scans."""
+    from citypods.remedy_policy import material_evidence_hash
+
+    _hash(config_hash, "config_hash")
+    _hash(policy_hash, "policy_hash")
+    if not isinstance(decisions, dict) or not isinstance(evidence, dict):
+        raise ValueError("comparison: decisions and evidence must be objects")
+    cases = {}
+    for case in _sequence(coverage, "coverage"):
+        identity, refs = _comparison_case(case)
+        key = decision_id(
+            identity["city"],
+            identity["source_key"],
+            identity["policy_id"],
+            identity["normalized_label"],
+        )
+        if key in cases:
+            refs += cases[key][1]
+        cases[key] = (
+            identity,
+            sorted({canonical_hash(ref): ref for ref in refs}.values(), key=canonical_hash),
+        )
+    histories = {}
+    for key, supplied in decisions.items():
+        history = fold_events(supplied.events)
+        if key != history.decision_id:
+            raise ValueError("comparison: history key mismatch")
+        histories[key] = history
+    if set(evidence) - set(histories):
+        raise ValueError("comparison: evidence for unknown decision")
+    result = []
+    for key in sorted(set(cases) | set(histories)):
+        history = histories.get(key)
+        if history is None:
+            identity, refs = cases[key]
+            result.append(
+                dict(
+                    decision_id=key,
+                    **identity,
+                    disposition=None,
+                    outcome="no_saved_decision",
+                    recording_refs=refs,
+                    new_recording_refs=refs,
+                    reasons=[],
+                    review_required=True,
+                )
+            )
+            continue
+        representative = history.events[0]
+        identity = {
+            field: getattr(representative, field)
+            for field in ("city", "source_key", "policy_id", "normalized_label")
+        }
+        retained = [ref.__dict__ for event in history.events for ref in event.recording_refs]
+        retained = sorted(
+            {canonical_hash(ref): ref for ref in retained}.values(), key=canonical_hash
+        )
+        refs = cases.get(key, (identity, []))[1]
+        combined = sorted(
+            {canonical_hash(ref): ref for ref in retained + refs}.values(), key=canonical_hash
+        )
+        new_refs = [ref for ref in refs if ref not in retained]
+        row = dict(
+            decision_id=key,
+            **identity,
+            disposition=history.disposition,
+            outcome="unchanged",
+            recording_refs=combined,
+            new_recording_refs=new_refs,
+            reasons=[],
+            review_required=False,
+        )
+        if history.diagnostics:
+            row.update(
+                outcome="history_blocked", reasons=list(history.diagnostics), review_required=True
+            )
+        elif key not in cases:
+            row.update(
+                outcome="observations_missing",
+                reasons=["saved case absent from observations"],
+                review_required=True,
+            )
+        else:
+            tip = next(event for event in history.events if event.event_id == history.tip_ids[0])
+            packets = evidence.get(key)
+            problem = None
+            if not isinstance(packets, dict) or set(packets) != {"baseline", "current"}:
+                problem = "baseline/current evidence required"
+            else:
+                for name in ("baseline", "current"):
+                    packet = packets[name]
+                    if not isinstance(packet, dict) or set(packet) != {
+                        "identity",
+                        "official_identity",
+                        "contradictions",
+                        "recording_refs",
+                    }:
+                        problem = "invalid evidence packet"
+                        break
+                    if (
+                        packet["identity"] != identity
+                        or not isinstance(packet["official_identity"], list)
+                        or not isinstance(packet["contradictions"], list)
+                    ):
+                        problem = "evidence identity or shape mismatch"
+                        break
+                    try:
+                        _comparison_case({**identity, "recording_refs": packet["recording_refs"]})
+                    except ValueError:
+                        problem = "invalid evidence recording references"
+                        break
+                if problem is None:
+                    baseline, current = packets["baseline"], packets["current"]
+                    if material_evidence_hash(baseline) != tip.evidence_hash:
+                        problem = "baseline evidence does not match saved decision"
+                    elif material_evidence_hash(
+                        baseline["recording_refs"]
+                    ) != material_evidence_hash([ref.__dict__ for ref in tip.recording_refs]):
+                        problem = "baseline recordings do not match saved decision"
+                    elif material_evidence_hash(
+                        current["recording_refs"]
+                    ) != material_evidence_hash(refs):
+                        problem = "current recordings do not match observations"
+            if problem:
+                row.update(outcome="history_blocked", reasons=[problem], review_required=True)
+            else:
+                material = any(
+                    material_evidence_hash(baseline[field])
+                    != material_evidence_hash(current[field])
+                    for field in ("official_identity", "contradictions")
+                )
+                identity_changed = any(
+                    (
+                        ref["uid"] is not None
+                        and ref["uid"] == old["uid"]
+                        and ref["provider_guid"] != old["provider_guid"]
+                    )
+                    or (
+                        ref["provider_guid"] is not None
+                        and ref["provider_guid"] == old["provider_guid"]
+                        and ref["uid"] != old["uid"]
+                    )
+                    for ref in new_refs
+                    for old in retained
+                )
+                if material or identity_changed:
+                    row.update(
+                        outcome="material_change",
+                        reasons=["official evidence or recording identity changed"],
+                        review_required=True,
+                    )
+                elif config_hash != tip.config_hash or policy_hash != tip.policy_hash:
+                    row.update(
+                        outcome="replay_required",
+                        reasons=["config or policy changed; fresh replay required"],
+                        review_required=True,
+                    )
+                elif any(ref not in refs for ref in retained):
+                    row.update(
+                        outcome="observations_missing",
+                        reasons=["retained recordings absent from observations"],
+                        review_required=True,
+                    )
+                elif new_refs:
+                    row.update(
+                        outcome="related_recordings_added",
+                        review_required=history.disposition
+                        not in {"assigned", "excluded", "not_pursued", "rejected"},
+                    )
+        result.append(row)
+    return result

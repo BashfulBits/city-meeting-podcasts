@@ -477,3 +477,190 @@ def test_reconstruction_read_error_is_not_empty_history():
     with pytest.raises(OSError, match="read failed"):
         load_decisions(storage, source_keys=["source-a"])
     assert not any(path.exists() for path in storage.paths)
+
+
+def comparison_fixture(state="blocked", disposition="watch"):
+    from copy import deepcopy
+
+    from citypods.remedy_policy import material_evidence_hash
+
+    payload = event(state=state, disposition=disposition)
+    identity = {
+        key: payload[key] for key in ("city", "source_key", "policy_id", "normalized_label")
+    }
+    packet = dict(
+        identity=identity,
+        official_identity=[{"quote": "Official committee", "url": "https://example.org"}],
+        contradictions=[],
+        recording_refs=payload["recording_refs"],
+    )
+    payload["evidence_hash"] = material_evidence_hash(packet)
+    payload["event_id"] = event_id(payload)
+    decisions = {payload["decision_id"]: fold_events([payload])}
+    case = {**identity, "recording_refs": payload["recording_refs"]}
+    evidence = {payload["decision_id"]: {"baseline": deepcopy(packet), "current": deepcopy(packet)}}
+    return payload, case, decisions, evidence
+
+
+def comparison(coverage, decisions, evidence, **changes):
+    from citypods.remedy_ledger import compare_decisions
+
+    return compare_decisions(
+        coverage,
+        decisions,
+        evidence=evidence,
+        config_hash=changes.get("config_hash", "b" * 64),
+        policy_hash=changes.get("policy_hash", "c" * 64),
+    )
+
+
+def test_unchanged_watch_is_pending_with_quiet_recommendation():
+    _, case, decisions, evidence = comparison_fixture()
+    row = comparison([case], decisions, evidence)[0]
+    assert row["outcome"] == "unchanged"
+    assert row["disposition"] == "watch"
+    assert not row["review_required"]
+    assert not row["new_recording_refs"]
+    assert next(iter(decisions.values())).state == "blocked"
+
+
+@pytest.mark.parametrize(
+    "state,disposition,review",
+    [
+        ("blocked", "watch", True),
+        ("covered", "assigned", False),
+        ("excluded", "excluded", False),
+        ("resolved", "not_pursued", False),
+        ("refinement_needed", "rejected", False),
+    ],
+)
+def test_new_related_recording_retains_case_and_does_not_reopen_terminal_outcome(
+    state, disposition, review
+):
+    from copy import deepcopy
+
+    payload, case, decisions, evidence = comparison_fixture(state, disposition)
+    case = deepcopy(case)
+    new = {"source_key": "source-a", "uid": "another UID", "provider_guid": "View/9/124"}
+    case["recording_refs"].append(new)
+    evidence[payload["decision_id"]]["current"]["recording_refs"] = case["recording_refs"]
+    row = comparison([case, case], decisions, evidence)[0]
+    assert row["decision_id"] == payload["decision_id"]
+    assert row["outcome"] == "related_recordings_added"
+    assert row["new_recording_refs"] == [new]
+    assert row["review_required"] is review
+    assert row["disposition"] == disposition
+    assert len(row["recording_refs"]) == 2
+    assert len(next(iter(decisions.values())).events) == 1
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("city", "neighbor-tx"),
+        ("source_key", "neighbor-source"),
+        ("normalized_label", "committee topic discussion"),
+        ("policy_id", "other-policy"),
+    ],
+)
+def test_neighboring_case_does_not_join_saved_case(field, value):
+    from copy import deepcopy
+
+    _, case, decisions, evidence = comparison_fixture()
+    case = deepcopy(case)
+    case[field] = value
+    if field == "source_key":
+        for ref in case["recording_refs"]:
+            ref["source_key"] = value
+    rows = comparison([case], decisions, evidence)
+    assert {row["outcome"] for row in rows} == {"observations_missing", "no_saved_decision"}
+    assert all(row["review_required"] for row in rows)
+
+
+@pytest.mark.parametrize("field", ["official_identity", "contradictions"])
+def test_new_material_proof_requires_review_even_for_approved_outcome(field):
+    payload, case, decisions, evidence = comparison_fixture("covered", "assigned")
+    evidence[payload["decision_id"]]["current"][field].append({"quote": "Different institution"})
+    row = comparison([case], decisions, evidence)[0]
+    assert row["outcome"] == "material_change"
+    assert row["review_required"]
+
+
+@pytest.mark.parametrize("changes", [{"config_hash": "d" * 64}, {"policy_hash": "d" * 64}])
+def test_changed_config_requires_replay_rather_than_assuming_contradiction(changes):
+    _, case, decisions, evidence = comparison_fixture()
+    row = comparison([case], decisions, evidence, **changes)[0]
+    assert row["outcome"] == "replay_required"
+    assert row["review_required"]
+
+
+def test_missing_or_wrong_baseline_never_recommends_quiet():
+    payload, case, decisions, evidence = comparison_fixture()
+    assert comparison([case], decisions, {})[0]["outcome"] == "history_blocked"
+    evidence[payload["decision_id"]]["baseline"]["official_identity"] = []
+    row = comparison([case], decisions, evidence)[0]
+    assert row["outcome"] == "history_blocked"
+    assert row["review_required"]
+
+
+def test_conflicting_history_and_missing_observations_remain_visible():
+    payload, case, decisions, evidence = comparison_fixture()
+    alternate = dict(payload, rationale="Independent root")
+    alternate["event_id"] = event_id(alternate)
+    decisions[payload["decision_id"]] = fold_events([payload, alternate])
+    assert comparison([case], decisions, evidence)[0]["outcome"] == "history_blocked"
+    _, case, decisions, evidence = comparison_fixture()
+    case["recording_refs"] = []
+    evidence[payload["decision_id"]]["current"]["recording_refs"] = []
+    row = comparison([case], decisions, evidence)[0]
+    assert row["outcome"] == "observations_missing"
+    assert row["recording_refs"]
+
+
+def test_same_uid_with_changed_provider_binding_is_not_guessed_as_new_meeting():
+    from copy import deepcopy
+
+    payload, case, decisions, evidence = comparison_fixture()
+    case = deepcopy(case)
+    case["recording_refs"][0]["provider_guid"] = "other binding"
+    evidence[payload["decision_id"]]["current"]["recording_refs"] = case["recording_refs"]
+    assert comparison([case], decisions, evidence)[0]["outcome"] == "material_change"
+
+
+def test_comparison_is_deterministic_and_preserves_inputs():
+    from copy import deepcopy
+
+    _, case, decisions, evidence = comparison_fixture()
+    unrelated = deepcopy(case)
+    unrelated["policy_id"] = "unrelated"
+    before = deepcopy((case, unrelated, decisions, evidence))
+    assert comparison([case, unrelated], decisions, evidence) == comparison(
+        [unrelated, case], decisions, evidence
+    )
+    assert (case, unrelated, decisions, evidence) == before
+
+
+@pytest.mark.parametrize("where", ["baseline", "current"])
+def test_malformed_evidence_reference_cannot_hide_behind_ignored_clock_field(where):
+    from copy import deepcopy
+
+    payload, case, decisions, evidence = comparison_fixture()
+    evidence = deepcopy(evidence)
+    evidence[payload["decision_id"]][where]["recording_refs"][0]["observed_at"] = "ignored clock"
+    row = comparison([case], decisions, evidence)[0]
+    assert row["outcome"] == "history_blocked"
+    assert row["review_required"]
+
+
+def test_unknown_coverage_fields_and_unbound_recordings_fail_closed():
+    from copy import deepcopy
+
+    _, case, decisions, evidence = comparison_fixture()
+    for field, value in (("extra", True), ("normalized_label", "Committee")):
+        invalid = {**case, field: value}
+        with pytest.raises(ValueError):
+            comparison([invalid], decisions, evidence)
+    invalid = deepcopy(case)
+    invalid["recording_refs"][0]["source_key"] = "neighbor-source"
+    with pytest.raises(ValueError, match="source mismatch"):
+        comparison([invalid], decisions, evidence)

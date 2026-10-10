@@ -1671,3 +1671,61 @@ def test_body_coverage_cli_never_syncs_state_or_reconciles(monkeypatch, tmp_path
     assert len(report["material_hash"]) == 64
     with pytest.raises(SystemExit):
         _mod.main(["--body-coverage-report", str(path), "--persist-timeline-integrity"])
+
+
+def test_local_decision_comparison_never_loads_config_or_runs_audit(monkeypatch, tmp_path):
+    import json
+
+    from tests.test_remedy_ledger import comparison_fixture
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("local comparison must not call production services")
+
+    for name in (
+        "load_site_config",
+        "load_city_configs",
+        "audit_all",
+        "pull_canonical_state",
+        "make_storage",
+        "reconcile",
+    ):
+        monkeypatch.setattr(_mod, name, forbidden)
+    payload, case, _, evidence = comparison_fixture()
+    input_path, output_path = tmp_path / "input.json", tmp_path / "report.json"
+    bundle = dict(
+        schema_version=1,
+        coverage=[case],
+        events=[payload],
+        evidence=evidence,
+        config_hash="b" * 64,
+        policy_hash="c" * 64,
+    )
+    original = json.dumps(bundle)
+    input_path.write_text(original)
+    args = [
+        "--decision-comparison-input",
+        str(input_path),
+        "--decision-comparison-report",
+        str(output_path),
+    ]
+    assert _mod.main(args) == 0
+    report = json.loads(output_path.read_text())
+    assert report["rows"][0]["outcome"] == "unchanged"
+    assert not report["rows"][0]["review_required"]
+    assert input_path.read_text() == original
+    with pytest.raises(SystemExit):
+        _mod.main(args + ["--dry-run"])
+    with pytest.raises(SystemExit):
+        _mod.main(["--decision-comparison-input", str(input_path)])
+    with pytest.raises(SystemExit):
+        _mod.main(
+            [
+                "--decision-comparison-input",
+                str(input_path),
+                "--decision-comparison-report",
+                str(input_path),
+            ]
+        )
+    input_path.write_text('{"schema_version":1,"schema_version":1}')
+    with pytest.raises(ValueError, match="duplicate"):
+        _mod.main(args)
