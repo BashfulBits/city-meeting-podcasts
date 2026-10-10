@@ -23,6 +23,12 @@ Once 1.0 ships, entries move under semver tags.
   `inputs.systemone` through the Python dispatch path. The capacity calculator gains
   `--judging`. Nothing runs until `judging.enabled` (PR4); shadow mode changes no display,
   admission or publication field.
+  
+- **Decision memory foundation (review/51 P2c1, prepared).** Adds strict immutable, source-local
+  decision events and offline causal reconstruction. Repeated deliveries deduplicate; missing
+  parents and conflicting histories remain blocked. Keep-watching stays pending and preserves
+  recording references. No storage writes, scan suppression, model admission, feed changes or
+  artifact invalidation; unchanged-watch suppression is reserved for later audit integration.
 
 - **Judge stack configuration (review/53 PR2).** Adds JEV as a dispatch route
   (`beatapi_jev_1_13_free`, `api_shape: systemone`, `/systemone` under `custom-beatapi`, 58,000-token

@@ -189,8 +189,10 @@ match a feed, a reviewer should be able to distinguish these outcomes:
    ordinary cancellations and unavailable recordings.
 2. **Keep watching.** Evidence shows a real public body or recurring meeting series, but the
    recordings in the catalog are not yet enough to justify a feed. Preserve the unmatched entries
-   and revisit this decision when another recording appears. This is not a feed assignment or a
-   claim that an unrecorded meeting has audio.
+   and attach newly related recordings to the same pending disposition. An unchanged weekly
+   scan does not re-ask for a decision. Renewed review requires new related meetings or material
+   evidence. This is not a feed assignment or a claim that an unrecorded meeting has audio.
+   These keep-watching semantics were approved on 2026-10-10; P2c integration implements them.
 3. **Add a rule to an existing feed.** Evidence identifies the meeting as the same body already
    served by a configured feed. Add a reusable, source-scoped title rule when possible and test
    positive examples plus similar titles that should remain out. Use a one-recording exception
@@ -2989,3 +2991,118 @@ next P2 work. P3–P5 and model admission remain gated.
 
 P2b retained-snapshot post-merge verification is complete; see
 [evidence and corrected projection counts](evidence/p2b-postmerge-verification-2026-10-10.md).
+
+### P2c1 decision event and fold foundation — L3, approved
+
+Predecessors: P2a #2213 and report-only P2b #2215 are shipped. Historical case closeout and
+post-merge verification shipped in #2227. This is the next deterministic slice, not live model
+admission or alert activation. It prepares memory for approved assignment/exclusion/watch
+outcomes without yet writing it to storage or using it to suppress reports.
+
+Permitted implementation files: new `citypods/remedy_ledger.py`, new
+`tests/test_remedy_ledger.py`, lifecycle docs. Existing `remedy_policy.canonical_hash`,
+`bodies.body_key` and config approval-reference validation may be imported unchanged.
+Do not modify audit/report schemas, feed config, providers, records, storage/routing, workflows,
+leases, models, dependencies, evaluation gold or GitHub mutation scripts. No remote IO.
+
+#### Approved schema
+
+Strict immutable `RemedyEvent`, schema_version integer 1, rejects unknown keys and coercions:
+
+- `city`, `source_key`, `policy_id`, `normalized_label`: explicit nonempty source-local identity.
+  `normalized_label` uses existing `body_key`; retain verbatim official text in the evidence,
+  not as rewritten official metadata. Decision ID is SHA256 of these four canonical fields.
+- `decision_id`, `event_id`: full lowercase SHA256 strings. Validate supplied IDs against
+  recomputation; helper constructors compute IDs without inventing recording identity.
+- `parent_event_ids`: sorted unique event-ID tuple; no self-parent. Empty only for an initial
+  event. Parent hashes must refer to this same decision/source.
+- `occurred_at`: aware UTC ISO timestamp of the original action/delivery, not retry time.
+- `actor_kind`: maintainer, automation or system; `actor_id`: nonempty trusted caller identity.
+  These are provenance assertions, not authentication: trusted entrypoint validation follows
+  in later slices. The pure fold must never treat a claimed actor string as authorization.
+- `state`: the existing seven states covered, excluded, proposed, in_review,
+  refinement_needed, blocked, resolved. No new watch state.
+- `evidence_hash`, `config_hash`, `policy_hash`: full SHA256 strings, supplied by callers.
+  New recording coverage does not itself authorize changing a terminal policy decision.
+- `recording_refs`: tuple of strict `{source_key, uid, provider_guid}` entries. UID and GUID
+  may be null individually, but at least one must be present. Source must match this event;
+  no stripping GUIDs, deducing cross-view identity or generating UIDs.
+- `provenance`: tuple of strict `{role, route_id, model_family, reasoning_level, report_hash}`
+  entries for actual reviewed calls; all strings nonempty, report_hash SHA256. Empty is allowed
+  for deterministic/human-only decisions. No prompts, raw model responses or credentials.
+- `rationale`: nonempty bounded text (at most 4,000 characters), treated as untrusted data.
+- `artifact_ref`, `approval_ref`, `external_delivery_id`: nullable nonempty strings; artifact
+  and approval references use existing approval-reference shape checks. No URL fetching.
+- `disposition`: null or one of assigned, excluded, watch, not_pursued, rejected.
+  Disposition is separate from workflow state. A watch decision uses blocked state with watch
+  disposition and a rationale describing missing evidence/recheck conditions. It never silently
+  becomes excluded or gains feed eligibility after an arbitrary count threshold.
+
+Assigned/covered requires an approval reference, matching nonempty recording refs and supplied
+replay hash evidence; this validates declarations, not that replay or approval actually happened.
+Excluded/not_pursued terminal outcomes require approval_ref and rationale. Watch requires
+rationale and approval_ref, but is not proof of ownership. Rejected proposals use
+refinement_needed and rejected disposition; they remain visible. Later entrypoints authenticate
+approval and enforce fresh evidence before suppression or publication.
+
+#### Pure functions and conservative reconstruction
+
+`decision_id(city, source_key, policy_id, label)` hashes explicit identity using body_key.
+`event_id(payload)` hashes canonical event content excluding its event_id; sort unordered parent,
+recording and provenance tuples. Include original occurred_at and delivery ID. No report clock.
+`parse_event(payload)` returns the validated immutable event; raises contextual ValueError.
+`fold_events(events)` returns immutable DecisionState with decision/source identity, current
+state/disposition or blocked, retained events/tip IDs and diagnostics. Empty input returns an
+empty blocked result. Multiple decision identities in one input raise ValueError.
+
+Fold causal parent links, not timestamp ordering or last-write-wins. Shuffled inputs produce the
+same result. Identical event IDs deduplicate. Repeated same source/actor/external_delivery_id
+fold once when semantic content (all fields except event_id and occurred_at) agrees; alias all
+retry IDs for parent resolution. Conflicting payloads under the same delivery ID block. Do not
+use processing timestamps to pick a winner. Missing parents, cycles, multiple independent roots,
+multiple unreconciled tips or contradictory identities block with explicit diagnostics.
+An explicit reconciliation event can name all conflicting parents, but this pure slice does not
+validate actor permissions or authorize its production use. Preserve all input events.
+
+A covered/excluded/resolved terminal decision may acquire new recording evidence while retaining
+its disposition. The pure fold does not infer reopening from counts, dates, changed model route,
+clock age or evidence_hash alone. A later explicit trusted reopen action must be represented and
+validated in the entrypoint slice before it can drive automated work. Do not invent reopening
+semantics here or hide a rejected proposal by dropping its events.
+
+#### Acceptance tests and subsequent PRs
+
+Test strict schema/IDs, source isolation, null refs, optional deterministic provenance, unknown
+fields, malformed approvals, retained raw strings, stable unordered hashes, causal replay,
+missing parents/cycles/conflicting tips, repeated delivery with timestamp differences,
+conflicting delivery content and preserved rejection/watch outcomes. Fake fixtures only;
+no production decision import, P0 migration, storage, credentials or network.
+Run targeted tests, whole Ruff/format and full offline suite. Document prepared implementation;
+freeze only this slice after human merge. Next P2c2 specifies immutable event storage and trusted
+lease/coordinator integration. P2c3 wires current evidence/dispositions to audit/remedy in
+report-only mode, including v1 refresh and suppression/reopening rules. Alert activation follows
+verified report behavior. Neither later slice is implicitly enabled by P2c1.
+
+Maintainer approved this schema in chat on 2026-10-10. A keep-watching decision remains
+pending for the same city/source/body case. Newly related recordings join that disposition;
+an unchanged weekly scan must not request another decision. Only new related meetings or
+material related evidence warrants renewed review. Similarity must use reviewed identity rules,
+not a model guess, cross-source UID inference or count threshold. P2c3 implements that behavior;
+P2c1 records the pending outcome without suppressing any current scan.
+
+P2c1 implementation prepared under #2230: new pure ledger module and fake-fixture tests.
+No storage or scan entrypoint is connected. `evidence_hash` is the supplied replay evidence hash
+for assigned/covered declarations; validation cannot prove that the cited replay actually ran.
+The approved keep-watching semantics are a later integration acceptance requirement, not an
+assertion that weekly suppression is active in this foundation PR.
+
+P2c1 verification: 5,618 offline tests passed (16 deselected), then 38 final ledger checks
+passed including additional cycle/terminal tests; whole Ruff/format passed across 497 files.
+No current production behavior changed. Human merge remains required.
+
+CodeRabbit review on #2231 identified one valid approval-gate gap: excluded state with null
+disposition still requires approval_ref. The fix validates both state and disposition, preserves
+nullable resolved outcomes, and adds a regression test. No scan or feed entrypoint is enabled.
+
+Review-fix verification: 39 targeted tests and 5,623 offline tests passed (16 deselected);
+whole Ruff/format passed across 497 files.
