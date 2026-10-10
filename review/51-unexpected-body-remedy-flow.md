@@ -3363,3 +3363,23 @@ report-only step and are committed before code. Production activation remains ga
 
 P2c2b prepared verification: 87 ledger/action tests and 5,702 offline tests passed
 (16 deselected), with whole Ruff/format across 511 files. No production caller was enabled.
+
+
+CLI review of #2244 completed 2026-10-10 against main with three low-severity findings.
+The stale-parent error-order suggestion is not adopted: the early terminal-parent guard also
+checks retry semantics before returning an existing delivery; moving it solely to current tips
+would weaken that check. Stale parents still fail closed and no accepted outcome changes.
+Two report-contract clarifications are recorded here; runtime behavior remains unchanged:
+
+- Baseline evidence_hash is `material_evidence_hash` of the entire exact four-field baseline
+  packet (`identity`, `official_identity`, `contradictions`, `recording_refs`), not a packet field
+  containing a hash. That existing helper recursively sorts dictionary keys and collection
+  elements, omits observed_at clock keys, then uses canonical_hash. Official evidence content and
+  recording identifiers are retained; source-local identity and refs must match the saved tip.
+- For a saved decision absent from coverage, emit observations_missing without requiring a
+  current evidence packet. A damaged/conflicting history still takes precedence as history_blocked.
+  Baseline/current packet validation is required for observed cases. #2245 already implements
+  this ordering; this clarification removes ambiguity rather than changing its behavior.
+
+Raw CLI output retained locally as /private/tmp/2244-cli-review.ndjson. Code/tests are unchanged
+from the previously verified implementation; conflict carry preserves merged main features.
