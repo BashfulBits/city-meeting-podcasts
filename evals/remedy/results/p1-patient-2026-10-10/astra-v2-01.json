@@ -1,0 +1,95 @@
+{
+  "results": [
+    {
+      "case_id": "denton-health-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "resp_0c26ff076fc00645016aca5af0bb44819bb3748f4a3df2e16c",
+        "created": 1791646454,
+        "model": "gpt-6-astra-free",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-health-own\",\"supported\":true,\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"proposed_action\":\"Retain recording 122398 in denton-tx-health-building-standards-commission without changing official metadata.\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"rationale\":\"The official agenda linked to recording 122398 explicitly states that the City of Denton Health and Building Standards Commission will convene on June 3, 2021, at 3:00 p.m., matching the supplied recording. Under the approved policy, the officially convened body determines ownership; the Council Work Session Room is only the meeting location. The existing commission feed represents that body and explicitly includes this recording. This supports the recording-specific assignment, not a conclusion about archive completeness.\"}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "provider_specific_fields": {
+                "refusal": null
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 177,
+          "prompt_tokens": 2535,
+          "total_tokens": 2712,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": 0,
+            "reasoning_tokens": 0,
+            "rejected_prediction_tokens": null,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": 0,
+            "cached_tokens": 0,
+            "text_tokens": 0,
+            "image_tokens": 0
+          },
+          "usage_semantic": "openai",
+          "usage_source": "anthropic",
+          "billing_usage": {
+            "source": "claude_messages",
+            "semantic": "anthropic",
+            "claude_usage": {
+              "input_tokens": 2535,
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "output_tokens": 177,
+              "claude_cache_creation_5_m_tokens": 0,
+              "claude_cache_creation_1_h_tokens": 0
+            }
+          },
+          "input_tokens": 2535,
+          "output_tokens": 0,
+          "input_tokens_details": null,
+          "claude_cache_creation_5_m_tokens": 0,
+          "claude_cache_creation_1_h_tokens": 0
+        },
+        "service_tier": null
+      },
+      "route_id": "beatapi_gpt_6_astra_free",
+      "upstream_model": "gpt-6-astra-free",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "Retain recording 122398 in denton-tx-health-building-standards-commission without changing official metadata.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda linked to recording 122398 explicitly states that the City of Denton Health and Building Standards Commission will convene on June 3, 2021, at 3:00 p.m., matching the supplied recording. Under the approved policy, the officially convened body determines ownership; the Council Work Session Room is only the meeting location. The existing commission feed represents that body and explicitly includes this recording. This supports the recording-specific assignment, not a conclusion about archive completeness."
+      },
+      "duration_seconds": 16.017920167185366
+    }
+  ],
+  "diagnostics": [
+    {
+      "started_at": "2026-10-10T15:33:59.785679+00:00",
+      "model": "openai/gpt-6-astra-free",
+      "status": "completed",
+      "duration_seconds": 14.636721500195563
+    }
+  ]
+}

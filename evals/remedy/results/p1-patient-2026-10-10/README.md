@@ -26,3 +26,13 @@ exact free model ID and physical route identity. Production catalogs are unchang
 
 BeatAPI GPT-labelled serving-family metadata is unresolved in the catalog. Retain
 all response metadata and do not assume independent OpenAI family identity.
+
+## Explicit deferred-case retries
+
+The maintainer approved retrying only Sol's three deferred cases and DeepSeek's
+seven. --retry-from validates the original model, physical route and manifest hash
+before any storage/provider operation, selects deferred mode/case pairs and excludes
+completed pairs. Originals remain unchanged; new outputs and derived scores are
+separate files. retry-provenance.json records the exact selection and script hash.
+Existing 600-second request, 120-second production drain and token bounds remain.
+No failed answer is silently retried and no completed answer is overwritten.

@@ -1,0 +1,18 @@
+import subprocess, time
+from pathlib import Path
+root=Path('/private/tmp/p1-kimi-reviewer')
+results=root/'evals/remedy/results/p1-patient-2026-10-10'
+stop=time.monotonic()+14400
+while not (results/'astra-v2.json').exists():
+    if time.monotonic()>stop: raise SystemExit('Astra did not finish; no subsequent batch started')
+    time.sleep(30)
+for model in ('sol','deepseek'):
+    target=results/(model+'-v1.json')
+    if target.exists(): continue
+    log=results/(model+'-v1.log')
+    with log.open('x') as out:
+        code=subprocess.call(['/usr/local/bin/citypods-env','env','R2_BUCKET=citypods-spike',
+            'PYTHONPATH=.','python',str(results/'evaluate.py'),model,'--out',str(target)],
+            cwd=root,stdout=out,stderr=subprocess.STDOUT)
+    print(model,'exit',code,flush=True)
+    if code: raise SystemExit(code)

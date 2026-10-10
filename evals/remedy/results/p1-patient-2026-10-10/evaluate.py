@@ -54,6 +54,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("model", choices=ROUTES)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--retry-from", type=Path)
     args = parser.parse_args()
     if args.out.exists():
         raise SystemExit("Refusing existing output before any provider call")
@@ -92,6 +93,34 @@ def main():
 
     manifest_path = ROOT / "evals/remedy/holdout/p1-denton-2026-10-10/manifest.json"
     manifest = Manifest.model_validate_json(manifest_path.read_text())
+    retry_pairs = None
+    if args.retry_from:
+        previous = json.loads(args.retry_from.read_text())
+        if (
+            previous.get("model") != args.model
+            or previous.get("route_id") != route_id
+            or previous.get("manifest_hash") != canonical_hash(manifest.model_dump())
+        ):
+            raise SystemExit("Retry provenance mismatch before provider calls")
+        retry_pairs = {
+            (row["mode"], row["case_id"])
+            for row in previous["results"]
+            if row.get("status") == "failed"
+            and row.get("error") == "Production provider did not drain; case deferred"
+        }
+        completed = {
+            (row["mode"], row["case_id"])
+            for row in previous["results"]
+            if row.get("status") == "completed"
+        }
+        retry_pairs -= completed
+        valid = {
+            (mode, case.id)
+            for mode in ("claim_support", "blind_owner")
+            for case in manifest.cases[:10]
+        }
+        if not retry_pairs <= valid:
+            raise SystemExit("Unknown retry case before provider calls")
     site = load_site_config(ROOT / "config/site_config.yml")
     storage = make_storage(site, site.get("base_url", ""), ROOT / site.get("output_dir", "docs"))
     if storage is None or not storage.cas_capable:
@@ -122,6 +151,8 @@ def main():
     client = DispatchPauseClient()
     for mode in modes:
         for case in manifest.cases[:cap]:
+            if retry_pairs is not None and (mode, case.id) not in retry_pairs:
+                continue
             row = {"case_id": case.id, "mode": mode, "qualified": False}
             timeout = 600
             effort = None
@@ -201,6 +232,7 @@ def main():
                 "route_id": route_id,
                 "manifest_hash": canonical_hash(manifest.model_dump()),
                 "qualified": False,
+                "retry_parent_hash": canonical_hash(previous) if args.retry_from else None,
                 "results": rows,
                 "diagnostics": diagnostics,
             },

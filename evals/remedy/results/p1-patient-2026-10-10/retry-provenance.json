@@ -1,0 +1,56 @@
+{
+  "plan_commit": "21529f17",
+  "script_sha256": "5e0047b9e9da97a6993906eddc85e874549a2c66164d342e4afa37b1c130b7ea",
+  "retry_selection": {
+    "sol": {
+      "parent_sha256": "585414de35da38c2f8f1644dbc89ad968d0301d062bd44e18a7f85761bf1bc5e",
+      "pairs": [
+        [
+          "claim_support",
+          "denton-zone2-wrong-zone"
+        ],
+        [
+          "blind_owner",
+          "denton-health-council"
+        ],
+        [
+          "blind_owner",
+          "denton-library-council"
+        ]
+      ]
+    },
+    "deepseek": {
+      "parent_sha256": "fd6f9fb2192a7013b907661b34df2b167a5d07d2e5c85339fba1ca510e70c7f7",
+      "pairs": [
+        [
+          "claim_support",
+          "denton-library-own"
+        ],
+        [
+          "claim_support",
+          "denton-zone1-own"
+        ],
+        [
+          "claim_support",
+          "denton-zone1-wrong-zone"
+        ],
+        [
+          "claim_support",
+          "denton-zone2-council"
+        ],
+        [
+          "blind_owner",
+          "denton-health-own"
+        ],
+        [
+          "blind_owner",
+          "denton-zone1-own"
+        ],
+        [
+          "blind_owner",
+          "denton-zone1-wrong-zone"
+        ]
+      ]
+    }
+  }
+}

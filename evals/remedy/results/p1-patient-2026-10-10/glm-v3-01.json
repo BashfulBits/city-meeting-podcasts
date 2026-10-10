@@ -1,0 +1,74 @@
+{
+  "results": [
+    {
+      "case_id": "denton-health-own",
+      "mode": "claim_support",
+      "qualified": false,
+      "raw_response": {
+        "id": "chatcmpl-391d44b5-c212-49a0-aa92-178be1ad8012",
+        "created": 1791646485,
+        "model": "z-ai/glm-5.3",
+        "object": "chat.completion",
+        "system_fingerprint": null,
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "{\"case_id\":\"denton-health-own\",\"evidence_ref_ids\":[\"official-agenda\"],\"missing_evidence\":[],\"proposed_action\":\"Assign recording (uid 280db52d91547dd6, provider_guid 122398) to the existing feed denton-tx-health-building-standards-commission.\",\"proposed_owner\":\"denton-tx-health-building-standards-commission\",\"rationale\":\"The official agenda (official-agenda) shows the Health and Building Standards Commission of the City of Denton, Texas convening a Regular Meeting on Thursday, June 3, 2021 at 3:00 PM; the agenda is tied to recording_id 122398, which exactly matches the recording's provider_guid and its body label 'Health & Building Standards Commission on 2021-06-03 3:00 PM'. The existing feed denton-tx-health-building-standards-commission (provider swagit, same list_url https://dentontx.new.swagit.com/views/5) explicitly includes this exact recording body with provider_guid 122398, and its podcast description ('Meetings of the Denton Health and Building Standards Commission') matches the officially convened body named in the agenda. Per approved family policy, the officially convened body is the Health and Building Standards Commission; the meeting room (Council Work Session Room) is not the owner, and no distinct numbered boards are implicated. Identity is established by the official agenda and provider_guid match, not merely shared city/topic tokens. The completeness limitation (recording-specific proof, not full archive completeness) does not affect owner assignment for this recording.\",\"supported\":true}",
+              "role": "assistant",
+              "tool_calls": null,
+              "function_call": null,
+              "reasoning_content": "Let me analyze this claim assessment task.\n\nThe claim is: \"This recording belongs in denton-tx-health-building-standards-commission.\"\n\nKey evidence:\n1. The recording body label is \"Health & Building Standards Commission on 2021-06-03 3:00 PM\"\n2. The official agenda (evidence ref \"official-agenda\") is for the Health and Building Standards Commission of the City of Denton, Texas, Regular Meeting on Thursday, June 3, 2021, at 3:00 PM at City Hall, 215 E. McKinney Street, Denton, Texas. The recording_id matches 122398, which matches the provider_guid of the recording.\n3. The existing feed \"denton-tx-health-building-standards-commission\" (provider swagit) has body_includes including \"Health & Building Standards Commission on 2021-06-03 3:00 PM\" with provider_guid 122398 \u2014 exact match with the recording.\n\nSo the claim is supported. The recording should be assigned to the feed slug \"denton-tx-health-building-standards-commission\".\n\nThe decision_type is \"owner_assignment\", so proposed_owner should be the slug of the feed, proposed_action likely something like \"assign to denton-tx-health-building-standards-commission\" or \"attach recording to feed\".\n\nEvidence ref IDs: [\"official-agenda\"]\n\nMissing evidence: none needed for this determination. But completeness status is \"unknown\" with limitation \"This is recording-specific proof, not full archive completeness.\" That doesn't affect the owner assignment determination for this specific recording.\n\nFamily policy: \"Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct.\" The officially convened body per the agenda is the \"Health and Building Standards Commission of the City of Denton, Texas\" \u2014 matches the feed title \"Denton: Health & Building Standards Commission\" and slug denton-tx-health-building-standards-commission.\n\nCase ID: \"denton-health-own\" (from the \"id\" field).\n\nSupported: true\n\nProposed owner: \"denton-tx-health-building-standards-commission\"\n\nProposed action: \"assign\" \u2014 maybe \"Assign recording 122398 to feed denton-tx-health-building-standards-commission.\" Let me phrase it as an action.\n\nMissing evidence: [] \u2014 empty since the agenda plus feed listing are sufficient.\n\nRationale: The official agenda (official-agenda) confirms the Health and Building Standards Commission of the City of Denton convened a Regular Meeting on June 3, 2021 at 3:00 PM, matching the recording's date and provider_guid 122398. The existing feed's body_includes exactly lists this recording (\"Health & Building Standards Commission on 2021-06-03 3:00 PM\", provider_guid 122398). Per family policy, the officially convened body is the Health and Building Standards Commission (the meeting room, Council Work Session Room, is not the owner), and there are no distinct numbered boards to disambiguate. Shared city/topic tokens aren't used alone, but the agenda + provider_guid match establishes identity. So the claim is supported.\n\nMax length for rationale is 2000 characters. Keep it under that.\n\nOutput JSON only, matching the schema:\n- case_id: \"denton-health-own\"\n- supported: true\n- proposed_owner: \"denton-tx-health-building-standards-commission\"\n- proposed_action: \"Assign the recording (provider_guid 122398) to the existing feed denton-tx-health-building-standards-commission.\" \n- evidence_ref_ids: [\"official-agenda\"]\n- missing_evidence: []\n- rationale: ...\n\nLet me write the final JSON.",
+              "provider_specific_fields": {
+                "refusal": null,
+                "reasoning_content": "Let me analyze this claim assessment task.\n\nThe claim is: \"This recording belongs in denton-tx-health-building-standards-commission.\"\n\nKey evidence:\n1. The recording body label is \"Health & Building Standards Commission on 2021-06-03 3:00 PM\"\n2. The official agenda (evidence ref \"official-agenda\") is for the Health and Building Standards Commission of the City of Denton, Texas, Regular Meeting on Thursday, June 3, 2021, at 3:00 PM at City Hall, 215 E. McKinney Street, Denton, Texas. The recording_id matches 122398, which matches the provider_guid of the recording.\n3. The existing feed \"denton-tx-health-building-standards-commission\" (provider swagit) has body_includes including \"Health & Building Standards Commission on 2021-06-03 3:00 PM\" with provider_guid 122398 \u2014 exact match with the recording.\n\nSo the claim is supported. The recording should be assigned to the feed slug \"denton-tx-health-building-standards-commission\".\n\nThe decision_type is \"owner_assignment\", so proposed_owner should be the slug of the feed, proposed_action likely something like \"assign to denton-tx-health-building-standards-commission\" or \"attach recording to feed\".\n\nEvidence ref IDs: [\"official-agenda\"]\n\nMissing evidence: none needed for this determination. But completeness status is \"unknown\" with limitation \"This is recording-specific proof, not full archive completeness.\" That doesn't affect the owner assignment determination for this specific recording.\n\nFamily policy: \"Use officially convened body; meeting room is not owner; distinct numbered boards stay distinct.\" The officially convened body per the agenda is the \"Health and Building Standards Commission of the City of Denton, Texas\" \u2014 matches the feed title \"Denton: Health & Building Standards Commission\" and slug denton-tx-health-building-standards-commission.\n\nCase ID: \"denton-health-own\" (from the \"id\" field).\n\nSupported: true\n\nProposed owner: \"denton-tx-health-building-standards-commission\"\n\nProposed action: \"assign\" \u2014 maybe \"Assign recording 122398 to feed denton-tx-health-building-standards-commission.\" Let me phrase it as an action.\n\nMissing evidence: [] \u2014 empty since the agenda plus feed listing are sufficient.\n\nRationale: The official agenda (official-agenda) confirms the Health and Building Standards Commission of the City of Denton convened a Regular Meeting on June 3, 2021 at 3:00 PM, matching the recording's date and provider_guid 122398. The existing feed's body_includes exactly lists this recording (\"Health & Building Standards Commission on 2021-06-03 3:00 PM\", provider_guid 122398). Per family policy, the officially convened body is the Health and Building Standards Commission (the meeting room, Council Work Session Room, is not the owner), and there are no distinct numbered boards to disambiguate. Shared city/topic tokens aren't used alone, but the agenda + provider_guid match establishes identity. So the claim is supported.\n\nMax length for rationale is 2000 characters. Keep it under that.\n\nOutput JSON only, matching the schema:\n- case_id: \"denton-health-own\"\n- supported: true\n- proposed_owner: \"denton-tx-health-building-standards-commission\"\n- proposed_action: \"Assign the recording (provider_guid 122398) to the existing feed denton-tx-health-building-standards-commission.\" \n- evidence_ref_ids: [\"official-agenda\"]\n- missing_evidence: []\n- rationale: ...\n\nLet me write the final JSON."
+              }
+            },
+            "provider_specific_fields": {}
+          }
+        ],
+        "usage": {
+          "completion_tokens": 1113,
+          "prompt_tokens": 2601,
+          "total_tokens": 3714,
+          "completion_tokens_details": {
+            "accepted_prediction_tokens": null,
+            "audio_tokens": null,
+            "reasoning_tokens": 778,
+            "rejected_prediction_tokens": null
+          },
+          "prompt_tokens_details": {
+            "audio_tokens": null,
+            "cached_tokens": 0
+          }
+        },
+        "service_tier": null
+      },
+      "route_id": "nvidia_glm_5_3_eval",
+      "upstream_model": "z-ai/glm-5.3",
+      "reasoning_level": null,
+      "status": "completed",
+      "answer": {
+        "case_id": "denton-health-own",
+        "supported": true,
+        "proposed_owner": "denton-tx-health-building-standards-commission",
+        "proposed_action": "Assign recording (uid 280db52d91547dd6, provider_guid 122398) to the existing feed denton-tx-health-building-standards-commission.",
+        "evidence_ref_ids": [
+          "official-agenda"
+        ],
+        "missing_evidence": [],
+        "rationale": "The official agenda (official-agenda) shows the Health and Building Standards Commission of the City of Denton, Texas convening a Regular Meeting on Thursday, June 3, 2021 at 3:00 PM; the agenda is tied to recording_id 122398, which exactly matches the recording's provider_guid and its body label 'Health & Building Standards Commission on 2021-06-03 3:00 PM'. The existing feed denton-tx-health-building-standards-commission (provider swagit, same list_url https://dentontx.new.swagit.com/views/5) explicitly includes this exact recording body with provider_guid 122398, and its podcast description ('Meetings of the Denton Health and Building Standards Commission') matches the officially convened body named in the agenda. Per approved family policy, the officially convened body is the Health and Building Standards Commission; the meeting room (Council Work Session Room) is not the owner, and no distinct numbered boards are implicated. Identity is established by the official agenda and provider_guid match, not merely shared city/topic tokens. The completeness limitation (recording-specific proof, not full archive completeness) does not affect owner assignment for this recording."
+      },
+      "duration_seconds": 107.6679497496225
+    }
+  ],
+  "diagnostics": [
+    {
+      "started_at": "2026-10-10T15:34:45.092582+00:00",
+      "model": "openai/z-ai/glm-5.3",
+      "status": "completed",
+      "duration_seconds": 106.25773499999195
+    }
+  ]
+}
