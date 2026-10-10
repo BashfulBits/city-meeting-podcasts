@@ -3238,7 +3238,7 @@ duplicate delivery after lost upload acknowledgment; damaged history; lost lease
 intervening decision. Fake API snapshots/storage only, full offline and whole Ruff/format.
 No production writes or inferred import of historical chat decisions.
 
-### P2c3a remembered-decision comparison report — L2 proposal
+### P2c3a remembered-decision comparison report — L3 callable/report contract
 
 The maintainer authorized report-only comparison before changes to recurring alerts. Recommend
 an explicit local decision snapshot input alongside the existing body-coverage report. No live
@@ -3314,3 +3314,49 @@ the validator after current source history has been loaded. No additional files 
 
 Validator also takes explicit `checked_at` from the trusted snapshot for the five-minute permission
 freshness check. This is a caller context parameter, never a submitted command field.
+
+
+#### P2c3a exact first report contract
+
+Implement the comparison helper first, with an explicit local input bundle and offline CLI mode.
+The first report consumes reviewed case projections, not raw fuzzy titles. Each coverage case
+has exactly city, source_key, policy_id, normalized_label and recording_refs. Label is existing
+body_key normalization; references use the event schema's exact source/UID/GUID validation.
+Cases with the same four-part identity combine references deterministically. A caller must use
+reviewed policy identity when projecting aliases; this report does not invent an alias resolver.
+Automatic projection from the full coverage report is a later bounded integration, not a claim
+that this first report has already reviewed all production cases.
+
+For each saved decision, `evidence` maps its decision ID to exactly `baseline` and `current`
+packets. Each packet has exactly `identity`, `official_identity`, `contradictions`, `recording_refs`.
+Identity is exactly city, source_key, policy_id, normalized_label. Official identity and
+contradictions are JSON lists of retained evidence; no model result is authoritative.
+The baseline material_evidence_hash must equal the saved tip's evidence_hash. Its identity and
+refs must equal that tip. Current packet identity/refs must equal the observed case. Comparing
+only official_identity and contradictions separates substantive evidence changes from increased
+recording counts or meeting dates. Missing baseline/current evidence emits history_blocked with
+reasons, never a quiet recommendation. Unknown decisions remain ordinary review candidates.
+
+`compare_decisions(coverage, decisions, *, evidence, config_hash, policy_hash)` returns a sorted
+list of rows with exactly decision_id, city, source_key, policy_id, normalized_label, disposition,
+outcome, recording_refs, new_recording_refs, reasons and review_required. Stored histories are
+refolded before use. Output includes saved decisions absent from current observations as
+`observations_missing`; this retains uncertainty rather than interpreting absence as exclusion.
+Changed config/policy hashes emit `replay_required` unless material identity evidence also changed;
+neither is silently classified as a contradiction. `related_recordings_added` recommends renewed
+review for watch/open cases, but does not reopen assigned/excluded/not_pursued/rejected decisions
+without changed official evidence. Current and retained refs are both preserved. No writes/events.
+
+Add `--decision-comparison-input PATH` and `--decision-comparison-report PATH` to
+`scripts/audit_feeds.py`; both required together and incompatible with other audit/action modes.
+Read a strict local JSON bundle with schema_version 1, coverage, events, evidence, config_hash,
+policy_hash. Reject duplicate JSON keys; events contain full history, not a claimed folded state.
+Run this mode before config loading, provider fetch, state synchronization, storage construction
+or GitHub reconciliation. Only write the requested JSON report (schema_version 1, rows);
+no report timestamp affects comparison. Do not overwrite the input path with the output.
+
+Permitted code for this first report: citypods/remedy_ledger.py, scripts/audit_feeds.py,
+tests/test_remedy_ledger.py, tests/test_audit_feeds.py and lifecycle docs. No audit.py change is
+needed for this explicit local mode. Existing body-coverage/dispositions interfaces remain intact.
+The transport decision is approved; these routine report details implement the authorized
+report-only step and are committed before code. Production activation remains gated.
