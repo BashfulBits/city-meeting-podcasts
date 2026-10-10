@@ -1672,7 +1672,11 @@ test("a backup-tier route is used only after the pool's primary routes run out",
     return plan.jobs[0].route_id;
   };
 
-  const t0 = Date.now();
+  // All three claims must fall in one UTC day: the primary's daily quota resets at midnight, and
+  // a run started at 23:58 UTC otherwise sees it refilled before the third claim.
+  const now = Date.now();
+  const msToMidnight = 86_400_000 - (now % 86_400_000);
+  const t0 = msToMidnight < 300_000 ? now + msToMidnight + 1_000 : now;
   // Untouched, both score full capacity; the backup is listed first, so only the tier term
   // keeps it from winning the tie.
   assert.equal(await runOne("first", t0), "primary-small");
