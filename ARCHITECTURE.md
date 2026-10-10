@@ -1672,3 +1672,9 @@ Actor and approval references are provenance claims, not authentication. Contrad
 remain blocked until an explicit reconciliation; retries retain provenance while folding once.
 Keep-watching outcomes remain pending. Later trusted persistence and audit integration will
 attach new related meetings and avoid asking again when related evidence is unchanged.
+
+
+Prepared review/51 trusted actions validate dedicated structured comments against fresh,
+trusted GitHub author/permission responses and source-local replay context. Their recorder loads
+history under the existing remedy lease and retries the original delivery without duplicate
+writes. No workflow invokes these helpers; API authenticity belongs to the trusted caller.

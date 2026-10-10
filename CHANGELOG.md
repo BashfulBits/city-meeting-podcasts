@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared trusted decision actions (review/51 P2c2b).** Validates the dedicated approval
+  command against trusted author/permission snapshots, fresh evidence and current history.
+  Interrupted delivery retries reuse the stored event; conflicting commands/history fail closed.
+  No production runner, workflow activation, feed changes or alert suppression.
+
 - **Guarded decision persistence (review/51 P2c2a, #2237).** Adds source-scoped append and
   reconstruction helpers using existing storage APIs. A held remedy maintenance lease is required
   for writes; existing events and uploaded content are verified. Corrupt history fails closed,
