@@ -733,3 +733,43 @@ test("Groq TPD imports token usage from the observed quota error", () => {
   assert.equal(result.failure_class, "own_tpd");
   assert.deepEqual(result.token_quota, { limit: 200000, used: 199659 });
 });
+
+test("HTTP 401 invalid credentials classifies as route_unavailable with account scope", () => {
+  const result = classifyProviderFailure({
+    status: 401,
+    route: { provider: "sambanova", route_id: "sambanova_gemma_4_31b_it_primary" },
+    body: {
+      error: {
+        message: "Incorrect API key provided: b04441*****f4e2.",
+        type: "authentication_error",
+        code: "invalid_api_key",
+      },
+    },
+  });
+  assert.equal(result.failure_class, "route_unavailable");
+  assert.equal(result.rule_id, "http-401-invalid-credentials");
+  assert.equal(result.scope, "account");
+});
+
+test("HTTP 403 forbidden classifies as route_unavailable with account scope", () => {
+  const result = classifyProviderFailure({
+    status: 403,
+    route: { provider: "gemini", route_id: "gemini_flash" },
+    body: { error: { message: "Forbidden" } },
+  });
+  assert.equal(result.failure_class, "route_unavailable");
+  assert.equal(result.rule_id, "http-403-forbidden");
+  assert.equal(result.scope, "account");
+});
+
+test("explicit authentication error body classifies as route_unavailable", () => {
+  const result = classifyProviderFailure({
+    status: 400,
+    route: { provider: "sambanova", route_id: "sambanova_gemma" },
+    body: { error: { code: "invalid_api_key", message: "Invalid API key" } },
+  });
+  assert.equal(result.failure_class, "route_unavailable");
+  assert.equal(result.rule_id, "auth-credential-invalid");
+  assert.equal(result.scope, "account");
+});
+
