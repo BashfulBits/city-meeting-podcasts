@@ -75,10 +75,26 @@
     }
 
     function searchAssetUrl(value) {
-      const url = new URL(value, window.location.href);
+      if (!value) return '';
+      const base = typeof manifestUrl !== 'undefined' && manifestUrl
+        ? new URL(manifestUrl, window.location.href)
+        : window.location.href;
+      const url = new URL(value, base);
       if (url.protocol === 'http:' && window.location.protocol === 'https:' &&
           url.host === window.location.host) url.protocol = 'https:';
       return url.href;
+    }
+
+    function updateBodyOptions() {
+      if (!manifest) return;
+      const shards = selectedShards();
+      const bodies = new Map();
+      shards.forEach(shard => {
+        (shard.bodies || [shard.body]).filter(Boolean).forEach(value => {
+          bodies.set(value, value);
+        });
+      });
+      optionValues(body, bodies, 'All bodies');
     }
 
     async function loadShard(shard) {
@@ -182,7 +198,7 @@
         const a = document.createElement('a');
         // A withheld meeting remains discoverable, but must never advertise a media seek/play link.
         const time = doc.is_withheld ? null : hitTime(doc, terms);
-        a.href = doc.page_url ? doc.page_url + (time === null ? '' : `#t=${time}`) : '#';
+        a.href = doc.page_url ? searchAssetUrl(doc.page_url) + (time === null ? '' : `#t=${time}`) : '#';
         a.textContent = doc.title || 'Meeting';
         if (!doc.page_url) a.removeAttribute('href');
         const meta = document.createElement('div'); meta.className = 'muted';
@@ -197,28 +213,49 @@
       status.textContent = `${results.children.length} result${results.children.length === 1 ? '' : 's'}${suffix}`;
     }
 
+    let renderFrame = null;
+    function scheduleRender(rows, failedShards) {
+      if (renderFrame) cancelAnimationFrame(renderFrame);
+      renderFrame = requestAnimationFrame(() => {
+        renderFrame = null;
+        render(rows, failedShards);
+      });
+    }
+
     async function search() {
       const generation = ++searchGeneration;
       renderCoverage();
       const term = q.value.trim();
-      if (!term) { results.replaceChildren(); status.textContent = 'Type a phrase to search.'; return; }
+      if (!term) {
+        if (renderFrame) { cancelAnimationFrame(renderFrame); renderFrame = null; }
+        results.replaceChildren();
+        status.textContent = 'Type a phrase to search.';
+        return;
+      }
       status.textContent = 'Loading matching archive shards…';
       const all = [];
       let failedShards = 0;
-      const tasks = selectedShards().map(async shard => {
-        try {
-          const engine = await loadShard(shard);
-          const rows = engine.search(term).map(row => ({ ...row, source_key: shard.source_key }));
-          all.push(...rows);
-          if (generation === searchGeneration) render(all, failedShards);
-        } catch (error) {
-          console.warn(error);
-          failedShards += 1;
-          if (generation === searchGeneration) render(all, failedShards);
+      const shards = selectedShards();
+      const concurrency = Math.min(4, shards.length);
+      let cursor = 0;
+      async function worker() {
+        while (cursor < shards.length) {
+          const shard = shards[cursor++];
+          try {
+            const engine = await loadShard(shard);
+            const rows = engine.search(term).map(row => ({ ...row, source_key: shard.source_key }));
+            all.push(...rows);
+            if (generation === searchGeneration) scheduleRender(all, failedShards);
+          } catch (error) {
+            console.warn(error);
+            failedShards += 1;
+            if (generation === searchGeneration) scheduleRender(all, failedShards);
+          }
         }
-      });
-      await Promise.all(tasks);
+      }
+      await Promise.all(Array.from({ length: concurrency }, worker));
       if (generation !== searchGeneration) return;
+      if (renderFrame) { cancelAnimationFrame(renderFrame); renderFrame = null; }
       render(all, failedShards);
       if (!all.length && !failedShards) status.textContent = 'No meetings matched that search.';
     }
@@ -229,14 +266,16 @@
     }).then(data => {
       manifest = data;
       optionValues(city, new Map(data.shards.map(shard => [shard.city, shard.city_label || shard.city])), 'All cities');
-      optionValues(body, new Map(data.shards.flatMap(shard => (shard.bodies || [shard.body])
-        .filter(Boolean).map(value => [value, value]))), 'All bodies');
+      updateBodyOptions();
       optionValues(tag, new Map(data.shards.flatMap(shard => (shard.tags || []).map(value => [value, value]))), 'All topics');
       renderCoverage();
       let queryTimer;
       q.addEventListener('input', () => {
         clearTimeout(queryTimer);
         queryTimer = window.setTimeout(search, 200);
+      });
+      city.addEventListener('change', () => {
+        updateBodyOptions();
       });
       [city, body, tag, from, to, availability].forEach(element => {
         element.addEventListener('change', () => {
