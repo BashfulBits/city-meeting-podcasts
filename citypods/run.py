@@ -2184,18 +2184,6 @@ def _run_enrich_global_queue(
             judge_batcher = BatchingDispatchBackend(ctx.judge_backend)
             ctx.judge_backend = judge_batcher
 
-    if source_stages:
-        for st in prepared.values():
-            stats = run_stages(
-                st["provider"],
-                st["city"],
-                st["retained_episodes"],
-                source_stages,
-                ctx,
-                quiet=True,
-            )
-            pipeline.accumulate_stats(stats)
-
     # 3) Passes. Submission order = global priority order; the native_work_gate still serializes
     #    the actual encodes. Audio uses a rolling submission window rather than eager whole-list
     #    map submission, and each item releases its source-cache files when its per-episode stage
@@ -2280,6 +2268,26 @@ def _run_enrich_global_queue(
         if failed:
             llm_submission_failures.append(f"tags: {failed} job(s) failed to submit")
 
+    def _flush_judge_batch() -> None:
+        """Durably submit the judge jobs accumulated since the prior checkpoint."""
+        if judge_batcher is None:
+            return
+        from citypods.compute.base import JobHandle, JobResult
+
+        batch_outcomes = judge_batcher.flush()
+        if not batch_outcomes:
+            return
+        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
+        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
+        failed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, Exception))
+        print(
+            f"[enrich] judge LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
+            f"completed={completed} errors={failed}",
+            flush=True,
+        )
+        if failed:
+            llm_submission_failures.append(f"judge: {failed} job(s) failed to submit")
+
     def _checkpoint_if_due() -> None:
         if mid_run_checkpoint is None:
             return
@@ -2290,6 +2298,7 @@ def _run_enrich_global_queue(
         # the checkpoint records a real Worker handle (or the submission error) for retry.
         checkpoint_start = time.monotonic()
         _flush_tag_batch()
+        _flush_judge_batch()
         persist_start = time.monotonic()
         _persist_all()
         push_start = time.monotonic()
@@ -2356,6 +2365,22 @@ def _run_enrich_global_queue(
         if isinstance(ctx.tag_backend, LiteLLMBackend) and ctx.tag_backend.config.dispatch_v2_url:
             tag_batcher = BatchingDispatchBackend(ctx.tag_backend)
             ctx.tag_backend = tag_batcher
+
+    # Source-scoped stages (documents; the judge lane's only stage). Run once the checkpoint
+    # helpers and batchers exist so the judge lane, whose whole pass is this loop, checkpoints
+    # between sources.
+    if source_stages:
+        for st in prepared.values():
+            stats = run_stages(
+                st["provider"],
+                st["city"],
+                st["retained_episodes"],
+                source_stages,
+                ctx,
+                quiet=True,
+            )
+            pipeline.accumulate_stats(stats)
+            _checkpoint_if_due()
 
     # Chapter lanes use the same per-episode global queue as audio, but their stages already
     # know how to build/finalize a durable job independently.  Interpose the same collector used
@@ -2552,19 +2577,7 @@ def _run_enrich_global_queue(
         ctx.moment_backend = original_moment_backend
 
     if judge_batcher is not None:
-        from citypods.compute.base import JobHandle, JobResult
-
-        batch_outcomes = judge_batcher.flush()
-        pending = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobHandle))
-        completed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, JobResult))
-        failed = sum(1 for outcome in batch_outcomes if isinstance(outcome.result, Exception))
-        print(
-            f"[enrich] judge LLM batch flush: jobs={len(batch_outcomes)} pending={pending} "
-            f"completed={completed} errors={failed}",
-            flush=True,
-        )
-        if failed:
-            llm_submission_failures.append(f"judge: {failed} job(s) failed to submit")
+        _flush_judge_batch()
         ctx.judge_backend = original_judge_backend
 
     if r7_ledger_stages:
@@ -2824,18 +2837,9 @@ def _build_impl(
         raise ValueError("search handoff options require render phase")
     if phase not in ("all", "render", "enrich"):
         raise ValueError(f"unknown build phase {phase!r}")
-    if lane is not None and lane not in (
-        "audio",
-        "transcribe",
-        "align",
-        "tag",
-        "moments",
-        "diarize",
-        "speaker-identity",
-        "chapter-agenda",
-        "chapter-locator",
-        "chapter",
-    ):
+    # LANE_STAGES is the one lane registry: a second hand-kept allowlist here rejected `tag` and
+    # later `judge` (review/53 PR4 dry run) after both were fully wired everywhere else.
+    if lane is not None and lane not in LANE_STAGES:
         raise ValueError(f"unknown lane {lane!r}")
     if shard_plan_path is not None and shard is None:
         raise ValueError("shard_plan_path requires shard=(K, N)")
@@ -2876,6 +2880,7 @@ def _build_impl(
             "chapter-agenda",
             "chapter-locator",
             "chapter",
+            "judge",
         }
     )
     if source:
@@ -3616,8 +3621,8 @@ def _build_impl(
                 _try_preload_asr_model(defaults, lane=lane)
 
             if phase == "enrich":
-                # Lanes with no audio pass (`tag`, `diarize`, and `speaker-identity`) have no free
-                # mid-run persist boundary --
+                # Lanes with no audio pass (`tag`, `diarize`, `speaker-identity`, `judge`) have no
+                # free mid-run persist boundary --
                 # see `_run_enrich_global_queue`'s `mid_run_checkpoint` docstring. Always route
                 # through the foreign-block-preserving merged push (records only; no calendar/
                 # run_events/asr-runtime-log/reconcile -- those aren't what a mid-run checkpoint
@@ -3708,7 +3713,7 @@ def _build_impl(
                     owned_uids=shard_owned_uids,
                     mid_run_checkpoint=(
                         _lane_checkpoint_push
-                        if lane in {"tag", "diarize", "speaker-identity"}
+                        if lane in {"tag", "diarize", "speaker-identity", "judge"}
                         and persist_records
                         and not dry_run
                         and storage is not None

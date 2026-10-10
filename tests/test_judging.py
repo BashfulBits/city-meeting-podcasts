@@ -880,3 +880,43 @@ def test_tag_subjects_come_from_the_ledger_once_and_skip_historical_rows():
     ep.llm_tag_candidates.append(dict(rule))  # a duplicate row of the same subject
     subjects = task("tag").subjects(ep)
     assert [x.payload["id"] for x in subjects] == ["zoning-reform"]
+
+
+def test_an_unreadable_transcript_skips_that_episode_and_keeps_it_incomplete():
+    """The first PR4 dry run died on one transcript whose download exhausted its retries. That
+    episode is skipped for the pass (counted, not marked unbuildable, not complete) and every other
+    episode is still judged."""
+    dispatch = FakeDispatch()
+    broken, healthy = _episode(uid="ep-broken"), _episode(uid="ep-ok", published="2026-09-30")
+
+    def texts_for(ep):
+        if ep.uid == "ep-broken":
+            raise runner.TextsUnavailable("storage read unavailable")
+        return TEXTS
+
+    ctx = _ctx(dispatch)
+    ctx.texts_for = texts_for
+    stats = runner.run([broken, healthy], ctx)
+    assert stats.counts["texts_unavailable"] == 1
+    assert "ep-broken" in stats.episodes_unavailable
+    assert "ep-broken" not in stats.episodes_complete
+    assert _all_pending(healthy) and not _any_pending(broken)
+    assert not any(ledger.unbuildable(s) for s in _subjects(broken))
+
+
+def test_a_pass_restores_the_contexts_texts_reader():
+    """The per-pass texts cache must not outlive the pass, or a reused context could never retry
+    a read that failed once."""
+    calls = []
+
+    def texts_for(ep):
+        calls.append(ep.uid)
+        raise runner.TextsUnavailable("down")
+
+    ctx = _ctx(FakeDispatch())
+    ctx.texts_for = texts_for
+    ep = _episode()
+    runner.run([ep], ctx)
+    assert ctx.texts_for is texts_for
+    runner.run([ep], ctx)
+    assert calls == [ep.uid, ep.uid]

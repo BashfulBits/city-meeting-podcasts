@@ -17,6 +17,15 @@ Once 1.0 ships, entries move under semver tags.
   Interrupted delivery retries reuse the stored event; conflicting commands/history fail closed.
   No production runner, workflow activation, feed changes or alert suppression.
 
+
+- **Fix: `enrich --lane judge` rejected as an unknown lane (review/53 PR4 dry run).** `build()`
+  kept a hand-written lane allowlist beside `LANE_STAGES` and missed `judge` (the same bug `tag`
+  once hit); it now validates against `LANE_STAGES`. The judge lane is also marked scoped, so it
+  takes the foreign-block-preserving merged push and skips the full-run reconcile, and gets the
+  mid-run checkpoint push like `tag`.
+  A transcript whose read exhausts the storage retries now skips that episode for the pass
+  (counted as `texts_unavailable`, kept incomplete) instead of aborting the lane.
+
 - **Judge stack shadow on (review/53 PR4).** `judging.enabled: true`: the two-hourly judge lane
   now judges tag and moment candidates with JEV and one independent sibling and records judgments
   only (no display, admission or publication change). Reserves 920 ingress units for
