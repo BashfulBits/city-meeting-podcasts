@@ -1,6 +1,6 @@
 """Capacity must account for batches, shadow jobs and pinned candidate/panel fan-out."""
 
-from scripts.llm_capacity_plan import consensus_plan, project
+from scripts.llm_capacity_plan import consensus_plan, judging_demand, project
 
 
 def test_full_plan_is_not_800_jobs_per_lane():
@@ -92,3 +92,21 @@ def test_capacity_budget_tracks_worker_defaults(tmp_path, monkeypatch):
     assert consensus_plan()["safe_row_budget"] == 40000
     (worker / "coordinator.js").write_text('_envInt("DO_ROWS_ENQUEUE_STOP", 30000)')
     assert calculator._safe_row_budget() == 30000
+
+
+def test_judging_demand_reproduces_the_review_53_reservation_table():
+    demand = judging_demand()
+    assert demand["tag_subjects"] == 7200 and demand["moment_meetings"] == 80
+    assert 180 <= demand["packets"]["judge:anchor"] <= 200
+    assert 450 <= demand["packets"]["judge:sibling"] <= 500
+    # review/53 rounds these up to 920 and 2,400 reserved units.
+    assert demand["reserved_write_units"]["judge:anchor"] <= 920
+    assert demand["reserved_write_units"]["judge:sibling"] <= 2400
+    # The JEV account (about 1,440 successful calls a day) carries the routine anchor load easily.
+    assert demand["packets"]["judge:anchor"] < 1440 / 4
+
+
+def test_judging_demand_scales_with_meetings_and_escalation():
+    base = judging_demand()["packets"]["judge:anchor"]
+    assert judging_demand(meetings=1600)["packets"]["judge:anchor"] > 1.9 * base
+    assert judging_demand(escalation_share=0.5)["packets"]["judge:anchor"] > base
