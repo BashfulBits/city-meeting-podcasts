@@ -423,6 +423,7 @@ class SourcePipeline:
                     evaluation_config=(
                         self.ctx.llm_evaluation_config if self.ctx.tag_backend is not None else None
                     ),
+                    judging_config=self.ctx.judging_config,
                 ):
                     result.append((uid, f"{stage.name}_incomplete"))
         return result

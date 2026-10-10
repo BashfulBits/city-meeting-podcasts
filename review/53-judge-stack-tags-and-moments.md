@@ -300,6 +300,12 @@ text below, all deliberate:
   dispatch payload forwards it unchanged (`citypods/compute/llm.py`; a direct call raises).
 - **Dry run** is `CITYPODS_JUDGE_DRY_RUN=1` (the workflow's `dry_run` input): plan and pack, count
   packets, items and estimated tokens, submit nothing; it runs even while `judging.enabled` is false.
+- **Dirtiness from judgments, not an input fingerprint** (CodeRabbit CLI review, 2026-10-09):
+  `stage_is_dirty` sends the judge stage to `judge_episode_dirty`, which is true exactly while an
+  answer is pending or a judgment is missing, read from stored judgments with no transcript read.
+  A completion marker would have stopped the stage after one visit and stranded every in-flight
+  answer; always-dirty would re-read every candidate episode's transcript every two hours. Episodes
+  without a transcript are never dirty; each task declares the tiers its evidence can build.
 - The report CLI is `python -m citypods.judging.report --state-dir state`; the capacity model is
   `python scripts/llm_capacity_plan.py --judging` (`judging_demand`), which reproduces the
   reservation table (191 anchor and 473 sibling packets a day at 800 meetings).
