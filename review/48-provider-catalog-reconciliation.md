@@ -1822,3 +1822,92 @@ endpoint, client, workflow or production catalog changes. Coordinator tests veri
 allowlist, output/other-route rejection, oversized input denial, six successful admissions and
 seventh denial. Existing rollback/replay/recreation and ordinary admission tests remain binding.
 Lifecycle documents record the revised approval; #2221 remains open for live evidence.
+
+### Manual calibration trigger contract — #2221 follow-up, 2026-10-10 (L3)
+
+The maintainer requested a reusable manual trigger instead of waiting for Monday, with selectable
+routes and budgets for remaining review/48 canaries. They chose a separately bounded manual
+allowance and server-approved routes only. This intentionally revises §8.11's schedule-only/no-
+top-up rules. Faster feedback and bounded reruns justify the additional accounting and evidence
+complexity; ordinary provider quotas and approval of new route/dimension authority remain binding.
+The maintainer explicitly approved the exact limits and session/evidence/schema plan on
+2026-10-10. Implementation and normal deployment are authorized; actual manual canary
+execution remains a separate explicit run selection.
+
+**Approved hard allowance.** A separate manual pool allows 24 consumed admissions, 2,097,152
+reserved input tokens and 131,072 reserved output tokens per UTC week. Combined scheduled plus
+manual authority is therefore at most 48 calls, 4,194,304 input and 262,144 output tokens weekly.
+No refund for a timeout, lost response or unavailable artifact. At most eight calls per manual
+run and twelve manual calls per route per week, subject to remaining pool capacity and provider
+quota. All dimensions share that route ceiling. A run cannot replenish either pool; exhaustion
+requires waiting for UTC rollover or a newly reviewed server-ceiling change. The existing
+provider pause/drain, row-write budget, transport cancellation and cleanup reserve still apply.
+
+**Workflow options.** Extend existing `provider-catalog-reconcile.yml` manual dispatch with an
+explicit context-canary switch; comma-separated exact route IDs (one to eight); dimension choice
+`input`, `output` or `both`; call ceiling (default two, maximum eight); input/output per-call
+reservation ceilings; per-run aggregate input/output budgets (bounded by manual pool); and a
+required purpose/issue reference (bounded plain text, never shell-interpolated). Default input
+ceiling is 8,192 and output reservation 256. Advanced per-call ceilings cannot exceed existing
+reviewed transport/probe bounds (524,288 input and 32,768 output), route-specific server authority
+or provider admission. Requesting higher values never overrides the deployed 8,192 Groq pilot
+ceiling. For output mode, the input fixture reservation remains 2,048. No paid routes, unknown
+quota scopes, unsupported endpoints or disabled dimensions. No inputs edit provider limits,
+production caps, route allowlists, secrets or schema. Reject invalid/duplicate/unknown selections
+before pause or provider I/O. Reject mixing manual context with due-only/catalog discovery.
+
+**Execution and sessions.** Manual mode runs context measurement only on the selected routes;
+it does not spend allowance listing catalogs, adding models, running health/rate probes or
+publishing config proposals. It shares the existing writer concurrency lock. Only authenticated
+`workflow_dispatch` on default-branch main may run; no local CLI credential bypass. Use explicit
+manual start/admit/finish operations through existing reservation handlers and typed client.
+Server persists selected routes/dimensions and run ceilings, checks them on every admission and
+uses a separate bounded manual ledger. Finish releases session ownership while retaining charges.
+A monotonically newer run can start after finish or expiry; old runners are fenced. A crashed
+run's consumed attempts remain charged and its session expires normally. No admission retries.
+Status is payload-free and includes remaining manual totals and session identity.
+
+**Storage and outage contract.** Add bounded `context_manual_weeks` and
+`context_manual_attempts` SQLite tables, keeping scheduled tables/keys/accounting unchanged.
+Week summaries retain consumed totals, monotonic run watermark, active session deadline and
+validated session limits/selection. Cluster attempts by `(week_start, attempt_id)` WITHOUT ROWID
+with no secondary index. Retain eight weeks, prune at most one expired week per start, at most
+24 attempt rows per week. Reject oversized/inconsistent rows. Account every read/write/prune
+against existing row budgets. Atomic admission charges manual pool, route quota and attempt
+receipt together. Replay, lost response, rollback, actual workerd recreation and UTC rollover
+must prove charges cannot reset or migrate into the scheduled pool. No historical job scans.
+
+**Evidence.** Upload named manual-context artifacts with run purpose, selected identities,
+requested limits, admission/status accounting and typed payload-free observations. Authenticate
+repository, exact workflow identity, successful default-branch main run/head ancestry, event
+`workflow_dispatch`, artifact identity/digest/size and route/parser/quota eligibility. Discover
+manual evidence separately with bounded pagination; missing/partial artifacts are deferred.
+Manual observations can satisfy canary acceptance, but cannot bypass the existing two distinct
+weekly-success rule for production cap offers. Scheduled cap history remains scheduled-only.
+Output support/activation and broader rotation still require #2222/#2223 review.
+
+**File/function plan for approval.**
+
+- `.github/workflows/provider-catalog-reconcile.yml`: typed dispatch inputs, environment-only
+  argument transport, main/event guards, isolated manual mode and manual artifact upload; pinned
+  actions, writer lock and minimum existing permissions retained.
+- `scripts/reconcile_provider_routes.py`: validate manual arguments and context-only orchestration;
+  start/status/finish with cleanup in `finally`; no regular discovery work in manual mode.
+- `citypods/provider_catalog/reconcile.py`, `limits.py`, `probe.py`: explicit selected-route/
+  dimension/call/token planning using current count parsers and bounded transport.
+- `citypods/compute/llm_dispatch_pause.py`: typed manual session/admission/status/finish methods.
+- Worker `coordinator.js`, `protocol.js`, `index.js`: discriminated manual operations, new bounded
+  tables/readiness, atomic accounting, scoped session fencing and optional read-only status.
+- `citypods/provider_catalog/evidence.py`: separate bounded manual artifact discovery and
+  authentication; keep scheduled cap-offer provenance unchanged.
+- Existing context/pause/workflow/evidence and Worker protocol/coordinator/index/row-accounting
+  tests, plus `bench/rows-written`: denial-before-I/O, multi-run conservation, stale-session
+  fencing, pool separation, every-write rollback, replay, recreation and billed storage bounds.
+- `review/48`, `review/11`, `ROADMAP.md`, `ARCHITECTURE.md`, `CHANGELOG.md`: approved deviation,
+  lifecycle and actual activation/evidence status. #2221 remains open until input evidence passes.
+
+Do not alter credentials, dependencies, provider/compiled catalogs, ordinary jobs/rescue indexes,
+producer estimator margins, production cap choices or paid policy. This trigger does not itself
+activate additional routes or output, perform manual deployments or authorize test execution.
+After contract approval, implement and review the trigger PR, merge/deploy normally, then the
+maintainer may select an approved manual canary. Failed evidence remains charged and deferred.
