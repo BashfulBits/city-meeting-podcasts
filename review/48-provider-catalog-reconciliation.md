@@ -1823,16 +1823,18 @@ allowlist, output/other-route rejection, oversized input denial, six successful 
 seventh denial. Existing rollback/replay/recreation and ordinary admission tests remain binding.
 Lifecycle documents record the revised approval; #2221 remains open for live evidence.
 
-### Manual calibration trigger proposal — #2221 follow-up, 2026-10-10 (L2)
+### Manual calibration trigger contract — #2221 follow-up, 2026-10-10 (L3)
 
 The maintainer requested a reusable manual trigger instead of waiting for Monday, with selectable
 routes and budgets for remaining review/48 canaries. They chose a separately bounded manual
 allowance and server-approved routes only. This intentionally revises §8.11's schedule-only/no-
 top-up rules. Faster feedback and bounded reruns justify the additional accounting and evidence
 complexity; ordinary provider quotas and approval of new route/dimension authority remain binding.
-The numerical allowance below is proposed, not yet approved for live execution.
+The maintainer explicitly approved the exact limits and session/evidence/schema plan on
+2026-10-10. Implementation and normal deployment are authorized; actual manual canary
+execution remains a separate explicit run selection.
 
-**Proposed hard allowance.** A separate manual pool allows 24 consumed admissions, 2,097,152
+**Approved hard allowance.** A separate manual pool allows 24 consumed admissions, 2,097,152
 reserved input tokens and 131,072 reserved output tokens per UTC week. Combined scheduled plus
 manual authority is therefore at most 48 calls, 4,194,304 input and 262,144 output tokens weekly.
 No refund for a timeout, lost response or unavailable artifact. At most eight calls per manual

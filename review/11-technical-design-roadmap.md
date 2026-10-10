@@ -1764,6 +1764,6 @@ Input calibration canary #2221 has a concrete proposed one-route, one-week plan 
 The maintainer approved six weekly input calls on one verified Groq route; output and broader
 rotation remain gated on separately reviewed evidence.
 
-Review/48 manual calibration trigger: L2 proposal under #2221 for selectable approved routes/
-dimensions and separately bounded manual allowance; exact contract awaits maintainer review.
-See [review/48](48-provider-catalog-reconciliation.md#manual-calibration-trigger-proposal--2221-follow-up-2026-10-10-l2).
+Review/48 manual calibration trigger: L3 approved contract under #2221 for selectable approved routes/
+dimensions and separately bounded manual allowance; exact numerical and session/schema contract approved 2026-10-10.
+See [review/48](48-provider-catalog-reconciliation.md#manual-calibration-trigger-contract--2221-follow-up-2026-10-10-l3).
