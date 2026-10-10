@@ -1696,3 +1696,11 @@ P2b code #2217 merged through parent #2215 to main at 01:10:34 UTC on 2026-10-10
 The final disclosure fix review gap is recorded in review/51. Daily alerts, persistent
 dispositions and feed assignments remain unchanged. All six carried historical cases now have
 approved terminal dispositions; the register is 169 resolved, zero open.
+
+### review/51 P2c1 decision memory — L2, exact schema approval pending
+
+P2a/P2b and historical closeout are shipped. Next proposed slice is a strict immutable decision
+event and pure causal fold, specified in review/51. Explicit assigned/excluded/watch/not-pursued/
+rejected dispositions stay separate from workflow state. No storage writes, alert suppression,
+model calls or feed changes. Obtain approval of the exact schema before implementation; then
+follow with source-event persistence and report-only audit integration as separate slices.
