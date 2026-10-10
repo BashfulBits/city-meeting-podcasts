@@ -156,6 +156,204 @@ def _carry_rate_state(report, previous_state):
     report.state["rate_changes"] = [asdict(c) for c in report.rate_changes]
 
 
+def manual_context_canary(args, limits, control):
+    """Run only selected, server-approved contexts; never discover models or publish choices."""
+    import time
+
+    from citypods.llm_rate_probe import RateProbeRunner
+    from citypods.provider_catalog.evidence import (
+        _context_catalog_digest,
+        context_artifact,
+        digest,
+        discover_context_references,
+        verified_context_history,
+    )
+    from citypods.provider_catalog.probe import build_context_request
+    from citypods.provider_catalog.reconcile import Report, _measure_context_routes
+    from citypods.provider_catalog.registry import rules_for
+    from citypods.provider_catalog.rules import context_parser_support
+
+    if (
+        os.environ.get("GITHUB_EVENT_NAME") != "workflow_dispatch"
+        or os.environ.get("GITHUB_REF") != "refs/heads/main"
+        or args.due_only
+        or args.sync_issues
+        or args.no_pause
+        or args.provider
+        or args.rate_evidence
+        or args.backtest
+        or args.evidence_report
+        or not isinstance(control, WorkerDispatchControl)
+    ):
+        raise ValueError(
+            "manual context requires isolated workflow_dispatch on main with Worker control"
+        )
+    route_ids = args.context_routes.split(",")
+    if (
+        not 1 <= len(route_ids) <= 8
+        or len(set(route_ids)) != len(route_ids)
+        or any(not rid or rid != rid.strip() for rid in route_ids)
+        or not 0 < args.context_calls <= 8
+        or not 0 < args.context_input <= 524288
+        or not 0 < args.context_output <= 32768
+        or not 0 < args.context_input_budget <= 2097152
+        or not 0 < args.context_output_budget <= 131072
+        or not 0 < len(args.context_purpose.strip()) <= 256
+    ):
+        raise ValueError("invalid manual context selection or limits")
+    dimensions = (
+        ["input", "output"] if args.context_dimension == "both" else [args.context_dimension]
+    )
+    now = datetime.now(UTC)
+    repository = os.environ["GITHUB_REPOSITORY"]
+    run_id, head_sha = os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_SHA"]
+    from citypods.provider_catalog.evidence import _gh_json
+
+    run = _gh_json(f"repos/{repository}/actions/runs/{run_id}")
+    workflow = _gh_json(f"repos/{repository}/actions/workflows/provider-catalog-reconcile.yml")
+    if (
+        str(run.get("id")) != run_id
+        or run.get("event") != "workflow_dispatch"
+        or run.get("head_sha") != head_sha
+        or run.get("head_branch") != "main"
+        or run.get("workflow_id") != workflow.get("id")
+        or workflow.get("path") != ".github/workflows/provider-catalog-reconcile.yml"
+        or (run.get("head_repository") or {}).get("full_name") != repository
+        or run.get("status") != "in_progress"
+    ):
+        raise ValueError("untrusted manual context workflow")
+    compiled = json.loads(
+        (REPO_ROOT / "workers/llm-dispatch-v2/src/dispatch_limits.json").read_text()
+    )
+    status = control.client.context_status(Selection("global"))
+    if _context_catalog_digest(compiled) != status["catalog_digest"]:
+        raise ValueError("deployed context catalog differs from checkout")
+    routes = {route["route_id"]: route for route in limits["routes"]}
+    selected = []
+    for rid in route_ids:
+        route = routes.get(rid)
+        ready = status["routes"].get(rid) or {}
+        if (
+            not route
+            or route.get("free") is not True
+            or route.get("rpd") == 0
+            or not ready.get("enabled")
+            or ready.get("quota_scope")
+            != f"{route['provider']}:{route['account_id']}:{route['upstream_model']}"
+        ):
+            raise ValueError("manual context route not approved or quota unknown")
+        if "input" in dimensions and args.context_input > status.get("input_ceilings", {}).get(
+            rid, 524288
+        ):
+            raise ValueError("manual input ceiling exceeds approved route authority")
+        if dimensions == ["input"] and args.context_output > 256:
+            raise ValueError("input canary output reservation cannot exceed 256")
+        if "output" in dimensions and not status.get("output_enabled"):
+            raise ValueError("manual output is not approved")
+        cfg, rules = limits["providers"][route["provider"]], rules_for(route["provider"])
+        for dimension in dimensions:
+            request = build_context_request(
+                route,
+                cfg,
+                rules,
+                dimension=dimension,
+                target=1000,
+                ratio=route.get("input_token_ratio") or 1,
+                attempt_ordinal=1,
+                nonce="offline-identity-" * 4,
+            )
+            if not context_parser_support(rules, request)[0]:
+                raise ValueError("manual context parser unsupported")
+        selected.append(route)
+    references = discover_context_references(repository=repository, now=now, manual=True)
+    history, _accepted, gaps = verified_context_history(
+        references, limits, repository=repository, now=now, manual=True
+    )
+    if gaps:
+        raise ValueError("manual context history unavailable")
+    authority = {
+        "route_ids": route_ids,
+        "dimensions": dimensions,
+        "max_requests": args.context_calls,
+        "max_input": args.context_input_budget,
+        "max_output": args.context_output_budget,
+        "per_call_input": args.context_input,
+        "per_call_output": args.context_output,
+        "purpose": args.context_purpose.strip(),
+    }
+    opened = control.client.start_manual_context(run_id, status["catalog_digest"], **authority)
+    report = Report()
+    context = {
+        "manual": True,
+        "run_id": run_id,
+        "head_sha": head_sha,
+        "deadline_ms": opened.deadline_ms,
+        "history": history,
+        "rotation": {},
+        "catalog_digest": status["catalog_digest"],
+        "readiness": status["routes"],
+        "dimensions": dimensions,
+        "per_call_input": args.context_input,
+        "per_call_output": args.context_output,
+        "budget": {
+            "remaining_input": opened.remaining_input,
+            "remaining_output": opened.remaining_output,
+            "remaining_requests": opened.remaining_requests,
+        },
+    }
+    before = None
+    try:
+        before = control.client.context_status(Selection("global")).get("manual_session")
+        for provider in dict.fromkeys(route["provider"] for route in selected):
+            cfg, rules = limits["providers"][provider], rules_for(provider)
+            runner = RateProbeRunner(
+                apply=True,
+                max_requests_total=args.context_calls,
+                max_requests_per_route=args.context_calls,
+            )
+            with control.paused(provider) as pause, requests.Session() as session:
+                _measure_context_routes(
+                    report,
+                    context,
+                    [route for route in selected if route["provider"] == provider],
+                    cfg,
+                    rules,
+                    runner,
+                    pause,
+                    control,
+                    session,
+                    sleep=time.sleep,
+                    cooldown=rules.canary_interval_seconds,
+                )
+    finally:
+        control.client.finish_manual_context(run_id, status["catalog_digest"])
+    after = control.client.context_status(Selection("global")).get("manual_session")
+    artifact = context_artifact(
+        report.context_observations,
+        limits,
+        repository=repository,
+        run_id=run_id,
+        head_sha=head_sha,
+        now=datetime.now(UTC),
+        catalog_digest=status["catalog_digest"],
+        attempted_routes=report.context_attempted_routes,
+        states=report.context_states,
+    )
+    artifact["payload"].update(
+        {
+            "kind": "manual_context",
+            "authority": authority,
+            "accounting_before": before,
+            "accounting_after": after,
+        }
+    )
+    artifact["payload_digest"] = digest(artifact["payload"])
+    args.context_evidence.write_text(json.dumps(artifact, sort_keys=True, indent=2) + "\n")
+    for observation in report.observations:
+        print(observation)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--provider", action="append", default=[])
@@ -164,6 +362,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-pause", action="store_true")
     parser.add_argument("--rate-evidence", type=Path)
     parser.add_argument("--context-evidence", type=Path)
+    parser.add_argument("--manual-context", action="store_true")
+    parser.add_argument("--context-routes", default="")
+    parser.add_argument("--context-dimension", choices=("input", "output", "both"), default="input")
+    parser.add_argument("--context-calls", type=int, default=2)
+    parser.add_argument("--context-input", type=int, default=8192)
+    parser.add_argument("--context-output", type=int, default=256)
+    parser.add_argument("--context-input-budget", type=int, default=2097152)
+    parser.add_argument("--context-output-budget", type=int, default=131072)
+    parser.add_argument("--context-purpose", default="")
     parser.add_argument("--evidence-report", action="store_true")
     parser.add_argument(
         "--backtest",
@@ -179,6 +386,10 @@ def main(argv: list[str] | None = None) -> int:
     if unknown:
         parser.error(f"unknown provider(s): {', '.join(sorted(unknown))}")
     control = _control(args.no_pause)
+    if args.manual_context:
+        if args.context_evidence is None:
+            parser.error("manual context requires an evidence path")
+        return manual_context_canary(args, limits, control)
     if args.evidence_report:
         return evidence_report(limits, set(args.provider), control)
     if args.backtest:

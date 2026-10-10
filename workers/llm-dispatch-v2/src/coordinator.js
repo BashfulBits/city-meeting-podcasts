@@ -239,6 +239,8 @@ const CURRENT_SCHEMA_TABLES = [
   "dispatch_pause",
   "context_probe_weeks",
   "context_probe_attempts",
+  "context_manual_weeks",
+  "context_manual_attempts",
 ];
 
 // One source for quota migration, startup readiness, and the write-free mutation preflight.
@@ -258,6 +260,22 @@ const CONTEXT_PROBE_SCHEMA = `
     output_used INTEGER NOT NULL DEFAULT 0, requests_used INTEGER NOT NULL DEFAULT 0
   );
   CREATE TABLE IF NOT EXISTS context_probe_attempts (
+    attempt_id TEXT NOT NULL, week_start TEXT NOT NULL, run_id TEXT NOT NULL,
+    route_id TEXT NOT NULL, dimension TEXT NOT NULL, request_digest TEXT NOT NULL,
+    input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL, admitted_at INTEGER NOT NULL,
+    PRIMARY KEY (week_start, attempt_id)
+  ) WITHOUT ROWID;
+`;
+
+const CONTEXT_MANUAL_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS context_manual_weeks (
+    week_start TEXT PRIMARY KEY, run_id TEXT NOT NULL, catalog_digest TEXT NOT NULL,
+    deadline_ms INTEGER NOT NULL, input_used INTEGER NOT NULL DEFAULT 0,
+    output_used INTEGER NOT NULL DEFAULT 0, requests_used INTEGER NOT NULL DEFAULT 0,
+    run_input_used INTEGER NOT NULL DEFAULT 0, run_output_used INTEGER NOT NULL DEFAULT 0,
+    run_requests_used INTEGER NOT NULL DEFAULT 0, limits_json TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS context_manual_attempts (
     attempt_id TEXT NOT NULL, week_start TEXT NOT NULL, run_id TEXT NOT NULL,
     route_id TEXT NOT NULL, dimension TEXT NOT NULL, request_digest TEXT NOT NULL,
     input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL, admitted_at INTEGER NOT NULL,
@@ -356,12 +374,16 @@ export class LLMSchedulerDO extends DurableObjectBase {
       // Existing production objects need only these additive columns. Do not rerun unrelated
       // DDL, index rebuilds, or data migrations over their queue to repair quota bookkeeping.
       const additiveOnly = readiness.missing.every(item =>
-        ["table:context_probe_weeks", "table:context_probe_attempts"].includes(item) ||
+        ["table:context_probe_weeks", "table:context_probe_attempts",
+          "table:context_manual_weeks", "table:context_manual_attempts"].includes(item) ||
         (item.startsWith("column:routes.") &&
           Object.hasOwn(ROUTE_QUOTA_COLUMNS, item.slice("column:routes.".length))));
       if (additiveOnly) {
         if (readiness.missing.some(item => item.startsWith("table:context_probe_"))) {
           this._getSql().exec(CONTEXT_PROBE_SCHEMA);
+        }
+        if (readiness.missing.some(item => item.startsWith("table:context_manual_"))) {
+          this._getSql().exec(CONTEXT_MANUAL_SCHEMA);
         }
         for (const [column, definition] of Object.entries(ROUTE_QUOTA_COLUMNS)) {
           if (readiness.missing.includes(`column:routes.${column}`)) {
@@ -1050,6 +1072,7 @@ export class LLMSchedulerDO extends DurableObjectBase {
       -- it either. A no-op UPDATE (0 rows matched) when the job isn't currently indexed -- e.g.
       -- already claimed -- is expected and harmless.
       ${CONTEXT_PROBE_SCHEMA}
+      ${CONTEXT_MANUAL_SCHEMA}
       ${JOB_PRIORITY_SYNC_TRIGGER}
     `));
 
@@ -2001,6 +2024,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       enabled: LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS.length > 0,
       catalog_digest: await this._contextCatalogDigest(),
       session: rows[0] ? this._contextRemaining(rows[0]) : null,
+      manual_session: this._manualContextStatus(now),
+      output_enabled: LLMSchedulerDO.CONTEXT_OUTPUT_ENABLED,
+      input_ceilings: LLMSchedulerDO.CONTEXT_INPUT_CEILINGS,
       routes: Object.fromEntries(selectedRouteIds.map(id => [id, {
         quota_scope: this._contextQuotaScope(catalog.routes_by_id[id], catalog),
         enabled: LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS.includes(id),
@@ -2020,8 +2046,100 @@ export class LLMSchedulerDO extends DurableObjectBase {
       return { ok: false, error: "stale_catalog" };
     }
     const week = this._contextWeek(now);
+    if (body.operation === "context_manual_start") return this._startManualContext(body, week, now);
+    if (body.operation === "context_manual_finish") return this._finishManualContext(body, week, now);
+    if (body.operation === "context_manual_admit") return this._admitContext(body, week, now, true);
     if (body.operation === "context_start") return this._startContext(body, week, now);
     return this._admitContext(body, week, now);
+  }
+
+  _manualContextStatus(now) {
+    const row = [...this._getSql().exec(
+      "SELECT * FROM context_manual_weeks WHERE week_start = ?", this._contextWeek(now)
+    )][0];
+    return row ? this._manualContextRemaining(row) : null;
+  }
+
+  _manualContextRemaining(row) {
+    const limits = JSON.parse(row.limits_json);
+    return { ...this._contextRemaining(row),
+      remaining_input: Math.min(2097152 - row.input_used, limits.max_input - row.run_input_used),
+      remaining_output: Math.min(131072 - row.output_used, limits.max_output - row.run_output_used),
+      remaining_requests: Math.min(24 - row.requests_used, limits.max_requests - row.run_requests_used),
+      weekly_input_used: row.input_used, weekly_output_used: row.output_used,
+      weekly_requests_used: row.requests_used };
+  }
+
+  _startManualContext(body, week, now) {
+    const sql = this._getSql();
+    const catalog = this._dispatchLimits();
+    for (const id of body.route_ids) {
+      const route = catalog.routes_by_id[id];
+      if (!LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS.includes(id) ||
+        (body.dimensions.includes("output") && !LLMSchedulerDO.CONTEXT_OUTPUT_ENABLED)) {
+        return { ok: false, error: "disabled" };
+      }
+      if (!route || route.free !== true || route.rpd === 0) return { ok: false, error: "unknown_target" };
+      if (!this._contextQuotaScope(route, catalog)) return { ok: false, error: "quota_unknown" };
+      if ((body.dimensions.includes("input") && body.per_call_input >
+        (LLMSchedulerDO.CONTEXT_INPUT_CEILINGS[id] ?? 524288)) ||
+        (!body.dimensions.includes("output") && body.per_call_output > 256)) {
+        return { ok: false, error: "budget_exhausted" };
+      }
+    }
+    const { operation, run_id, catalog_digest, ...limits } = body;
+    const encoded = canonicalJson(limits);
+    const rows = [...sql.exec("SELECT * FROM context_manual_weeks ORDER BY week_start LIMIT 9")];
+    const existing = rows.find(row => row.week_start === week);
+    if (existing?.run_id === run_id) {
+      if (existing.deadline_ms <= now || existing.catalog_digest !== catalog_digest ||
+        existing.limits_json !== encoded) return { ok: false, error: "session_expired" };
+      return { ok: true, ...this._manualContextRemaining(existing) };
+    }
+    if (rows.some(row => BigInt(row.run_id) >= BigInt(run_id)) ||
+      (existing && existing.deadline_ms > now)) return { ok: false, error: "session_expired" };
+    const cutoff = this._contextWeek(now - 7 * 7 * 86400000);
+    const stale = rows.filter(row => row.week_start < cutoff);
+    const prune = stale[0];
+    const attempts = prune ? [...sql.exec(
+      "SELECT attempt_id FROM context_manual_attempts WHERE week_start=? LIMIT 25", prune.week_start
+    )] : [];
+    if (rows.length > 8 || attempts.length > 24 ||
+      (!existing && rows.length - (prune ? 1 : 0) >= 8)) return { ok: false, error: "budget_exhausted" };
+    if (!this._contextRowBudget(3 + (prune ? 2 * (attempts.length + 1) : 0))) {
+      return { ok: false, error: "daily_row_budget" };
+    }
+    return this._transactionSync(() => {
+      for (const item of attempts) sql.exec(
+        "DELETE FROM context_manual_attempts WHERE week_start=? AND attempt_id=?",
+        prune.week_start, item.attempt_id);
+      if (prune) sql.exec("DELETE FROM context_manual_weeks WHERE week_start=?", prune.week_start);
+      if (stale.length > 1) return { ok: false, error: "budget_exhausted" };
+      if (existing) sql.exec(`UPDATE context_manual_weeks SET run_id=?, catalog_digest=?,
+        deadline_ms=?, limits_json=?, run_input_used=0, run_output_used=0, run_requests_used=0
+        WHERE week_start=?`, run_id, catalog_digest, now + 3600000, encoded, week);
+      else sql.exec(`INSERT INTO context_manual_weeks
+        (week_start,run_id,catalog_digest,deadline_ms,limits_json) VALUES (?,?,?,?,?)`,
+      week, run_id, catalog_digest, now + 3600000, encoded);
+      const row = { ...(existing || { input_used: 0, output_used: 0, requests_used: 0 }),
+        week_start: week, run_id, catalog_digest, deadline_ms: now + 3600000, limits_json: encoded,
+        run_input_used: 0, run_output_used: 0, run_requests_used: 0 };
+      return { ok: true, ...this._manualContextRemaining(row) };
+    });
+  }
+
+  _finishManualContext(body, week, now) {
+    const sql = this._getSql();
+    const row = [...sql.exec("SELECT * FROM context_manual_weeks WHERE week_start=?", week)][0];
+    if (!row || row.run_id !== body.run_id || row.catalog_digest !== body.catalog_digest) {
+      return { ok: false, error: "session_expired" };
+    }
+    if (row.deadline_ms <= now) return { ok: true, ...this._manualContextRemaining(row) };
+    if (!this._contextRowBudget(2)) return { ok: false, error: "daily_row_budget" };
+    return this._transactionSync(() => {
+      sql.exec("UPDATE context_manual_weeks SET deadline_ms=? WHERE week_start=?", now, week);
+      return { ok: true, ...this._manualContextRemaining({ ...row, deadline_ms: now }) };
+    });
   }
 
   _startContext(body, week, now) {
@@ -2068,10 +2186,12 @@ export class LLMSchedulerDO extends DurableObjectBase {
     });
   }
 
-  _admitContext(body, week, now) {
+  _admitContext(body, week, now, manual = false) {
     const sql = this._getSql();
+    const weeks = manual ? "context_manual_weeks" : "context_probe_weeks";
+    const receipts = manual ? "context_manual_attempts" : "context_probe_attempts";
     const old = [...sql.exec(
-      "SELECT * FROM context_probe_attempts WHERE week_start = ? AND attempt_id = ?",
+      `SELECT * FROM ${receipts} WHERE week_start = ? AND attempt_id = ?`,
       week, body.attempt_id
     )][0];
     if (old) {
@@ -2080,11 +2200,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
           .every(key => old[key] === body[key]);
       return { ok: false, error: same ? "already_consumed" : "attempt_conflict" };
     }
-    const row = [...sql.exec("SELECT * FROM context_probe_weeks WHERE week_start = ?", week)][0];
+    const row = [...sql.exec(`SELECT * FROM ${weeks} WHERE week_start = ?`, week)][0];
     if (!row || row.run_id !== body.run_id || row.deadline_ms < now + 205000) {
       return { ok: false, error: "session_expired" };
     }
     if (row.catalog_digest !== body.catalog_digest) return { ok: false, error: "stale_catalog" };
+    if (manual) {
+      const limits = JSON.parse(row.limits_json);
+      if (!limits.route_ids.includes(body.route_id) || !limits.dimensions.includes(body.dimension)) {
+        return { ok: false, error: "disabled" };
+      }
+      if (body.input_tokens > limits.per_call_input || body.output_tokens > limits.per_call_output ||
+        row.run_requests_used >= limits.max_requests ||
+        row.run_input_used + body.input_tokens > limits.max_input ||
+        row.run_output_used + body.output_tokens > limits.max_output) {
+        return { ok: false, error: "budget_exhausted" };
+      }
+    }
     const output = body.dimension === "output";
     if (!LLMSchedulerDO.CONTEXT_PROBE_ROUTE_IDS.includes(body.route_id) ||
       (output && !LLMSchedulerDO.CONTEXT_OUTPUT_ENABLED)) return { ok: false, error: "disabled" };
@@ -2096,9 +2228,9 @@ export class LLMSchedulerDO extends DurableObjectBase {
       return { ok: false, error: "budget_exhausted" };
     }
     const attempts = [...sql.exec(
-      "SELECT route_id FROM context_probe_attempts WHERE week_start = ? LIMIT 25", week
+      `SELECT route_id FROM ${receipts} WHERE week_start = ? LIMIT 25`, week
     )];
-    if (attempts.length >= 24 || attempts.filter(item => item.route_id === body.route_id).length >= 6) {
+    if (attempts.length >= 24 || attempts.filter(item => item.route_id === body.route_id).length >= (manual ? 12 : 6)) {
       return { ok: false, error: "budget_exhausted" };
     }
     const catalog = this._dispatchLimits();
@@ -2122,20 +2254,23 @@ export class LLMSchedulerDO extends DurableObjectBase {
       return { ok: false, error: "quota_wait", next_eligible_at: safeAt?.notBeforeAt ?? null };
     }
     // New route row/index + ledger + attempt/index + summary + scheduler; overestimate safely.
-    if (!this._contextRowBudget(10)) return { ok: false, error: "daily_row_budget" };
+    if (!this._contextRowBudget(manual ? 12 : 10)) return { ok: false, error: "daily_row_budget" };
     return this._transactionSync(() => {
       const ledger = this._getOrCreateRouteLedger(body.route_id, now, route);
       const reservation = body.input_tokens + (route.provider === "gemini" ? 0 : body.output_tokens);
       const charged = this._applyProvisionalReservation({ ...merged, ...ledger }, reservation, now);
       charged.provisional_reservation = Number(ledger.provisional_reservation) || 0;
       this._writeRouteLedger(charged);
-      sql.exec(`INSERT INTO context_probe_attempts
+      sql.exec(`INSERT INTO ${receipts}
         (attempt_id, week_start, run_id, route_id, dimension, request_digest,
          input_tokens, output_tokens, admitted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       body.attempt_id, week, body.run_id, body.route_id, body.dimension, body.request_digest,
       body.input_tokens, body.output_tokens, now);
-      sql.exec(`UPDATE context_probe_weeks SET input_used=input_used+?, output_used=output_used+?,
+      sql.exec(`UPDATE ${weeks} SET input_used=input_used+?, output_used=output_used+?,
         requests_used=requests_used+1 WHERE week_start=?`, body.input_tokens, body.output_tokens, week);
+      if (manual) sql.exec(`UPDATE ${weeks} SET run_input_used=run_input_used+?,
+        run_output_used=run_output_used+?, run_requests_used=run_requests_used+1 WHERE week_start=?`,
+      body.input_tokens, body.output_tokens, week);
       return { ok: true, disposition: "new", attempt_id: body.attempt_id };
     });
   }

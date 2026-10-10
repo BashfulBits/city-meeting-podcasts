@@ -521,7 +521,7 @@ def next_context_probe(state, limits, budget):
         input_size > min(per_call_input, budget["remaining_input"])
         or output_size > min(per_call_output, budget["remaining_output"])
         or budget["remaining_requests"] <= 0
-        or budget.get("route_requests", 0) >= 6
+        or budget.get("route_requests", 0) >= budget.get("route_limit", 6)
         or budget.get("remaining_seconds", 3600) < 205
     ):
         status = "budget_limited"

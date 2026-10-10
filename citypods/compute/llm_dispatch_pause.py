@@ -264,6 +264,70 @@ class DispatchPauseClient:
             raise DispatchPauseError("context attempt has no new single-use admission")
         return ContextAdmission(attempt_id)
 
+    def start_manual_context(self, run_id: str, catalog_digest: str, **limits) -> ContextSession:
+        data = self._request(
+            "POST",
+            "v2/dispatch:reserve",
+            {
+                "operation": "context_manual_start",
+                "run_id": run_id,
+                "catalog_digest": catalog_digest,
+                **limits,
+            },
+        )
+        if data.get("ok") is not True or data.get("run_id") != run_id:
+            raise DispatchPauseError("context session was not admitted")
+        return self._context_session(data)
+
+    def reserve_manual_context(
+        self,
+        *,
+        run_id: str,
+        catalog_digest: str,
+        route_id: str,
+        dimension: str,
+        attempt_id: str,
+        input_tokens: int,
+        output_tokens: int,
+        request_digest: str,
+    ) -> ContextAdmission:
+        data = self._request(
+            "POST",
+            "v2/dispatch:reserve",
+            {
+                "operation": "context_manual_admit",
+                "run_id": run_id,
+                "catalog_digest": catalog_digest,
+                "route_id": route_id,
+                "dimension": dimension,
+                "attempt_id": attempt_id,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "request_digest": request_digest,
+            },
+        )
+        if (
+            data.get("ok") is not True
+            or data.get("disposition") != "new"
+            or data.get("attempt_id") != attempt_id
+        ):
+            raise DispatchPauseError("context attempt has no new single-use admission")
+        return ContextAdmission(attempt_id)
+
+    def finish_manual_context(self, run_id: str, catalog_digest: str) -> ContextSession:
+        data = self._request(
+            "POST",
+            "v2/dispatch:reserve",
+            {
+                "operation": "context_manual_finish",
+                "run_id": run_id,
+                "catalog_digest": catalog_digest,
+            },
+        )
+        if data.get("ok") is not True or data.get("run_id") != run_id:
+            raise DispatchPauseError("manual context session cleanup unavailable")
+        return self._context_session(data)
+
     def context_status(self, selection: Selection) -> dict:
         query = urlencode(selection.body() | {"context": "1"})
         data = self._request("GET", f"v2/dispatch:pause-status?{query}")

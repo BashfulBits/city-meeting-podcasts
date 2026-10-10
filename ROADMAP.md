@@ -677,3 +677,6 @@ route and immediate first-run evidence review. Output and broader rotation remai
 
 Review/48 manual canary follow-up: prepare reusable main-only dispatch for approved routes,
 with separately bounded durable manual budgets; contract review precedes implementation.
+
+Review/48 manual trigger implementation is prepared under #2221 with the approved separate
+finite allowance. Explicit canary execution and acceptance precede output/broader activation.

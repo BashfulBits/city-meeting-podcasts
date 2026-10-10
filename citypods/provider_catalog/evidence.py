@@ -687,11 +687,13 @@ def context_artifact(
     return envelope
 
 
-def discover_context_references(*, repository, now, api=_gh_json, download=_gh_download):
+def discover_context_references(
+    *, repository, now, api=_gh_json, download=_gh_download, manual=False
+):
     """Discover history independently of editable issue references; verification still follows.
 
-    Two bounded pages cover the weekly and daily schedule over the 90-day window. Failure to
-    Enumerating history failure defers the whole decision, rather than letting issue edits omit
+    Two bounded pages cover scheduled runs; manual discovery permits four bounded pages.
+    Enumeration failure defers the whole decision, rather than letting issue edits omit
     an inconvenient high sample. Only exact named, size-bounded artifacts are downloaded.
     """
     if not isinstance(repository, str) or not re.fullmatch(
@@ -706,11 +708,11 @@ def discover_context_references(*, repository, now, api=_gh_json, download=_gh_d
 
     references = []
     exhausted = False
-    for page in (1, 2):
+    for page in range(1, 5 if manual else 3):
         query = urlencode(
             {
                 "branch": branch,
-                "event": "schedule",
+                "event": "workflow_dispatch" if manual else "schedule",
                 "status": "success",
                 "per_page": 100,
                 "page": page,
@@ -734,7 +736,8 @@ def discover_context_references(*, repository, now, api=_gh_json, download=_gh_d
             matches = [
                 a
                 for a in listing["artifacts"]
-                if a.get("name") == f"provider-catalog-context-evidence-{run_id}"
+                if a.get("name")
+                == f"provider-catalog-{'manual-context' if manual else 'context'}-evidence-{run_id}"
             ]
             if not matches:
                 continue  # pre-Slice-5/daily runs did not produce maintenance evidence
@@ -776,6 +779,7 @@ def verified_context_history(
     api=_gh_json,
     download=_gh_download,
     ancestor=_main_ancestor,
+    manual=False,
 ):
     """Rehydrate only authenticated artifact values, never observations edited into an issue.
 
@@ -825,7 +829,7 @@ def verified_context_history(
                 str(run.get("id")) != run_id
                 or run.get("conclusion") != "success"
                 or run.get("status") != "completed"
-                or run.get("event") != "schedule"
+                or run.get("event") != ("workflow_dispatch" if manual else "schedule")
                 or run.get("workflow_id") != workflow.get("id")
                 or run.get("head_branch") != repo.get("default_branch")
                 or (run.get("head_repository") or {}).get("full_name") != repository
@@ -837,7 +841,8 @@ def verified_context_history(
             matches = [
                 a
                 for a in listing.get("artifacts") or []
-                if a.get("name") == f"provider-catalog-context-evidence-{run_id}"
+                if a.get("name")
+                == f"provider-catalog-{'manual-context' if manual else 'context'}-evidence-{run_id}"
             ]
             if len(matches) != 1:
                 raise ValueError("missing or ambiguous artifact")
@@ -878,6 +883,7 @@ def verified_context_history(
                 or payload.get("workflow_path") != RATE_WORKFLOW
                 or payload.get("branch") != run["head_branch"]
                 or payload.get("head_sha") != run["head_sha"]
+                or (manual and payload.get("kind") != "manual_context")
             ):
                 raise ValueError("artifact provenance mismatch")
             from citypods.provider_catalog.probe import chat_url

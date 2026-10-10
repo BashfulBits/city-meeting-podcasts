@@ -1767,3 +1767,6 @@ rotation remain gated on separately reviewed evidence.
 Review/48 manual calibration trigger: L3 approved contract under #2221 for selectable approved routes/
 dimensions and separately bounded manual allowance; exact numerical and session/schema contract approved 2026-10-10.
 See [review/48](48-provider-catalog-reconciliation.md#manual-calibration-trigger-contract--2221-follow-up-2026-10-10-l3).
+
+Manual-trigger implementation is prepared under #2221 following the approved L3 contract;
+explicit manual execution, input evidence acceptance, output authority and broader rotation remain gated.

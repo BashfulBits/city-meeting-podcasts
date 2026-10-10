@@ -1820,3 +1820,23 @@ def test_context_artifact_is_weekly_main_only_and_apply_keeps_writer_lock():
     assert "github.event.schedule == '17 10 * * 1'" in upload["if"]
     assert upload["with"]["retention-days"] == 90
     assert wf["concurrency"]["group"] == "provider-catalog-writers"
+
+
+def test_manual_context_trigger_uses_environment_inputs_and_separate_artifact():
+    text = Path(".github/workflows/provider-catalog-reconcile.yml").read_text()
+    assert "args=(--manual-context --context-evidence" in text
+    for name in (
+        "ROUTES",
+        "DIMENSION",
+        "CALLS",
+        "INPUT",
+        "OUTPUT",
+        "INPUT_BUDGET",
+        "OUTPUT_BUDGET",
+        "PURPOSE",
+    ):
+        assert f'"$CONTEXT_{name}"' in text
+    assert "provider-catalog-manual-context-evidence-${{ github.run_id }}" in text
+    assert "Manual context canary cannot be combined with due-only" in text
+    command = text.split("        run: |", 1)[1].split("      - name:", 1)[0]
+    assert "${{ inputs." not in command

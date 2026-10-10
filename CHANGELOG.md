@@ -12,6 +12,11 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
+- **Prepared reusable manual context canaries (#2221).** Main-only manual dispatch selects approved
+  routes/dimensions and bounded call/token ceilings. A separate durable weekly allowance preserves
+  charges across reruns and outages; provider quota and existing activation remain binding.
+  Manual evidence cannot enter scheduled cap-offer history. No automatic cap changes or backfill.
+
 - **Prepared reviewed input calibration pilot (#2221).** Enables one verified free Groq route
   through normal scheduled deployment, with at most six weekly input calls, 8,192 input and
   256 output tokens per call. Output and broader rotation remain disabled pending separate

@@ -1269,3 +1269,150 @@ def test_the_context_scan_skips_non_chat_routes():
     chat = {"route_id": "chat", "free": True, "rpd": 10}
     jev = {"route_id": "jev", "free": True, "rpd": 10, "api_shape": "systemone"}
     assert [r["route_id"] for r in plan_context_scan({"routes": [jev, chat]}, {})] == ["chat"]
+
+
+def test_manual_artifact_is_authenticated_but_cannot_become_scheduled_cap_history():
+    from citypods.provider_catalog.evidence import digest, verified_context_history
+
+    now, limits, observed, envelope, run, artifact, reference, api, download = (
+        context_artifact_fixture()
+    )
+    run["event"] = "workflow_dispatch"
+    artifact["name"] = "provider-catalog-manual-context-evidence-1"
+    envelope["payload"]["kind"] = "manual_context"
+    envelope["payload_digest"] = digest(envelope["payload"])
+    reference["payload_digest"] = envelope["payload_digest"]
+    history, accepted, gaps = verified_context_history(
+        [reference],
+        limits,
+        repository="owner/repo",
+        now=now,
+        api=api,
+        download=download,
+        ancestor=lambda _sha: True,
+        manual=True,
+    )
+    assert history == (observed,) and accepted and not gaps
+    history, accepted, gaps = verified_context_history(
+        [reference],
+        limits,
+        repository="owner/repo",
+        now=now,
+        api=api,
+        download=download,
+        ancestor=lambda _sha: True,
+    )
+    assert not history and not accepted and gaps
+
+
+def test_manual_canary_rejects_local_or_non_main_before_provider_io(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from scripts import reconcile_provider_routes as script
+
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("GITHUB_REF", "refs/heads/feature")
+    control = script.WorkerDispatchControl(SimpleNamespace())
+    monkeypatch.setattr(script, "_control", lambda _flag: control)
+    with pytest.raises(ValueError, match="workflow_dispatch on main"):
+        script.main(["--manual-context", "--context-evidence", str(tmp_path / "out.json")])
+
+
+def test_manual_canary_is_context_only_and_finishes_session(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from citypods.compute.llm_dispatch_pause import ContextSession
+    from citypods.provider_catalog import evidence, reconcile
+    from scripts import reconcile_provider_routes as script
+
+    run_id, sha = "100", "a" * 40
+    for key, value in {
+        "GITHUB_EVENT_NAME": "workflow_dispatch",
+        "GITHUB_REF": "refs/heads/main",
+        "GITHUB_REPOSITORY": "owner/repo",
+        "GITHUB_RUN_ID": run_id,
+        "GITHUB_SHA": sha,
+    }.items():
+        monkeypatch.setenv(key, value)
+    limits = {"routes": [dict(ROUTE)], "providers": {"groq": dict(PROVIDER)}}
+    monkeypatch.setattr(script.yaml, "safe_load", lambda _text: limits)
+    digest = evidence._context_catalog_digest(
+        json.loads(
+            (script.REPO_ROOT / "workers/llm-dispatch-v2/src/dispatch_limits.json").read_text()
+        )
+    )
+    status = {
+        "enabled": True,
+        "catalog_digest": digest,
+        "output_enabled": False,
+        "routes": {"r": {"enabled": True, "quota_scope": "groq:primary:m"}},
+        "manual_session": {"weekly_requests_used": 0},
+    }
+    status["routes"]["r"]["quota_scope"] = (
+        f"{ROUTE['provider']}:{ROUTE['account_id']}:{ROUTE['upstream_model']}"
+    )
+    finished = []
+    client = SimpleNamespace(
+        context_status=lambda _selection: status,
+        start_manual_context=lambda *_args, **_kwargs: ContextSession(
+            "2026-10-05", run_id, 9999999999999, 16384, 512, 2
+        ),
+        finish_manual_context=lambda *_args: finished.append(True),
+    )
+    control = script.WorkerDispatchControl(client)
+    from contextlib import contextmanager
+
+    @contextmanager
+    def pause(_provider):
+        yield SimpleNamespace(contended=False)
+
+    monkeypatch.setattr(control, "paused", pause)
+    monkeypatch.setattr(script, "_control", lambda _flag: control)
+    monkeypatch.setattr(
+        evidence,
+        "_gh_json",
+        lambda path: (
+            {"id": 7, "path": evidence.RATE_WORKFLOW}
+            if "/workflows/" in path
+            else {
+                "id": 100,
+                "workflow_id": 7,
+                "event": "workflow_dispatch",
+                "head_branch": "main",
+                "head_sha": sha,
+                "head_repository": {"full_name": "owner/repo"},
+                "status": "in_progress",
+            }
+        ),
+    )
+    monkeypatch.setattr(evidence, "discover_context_references", lambda **_kwargs: [])
+    monkeypatch.setattr(
+        evidence, "verified_context_history", lambda *_args, **_kwargs: ((), (), ())
+    )
+    calls = []
+
+    def measure(report, context, routes, *_args, **_kwargs):
+        assert context["manual"] and context["dimensions"] == ["input"]
+        assert [r["route_id"] for r in routes] == ["r"]
+        calls.append(True)
+
+    monkeypatch.setattr(reconcile, "_measure_context_routes", measure)
+    monkeypatch.setattr(script, "fetch_quality_index", lambda *_args: pytest.fail("catalog I/O"))
+    target = tmp_path / "out.json"
+    assert (
+        script.main(
+            [
+                "--manual-context",
+                "--context-routes",
+                "r",
+                "--context-purpose",
+                "#2221",
+                "--context-evidence",
+                str(target),
+            ]
+        )
+        == 0
+    )
+    assert calls == [True] and finished == [True]
+    payload = json.loads(target.read_text())["payload"]
+    assert payload["kind"] == "manual_context" and payload["authority"]["max_requests"] == 2
