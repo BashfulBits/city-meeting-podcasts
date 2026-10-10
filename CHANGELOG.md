@@ -12,7 +12,7 @@ Once 1.0 ships, entries move under semver tags.
 
 ## Unreleased
 
-- **Decision memory foundation (review/51 P2c1, prepared).** Adds strict immutable, source-local
+- **Decision memory foundation (review/51 P2c1, #2231).** Adds strict immutable, source-local
   decision events and offline causal reconstruction. Repeated deliveries deduplicate; missing
   parents and conflicting histories remain blocked. Keep-watching stays pending and preserves
   recording references. No storage writes, scan suppression, model admission, feed changes or

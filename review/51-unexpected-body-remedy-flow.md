@@ -2992,7 +2992,7 @@ next P2 work. P3–P5 and model admission remain gated.
 P2b retained-snapshot post-merge verification is complete; see
 [evidence and corrected projection counts](evidence/p2b-postmerge-verification-2026-10-10.md).
 
-### P2c1 decision event and fold foundation — L3, approved
+### P2c1 decision event and fold foundation — frozen, implemented in PR #2231
 
 Predecessors: P2a #2213 and report-only P2b #2215 are shipped. Historical case closeout and
 post-merge verification shipped in #2227. This is the next deterministic slice, not live model
@@ -3106,3 +3106,70 @@ nullable resolved outcomes, and adds a regression test. No scan or feed entrypoi
 
 Review-fix verification: 39 targeted tests and 5,623 offline tests passed (16 deselected);
 whole Ruff/format passed across 497 files.
+
+
+P2c1 shipped in PR #2231, merged 2026-10-09 at 9:08 PM America/Chicago
+(2026-10-10T02:08:58Z), merge b0fcf4b0. The current-head tests, dependencies, preview and
+CodeQL passed. CodeRabbit reviewed 99f5951d; its one valid minor approval-gate finding was fixed
+in b9ca5053, regression tested, replied and resolved; the bot confirmed the fix. The push's skipped
+automatic review is not a separate substantive review. This stamp freezes P2c1 only. P2c remains
+incomplete: persistence, trusted mutations and scan integration are not active.
+
+### P2c2a source-scoped event persistence — L2, proposed contract
+
+The event path remains the previously approved B2 path:
+`state/remedy/events/<source_key>/<decision_id>/<event_id>.json`. Do not request approval of
+that path again. P2c1 validates content but has no IO. Implement storage helpers before any
+production caller is connected. This proposal does not activate a workflow or import historical
+human decisions automatically.
+
+Permitted files: `citypods/remedy_ledger.py`, `tests/test_remedy_ledger.py`, lifecycle docs.
+Use existing storage `get_file`, `put_file`, `list_objects` and the existing maintenance lease
+`assert_held`; no storage adapter, routing, coordinator, audit, provider, workflow or feed changes.
+The event namespace already routes to B2 by default. The approved coordinator remains separate
+future work on R2; do not move authoritative events to R2 to gain conditional writes.
+
+Proposed interfaces:
+
+- `event_key(event) -> str`: validates the complete event and constructs only the approved path.
+  Source must be a safe single segment matching `[a-z0-9][a-z0-9_-]*`; decision/event IDs already
+  require lowercase SHA256. Reject traversal rather than sanitize or rewrite identity.
+- `append_event(storage, event, *, lease) -> str`: require a live existing remedy maintenance
+  lease for every append attempt, verify its exact `maintenance-leases/remedy.json` key and
+  `assert_held()` immediately before a write. Validate the event before any backend call.
+  Read an existing object first; if its validated canonical content equals the supplied event,
+  return the existing key without another upload. Invalid/different existing content fails closed
+  and is never overwritten. If absent, write canonical JSON from a temporary file via put_file,
+  then read back and validate the identical event. Temporary files are cleaned on all paths.
+  Return the storage key, not a public URL. No delete operation. No-CAS or missing/lost lease
+  prevents writes; read-only reconstruction remains possible. Backend read/write errors propagate
+  as failures, never as absence or a successful append. Retry after a successful-but-unacknowledged
+  upload reads the existing content and succeeds idempotently.
+- `load_decisions(storage, *, source_keys) -> dict[str, DecisionState]`: enumerate only each
+  explicitly named safe source prefix, never a global state/media scan. Validate every listed
+  path against its event source and recomputed IDs. Reject malformed or outside-prefix objects,
+  duplicate JSON object keys, invalid events and reads that disappear/fail. Group by decision ID
+  and use the shipped fold_events; conflicting histories retain its blocked diagnostics.
+  Empty requested sources yield an empty dict. Return deterministically ordered decision IDs.
+  No writes, derived cache, remote official-evidence fetch or use of processing timestamps.
+
+Persistence helpers do not authenticate an event's actor/approval fields. A held lease serializes
+mutations; it does not prove a human approved the disposition. Production trusted-entrypoint
+validation, coordinator recovery and GitHub reconciliation require a subsequent separate L3
+contract before these helpers are called by a scheduled workflow. No current scan suppression.
+
+B2 does not enforce conditional PUT in this repository. Immutability therefore relies on validated
+content-addressed event keys plus the shared maintenance lease, existing-object verification and
+post-write verification; never claim server-side B2 CAS. Identical content-addressed concurrent
+retries are harmless. Do not reuse a mutable key or overwrite corrupt objects to recover them.
+
+Tests with fake storage and fake leases only: exact source path; traversal; invalid event before IO;
+append/read-back; repeated append without second upload; corrupt/mismatched existing content;
+wrong, missing, lost and no-CAS lease; read/write/read-back failure; reconstruction of unordered
+objects and repeated deliveries; source isolation; outside-prefix/path-content mismatch; duplicate
+JSON keys; absent requested source; conflicts remain blocked; temporary-file cleanup. Whole
+Ruff/format and full offline suite before push. No production storage writes in validation.
+
+Pending narrow decision: approve the lease-required append interface and strict reconstruction
+failure behavior above. The source path, pending-watch behavior and overall P2 sequence are
+already approved. Once approved, commit the L3 promotion before implementation.
